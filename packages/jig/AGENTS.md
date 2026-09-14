@@ -133,3 +133,5 @@ admitted FLOW packages.
   containment, execution, durable state, and Agent-provider boundary.
 - [test/fixtures/channel-conversation/AGENTS.md](test/fixtures/channel-conversation/AGENTS.md) —
   Internal request/reply peers for installed channel and cancellation proof.
+- [test/fixtures/repair-batch/AGENTS.md](test/fixtures/repair-batch/AGENTS.md) —
+  Batch/checkpoint host-proof additions assembled over the focused repair example.

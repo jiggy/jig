@@ -45,6 +45,16 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Introduce the user's outcome before mechanisms. Progress, channels, and
   multiple Agents do not independently justify a standalone example. Host proof
   fixtures belong with their tests, not in the public portfolio.
+- Every example has a complexity cap in its local contract: one primary lesson,
+  a recognizable task, and only the concepts/setup needed to teach it honestly.
+  Examples introduce capabilities; they are not complete production solutions.
+- Keep validation and failure handling required by that lesson. Narrow the task
+  if those safeguards exceed its teaching budget; do not remove the safeguards.
+- Before adding a capability, consider an independent example. Extend an existing
+  example only when the interaction itself is the lesson. Optional modes still
+  consume complexity; hiding them later in a guide does not remove their cost.
+- A separate example must earn its own learning payoff. Do not proliferate generic
+  demos or preserve old examples just because a capability exists.
 - Use a small useful application to expose missing boundaries. Do not add a
   framework, general scheduler, or provider configuration surface here.
 

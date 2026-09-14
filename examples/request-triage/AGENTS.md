@@ -27,6 +27,9 @@ one method contract, using a suggested support queue as the bounded result.
 
 ## Work Guidance
 
+- Complexity cap: one caller with three interchangeable implementations. Keep
+  queue suggestions as its sole result; no routing service, live queue, or
+  business action.
 - Keep the example small enough to explain the boundary before orchestration.
 - Do not add provider defaults, queues, persistence, or a general router.
 

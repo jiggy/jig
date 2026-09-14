@@ -1,8 +1,0 @@
-{
-  "name": "tested-patch-monitor-flow",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@jigging/flow": "workspace:*"
-  }
-}

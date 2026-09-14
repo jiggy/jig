@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
+import type { RunContext } from '@jigging/flow'
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +7,7 @@ import {
   identity,
   inspect,
   readRepairInput,
+  repairFiles,
   unifiedPatch,
   writeRepairDeliverables,
 } from '../flows/project/files.ts'
@@ -79,3 +81,59 @@ test('complete-file patches preserve empty files and missing final newlines', ()
   expect(unifiedPatch('src/a.ts', 'a\n', '')).toContain('@@ -1,1 +0,0 @@\n-a\n')
   expect(unifiedPatch('src/a.ts', 'a', 'a')).toBe('')
 })
+
+for (const success of [true, false]) {
+  test(`one specialist produces only final ${success ? 'passing' : 'unsuccessful'} deliverables`, async () => {
+    const destination = await directory()
+    const { result } = await syntheticRepair({ success })
+    let calls = 0
+    const run = {
+      input: { issue: input.issue, editPaths: input.editPaths },
+      signal: new AbortController().signal,
+      attachments: {
+        source: { access: 'read', path: join(import.meta.dir, '../fixtures/log-report') },
+        deliverables: { access: 'read-write', path: destination },
+      },
+      runChildFlow: async (request: any) => {
+        calls++
+        expect(request).toEqual({ operationId: 'repair', slot: 'repair', input })
+        return result
+      },
+    } as unknown as RunContext
+    expect(await repairFiles(run)).toEqual(result)
+    expect(calls).toBe(1)
+    expect((await readdir(destination)).sort()).toEqual(
+      success
+        ? ['proposal-1.patch', 'review.patch', 'summary.txt']
+        : ['proposal-1.patch', 'proposal-2.patch', 'summary.txt'],
+    )
+  })
+}
+
+for (const mode of ['uncertain', 'cancelled', 'invalid-evidence']) {
+  test(`${mode} work cannot publish a final patch or trigger replay`, async () => {
+    const destination = await directory()
+    const controller = new AbortController()
+    const failure = new Error(mode)
+    const { result } = await syntheticRepair()
+    let calls = 0
+    const run = {
+      input: { issue: input.issue, editPaths: input.editPaths },
+      signal: controller.signal,
+      attachments: {
+        source: { access: 'read', path: join(import.meta.dir, '../fixtures/log-report') },
+        deliverables: { access: 'read-write', path: destination },
+      },
+      runChildFlow: async () => {
+        calls++
+        if (mode === 'uncertain') throw failure
+        if (mode === 'cancelled') controller.abort(failure)
+        if (mode === 'invalid-evidence') (result.output as any).baseDigest = 'wrong'
+        return result
+      },
+    } as unknown as RunContext
+    await expect(repairFiles(run)).rejects.toThrow()
+    expect(calls).toBe(1)
+    expect(await readdir(destination)).toEqual([])
+  })
+}

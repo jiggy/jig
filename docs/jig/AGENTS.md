@@ -21,7 +21,7 @@ use-case and orchestration hypotheses.
   Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
-- `guide/channels.md` teaches tested-patch progress and subprocess
+- `guide/channels.md` teaches optional Flow progress and subprocess
   consumption; `contracts/` also explains named channel agreements.
   Root and package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
@@ -41,7 +41,7 @@ use-case and orchestration hypotheses.
   an Agent proposes a disputed charge, code checks supplied account records,
   and the caller receives eligibility rather than a payment authorization.
 - `guide/tested-patch.md` teaches reproduced failure, proposal, independent
-  checks, and patch evidence before optional monitoring and batch behavior.
+  checks, and final patch evidence for one issue and one specialist.
 
 - `guide/overview.md` owns task-based discovery; `guide/for-agents.md` owns
   machine-readable entry paths; `guide/concepts.md` owns introductory vocabulary

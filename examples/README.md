@@ -1,7 +1,8 @@
 # Build software with code and Agents
 
 Start with the shared method boundary, then use it to delegate useful work
-inside an application. These examples use the ordinary public FLOW SDK and Jig
+inside an application. Each example introduces one primary idea; adapt it
+without treating it as a complete production solution. These examples use the ordinary public FLOW SDK and Jig
 interfaces. Choose an Agent on your host; the applications do not choose a
 provider or carry credentials.
 

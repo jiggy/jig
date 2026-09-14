@@ -73,6 +73,41 @@ test('constructs a locked local workspace for root and child Skill-delivery evid
   }
 })
 
+async function addBatchRepairFixture(project: string) {
+  const source = join(import.meta.dir, 'fixtures/repair-batch')
+  for (const member of ['flows', 'fixtures', 'batch.json']) {
+    await cp(join(source, member), join(project, member), {
+      recursive: true,
+      force: true,
+      filter: (path) => basename(path) !== 'node_modules',
+    })
+  }
+}
+
+test('assembles the batch host fixture over the current repair application', async () => {
+  const project = await mkdtemp(join(tmpdir(), 'jig-batch-assembly-'))
+  try {
+    await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
+      recursive: true,
+      force: true,
+      filter: (path) => basename(path) !== 'node_modules',
+    })
+    await addBatchRepairFixture(project)
+    const built = await Bun.build({
+      entrypoints: [join(project, 'flows/project/flow.ts')],
+      target: 'bun',
+      external: ['@jigging/flow'],
+    })
+    expect(built.success, String(built.logs)).toBeTrue()
+    expect(await Bun.file(join(project, 'flows/project/flow.ts')).text()).toContain(
+      'handle(repairBatch)',
+    )
+    expect(await Bun.file(join(project, 'fixtures/timesheet/src/total.ts')).exists()).toBeTrue()
+  } finally {
+    await rm(project, { recursive: true, force: true })
+  }
+})
+
 proofDescribe('contained repair file application', () => {
   for (const scenario of ['successful', 'unsuccessful', 'batch'] as const) {
     test(
@@ -98,7 +133,7 @@ proofDescribe('contained repair file application', () => {
             content: originalReport.replace('r.status >= 400).length', 'r.status >= 500).length'),
           },
         ]
-        const timesheetFixture = join(fixture, '../timesheet')
+        const timesheetFixture = join(import.meta.dir, 'fixtures/repair-batch/fixtures/timesheet')
         const originalTime = await readFile(join(timesheetFixture, 'src/parse.ts'), 'utf8')
         const originalTotal = await readFile(join(timesheetFixture, 'src/total.ts'), 'utf8')
         const timesheetReplacements = [
@@ -153,6 +188,12 @@ proofDescribe('contained repair file application', () => {
             recursive: true,
             filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
           })
+          if (scenario === 'batch') {
+            await addBatchRepairFixture(project)
+            expect(await readFile(join(project, 'flows/project/flow.ts'), 'utf8')).toContain(
+              'handle(repairBatch)',
+            )
+          }
           // This is source-candidate host evidence, not a registry-install proof.
           // Vendor the built SDK into disposable Flow copies so a new wire API
           // can be tested before publication, without fabricating an npm lock.
@@ -282,11 +323,6 @@ globalThis.fetch = (url, init) => {
               record.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed),
             ).toBe(true)
             expect(record.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
-            expect(record.output.recording).toMatchObject({ complete: true, startSequence: 1 })
-            expect(record.output.recording.records).toHaveLength(4)
-            expect(JSON.parse(await readFile(join(out, 'files/progress.json'), 'utf8'))).toEqual(
-              record.output.recording,
-            )
             expect(JSON.parse(await readFile(join(out, 'result.json'), 'utf8'))).toEqual(record)
             expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(
               before,
@@ -327,7 +363,6 @@ globalThis.fetch = (url, init) => {
               unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false),
             ).toBe(true)
             expect((await readdir(join(failedOut, 'files'))).sort()).toEqual([
-              'progress.json',
               'proposal-1.patch',
               'proposal-2.patch',
               'summary.txt',

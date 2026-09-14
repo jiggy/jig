@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { OperationError, type RunContext } from '@jigging/flow'
+import { OperationError } from '@jigging/flow'
 import cases from '../flows/project/cases.json'
 import issue from '../issue.json'
 import { digest, sha256, type RepairInput } from '../flows/repair/policy.ts'
@@ -77,7 +77,6 @@ export async function syntheticRepair(
     invalid?: boolean
     failCommand?: string
     alreadyPasses?: boolean
-    channels?: RunContext['channels']
   } = {},
 ) {
   let agents = 0,
@@ -85,7 +84,6 @@ export async function syntheticRepair(
   const result = await repair({
     input: input as any,
     signal: new AbortController().signal,
-    channels: options.channels ?? {},
     callCapability: async (call) => {
       if (call.slot === 'agent') {
         agents++

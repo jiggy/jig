@@ -15,7 +15,6 @@ chooses the output destination.
 
 - [Contract and limits](../spec/run-checkpoint.md)
 - [Exact JSON descriptor](https://jig.md/contracts/run-checkpoint.capability.json)
-- [Repair application](../guide/tested-patch.md)
 
 Retention lasts while the independent command owner lives. It is not
 machine-crash recovery or automatic resumption.

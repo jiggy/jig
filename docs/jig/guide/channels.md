@@ -1,136 +1,95 @@
-# See progress while work runs
+# Add progress to a Flow
 
-A repair can take time. Show its phases while it works, then handle the patch
-and evidence as the final result. The [tested-patch application](tested-patch.md)
-provides both through ordinary Flow channels.
+When a method takes time, its caller may need to show what stage it has reached.
+A Flow can publish selected progress through an optional output channel while
+its final result remains the source of the execution outcome.
 
-After its setup and review, run from `examples/tested-patch`:
+Add this declaration to that Flow's `FLOW.md`:
 
-```sh
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
+```yaml
+channels:
+  progress:
+    direction: send
+    required: false
+    delivery: direct
+    schema:
+      type: string
+      maxLength: 256
 ```
 
-Baseline, proposal, and check phases appear on stderr. They describe activity;
-they do not establish that the patch passed. Ctrl-C cancels owned work.
+Inside the existing handler, publish a short application-owned message at the
+appropriate stage:
 
-## Connect another application
-
-Use a new output destination and select the optional `progress` output:
-
-```sh
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-stream-result --timeout 5m --receive progress --json
+```ts
+const progress = run.channels.progress
+if (progress?.direction === 'send')
+  await progress.send('Checking the proposed result')
 ```
 
-Read `begin`, ordered `data`, `end`, then `terminal` from stdout. Parse each
-complete line as JSON and keep stderr separate. Only `terminal.result` reports
-the Run outcome. Treat a disconnected stream or missing terminal as incomplete
-delivery. The [output contract](../spec/channels.md#installed-subprocess-output)
+The optional endpoint is absent when the caller has not connected it. This is
+an integration excerpt, not a complete Flow: retain your method's work, result
+checks, and failure handling. A message describes activity; it does not establish
+that a result passed its checks.
+
+## Connect a software caller
+
+For a Flow declaring that output, add `--receive progress --json` to its ordinary
+`jig run` command. Review the changed declaration and source before running.
+
+Read `begin`, ordered `data`, `end`, then `terminal` records from stdout. Parse
+each complete line as JSON and keep stderr separate. Only `terminal.result`
+reports the Run outcome. A disconnected stream or missing terminal means the
+caller lacks a complete result. The [subprocess output contract](../spec/channels.md#installed-subprocess-output)
 defines exact fields and bounds.
 
-Closing a progress reader stops observation, not the underlying work. Always
-await the final result separately. A display failure can coexist with a passing
-patch; cancellation and unresolved owned work still prevent success. Channels
-have no retention or replay guarantee. Use explicit
-[checkpoints](../spec/run-checkpoint.md) when completed artifacts must survive
-later interruption.
+Decide whether observation failure should fail your application. The simple
+`await send()` above propagates delivery errors. An application that treats
+progress as optional can handle known delivery failures and stop publishing,
+while continuing to await its work. Cancellation and uncertain owned work must
+still propagate; do not catch every error and report success.
 
-## Give progress to another Flow
+Closing an observer stops observation, not the underlying work. Channels have
+no retention or replay guarantee. [Run Checkpoint](../spec/run-checkpoint.md)
+is a separate capability for retaining completed artifacts across interruption.
 
-The [tested-patch application](tested-patch.md) separates repair from its
-presentation. For a single issue, its parent creates a broadcast phase source
-and a direct display channel, then connects two exact child slots:
+## Connect methods while they work
 
-| Connection | Data | Responsibility |
-| --- | --- | --- |
-| Repair's `progress` → monitor's `phases` | Bounded phase and attempt records | Repair reports its work without choosing a display. |
-| Repair's `progress` → root recorder | The same phase records, independently received | Root saves a bounded trace without another child. |
-| Monitor's `display` → parent | Selected text | Monitor filters and formats; parent prints or forwards it. |
-| Repair's call result → parent | Patch and check evidence | Parent validates, checkpoints and delivers the actual result. |
+A parent can create a channel and pass its endpoints to exact child slots.
+Each child reads its declared endpoints from `run.channels`. Endpoint transfer
+and the child result remain separate operations; await the actual child outcome
+rather than treating stream completion as success.
 
-The parent passes endpoints in `run.runChildFlow({ ..., channels: { ... } })`;
-each child reads its declared endpoints from `run.channels`. No hook or Log
-capability is involved. Replacing the exact `monitor` slot changes presentation
-without editing the repair specialist. A monitor receives no source files,
-Agent powers, commands or patch-approval authority.
-
-These excerpts run in separate child Flows, each with its own `run` context.
-They show endpoint use; the linked handlers also validate values and settings,
-handle optional delivery failures, and settle their channel ownership.
-
-The [repair Flow](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/repair/repair.ts)
-gets its writer from `run.channels.progress`. Inside its `publish(phase, attempt)`
-helper, it sends a record when progress is connected and still available:
+Use a direct channel when one consumer needs the data. Use broadcast only when
+independent consumers genuinely need the same stream:
 
 ```ts
-run.signal.throwIfAborted()
-if (!progress || !progressAvailable) return
-await progress.send({ phase, attempt })
+const events = await run.channel({ delivery: 'broadcast', schema: eventSchema })
+const display = await events.subscribe()
+const recorder = await events.subscribe()
 ```
 
-The [monitor Flow](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/monitor/monitor.ts)
-gets `source` from `run.channels.phases` and `destination` from
-`run.channels.display`. Its reading loop uses its own validated presentation
-settings and `formatProgress` helper:
+Here `eventSchema` is the application's FLOW Schema/1 item schema. This excerpt
+allocates endpoints only: the handler must connect the sender, consume or close
+each subscription, and settle owned work. Subscribe before dispatch to receive
+the beginning. A slow subscription can fail with `LAGGED` independently of other
+consumers. Later subscriptions receive a suffix, without replay.
 
-```ts
-for await (const value of source) {
-  run.signal.throwIfAborted()
-  const record = formatProgress(value, style)
-  if (!selected.includes(record.phase)) continue
-  await destination.send(record.text)
-  displayed++
-}
-```
+Two direct channels can support requests and replies. Named contracts establish
+item meaning; application code checks correlation and bounds. Each participant
+owns one writer. Reply EOF alone does not establish completed work.
 
-The [complete parent](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/project/monitoring.ts)
-handles rejected connections, observation loss and cancellation. It always
-settles the repair call independently: a finished stream is not a passing patch,
-and a failed monitor need not discard successful work. Both sources stay owned
-by the parent until its work settles. The existing two-child limit applies;
-the example's batch mode uses both positions for repair workers instead.
-
-## Give each consumer its own subscription
-
-Broadcast adds one choice at creation and one allocation per consumer:
-
-```ts
-const phases = await run.channel({ delivery: 'broadcast', schema: phaseSchema })
-const monitorFeed = await phases.subscribe()
-const recorderFeed = await phases.subscribe()
-```
-
-The parent passes `phases.send` to repair, `monitorFeed` to the monitor, and
-reads `recorderFeed` itself. Subscribe before starting repair to receive its
-beginning. Each feed has independent capacity: a slow subscriber gets `LAGGED`
-instead of slowing the others. Catch its failure, dispose it, and still await
-the worker's actual result. A source error or root cancellation remains different
-from a single subscriber failure.
-
-Only the source creator can subscribe. A later subscription starts at the next
-accepted sequence, with no replay; a receiving port must accept `start: suffix`
-when that sequence is greater than one. Every allocated feed must be exhausted
-or closed, even if never read. The [SDK contract](https://flow.jig.md/spec/run-sdk#9-channel-projection)
-defines disposal and language-specific early-exit behavior.
-
-The example saves its at-most-six-record trace as `files/progress.json`, with
-its own completeness flag. Filtering the monitor does not filter this independent
-trace. Neither is acceptance evidence, and a checkpoint retained before the
-observers settle may contain the patch without the trace.
+See the [channel specification](../spec/channels.md) and
+[SDK endpoint lifecycle](https://flow.jig.md/spec/run-sdk#9-channel-projection)
+for exact transfer, disposal, and cancellation behavior.
 
 ## Observe an Agent directly
 
-Application phases work with final-only API clients as well as native Agents.
-When a supported native client supplies public updates, a Flow can instead
-connect the Agent capability's optional `events` writer to a channel using the
-[public update contract](../spec/agent-run.md). Filter those events inside the
-Flow before displaying them; preserve spacing when joining text fragments.
+When a supported native client supplies public updates, a Flow can connect the
+Agent capability's optional `events` writer to a channel using the
+[public update contract](../spec/agent-run.md). Filter events inside the Flow
+before displaying them; preserve spacing when joining text fragments.
+Final-only API clients do not provide this stream.
+
 Observation never authorizes a follow-up turn or changes the Agent's powers.
-Always settle both the observer and the capability call.
-
-## Exchange requests and replies
-
-Two direct channels can connect running Flows in both directions, with each
-participant owning one writer. Named contracts establish item meaning;
-application code checks correlation and bounds. Await both child results
-separately: reply EOF alone cannot establish completed work. See the
-[channel contract](../spec/channels.md) for endpoint transfer and lifecycle rules.
+Settle both the observer and the capability call. Add this capability when live
+Agent output is the lesson you need; application phases often suffice.

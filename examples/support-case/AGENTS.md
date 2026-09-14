@@ -31,6 +31,9 @@ credit eligibility and customer-facing claims.
 
 ## Work Guidance
 
+- Complexity cap: one assessment plus one code-owned eligibility decision. Keep
+  supplied records and final results; live billing, duplicate delivery, transaction
+  recovery, and streaming need their own teaching case.
 - Keep the two-method path readable. Add complexity only for a useful consumer task.
 - Do not equate an eligible charge with correct interpretation of customer intent,
   or deterministic adversarial tests with model injection resistance.

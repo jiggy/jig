@@ -41,23 +41,17 @@ The method accepts 16 UTF-8 files totaling 64 KiB and eight editable source path
 Its leaf receives JSON and uses Agent and Project Command capabilities, with no
 attachments or child Flows. Source selection and delivery belong to the root.
 
-The output destination must be new. Ctrl-C cancels owned work; accepted
-checkpoints can retain completed evidence after cleanup without turning an
-interrupted Run into success. Selected source reaches the configured provider.
+The output destination must be new. Ctrl-C cancels owned work. This example
+publishes final results only; an interrupted Run does not preserve partial patches.
+Selected source reaches the configured provider.
 
-## Build on the method
+## Make it your own
 
-The same repair specialist handles the included timesheet CLI as well as the
-log reporter. `batch.json` requests both, preserving separate results:
-
-```sh
-jig run binding:repair --input @batch.json --attach source=fixtures --out batch-result --timeout 5m
-```
-
-The [walkthrough](https://jig.md/guide/tested-patch) explains adaptation, batch
-failure, and checkpoints. [Progress integration](https://jig.md/guide/channels)
-shows the single-job monitor, independent recorder, and `--receive progress`.
-These observations never establish that a patch passed.
+Change the issue, permitted source paths, and independent acceptance cases for
+another small Bun project. Review the changed application before running it.
+The [walkthrough](https://jig.md/guide/tested-patch) explains the evidence and
+adaptation steps. Keep one issue and one specialist so the acceptance boundary
+remains easy to follow.
 
 Run `bun test examples/tested-patch/test` from the repository root after workspace
 setup. These are authored application checks, not a claim of general coding reliability.
