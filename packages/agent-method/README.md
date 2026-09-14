@@ -83,6 +83,48 @@ explicit method bounds use `RESOURCE_EXHAUSTED`; invalid transport facts or
 structured answers use `INVALID_RESULT`. Operational transport failures remain
 failures and are never converted to a domain outcome or retried.
 
+## Conversation caller
+
+The optional `@jigging/agent-method/conversation` export manages a continuing
+Agent call using the public FLOW SDK and Agent Run contract. It works with a
+compatible selected Agent; the HTTP implementation in this package remains
+one-shot. It introduces no host service or additional authority.
+
+```ts
+import { withAgentConversation } from '@jigging/agent-method/conversation'
+
+const completed = await withAgentConversation(run, {
+  operationId: 'incident-brief', slot: 'agent',
+  contractDirectory: './contracts/agent-run',
+  input: { instructions: 'Draft a brief from the supplied incident facts.' },
+}, async conversation => {
+  const draft = await conversation.initial
+  if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
+  return await conversation.prompt({ instructions: 'Revise: the outage lasted 48 minutes.' })
+})
+```
+
+The caller declares the ordinary Agent slot and includes its unchanged contract
+bundle at `contractDirectory`. The result contains the callback's `value`, all
+received `turns`, and the actual invocation `settlement`. The helper closes the
+settled conversation and awaits owned invocation completion before returning.
+It does not judge answer quality. `initial` and `prompt()` resolve to a
+`result`, `cancelled`, or `error` turn; domain outcomes remain explicit data.
+
+`interrupt()` resolves to `accepted` or `not-running`; await the active turn to
+learn whether native cancellation or ordinary completion won. Concurrent prompts
+are rejected, never queued. A callback that leaves a live turn unfinished fails
+and closes its command channel; the helper still waits for the invocation's
+actual settlement. It never cancels that local waiter to manufacture cleanup.
+Root cancellation remains fatal to the Run.
+
+`AgentConversationError` retains `turns`, any known `settlement`, and primary
+and cleanup `errors`. Catch it normally to retain partial work, not to infer
+successful cleanup from a missing settlement. Optional `events` accepts a
+caller-created update writer; filtering and presentation remain caller-owned.
+See the [conversation guide](https://jig.md/guide/conversations) for grants,
+control semantics, and the raw channel interface.
+
 ## Ordinary Flow and explicit Skills
 
 The root `FLOW.ts` runs the bundled method through Run/1. Its input adds

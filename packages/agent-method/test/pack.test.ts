@@ -31,6 +31,7 @@ test('ordinary packing retains editable source, registry dependencies and a stan
     const archive = join(first, archives[0]!)
     const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n')
     expect(entries).toContain('package/src/flow.ts')
+    expect(entries).toContain('package/dist/conversation.d.ts')
     expect(entries).toContain('package/FLOW.contract.json')
     expect(entries.some((name) => name.includes('/tooling/') || name.endsWith('.tgz'))).toBe(false)
     expect(entries.some((name) => name.includes('/node_modules/'))).toBe(false)
@@ -47,7 +48,7 @@ test('ordinary packing retains editable source, registry dependencies and a stan
       process.execPath,
       [
         '-e',
-        'await import("./dist/flow.js"); const method = await import("./dist/index.js"); if (typeof method.prepareAgent !== "function") throw new Error("missing public method")',
+        'await import("./dist/flow.js"); const method = await import("./dist/index.js"); if (typeof method.prepareAgent !== "function") throw new Error("missing public method"); const conversation = await import("@jigging/agent-method/conversation"); if (typeof conversation.withAgentConversation !== "function") throw new Error("missing public conversation helper")',
       ],
       { cwd: extracted, stdio: 'pipe' },
     )

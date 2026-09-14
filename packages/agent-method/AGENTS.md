@@ -23,6 +23,11 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - Pure exports perform no provider dispatch or filesystem access. The separate
   `./skills` export reads only explicitly selected package-local Skill trees.
+- `./conversation` composes the public Agent Run contract through ordinary
+  calls and channels. It owns correlation, local endpoint disposal and an
+  uncancelled invocation waiter; it imports no native or private host code.
+  Received turn outcomes and final invocation settlement remain distinct.
+  Callback or cleanup failures retain received turns in `AgentConversationError`.
 - The HTTP Flow rejects conversational mode before resource dispatch. Its
   shared Agent contract does not imply support for native continuing sessions.
 - The ordinary Flow owns one non-streaming text-only Chat Completions or

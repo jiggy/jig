@@ -22,6 +22,10 @@
     "./skills": {
       "types": "./dist/skills.d.ts",
       "import": "./dist/skills.js"
+    },
+    "./conversation": {
+      "types": "./dist/conversation.d.ts",
+      "import": "./dist/conversation.js"
     }
   },
   "files": [

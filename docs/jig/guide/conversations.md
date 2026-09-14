@@ -19,7 +19,7 @@ Choose your installed client and model; this is not a product default. Review
 the changed grant. One-shot calls remain unchanged. The HTTP Agent package does
 not implement continuing conversations and rejects them before dispatch.
 
-## Connect controls and replies
+## Revise a draft
 
 The caller declares an `agent` slot using the complete
 [Agent Run contract bundle](../spec/agent-run.md). Keep its relative
@@ -35,7 +35,43 @@ and `acp-public-updates.json`. For example, with the bundle under
 }
 ```
 
-Inside a TypeScript Flow, allocate two named direct channels and pass opposite
+Use the optional Agent library helper to keep turn correlation and endpoint
+cleanup out of application code:
+
+```ts
+import { withAgentConversation } from '@jigging/agent-method/conversation'
+
+const completed = await withAgentConversation(run, {
+  operationId: 'incident-brief', slot: 'agent',
+  contractDirectory: './contracts/agent-run',
+  input: { instructions: `Draft an incident brief from these facts: ${facts}` },
+}, async conversation => {
+  const draft = await conversation.initial
+  if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
+  return await conversation.prompt({
+    instructions: `Revise using this correction: ${correction}`,
+  })
+})
+```
+
+Declare `@jigging/agent-method` as an ordinary package dependency. `facts` and
+`correction` above are validated application input. `completed.value` is the
+callback result, `completed.turns` retains received answers and unsuccessful
+turns, and `completed.settlement` is the final invocation result. The helper
+closes the conversation and waits for that actual result before returning.
+It does not grant authority or determine whether an answer is correct.
+
+To interrupt an active turn, await `conversation.interrupt()`, then await that
+turn's promise. An accepted interruption can race ordinary completion. Leaving
+a live turn unfinished at callback return fails rather than detaching it.
+`AgentConversationError` retains received `turns`, any known `settlement`, and
+both primary and cleanup `errors`; ordinary `try/catch` remains sufficient.
+Its optional `events` writer leaves filtering and presentation in the caller.
+
+## Connect the channels directly
+
+The helper uses only the public contract; other languages and implementations
+can compose it directly. Inside a Flow, allocate two named direct channels and pass opposite
 ends to the Agent. `conversation: true` starts turn zero. The following excerpt
 assumes validated `facts` and `correction` strings from the application's input:
 
@@ -46,12 +82,11 @@ const commands = await run.channel({
 const replies = await run.channel({
   contract: './contracts/agent-run/contracts/agent-replies.json',
 })
-const stop = new AbortController()
 const work = run.call({
   operationId: 'incident-brief', slot: 'agent',
   input: { instructions: `Draft a short incident brief from these facts: ${facts}`, conversation: true },
   channels: { commands: commands.receive, replies: replies.send },
-}, { signal: stop.signal }).then(
+}).then(
   result => ({ result }),
   error => ({ error }),
 )
@@ -83,8 +118,16 @@ if ('error' in completed) throw completed.error
 
 Never wait only for a reply: race each pending read against `work` and the Run's
 cancellation signal. A rejected call may have no connected reply producer.
-In `finally`, abort `stop`, await `work`, and dispose local endpoints, including
-untransferred endpoints if dispatch failed. Disposal errors remain visible.
+Dispose the endpoints kept locally (`commands.send` and `replies.receive`).
+Endpoints offered in the call's `channels` map belong to host-owned terminal
+cleanup, even if the call fails before any reply arrives. Do not guess transfer
+from received messages or close every endpoint after a failed call.
+
+Using a call-specific abort signal cancels the local wait promptly; awaiting that cancelled promise
+does not prove that the Agent has stopped. The SDK retains wire settlement and
+the host accounts for owned cleanup before publishing the root result. Normal
+conversation close followed by the actual, non-cancelled invocation result is
+the path for confirmed settlement before starting subsequent work.
 These are ordinary [call and channel lifecycle rules](channels.md), not a new
 Agent-specific SDK. An application should retain every answer it actually
 received and distinguish incomplete work from a finished revision.
