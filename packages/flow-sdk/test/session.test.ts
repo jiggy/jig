@@ -178,6 +178,39 @@ function broadcastGrant(
   }
 }
 
+describe('offered endpoint ownership', () => {
+  for (const code of ['UNAVAILABLE', 'EXECUTION_FAILED']) {
+    test(`does not guess transfer from a ${code} call with no reply messages`, async () => {
+      const transport = new MemoryTransport()
+      const completion = new RunSession(transport, async (run) => {
+        const pair = await run.channel()
+        try {
+          await run.call({
+            operationId: 'work',
+            slot: 'worker',
+            input: null,
+            channels: { input: pair.receive },
+          })
+        } catch (error) {
+          expect(error).toMatchObject({ code })
+        }
+        // The receiver was offered. Its actual disposition belongs to the host,
+        // even when admission failed or the child failed before any data arrived.
+        return { outcome: 'done', output: 'recovered' }
+      }).run()
+      transport.push(rootRequest())
+      await transport.waitForWrites(1)
+      respond(transport, 0, { send: grant('s:1', 'send'), receive: grant('r:1', 'receive') })
+      await transport.waitForWrites(2)
+      expect(transport.message(1).method).toBe('flow/call')
+      rejectOperation(transport, 1, code)
+      await completion
+      expect(transport.writes).toHaveLength(3)
+      expect(transport.message(2).result).toEqual({ outcome: 'done', output: 'recovered' })
+    })
+  }
+})
+
 describe('broadcast channels', () => {
   for (const confirmed of [false, true]) {
     test(`caught receiver disposal ${confirmed ? 'confirmed stream failure permits success' : 'RPC failure prevents success'}`, async () => {

@@ -76,6 +76,19 @@ class ChannelTests(unittest.TestCase):
         self.finish({"complete": True, "agent": {"outcome": "done", "output": {"text": "completed"}}})
         self.assertEqual(self.component.remaining_stderr().decode().strip(), "visible")
 
+    def test_offered_receiver_cleanup_does_not_guess_transfer_from_call_failure(self) -> None:
+        for code in ("UNAVAILABLE", "EXECUTION_FAILED"):
+            with self.subTest(code=code):
+                self.create("channel-offered-failure")
+                work = self.component.receive()
+                self.assertEqual(work["method"], "flow/call")
+                self.assertEqual(work["params"]["channels"], {"input": "reader:1"})
+                self.fail_wire(work, code)
+                # No speculative channel/release for an offered endpoint.
+                self.finish(code)
+                self.component.close()
+                self.component = Component()
+
     def test_channel_failure_is_recoverable_without_acknowledgement(self) -> None:
         self.create("channels")
         calls = [self.component.receive(), self.component.receive()]

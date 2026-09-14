@@ -13,6 +13,15 @@ async def run(context: RunContext) -> RunResult:
     global logged
     mode = context.input.get("mode") if isinstance(context.input, dict) else None
 
+    if mode == "channel-offered-failure":
+        pair = await context.channel()
+        try:
+            await context.call(operation_id="work", slot="worker", input=None,
+                               channels={"input": pair.receive})
+        except OperationError as error:
+            return {"outcome": "done", "output": error.code}
+        raise AssertionError("expected call failure")
+
     if mode == "broadcast-abandoned":
         source = await context.channel(delivery="broadcast")
         await source.subscribe()

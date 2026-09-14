@@ -278,6 +278,12 @@ source state and performs eligible implicit sealing; SDKs never infer moved
 rights from final call outcomes. Retained read/disposal settlements finish
 before submitting the invocation terminal.
 
+Once an endpoint has been offered in a call's channel map, its terminal
+disposition is host-owned, including when admission fails or the callee fails
+before sending data. Callers must not infer transfer from receiving a message
+or try to dispose all offered endpoints after failure. They still dispose
+active receivers they kept locally; the SDK tracks offered rights separately.
+
 The deadline is exposed as context, not implemented as an SDK timer. The host
 is responsible for enforcing it and terminating an uncooperative process.
 
