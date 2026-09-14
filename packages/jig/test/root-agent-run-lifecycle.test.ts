@@ -8,6 +8,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -145,6 +146,43 @@ test('constructs unchanged packed HTTP Agent method siblings', async () => {
   }
 }, 30_000)
 
+test('constructs the repair application with unchanged sources and ordinary workspace dependencies', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-repair-workspace-fixture-'))
+  try {
+    await writeRepairWorkspace(root, 'http://127.0.0.1:1/v1/responses')
+    const authored = join(import.meta.dir, '../../../examples/tested-patch')
+    expect(await readFile(join(root, 'project/jig.ts'), 'utf8')).toBe(
+      await readFile(join(authored, 'jig.ts'), 'utf8'),
+    )
+    expect(await readFile(join(root, 'project/bindings/agent.ts'), 'utf8')).toContain(
+      '"package":"flows/method"',
+    )
+    expect(await Bun.file(join(root, 'project/bindings/method.ts')).exists()).toBe(false)
+    for (const member of ['.', 'flows/project', 'flows/repair']) {
+      expect(await readFile(join(root, 'project', member, 'package.json'), 'utf8')).toBe(
+        await readFile(join(authored, member, 'package.json'), 'utf8'),
+      )
+    }
+    for (const member of ['project', 'repair']) {
+      const original = join(authored, 'flows', member)
+      const copied = join(root, 'project/flows', member)
+      for (const file of await readdir(original)) {
+        if (file.endsWith('.ts'))
+          expect(await readFile(join(copied, file), 'utf8')).toBe(
+            await readFile(join(original, file), 'utf8'),
+          )
+      }
+      expect(await Bun.file(join(copied, 'sdk/index.js')).exists()).toBe(false)
+    }
+    const lock = await readFile(join(root, 'bun.lock'), 'utf8')
+    for (const name of ['@jigging/flow', '@jigging/agent-method', '@jigging/agent-acp'])
+      expect(lock).toContain(`${name}@workspace:`)
+    expect(lock).not.toContain('file:')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
 proofDescribe('contained repair file application', () => {
   for (const scenario of ['successful', 'unsuccessful', 'batch', 'mixed-batch'] as const) {
     test(
@@ -217,30 +255,6 @@ proofDescribe('contained repair file application', () => {
         const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
         let checkpoints: PrivateRunCheckpoints | undefined
         try {
-          await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
-            recursive: true,
-            filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
-          })
-          // This is source-candidate host evidence, not a registry-install proof.
-          // Vendor the built SDK into disposable Flow copies so a new wire API
-          // can be tested before publication, without fabricating an npm lock.
-          for (const entry of await readdir(join(project, 'flows'), { withFileTypes: true })) {
-            const flow = join(project, 'flows', entry.name)
-            if (!entry.isDirectory() || !(await Bun.file(join(flow, 'FLOW.ts')).exists())) continue
-            await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), {
-              recursive: true,
-            })
-            for (const entry of await readdir(flow)) {
-              if (!entry.endsWith('.ts')) continue
-              const path = join(flow, entry)
-              await writeFile(
-                path,
-                (await readFile(path, 'utf8')).replaceAll("'@jigging/flow'", "'./sdk/index.js'"),
-              )
-            }
-            await rm(join(flow, 'package.json'))
-            await rm(join(flow, 'bun.lock'), { force: true })
-          }
           await new Promise<void>((resolve, reject) => {
             server.once('error', reject)
             server.listen(0, '127.0.0.1', resolve)
@@ -249,12 +263,7 @@ proofDescribe('contained repair file application', () => {
           if (!address || typeof address === 'string') throw new Error('no local fixture endpoint')
           await mkdir(release)
           const location = await writeInstalledFixture(release)
-          await writeOrdinaryAgent(project, {
-            url: `http://127.0.0.1:${address.port}/v1/responses`,
-            api: 'responses',
-            model: 'local-fixed-response',
-            default: true,
-          })
+          await writeRepairWorkspace(root, `http://127.0.0.1:${address.port}/v1/responses`)
           const installed = await openPrivateInstalledBunHost(location, {
             METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
           })
@@ -1709,6 +1718,88 @@ function agentMethodCallerProgram(): string {
     '  }',
     '});',
   ].join('\n')
+}
+
+/** Installed artifacts are ordinary workspace members; application source stays unchanged. */
+async function writeRepairWorkspace(root: string, url: string): Promise<void> {
+  const project = join(root, 'project')
+  await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
+    recursive: true,
+    filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
+  })
+  await writeOrdinaryAgent(project, {
+    url,
+    api: 'responses',
+    model: 'local-fixed-response',
+  })
+  // Replace the application's selected Agent Binding, not its default map or
+  // method source. Leaving the original Pi grant would still require that client.
+  await rename(join(project, 'bindings/method.ts'), join(project, 'bindings/agent.ts'))
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({ private: true, workspaces: ['project', 'project/flows/*', 'packages/*'] }),
+  )
+  for (const [name, variable] of [
+    ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
+    ['agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'],
+  ] as const) {
+    const destination = join(root, 'packages', name)
+    const artifacts = join(root, 'artifacts', name)
+    await mkdir(destination, { recursive: true })
+    await mkdir(artifacts, { recursive: true })
+    let archive = process.env[variable]
+    if (archive === undefined) {
+      const pack = Bun.spawn(
+        [
+          process.execPath,
+          '--no-env-file',
+          'pm',
+          'pack',
+          '--ignore-scripts',
+          '--destination',
+          artifacts,
+        ],
+        { cwd: join(import.meta.dir, '../..', name), stdout: 'pipe', stderr: 'pipe' },
+      )
+      const [code, stdout, stderr] = await Promise.all([
+        pack.exited,
+        new Response(pack.stdout).text(),
+        new Response(pack.stderr).text(),
+      ])
+      expect(code, `${stdout}\n${stderr}`).toBe(0)
+      const files = (await readdir(artifacts)).filter((file) => file.endsWith('.tgz'))
+      expect(files).toHaveLength(1)
+      archive = join(artifacts, files[0]!)
+    }
+    archive = await realpath(archive)
+    const extract = Bun.spawn(['tar', '-xzf', archive, '--strip-components=1', '-C', destination], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [code, stdout, stderr] = await Promise.all([
+      extract.exited,
+      new Response(extract.stdout).text(),
+      new Response(extract.stderr).text(),
+    ])
+    expect(code, `${stdout}\n${stderr}`).toBe(0)
+  }
+  const lock = Bun.spawn(
+    [
+      process.execPath,
+      '--no-env-file',
+      '--config=/dev/null',
+      'install',
+      '--lockfile-only',
+      '--ignore-scripts',
+    ],
+    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [code, stdout, stderr] = await Promise.all([
+    lock.exited,
+    new Response(lock.stdout).text(),
+    new Response(lock.stderr).text(),
+  ])
+  expect(code, `${stdout}\n${stderr}`).toBe(0)
 }
 
 /** Fixed local-only workspace: installed aliases and module-relative resources, no registry. */
