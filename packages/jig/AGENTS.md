@@ -24,6 +24,12 @@ admitted FLOW packages.
 
 ## Local Contracts
 
+- `src/cli-discovery.ts` owns invocation guidance and shell completion. Completion
+  and the interactive target chooser read approval only, without environment
+  probes or source evaluation. Selection is explicit and precedes acquisition;
+  Run still performs all ordinary authority checks. `jig new` writes ordinary
+  Flow source without overwriting, evaluating, installing, or approving it.
+
 - `src/index.ts` is the only JavaScript package export. Other exported symbols
   are private composition or test seams.
 - Expose only the documented CLI and authoring surface; private host machinery

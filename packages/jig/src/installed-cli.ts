@@ -6,6 +6,7 @@ import {
   main,
   type PrivateCliCommandHost,
   privateCliCommandLifetimeMs,
+  privateCliPrepareArguments,
   privateCliRequiresHost,
   privateCliVerification,
   publicTerminal,
@@ -71,6 +72,12 @@ async function runPrivateInstalledCli(
   arguments_: readonly string[] = process.argv.slice(2),
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
+  const prepared = await privateCliPrepareArguments(
+    arguments_,
+    signal === undefined ? {} : { signal },
+  )
+  if ('exitCode' in prepared) return exit(prepared.exitCode)
+  arguments_ = prepared.arguments
   let verification: string | undefined
   try {
     verification = privateCliVerification(arguments_)
@@ -97,7 +104,7 @@ async function runPrivateInstalledCli(
     process.stderr.write(
       privateCliStderrDiagnostic(
         'JIG_VERIFICATION_INVALID',
-        'Choose --verification cached (default), strict, or fast, or set JIG_VERIFICATION to one of those values. Fast reuses installation identities without checking file freshness.\nNo Flow was started.\nNext step: https://jig.md/guide/#startup-verification',
+        'Choose --verification cached (default), strict, or fast, or set JIG_VERIFICATION to one of those values. Fast reuses installation identities without checking file freshness.\nNo Flow was started.\nNext step: https://jig.md/guide/configuration#startup-verification',
       ),
     )
     return exit(2)

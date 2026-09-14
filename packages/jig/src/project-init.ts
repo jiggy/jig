@@ -1,5 +1,5 @@
-import { mkdir, rmdir, unlink, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { lstat, mkdir, readFile, rmdir, unlink, writeFile } from 'node:fs/promises'
+import { basename, join, resolve } from 'node:path'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -20,6 +20,9 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 const GREETING_SDK_VERSION = '0.1.0-alpha.10'
 
 export type ProjectInitErrorCode =
+  | 'JIG_NEW_INVALID'
+  | 'JIG_NEW_EXISTS'
+  | 'JIG_NEW_UNAVAILABLE'
   | 'JIG_INIT_CLEANUP_FAILED'
   | 'JIG_INIT_DESTINATION_EXISTS'
   | 'JIG_INIT_UNAVAILABLE'
@@ -33,6 +36,104 @@ export class ProjectInitError extends Error {
     this.name = 'ProjectInitError'
     this.kind = kind
     this.code = code
+  }
+}
+
+/** Authoring only: no evaluation of jig.ts, dependency installation or approval. */
+export async function createFlow(project: string, name: string): Promise<string> {
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name) || name.length > 64)
+    throw new ProjectInitError(
+      'invalid',
+      'JIG_NEW_INVALID',
+      'Use a name of at most 64 lowercase letters, digits and single hyphens, starting with a letter.',
+    )
+  let sdk = GREETING_SDK_VERSION
+  try {
+    const definition = await lstat(join(project, 'jig.ts'))
+    if (!definition.isFile() || definition.isSymbolicLink())
+      throw new Error('not a regular project definition')
+    try {
+      const path = join(project, 'package.json')
+      const info = await lstat(path)
+      if (!info.isFile() || info.size > 262_144) throw new Error('unsafe manifest')
+      const manifest = JSON.parse(await readFile(path, 'utf8'))
+      const declared =
+        manifest.dependencies?.['@jigging/flow'] ?? manifest.devDependencies?.['@jigging/flow']
+      if (declared !== undefined) {
+        if (typeof declared !== 'string' || declared.length === 0 || declared.length > 2048)
+          throw new Error('invalid SDK dependency')
+        sdk = declared
+      }
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error
+    }
+  } catch {
+    throw new ProjectInitError(
+      'invalid',
+      'JIG_NEW_INVALID',
+      'Run jig new from a project with a regular jig.ts and a readable, valid package.json if present. No source was evaluated.',
+    )
+  }
+  const flows = join(project, 'flows')
+  const destination = join(flows, name)
+  const created: string[] = []
+  let createdFlows = false,
+    createdDestination = false
+  try {
+    try {
+      await mkdir(flows)
+      createdFlows = true
+    } catch (error) {
+      if (errorCode(error) !== 'EEXIST') throw error
+      if (!(await lstat(flows)).isDirectory())
+        throw new Error('flows must be a directory, not a link')
+    }
+    try {
+      await mkdir(destination)
+      createdDestination = true
+    } catch (error) {
+      if (errorCode(error) === 'EEXIST')
+        throw new ProjectInitError(
+          'invalid',
+          'JIG_NEW_EXISTS',
+          'That Flow directory already exists. Choose a different name; existing files were not changed.',
+        )
+      throw error
+    }
+    const projectName = basename(resolve(project))
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .slice(0, 64)
+    const files: Record<string, string> = {
+      'FLOW.md': `---\nname: ${name}\ndescription: Describe what this method does.\n---\n\n# ${name}\n\nEdit this description and flow.ts to implement your method.\n`,
+      'package.json': `${JSON.stringify({ name: `${projectName || 'jig'}-${name}-flow`, private: true, type: 'module', dependencies: { '@jigging/flow': sdk } }, null, 2)}\n`,
+      'flow.ts':
+        'import { handle } from "@jigging/flow";\n\nawait handle(async (run) => {\n  return { outcome: "done", output: run.input };\n});\n',
+    }
+    for (const [file, content] of Object.entries(files)) {
+      const path = join(destination, file)
+      await writeFile(path, content, { flag: 'wx' })
+      created.push(path)
+    }
+    return `flows/${name}`
+  } catch (error) {
+    try {
+      for (const path of created.reverse()) await unlink(path)
+      if (createdDestination) await rmdir(destination)
+      if (createdFlows) await rmdir(flows)
+    } catch {
+      throw new ProjectInitError(
+        'unavailable',
+        'JIG_INIT_CLEANUP_FAILED',
+        'Flow creation failed and its created files could not all be removed. Inspect flows before retrying.',
+      )
+    }
+    if (error instanceof ProjectInitError) throw error
+    throw new ProjectInitError(
+      'unavailable',
+      'JIG_NEW_UNAVAILABLE',
+      'The Flow could not be created. Check that flows is a writable directory without a symbolic link.',
+    )
   }
 }
 

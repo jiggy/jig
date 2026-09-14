@@ -16,10 +16,17 @@ relevant project-relative location where available and suggest a safe next step.
 A missing target lists targets from the approved revision; Jig never picks one
 for you.
 
+In a terminal, `jig run` without a target offers a numbered chooser. Select a
+target explicitly, or press Enter to cancel. Scripts must supply the target.
+The chooser runs the approved revision, not unreviewed edits.
+
 Use `jig inspect` to list targets in the last approved revision. Use
 `jig inspect binding:repair` (or an exact `flow:` target) to read its input,
 settings and result schemas, configured settings, child slots, capabilities,
 attachments, channels and commands. `--json` or redirected stdout returns JSON.
+The terminal view starts with invocation guidance: required input fields,
+placeholder file paths, and channel requirements. Replace the placeholders
+with your own data matching the complete schema; Jig does not guess values.
 Inspection compares approval with current local execution identities, including
 selected children. It reports `environment-matches`, `review-required`, or
 `unchecked` when verification is unavailable. Missing Agent configuration can

@@ -13,6 +13,7 @@ import {
   type RootRunStatus,
   type RootRunTerminal,
 } from './administration/root.js'
+import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -46,7 +47,7 @@ import {
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
-import { createProject, ProjectInitError } from './project-init.js'
+import { createFlow, createProject, ProjectInitError } from './project-init.js'
 import { schemaTypeMismatchText } from './schema/types.js'
 
 const VERIFICATION_HELP = `Startup verification:
@@ -56,15 +57,17 @@ const VERIFICATION_HELP = `Startup verification:
   fast    Reuse installation hashes without checking freshness
 The argument overrides JIG_VERIFICATION; when neither is set, cached is used.
 Cache misses require hashing. Fast can miss changed tool bytes; approval and
-sandbox requirements still apply. See https://jig.md/guide/#startup-verification.`
+sandbox requirements still apply. See https://jig.md/guide/configuration#startup-verification.`
 
 const HELP = `Jig runs reusable methods with powers you approve.
 
 Usage:
   jig init <directory>       Create a project with a small greeting Flow
+  jig new <name>             Add an editable Flow to the current project
   jig review [project]       Review changes and approve an exact revision
-  jig run <target>           Run a reviewed Flow or Binding
+  jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
+  jig completion <shell>     Print shell completion for bash, zsh, or fish
   jig --version             Print the installed version
 
 Start here:
@@ -79,6 +82,26 @@ Use jig <command> --help for options and examples.
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
+  new: `Usage: jig new <name>
+
+Create flows/<name> in the current Jig project. Names use lowercase letters,
+digits and hyphens. Existing files are never replaced. The Flow uses the SDK
+dependency declared by the project's package.json, or Jig's tested SDK version.
+No installation, network, approval, source evaluation or execution occurs.
+
+Example: jig new summarize
+Review project membership in jig.ts if you use explicit arrays rather than discover().`,
+  completion: `Usage: jig completion <bash|zsh|fish>
+
+Print a completion script; Jig does not modify your shell configuration.
+Load the script in your shell, or save it in that shell's completion directory.
+
+Bash: source <(jig completion bash)
+Zsh:  source <(jig completion zsh)  # after compinit
+Fish: jig completion fish | source
+
+The scripts use jig completion targets [prefix] to read approved selectors.
+Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -127,10 +150,12 @@ When an Agent is needed and none is selected, interactive review asks you to\nch
 Supplied locks stay frozen; stale locks must be updated explicitly.
 
 ${VERIFICATION_HELP}`,
-  run: `Usage: jig run <flow:path|binding:id> [options]
+  run: `Usage: jig run [flow:path|binding:id] [options]
 
 Run an exact reviewed target in the current project. No dependencies are
 installed and source changes are not approved automatically.
+Omit the target in an interactive terminal to choose from approved targets.
+Scripts must supply an exact target; selection never approves changed source.
 
   --json             Emit exact JSON/NDJSON even in a terminal
   --input JSON|@FILE  Supply JSON inline or from a file (default: {})
@@ -155,7 +180,29 @@ ${VERIFICATION_HELP}`,
 } as const
 
 function usage(command: keyof typeof COMMAND_HELP, message: string): never {
-  throw new CliDiagnostic('JIG_USAGE', `${message}\n\n${COMMAND_HELP[command]}`, 2)
+  throw new CliDiagnostic('JIG_USAGE', `${message}\n\nHelp: jig ${command} --help`, 2)
+}
+
+/** Suggestions are spelling assistance, never alternate dispatch authority. */
+function spellingHint(value: string, choices: readonly string[]): string {
+  if (value.length > 64) return ''
+  const distance = (other: string): number => {
+    let row = Array.from({ length: other.length + 1 }, (_, index) => index)
+    for (let i = 0; i < value.length; i++) {
+      const next = [i + 1]
+      for (let j = 0; j < other.length; j++)
+        next.push(Math.min(next[j]! + 1, row[j + 1]! + 1, row[j]! + Number(value[i] !== other[j])))
+      row = next
+    }
+    return row[other.length]!
+  }
+  const matches = choices
+    .map((choice) => ({ choice, distance: distance(choice) }))
+    .filter((item) => item.distance <= (value.length > 5 ? 2 : 1))
+    .sort((a, b) => a.distance - b.distance)
+  return matches[0] && matches[0].distance !== matches[1]?.distance
+    ? `\nDid you mean ${matches[0].choice}?`
+    : ''
 }
 
 const RESOLUTION_WARNING =
@@ -254,14 +301,20 @@ export async function main(
   }
 
   try {
+    const prepared = await privateCliPrepareArguments(arguments_, options)
+    if ('exitCode' in prepared) return prepared.exitCode
+    arguments_ = prepared.arguments
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
+    if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
+    if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
     if (arguments_[0] === 'inspect') return await executeInspect(arguments_, runtime)
     runtime.writeError(
       renderDiagnostic(
-        'JIG_USAGE',
-        `Unknown command. Use jig --help to see available commands.\n\n${HELP}`,
+        'JIG_UNKNOWN_COMMAND',
+        `Unknown command ${asciiJsonString(arguments_[0]!.slice(0, 128))}.${spellingHint(arguments_[0]!, Object.keys(COMMAND_HELP))}\n\nHelp: jig --help`,
+        'Error: Unknown command',
       ),
     )
     return 2
@@ -278,6 +331,106 @@ export async function main(
     return renderFailure(error, runtime)
   } finally {
     runtime.progress.close()
+  }
+}
+
+/** Resolve interactive selection before the installed launcher acquires any host. */
+export async function privateCliPrepareArguments(
+  arguments_: readonly string[],
+  options: PrivateCliOptions = {},
+): Promise<{ arguments: readonly string[] } | { exitCode: number }> {
+  if (
+    arguments_[0] !== 'run' ||
+    isHelpRequest(arguments_) ||
+    (arguments_[1] !== undefined && !arguments_[1].startsWith('-'))
+  )
+    return { arguments: arguments_ }
+  const runtime = cliRuntime(options)
+  try {
+    // Validate options before prompting. This placeholder is never dispatched.
+    parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)])
+    if (!runtime.interactive)
+      usage(
+        'run',
+        'An exact target is required without an interactive terminal. List approved targets with jig inspect.',
+      )
+    const targets = approvedTargets(
+      await inspectPrivateApprovedProject(runtime.currentDirectory, undefined, undefined, true),
+    )
+    if (targets.length === 0)
+      throw new CliDiagnostic(
+        'JIG_TARGET_NOT_FOUND',
+        'No approved targets. Run jig review to review your project first. No Flow was started.',
+        1,
+      )
+    runtime.writeError(
+      `Choose a reviewed target\n\n${targets
+        .map(
+          ({ target, description }, index) =>
+            `  ${index + 1}. ${asciiJsonString(target)}${description ? ` — ${asciiJsonString(description)}` : ''}`,
+        )
+        .join('\n')}\n\nThis runs the approved revision, not unreviewed edits.\n`,
+    )
+    const answer = (await runtime.answer('Target number (empty cancels): ', runtime.signal)).trim()
+    runtime.signal?.throwIfAborted()
+    if (answer === '') {
+      runtime.writeError('No target selected. No Flow was started.\n')
+      return { exitCode: 1 }
+    }
+    const index = /^[1-9][0-9]*$/.test(answer) ? Number(answer) - 1 : -1
+    const target = targets[index]
+    if (target === undefined) usage('run', 'Choose a listed target number. No Flow was started.')
+    return { arguments: ['run', target.target, ...arguments_.slice(1)] }
+  } catch (error) {
+    if (runtime.signal?.aborted) {
+      runtime.writeError('Target selection cancelled. No Flow was started.\n')
+      return { exitCode: 2 }
+    }
+    return { exitCode: renderFailure(error, runtime) }
+  } finally {
+    runtime.progress.close()
+  }
+}
+
+async function executeCompletion(
+  arguments_: readonly string[],
+  runtime: CliRuntime,
+): Promise<number> {
+  if (arguments_[1] === 'targets' && arguments_.length <= 3) {
+    const prefix = arguments_[2] ?? ''
+    try {
+      const targets = approvedTargets(await inspectPrivateApprovedProject(runtime.currentDirectory))
+      await runtime.writeRecord(
+        targets
+          .filter(({ target }) => target.startsWith(prefix))
+          .map(({ target }) => target)
+          .join('\n') + (targets.some(({ target }) => target.startsWith(prefix)) ? '\n' : ''),
+      )
+      return 0
+    } catch {
+      return 1
+    } // Shell completion stays quiet and never repairs state.
+  }
+  const script = arguments_.length === 2 ? completionScript(arguments_[1]!) : undefined
+  if (script === undefined) usage('completion', 'Choose bash, zsh, or fish.')
+  await runtime.writeRecord(script)
+  return 0
+}
+
+async function executeNew(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  if (arguments_.length !== 2) usage('new', 'Supply one Flow name, for example: jig new summarize.')
+  try {
+    const path = await createFlow(runtime.currentDirectory, arguments_[1]!)
+    runtime.writeOutput(
+      `Created Flow ${asciiJsonString(path)}.\n\nNext:\n  Edit ${path}/flow.ts and FLOW.md.\n  If jig.ts uses explicit membership, add ${asciiJsonString(path)}.\n  jig review --allow-resolution-network\n  jig run ${shellWord(`flow:${path}`)}\n\nNo dependencies installed or execution approved.\n`,
+    )
+    return 0
+  } catch (error) {
+    if (error instanceof ProjectInitError) {
+      runtime.writeError(renderDiagnostic(error.code, error.message))
+      return error.kind === 'invalid' ? 1 : 2
+    }
+    throw error
   }
 }
 
@@ -357,6 +510,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       runtime.currentDirectory,
       selector,
       runtime.inspectEnvironment,
+      runtime.humanOutput && !json && selector === undefined,
     )
   } catch (error) {
     if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
@@ -386,7 +540,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     runtime.writeOutput(
       state === 'unreviewed'
         ? 'No approved revision\n\n  Run jig review to review and approve this project. Nothing was changed.\n'
-        : `${explanation}\n\n  The interfaces below belong to the last approved revision. Visible source changes are not checked.\n\n${privateCliValueFields(snapshot)}\n`,
+        : `${explanation}\n\n  The interfaces below belong to the last approved revision. Visible source changes are not checked.\n\n${invocationGuide(snapshot)}${selector === undefined ? '' : privateCliValueFields(snapshot)}\n`,
     )
   } else await runtime.writeRecord(`${textDecoder.decode(canonicalJson(snapshot))}\n`)
   return 0
@@ -772,7 +926,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     const terminal = status.terminal
     // State the failure before expanding its validation or retained-evidence details.
-    if (terminal.status !== 'succeeded') runtime.writeError(renderRunFailure(terminal))
+    if (terminal.status !== 'succeeded')
+      runtime.writeError(renderRunFailure(terminal, parsed.target))
     await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded')
       runtime.progress.note(
@@ -904,7 +1059,10 @@ function parseRun(arguments_: readonly string[]): {
         '--verification',
       ].includes(option!)
     )
-      usage('run', `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.`)
+      usage(
+        'run',
+        `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.${spellingHint(option!, ['--input', '--attach', '--select', '--out', '--receive', '--timeout', '--verification', '--json'])}`,
+      )
     if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
     if (option === '--verification') {
       if (verification !== undefined) usage('run', '--verification may only be supplied once.')
@@ -1475,6 +1633,7 @@ function rootError(code: RootAdministrationError['code']): {
 
 function renderRunFailure(
   terminal: Exclude<RootRunTerminal, { readonly status: 'succeeded' }>,
+  target: RunTargetRef,
 ): string {
   if (terminal.code === 'PROTOCOL_ERROR')
     return renderDiagnostic(
@@ -1508,7 +1667,7 @@ function renderRunFailure(
   if (terminal.code === 'INVALID_INPUT')
     return renderDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\nNext step: Check --input against the approved schema with jig inspect <target>; see the result for validation details.`,
+      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\nNext step: Check --input against the approved schema with jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)}; see the result for validation details.`,
     )
   if (terminal.status === 'lost')
     return renderDiagnostic(

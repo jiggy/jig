@@ -3100,6 +3100,7 @@ export async function inspectPrivateApprovedProject(
   projectRoot: string,
   selector?: string,
   checkEnvironment?: PrivateInspectionEnvironmentCheck,
+  describeTargets = false,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -3163,10 +3164,33 @@ export async function inspectPrivateApprovedProject(
     }
     const listed: JsonValue[] = []
     const states: PrivateInspectionState[] = []
+    const descriptions = new Map<string, string>()
     for (const index of selectedIndex === undefined ? targets.keys() : [selectedIndex]) {
       const state = await checkWithChildren(index)
       states.push(state)
-      listed.push({ ...targets[index]!, state })
+      const request = candidate.candidate.targets[index]!.request
+      if (describeTargets && !descriptions.has(request.packagePath)) {
+        const captured = await captureStoredPackage(
+          descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+          request.package,
+        )
+        try {
+          const inspected = await inspectCapturedPackage(captured)
+          requirePackageProjection(
+            request.packagePath,
+            candidate.lock.packages[request.packagePath]!,
+            inspected,
+          )
+          descriptions.set(request.packagePath, inspected.metadata.description)
+        } finally {
+          await captured.dispose()
+        }
+      }
+      listed.push({
+        ...targets[index]!,
+        state,
+        ...(describeTargets ? { description: descriptions.get(request.packagePath)! } : {}),
+      })
     }
     const state = inspectionState(states)
     let result: JsonValue = { state, revision: candidate.candidate.lockDigest, targets: listed }

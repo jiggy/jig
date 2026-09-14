@@ -196,6 +196,10 @@ export function privateCliDiagnostic(
   title = 'Error: Command could not finish',
 ): string {
   const titles: Record<string, string> = {
+    JIG_USAGE: 'Error: Invalid command arguments',
+    JIG_NEW_INVALID: 'Error: Flow could not be created',
+    JIG_NEW_EXISTS: 'Error: Flow already exists',
+    JIG_NEW_UNAVAILABLE: 'Error: Flow could not be created',
     JIG_CHANGES_DECLINED: 'Review declined',
     JIG_APPROVAL_REQUIRED: 'Approval required',
     JIG_COMMAND_INTERRUPTED: 'Command interrupted',

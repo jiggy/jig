@@ -40,14 +40,20 @@ Project commands:
 
 ```text
 jig init [--bare] <directory>
+jig new <name>
 jig review [project] [--allow-resolution-network] [--yes] [--details]
-jig run <flow:path|binding:id> [options]
+jig run [flow:path|binding:id] [options]
 jig inspect [flow:path|binding:id] [--json]
+jig completion <bash|zsh|fish>
 ```
 
 `review` shows changed policy; `--details` includes complete current and proposed
 policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
+
+`new` adds ordinary editable source under `flows/<name>` without installation or
+approval. Interactive `jig run` can offer an explicit choice of approved targets;
+scripts must name a target. Shell completion also reads only approved targets.
 
 `inspect` lists approved targets or shows a target's retained interface without
 evaluating source, contacting providers, preparing dependencies or changing state.

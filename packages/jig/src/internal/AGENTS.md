@@ -42,6 +42,9 @@ child calls, project commands, and Agent providers.
   coordinator. Reuse filesystem identity and retained-artifact verification;
   reject unreadable state instead of repairing it. Only explicit public target
   fields leave the store; private recipes and authority records remain private.
+  Optional target descriptions come from verified retained package metadata,
+  not visible source. Completion omits description capture and environment probes;
+  the interactive chooser requests descriptions without acquiring authority.
   Environment inspection shares Run's recipe identity calculation but returns
   inert comparison evidence, never an authenticated executable recipe. Compare
   current support without cgroup acquisition or namespace execution; Run retains

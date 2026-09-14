@@ -147,6 +147,19 @@ protocol failures, and retained-state recovery.
 
 ## Next steps
 
+Add a second Flow from the project directory:
+
+```sh
+jig new summarize
+```
+
+Edit `flows/summarize/flow.ts` and its `FLOW.md`, then use the ordinary
+`jig review` and `jig run flow:flows/summarize` path. This creates source only:
+no installation, approval, or execution. Default discovery includes the new
+directory; if you selected explicit members in `jig.ts`, add it there first.
+Dependency resolution still requires your explicit network permission when
+needed, as described in [dependencies](./dependencies.md).
+
 - [Build your first Agent method](./agents.md#build-your-first-agent-method) in the project you just created.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
 - [Choose an Agent](./agents.md) using an API or a supported local client.

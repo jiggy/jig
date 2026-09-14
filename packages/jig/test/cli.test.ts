@@ -422,11 +422,11 @@ describe('finite Jig project commands', () => {
 
     const removed = commandInvocation(unusedHost())
     expect(await main(['package', 'check', '.'], removed.options)).toBe(2)
-    expect(removed.error).toContain('Usage:')
+    expect(removed.error).toContain('Help: jig --help')
 
     const superseded = commandInvocation(unusedHost())
     expect(await main(['check'], superseded.options)).toBe(2)
-    expect(superseded.error).toContain('Usage:')
+    expect(superseded.error).toContain('Help: jig --help')
   })
 
   test('verification uses command grammar and rejects invalid selections before acquiring a host', async () => {
@@ -481,11 +481,11 @@ describe('finite Jig project commands', () => {
     const extra = commandInvocation(unusedHost())
     expect(await main(['--version', 'extra'], extra.options)).toBe(2)
     expect(extra.output).toBe('')
-    expect(extra.error).toContain('Usage:')
+    expect(extra.error).toContain('Help: jig --help')
   })
 
   test.each([
-    { args: ['run'], reason: 'Choose a target' },
+    { args: ['run'], reason: 'exact target is required' },
     { args: ['run', 'flow:flows/hello', '--input'], reason: '--input needs a value' },
     {
       args: ['run', 'flow:flows/hello', '--timout', '2m'],
@@ -603,7 +603,7 @@ describe('finite Jig project commands', () => {
     ).toBe(1)
     const output = transcript.join('')
     expect(output).toContain('Value: entire input')
-    expect(output).toMatch(/jig inspect\s+<target>/)
+    expect(output).toMatch(/jig inspect\s+'flow:flows\/work'/)
     expect(output).toContain('Run output: result')
     expect(output.indexOf('Expected string; received object.')).toBeLessThan(
       output.indexOf('Run output: result'),
@@ -941,7 +941,7 @@ describe('finite Jig project commands', () => {
   ])('rejects misplaced or duplicate resolution permission: %j', async (args) => {
     const invocation = commandInvocation(fakeHost(fakeSession([]), []))
     expect(await main(args, invocation.options)).toBe(2)
-    expect(invocation.error).toContain('Usage:')
+    expect(invocation.error).toContain('Help: jig')
   })
 
   test('run uses the current project, explicit Flow target, default input, and no planning', async () => {
@@ -1436,7 +1436,7 @@ describe('finite Jig project commands', () => {
         duplicate.options,
       ),
     ).toBe(2)
-    expect(duplicate.error).toContain('Usage:')
+    expect(duplicate.error).toContain('Help: jig run --help')
   })
 
   test('installed command lifetime encloses Run cleanup without extending invalid commands', () => {
@@ -1515,7 +1515,7 @@ describe('finite Jig project commands', () => {
 
     const usage = commandInvocation(unusedHost())
     expect(await main(['review', '--yes', 'project', 'extra'], usage.options)).toBe(2)
-    expect(usage.error).toContain('Usage:')
+    expect(usage.error).toContain('Help: jig review --help')
   })
 
   test('interrupting a pending Run closes the session and reports no private state', async () => {

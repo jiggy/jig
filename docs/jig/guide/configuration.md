@@ -9,6 +9,24 @@ Use this reference to adjust Jig for your terminal, host, and application.
 The defaults work for the [first Flow](./index.md); change these settings when
 you need a different operating preference.
 
+## Shell completion
+
+Load completion for your shell:
+
+```sh
+# Bash
+source <(jig completion bash)
+# Zsh (after compinit)
+source <(jig completion zsh)
+# Fish
+jig completion fish | source
+```
+
+Put the matching command in your shell startup file to keep it enabled.
+Target suggestions read the current directory's last approval, never execute
+`jig.ts`, install dependencies, or contact an Agent. Review newly added targets
+before they appear. Unsupported or unreadable approval produces no suggestions.
+
 ## Where settings belong
 
 | What you want to configure | Where to set it |

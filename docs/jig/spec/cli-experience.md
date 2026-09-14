@@ -160,6 +160,32 @@ configuration. The exact guarantees belong to
 
 ## Implementation and review ownership
 
+Syntax errors show a bounded explanation and the relevant `jig <command> --help`
+hint, not the complete manual. A close spelling suggestion never changes or
+executes the supplied command.
+
+Interactive `jig run` without a target presents numbered approved targets and
+their retained descriptions before execution acquisition. Empty input cancels;
+there is no default target. Noninteractive invocation requires an exact target.
+Selection does not approve visible edits or bypass Run validation.
+
+`jig completion bash|zsh|fish` prints shell integration. Its dynamic
+`jig completion targets [prefix]` lookup reads only approved selectors, without
+environment checks, source evaluation, state writes, or provider requests.
+It emits one selector per line; unavailable state yields no suggestions.
+
+Human inspection supplies invocation guidance from the retained interface:
+required fields, file placeholders, and channel requirements. Input examples
+are explicitly templates, not invented schema-valid domain data. Required
+incoming channels are identified as needing a Flow caller, not a runnable CLI
+example. Machine inspection retains its existing JSON contract.
+
+`jig new <name>` creates `flows/<name>` in the current project, never overwriting
+an existing path. It does not evaluate `jig.ts`, install dependencies, modify
+membership, or approve the new Flow. The SDK dependency follows the project's
+explicit package manifest declaration when present, otherwise the tested SDK.
+Explicit membership arrays must be edited by the author before review.
+
 `jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
 current project's last locally approved snapshot. Without a target it lists
 exact approved selectors; with one it projects retained package descriptions,

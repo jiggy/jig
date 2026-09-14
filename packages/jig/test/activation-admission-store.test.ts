@@ -49,7 +49,7 @@ import {
   submitPrivateRootRun,
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
-import { main } from '../src/cli.js'
+import { main, privateCliPrepareArguments } from '../src/cli.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
@@ -118,6 +118,55 @@ describe.serial('direct alpha activation store', () => {
         settings: {},
         channels: {},
       })
+      let menu = ''
+      const selection = await privateCliPrepareArguments(['run', '--input', '{"value":1}'], {
+        currentDirectory: fixture.root,
+        interactive: true,
+        answer: async () => '1',
+        writeOutput: () => {
+          throw new Error('selection must not contaminate result stdout')
+        },
+        writeError: (text) => {
+          menu += text
+        },
+      })
+      expect(selection).toEqual({ arguments: ['run', 'flow:flows/run', '--input', '{"value":1}'] })
+      expect(menu).toContain('Direct alpha store fixture.')
+      expect(menu).not.toContain('binding:router') // pending source is not approval
+      for (const answer of ['', '99', '1;exit']) {
+        const rejected = await privateCliPrepareArguments(['run'], {
+          currentDirectory: fixture.root,
+          interactive: true,
+          answer: async () => answer,
+          writeOutput: () => {},
+          writeError: () => {},
+        })
+        expect('exitCode' in rejected).toBe(true)
+      }
+      const cancelled = new AbortController()
+      expect(
+        await privateCliPrepareArguments(['run'], {
+          currentDirectory: fixture.root,
+          interactive: true,
+          signal: cancelled.signal,
+          answer: async () => {
+            cancelled.abort()
+            return '1'
+          },
+          writeOutput: () => {},
+          writeError: () => {},
+        }),
+      ).toEqual({ exitCode: 2 })
+      let completions = ''
+      expect(
+        await main(['completion', 'targets', 'flow:'], {
+          currentDirectory: fixture.root,
+          writeRecord: async (text) => {
+            completions += text
+          },
+        }),
+      ).toBe(0)
+      expect(completions).toBe('flow:flows/run\n')
       await expect(
         inspectPrivateApprovedProject(fixture.root, 'binding:missing'),
       ).rejects.toMatchObject({ code: 'INSPECTION_TARGET_MISSING' })
