@@ -89,10 +89,12 @@ admitted FLOW packages.
   Do not rebuild a custom type-labelled tree. Preserve exact types, safe quoted
   keys, controls and block-string whitespace through syntax highlighting and
   `JIG_THEME` palettes; never style or reserialize machine records.
-  Review uses contextual field diffs; identity-only target changes need an
+  Review uses contextual field diffs; identity-only target changes need a
   concrete explanation of the changed execution environment or prepared files,
   unchanged policy, and approval consequence, never identical previous/proposed
-  blocks or an unexplained "retained identity" label. Ignore object
+  blocks or an unexplained "retained identity" label.
+  `--details` adds unchanged context to the same sectioned diff, never a YAML
+  dump of change bookkeeping or current/proposed snapshots. Ignore object
   insertion order when comparing review records; preserve array order.
   `cli-run-presentation.ts` owns human Run results and channel streaming. Join
   text fragments exactly, label channel switches and endings, escape controls,

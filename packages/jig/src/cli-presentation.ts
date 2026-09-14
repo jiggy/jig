@@ -142,7 +142,7 @@ export function privateCliHumanText(
         } else if (
           section ||
           /^[A-Z][^{}]*:$/.test(line) ||
-          /^(Usage:|Reviewing |Running |Added:|Removed:)/.test(line)
+          /^(Usage:|Reviewing |Running |Added:|Removed:|Unchanged:)/.test(line)
         )
           rendered = privateCliHeading(wrapped, 'info', true)
         else if (/^[+-] /.test(line)) {

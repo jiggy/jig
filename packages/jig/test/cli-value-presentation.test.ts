@@ -99,6 +99,8 @@ test('paths and unchanged context recede while changes and approval consequences
   const changed = 'Changed: "flow:flows/chat"'
   expect(privateCliHumanText(changed, true)).toBe(`\u001b[1;33m${changed}\u001b[0m`)
   expect(privateCliHumanText(changed, false)).toBe(changed)
+  const unchanged = 'Unchanged: "flow:flows/chat"'
+  expect(privateCliHumanText(unchanged, true)).toBe(`\u001b[1m${unchanged}\u001b[0m`)
   const consequence =
     '  Approval authorizes this target to run with the currently selected execution environment.'
   expect(privateCliHumanText(consequence, true)).toBe(consequence)

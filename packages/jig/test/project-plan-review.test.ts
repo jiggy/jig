@@ -254,15 +254,13 @@ describe('private project Plan review', () => {
       baseCandidate: current,
     } as unknown as PrivateActivationReviewPlan).details
 
-    expect(text).toContain('"current":')
-    expect(text).toContain('"proposed":')
-    const value = parseYaml(text.slice(text.indexOf('  "')))
-    expect(value.changes.packages).toEqual({
-      added: ['flows/new'],
-      changed: [],
-      removed: ['flows/old'],
-    })
-    expect(value.changes.targets.changed).toEqual(['binding:review'])
+    expect(text).toContain('Added: "flows/new"')
+    expect(text).toContain('Removed: "flows/old"')
+    expect(text).toContain('Changed: "binding:review"')
+    expect(text).toContain('-   "packagePath": "flows/old"')
+    expect(text).toContain('+   "packagePath": "flows/new"')
+    for (const key of ['changes', 'current', 'proposed', 'executionChanges'])
+      expect(text).not.toContain(`  "${key}":`)
   })
 
   test('shows exact package identity changes and their affected target', () => {
@@ -305,12 +303,10 @@ describe('private project Plan review', () => {
       plan: proposed,
       baseCandidate: current,
     } as unknown as PrivateActivationReviewPlan).details
-    const value = parseYaml(text.slice(text.indexOf('  "')))
-
-    expect(value.current.portablePolicy.packages['flows/review'].digest).toBe(oldDigest)
-    expect(value.proposed.portablePolicy.packages['flows/review'].digest).toBe(newDigest)
-    expect(value.changes.packages.changed).toEqual(['flows/review'])
-    expect(value.changes.targets.changed).toEqual(['flow:flows/review'])
+    expect(text).toContain(`-   "digest": "${oldDigest}"`)
+    expect(text).toContain(`+   "digest": "${newDigest}"`)
+    expect(text).toContain('Changed: "flows/review"')
+    expect(text).toContain('Changed: "flow:flows/review"')
   })
 
   test('shows slot changes and child package identity effects without embedding child digests', () => {
@@ -388,16 +384,14 @@ describe('private project Plan review', () => {
         targets: retargeted.candidate.targets,
       },
     }
-    const slotReview = parseYaml(
-      renderPrivateProjectPlanReview({
-        plan: slotChangePlan,
-        baseCandidate: current,
-      } as unknown as PrivateActivationReviewPlan)
-        .details.split('\n\n')
-        .at(-1)!,
-    )
-    expect(slotReview.changes.bindings.changed).toEqual(['router'])
-    expect(slotReview.changes.targets.changed).toEqual(['binding:router'])
+    const slotReview = renderPrivateProjectPlanReview({
+      plan: slotChangePlan,
+      baseCandidate: current,
+    } as unknown as PrivateActivationReviewPlan).details
+    expect(slotReview).toContain('Changed: "router"')
+    expect(slotReview).toContain('Changed: "binding:router"')
+    expect(slotReview).toContain('-       "path": "flows/bug"')
+    expect(slotReview).toContain('+       "path": "flows/question"')
 
     const digestChangePlan = {
       ...reviewPlan('admission', `sha256:${'f'.repeat(64)}`),
@@ -407,25 +401,21 @@ describe('private project Plan review', () => {
         targets: candidate(newChildDigest, 'flows/bug').candidate.targets,
       },
     }
-    const digestReview = parseYaml(
-      renderPrivateProjectPlanReview({
-        plan: digestChangePlan,
-        baseCandidate: current,
-      } as unknown as PrivateActivationReviewPlan)
-        .details.split('\n\n')
-        .at(-1)!,
-    )
-    expect(digestReview.changes.packages.changed).toEqual(['flows/bug'])
-    expect(digestReview.changes.bindings.changed).toEqual([])
-    expect(digestReview.changes.targets.changed).toEqual(['binding:router', 'flow:flows/bug'])
-    expect(digestReview.proposed.portablePolicy.bindings.router).toEqual({
+    const digestReview = renderPrivateProjectPlanReview({
+      plan: digestChangePlan,
+      baseCandidate: current,
+    } as unknown as PrivateActivationReviewPlan).details
+    expect(digestReview).toContain('Changed: "flows/bug"')
+    expect(digestReview).not.toContain('Changed: "router"')
+    expect(digestReview).toContain('Changed: "binding:router"')
+    expect(digestReview).toContain('Changed: "flow:flows/bug"')
+    const binding = digestReview.split('Unchanged: "router"\n')[1]!.split('\n\n')[0]!
+    expect(parseYaml(binding)).toEqual({
       packagePath: 'flows/router',
       settings: {},
       slots: { work: { kind: 'flow', path: 'flows/bug' } },
     })
-    expect(JSON.stringify(digestReview.proposed.portablePolicy.bindings.router)).not.toContain(
-      newChildDigest,
-    )
+    expect(binding).not.toContain(newChildDigest)
 
     const unavailable = candidate(oldChildDigest, 'flows/bug', 'unavailable')
     const availabilityPlan = {
@@ -436,15 +426,12 @@ describe('private project Plan review', () => {
         targets: unavailable.candidate.targets,
       },
     }
-    const availabilityReview = parseYaml(
-      renderPrivateProjectPlanReview({
-        plan: availabilityPlan,
-        baseCandidate: current,
-      } as unknown as PrivateActivationReviewPlan)
-        .details.split('\n\n')
-        .at(-1)!,
-    )
-    expect(availabilityReview.changes.targets.changed).toEqual(['binding:router', 'flow:flows/bug'])
+    const availabilityReview = renderPrivateProjectPlanReview({
+      plan: availabilityPlan,
+      baseCandidate: current,
+    } as unknown as PrivateActivationReviewPlan).details
+    expect(availabilityReview).toContain('Changed: "binding:router"')
+    expect(availabilityReview).toContain('Changed: "flow:flows/bug"')
   })
 
   test("marks a parent affected by its selected Binding's settings and availability", () => {
@@ -492,16 +479,14 @@ describe('private project Plan review', () => {
         ...reviewPlan('admission', digest),
         proposed: { lock: proposed.lock, targets: proposed.candidate.targets },
       }
-      const review = parseYaml(
-        renderPrivateProjectPlanReview({
-          plan,
-          baseCandidate: current,
-        } as unknown as PrivateActivationReviewPlan)
-          .details.split('\n\n')
-          .at(-1)!,
-      )
-      expect(review.changes.targets.changed).toEqual(['binding:reviewer', 'binding:router'])
-      expect(review.proposed.portablePolicy.bindings.router.slots.review).toEqual({
+      const review = renderPrivateProjectPlanReview({
+        plan,
+        baseCandidate: current,
+      } as unknown as PrivateActivationReviewPlan).details
+      expect(review).toContain('Changed: "binding:reviewer"')
+      expect(review).toContain('Changed: "binding:router"')
+      const binding = review.split('Unchanged: "router"\n')[1]!.split('\n\n')[0]!
+      expect(parseYaml(binding).slots.review).toEqual({
         kind: 'binding',
         id: 'reviewer',
       })
@@ -539,6 +524,20 @@ describe('private project Plan review', () => {
     expect(review.text).not.toContain('unchanged sentinel')
     expect(review.text).not.toContain('Previously:')
     expect(review.details).toContain('unchanged sentinel')
+    const diff = review.details
+      .split('  - removed / previous; + added / proposed\n')[1]!
+      .split('\n\n')[0]!
+    for (const [excluded, expected] of [
+      ['+', before],
+      ['-', after],
+    ] as const) {
+      const yaml = diff
+        .split('\n')
+        .filter((line) => !line.startsWith(excluded))
+        .map((line) => line.slice(2))
+        .join('\n')
+      expect(parseYaml(yaml)).toEqual(expected)
+    }
   })
 
   test('identical public target fields explain retained identity changes and ignore object key order', () => {
@@ -578,9 +577,8 @@ describe('private project Plan review', () => {
       request: Object.fromEntries(Object.entries(target.request).reverse()),
     })
     expect(reordered.text).not.toContain('Changed:')
-    expect(
-      parseYaml(reordered.details.slice(reordered.details.indexOf('  "'))).changes.targets.changed,
-    ).toEqual([])
+    expect(reordered.details).not.toContain('Changed:')
+    expect(reordered.details).toContain('Unchanged: "flow:flows/test"')
   })
 
   test('fails before allocating a review larger than its public envelope', () => {

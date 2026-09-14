@@ -79,7 +79,12 @@ makes usable control an observable requirement;
    every changed public policy record; `--details` includes unchanged policy.
    Show public changes as contextual field diffs with explicit `-` previous and
    `+` proposed markers, preserving exact values and container types. Omit
-   unchanged fields; additions/removals retain the complete affected value.
+   unchanged fields in the ordinary summary; additions/removals retain the complete
+   affected value. `--details` uses the same sectioned diff view, including unchanged
+   records and unchanged fields as context. Change counts and record labels belong
+   outside YAML values. Never dump change bookkeeping or wrap the review in
+   `current`/`proposed` snapshots. A detailed changed record must retain enough
+   context to reconstruct both complete public values from its diff.
    When retained execution or a selected child changes but public target fields
    do not, identify the changed execution environment, prepared files, or child
    selection and explain what approval authorizes. State when source, dependencies,

@@ -135,6 +135,9 @@ child calls, project commands, and Agent providers.
   that limit instead of inventing a component diff or displaying opaque identities.
   A change-first display omits empty categories and uses shared YAML field
   rendering, with complete signed additions/removals and contextual diffs.
+  `--details` uses the same sectioned diff renderer with unchanged records and
+  fields included as context. Never serialize change bookkeeping or wrap policy
+  in current/proposed snapshots for human review.
   It must retain every changed record; full
   policy remains available without revealing private recipes or consent tokens.
   Missing-target suggestions come from the retained admitted revision, never a

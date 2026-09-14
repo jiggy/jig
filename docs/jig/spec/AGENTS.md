@@ -39,6 +39,8 @@ descriptors.
   unavailable-client setup instructions. Keep
   token styling separate from exact review policy and machine output. Field
   diffs must explain execution-only changes without exposing private identities.
+  Detailed review expands the same diff with unchanged policy context; never
+  serialize change bookkeeping as human policy YAML.
   Terminal Run presentation and `--json` selection must stay synchronized with
   channel output, project policy, help, and the results guide.
 

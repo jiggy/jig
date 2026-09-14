@@ -17,7 +17,7 @@ export interface PrivateProjectPlanReview {
 }
 
 /**
- * Render complete current and proposed portable state plus identity deltas
+ * Render sectioned portable-policy diffs with optional complete unchanged context
  * without exposing the private Plan, recipe, host-observation, or
  * protected-store representations.
  */
@@ -61,81 +61,67 @@ export function renderPrivateProjectPlanReview(
             authentication: agentProvider.credentialMode,
           }
       : undefined
-  const proposal = {
-    changes,
-    executionChanges: Object.fromEntries(
-      changes.targets.changed.map((key) => [
-        key,
+  const render = (includeUnchanged: boolean): string => {
+    const summary = new BoundedAsciiWriter(maximumBytes)
+    summary.write('Review changes before approval\n\n')
+    summary.write('Approval permits these exact methods, settings and capabilities to run.\n')
+    summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
+    if (agent !== undefined) {
+      summary.write('Host Agent selected for methods requiring it:\n')
+      writePolicy(summary, agent, 1)
+      summary.write(
+        '\nInstructions and selected data go to this Agent. Credentials are never part of the review.\n\n',
+      )
+    }
+    writeChanges(
+      summary,
+      'Packages (source / dependency identity and capabilities)',
+      changes.packages,
+      current?.portablePolicy.packages ?? {},
+      proposed.portablePolicy.packages,
+      includeUnchanged,
+    )
+    writeChanges(
+      summary,
+      'Bindings (settings, child slots and command policy)',
+      changes.bindings,
+      current?.portablePolicy.bindings ?? {},
+      proposed.portablePolicy.bindings,
+      includeUnchanged,
+    )
+    writeChanges(
+      summary,
+      'Run targets (execution and file authority)',
+      changes.targets,
+      Object.fromEntries(
+        (current?.targets ?? []).map((target) => [targetKey(target.target), target]),
+      ),
+      Object.fromEntries(proposed.targets.map((target) => [targetKey(target.target), target])),
+      includeUnchanged,
+      (key) =>
         executionChangeExplanation(
           review.baseCandidate?.candidate.targets.find(
             (target) => targetKey(target.request.target) === key,
           ),
           plan.proposed.targets.find((target) => targetKey(target.request.target) === key),
         ),
-      ]),
-    ),
-    current,
-    proposed,
-    ...(agent === undefined ? {} : { proposedHostAgent: agent }),
-  }
-  const writer = new BoundedAsciiWriter(maximumBytes)
-  writer.write('Jig project plan review\n\n')
-  writer.write('Review the project changes below before applying them.\n\n')
-  writePolicy(writer, proposal, 1)
-  const details = writer.finish()
-  const summary = new BoundedAsciiWriter(maximumBytes)
-  summary.write('Review changes before approval\n\n')
-  summary.write('Approval permits these exact methods, settings and capabilities to run.\n')
-  summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
-  if (agent !== undefined) {
-    summary.write('Host Agent selected for methods requiring it:\n')
-    writePolicy(summary, agent, 1)
-    summary.write(
-      '\nInstructions and selected data go to this Agent. Credentials are never part of the review.\n\n',
     )
+    summary.write('Targets after approval:\n')
+    if (proposed.targets.length === 0)
+      summary.write('  None. Add a Flow under flows/ and review again.\n')
+    for (const target of proposed.targets) {
+      summary.write('  ')
+      writeAsciiJsonString(summary, targetKey(target.target))
+      summary.write(` - ${target.availability.state}\n`)
+    }
+    if (!includeUnchanged)
+      summary.write(
+        '\nUnchanged policy is omitted above. Use jig review --details for complete policy.\n',
+      )
+    return summary.finish()
   }
-  writeChanges(
-    summary,
-    'Packages (source / dependency identity and capabilities)',
-    changes.packages,
-    current?.portablePolicy.packages ?? {},
-    proposed.portablePolicy.packages,
-  )
-  writeChanges(
-    summary,
-    'Bindings (settings, child slots and command policy)',
-    changes.bindings,
-    current?.portablePolicy.bindings ?? {},
-    proposed.portablePolicy.bindings,
-  )
-  writeChanges(
-    summary,
-    'Run targets (execution and file authority)',
-    changes.targets,
-    Object.fromEntries(
-      (current?.targets ?? []).map((target) => [targetKey(target.target), target]),
-    ),
-    Object.fromEntries(proposed.targets.map((target) => [targetKey(target.target), target])),
-    (key) =>
-      executionChangeExplanation(
-        review.baseCandidate?.candidate.targets.find(
-          (target) => targetKey(target.request.target) === key,
-        ),
-        plan.proposed.targets.find((target) => targetKey(target.request.target) === key),
-      ),
-  )
-  summary.write('Targets after approval:\n')
-  if (proposed.targets.length === 0)
-    summary.write('  None. Add a Flow under flows/ and review again.\n')
-  for (const target of proposed.targets) {
-    summary.write('  ')
-    writeAsciiJsonString(summary, targetKey(target.target))
-    summary.write(` - ${target.availability.state}\n`)
-  }
-  summary.write(
-    '\nUnchanged policy is omitted above. Use jig review --details for complete policy.\n',
-  )
-  const text = summary.finish()
+  const text = render(false)
+  const details = render(true)
   if (text.length + details.length > maximumBytes)
     throw new ProjectAdministrationError(
       'UNAVAILABLE',
@@ -187,9 +173,19 @@ function writeChanges(
   changes: { added: readonly string[]; changed: readonly string[]; removed: readonly string[] },
   current: Readonly<Record<string, unknown>>,
   proposed: Readonly<Record<string, unknown>>,
+  includeUnchanged: boolean,
   unchangedReason?: (key: string) => string,
 ): void {
-  if (changes.added.length + changes.changed.length + changes.removed.length === 0) return
+  const unchanged = includeUnchanged
+    ? Object.keys(proposed)
+        .filter((key) => !changes.added.includes(key) && !changes.changed.includes(key))
+        .sort(compareUtf16)
+    : []
+  if (
+    changes.added.length + changes.changed.length + changes.removed.length + unchanged.length ===
+    0
+  )
+    return
   writer.write(
     `${title}: ${changes.added.length} added, ${changes.changed.length} changed, ${changes.removed.length} removed\n`,
   )
@@ -197,6 +193,7 @@ function writeChanges(
     ['Added', changes.added],
     ['Changed', changes.changed],
     ['Removed', changes.removed],
+    ['Unchanged', unchanged],
   ] as const) {
     for (const key of keys) {
       writer.write(`\n${label}: `)
@@ -205,10 +202,13 @@ function writeChanges(
       if (label === 'Changed') {
         if (samePolicy(current[key], proposed[key])) {
           writer.write(`  ${unchangedReason?.(key) ?? 'Public policy is unchanged.'}\n`)
+          if (includeUnchanged) writePolicy(writer, proposed[key], 1)
         } else {
           writer.write('  - removed / previous; + added / proposed\n')
-          writePolicyDiff(writer, current[key], proposed[key], 1)
+          writePolicyDiff(writer, current[key], proposed[key], 1, includeUnchanged)
         }
+      } else if (label === 'Unchanged') {
+        writePolicy(writer, proposed[key], 1)
       } else {
         writeSignedPolicy(
           writer,
@@ -253,6 +253,7 @@ function writePolicyDiff(
   before: unknown,
   after: unknown,
   depth: number,
+  includeUnchanged = false,
 ): void {
   if (samePolicy(before, after)) return
   if (
@@ -268,7 +269,10 @@ function writePolicyDiff(
     for (const key of [...new Set([...Object.keys(old), ...Object.keys(next)])].sort(
       compareUtf16,
     )) {
-      if (samePolicy(old[key], next[key])) continue
+      if (samePolicy(old[key], next[key])) {
+        if (includeUnchanged) writeSignedPolicy(writer, { [key]: next[key] }, depth, ' ')
+        continue
+      }
       if (
         Object.hasOwn(old, key) &&
         Object.hasOwn(next, key) &&
@@ -285,7 +289,7 @@ function writePolicyDiff(
         writeIndent(writer, depth)
         writeAsciiJsonString(writer, key)
         writer.write(':\n')
-        writePolicyDiff(writer, old[key], next[key], depth + 1)
+        writePolicyDiff(writer, old[key], next[key], depth + 1, includeUnchanged)
       } else {
         if (Object.hasOwn(old, key)) writeSignedPolicy(writer, { [key]: old[key] }, depth, '-')
         if (Object.hasOwn(next, key)) writeSignedPolicy(writer, { [key]: next[key] }, depth, '+')
