@@ -56,8 +56,13 @@ build: flow::build jig::build authoring::build
 
 # Run development-shell, worktree, and task-runner tests
 @test-tooling:
-    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts
+    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/agent-candidate.test.ts
 
 # Run the unprivileged release gate; requires FLOW_NODE and Python
 @test-release:
     sh scripts/test-release.sh
+
+# Freeze and qualify an ordinary Agent package from clean Git source
+[positional-arguments]
+@agent-candidate kind destination:
+    bun scripts/build-agent-candidate.ts "$1" "$2"

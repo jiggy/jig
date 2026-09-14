@@ -70,6 +70,26 @@ test('module and root tasks preserve arguments and select their own working dire
   })
 })
 
+test('Agent candidate task preserves explicit package and destination arguments', async () => {
+  await withFixture(async (directory, environment) => {
+    const result = await run(
+      [
+        '--justfile',
+        join(directory, 'justfile'),
+        'agent-candidate',
+        'agent-acp',
+        'output with spaces',
+      ],
+      environment,
+    )
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({
+      cwd: directory,
+      args: ['scripts/build-agent-candidate.ts', 'agent-acp', 'output with spaces'],
+    })
+  })
+})
+
 test('build-tool refusal stops before removing existing package output', async () => {
   await withFixture(async (directory, environment) => {
     const retained = join(directory, 'packages/jig/dist/sentinel')

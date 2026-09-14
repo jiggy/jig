@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [flow, jig]
+        package: [flow, agent, acp, jig]
     env:
       RELEASE_PACKAGE: ${{ matrix.package }}
     steps:
@@ -78,8 +78,16 @@ jobs:
               package_name=@jigging/jig
               manifest=packages/jig/package.json
               ;;
+            agent)
+              package_name=@jigging/agent-method
+              manifest=packages/agent-method/package.json
+              ;;
+            acp)
+              package_name=@jigging/agent-acp
+              manifest=packages/agent-acp/package.json
+              ;;
             *)
-              echo "package must be flow or jig" >&2
+              echo "package must be flow, agent, acp or jig" >&2
               exit 1
               ;;
           esac
@@ -135,10 +143,17 @@ jobs:
             FLOW_NPM=$(command -v npm)
             export FLOW_NODE FLOW_NPM
             scripts/build-flow-sdk-candidate.sh "$RUNNER_TEMP/candidate"
-          else
+          elif [ "$RELEASE_PACKAGE" = jig ]; then
             JIG_NPM=$(command -v npm)
             export JIG_NPM
             scripts/build-jig-candidate.sh "$RUNNER_TEMP/candidate"
+          else
+            FLOW_NODE=$(command -v node)
+            FLOW_NPM=$(command -v npm)
+            export FLOW_NODE FLOW_NPM
+            agent_package=agent-method
+            if [ "$RELEASE_PACKAGE" = acp ]; then agent_package=agent-acp; fi
+            just agent-candidate "$agent_package" "$RUNNER_TEMP/candidate"
           fi
 
       - name: Require zero Jig host residue
@@ -167,6 +182,10 @@ jobs:
       flow_version: ${{ steps.release.outputs.flow_version }}
       jig_new: ${{ steps.release.outputs.jig_new }}
       jig_version: ${{ steps.release.outputs.jig_version }}
+      agent_new: ${{ steps.release.outputs.agent_new }}
+      agent_version: ${{ steps.release.outputs.agent_version }}
+      acp_new: ${{ steps.release.outputs.acp_new }}
+      acp_version: ${{ steps.release.outputs.acp_version }}
     steps:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -193,7 +212,7 @@ jobs:
           pattern: npm-candidate-*-${{ env.SOURCE_REVISION }}
           path: ${{ runner.temp }}/candidates
 
-      - name: Publish or converge Flow, then Jig
+      - name: Publish or converge FLOW, Agent packages, then Jig
         id: release
         run: |
           set -eu
@@ -307,6 +326,8 @@ jobs:
           }
 
           publish_candidate flow @jigging/flow
+          publish_candidate agent @jigging/agent-method
+          publish_candidate acp @jigging/agent-acp
           publish_candidate jig @jigging/jig
 
   tag:
@@ -323,6 +344,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           JIG_NEW: ${{ needs.publish.outputs.jig_new }}
           JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
+          AGENT_NEW: ${{ needs.publish.outputs.agent_new }}
+          AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
+          ACP_NEW: ${{ needs.publish.outputs.acp_new }}
+          ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
           SOURCE_REVISION: ${{ env.SOURCE_REVISION }}
         run: |
           set -eu
@@ -352,12 +377,16 @@ jobs:
           }
 
           converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW"
+          converge_tag "agent-method-v$AGENT_VERSION" "@jigging/agent-method $AGENT_VERSION" "$AGENT_NEW"
+          converge_tag "agent-acp-v$ACP_VERSION" "@jigging/agent-acp $ACP_VERSION" "$ACP_NEW"
           converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW"
 
       - name: Link published packages from GitHub Releases
         env:
           FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
           JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
+          AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
+          ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
@@ -390,5 +419,9 @@ jobs:
 
           create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/1.' \
             "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/'
+          create_release agent-method "$AGENT_VERSION" 'Replaceable HTTP Agent Flow and reusable method library.' \
+            "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method'
+          create_release agent-acp "$ACP_VERSION" 'Replaceable Agent Flow over a host-authorized finite ACP resource.' \
+            "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/guide/agents'
           create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
             "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/'

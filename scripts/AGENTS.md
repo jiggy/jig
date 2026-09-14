@@ -37,6 +37,9 @@ operational baselines, and public-site assembly.
   exact publication revision passed the complete Linux host workflow.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
   requires clean Git source and records exact revision and artifact hashes.
+- `build-agent-candidate.ts` builds ordinary HTTP/ACP Agent packages from clean
+  archived source with normal Bun packing, then checks exact installed bytes
+  and records inventory, revision and hashes. It grants no native or model work.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
 - `ci/` owns disposable CI-host provisioning.

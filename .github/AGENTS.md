@@ -19,6 +19,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   publication or Git-write authority.
 - Build, test, publish, and tag the exact triggering source and retained
   candidate bytes. Never rebuild a release during publication.
+- npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
+  dependency order; all retain the same-revision CI/host gates and isolated
+  trusted publisher. First publication requires each package's npm setup.
 - Publish only after CI and the complete Linux Host Conformance workflow have
   both succeeded for the exact triggering source revision.
 - Keep path filters synchronized with every real workflow input.
