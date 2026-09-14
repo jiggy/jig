@@ -91,6 +91,22 @@ describe('private native Claude Code Agent provider', () => {
       model: 'binding-model',
       credentialMode: 'anthropic-api-key',
     })
+    for (const model of ['bad model', 'model\n']) {
+      await expect(
+        openPrivateClaudeAgentProvider(fixture.releaseRoot, {
+          CLAUDE_PATH: fixture.executablePath,
+          CLAUDE_CODE_OAUTH_TOKEN: 'subscription-secret',
+          CLAUDE_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+      await expect(
+        openPrivateClaudeAgentProvider(fixture.releaseRoot, {
+          CLAUDE_PATH: fixture.executablePath,
+          ANTHROPIC_API_KEY: 'api-secret',
+          ANTHROPIC_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+    }
     expect(apiKey).toMatchObject({
       client: 'anthropic-claude-code',
       credentialMode: 'anthropic-api-key',

@@ -11,7 +11,7 @@ import {
   resolvePrivateNativeAgentExecutable,
 } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
-import { checkAcpSetup, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const PI_CLIENT = 'pi'
 const SANDBOX_LAUNCHER_PATH = '/agent/pi-agent-launcher.js'
@@ -82,7 +82,7 @@ export async function openPrivatePiAgentProvider(
   )
 
   const provider = environment.PI_PROVIDER
-  const model = selectedModel ?? environment.PI_MODEL
+  const model = configuredAcpModel(selectedModel ?? environment.PI_MODEL)
   const apiKey = environment.PI_API_KEY
   if (provider !== undefined || model !== undefined || apiKey !== undefined) {
     if (provider === undefined || model === undefined) {

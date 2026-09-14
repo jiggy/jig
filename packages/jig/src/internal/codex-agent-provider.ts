@@ -9,7 +9,7 @@ import {
 } from './acp-agent-provider.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
-import { checkAcpSetup, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const CODEX_CLIENT = 'openai-codex'
 const SANDBOX_LAUNCHER_PATH = '/agent/codex-agent-launcher.js'
@@ -160,7 +160,7 @@ export async function openPrivateCodexAgentProvider(
     apiBaseURL !== undefined ||
     api !== undefined
   ) {
-    const model = selectedModel ?? apiModel
+    const model = configuredAcpModel(selectedModel ?? apiModel)
     if (model === undefined) throw new PrivateAcpSetupError('model')
     if (apiKey === undefined) throw new PrivateAcpSetupError('api')
     if (api !== undefined && api !== 'responses') {
@@ -185,7 +185,7 @@ export async function openPrivateCodexAgentProvider(
   } catch {
     throw new PrivateCodexLoginUnavailableError('Codex file-backed login is unavailable')
   }
-  const model = selectedModel ?? environment.CODEX_MODEL
+  const model = configuredAcpModel(selectedModel ?? environment.CODEX_MODEL)
   const provider = await createPrivateCodexSubscriptionAgentProvider({
     ...support,
     credential,

@@ -220,6 +220,22 @@ describe('private native Codex Agent provider', () => {
       model: 'binding-model',
       credentialMode: 'openai-responses-api-key',
     })
+    for (const model of ['bad model', 'model\n']) {
+      await expect(
+        openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+          CODEX_HOME: codexHome,
+          CODEX_PATH: fixture.executablePath,
+          CODEX_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+      await expect(
+        openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+          CODEX_PATH: fixture.executablePath,
+          OPENAI_API_KEY: 'api-secret',
+          OPENAI_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+    }
     expect(gateway).toMatchObject({
       client: 'openai-codex',
       credentialMode: 'openai-responses-api-key',

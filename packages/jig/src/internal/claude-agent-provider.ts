@@ -7,7 +7,7 @@ import {
 } from './acp-agent-provider.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
-import { checkAcpSetup, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const CLAUDE_CLIENT = 'anthropic-claude-code'
 const DEFAULT_MODEL = 'default'
@@ -93,7 +93,7 @@ export async function openPrivateClaudeAgentProvider(
     apiModel !== undefined ||
     apiBaseURL !== undefined
   ) {
-    const model = selectedModel ?? apiModel
+    const model = configuredAcpModel(selectedModel ?? apiModel)
     if (model === undefined) throw new PrivateAcpSetupError('model')
     if (!hasApiKey && !hasAuthToken) throw new PrivateAcpSetupError('api')
     const provider = await checkAcpSetup('api', () =>
@@ -112,7 +112,7 @@ export async function openPrivateClaudeAgentProvider(
   if (token === undefined) {
     throw new PrivateAcpSetupError('login')
   }
-  const model = selectedModel ?? environment.CLAUDE_MODEL
+  const model = configuredAcpModel(selectedModel ?? environment.CLAUDE_MODEL)
   const provider = await checkAcpSetup('login', () =>
     createPrivateClaudeSubscriptionAgentProvider({
       ...support,

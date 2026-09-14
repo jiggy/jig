@@ -8,6 +8,13 @@ export class PrivateAcpSetupError extends Error {
   }
 }
 
+/** Validate the effective model, without changing how authentication is selected. */
+export function configuredAcpModel(value: string | undefined): string | undefined {
+  if (value !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(value))
+    throw new PrivateAcpSetupError('model')
+  return value
+}
+
 export async function checkAcpSetup<T>(
   stage: AcpSetupStage,
   action: () => T | Promise<T>,

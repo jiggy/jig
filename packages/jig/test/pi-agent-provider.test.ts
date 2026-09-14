@@ -58,6 +58,16 @@ describe('private native Pi Agent provider', () => {
       model: 'openrouter/binding-model',
       credentialMode: 'pi-api-key',
     })
+    for (const model of ['bad model', 'model\n']) {
+      await expect(
+        openPrivatePiAgentProvider(join(support.launcherPath, '..', '..', '..'), {
+          PI_PATH: support.executablePath,
+          PI_PROVIDER: 'openrouter',
+          PI_API_KEY: 'api-secret',
+          PI_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+    }
   })
 
   test('opens Pi from a native path and explicit provider selection', async () => {
