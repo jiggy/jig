@@ -37,9 +37,9 @@ just jig::build
 release_tmp=$(mktemp -d "${TMPDIR:-/tmp}/jig-release.XXXXXX")
 trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 
-# Test authored applications against this SDK candidate, including before
-# its new immutable version is in the registry. Only the disposable copy's
-# development dependency changes; Flow source and repository manifests do not.
+# Test authored applications against the exact local package candidates, including
+# before their versions reach the registry. Only disposable copies' declared
+# dependencies change; Flow source and repository manifests do not.
 mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/jig"
 bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts/flow-sdk"
 set -- "$release_tmp"/artifacts/flow-sdk/*.tgz
@@ -81,9 +81,20 @@ for application in tested-patch request-triage support-case; do
   bun -e '
     const path = Bun.argv[1];
     const manifest = await Bun.file(path).json();
-    manifest.devDependencies["@jigging/flow"] = `file:${Bun.argv[2]}`;
+    const candidates = {
+      "@jigging/flow": Bun.argv[2],
+      "@jigging/agent-method": Bun.argv[3],
+      "@jigging/agent-acp": Bun.argv[4],
+    };
+    for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
+      for (const [name, version] of Object.entries(manifest[section] ?? {})) {
+        if (candidates[name]) manifest[section][name] = `file:${candidates[name]}`;
+        else if (typeof version === "string" && version.startsWith("workspace:"))
+          throw new Error(`No frozen candidate for declared workspace dependency ${name}`);
+      }
+    }
     await Bun.write(path, JSON.stringify(manifest));
-  ' "$application_copy/package.json" "$sdk_archive"
+  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE"
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
