@@ -1,12 +1,12 @@
 ---
 pageType: home
-title: "Code. Agents. One way to compose them."
-description: "You've taught an Agent how to do useful work. FLOW turns methods like that into building blocks for software: callable procedures that use code, Agent judgment, or both."
+title: "Build with Agents as naturally as you build with code."
+description: "Skills give Agents instructions and resources for useful work. FLOW brings that work together with code in executable methods you can call and combine."
 hero:
   name: FLOW
-  eyebrow: "Executable know-how. Greater possibility."
-  text: "Code. Agents.\nOne way to compose them."
-  tagline: "You've taught an Agent how to do useful work. FLOW turns methods like that into building blocks for software: callable procedures that use code, Agent judgment, or both."
+  eyebrow: "From Skills to composable software"
+  text: "Build with Agents\nas naturally as\nyou build with code."
+  tagline: "Skills give Agents instructions and resources for useful work. FLOW brings that work together with code in executable methods you can call and combine."
   status: "Open standard · prerelease specifications"
   statusLink: "/guide/"
   actions:
@@ -17,16 +17,16 @@ hero:
       text: See the architecture
       link: /guide/understand
 features:
-  - title: "One method boundary"
-    details: "Input, outcome, and result. Whatever does the work."
-  - title: "Freedom inside"
+  - title: "Call it from your code"
+    details: "Supply input and use the result."
+  - title: "Choose how it works"
     details: "Use ordinary code, Agent judgment, or both."
-  - title: "Capability compounds"
-    details: "Build more capable methods from useful ones."
+  - title: "Combine useful methods"
+    details: "Make one method the starting point for another."
 showcase:
   label: One caller · three implementations
-  title: Change how it works. Keep how it fits.
-  description: An application needs a suggested queue for a support request. Keep its caller in view as you explore three implementations of the same classifier. Code and Agent work compose at the same level.
+  title: One call. Code, an Agent, or both.
+  description: Your app needs to route a support request. Start with a rule, ask an Agent to interpret the message, or combine the two. Switch between implementations below—the caller stays the same.
   note: Illustrative excerpts from the request-triage example on Jig. This page runs no Flows. A shared result shape does not promise identical judgment, cost, latency, or powers.
   link: "https://jig.md/guide/request-triage"
   linkText: Run the complete example
@@ -61,10 +61,10 @@ showcase:
 ---
 
 <section className="statement">
-<p className="eyebrow">From a useful Skill to a system of methods</p>
-<h2>Give what your Agent knows<br />a form your software can call.</h2>
-<p>A Skill captures how to do useful work. An executable Flow gives that method an input, an entrypoint, and a result. A host can invoke it directly, without asking a model to interpret the instructions first. The method itself decides where intelligence helps.</p>
-<p>In the classifier, that means the same call can reach a rule, an Agent, or a combination. FLOW brings readable instructions and executable code into one package model, so each can contribute to a larger application.</p>
+<p className="eyebrow">Start with the Skills you know</p>
+<h2>Turn useful Agent work<br />into a building block.</h2>
+<p>A Skill gives an Agent instructions and resources for a task. A Flow packages a method, with that guidance beside the code that carries out the work. Add an executable entrypoint and your software can call the method directly. Inside, it can use an Agent, ordinary code, or both.</p>
+<p>The classifier above shows what that makes possible: your app makes one call, whether a rule or an Agent handles the request. You can build on the result without coordinating the method's internal steps yourself.</p>
 <a className="text-link" href="/guide/understand#from-a-skill-to-an-executable-method">See the step from guidance to execution <span aria-hidden="true">↗</span></a>
 </section>
 
@@ -76,7 +76,7 @@ showcase:
 
 <section className="feature-editorial">
 <div><p className="eyebrow">Capability compounding</p><h2>One useful method<br />opens the next possibility.</h2></div>
-<div><p>The classifier can become part of an intake method. Add a method that checks supplied records and another that prepares a response, and the pieces can support a larger task. Each contribution has a boundary the rest of the system can understand.</p><p>A method can gain intelligence, replace reasoning with code, or add checks while preserving its caller-facing contract. Evaluate the results as you build: composition creates room for capability to grow; it does not guarantee improvement.</p><a className="text-link" href="/guide/understand#let-capability-build-on-capability">Understand capability compounding <span aria-hidden="true">↗</span></a></div>
+<div><p>Once you can call a classifier, you can use its result in a larger task. Combine it with a method that checks a record or prepares a response. Each piece does useful work, and you decide how the pieces fit together.</p><p>As you learn, keep known steps in code and use Agent judgment where interpretation helps. A method can change internally while keeping the same input and result contract. Check that the revised method still does the job you need.</p><a className="text-link" href="/guide/understand#let-capability-build-on-capability">Understand capability compounding <span aria-hidden="true">↗</span></a></div>
 </section>
 
 <section className="statement statement--compact">

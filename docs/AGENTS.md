@@ -43,6 +43,9 @@ catalogues for FLOW and Jig.
   question raised by the preceding section; use connected examples to explain
   capability compounding and programmable execution before architectural detail.
   Keep ambition distinct from demonstrated support and preserve safeguards.
+  Address the developer directly on landing pages, name Skills when using that
+  familiar bridge, and lead with callable composition. Keep enterprise operating
+  concerns in relevant guides; explain execution boundaries after their useful role.
 - Organize navigation around starting, building, understanding, and reference.
   Tutorials should include an expected result and one useful modification.
 - Write for the reader's decision or task. Introduce unfamiliar concepts in

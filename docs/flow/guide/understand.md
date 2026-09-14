@@ -4,10 +4,11 @@ title: Why FLOW exists
 
 # Code and Agents. One way to compose them.
 
-You've taught an Agent how to do useful work. Now imagine building a system
-from methods like that: one interprets a request, another checks a record,
-another prepares a response. Some need intelligence. Some are ordinary code.
-Your application should be able to compose all of them in the same way.
+Skills give Agents instructions and resources for useful work. You can use
+that work as part of your software, alongside ordinary code: one method
+interprets a request, another checks a record, another prepares a response.
+FLOW gives you a way to call and combine these methods through the same
+interface, whether their implementation uses intelligence, code, or both.
 
 **FLOW gives code and Agent work one method boundary.** A **Flow** packages a
 reusable procedure. When executable, it accepts input and returns a defined

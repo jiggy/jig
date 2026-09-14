@@ -4,9 +4,9 @@ title: How Jig works
 
 # Put Agent intelligence inside your software
 
-Agents already help you build software. Putting them to work inside that
-software asks a different question: how does the application direct their
-work, use the result, and limit the consequences when they get it wrong?
+You already work with Agents, Skills, and code. Jig helps you bring them into
+your software as methods you can call and combine. You supply an input, use
+the result in your program, and choose where Agent interpretation helps.
 
 **Jig is a host for methods that combine the flexibility of AI Agents with
 the discipline of a traditional codebase.** Those methods are called **Flows**.

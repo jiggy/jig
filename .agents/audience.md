@@ -15,6 +15,14 @@ that intelligence inside their products and operational systems. They work
 with Skills, prompts, scripts, and ordinary application code; the next step is
 software that invokes and composes Agent work as part of its own operation.
 
+Address the developer as a person: someone trying to build something useful,
+keep up with changing tools, and make their existing work fit together. Their
+company is context, not the landing-page addressee. A concrete promise to call
+and compose Agent work gives them something to picture and try. Skills are a
+familiar reference only when named explicitly; installing or using one need
+not feel like teaching an Agent. Enterprise deployment and organizational
+operating concerns belong in relevant documentation and audience research.
+
 The central opportunity is the gap between work a person supervises in a
 conversation and work an application must authorize, evaluate, and handle when
 it goes wrong. Here, production use means serving real application or
@@ -34,6 +42,7 @@ should help them understand a recognizable problem.
 
 | Likely expression of pain | Need to investigate | Useful outcome to demonstrate |
 | --- | --- | --- |
+| “I have useful Skills. How do I build something from them?” | Give Agent-guided work an executable method boundary alongside code. | Call and combine methods without coordinating each one's internal Agent steps. |
 | “Agents help me build my product, but I don't trust them inside it.” | Turn intelligent work into bounded application components with explicit authority and outcomes. | An application invokes Agent work, checks its result, and handles failure without a developer directing each call. |
 | “What if it goes rogue or follows instructions hidden in its input?” | Keep authority outside model judgment, including under misalignment or prompt injection. | A bounded adversarial example shows attempted unauthorized work refused and the remaining risks understood. |
 | “A convincing wrong answer could trigger the wrong action.” | Separate successful execution from semantic correctness and permission to cause a consequence. | Application checks reject an unsuitable result or route uncertainty according to domain policy. |

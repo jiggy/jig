@@ -1,9 +1,10 @@
 # Jig and FLOW
 
-**Code and Agents. One way to build.**
+**Build with Agents as naturally as you build with code.**
 
-Agents help you build software. Jig and FLOW help you put their intelligence
-inside it, alongside ordinary code, through the same composable methods.
+Skills give Agents instructions and resources for useful work. Jig and FLOW
+help you bring that work into your software as executable methods you can
+call and combine with ordinary code.
 
 A **Flow** packages a reusable method. When executable, it accepts input and
 returns an outcome and result. Its implementation can use code, Agent judgment,

@@ -14,12 +14,18 @@ screenshots, comparisons, and review notes belong in `.tmp/`.
 
 ## Lead from recognizable work to greater capability
 
-The reader already uses Agents to help develop software. Help them see how to
-put that intelligence inside the software they build. Begin with a useful task
-they want an application to perform, explain what makes delegation difficult,
-and show how explicit execution boundaries let the pieces work together.
-Review fatigue can make the difficulty recognizable, but production composition
-is the primary opportunity.
+Speak to the developer who already works with Agents, Skills, and code. They
+want to build something useful while keeping up with tools and coordinating
+what they already have. Landing pages address that person directly, in fluid,
+simple language. Enterprise adoption, governance programs, and organizational
+operating models belong in relevant documentation, not the landing-page pitch.
+
+Lead with a concrete compositional promise: **Build with Agents as naturally
+as you build with code.** Explain that a Flow can use code, Agent judgment,
+or both behind the same callable interface. Name Skills explicitly when they
+provide the familiar starting point. Then show how Jig runs the chosen work
+with explicit boundaries. Production is a use context, not a substitute for
+the developer's own task, frustration, or ambition.
 
 The shared positioning anchor is **the flexibility of AI Agents combined with
 the discipline of a traditional codebase**. It connects an existing source of
@@ -29,14 +35,19 @@ results. It is not a promise that models become deterministic or error-free.
 | Product | Reader's starting point | Connection to establish | Benefit to make tangible |
 | --- | --- | --- | --- |
 | **FLOW** | Skills and instructions already capture useful know-how. | Executable methods give code and Agent work the same caller-facing boundary; the implementation chooses how to do the work. | Build applications from capabilities that compose consistently whether their methods use code, Agents, or both. |
-| **Jig** | Agents are useful during development, but delegating work inside a product raises fears about behavior and consequences. | Code and Agent work compose through Flows; Jig keeps authority and execution lifecycle outside model judgment. | Build applications that put Agent intelligence to work within explicit boundaries and handle its outcomes. |
+| **Jig** | Already uses Agents and wants to call their work from an application. | Code and Agent work compose through Flows; Jig keeps authority and execution lifecycle outside model judgment. | Build applications that put Agent intelligence to work within explicit boundaries and handle its outcomes. |
 
-“You trust Agents to help build your software. Now build software that puts
-Agents to work” is a useful narrative bridge. Continue by explaining how the
-architecture supports that ambition; the reader should understand why we chose
-it, not merely encounter a list of controls. Portability and a small execution
-core connect the immediate benefit to a system the builder can own and extend.
-Long-lived code or protocol elegance alone are weak opening reasons to care.
+Move from something familiar to a new ability, then to what the reader can
+build with it. For example: Skills give Agents instructions and resources;
+FLOW brings that work together with code in executable methods a program can
+call and combine. Explain the entrypoint when promising execution; the
+[Skills bridge](#use-skills-as-a-familiar-bridge) sets the comparison and its limits.
+
+Show the ability to call, compose, check, and replace a method before asking
+the reader to appreciate execution architecture. “Reliable” and “unprecedented”
+are weak substitutes for those concrete abilities. Reliability needs a named
+property and evidence; it must not imply that model judgment becomes correct.
+Portability and the small execution core support the story once its value is clear.
 
 ## Build one continuous explanation
 
@@ -59,10 +70,10 @@ The preferred FLOW progression is:
 
 The preferred Jig progression is:
 
-1. Connect familiar development assistance to Agent work inside an application.
-2. Acknowledge unpredictable or misdirected behavior and explain the need for
-   boundaries beyond instructions.
-3. Follow a useful application through code, Agent judgment, checks and outcomes.
+1. Recognize the developer's existing work with Agents, Skills, and code.
+2. Show how to call and combine that work through one method interface.
+3. Follow a useful task through its result and checks, then explain how explicit
+   execution boundaries help when Agent judgment is wrong or work must stop.
 4. Explain the microkernel design through what methods, applications, operators
    and Jig each own, and show why composition can grow from that small core.
 5. Offer a supported first run, with meaningful prerequisites easy to find.
