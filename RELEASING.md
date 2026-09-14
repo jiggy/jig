@@ -1,6 +1,8 @@
 # Automatic npm prereleases
 
-The exact prerelease version in each public package manifest is release intent.
+The exact prerelease versions in the `@jigging/flow` and `@jigging/jig`
+manifests are release intent for this workflow. The ordinary Agent packages
+remain separately built source candidates; this workflow does not publish them.
 After CI succeeds for a reviewed merge to `main`, the release workflow builds
 both package candidates and tests their exact archives while a read-only gate
 waits for complete Linux Host Conformance on that same push revision. Only
