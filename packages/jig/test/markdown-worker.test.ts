@@ -385,7 +385,7 @@ hosted('fresh installed Markdown admission on the provisioned proof host', () =>
       await command(
         [jig, 'review', '--yes'],
         project,
-        markdown ? 2 : 0,
+        markdown ? 1 : 0,
         `review ${name}`,
         markdown ? 'PROJECT_BINDING_INTERFACE_UNRESOLVED' : undefined,
       )
