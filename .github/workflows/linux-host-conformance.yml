@@ -87,10 +87,10 @@ jobs:
           bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$artifact_directory/flow-sdk"
           FLOW_SDK_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/flow-sdk")
           export FLOW_SDK_PACKAGE_ARCHIVE
-          bun packages/agent-method/scripts/pack.ts --destination "$artifact_directory/agent-method"
+          bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$artifact_directory/agent-method"
           AGENT_METHOD_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-method")
           export AGENT_METHOD_PACKAGE_ARCHIVE
-          bun packages/agent-acp/scripts/pack.ts --destination "$artifact_directory/agent-acp"
+          bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$artifact_directory/agent-acp"
           AGENT_ACP_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-acp")
           bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
           JIG_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/jig")

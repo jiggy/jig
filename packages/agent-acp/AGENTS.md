@@ -14,9 +14,9 @@ retains credential, process, and dispatch authority.
 - `contracts/finite-acp/` mirrors `docs/jig/spec/contracts/finite-acp/` exactly.
   `FLOW.contract.json` and `contracts/acp-public-updates.json` mirror Agent Run.
 - Package source, tests, descriptors and the bundled runtime form one artifact.
-- `justfile` owns explicit build/test/pack recipes. `scripts/pack.ts` stages
-  complete public SDK and Agent method archives, records their identities and
-  digests, and uses file dependencies only in the packed manifest.
+- `justfile` owns explicit build/test/pack recipes. Ordinary `bun pm pack`
+  retains source and bundles with versioned development dependencies; no nested
+  dependency archives or private manifest rewrites are part of distribution.
 
 ## Local Contracts
 
@@ -55,11 +55,10 @@ retains credential, process, and dispatch authority.
 - `bun test packages/agent-acp/test` exercises pure framing and public RunContext
   wiring using in-process channel/resource peers.
 - `just build` compiles declarations/public transport and bundles `src/flow.ts`.
-- `just pack --destination <directory>` builds and packs explicitly. The
-  script accepts existing builds and optional `FLOW_SDK_PACKAGE_ARCHIVE` and
-  `AGENT_METHOD_PACKAGE_ARCHIVE` inputs matching selected package identities.
-- The package test imports the relocated bundle without dependencies installed,
-  checks complete dependency archives, repacks them unchanged and rejects
-  inventory tampering. It does not qualify a native client or host containment.
+- `just pack --destination <directory>` builds and packs explicitly. For existing
+  output use `bun pm pack --ignore-scripts --destination <directory>`.
+- Package tests import the relocated bundle without development dependencies,
+  check source and ordinary dependency versions, and repack without workspace
+  resolution. They do not qualify a native client or host containment.
 
 ## Child DOX Index

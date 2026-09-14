@@ -47,12 +47,12 @@ test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
 FLOW_SDK_PACKAGE_ARCHIVE=$sdk_archive
 export FLOW_SDK_PACKAGE_ARCHIVE
-bun packages/agent-method/scripts/pack.ts --destination "$release_tmp/artifacts/agent-method"
+bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$release_tmp/artifacts/agent-method"
 set -- "$release_tmp"/artifacts/agent-method/*.tgz
 test "$#" -eq 1 && test -f "$1"
 AGENT_METHOD_PACKAGE_ARCHIVE=$1
 export AGENT_METHOD_PACKAGE_ARCHIVE
-bun packages/agent-acp/scripts/pack.ts --destination "$release_tmp/artifacts/agent-acp"
+bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$release_tmp/artifacts/agent-acp"
 set -- "$release_tmp"/artifacts/agent-acp/*.tgz
 test "$#" -eq 1 && test -f "$1"
 AGENT_ACP_PACKAGE_ARCHIVE=$1

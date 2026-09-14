@@ -1,55 +1,48 @@
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-test('packs the complete public dependencies and repacks without workspace resolution', async () => {
+test('ordinary packing retains editable source, registry dependencies and a standalone runtime', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url))
   const temporary = await mkdtemp(join(tmpdir(), 'agent-acp-pack-test-'))
+  const originalManifest = await readFile(join(root, 'package.json'), 'utf8')
   try {
     const first = join(temporary, 'first')
     const extracted = join(temporary, 'extracted')
     const repacked = join(temporary, 'repacked')
     await mkdir(extracted)
-    execFileSync(process.execPath, ['scripts/pack.ts', '--destination', first], {
-      cwd: root,
-      stdio: 'pipe',
-    })
-    const archive = (await readdir(first)).find((name) => name.endsWith('.tgz'))!
-    expect(archive).toBeDefined()
-    execFileSync('tar', ['-xzf', join(first, archive), '--strip-components=1', '-C', extracted])
+    await mkdir(first)
+    await mkdir(repacked)
+    const pack = (cwd: string, destination: string) =>
+      execFileSync(
+        process.execPath,
+        ['pm', 'pack', '--ignore-scripts', '--destination', destination],
+        {
+          cwd,
+          stdio: 'pipe',
+        },
+      )
+    pack(root, first)
+    const archives = (await readdir(first)).filter((name) => name.endsWith('.tgz'))
+    expect(archives).toHaveLength(1)
+    const archive = join(first, archives[0]!)
+    const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n')
+    expect(entries).toContain('package/src/flow.ts')
+    expect(entries).toContain('package/FLOW.contract.json')
+    expect(entries.some((name) => name.includes('/tooling/') || name.endsWith('.tgz'))).toBe(false)
+    expect(entries.some((name) => name.includes('/node_modules/'))).toBe(false)
+    execFileSync('tar', ['-xzf', archive, '--strip-components=1', '-C', extracted])
     const manifest = JSON.parse(await readFile(join(extracted, 'package.json'), 'utf8'))
-    const inventory = JSON.parse(
-      await readFile(join(extracted, 'tooling', 'dependencies.json'), 'utf8'),
-    )
-    for (const [name, file] of [
-      ['@jigging/flow', 'flow-sdk.tgz'],
-      ['@jigging/agent-method', 'agent-method.tgz'],
-    ]) {
-      expect(manifest.devDependencies[name!]).toBe(`file:./tooling/${file}`)
-      const bytes = await readFile(join(extracted, 'tooling', file!))
-      expect(inventory[name!].sha256).toBe(
-        `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
-      )
-      const included = JSON.parse(
-        execFileSync('tar', ['-xOf', join(extracted, 'tooling', file!), 'package/package.json'], {
-          encoding: 'utf8',
-        }),
-      )
-      expect(included.name).toBe(name)
-      expect(included.version).toBe(inventory[name!].version)
+    for (const name of ['@jigging/flow', '@jigging/agent-method']) {
+      const version = manifest.devDependencies[name]
+      expect(version).toMatch(/^\d+\.\d+\.\d+/)
+      expect(version).not.toMatch(/workspace:|file:/)
     }
     expect(Object.keys(manifest.dependencies ?? {})).toHaveLength(0)
-    expect(await readFile(join(extracted, 'dist', 'transport.js'), 'utf8')).toContain(
-      'class FiniteAcpFrames',
-    )
-    const runtime = await readFile(join(extracted, 'dist', 'flow.js'), 'utf8')
-    expect(runtime).toContain('session/prompt')
-    expect(runtime).not.toMatch(/from ["']@jigging\//)
-    // Import the documented packed helper and bundled runtime without installing.
+    // Public built exports and the complete Flow bundle work without development dependencies.
     execFileSync(
       process.execPath,
       [
@@ -58,22 +51,21 @@ test('packs the complete public dependencies and repacks without workspace resol
       ],
       { cwd: extracted, stdio: 'pipe' },
     )
-    execFileSync(process.execPath, ['scripts/pack.ts', '--destination', repacked], {
-      cwd: extracted,
-      stdio: 'pipe',
-    })
-    const next = (await readdir(repacked)).find((name) => name.endsWith('.tgz'))!
-    for (const file of ['flow-sdk.tgz', 'agent-method.tgz']) {
-      const bytes = execFileSync('tar', ['-xOf', join(repacked, next), `package/tooling/${file}`])
-      expect(Buffer.compare(bytes, await readFile(join(extracted, 'tooling', file)))).toBe(0)
-    }
-    await writeFile(join(extracted, 'tooling', 'agent-method.tgz'), new Uint8Array([0]))
-    expect(() =>
-      execFileSync(process.execPath, ['scripts/pack.ts', '--destination', repacked], {
-        cwd: extracted,
-        stdio: 'pipe',
+    pack(extracted, repacked)
+    const next = (await readdir(repacked)).filter((name) => name.endsWith('.tgz'))
+    expect(next).toHaveLength(1)
+    const nextManifest = JSON.parse(
+      execFileSync('tar', ['-xOf', join(repacked, next[0]!), 'package/package.json'], {
+        encoding: 'utf8',
       }),
-    ).toThrow()
+    )
+    expect(nextManifest.devDependencies).toEqual(manifest.devDependencies)
+    expect(
+      execFileSync('tar', ['-xOf', join(repacked, next[0]!), 'package/src/flow.ts'], {
+        encoding: 'utf8',
+      }),
+    ).toBe(await readFile(join(extracted, 'src/flow.ts'), 'utf8'))
+    expect(await readFile(join(root, 'package.json'), 'utf8')).toBe(originalManifest)
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }

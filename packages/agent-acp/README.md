@@ -73,9 +73,10 @@ just test
 just pack --destination /path/to/artifacts
 ```
 
-The archive includes source, runnable output, types and exact contracts. Its
-`tooling/` contains the complete SDK and method archives needed to rebuild away
-from this repository; normal installation uses those recorded local artifacts.
+The archive includes source, runnable output, types and exact contracts.
+To adapt extracted source, run `bun install --ignore-scripts`, then `just build`.
+The packed manifest declares versioned SDK and method development dependencies;
+retain the resulting Bun lock for reproducible local development.
 The runnable bundle has no installation hook or runtime npm dependency.
 Source version numbers do not establish registry availability.
 

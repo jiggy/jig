@@ -43,7 +43,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   packers. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
   archives to installed Markdown tests across the provisioned host boundary;
   verify the same archive hashes afterward. Jig's packer supplies the complete
-  private authoring closure, and the method embeds the frozen SDK for adaptation.
+  private authoring closure. Agent source rebuilds use ordinary declared
+  dependencies; frozen archives are test inputs, never embedded dependencies.
 
 ## Verification
 

@@ -18,7 +18,15 @@ export async function writeOrdinaryAcpAgent(
       throw new Error('ACP Agent archive must be a regular file')
   } else {
     const pack = Bun.spawn(
-      [process.execPath, '--no-env-file', 'scripts/pack.ts', '--destination', artifacts],
+      [
+        process.execPath,
+        '--no-env-file',
+        'pm',
+        'pack',
+        '--ignore-scripts',
+        '--destination',
+        artifacts,
+      ],
       { cwd: join(import.meta.dir, '../../../agent-acp'), stdout: 'pipe', stderr: 'pipe' },
     )
     const [exit, stdout, stderr] = await Promise.all([

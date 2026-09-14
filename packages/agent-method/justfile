@@ -19,7 +19,7 @@ clean:
 # Build, then pack a complete archive without installation hooks
 [positional-arguments]
 @pack *args: build
-    bun scripts/pack.ts "$@"
+    bun pm pack --ignore-scripts "$@"
 
 # ---------------------------------------------------------------------------- #
 #                                    CHECKS                                    #

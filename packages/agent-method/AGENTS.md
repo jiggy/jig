@@ -15,9 +15,9 @@ ordinary Flow, preserving operator ownership of Agent execution.
   `docs/jig/spec/contracts/`.
 - Package source, declarations, built runtime, licenses, tests, and build
   instructions form one release artifact.
-- `scripts/pack.ts` owns artifact staging. Packed `tooling/flow-sdk.tgz` is the
-  complete ordinary SDK package; `tooling/flow-sdk.json` records its identity
-  and SHA-256. Both are generated, included build inputs.
+- `justfile` owns explicit builds and ordinary `bun pm pack` distribution.
+  Bun converts declared workspace versions to registry versions when packing;
+  no dependency archives or private installation convention are included.
 
 ## Local Contracts
 
@@ -40,13 +40,9 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - Preserve the shared 64-group, 1,024-item, 1 MiB content and 1 MiB rendered
   prompt limits. Reject duplicate selections, invalid UTF-8 and symlinks.
 - Runtime dependencies are bundled; installed consumers need no build hook.
-- The source workspace uses `workspace:*` for SDK development. Packing changes
-  only the staged manifest to `file:./tooling/flow-sdk.tgz`, so normal development
-  installation uses the included candidate SDK bytes. Repacking an extracted
-  method preserves those bytes and checks their recorded digest.
-- Workspace packing may consume `FLOW_SDK_PACKAGE_ARCHIVE` to include the exact
-  complete SDK artifact already tested by release automation. Match its package
-  identity; the supplied archive digest records the actual candidate bytes.
+- The source workspace uses `workspace:*` for SDK development. Extracted source
+  uses the packed versioned development dependencies and an ordinary Bun lock.
+  Publish dependencies before packages that require them for source rebuilds.
 - The ordinary ACP package imports this same method. `checkAgentResult` lets
   consumers independently check any selected
   Agent's dynamic structured result; it grants no authority or provenance.
@@ -66,8 +62,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - `just build` compiles declarations and bundles the ordinary runtime.
 - `just test` checks the method, JSON/1, bounded reader, and Flow wiring.
 - `just pack --destination <directory>` builds the complete archive explicitly.
-- After building, `bun scripts/pack.ts --destination <directory>` packs existing
-  output without rebuilding. The package test also verifies SDK closure and
-  repacking; it requires the existing method and SDK build outputs.
+- After building, `bun pm pack --ignore-scripts --destination <directory>` packs
+  existing output. Package tests verify source, ordinary dependency versions,
+  standalone runtime imports and repacking without mutating workspace manifests.
 
 ## Child DOX Index

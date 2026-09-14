@@ -235,47 +235,29 @@ absolute value bounds apply throughout.
 
 In the repository, install workspace dependencies at the root, build the FLOW
 SDK first (`just flow::build`), then run `just agent::build`. The package recipe
-itself builds only this package. Its supported development inputs are Bun
-1.3.3, TypeScript 7.0.2, Node types 24.13.3, Just 1.43.1 or newer, and the exact
-FLOW SDK archive identified in `tooling/flow-sdk.json`. The packed library and
-runtime use standard Node-compatible ESM; Bun also executes them.
+builds only this package. Supported development inputs are Bun 1.3.3,
+TypeScript 7.0.2, Node types 24.13.3 and Just 1.43.1 or newer.
 
-In an extracted archive, run `bun install --ignore-scripts` for its recorded
-development dependencies, then `just build`. Its manifest declares
-`@jigging/flow` as `file:./tooling/flow-sdk.tgz`: the complete ordinary SDK
-archive included with the method. `tooling/flow-sdk.json` records that archive's
-package name, version and SHA-256. Normal installation uses those exact
-candidate bytes, including their matching Run/1 types, without looking up an
-SDK with the same version in a registry. TypeScript and Node type declarations
-remain exact registry development dependencies in the manifest.
+To adapt extracted source, run `bun install --ignore-scripts`, then `just build`.
+Bun packs workspace references as ordinary versioned development dependencies.
+Retain the generated Bun lock for reproducible local development. The packed
+library and runtime use Node-compatible ESM and need no development installation.
 
-A consumer running existing
-built output does not need these development tools. Change `src/index.ts` for
-prompt preparation or interpretation, `src/schema.ts` for the bounded schema
-method, or `skills/` for package guidance. Run `just test`, then `just build`
-and `just pack --destination <directory>`. Review and adopt the resulting
-complete artifact under your host's normal source rules. The rebuilt
-`dist/flow.js` is what the root entrypoint executes; never hand-edit it.
+Change `src/index.ts` for prompt preparation or interpretation,
+`src/schema.ts` for schema checking, or `skills/` for package guidance.
+Run `just test`, then `just pack --destination <directory>`. Review and adopt
+the complete artifact under your host's normal source rules. The rebuilt
+`dist/flow.js` is what the root entrypoint executes.
 
-The `just pack` recipe builds first, then runs `scripts/pack.ts`. In the
-workspace, the packer obtains the entire built SDK through its ordinary public
-package archive and stages the method's local SDK dependency. When repacking
-an extracted artifact, it verifies and preserves the included SDK archive.
-It changes no source workspace manifest and performs no publication. To pack
-already built output without rebuilding, run
-`bun scripts/pack.ts --destination <directory>` from the method package root.
-Release and verification automation can set `FLOW_SDK_PACKAGE_ARCHIVE` to an
-already tested complete SDK archive when packing the workspace; its name and
-version must match the selected workspace SDK. That archive is included byte
-for byte. Extracted-package repacking always uses its own included archive.
-The archive is the build input identity; its provisional SDK version alone
-does not identify candidate bytes.
+The pack recipe builds first and calls Bun's ordinary packer. To pack existing
+output, use `bun pm pack --ignore-scripts --destination <directory>`. Neither
+path publishes, mutates source manifests or embeds dependency archives.
+Rebuilding extracted source requires its declared dependency versions to be
+available; unpublished development uses ordinary source workspaces.
 
-`just test` covers method preparation/results, JSON/1 bounds, package reads and
-ordinary Flow wiring with deterministic HTTP fixtures. After the initial
-build, it also checks the complete SDK archive, local dependency locator,
-digest and extracted-package repacking. Those tests do not
-establish provider quality, real-client compatibility or host containment.
+Tests cover preparation/results, JSON/1 bounds, package reads, ordinary Flow
+wiring, source inclusion, dependency versions and standalone runtime imports.
+They do not establish provider quality, real-client compatibility or containment.
 
 MPL-2.0 covers this package and its adapted Jig algorithms. The bundled FLOW
 SDK is Apache-2.0; see `LICENSE`, `THIRD_PARTY_NOTICES` and

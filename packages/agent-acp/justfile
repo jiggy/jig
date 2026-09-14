@@ -16,10 +16,10 @@ clean:
     import { rm } from 'node:fs/promises';
     await rm('dist', { recursive: true, force: true });
 
-# Build, then pack complete public dependency archives for source rebuilds
+# Build, then pack source and runtime with ordinary dependency declarations
 [positional-arguments]
 @pack *args: build
-    bun scripts/pack.ts "$@"
+    bun pm pack --ignore-scripts "$@"
 
 # ---------------------------------------------------------------------------- #
 #                                    CHECKS                                    #

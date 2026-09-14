@@ -38,8 +38,6 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES",
     "licenses",
-    "tooling",
-    "scripts",
     "justfile",
     "tsconfig.json",
     "test"
