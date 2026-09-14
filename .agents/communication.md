@@ -48,7 +48,8 @@ switches between examples.
 
 The preferred FLOW progression is:
 
-1. Recognize useful work the reader has already taught an Agent to perform.
+1. Recognize useful work the reader performs with Agents or Skills; name the
+   familiar reference explicitly.
 2. Show how an executable method can be called directly by code.
 3. Show code and Agent judgment behind the same method boundary, with the
    caller composing through the method's contract.
@@ -73,10 +74,11 @@ specification defines exact behavior. Research keeps its evidence status.
 
 ## Use Skills as a familiar bridge
 
-“You've taught an Agent how to do useful work” is a useful opening because it
-starts with a capability the reader values. Continue toward the greater system
-they can build from it. Present FLOW as an evolution in what builders can do
-with a method, rather than making the whole page a comparison with Skills.
+Name `SKILL.md` or Skills explicitly when using them as the familiar bridge.
+“Teaching an Agent” does not by itself establish that association. Begin with
+a recognizable task and show the greater system the reader can build from it.
+Present FLOW as an evolution in what builders can do with a method, rather
+than making the whole page a comparison with Skills.
 
 An executable Flow can be invoked by a compatible host without a model first
 interpreting its Markdown to decide which script to run. This permits ordinary

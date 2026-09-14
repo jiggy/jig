@@ -8,7 +8,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Ownership
 
-- `README.md` routes readers through the three examples by useful outcome.
+- `README.md` routes readers through the examples by useful outcome.
 
 - Each application owns its domain method, fixtures, local tests, and exact
   Flow and Binding declarations.
@@ -60,7 +60,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Verification
 
-- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test`
+- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test`
   after workspace setup. The release gate repeats these application checks
   against the freshly packed SDK.
 - Exercise package boundaries through an admitted Jig Run before claiming
@@ -75,3 +75,5 @@ authored examples, not independent consumer evidence or promoted Starters.
   disputed charge, checked by application-owned credit policy.
 - [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
   repair with contained commands and independently checked patch evidence.
+- [contact-import/AGENTS.md](contact-import/AGENTS.md) — A CSV preview with
+  interchangeable code, Agent, and mixed column-mapping methods.

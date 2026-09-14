@@ -25,6 +25,8 @@ for external libraries.
   evidence may be useful under an explicit reconsideration gate.
 - `field-notes/` preserves selected first-person causal evidence without making
   it current architecture or required introductory reading.
+- `marketing/` owns concrete promotional materials and video production guides,
+  applying audience and communication strategy without redefining it.
 - `skills/` contains tracked skill entrypoints, guides, and references.
 - Product behavior, public API documentation, and user guides belong outside
   `.agents/`.
@@ -86,3 +88,5 @@ for external libraries.
   reasoning, and cross-product judgment; the compass remains the entrypoint.
 - [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative
   engineering retrospectives and historical causal evidence.
+- [marketing/AGENTS.md](marketing/AGENTS.md) — Promotional materials, demonstration
+  scripts, and recording guides grounded in public examples.

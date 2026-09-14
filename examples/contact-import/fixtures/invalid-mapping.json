@@ -1,0 +1,19 @@
+{
+  "headers": [
+    "Customer",
+    "Email address",
+    "Company"
+  ],
+  "rows": [
+    [
+      "Ada Lovelace",
+      "ada@example.com",
+      "Analytical Engines"
+    ]
+  ],
+  "mapping": {
+    "name": 0,
+    "email": 7,
+    "organization": 2
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "contact-import-map-code-flow",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "workspace:*"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "headers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "maxItems": 16,
+      "minItems": 1
+    }
+  },
+  "required": [
+    "headers"
+  ],
+  "additionalProperties": false
+}

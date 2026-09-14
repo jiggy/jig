@@ -1,0 +1,9 @@
+{
+  "name": "contact-import-example",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@jigging/flow": "workspace:*",
+    "csv-parse": "6.1.0"
+  }
+}

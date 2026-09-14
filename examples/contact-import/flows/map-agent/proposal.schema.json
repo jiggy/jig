@@ -1,0 +1,30 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "email": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "organization": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "email",
+    "organization"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,8 @@
+{
+  "name": "contact-import-convert-flow",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "workspace:*"
+  }
+}

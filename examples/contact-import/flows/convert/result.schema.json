@@ -1,0 +1,154 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "const": "done"
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "ready",
+                "needs_mapping"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "mapping": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "name": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 15
+                },
+                "email": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 15
+                },
+                "organization": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 15
+                }
+              },
+              "required": [
+                "name",
+                "email",
+                "organization"
+              ],
+              "additionalProperties": false
+            },
+            "accepted": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "record": {
+                    "type": "integer"
+                  },
+                  "contact": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "organization": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "email",
+                      "organization"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "record",
+                  "contact"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 100
+            },
+            "rejected": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "record": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "record",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 100
+            }
+          },
+          "required": [
+            "status",
+            "reason",
+            "mapping",
+            "accepted",
+            "rejected"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "outcome",
+        "output"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": [
+            "blocked",
+            "limit"
+          ]
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "outcome",
+        "output"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

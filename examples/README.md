@@ -10,6 +10,7 @@ provider or carry credentials.
 | --- | --- | --- |
 | [Request triage](request-triage/) | A suggested support queue | One caller composes with code, an Agent, or both through the same contract. |
 | [Support case](support-case/) | A disputed-charge decision and reply | Code checks an Agent's proposal against account facts and application policy. |
+| [Contact import](contact-import/) | A contact preview from an unfamiliar CSV | Compose code and Agent mapping through one boundary, then validate rows in code. |
 | [Tested patch](tested-patch/) | A patch with executed checks and evidence | A reusable repair method combines Agent proposals with independent acceptance. |
 
 Complete [workspace setup](../docs/jig/guide/dependencies.md#local-workspace-packages)
