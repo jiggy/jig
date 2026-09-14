@@ -8,6 +8,13 @@ A Flow can reuse libraries while keeping its reviewed execution reproducible.
 The alpha runs `FLOW.ts` with Jig's installed Bun runtime. Imports may reference
 supported Bun/Node built-ins, package-local files, or prepared production dependencies.
 
+Prepared execution trees are bounded to 32 MiB and 4,096 file/alias records.
+Declare what the Flow imports at runtime as production dependencies. Tools used
+only to develop or launch the project belong in `devDependencies`; a workspace
+Flow can have its own manifest and runtime dependencies. Preparation-limit
+errors identify the manifest to inspect; review does not silently omit a
+declared runtime dependency to make the tree fit.
+
 ## Published packages
 
 Place `package.json` beside `FLOW.ts` and declare your dependencies there. If

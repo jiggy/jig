@@ -1884,6 +1884,11 @@ describe('finite Jig project commands', () => {
       'locked dependencies could not be prepared; check registry access and package availability',
     ],
     [
+      'PACKAGE_BUN_OUTPUT_LIMIT',
+      'flows/incident/package.json',
+      'prepared runtime dependencies exceed the 32 MiB or 4096-file limit; check production dependencies in package.json, keep development tools separate, and see https://jig.md/guide/dependencies',
+    ],
+    [
       'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
       'flows/chat/package.json',
       'a requested dependency version or tag is unavailable in the registry; check package.json against published versions or use a declared local workspace dependency',

@@ -396,6 +396,19 @@ describe('private finite project session', () => {
       code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
       path: 'flows/dependent/bun.lock',
     })
+    const tooLarge = scopePrivatePackagePlanningError(
+      new CheckError(
+        'invalid',
+        'PACKAGE_BUN_OUTPUT_LIMIT',
+        'private preparation detail',
+        'package.json',
+      ),
+      'flows/dependent',
+    )
+    expect(projectError(tooLarge, 'plan').diagnostic).toEqual({
+      code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+      path: 'flows/dependent/package.json',
+    })
 
     const preparation = new CheckError(
       'unavailable',

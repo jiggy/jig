@@ -279,7 +279,9 @@ async function interact(
             : 'invalid',
           message.code,
           boundedMessage(message.message),
-          message.code.startsWith('PACKAGE_BUN_RESOL')
+          message.code.startsWith('PACKAGE_BUN_RESOL') ||
+            message.code === 'PACKAGE_BUN_INPUT_LIMIT' ||
+            message.code === 'PACKAGE_BUN_OUTPUT_LIMIT'
             ? 'package.json'
             : message.code.includes('LOCK') || message.code.includes('SOURCE_UNSUPPORTED')
               ? 'bun.lock'

@@ -1369,6 +1369,10 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_BUN_LOCK_STALE:
         'package.json and bun.lock disagree; update the supplied lock explicitly',
+      PACKAGE_BUN_INPUT_LIMIT:
+        'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/guide/dependencies',
+      PACKAGE_BUN_OUTPUT_LIMIT:
+        'prepared runtime dependencies exceed the 32 MiB or 4096-file limit; check production dependencies in package.json, keep development tools separate, and see https://jig.md/guide/dependencies',
     }
     const hint =
       candidateHints[error.diagnostic?.code ?? ''] ??
