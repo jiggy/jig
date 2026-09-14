@@ -18,6 +18,8 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 
 // Pair the generated source with its tested SDK, not a moving registry tag.
 const GREETING_SDK_VERSION = '0.1.0-alpha.10'
+const AGENT_ACP_VERSION = '0.1.0-alpha.1'
+export type ProjectInitAgent = 'codex' | 'claude' | 'pi'
 
 export type ProjectInitErrorCode =
   | 'JIG_INIT_CLEANUP_FAILED'
@@ -41,6 +43,7 @@ export async function createProject(
   destination: string,
   fileSystem: ProjectInitFileSystem = DEFAULT_FILE_SYSTEM,
   bare = false,
+  agent?: ProjectInitAgent,
 ): Promise<void> {
   const target = resolve(destination)
   const created: Array<{ readonly kind: 'directory' | 'file'; readonly path: string }> = []
@@ -72,8 +75,11 @@ export async function createProject(
     }
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
-      ['jig.ts', renderJigModule()],
-      ...(!bare ? greetingFiles() : []),
+      ['jig.ts', renderJigModule(agent)],
+      ...(!bare
+        ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
+        : []),
+      ...(agent === undefined ? [] : agentFiles(agent)),
     ]
     for (const [name, contents] of files) {
       const path = join(target, name)
@@ -114,16 +120,68 @@ function errorCode(error: unknown): string | undefined {
   return typeof error.code === 'string' ? error.code : undefined
 }
 
-function renderJigModule(): string {
+function renderJigModule(agent?: ProjectInitAgent): string {
   return [
     'import { defineJig, discover } from "@jigging/jig";',
     '',
     'export default defineJig({',
     '  flows: discover("./flows"),',
     '  bindings: discover("./bindings"),',
+    ...(agent === undefined
+      ? []
+      : ['  defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" },']),
     '});',
     '',
   ].join('\n')
+}
+
+function agentFiles(client: ProjectInitAgent): readonly (readonly [string, string])[] {
+  return [
+    [
+      'package.json',
+      `${JSON.stringify({ private: true, dependencies: { '@jigging/agent-acp': AGENT_ACP_VERSION } }, null, 2)}\n`,
+    ],
+    [
+      'bindings/agent.ts',
+      [
+        'import { defineBinding } from "@jigging/jig";',
+        '',
+        'export default defineBinding({',
+        '  package: "npm:@jigging/agent-acp",',
+        `  slots: { native: { kind: "acp", client: "${client}" } },`,
+        '});',
+        '',
+      ].join('\n'),
+    ],
+    [
+      'README.md',
+      [
+        '# Your Jig project',
+        '',
+        `The ordinary Agent Flow uses your selected ${client} client. Its dependency is`,
+        'in `package.json`, its resource grant in `bindings/agent.ts`, and its project',
+        'selection in `jig.ts`. Change these ordinary files to adapt the selection.',
+        '',
+        'Configure the native installation and operator authentication described in',
+        'https://jig.md/guide/agents, then run:',
+        '',
+        '```sh',
+        'jig review --allow-resolution-network',
+        'jig run binding:agent --input \'{"instructions":"Explain one useful check."}\' --receive events',
+        '```',
+        '',
+        'Review prepares the declared dependency, shows its requested authority and',
+        'asks for approval. Resolution may contact dependency-selected network',
+        'destinations before approval; declining cannot undo those requests.',
+        'Keep an authored Bun lock when sharing reproducible dependencies.',
+        '',
+        'Initialization installs nothing, copies no credentials and approves no work.',
+        'Local readiness does not establish remote model availability. The result',
+        'and selected live updates are separate; cancellation does not undo remote work.',
+        '',
+      ].join('\n'),
+    ],
+  ]
 }
 
 function greetingFiles(): readonly (readonly [string, string])[] {

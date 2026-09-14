@@ -47,7 +47,7 @@ import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import { flowSelector, npmPackageName } from './project/package-selector.js'
-import { createProject, ProjectInitError } from './project-init.js'
+import { createProject, type ProjectInitAgent, ProjectInitError } from './project-init.js'
 import { schemaTypeMismatchText } from './schema/types.js'
 
 const HELP = `Jig runs reusable methods with powers you approve.
@@ -85,7 +85,7 @@ Examples:
   jig inspect
   jig inspect flow:flows/hello
   jig inspect binding:repair --json`,
-  init: `Usage: jig init [--bare] <directory>
+  init: `Usage: jig init [--bare] <directory> [--agent [codex|claude|pi]]
 
 Create a new editable project and greeting Flow. No installation, network
 requests, approval, or execution happens during initialization.
@@ -93,6 +93,10 @@ requests, approval, or execution happens during initialization.
   --bare     Create only jig.ts and empty flows/ and bindings/ directories
 
 Example: jig init hello-jig
+With an ordinary Agent: jig init my-app --agent codex
+Use --agent without a client for an interactive choice. It writes a visible
+dependency, Binding and default selection; client installation and authority
+approval remain separate. Without --agent the greeting needs no Agent.
 The destination must not exist; existing files are never replaced.`,
   review: `Usage: jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
 
@@ -350,20 +354,52 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
 }
 
 async function executeInit(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  const bare = arguments_[1] === '--bare'
-  const destination = arguments_[bare ? 2 : 1]
-  if (
-    arguments_.length !== (bare ? 3 : 2) ||
-    destination === undefined ||
-    destination.startsWith('-')
-  )
-    usage('init', 'Specify a new project directory.')
+  let bare = false
+  let destination: string | undefined
+  let agent: ProjectInitAgent | 'choose' | undefined
+  for (let index = 1; index < arguments_.length; index++) {
+    const value = arguments_[index]!
+    if (value === '--bare' && !bare) bare = true
+    else if (value === '--agent' && agent === undefined) {
+      const next = arguments_[index + 1]
+      if (next !== undefined && ['codex', 'claude', 'pi'].includes(next)) {
+        agent = next as ProjectInitAgent
+        index++
+      } else agent = 'choose'
+    } else if (!value.startsWith('-') && destination === undefined) destination = value
+    else usage('init', 'Specify one new directory and an optional supported Agent client.')
+  }
+  if (destination === undefined) usage('init', 'Specify a new project directory.')
+  if (agent === 'choose') {
+    if (!runtime.interactive)
+      usage(
+        'init',
+        'Choose explicitly: --agent codex, --agent claude or --agent pi. Interactive selection requires a terminal.',
+      )
+    runtime.writeNotice(
+      'Choose your native Agent client. This writes ordinary project files only; installation, authentication and grant approval remain separate.\n',
+    )
+    const answer = (
+      await runtime.answer('Client [codex / claude / pi; empty cancels]: ', runtime.signal)
+    ).trim()
+    runtime.signal?.throwIfAborted()
+    if (answer === '') {
+      runtime.writeOutput('Initialization cancelled. No files were created.\n')
+      return 0
+    }
+    if (!['codex', 'claude', 'pi'].includes(answer))
+      usage('init', 'Choose codex, claude or pi; no files were created.')
+    agent = answer as ProjectInitAgent
+  }
   try {
-    await createProject(resolve(runtime.currentDirectory, destination), undefined, bare)
+    runtime.signal?.throwIfAborted()
+    await createProject(resolve(runtime.currentDirectory, destination), undefined, bare, agent)
     runtime.writeOutput(
-      bare
-        ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`
-        : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
+      agent !== undefined
+        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then run jig review --allow-resolution-network.\n\nNo client installed, credentials copied or execution approved.\n`
+        : bare
+          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`
+          : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
     )
     return 0
   } catch (error) {

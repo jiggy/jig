@@ -51,6 +51,19 @@ Binding slot can choose another matching implementation. See
 
 ## Local clients
 
+For a new project, choose your installed client while creating its ordinary files:
+
+```sh
+jig init my-project --agent codex
+```
+
+Replace `codex` with `claude` or `pi`, or use `--agent` without a value for an
+interactive choice. Open the generated README for authentication prerequisites,
+review and the first Run. Initialization writes the dependency and Binding shown
+below; it does not install a client or approve its grant. The generated dependency
+pins the tested ACP package version; source-candidate builds still require that
+version to be published or supplied through an ordinary workspace.
+
 Declare `@jigging/agent-acp` in the project's `package.json` dependencies. Use
 `workspace:*` when it is a member of your Bun workspace; otherwise select a
 published version and retain the Bun lock. Its

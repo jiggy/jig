@@ -58,7 +58,10 @@ admitted FLOW packages.
 - Default `init` writes a greeting Flow with a string input and a world fallback; `--bare` writes only the
   skeleton. Neither installs, networks, approves, or executes. Generated
   packages use the same dependency review as consumer-authored packages. The
-  greeting names the exact tested SDK version; its regression checks the SDK
+  Optional `--agent` selection writes a declared ACP package dependency, visible
+  Binding grant and contract-keyed default. It chooses no client implicitly and
+  does not inspect installations or authentication. Generated package versions
+  are checked against their manifests. The greeting names the exact tested SDK version; its regression checks the SDK
   manifest so a moving npm tag cannot silently select a different wire contract.
 - Command help and syntax errors do not acquire execution authority. Review
   leads with complete changed policy; `--details` includes unchanged policy.
@@ -149,7 +152,7 @@ admitted FLOW packages.
 
 - Agent selection belongs to ordinary dependencies, Bindings and resource grants,
   never inferred from credentials or a preferred vendor. Selection remains
-  distinct from authority approval; no privileged Agent picker is implemented.
+  distinct from authority approval; the optional init picker only authors files.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.

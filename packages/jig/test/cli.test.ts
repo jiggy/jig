@@ -342,6 +342,147 @@ test('default init writes an ordinary editable SDK Flow without installing or ap
   }
 })
 
+test.each(['codex', 'claude', 'pi'] as const)(
+  'init selects %s through ordinary visible files only',
+  async (client) => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-'))
+    const destination = join(root, 'project')
+    let output = ''
+    try {
+      const args = ['init', 'project', '--agent', client]
+      expect(privateCliRequiresHost(args)).toBeFalse()
+      expect(
+        await main(args, {
+          currentDirectory: root,
+          host: {
+            acquire: async () => {
+              throw new Error('initialization must not acquire authority')
+            },
+          },
+          writeOutput: (text) => {
+            output += text
+          },
+        }),
+      ).toBe(0)
+      const manifest = await Bun.file(
+        new URL('../../agent-acp/package.json', import.meta.url),
+      ).json()
+      expect(await Bun.file(join(destination, 'package.json')).json()).toEqual({
+        private: true,
+        dependencies: { '@jigging/agent-acp': manifest.version },
+      })
+      expect(await Bun.file(join(destination, 'bindings/agent.ts')).text()).toContain(
+        `slots: { native: { kind: "acp", client: "${client}" } }`,
+      )
+      expect(await Bun.file(join(destination, 'jig.ts')).text()).toContain(
+        'defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }',
+      )
+      expect(await Bun.file(join(destination, 'flows/hello/FLOW.ts')).exists()).toBeTrue()
+      expect(await Bun.file(join(destination, 'README.md')).text()).toContain('--receive events')
+      for (const path of ['node_modules', 'bun.lock', '.jig', 'jig.lock'])
+        await expect(lstat(join(destination, path))).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(output).toContain(`with ${client} selected`)
+      expect(output).toContain('bindings/agent.ts')
+      expect(output).not.toContain('\u001b')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+)
+
+test('interactive Agent selection is explicit and cancellation creates nothing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-choice-'))
+  try {
+    for (const answer of ['', 'unknown', 'pi']) {
+      let output = ''
+      let error = ''
+      let prompt = ''
+      const code = await main(['init', '--bare', 'project', '--agent'], {
+        currentDirectory: root,
+        interactive: true,
+        answer: async (text) => {
+          prompt = text
+          return answer
+        },
+        writeOutput: (text) => {
+          output += text
+        },
+        writeError: (text) => {
+          error += text
+        },
+      })
+      expect(prompt).toContain('empty cancels')
+      if (answer === 'pi') {
+        expect(code).toBe(0)
+        expect(await readdir(join(root, 'project/flows'))).toEqual([])
+        expect(await Bun.file(join(root, 'project/bindings/agent.ts')).text()).toContain(
+          'client: "pi"',
+        )
+      } else {
+        expect(code).toBe(answer === '' ? 0 : 2)
+        expect(await readdir(root)).toEqual([])
+        expect(output + error).toContain(answer === '' ? 'cancelled' : 'Choose codex, claude or pi')
+      }
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('noninteractive Agent selection requires a client and aborting selection leaves no files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-abort-'))
+  try {
+    let error = ''
+    expect(
+      await main(['init', 'project', '--agent'], {
+        currentDirectory: root,
+        interactive: false,
+        writeError: (text) => {
+          error += text
+        },
+      }),
+    ).toBe(2)
+    expect(error).toContain('Choose explicitly')
+    const controller = new AbortController()
+    const code = await main(['init', 'project', '--agent'], {
+      currentDirectory: root,
+      interactive: true,
+      signal: controller.signal,
+      answer: async () => {
+        controller.abort()
+        return 'codex'
+      },
+      writeError: () => {},
+      writeOutput: () => {},
+    })
+    expect(code).not.toBe(0)
+    expect(await readdir(root)).toEqual([])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Agent initialization rolls back a failed Binding write without leaving partial selection', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-rollback-'))
+  try {
+    const fileSystem: ProjectInitFileSystem = {
+      mkdir,
+      rmdir,
+      unlink,
+      writeFile: (async (path, data, options) => {
+        if (String(path).endsWith('/bindings/agent.ts')) throw new Error('injected')
+        return writeFile(path, data, options)
+      }) as typeof writeFile,
+    }
+    await expect(
+      createProject(join(root, 'project'), fileSystem, false, 'codex'),
+    ).rejects.toMatchObject({ code: 'JIG_INIT_UNAVAILABLE' })
+    expect(await readdir(root)).toEqual([])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('inspect is read-only and host-free, with exact JSON for subprocesses', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-cli-inspect-'))
   try {

@@ -130,6 +130,14 @@ makes usable control an observable requirement;
 
 ## Implementation and review ownership
 
+`jig init <directory> --agent codex|claude|pi` optionally authors a declared
+Agent dependency, `bindings/agent.ts` with its native grant, and a contract-keyed
+default in `jig.ts`. Bare `--agent` asks for an explicit choice on a terminal;
+empty input cancels. Noninteractive use requires the client argument. Selection
+does not inspect or install a client, copy authentication, resolve dependencies,
+or approve authority. `--bare` omits the greeting, not the explicitly requested
+Agent configuration. Existing destinations are never overwritten.
+
 `jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
 current project's last locally approved snapshot. Without a target it lists
 exact approved selectors; with one it projects retained package descriptions,
