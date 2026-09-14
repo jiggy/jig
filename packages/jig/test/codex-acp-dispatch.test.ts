@@ -4,8 +4,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-for (const scenario of ['completed', 'rejected']) {
-  test(`Codex ACP makes only the requested model turn: ${scenario}`, async () => {
+for (const scenario of [
+  'completed',
+  'rejected',
+  'shutdown-fail',
+  'shutdown-signal',
+  'forced-clean',
+  'missing-executable',
+]) {
+  test(`Codex ACP accounts for requested turns and native shutdown: ${scenario}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-dispatch-'))
     const fixture = join(root, 'codex')
     const recording = join(root, 'requests.ndjson')
@@ -27,7 +34,7 @@ for (const scenario of ['completed', 'rejected']) {
         env: {
           HOME: root,
           PATH: root,
-          CODEX_PATH: fixture,
+          CODEX_PATH: scenario === 'missing-executable' ? join(root, 'missing-codex') : fixture,
           RECORD_PATH: recording,
           RECORD_SCENARIO: scenario,
         },
@@ -71,6 +78,16 @@ for (const scenario of ['completed', 'rejected']) {
       }
     }
     try {
+      if (scenario === 'missing-executable') {
+        const initialized = await request(1, 'initialize', {
+          protocolVersion: 1,
+          clientCapabilities: {},
+        })
+        expect(initialized.error).toBeDefined()
+        await child.stdin.end()
+        expect(await child.exited, await diagnostics).not.toBe(0)
+        return
+      }
       expect(
         (await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })).error,
       ).toBeUndefined()
@@ -84,15 +101,24 @@ for (const scenario of ['completed', 'rejected']) {
         sessionId,
         prompt: [{ type: 'text', text: 'Only this requested work' }],
       })
-      if (scenario === 'completed') expect(answer.result?.stopReason).toBe('end_turn')
-      else expect(answer.error).toBeDefined()
+      if (scenario === 'rejected') expect(answer.error).toBeDefined()
+      else expect(answer.result?.stopReason).toBe('end_turn')
       expect((await request(5, 'session/close', { sessionId })).error).toBeUndefined()
       await child.stdin.end()
-      expect(await child.exited, await diagnostics).toBe(0)
+      const exit = await child.exited
+      if (scenario === 'completed' || scenario === 'rejected')
+        expect(exit, await diagnostics).toBe(0)
+      else expect(exit, await diagnostics).not.toBe(0)
       const recorded = (await readFile(recording, 'utf8'))
         .trim()
         .split('\n')
         .map((line) => JSON.parse(line))
+      const nativeEnd = recorded.find((record) => record.event === 'native-stdin-end')
+      expect(nativeEnd).toBeDefined()
+      if (scenario === 'completed' || scenario === 'rejected')
+        expect(Date.now() - nativeEnd.time).toBeLessThan(1800)
+      if (scenario === 'forced-clean')
+        expect(recorded.some((record) => record.event === 'native-forced-exit-zero')).toBe(true)
       const started = recorded.filter((record) => record.method === 'turn/start')
       expect(started).toHaveLength(1)
       expect(started[0].params.model).toBe('fixture')

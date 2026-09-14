@@ -7,6 +7,15 @@ let requests = 0
 let threads = 0
 let turns = 0
 const reply = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n')
+if (process.env.RECORD_SCENARIO === 'forced-clean') {
+  process.on('SIGTERM', () => {
+    appendFileSync(
+      process.env.RECORD_PATH!,
+      JSON.stringify({ event: 'native-forced-exit-zero' }) + '\n',
+    )
+    process.exit(0)
+  })
+}
 for await (const line of createInterface({ input: process.stdin })) {
   if (line.length > 64 * 1024 || ++requests > 128) process.exit(2)
   const request = JSON.parse(line)
@@ -78,3 +87,10 @@ for await (const line of createInterface({ input: process.stdin })) {
       })
   }
 }
+appendFileSync(
+  process.env.RECORD_PATH!,
+  JSON.stringify({ event: 'native-stdin-end', time: Date.now() }) + '\n',
+)
+if (process.env.RECORD_SCENARIO === 'shutdown-fail') process.exit(23)
+if (process.env.RECORD_SCENARIO === 'shutdown-signal') process.kill(process.pid, 'SIGTERM')
+if (process.env.RECORD_SCENARIO === 'forced-clean') setInterval(() => {}, 1000)

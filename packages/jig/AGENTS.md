@@ -41,7 +41,8 @@ admitted FLOW packages.
 - `patches/` owns version-pinned third-party dependency corrections, applied by
   the root Bun `patchedDependencies` before the ordinary package build. Codex ACP
   must not generate unrequested model-based titles outside the reviewed turn
-  and model policy. Pi ACP
+  and model policy. Its adapter preserves native failure and clears shutdown
+  timers on close; forced native termination cannot become adapter success. Pi ACP
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
   when changing its patch. Each patch has a same-basename `.md` note explaining

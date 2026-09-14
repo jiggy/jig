@@ -1,7 +1,20 @@
 diff --git a/dist/index.js b/dist/index.js
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -33773,10 +33773,6 @@
+@@ -22110,6 +22110,11 @@
+   let connection = rpc.createMessageConnection(reader, writer);
+   connection.listen();
+-  codex.on("exit", (_) => {
++  codex.on("error", () => {
++    process.exitCode = process.exitCode || 1;
++    connection.dispose();
++  });
++  codex.on("exit", (code, signal) => {
++    if (code !== 0 || signal !== null) process.exitCode = process.exitCode || code || 1;
+     connection.dispose();
+   });
+   return { connection, process: codex };
+@@ -33773,10 +33778,6 @@
          agentFileChangeReportTurnId = turnCompleted.turn.id;
        }
        await clearRecoveredSessionFailure(eventHandler);
@@ -12,3 +25,23 @@ diff --git a/dist/index.js b/dist/index.js
        await this.publishFallbackSessionTitle(
          sessionState,
          this.createPromptFallbackTitle(params.prompt)
+@@ -34199,11 +34200,15 @@
+   };
+   process.stdin.on("close", () => {
+-    codexProcessState.connection.process.stdin.end();
+-    setTimeout(() => {
+-      if (!codexProcessState.connection.process.killed) {
++    const native = codexProcessState.connection.process;
++    if (native.exitCode !== null || native.signalCode !== null) return;
++    const timer = setTimeout(() => {
++      if (native.exitCode === null && native.signalCode === null) {
+         logger.log("Codex still running 2s after stdin closed; terminating process");
+-        codexProcessState.connection.process.kill();
++        process.exitCode = process.exitCode || 1;
++        native.kill();
+       }
+     }, 2e3);
++    native.once("close", () => clearTimeout(timer));
++    native.stdin.end();
+   });
+   const acpJsonStream = createJsonStream(process.stdin, process.stdout);

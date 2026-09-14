@@ -55,7 +55,9 @@ Codex client; Jig does not include the Codex executable or its credentials.
 
 Jig patches the pinned adapter to disable automatic model-based session titles.
 Requested turns keep their reviewed model and count; deterministic fallback
-titles remain. See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
+titles remain. The patch also propagates native process failure and clears the
+shutdown timer after native close. Forced termination cannot report a clean
+adapter exit. See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
 note for the correction and removal condition.
 
 Copyright 2025 JetBrains s.r.o.
