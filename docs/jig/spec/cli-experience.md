@@ -134,11 +134,15 @@ makes usable control an observable requirement;
     identify the outcome and next action from the transcript alone.
 
 Help for review, Run and inspection exposes the operator's
-`JIG_VERIFICATION=cached|strict|fast` choice and names cached as the default.
+`--verification cached|strict|fast` argument and names cached as the default.
+Precedence is argument, then `JIG_VERIFICATION`, then cached. Missing, invalid
+or repeated argument values are usage errors before host acquisition; a valid
+argument overrides even an invalid environment preference. Parse it through
+each command grammar, never by scanning values supplied to other options.
 Explain fast mode's missing installation-freshness check and initial hashing
 on cache misses; never imply that it bypasses approval or containment. Invalid
-values produce `JIG_VERIFICATION_INVALID` with accepted settings and no Flow
-started. Help and initialization remain available without valid verification
+environment values without an argument override produce `JIG_VERIFICATION_INVALID`
+with accepted settings and no Flow started. Help and initialization remain available without valid verification
 configuration. The exact guarantees belong to
 [installation verification policy](project-policy.md#installation-verification-policy).
 

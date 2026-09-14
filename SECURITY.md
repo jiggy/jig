@@ -62,8 +62,9 @@ must inspect captured behavior without importing candidate code.
 ## Supported trust boundary
 
 The operator controls installation change detection with
-`JIG_VERIFICATION=cached|strict|fast`. The default, `cached`, reuses SHA-256
-digests while the selected canonical path and filesystem identity/metadata
+`--verification cached|strict|fast` on review, Run and inspection. The argument
+overrides the `JIG_VERIFICATION` environment preference. The default, `cached`,
+reuses SHA-256 digests while the selected canonical path and filesystem identity/metadata
 match, including inode, permissions, size, and nanosecond modification/change
 times. `strict` hashes current bytes at every verification boundary and bypasses
 the cache. `fast` reuses stored digests without checking freshness; changed tool

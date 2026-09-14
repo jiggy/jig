@@ -698,9 +698,13 @@ do not introduce Flow-controlled policy or a new public timeout API.
 
 ### Installation verification policy
 
-The operator selects installation verification through
-`JIG_VERIFICATION=cached|strict|fast`, captured before project loading. Omission
-selects `cached`; any other value is a configuration error before execution.
+The operator selects installation verification with
+`--verification cached|strict|fast` on `run`, `review`, or `inspect`. The argument
+overrides `JIG_VERIFICATION`; if both are absent, the default is `cached`.
+Missing, invalid or repeated argument values are usage errors before host
+acquisition. An invalid environment value is a configuration error unless a
+valid argument overrides it. The effective policy is captured before project
+loading and preserved through delegation, file delivery and recovery.
 This is a host performance/integrity choice, never a `jig.ts`, FLOW, Binding,
 approval, or capability setting. It applies to review, Run, and environment
 inspection, including each later installed-support revalidation boundary.

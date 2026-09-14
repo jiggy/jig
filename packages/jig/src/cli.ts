@@ -49,10 +49,12 @@ import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import { createProject, ProjectInitError } from './project-init.js'
 import { schemaTypeMismatchText } from './schema/types.js'
 
-const VERIFICATION_HELP = `Startup verification (operator environment):
-  JIG_VERIFICATION=cached  Reuse installation hashes while file metadata matches (default)
-  JIG_VERIFICATION=strict  Hash installed tool bytes at every verification boundary
-  JIG_VERIFICATION=fast    Reuse installation hashes without checking freshness
+const VERIFICATION_HELP = `Startup verification:
+  --verification MODE  Select cached, strict, or fast for this command
+  cached  Reuse installation hashes while file metadata matches (default)
+  strict  Hash installed tool bytes at every verification boundary
+  fast    Reuse installation hashes without checking freshness
+The argument overrides JIG_VERIFICATION; when neither is set, cached is used.
 Cache misses require hashing. Fast can miss changed tool bytes; approval and
 sandbox requirements still apply. See https://jig.md/guide/#startup-verification.`
 
@@ -297,6 +299,21 @@ export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   return false
 }
 
+/** Use the command grammar, never scan option values as though they were flags. */
+export function privateCliVerification(arguments_: readonly string[]): string | undefined {
+  if (isHelpRequest(arguments_)) return undefined
+  if (arguments_[0] === 'review') return parseReview(arguments_, '.').verification
+  if (arguments_[0] === 'run') return parseRun(arguments_).verification
+  if (arguments_[0] === 'inspect') return parseInspect(arguments_).verification
+  return undefined
+}
+
+function parseVerification(command: 'run' | 'review' | 'inspect', value?: string): string {
+  if (value !== 'cached' && value !== 'strict' && value !== 'fast')
+    usage(command, '--verification requires cached, strict, or fast.')
+  return value
+}
+
 function isHelpRequest(arguments_: readonly string[]): boolean {
   const help = arguments_.at(-1) === '--help' || arguments_.at(-1) === '-h'
   return (
@@ -306,10 +323,17 @@ function isHelpRequest(arguments_: readonly string[]): boolean {
   )
 }
 
-async function executeInspect(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+function parseInspect(arguments_: readonly string[]) {
   let selector: string | undefined
   let json = false
-  for (const value of arguments_.slice(1)) {
+  let verification: string | undefined
+  for (let index = 1; index < arguments_.length; index++) {
+    const value = arguments_[index]!
+    if (value === '--verification') {
+      if (verification !== undefined) usage('inspect', '--verification may only be supplied once.')
+      verification = parseVerification('inspect', arguments_[++index])
+      continue
+    }
     if (value === '--json' && !json) json = true
     else if (!value.startsWith('-') && selector === undefined) {
       // Reuse the exact selector grammar without resolving or executing it.
@@ -321,6 +345,11 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       selector = value
     } else usage('inspect', 'Specify at most one target and one --json option.')
   }
+  return { selector, json, verification }
+}
+
+async function executeInspect(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  const { selector, json } = parseInspect(arguments_)
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
@@ -796,12 +825,20 @@ function parseReview(
   readonly yes: boolean
   readonly details: boolean
   readonly allowResolutionNetwork: boolean
+  readonly verification: string | undefined
 } {
   let project: string | undefined
   let yes = false
   let allowResolutionNetwork = false
   let details = false
-  for (const argument of arguments_.slice(1)) {
+  let verification: string | undefined
+  for (let index = 1; index < arguments_.length; index++) {
+    const argument = arguments_[index]!
+    if (argument === '--verification') {
+      if (verification !== undefined) usage('review', '--verification may only be supplied once.')
+      verification = parseVerification('review', arguments_[++index])
+      continue
+    }
     if (argument === '--yes' && !yes) yes = true
     else if (argument === '--details' && !details) details = true
     else if (argument === '--allow-resolution-network' && !allowResolutionNetwork)
@@ -815,7 +852,13 @@ function parseReview(
           : 'Specify only one project directory.',
       )
   }
-  return { project: project ?? currentDirectory, yes, details, allowResolutionNetwork }
+  return {
+    project: project ?? currentDirectory,
+    yes,
+    details,
+    allowResolutionNetwork,
+    verification,
+  }
 }
 
 function parseRun(arguments_: readonly string[]): {
@@ -827,6 +870,7 @@ function parseRun(arguments_: readonly string[]): {
   readonly timeoutMs: number
   readonly receive: readonly string[]
   readonly json: boolean
+  readonly verification: string | undefined
 } {
   if (arguments_.length < 2)
     usage('run', 'Choose a target, for example flow:flows/hello or binding:repair.')
@@ -839,6 +883,7 @@ function parseRun(arguments_: readonly string[]): {
   let json = false
   let sawInput = false
   let sawTimeout = false
+  let verification: string | undefined
   const receive: string[] = []
   for (let index = 2; index < arguments_.length; index += 2) {
     const option = arguments_[index]
@@ -849,9 +894,24 @@ function parseRun(arguments_: readonly string[]): {
       continue
     }
     const value = arguments_[index + 1]
-    if (!['--input', '--attach', '--select', '--out', '--receive', '--timeout'].includes(option!))
+    if (
+      ![
+        '--input',
+        '--attach',
+        '--select',
+        '--out',
+        '--receive',
+        '--timeout',
+        '--verification',
+      ].includes(option!)
+    )
       usage('run', `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.`)
     if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
+    if (option === '--verification') {
+      if (verification !== undefined) usage('run', '--verification may only be supplied once.')
+      verification = parseVerification('run', value)
+      continue
+    }
     if (option === '--receive') {
       if (
         !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ||
@@ -934,6 +994,7 @@ function parseRun(arguments_: readonly string[]): {
     timeoutMs,
     receive,
     json,
+    verification,
     attachments: [...attachments].map(([name, directory]) => ({
       name,
       directory,

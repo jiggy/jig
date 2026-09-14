@@ -135,11 +135,8 @@ lifecycle guarantees.
 
 Jig defaults to **cached** verification to avoid repeatedly hashing large
 installed tools. It reuses hashes while file identity and metadata match, and
-rehashes when they change. Choose the policy in your shell:
-
-```sh
-export JIG_VERIFICATION=cached
-```
+rehashes when they change. Use `--verification cached|strict|fast` to choose
+the policy for a command.
 
 | Mode | Installation check | Tradeoff |
 | --- | --- | --- |
@@ -147,12 +144,18 @@ export JIG_VERIFICATION=cached
 | `strict` | Hash current tool bytes at every verification point | Stronger byte verification, with more startup work |
 | `fast` | Reuse stored hashes without checking freshness | Changed tool bytes at the same path can go undetected |
 
-For a single command, prefix it with the setting:
+Choose a mode explicitly:
 
 ```sh
-JIG_VERIFICATION=fast jig run flow:flows/hello --input '"Ada"'
-JIG_VERIFICATION=strict jig review
+jig run flow:flows/hello --input '"Ada"' --verification fast
+jig review --verification strict
+jig inspect --verification cached
 ```
+
+The argument takes precedence over `JIG_VERIFICATION`. For a persistent shell
+or CI preference, use `export JIG_VERIFICATION=cached` (or `strict` or `fast`).
+When neither is supplied, Jig uses cached. Missing, invalid or repeated
+`--verification` values are usage errors.
 
 Fast mode suits operators who prioritize startup performance and trust their
 installation to remain suitable. All modes hash files on a cache miss, so the

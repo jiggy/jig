@@ -31,6 +31,7 @@ import {
   type PrivateCliOptions,
   privateCliCommandLifetimeMs,
   privateCliRequiresHost,
+  privateCliVerification,
 } from '../src/cli.js'
 import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
 import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
@@ -411,9 +412,8 @@ describe('finite Jig project commands', () => {
         expect(invocation.output).toContain('--bare')
       } else if (arguments_[0] !== 'inspect') expect(invocation.output).toContain('jig --version')
       if (arguments_[0] !== 'init') {
-        expect(invocation.output).toContain('JIG_VERIFICATION=cached')
-        expect(invocation.output).toContain('JIG_VERIFICATION=strict')
-        expect(invocation.output).toContain('JIG_VERIFICATION=fast')
+        expect(invocation.output).toContain('--verification MODE')
+        expect(invocation.output).toContain('argument overrides JIG_VERIFICATION')
         expect(invocation.output).toContain('Fast can miss changed tool bytes')
       }
       expect(invocation.output).not.toContain('package check')
@@ -427,6 +427,47 @@ describe('finite Jig project commands', () => {
     const superseded = commandInvocation(unusedHost())
     expect(await main(['check'], superseded.options)).toBe(2)
     expect(superseded.error).toContain('Usage:')
+  })
+
+  test('verification uses command grammar and rejects invalid selections before acquiring a host', async () => {
+    for (const prefix of [['run', 'flow:flows/hello'], ['review'], ['inspect']]) {
+      for (const mode of ['cached', 'strict', 'fast']) {
+        const args = [...prefix, '--verification', mode]
+        expect(privateCliVerification(args)).toBe(mode)
+        expect(privateCliRequiresHost(args)).toBe(prefix[0] !== 'inspect')
+      }
+      for (const suffix of [
+        ['--verification'],
+        ['--verification', 'private-invalid-value'],
+        ['--verification', 'fast', '--verification', 'strict'],
+      ]) {
+        const invocation = commandInvocation(unusedHost())
+        expect(await main([...prefix, ...suffix], invocation.options)).toBe(2)
+        expect(invocation.error).toContain('JIG_USAGE')
+        expect(invocation.error).toContain('--verification')
+        expect(invocation.error).not.toContain('private-invalid-value')
+        expect(privateCliRequiresHost([...prefix, ...suffix])).toBe(false)
+      }
+    }
+    expect(privateCliVerification(['review', '--verification', 'fast', './project', '--yes'])).toBe(
+      'fast',
+    )
+    expect(
+      privateCliVerification(['inspect', '--verification', 'strict', 'flow:flows/hello', '--json']),
+    ).toBe('strict')
+    expect(
+      privateCliVerification(['run', 'flow:flows/hello', '--input', '"--verification"']),
+    ).toBeUndefined()
+    expect(
+      privateCliCommandLifetimeMs([
+        'run',
+        'flow:flows/hello',
+        '--verification',
+        'fast',
+        '--timeout',
+        '2m',
+      ]),
+    ).toBe(privateCliCommandLifetimeMs(['run', 'flow:flows/hello', '--timeout', '2m']))
   })
 
   test('version reports the package version without host acquisition', async () => {

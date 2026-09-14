@@ -27,7 +27,8 @@ descriptors.
   allowlist, fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.
 - `project-policy.md` owns installation verification modes and their integrity
-  limits. Cached is the installed default; fast may miss changed tool bytes.
+  limits. `--verification` overrides `JIG_VERIFICATION`; cached is the installed
+  default. Fast may miss changed tool bytes.
   Agent and CLI contracts reference that policy instead of promising unconditional
   fresh byte checks. FLOW schemas and approval authority remain independent.
 

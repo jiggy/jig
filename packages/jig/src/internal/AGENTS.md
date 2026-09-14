@@ -233,7 +233,9 @@ child calls, project commands, and Agent providers.
   consumer projects for before/after measurements, never alter a user's approval
   or replay their work to benchmark startup.
 - `installation-verification.ts` owns command-scoped operator policy and the
-  bounded installation cache. `JIG_VERIFICATION` defaults to cached; strict
+  bounded installation cache. The installed CLI resolves `--verification` over
+  `JIG_VERIFICATION`, falling back to cached, before opening the command scope.
+  Original arguments preserve the selection through delegation and recovery. Strict
   freshly hashes at every boundary, and fast accepts cached path identities
   without freshness checks. Cached compares inode/device, ownership/mode/link
   count, size and nanosecond mtime/ctime on every lookup. Hash misses and check

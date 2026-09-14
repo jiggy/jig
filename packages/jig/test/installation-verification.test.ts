@@ -290,7 +290,7 @@ test('installed invalid verification is actionable and safe; help remains usable
     ])
     const help = args.includes('--help') || args.includes('-h')
     expect(code).toBe(help ? 0 : 2)
-    if (help) expect(stdout).toContain('JIG_VERIFICATION=fast')
+    if (help) expect(stdout).toContain('--verification MODE')
     else {
       expect(stdout).toBe('')
       expect(stderr).toContain('JIG_VERIFICATION_INVALID')
@@ -300,4 +300,59 @@ test('installed invalid verification is actionable and safe; help remains usable
     expect(stdout + stderr).not.toContain('private-untrusted-value')
     expect(stdout + stderr).not.toContain('\u001b')
   }
+})
+
+test('installed verification argument overrides even an invalid environment preference', async () => {
+  await fixture(async (f) => {
+    for (const mode of ['cached', 'strict', 'fast']) {
+      const child = Bun.spawn(
+        [
+          join(installedBunLocation.releaseRoot, 'bin/jig'),
+          'inspect',
+          '--json',
+          '--verification',
+          mode,
+        ],
+        {
+          cwd: f.project,
+          env: { ...process.env, JIG_VERIFICATION: 'invalid-environment', XDG_CACHE_HOME: f.cache },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code).toBe(0)
+      expect(JSON.parse(stdout).state).toBe('unreviewed')
+      expect(stderr).not.toContain('JIG_VERIFICATION_INVALID')
+      expect(await Bun.file(f.file).exists()).toBe(false)
+    }
+    for (const command of ['run', 'review', 'inspect']) {
+      const child = Bun.spawn(
+        [
+          join(installedBunLocation.releaseRoot, 'bin/jig'),
+          command,
+          ...(command === 'run' ? ['flow:flows/hello'] : []),
+          '--verification',
+          'invalid-argument',
+        ],
+        {
+          cwd: f.project,
+          env: { ...process.env, JIG_VERIFICATION: 'invalid-environment' },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const stderr = await new Response(child.stderr).text()
+      expect(await child.exited).toBe(2)
+      expect(stderr).toContain('JIG_USAGE')
+      expect(stderr).not.toContain('JIG_VERIFICATION_INVALID')
+      expect(stderr).not.toContain('invalid-argument')
+    }
+  })
 })
