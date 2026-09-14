@@ -1313,11 +1313,11 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED:
         'resolved dependencies are unsupported; requests may already have occurred; use integrity-pinned default npm registry dependencies',
       PACKAGE_BUN_SOURCE_UNSUPPORTED:
-        'use default npm registry dependencies or declared workspace members; patches, overrides, and other dependency sources are unsupported',
+        'use default npm registry dependencies or declared workspace members; patches require workspace-root declarations and captured .patch files; overrides and other dependency sources are unsupported',
       PACKAGE_BUN_WORKSPACE_MISSING:
         'declare the Flow and each workspace dependency in an ancestor package.json workspaces list; workspace dependencies never fall back to npm',
       PACKAGE_BUN_WORKSPACE_INVALID:
-        'check workspace membership, unique package names, safe relative paths, and the root lock; links, local member locks, and dependency overrides are unsupported',
+        'check workspace membership, unique package names, safe relative paths, root lock, and declared patch files (at most 1 MiB each); links, local member locks, and dependency overrides are unsupported',
       PACKAGE_BUN_WORKSPACE_VERSION:
         'a workspace package version does not satisfy its workspace: declaration; correct the declaration or local package version',
       PACKAGE_BUN_WORKSPACE_BUILD_REQUIRED:

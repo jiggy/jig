@@ -31,8 +31,11 @@ Failed or declined review cannot undo requests already made. The permission
 lasts only for that review; `--yes` is separate Run-admission approval. Known
 unsupported root declarations are rejected first; the resolved graph must
 pass the usual source/integrity policy before frozen installation and
-admission. Bun sees only manifest and lock during installation, not other
-authored configuration or foreign lockfiles. An ordinary API-backed Agent
+admission. Bun sees only captured manifests, the lock, and bounded declared
+workspace-root patch files during installation, not other authored configuration
+or foreign lockfiles. Patch declarations and bytes are captured, checked against
+the lock, and retained with the prepared installation; Bun owns their application
+inside the same script-disabled scope. An ordinary API-backed Agent
 prepares its request as data and uses an exact reviewed HTTP grant; the
 separate HTTP owner holds the credential and network authority. Native Codex,
 Claude Code, or Pi clients inherit networking only inside their admitted ACP

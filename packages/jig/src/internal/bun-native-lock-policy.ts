@@ -8,7 +8,7 @@ export function requirePrivateBunResolutionManifest(
     manifest === undefined ||
     [
       ...(workspace === 'root' ? [] : ['workspaces']),
-      'patchedDependencies',
+      ...(workspace === 'root' ? [] : ['patchedDependencies']),
       'overrides',
       'resolutions',
       'catalog',
@@ -22,6 +22,27 @@ export function requirePrivateBunResolutionManifest(
   )
     throw new TypeError('workspace members require valid package names')
   requireRegistryDependencyMaps(manifest, workspace !== undefined)
+  if (workspace === 'root') requirePrivateBunPatches(manifest.patchedDependencies)
+}
+
+/** Native workspace-root inputs, never executable configuration or live install paths. */
+export function requirePrivateBunPatches(value: unknown): Readonly<Record<string, string>> {
+  if (value === undefined) return Object.freeze({})
+  const patches = ordinaryRecord(value)
+  if (patches === undefined || Object.keys(patches).length > 256)
+    throw new TypeError('unsupported Bun patch declarations')
+  for (const [target, path] of Object.entries(patches)) {
+    if (
+      !isExactRegistryResolution(target) ||
+      typeof path !== 'string' ||
+      Buffer.byteLength(path) > 1024 ||
+      !path.endsWith('.patch') ||
+      /[\\\x00-\x1f\x7f]/.test(path) ||
+      path.split('/').some((part) => ['', '.', '..', '.git', '.jig', 'node_modules'].includes(part))
+    )
+      throw new TypeError('unsupported Bun patch declarations')
+  }
+  return Object.freeze({ ...patches }) as Readonly<Record<string, string>>
 }
 
 export function requirePrivateBunLockPolicy(value: unknown, members?: ReadonlySet<string>): void {
@@ -37,10 +58,11 @@ export function requirePrivateBunLockPolicy(value: unknown, members?: ReadonlySe
     (members === undefined
       ? Object.keys(workspaces).length !== 1
       : Object.keys(workspaces).some((path) => path !== '' && !members.has(path))) ||
-    lock.patchedDependencies !== undefined
+    (members === undefined && lock.patchedDependencies !== undefined)
   ) {
     throw new TypeError('unsupported Bun lock source')
   }
+  requirePrivateBunPatches(lock.patchedDependencies)
   for (const workspace of Object.values(workspaces)) {
     const record = ordinaryRecord(workspace)
     if (record === undefined) throw new TypeError('unsupported Bun workspace lock')

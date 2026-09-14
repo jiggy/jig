@@ -1725,7 +1725,7 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(invocation.output).toBe('')
     expect(invocation.error).toBe(
-      'Review could not finish\n\n  Location: "flows/dependent/bun.lock"\n\n  Next step\n    use default npm registry dependencies or declared workspace members; patches, overrides, and other dependency sources are unsupported\n\n  Diagnostic code: PACKAGE_BUN_SOURCE_UNSUPPORTED\n  Category: UNAVAILABLE\n',
+      'Review could not finish\n\n  Location: "flows/dependent/bun.lock"\n\n  Next step\n    use default npm registry dependencies or declared workspace members; patches require workspace-root declarations and captured .patch files; overrides and other dependency sources are unsupported\n\n  Diagnostic code: PACKAGE_BUN_SOURCE_UNSUPPORTED\n  Category: UNAVAILABLE\n',
     )
     expect(invocation.error).not.toContain('private preparation message')
     expect(invocation.error).not.toContain('/private/path')

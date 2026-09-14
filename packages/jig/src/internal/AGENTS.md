@@ -104,7 +104,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and exact setup/input handoffs; refusal to enforce the restriction fails
   closed. Do not mutate the coordinator's descriptor table or leave host
   descriptors accessible through a sandbox-visible trusted parent.
-- Stage only captured manifests and the supplied root lock for Bun installation;
+- Stage only captured manifests, the supplied root lock, and root-declared
+  bounded `.patch` files for Bun installation. Patch paths are descriptor-captured
+  without links, match the locked declarations, and remain exact retained inputs;
+  Bun applies them, not a Jig patch engine. Recheck bytes and preserve source identity;
   materialize other authored files afterward. They must not trigger config
   loading, preloads, or foreign-lock migration. Supplied locks remain frozen.
   Missing-lock resolution requires explicit trusted per-review permission,

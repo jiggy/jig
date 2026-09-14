@@ -97,10 +97,16 @@ library changes the proposed execution revision, even if its Flow is unchanged.
 Existing admissions continue using their original bytes. A missing root lock
 requires the same explicit resolution permission; stale locks require updating.
 
+Root `patchedDependencies` is supported for exact package versions and bounded
+root-relative `.patch` files. Jig captures those files, applies them through
+Bun during preparation, and retains their exact bytes with the installation.
+Changing a patch requires review; existing admissions retain the previous bytes.
+
 Workspace members must have unique names and safe relative paths. Local member
-locks, filesystem links, dependency overrides, patches, and catalogs are not
-supported. Missing members or build outputs fail explicitly, without falling
-back to npm. This is review-time capture, not live workspace access during a Run.
+locks, filesystem links, dependency overrides, member-level patches, and catalogs
+are not supported. Missing members or build outputs fail explicitly, without
+falling back to npm. This is review-time capture, not live workspace access
+during a Run.
 Preparation uses Jig's pinned Bun hoisted linker; it does not import the local
 installation or provide an isolated-linker mode. Module-relative files stay
 beside their modules. A Run's working directory remains disposable scratch.

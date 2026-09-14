@@ -115,6 +115,60 @@ test('workspace capture follows declared transitive members, not installation li
   }
 })
 
+test('workspace patches are immutable captured inputs, including patches inside selected members', async () => {
+  const value = await fixture()
+  try {
+    const path = 'libs/leaf/fix.patch'
+    await value.put('package.json', {
+      private: true,
+      workspaces: ['apps/*/flows/*', 'libs/*'],
+      patchedDependencies: { 'value@1.0.0': path },
+    })
+    await value.put(path, 'original patch bytes')
+    const first = (await value.capture())!
+    try {
+      await value.put(path, 'changed patch bytes')
+      expect(Buffer.from(await first.captured.read(path)).toString()).toBe('original patch bytes')
+      const second = (await value.capture())!
+      try {
+        expect(first.captured.digest).not.toBe(second.captured.digest)
+      } finally {
+        await second.captured.dispose()
+      }
+    } finally {
+      await first.captured.dispose()
+    }
+  } finally {
+    await value.dispose()
+  }
+})
+
+test.each(['missing', 'link', 'directory-link', 'oversized', 'escape'] as const)(
+  'workspace patch capture rejects %s',
+  async (mode) => {
+    const value = await fixture()
+    try {
+      await value.put('package.json', {
+        private: true,
+        workspaces: ['apps/*/flows/*', 'libs/*'],
+        patchedDependencies: {
+          'value@1.0.0': mode === 'escape' ? '../outside.patch' : 'patches/fix.patch',
+        },
+      })
+      await mkdir(join(value.root, 'patches'))
+      if (mode === 'link') await symlink('/etc/passwd', join(value.root, 'patches/fix.patch'))
+      if (mode === 'directory-link') {
+        await rm(join(value.root, 'patches'), { recursive: true })
+        await symlink('/etc', join(value.root, 'patches'))
+      }
+      if (mode === 'oversized') await value.put('patches/fix.patch', 'x'.repeat(1024 * 1024 + 1))
+      await expect(value.capture()).rejects.toMatchObject({ code: 'PACKAGE_BUN_WORKSPACE_INVALID' })
+    } finally {
+      await value.dispose()
+    }
+  },
+)
+
 test.each(['missing', 'version', 'link', 'export', 'duplicate', 'escape', 'limit'] as const)(
   'workspace capture rejects %s without registry fallback',
   async (mode) => {
@@ -227,12 +281,44 @@ test('workspace lock resolution cannot introduce undeclared paths or names', () 
 
 // Real pinned Bun worker, with only /work relocated into a disposable fixture.
 // These tests prove capture/install semantics, not the containment envelope.
-test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as const)(
+test.each([
+  'unlocked',
+  'locked',
+  'stale',
+  'topology',
+  'versions',
+  'large',
+  'patched',
+  'patch-stale',
+  'patch-missing',
+  'patch-invalid',
+] as const)(
   'Bun prepares a self-contained workspace tree: %s',
   async (mode) => {
-    const value = await fixture(mode === 'versions')
+    const patchMode = mode === 'patched' || mode.startsWith('patch-')
+    const value = await fixture(mode === 'versions' || patchMode)
     let captured: Awaited<ReturnType<typeof value.capture>>
     try {
+      if (patchMode) {
+        await value.put('package.json', {
+          private: true,
+          workspaces: ['apps/*/flows/*', 'libs/*'],
+          dependencies: { semver: '6.3.1' },
+          patchedDependencies: { 'semver@6.3.1': 'patches/semver.patch' },
+        })
+        await value.put(
+          'patches/semver.patch',
+          [
+            'diff --git a/jig-patch.js b/jig-patch.js',
+            'new file mode 100644',
+            '--- /dev/null',
+            '+++ b/jig-patch.js',
+            '@@ -0,0 +1 @@',
+            '+module.exports = "patched dependency";',
+            '',
+          ].join('\n'),
+        )
+      }
       if (mode === 'large') await value.put('libs/leaf/large.txt', 'x'.repeat(2 * 1024 * 1024))
       if (mode === 'topology') {
         await value.put('libs/helper/package.json', {
@@ -294,6 +380,28 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
           type: 'module',
           exports: './index.js',
         })
+      if (mode === 'patch-stale') {
+        const manifest = JSON.parse(await readFile(join(value.root, 'package.json'), 'utf8'))
+        manifest.patchedDependencies['semver@6.3.1'] = 'patches/other.patch'
+        await value.put('package.json', manifest)
+        await value.put(
+          'patches/other.patch',
+          await readFile(join(value.root, 'patches/semver.patch'), 'utf8'),
+        )
+      }
+      if (mode === 'patch-invalid')
+        await value.put(
+          'patches/semver.patch',
+          [
+            'diff --git a/does-not-exist.js b/does-not-exist.js',
+            '--- a/does-not-exist.js',
+            '+++ b/does-not-exist.js',
+            '@@ -1 +1 @@',
+            '-This source line does not exist in semver.',
+            '+replacement',
+            '',
+          ].join('\n'),
+        )
       captured = await value.capture()
       expect(captured).toBeDefined()
       const work = join(value.root, 'worker-work'),
@@ -306,10 +414,12 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
       await writeFile(worker, (await build.outputs[0]!.text()).replaceAll('/work', work))
       await mkdir(work)
       const files = await Promise.all(
-        captured!.captured.files.map(async ({ path }) => ({
-          path,
-          content: Buffer.from(await captured!.captured.read(path)).toString('base64'),
-        })),
+        captured!.captured.files
+          .filter(({ path }) => mode !== 'patch-missing' || !path.endsWith('.patch'))
+          .map(async ({ path }) => ({
+            path,
+            content: Buffer.from(await captured!.captured.read(path)).toString('base64'),
+          })),
       )
       const child = Bun.spawn(
         [
@@ -333,13 +443,30 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
       ])
       expect(stderr).toBe('')
       const result = JSON.parse(stdout)
-      if (mode === 'stale') {
+      if (mode === 'patch-invalid') {
         expect(exit).toBe(1)
-        expect(result.code).toBe('PACKAGE_BUN_LOCK_STALE')
+        expect(result.type).toBe('failure')
+        expect(result.code).toBe('PACKAGE_BUN_PREPARATION_FAILED')
+        return
+      }
+      if (mode === 'stale' || mode === 'patch-stale' || mode === 'patch-missing') {
+        expect(exit).toBe(1)
+        expect(result.code).toBe(
+          mode === 'patch-missing' ? 'PACKAGE_BUN_SOURCE_UNSUPPORTED' : 'PACKAGE_BUN_LOCK_STALE',
+        )
         return
       }
       expect(exit, stdout).toBe(0)
       expect(result.type).toBe('prepared')
+      if (mode === 'patched') {
+        for (const suffix of ['patches/semver.patch', 'node_modules/semver/jig-patch.js']) {
+          const file = result.files.find(
+            (file: { path: string }) => file.path === suffix || file.path.endsWith(`/${suffix}`),
+          )
+          expect(file, suffix).toBeDefined()
+          expect(Buffer.from(file.content, 'base64').toString()).toContain('patched dependency')
+        }
+      }
       const prepared = join(value.root, 'prepared')
       for (const file of result.files) {
         expect(file.path).not.toContain('unrelated')
@@ -378,7 +505,7 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
       ])
       expect(runExit, error).toBe(0)
       expect(output).toBe(
-        mode === 'versions'
+        mode === 'versions' || mode === 'patched'
           ? '["6.3.1","7.7.2"]\n'
           : mode === 'topology'
             ? '{"same":true,"cyclic":true,"asset":"retained resource"}\n'

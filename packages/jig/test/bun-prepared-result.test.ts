@@ -27,6 +27,39 @@ const workspaceLayout: PrivateBunExecutionLayout = {
 }
 
 describe('private prepared Bun result decoder', () => {
+  test.each(['exact', 'missing', 'changed'] as const)(
+    'requires exact retained workspace patches: %s',
+    async (mode) => {
+      const path = 'patches/dependency.patch'
+      const inputs = {
+        ...workspaceSource,
+        'package.json': JSON.stringify({
+          workspaces: ['flows/*', 'libs/*'],
+          patchedDependencies: { 'dependency@1.0.0': path },
+        }),
+        [path]: 'captured patch bytes',
+      }
+      const captured = await source(inputs)
+      const output: Record<string, string> = Object.fromEntries(
+        Object.entries(inputs).filter(([key]) => !key.startsWith('libs/unselected/')),
+      )
+      if (mode === 'missing') delete output[path]
+      if (mode === 'changed') output[path] = 'changed patch bytes'
+      try {
+        const result = decodePrivateBunPreparedResult(records(output), workspaceLayout, {
+          captured,
+          workspace,
+        })
+        if (mode === 'exact') {
+          const prepared = await result
+          await prepared.captured.dispose()
+        } else await expect(result).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
+      } finally {
+        await captured.dispose()
+      }
+    },
+  )
+
   test('retains exact ordinary source and installed bytes with an empty layout', async () => {
     const captured = await source(ordinarySource)
     try {

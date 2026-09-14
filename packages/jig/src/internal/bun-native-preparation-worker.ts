@@ -1,16 +1,9 @@
-import {
-  capturePrivateBunPreparedTree,
-  requirePath,
-  WorkerFailure,
-  type SourceFile,
-  type Workspace,
-} from './bun-prepared-capture.js'
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-
 import {
   requirePrivateBunLockPolicy,
+  requirePrivateBunPatches,
   requirePrivateBunResolutionManifest,
 } from './bun-native-lock-policy.js'
 import {
@@ -20,6 +13,13 @@ import {
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   privateBunMessageFits,
 } from './bun-native-preparation-protocol.js'
+import {
+  capturePrivateBunPreparedTree,
+  requirePath,
+  type SourceFile,
+  WorkerFailure,
+  type Workspace,
+} from './bun-prepared-capture.js'
 
 const PACKAGE_ROOT = '/work/package'
 const CACHE_ROOT = '/work/cache'
@@ -48,15 +48,49 @@ try {
     'bun.lock',
     ...(workspace?.members.map((path) => `${path}/package.json`) ?? []),
   ])
+  // Patch paths come only from the captured workspace root manifest. Validate
+  // every native manifest even with a supplied lock, before any installer call.
+  let patches: Readonly<Record<string, string>> = {}
+  try {
+    for (const path of [
+      'package.json',
+      ...(workspace?.members.map((path) => `${path}/package.json`) ?? []),
+    ]) {
+      const file = source.files.find((file) => file.path === path)!
+      const manifest = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(decodeBase64(file.content, path)),
+      )
+      requirePrivateBunResolutionManifest(
+        manifest,
+        workspace === undefined ? undefined : path === 'package.json' ? 'root' : 'member',
+      )
+      if (path === 'package.json') patches = requirePrivateBunPatches(manifest.patchedDependencies)
+    }
+    for (const path of Object.values(patches)) {
+      const file = source.files.find((file) => file.path === path)
+      if (file === undefined || decodeBase64(file.content, path).byteLength > 1024 * 1024)
+        throw new TypeError('missing or oversized captured patch')
+      inputPaths.add(path)
+    }
+  } catch {
+    throw new WorkerFailure(
+      'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+      'native manifests or declared patch inputs are unsupported or incomplete',
+    )
+  }
   const inputs = source.files.filter(({ path }) => inputPaths.has(path))
   await materializeSource(inputs)
   const resolving = !inputs.some(({ path }) => path === 'bun.lock')
   if (resolving) await resolveMissingLock()
-  await requireSupportedLock(resolving)
+  await requireSupportedLock(resolving, patches)
   await install()
   await materializeSource(source.files.filter(({ path }) => !inputPaths.has(path)))
   await verifySource(source.files)
-  const prepared = await capturePrivateBunPreparedTree(PACKAGE_ROOT, workspace)
+  const prepared = await capturePrivateBunPreparedTree(
+    PACKAGE_ROOT,
+    workspace,
+    Object.values(patches),
+  )
   await sendPrepared(prepared)
   await outputQueue
 } catch (error) {
@@ -97,7 +131,10 @@ async function verifySource(files: readonly SourceFile[]): Promise<void> {
   }
 }
 
-async function requireSupportedLock(resolved: boolean): Promise<void> {
+async function requireSupportedLock(
+  resolved: boolean,
+  patches: Readonly<Record<string, string>>,
+): Promise<void> {
   const lockCopy = '/work/bun-lock.jsonc'
   await copyFile(join(PACKAGE_ROOT, 'bun.lock'), lockCopy)
   let value: unknown
@@ -141,6 +178,15 @@ async function requireSupportedLock(resolved: boolean): Promise<void> {
     unsupportedSource()
   }
   if (workspace !== undefined) {
+    if (
+      canonical(
+        requirePrivateBunPatches((value as Record<string, unknown>).patchedDependencies),
+      ) !== canonical(patches)
+    )
+      throw new WorkerFailure(
+        'PACKAGE_BUN_LOCK_STALE',
+        'workspace patch declarations and bun.lock disagree; update the workspace lock explicitly',
+      )
     const locked = (value as { workspaces: Record<string, Record<string, unknown>> }).workspaces
     for (const path of ['', ...workspace.members]) {
       const manifest = JSON.parse(await readFile(join(PACKAGE_ROOT, path, 'package.json'), 'utf8'))
@@ -175,22 +221,6 @@ function canonical(value: unknown): string {
 async function resolveMissingLock(): Promise<void> {
   if (!allowResolutionNetwork)
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'resolution permission is missing')
-  try {
-    requirePrivateBunResolutionManifest(
-      JSON.parse(await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8')),
-      workspace === undefined ? undefined : 'root',
-    )
-    for (const member of workspace?.members ?? [])
-      requirePrivateBunResolutionManifest(
-        JSON.parse(await readFile(join(PACKAGE_ROOT, member, 'package.json'), 'utf8')),
-        'member',
-      )
-  } catch {
-    throw new WorkerFailure(
-      'PACKAGE_BUN_SOURCE_UNSUPPORTED',
-      'package.json contains unsupported resolution inputs',
-    )
-  }
   const result = await runChild(
     [
       '--no-env-file',

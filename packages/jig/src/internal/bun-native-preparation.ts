@@ -10,12 +10,6 @@ import {
   createCapturedPackage,
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
-import {
-  assertPrivateBunExecutionLayoutFiles,
-  normalizePrivateBunExecutionLayout,
-  privateBunAliasPackageName,
-  type PrivateBunExecutionLayout,
-} from './bun-execution-layout.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
 import {
   type PrivateBunPreparationOwnerFact,
@@ -23,6 +17,13 @@ import {
   readPrivateBunPreparationOwner,
   replacePrivateBunPreparationOwner,
 } from './activation-admission-store.js'
+import {
+  assertPrivateBunExecutionLayoutFiles,
+  normalizePrivateBunExecutionLayout,
+  type PrivateBunExecutionLayout,
+  privateBunAliasPackageName,
+} from './bun-execution-layout.js'
+import { requirePrivateBunPatches } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
   PRIVATE_BUN_PREPARATION_LIMITS,
@@ -515,11 +516,25 @@ export async function decodePrivateBunPreparedResult(
   } catch {
     throw protocolFailure()
   }
+  const patchPaths = new Set(
+    input.workspace === undefined
+      ? []
+      : Object.values(
+          requirePrivateBunPatches(
+            JSON.parse(
+              new TextDecoder('utf-8', { fatal: true }).decode(
+                await input.captured.read('package.json', 1024 * 1024),
+              ),
+            ).patchedDependencies,
+          ),
+        ),
+  )
   const retainedSource = input.captured.files.filter(
     ({ path }) =>
       input.workspace === undefined ||
       path === 'package.json' ||
       path === 'bun.lock' ||
+      patchPaths.has(path) ||
       selected.some((member) => path.startsWith(`${member}/`)),
   )
   const sourcePaths = new Set(retainedSource.map(({ path }) => path))

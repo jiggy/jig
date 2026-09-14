@@ -13,7 +13,9 @@ const contract = {
 }
 
 // Minimal independently authored Run/1 peer: no private host imports or copied SDK.
-const peer = `import {createInterface} from 'node:readline';
+const peer = `import marker from 'is-number/jig-patch.js';
+if(marker !== 'captured patch') throw new Error('dependency patch was not applied');
+import {createInterface} from 'node:readline';
 const lines=createInterface({input:process.stdin});
 for await (const line of lines) {
  const request=JSON.parse(line);
@@ -66,7 +68,23 @@ hostTest(
     }
     let passed = false
     try {
-      await put('package.json', { private: true, workspaces: ['apps/*', 'packages/*'] })
+      await put('package.json', {
+        private: true,
+        workspaces: ['apps/*', 'packages/*'],
+        patchedDependencies: { 'is-number@6.0.0': 'patches/is-number.patch' },
+      })
+      await put(
+        'patches/is-number.patch',
+        [
+          'diff --git a/jig-patch.js b/jig-patch.js',
+          'new file mode 100644',
+          '--- /dev/null',
+          '+++ b/jig-patch.js',
+          '@@ -0,0 +1 @@',
+          '+module.exports = "captured patch";',
+          '',
+        ].join('\n'),
+      )
       await put('apps/consumer/package.json', {
         name: 'consumer',
         type: 'module',
@@ -90,6 +108,7 @@ hostTest(
         version: '1.0.0',
         type: 'module',
         files: ['FLOW.ts', 'FLOW.contract.json'],
+        dependencies: { 'is-number': '6.0.0' },
       })
       await put('packages/echo/FLOW.ts', peer)
       await put('packages/echo/FLOW.contract.json', contract)
@@ -130,6 +149,7 @@ hostTest(
       })
       const before = await readFile(join(project, 'jig.lock'), 'utf8')
       await put('packages/echo/FLOW.ts', 'throw new Error("unreviewed source must not run")')
+      await put('patches/is-number.patch', 'unreviewed patch must not replace retained bytes')
       const pinned = await run(['run', 'npm:echo-method', '--input', '"retained"', '--json'])
       expect(pinned.exit, pinned.stdout + pinned.stderr).toBe(0)
       expect(JSON.parse(pinned.stdout)).toMatchObject({ output: 'retained' })

@@ -203,8 +203,9 @@ no ambient variables or env file, only fixed loader support, `/dev/null` as
 Bun configuration, the exact runtime selected by Jig, and an explicit npm
 registry. A package-local root `.npmrc` is rejected because Bun treats it as a
 separate configuration input.
-Only captured manifests and any supplied root `bun.lock` are staged for Bun;
-other authored files are materialized after installation. Foreign locks,
+Only captured manifests, any supplied root `bun.lock`, and declared workspace
+patch files are staged for Bun; other authored files are materialized after
+installation. Foreign locks,
 preloads, and configuration therefore cannot influence resolution or install.
 Git, GitHub, tarball, file, undeclared workspace, custom-registry, and non-integrity entries
 in a supplied lock are rejected before the trusted installer starts a fetch.
@@ -247,9 +248,22 @@ working directory remains disposable scratch. No isolated-linker mode is exposed
 Ancestor runtime configuration outside selected packages is not captured.
 Registry dependencies retain the same integrity and source policy.
 
-Workspace members use the root lock; member locks, dependency patches, overrides,
-catalogs, and alternate sources are unsupported. A new review recaptures and
-prepares the workspace, rather than reusing dependencies merely because the Flow
+The workspace root may declare Bun `patchedDependencies`: at most 256 exact
+registry `name@version` keys mapped to root-relative `.patch` files. Paths must
+be canonical, at most 1,024 UTF-8 bytes, contain no controls or backslashes,
+and traverse neither links nor `.git`, `.jig`, or `node_modules`. Each patch
+must be a regular, singly linked file of at most 1 MiB; the existing aggregate
+capture limits also apply. Jig captures and rechecks these bytes, including
+patches outside the selected members, and stages them before installation.
+The supplied lock's patch map must match the root manifest exactly. Bun applies
+patches inside the existing contained, script-disabled installation; Jig does
+not implement a patch engine or rewrite manifests. Patch bytes remain part of
+the retained execution artifact and are verified unchanged after preparation.
+
+Workspace members use the root lock; member locks and member-level patch
+declarations, overrides, catalogs, and alternate sources are unsupported.
+A new review recaptures and prepares the workspace, rather than reusing
+dependencies merely because the Flow
 source has not changed. Prepared bytes and normalized layout participate in
 target-change review, exact admission, launch and durable materialization identity.
 The host creates only recorded aliases after copying regular bytes, verifies both

@@ -36,6 +36,7 @@ export class WorkerFailure extends Error {
 export async function capturePrivateBunPreparedTree(
   packageRoot: string,
   workspace?: Workspace,
+  patchPaths: readonly string[] = [],
 ): Promise<{ readonly files: readonly SourceFile[]; readonly layout: PrivateBunExecutionLayout }> {
   const files: SourceFile[] = []
   const aliases: PrivatePackageAlias[] = []
@@ -57,7 +58,8 @@ export async function capturePrivateBunPreparedTree(
     workspace === undefined ||
     workspace.selected.some((member) => path === member || path.startsWith(`${member}/`))
   const ancestor = (path: string): boolean =>
-    workspace?.selected.some((member) => member.startsWith(`${path}/`)) ?? false
+    (workspace?.selected.some((member) => member.startsWith(`${path}/`)) ?? false) ||
+    patchPaths.some((patch) => patch.startsWith(`${path}/`))
   const visit = async (root: string, prefix: string, installed = false): Promise<void> => {
     const names: string[] = []
     for await (const entry of await opendir(root)) names.push(entry.name)
@@ -73,6 +75,7 @@ export async function capturePrivateBunPreparedTree(
         dependencyTree ||
         selectedSource(path) ||
         ancestor(path) ||
+        patchPaths.includes(path) ||
         (prefix === '' && (name === 'package.json' || name === 'bun.lock'))
       if (!retained) continue
       if (information.isSymbolicLink()) {
@@ -102,7 +105,8 @@ export async function capturePrivateBunPreparedTree(
         unsupported('prepared dependencies contain a link or special file')
       // Intermediate directories locate members, but their unrelated authored
       // files are not part of the selected source or installation inputs.
-      if (!dependencyTree && !selectedSource(path) && prefix !== '') continue
+      if (!dependencyTree && !selectedSource(path) && prefix !== '' && !patchPaths.includes(path))
+        continue
       reserveRecord()
       if (information.size > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes - total)
         throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')

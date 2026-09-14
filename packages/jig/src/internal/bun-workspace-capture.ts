@@ -10,8 +10,11 @@ import {
 import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
 import { openPrivateProjectRoot, type PrivateProjectRoot } from '../project/root.js'
+import {
+  requirePrivateBunPatches,
+  requirePrivateBunResolutionManifest,
+} from './bun-native-lock-policy.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
-import { requirePrivateBunResolutionManifest } from './bun-native-lock-policy.js'
 
 const MANIFEST_BYTES = 1024 * 1024
 const MAX_MEMBERS = 256
@@ -188,6 +191,21 @@ async function capture(
   }
   try {
     requireManifest(parseManifest(rootBytes), true)
+    const patchPaths = [
+      ...new Set(
+        Object.values(requirePrivateBunPatches(parseManifest(rootBytes).patchedDependencies)),
+      ),
+    ]
+    const patches = new Map<string, Uint8Array>()
+    let patchBytes = 0
+    for (const path of patchPaths) {
+      signal.throwIfAborted()
+      const bytes = await readPatch(root.handle, path)
+      patchBytes += bytes.byteLength
+      if (patchBytes + metadataBytes > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes)
+        fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace patch inputs exceed the capture budget')
+      patches.set(path, bytes)
+    }
     add('package.json', rootBytes.byteLength, { bytes: rootBytes })
     const lock = await readOptional(root.handle, 'bun.lock', 2 * MANIFEST_BYTES)
     if (lock !== undefined) add('bun.lock', lock.byteLength, { bytes: lock })
@@ -221,6 +239,15 @@ async function capture(
         )
       for (const file of captured.files)
         add(`${member.path}/${file.path}`, file.size, { source: captured, path: file.path })
+    }
+    for (const [path, bytes] of patches) {
+      const existing = records.get(path)
+      if (existing === undefined) add(path, bytes.byteLength, { bytes })
+      else if (
+        !Buffer.from(existing.bytes ?? (await existing.source!.read(existing.path!))).equals(bytes)
+      )
+        changed()
+      if (!Buffer.from(await readPatch(root.handle, path)).equals(bytes)) changed()
     }
     // Verify metadata and membership again after the byte capture. A changed
     // local dependency never qualifies for old admitted-execution reuse.
@@ -467,6 +494,20 @@ async function readOptional(
     return buffer.subarray(0, size)
   } finally {
     await handle.close()
+  }
+}
+
+async function readPatch(root: FileHandle, path: string): Promise<Uint8Array> {
+  const parts = path.split('/')
+  const name = parts.pop()!
+  const directory = parts.length === 0 ? root : await openBeneath(root, parts.join('/'))
+  try {
+    const bytes = await readOptional(directory, name)
+    if (bytes === undefined)
+      fail('PACKAGE_BUN_WORKSPACE_INVALID', 'a declared workspace patch is missing')
+    return bytes
+  } finally {
+    if (directory !== root) await directory.close()
   }
 }
 
