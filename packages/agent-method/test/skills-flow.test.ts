@@ -81,6 +81,9 @@ describe('ordinary Flow wiring', () => {
     } as unknown as RunContext
     await expect(agentFlow(run)).rejects.toThrow('model')
     await expect(
+      agentFlow({ ...run, input: { instructions: 'Answer.', conversation: true } } as RunContext),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' })
+    await expect(
       agentFlow({
         ...run,
         settings: { model: 'x' },

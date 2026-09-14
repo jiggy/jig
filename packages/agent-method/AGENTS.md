@@ -23,6 +23,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - Pure exports perform no provider dispatch or filesystem access. The separate
   `./skills` export reads only explicitly selected package-local Skill trees.
+- The HTTP Flow rejects conversational mode before resource dispatch. Its
+  shared Agent contract does not imply support for native continuing sessions.
 - The ordinary Flow owns one non-streaming text-only Chat Completions or
   Responses exchange through its HTTP slot. Closed API/model/token settings
   are checked before dispatch. `structuredOutput: 'json-schema'` explicitly

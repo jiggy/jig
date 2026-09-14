@@ -59,6 +59,56 @@ function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown):
 }
 
 describe('finite ACP authority policy', () => {
+  test('only an explicit turn allowance permits serial continuation, including after cancellation', () => {
+    const policy = session({ maxTurns: 2 })
+    prompt(policy)
+    policy.fromAdapter(notification('session/cancel', { sessionId: 'owned-session' }))
+    expect(policy.turnActive).toBe(true)
+    policy.fromClient(reply(10, { stopReason: 'cancelled' }))
+    expect(policy.turnActive).toBe(false)
+    policy.assertSettled()
+    policy.fromAdapter(
+      request(11, 'session/prompt', {
+        sessionId: 'owned-session',
+        prompt: [{ type: 'text', text: 'Follow-up.' }],
+      }),
+    )
+    expect(policy.turnActive).toBe(true)
+    expect(() => policy.assertSettled()).toThrow()
+  })
+
+  test('aggregate turn allowance is consumed at dispatch and never replenished', () => {
+    const policy = session({ maxTurns: 2 })
+    for (const id of [10, 11]) {
+      policy.fromAdapter(
+        request(id, 'session/prompt', {
+          sessionId: 'owned-session',
+          prompt: [{ type: 'text', text: 'Next.' }],
+        }),
+      )
+      policy.fromClient(reply(id, { stopReason: 'end_turn' }))
+    }
+    deniesAndCloses(policy, () =>
+      policy.fromAdapter(
+        request(12, 'session/prompt', {
+          sessionId: 'owned-session',
+          prompt: [{ type: 'text', text: 'Excess.' }],
+        }),
+      ),
+    )
+  })
+
+  test('public answer text between turns is rejected rather than attributed to another turn', () => {
+    const policy = session({ maxTurns: 2 })
+    prompt(policy)
+    policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+    deniesAndCloses(policy, () =>
+      policy.fromClient(
+        update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Late.' } }),
+      ),
+    )
+  })
+
   test('one reviewed turn with exact configuration, mode, observations and close', () => {
     const policy = session({
       configuration: [{ configId: 'model', value: 'reviewed-model' }],

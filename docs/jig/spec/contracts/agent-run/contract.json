@@ -45,6 +45,28 @@
         },
         "required": ["outcome", "output"],
         "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "done"
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "turns": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8
+              }
+            },
+            "required": ["turns"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
       }
     ]
   },
@@ -57,6 +79,18 @@
       "direction": "send",
       "required": false,
       "contract": "./contracts/acp-public-updates.json"
+    },
+    "commands": {
+      "direction": "receive",
+      "required": false,
+      "delivery": "direct",
+      "contract": "./contracts/agent-commands.json"
+    },
+    "replies": {
+      "direction": "send",
+      "required": false,
+      "delivery": "direct",
+      "contract": "./contracts/agent-replies.json"
     }
   },
   "$defs": {
@@ -91,6 +125,9 @@
             "required": ["label", "text"],
             "additionalProperties": false
           }
+        },
+        "conversation": {
+          "const": true
         }
       },
       "required": ["instructions"],

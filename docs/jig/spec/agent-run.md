@@ -15,12 +15,14 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:f03ba919ddd9036b342ab03e438bb2dc65eca284829383268cb74d655a0ffba1
+digest   sha256:6372b2fce7854fccafe9fd079a79a27e504fc26a9d4e62027ee0b3d79b3df5f5
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
 bytes and the referenced `contracts/acp-public-updates.json` descriptor. The
-latter defines the invocation's optional named output channel. Copy the complete
+latter defines optional public updates. The bundle also includes direct
+`agent-commands.json` and `agent-replies.json` channel contracts for conversational
+use. Copy the complete
 `agent-run/` bundle, preserving its descriptor-relative `contracts/` directory.
 Declare the slot in a code Flow's optional `flow.meta.json`:
 
@@ -78,6 +80,64 @@ An ordinary Flow offering the exact descriptor can replace the Agent through
 a project default or explicit Binding route. Its own grants supply its powers; matching a
 descriptor grants neither credentials nor network access. Supported optional
 channels still require qualification by the selected implementation.
+
+## Continuing conversations
+
+One-shot calls keep the input and result above. A conversational call adds
+`conversation: true` and supplies both direct channels: `commands` (the Agent
+receives) and `replies` (the Agent sends). Other pairings reject before native
+dispatch. The supplied HTTP method does not support this mode and rejects it
+before HTTP dispatch. A conversational native Binding grants `maxTurns` from
+1 through 8; omission permits only one turn. One finite Agent invocation owns
+the complete conversation, with unchanged root lifetime and aggregate limits.
+
+Initial input starts turn 0. Later controls are ordinary channel values:
+
+```json
+{"type":"prompt","turn":1,"input":{"instructions":"Explain your recommendation."}}
+{"type":"interrupt","turn":1}
+{"type":"close","turn":1}
+```
+
+`prompt` requires the next sequential turn and no running turn. Its input is
+the ordinary instructions, optional guidance and responseSchema; initial Skills
+remain in the native conversation, not newly selected by a follow-up. `interrupt`
+names the running turn. `close` requires the last settled turn. Controls are
+not queued or replayed: busy, stale, duplicate interruption, exhausted allowance
+and invalid prompt input receive a correlated `rejected` reply with a closed
+code. A malformed channel value is an operation failure.
+An invocation accepts at most 64 controls, including rejected controls; exceeding
+that bound fails it. The prompt allowance is separately enforced by the host.
+
+An `accepted` reply names `command` and `turn`; it acknowledges the control,
+not native completion. Each turn separately produces one of:
+
+- `{type:"result", turn, result}` with a complete ordinary Agent Run result;
+- `{type:"cancelled", turn}` after native cancellation settlement; or
+- `{type:"error", turn, code:"INVALID_RESULT", message}` when a settled answer
+  cannot satisfy the requested structured result. A caller may issue another
+  turn after that error; malformed ACP or uncertain native work is fatal instead.
+
+Replies are essential and fit the ordinary 64 KiB channel item bound. Oversized
+results fail visibly rather than truncate. A reply blocked for five seconds
+fails the conversation and settles its resource. Command EOF without an accepted
+close fails; closing the command stream does not imply successful execution.
+After sending `close`, the caller seals its command writer before awaiting the
+invocation. The Agent waits at most five seconds for that clean EOF before
+releasing its receiver; further controls after accepted close are invalid.
+On accepted close, the invocation returns `{outcome:"done",output:{turns:N}}`
+only after native cleanup. `N` counts all settled turns, including cancelled or
+invalid answers; conversation completion does not imply every turn succeeded.
+
+Optional public events add `turn` in conversational mode. They remain lossy
+observation, never the source of turn-result or interruption acknowledgement.
+Late native text/plan updates outside an active turn fail. Within a turn, native
+ordering depends on the qualified client's ACP compliance; local turn labels
+are not independent proof of native causality. All turn text and frame limits
+remain cumulative across the invocation.
+
+This mode does not retain sessions across Runs, restore native history, expose
+workspace tools or perform automatic handoff. Those require separate contracts.
 
 ## Structured-output profile
 

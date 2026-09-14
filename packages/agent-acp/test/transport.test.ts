@@ -79,6 +79,7 @@ describe('reviewed ready record', () => {
       kind: 'ready',
       protocolVersion: 1,
       cwd: '/work',
+      maxTurns: 1,
       configuration: [{ configId: 'model', value: 'reviewed' }],
       modeId: 'read-only',
     }
@@ -96,7 +97,7 @@ describe('reviewed ready record', () => {
   })
 
   test('rejects extra authority, malformed or duplicate configuration, and accessors', () => {
-    const base = { kind: 'ready', protocolVersion: 1, cwd: '/work', configuration: [] }
+    const base = { kind: 'ready', protocolVersion: 1, cwd: '/work', maxTurns: 1, configuration: [] }
     for (const value of [
       { ...base, cwd: '/' },
       { ...base, protocolVersion: 2 },

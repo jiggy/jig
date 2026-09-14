@@ -60,11 +60,15 @@ The first response is exactly one non-secret ready record:
 ```json
 {
   "kind": "ready", "protocolVersion": 1, "cwd": "/work",
+  "maxTurns": 1,
   "configuration": [{ "configId": "model", "value": "reviewed-model" }],
   "modeId": "read-only"
 }
 ```
 
+`maxTurns` is the reviewed grant's prompt allowance (1–8; omitted grant policy
+means 1). It is included in ready for the method to explain limits; only host
+policy grants dispatch. Changing the allowance requires renewed approval.
 `configuration` is an ordered array, possibly empty. String settings use
 `{configId,value}`; Boolean settings use `{configId,type:"boolean",value}`.
 Configuration IDs are unique; at most 16 are supplied. Identifiers and string
@@ -97,7 +101,7 @@ independent chunk identity, or reconnect mechanism.
 | --- | --- | --- |
 | One reassembled frame | 16 MiB | 16 MiB |
 | Cumulative reassembled bytes | 8 MiB | 32 MiB |
-| Complete frames | 32 | 8,192 |
+| Complete frames | 64 | 8,192 |
 | Fragments, including partial frames | 16,384 | 16,384 |
 
 Count received bytes before allocating additional reassembly storage. Malformed
@@ -120,19 +124,25 @@ The host accepts one serial sequence, with unique bounded request IDs:
 2. One `session/new` at `/work`, with an empty `mcpServers` array and no `_meta`.
 3. Each exact ready configuration transition, in order, with confirmation of
    its reviewed value; then the exact mode transition if present.
-4. One `session/prompt` on the owned session containing one text block, at most
-   1 MiB. NUL and a leading slash-command interpretation are excluded.
+4. Up to the grant's `maxTurns` serial `session/prompt` requests on the owned
+   session, each containing one text block, at most 1 MiB. The preceding prompt
+   must settle before another dispatch. NUL and leading slash commands are excluded.
 5. Optional `session/close` if the initialized client advertised it.
 
-After the prompt is dispatched, at most one `session/cancel` notification may
-name that owned session. It cannot settle pending work by itself. Session IDs
+After each prompt is dispatched, at most one `session/cancel` notification may
+name that owned session. It cannot settle pending work by itself. A cancellation
+that races completed settlement is consumed without forwarding to the idle
+client. An active interruption must settle within five seconds; otherwise the
+host fences the resource and reports unsuccessful/uncertain execution. Session IDs
 come from the correlated `session/new` response, never from a notification.
-Extra prompts, sessions, provider selection, authentication, tools, filesystem
+Excess prompts, overlapping prompts, extra sessions, provider selection, authentication, tools, filesystem
 requests, mode changes, session replacement and metadata are rejected. Native
 permission requests receive the host's fixed cancelled answer, not a choice
 made by the editable adapter.
 
-Only correlated results, a constant sanitized request error, public assistant
+Native text and plan updates outside an active prompt fail rather than contaminating
+a subsequent answer. Aggregate frame, byte, update and text ceilings never reset
+between turns. Only correlated results, a constant sanitized request error, public assistant
 text and public plan updates reach the adapter. Unneeded native fields are
 withheld. One conversation permits at most 4,096 updates, 8 MiB of assistant
 text and 256 permission requests; raw native protocol ingress remains bounded

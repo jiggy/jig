@@ -64,9 +64,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 1024
+          },
+          "maxTurns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
           }
         },
-        "required": ["kind", "protocolVersion", "cwd", "configuration"],
+        "required": ["kind", "protocolVersion", "cwd", "configuration", "maxTurns"],
         "additionalProperties": false
       },
       {

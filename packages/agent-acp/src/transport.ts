@@ -4,7 +4,7 @@ export const FINITE_ACP_LIMITS = Object.freeze({
   frameBytes: 16_777_216,
   requestBytes: 8_388_608,
   responseBytes: 33_554_432,
-  requestFrames: 32,
+  requestFrames: 64,
   responseFrames: 8_192,
   fragments: 16_384,
   identifierBytes: 1_024,
@@ -18,6 +18,7 @@ export interface FiniteAcpReady {
   readonly kind: 'ready'
   readonly protocolVersion: 1
   readonly cwd: '/work'
+  readonly maxTurns: number
   readonly configuration: readonly FiniteAcpConfiguration[]
   readonly modeId?: string
 }
@@ -92,11 +93,15 @@ function identifier(value: unknown): string {
 /** Snapshot the host's non-secret ready record; this copy grants no authority. */
 export function readFiniteAcpReady(value: unknown): FiniteAcpReady {
   const record = object(value)
-  exact(record, ['kind', 'protocolVersion', 'cwd', 'configuration'], ['modeId'])
+  exact(record, ['kind', 'protocolVersion', 'cwd', 'maxTurns', 'configuration'], ['modeId'])
   if (
     record.kind !== 'ready' ||
     record.protocolVersion !== 1 ||
     record.cwd !== '/work' ||
+    typeof record.maxTurns !== 'number' ||
+    !Number.isSafeInteger(record.maxTurns) ||
+    record.maxTurns < 1 ||
+    record.maxTurns > 8 ||
     !Array.isArray(record.configuration) ||
     record.configuration.length > 16
   )
@@ -129,6 +134,7 @@ export function readFiniteAcpReady(value: unknown): FiniteAcpReady {
     kind: 'ready',
     protocolVersion: 1,
     cwd: '/work',
+    maxTurns: record.maxTurns as number,
     configuration: Object.freeze(configuration),
     ...(Object.hasOwn(record, 'modeId') ? { modeId: identifier(record.modeId) } : {}),
   })

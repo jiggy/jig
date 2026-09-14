@@ -21,6 +21,7 @@ const ready = {
   kind: 'ready',
   protocolVersion: 1,
   cwd: '/work',
+  maxTurns: 3,
   configuration: [
     { configId: 'model', value: 'reviewed-model' },
     { configId: 'autoCompact', type: 'boolean', value: false },
@@ -117,6 +118,8 @@ interface Options {
   readonly input?: JsonValue
   readonly settings?: JsonObject
   readonly events?: ChannelSender
+  readonly commands?: ChannelReceiver
+  readonly replies?: ChannelSender
   readonly signal?: AbortSignal
   readonly emit?: (frame: Frame, send: ChannelSender) => Promise<boolean>
   readonly disposeFailure?: Error
@@ -140,7 +143,11 @@ function fixture(options: Options = {}) {
     },
     settings: options.settings ?? {},
     attachments: {},
-    channels: options.events ? { events: options.events } : {},
+    channels: {
+      ...(options.events ? { events: options.events } : {}),
+      ...(options.commands ? { commands: options.commands } : {}),
+      ...(options.replies ? { replies: options.replies } : {}),
+    },
     scratch: '/scratch',
     deadlineUnixMs: Date.now() + 60_000,
     signal: options.signal ?? new AbortController().signal,
@@ -234,6 +241,115 @@ function fixture(options: Options = {}) {
     failResponses: (error: OperationError) => channels[1]!.fail(error),
   }
 }
+
+describe('ordinary continuing Agent', () => {
+  test('continues, rejects stale control, interrupts and settles before another turn', async () => {
+    const commands = pair(),
+      replies = pair(),
+      events = pair()
+    let prompts = 0
+    let held: JsonValue = null
+    const f = fixture({
+      input: { instructions: 'Initial context.', conversation: true },
+      commands: commands.receive,
+      replies: replies.send,
+      events: events.send,
+      async emit(frame, send) {
+        if (frame.method === 'session/prompt' && ++prompts === 2) {
+          held = frame.id!
+          return true
+        }
+        if (frame.method === 'session/cancel') {
+          await f.frameSend(send, { jsonrpc: '2.0', id: held, result: { stopReason: 'cancelled' } })
+          return true
+        }
+        return false
+      },
+    })
+    const work = agentAcpFlow(f.run)
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'result',
+      turn: 0,
+      result: { outcome: 'done' },
+    })
+    expect((await events.receive.next()).value).toMatchObject({ turn: 0 })
+    await commands.send.send({ type: 'prompt', turn: 1, input: { instructions: 'Continue.' } })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'accepted',
+      command: 'prompt',
+      turn: 1,
+    })
+    await commands.send.send({ type: 'interrupt', turn: 0 })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'rejected',
+      code: 'STALE_TURN',
+    })
+    await commands.send.send({ type: 'prompt', turn: 2, input: { instructions: 'Too early.' } })
+    expect((await replies.receive.next()).value).toMatchObject({ type: 'rejected', code: 'BUSY' })
+    await commands.send.send({ type: 'interrupt', turn: 1 })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'accepted',
+      command: 'interrupt',
+    })
+    expect((await replies.receive.next()).value).toEqual({ type: 'cancelled', turn: 1 })
+    await commands.send.send({ type: 'prompt', turn: 2, input: { instructions: 'Now continue.' } })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'accepted',
+      command: 'prompt',
+    })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'result',
+      turn: 2,
+      result: { output: { text: 'The answer.' } },
+    })
+    await commands.send.send({
+      type: 'prompt',
+      turn: 3,
+      input: { instructions: 'Beyond allowance.' },
+    })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'rejected',
+      code: 'TURN_LIMIT',
+    })
+    await commands.send.send({ type: 'close', turn: 2 })
+    await commands.send.close()
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'accepted',
+      command: 'close',
+    })
+    expect(await work).toEqual({ outcome: 'done', output: { turns: 3 } })
+    expect(f.frames.filter((frame) => frame.method === 'session/new')).toHaveLength(1)
+    expect(f.frames.filter((frame) => frame.method === 'session/prompt')).toHaveLength(3)
+    expect(f.stats().settled).toBe(true)
+  })
+
+  test('losing control is not a clean conversation end', async () => {
+    const commands = pair(),
+      replies = pair()
+    const f = fixture({
+      input: { instructions: 'Answer.', conversation: true },
+      commands: commands.receive,
+      replies: replies.send,
+    })
+    const work = agentAcpFlow(f.run).then(
+      () => undefined,
+      (error) => error,
+    )
+    await replies.receive.next()
+    await commands.send.close()
+    expect(await work).toMatchObject({ code: 'DISCONNECTED' })
+    expect(f.stats()).toMatchObject({ cancelled: true, settled: true })
+  })
+
+  test('rejects incomplete conversational wiring before native dispatch', async () => {
+    const f = fixture({
+      input: { instructions: 'Answer.', conversation: true },
+      commands: pair().receive,
+    })
+    await expect(agentAcpFlow(f.run)).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(f.stats().calls).toBe(0)
+  })
+})
 
 /** Match the SDK's immediate caller-wait cancellation, not resource cleanup. */
 function cancellableWait(run: RunContext): RunContext {
@@ -499,6 +615,119 @@ describe('ordinary finite ACP Agent Flow', () => {
     const error = new OperationError('LAGGED', 'late essential loss')
     const consumer = fixture({ disposeFailure: error })
     await expect(agentAcpFlow(consumer.run)).rejects.toBe(error)
+  })
+
+  test('a settled invalid structured answer permits an explicit follow-up', async () => {
+    const commands = pair(),
+      replies = pair()
+    const consumer = fixture({
+      input: {
+        instructions: 'Answer.',
+        conversation: true,
+        responseSchema: {
+          $schema: 'https://flow.jig.md/schemas/schema-1.json',
+          type: 'object',
+          properties: { accepted: { type: 'string' } },
+          required: ['accepted'],
+          additionalProperties: false,
+        },
+      },
+      commands: commands.receive,
+      replies: replies.send,
+    })
+    const work = agentAcpFlow(consumer.run)
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'error',
+      turn: 0,
+      code: 'INVALID_RESULT',
+    })
+    await commands.send.send({
+      type: 'prompt',
+      turn: 1,
+      input: { instructions: 'Answer in plain text.' },
+    })
+    expect((await replies.receive.next()).value).toEqual({
+      type: 'accepted',
+      command: 'prompt',
+      turn: 1,
+    })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'result',
+      turn: 1,
+      result: { outcome: 'done' },
+    })
+    await commands.send.send({ type: 'close', turn: 1 })
+    expect((await replies.receive.next()).value).toEqual({
+      type: 'accepted',
+      command: 'close',
+      turn: 1,
+    })
+    await commands.send.close()
+    expect(await work).toEqual({ outcome: 'done', output: { turns: 2 } })
+    expect(consumer.stats()).toEqual({ calls: 1, cancelled: false, settled: true })
+  })
+
+  test('an oversized essential reply fails rather than truncating a successful answer', async () => {
+    const commands = pair(),
+      replies = pair()
+    const consumer = fixture({
+      input: { instructions: 'Answer.', conversation: true },
+      output: 'x'.repeat(65_536),
+      commands: commands.receive,
+      replies: replies.send,
+    })
+    await expect(agentAcpFlow(consumer.run)).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+    expect(consumer.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
+  })
+
+  test('accepted close requires bounded command-stream settlement', async () => {
+    const commands = pair(),
+      replies = pair()
+    const consumer = fixture({
+      input: { instructions: 'Answer.', conversation: true },
+      commands: commands.receive,
+      replies: replies.send,
+    })
+    const work = agentAcpFlow(consumer.run).catch((error) => error)
+    expect((await replies.receive.next()).value).toMatchObject({ type: 'result', turn: 0 })
+    await commands.send.send({ type: 'close', turn: 0 })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'accepted',
+      command: 'close',
+    })
+    expect(await work).toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+    expect(consumer.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
+  }, 10_000)
+
+  test('root cancellation settles a conversation blocked delivering an essential reply', async () => {
+    const controller = new AbortController(),
+      commands = pair()
+    const entered = Promise.withResolvers<void>()
+    const replies: ChannelSender = {
+      direction: 'send',
+      delivery: 'direct',
+      async close() {},
+      async send(_value, options) {
+        entered.resolve()
+        await new Promise<void>((_resolve, reject) => {
+          options!.signal!.addEventListener('abort', () => reject(options!.signal!.reason), {
+            once: true,
+          })
+        })
+      },
+    }
+    const consumer = fixture({
+      input: { instructions: 'Answer.', conversation: true },
+      commands: commands.receive,
+      replies,
+      signal: controller.signal,
+    })
+    const result = agentAcpFlow(consumer.run).catch((error) => error)
+    await entered.promise
+    const cancellation = new OperationError('CANCELLED', 'conversation cancelled')
+    controller.abort(cancellation)
+    expect(await result).toBe(cancellation)
+    expect(consumer.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
   })
 
   test('optional update failure drops its suffix but preserves complete execution text', async () => {

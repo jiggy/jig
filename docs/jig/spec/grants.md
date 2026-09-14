@@ -35,6 +35,11 @@ grant `model` overrides its model selection for this recipient. Review
 shows that selected runtime beside the exact recipient. The ordinary Agent
 package drives the dialogue and interprets the answer.
 
+An optional `maxTurns` integer from 1 through 8 authorizes serial native prompts
+within that one invocation; omission permits one. Turns share the original
+deadline and aggregate resource bounds. Changing the allowance changes reviewed
+authority. It does not permit session restoration or additional native tools.
+
 Only these three resource kinds are supported. A grant is closed policy data,
 not a plugin, executable code, generic permission bag, or credentials object.
 Inline authoring validates inert value structure; trusted project linking also

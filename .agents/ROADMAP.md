@@ -86,12 +86,12 @@ another worker fails, and complete cleanup. Keep original repositories and
 acceptance policy unchanged. Do not make the check pass by extending deadlines
 or weakening evidence and containment guarantees.
 
-### Deferred: continuing Agent control and handoff
+### Next: continuing Agent control, restoration and handoff
 
-Reconsider these capabilities with the owner after batch repair is complete.
-They are documented directions, not implementation work authorized by this
-milestone. Before either begins, define the smallest public contract and
-authority boundary against its consuming application.
+Deliver these approved capabilities incrementally. Before each begins, define
+the smallest public contract and authority boundary against its consuming
+application. Qualify one real client per delivered path; protocol fixtures alone
+do not establish client behavior.
 
 1. **Direct a continuing native Agent.** An application observes a turn,
    requests interruption, waits for confirmed settlement, and sends a follow-up
@@ -104,7 +104,14 @@ authority boundary against its consuming application.
    cleanup. Native workspace tools require a separate authority decision;
    candidate commands cannot run in a credential-bearing provider scope.
 
-2. **Automate one worker's time-travel handoff.** Build on qualified control,
+2. **Restore a cleanly closed conversation.** Retain bounded, explicitly
+   identified native conversation state separately from credentials. A later
+   authorized Run restores that state with current grants and reports genuine
+   restoration or an honest failure, never an implicit fresh conversation.
+   Qualify one client across process exit and reentry. Native restoration,
+   transcript reconstruction and summary handoff remain distinct claims.
+
+3. **Automate one worker's time-travel handoff.** Build on qualified control,
    not on observation alone. While another worker progresses, settle task
    advancement, obtain a handoff using recent context,
    prepare retained earlier context with current files and later instructions,

@@ -626,10 +626,15 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
             join(flow, 'contracts/agent/contract.json'),
             await readFile(join(agentProject, 'flows/agent/FLOW.contract.json')),
           )
-          await writeFile(
-            join(flow, 'contracts/agent/contracts/acp-public-updates.json'),
-            await readFile(join(agentProject, 'flows/agent/contracts/acp-public-updates.json')),
-          )
+          for (const name of [
+            'acp-public-updates.json',
+            'agent-commands.json',
+            'agent-replies.json',
+          ])
+            await writeFile(
+              join(flow, 'contracts/agent/contracts', name),
+              await readFile(join(agentProject, 'flows/agent/contracts', name)),
+            )
           await writeFile(
             join(flow, 'flow.meta.json'),
             JSON.stringify({ uses: { agent: { contract: './contracts/agent/contract.json' } } }),

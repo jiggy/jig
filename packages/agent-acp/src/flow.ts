@@ -23,6 +23,7 @@ import {
   readFiniteAcpReady,
 } from './transport.js'
 import { OptionalUpdates } from './updates.js'
+import { converse } from './conversation.js'
 
 const encoder = new TextEncoder()
 const REQUESTS = './contracts/finite-acp/requests.json'
@@ -46,7 +47,8 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
       typeof run.input !== 'object' ||
       Array.isArray(run.input) ||
       Object.keys(run.input).some(
-        (key) => !['instructions', 'guidance', 'skills', 'responseSchema'].includes(key),
+        (key) =>
+          !['instructions', 'guidance', 'skills', 'responseSchema', 'conversation'].includes(key),
       )
     )
       throw new OperationError(
@@ -54,19 +56,38 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
         'Supply Agent instructions and optional explicit guidance, Skills or responseSchema',
       )
     const input = run.input as JsonObject
+    if (Object.hasOwn(input, 'conversation') && input.conversation !== true)
+      throw new OperationError('INVALID_INPUT', 'conversation must be true when supplied')
+    const conversational = input.conversation === true
+    const commands = run.channels.commands
+    const replies = run.channels.replies
     if (
-      Object.keys(run.settings).length ||
-      Object.keys(run.attachments).length ||
-      Object.keys(run.channels).some((key) => key !== 'events')
+      conversational
+        ? !commands ||
+          commands.direction !== 'receive' ||
+          commands.delivery !== 'direct' ||
+          !replies ||
+          replies.direction !== 'send' ||
+          replies.delivery !== 'direct'
+        : commands !== undefined || replies !== undefined
     )
       throw new OperationError(
         'INVALID_INPUT',
-        'The finite ACP Agent accepts no settings, attachments, or channels other than events',
+        'Conversational calls require paired direct commands and replies channels',
+      )
+    if (
+      Object.keys(run.settings).length ||
+      Object.keys(run.attachments).length ||
+      Object.keys(run.channels).some((key) => !['events', 'commands', 'replies'].includes(key))
+    )
+      throw new OperationError(
+        'INVALID_INPUT',
+        'The ACP Agent accepts no settings, attachments, or undeclared channels',
       )
     const events = run.channels.events
     if (events !== undefined && events.direction !== 'send')
       throw new OperationError('INVALID_INPUT', 'Agent events require a send endpoint')
-    const { skills, ...methodInput } = input
+    const { skills, conversation: _, ...methodInput } = input
     const prepared = prepareAgent(
       methodInput as unknown as AgentInput,
       (skills === undefined ? [] : skills) as unknown as readonly SkillText[],
@@ -118,24 +139,16 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
     }
     if (ready.modeId !== undefined)
       await peer.request('session/set_mode', { sessionId: peer.sessionId, modeId: ready.modeId })
-    const completed = await peer.request('session/prompt', {
-      sessionId: peer.sessionId,
-      prompt: [{ type: 'text', text: prepared.request.prompt }],
-    })
-    keys(completed, ['stopReason'])
-    const stop =
-      completed.stopReason === 'end_turn'
-        ? 'end-turn'
-        : completed.stopReason === 'refusal'
-          ? 'refusal'
-          : completed.stopReason === 'max_tokens' || completed.stopReason === 'max_turn_requests'
-            ? 'limit'
-            : undefined
-    if (stop === undefined)
-      throw new OperationError(
-        completed.stopReason === 'cancelled' ? 'CANCELLED' : 'INVALID_RESULT',
-        'Native ACP turn did not produce a completed response',
-      )
+    const answer = conversational
+      ? await converse(
+          peer,
+          prepared,
+          commands as ChannelReceiver,
+          replies as ChannelSender,
+          ready.maxTurns,
+          signal,
+        )
+      : await peer.prompt(prepared)
     // Prompt settlement plus request EOF delegates bounded process closure to
     // its owner. An optional ACP close response must not hold up that cleanup.
     await essential(requests.send.close())
@@ -144,8 +157,8 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
     if ('error' in settled) throw settled.error
     checkSettlement(settled.result)
     signal.throwIfAborted()
-    const result = finishAgent(prepared, { outcome: 'done', output: { text: peer.text, stop } })
-    return { outcome: result.outcome, output: { ...result.output } }
+    if (conversational) await (replies as ChannelSender).close()
+    return answer
   } catch (error) {
     failed = true
     const resourceFailed = owned.signal.aborted
@@ -206,6 +219,9 @@ class FinitePeer {
   text = ''
   private textBytes = 0
   private operation = 0
+  private running = false
+  private turn: number | undefined
+  private writes: Promise<void> = Promise.resolve()
   private readonly frames = new FiniteAcpFrames('responses')
 
   constructor(
@@ -217,10 +233,7 @@ class FinitePeer {
 
   async request(method: string, params: JsonObject): Promise<JsonObject> {
     const id = ++this.operation
-    for (const fragment of fragmentFiniteAcpFrame(
-      JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-    ))
-      await essential(this.send.send({ ...fragment }, { signal: this.signal }))
+    await this.write({ jsonrpc: '2.0', id, method, params })
     for (;;) {
       const frame = await this.next()
       if (frame === undefined) failure('Native ACP response stream ended before its reply')
@@ -235,6 +248,57 @@ class FinitePeer {
         throw new OperationError('EXECUTION_FAILED', 'Native ACP request failed')
       return object(frame.result)
     }
+  }
+
+  async prompt(prepared: ReturnType<typeof prepareAgent>, turn?: number): Promise<RunResult> {
+    if (this.running) failure('A native turn is already running')
+    this.running = true
+    this.text = ''
+    this.turn = turn
+    let completed: JsonObject
+    try {
+      completed = await this.request('session/prompt', {
+        sessionId: this.sessionId,
+        prompt: [{ type: 'text', text: prepared.request.prompt }],
+      })
+    } finally {
+      this.running = false
+    }
+    keys(completed, ['stopReason'])
+    const stop =
+      completed.stopReason === 'end_turn'
+        ? 'end-turn'
+        : completed.stopReason === 'refusal'
+          ? 'refusal'
+          : ['max_tokens', 'max_turn_requests'].includes(completed.stopReason as string)
+            ? 'limit'
+            : undefined
+    if (stop === undefined)
+      throw new OperationError(
+        completed.stopReason === 'cancelled' ? 'CANCELLED' : 'INVALID_RESULT',
+        'Native ACP turn did not produce a completed response',
+      )
+    const result = finishAgent(prepared, { outcome: 'done', output: { text: this.text, stop } })
+    return { outcome: result.outcome, output: { ...result.output } }
+  }
+
+  async interrupt(): Promise<boolean> {
+    if (!this.running) return false
+    await this.write({
+      jsonrpc: '2.0',
+      method: 'session/cancel',
+      params: { sessionId: this.sessionId },
+    })
+    return true
+  }
+
+  private write(frame: JsonObject): Promise<void> {
+    const work = this.writes.then(async () => {
+      for (const fragment of fragmentFiniteAcpFrame(JSON.stringify(frame)))
+        await essential(this.send.send({ ...fragment }, { signal: this.signal }))
+    })
+    this.writes = work.catch(() => undefined)
+    return work
   }
 
   async end(): Promise<void> {
@@ -296,7 +360,8 @@ class FinitePeer {
           failure('Native ACP plan is invalid')
       }
     } else failure('Native ACP transport returned a private update')
-    this.updates.offer(update)
+    if (!this.running) failure('Public ACP update arrived outside a turn')
+    this.updates.offer(this.turn === undefined ? update : { ...update, turn: this.turn })
   }
 }
 

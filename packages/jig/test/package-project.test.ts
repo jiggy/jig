@@ -17,18 +17,12 @@ import { buildPrivateActivationRequests } from '../src/project/package-resolutio
 import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project/retained-flow.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
+  agentChannelFiles,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from './fixtures/agent-contract.js'
 
 const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
-const acpPublicUpdates = await readFile(
-  new URL(
-    '../../../docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json',
-    import.meta.url,
-  ),
-  'utf8',
-)
 const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
@@ -147,7 +141,7 @@ describe('private package-project linker', () => {
         'flows/agent': {
           ...run('agent'),
           'FLOW.contract.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts'),
         },
       },
       (flows) => {
@@ -556,12 +550,12 @@ describe('private package-project linker', () => {
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
           }),
           'contracts/agent-run/contract.json': agentRunContract,
-          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
         },
         'flows/impostor': {
           ...run('impostor'),
           'FLOW.contract.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts'),
         },
       },
       (flows) => {
@@ -599,7 +593,7 @@ describe('private package-project linker', () => {
           }),
           'FLOW.ts': 'export {};\n',
           'contracts/agent-run/contract.json': agentRunContract,
-          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
         },
       },
       async ([flow]) => {
@@ -640,7 +634,7 @@ describe('private package-project linker', () => {
           }),
           'FLOW.ts': 'export {};\n',
           'contracts/agent-run/contract.json': agentRunContract,
-          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
         },
       },
       async ([local, multiple]) => {
@@ -685,7 +679,7 @@ describe('private package-project linker', () => {
           }),
           'FLOW.ts': 'export {};\n',
           'contracts/agent-run/contract.json': agentRunContract,
-          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
           'settings.schema.json': schema({
             type: 'object',
             properties: { style: { type: 'string' } },
@@ -1224,7 +1218,7 @@ function agentProvider(name: string): Record<string, string> {
   return {
     ...run(name),
     'FLOW.contract.json': agentRunContract,
-    'contracts/acp-public-updates.json': acpPublicUpdates,
+    ...agentChannelFiles('contracts'),
   }
 }
 
@@ -1236,7 +1230,7 @@ function agentConsumer(name: string): Record<string, string> {
       uses: { agent: { contract: './contracts/agent-run/contract.json' } },
     }),
     'contracts/agent-run/contract.json': agentRunContract,
-    'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+    ...agentChannelFiles('contracts/agent-run/contracts'),
   }
 }
 

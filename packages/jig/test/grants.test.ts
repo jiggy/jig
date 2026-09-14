@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+
 import {
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
@@ -34,6 +35,33 @@ const finiteAcp = {
   version: FINITE_ACP_CONTRACT_VERSION,
   digest: FINITE_ACP_CONTRACT_DIGEST,
 }
+
+test('ACP additional turns are an explicit bounded reviewed grant', () => {
+  expect(normalizeGrant({ kind: 'acp', client: 'codex', maxTurns: 3 })).toEqual({
+    kind: 'acp',
+    client: 'codex',
+    maxTurns: 3,
+  })
+  for (const maxTurns of [0, 9, -1, 1.5, '2', null])
+    expect(() => normalizeGrant({ kind: 'acp', client: 'codex', maxTurns })).toThrow()
+  const lock = (maxTurns: number) => ({
+    packages: { 'flows/agent': { digest: 'code', directRun: false, uses: { native: finiteAcp } } },
+    bindings: {
+      agent: {
+        packagePath: 'flows/agent',
+        settings: {},
+        slots: {
+          native: {
+            kind: 'grant' as const,
+            policy: normalizeGrant({ kind: 'acp', client: 'codex', maxTurns }),
+          },
+        },
+      },
+    },
+  })
+  expect(requiresAuthorityApproval(lock(1), lock(2))).toBeTrue()
+  expect(requiresAuthorityApproval(lock(2), lock(2))).toBeFalse()
+})
 
 test('finite ACP is an exact resource grant, never an implicit Agent permission', () => {
   const grant = normalizeGrant({ kind: 'acp', client: 'codex' })

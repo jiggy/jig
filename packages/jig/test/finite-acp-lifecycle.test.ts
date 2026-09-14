@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { main, type PrivateCliOptions } from '../src/cli.js'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
-import { writeOrdinaryAcpAgent } from './fixtures/ordinary-acp-agent.js'
+import { writeOrdinaryAcpAgent, writeConversationCaller } from './fixtures/ordinary-acp-agent.js'
 import {
   openDeterministicFiniteAcpHost,
   writeDeterministicAcpAgent,
@@ -56,7 +56,8 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
         installedCliPath: join(release, 'libexec/installed-cli.js'),
       }
       await writeDeterministicAcpAgent(release)
-      await writeOrdinaryAcpAgent(project, 'codex')
+      await writeOrdinaryAcpAgent(project, 'codex', 3)
+      await writeConversationCaller(project)
       const host = await openDeterministicFiniteAcpHost(
         location,
         {
@@ -181,11 +182,43 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
           expect(entries.filter((entry) => /^(a-|c-|x-|child-)/.test(entry))).toEqual([])
         }
       }
+      stdout = ''
+      stderr = ''
+      cancellation = undefined
+      const conversationCode = await main(
+        [
+          'run',
+          'flow:flows/conversation',
+          '--input',
+          JSON.stringify({
+            first: 'scenario:success',
+            followups: ['scenario:slow', 'scenario:success'],
+            interrupt: 1,
+          }),
+          '--json',
+          '--timeout',
+          '45s',
+        ],
+        options,
+      )
+      expect(conversationCode, `${stdout}\n${stderr}`).toBe(0)
+      const conversation = JSON.parse(stdout)
+      expect(conversation.output.conversation).toEqual({ outcome: 'done', output: { turns: 3 } })
+      expect(
+        conversation.output.records
+          .filter((record: any) => record.type === 'result')
+          .map((record: any) => record.turn),
+      ).toEqual([0, 2])
+      expect(conversation.output.records).toContainEqual({ type: 'cancelled', turn: 1 })
+      await settledCgroups(before)
       expect(events.map((event) => event.scenario)).toEqual([
         'success',
         'schema-invalid',
         'malformed',
         'slow',
+        'success',
+        'slow',
+        'success',
       ])
       expect(events.every((event) => event.keyInEnvironment === false)).toBe(true)
       // The selected runtime is outside package source but still pinned by
@@ -217,7 +250,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
           },
         )
         expect(code, `${stdout}\n${stderr}`).not.toBe(0)
-        expect(events).toHaveLength(4)
+        expect(events).toHaveLength(7)
         expect(stdout + stderr).not.toContain(key)
         await settledCgroups(before)
       }

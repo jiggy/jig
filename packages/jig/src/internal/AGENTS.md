@@ -133,6 +133,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 - The finite resource enforces native protocol and prompt bounds before writes.
+  ACP grants default to one turn; maxTurns explicitly permits up to eight serial
+  turns without resetting aggregate limits. Consume cancellation racing idle
+  settlement without native dispatch. Missing interruption settlement fences the
+  resource after five seconds; a notification alone cannot authorize another turn.
   Leading-slash prompts are rejected because clients interpret them as control
   commands; a method's prefix is not the authority safeguard.
 - The finite ACP peer refuses permission requests with the protocol's cancelled

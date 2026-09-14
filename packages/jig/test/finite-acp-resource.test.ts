@@ -64,6 +64,7 @@ function component(options: FakeOptions = {}) {
   const writes: JsonObject[] = []
   const bootstrap: string[] = []
   let terminated = 0
+  let permissionCount = 0
   let ended = false
   let authenticationStarted!: () => void
   const authenticating = new Promise<void>((resolve) => {
@@ -138,7 +139,7 @@ function component(options: FakeOptions = {}) {
           if (options.hangPrompt) break
           emit({
             jsonrpc: '2.0',
-            id: 'permission',
+            id: permissionCount++ === 0 ? 'permission' : `permission-${permissionCount}`,
             method: 'session/request_permission',
             params: { sessionId: 'foreign', options: [{ optionId: 'allow' }] },
           })
@@ -168,7 +169,7 @@ function component(options: FakeOptions = {}) {
   return { process, writes, bootstrap, emit, stdout, authenticating, terminated: () => terminated }
 }
 
-async function fixture(options: FakeOptions = {}, selected = runtime) {
+async function fixture(options: FakeOptions = {}, selected = runtime, maxTurns = 1) {
   const broker = new ChannelBroker()
   const app = broker.participant('app', {
     resolveContract: (path) =>
@@ -189,6 +190,7 @@ async function fixture(options: FakeOptions = {}, selected = runtime) {
     selected,
     { owner, requests: grants.requests!.endpoint, responses: grants.responses!.endpoint },
     abort.signal,
+    maxTurns,
   )
   void resource.catch(() => undefined)
   const frames = new FiniteAcpFrames('responses')
@@ -245,6 +247,35 @@ async function fixture(options: FakeOptions = {}, selected = runtime) {
 }
 
 describe('finite ACP resource transport (fake native process)', () => {
+  test('idle cancellation is consumed before a granted follow-up, never forwarded into it', async () => {
+    const f = await fixture({}, runtime, 2)
+    await f.initialize()
+    await f.prompt()
+    await f.send({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: 'owned' } })
+    await f.request(4, 'session/prompt', {
+      sessionId: 'owned',
+      prompt: [{ type: 'text', text: 'Follow-up.' }],
+    })
+    expect((await f.next())?.method).toBe('session/update')
+    expect((await f.next())?.result).toEqual({ stopReason: 'end_turn' })
+    f.app.close(f.requests.send.endpoint)
+    await f.resource
+    expect(f.native.writes.filter((frame) => frame.method === 'session/prompt')).toHaveLength(2)
+    expect(f.native.writes.some((frame) => frame.method === 'session/cancel')).toBe(false)
+  })
+
+  test('unsettled interruption fences native work within its control deadline', async () => {
+    const f = await fixture({ hangPrompt: true }, runtime, 2)
+    await f.initialize()
+    await f.request(3, 'session/prompt', {
+      sessionId: 'owned',
+      prompt: [{ type: 'text', text: 'Wait.' }],
+    })
+    await f.send({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: 'owned' } })
+    await expect(f.resource).rejects.toThrow()
+    expect(f.native.writes.filter((frame) => frame.method === 'session/prompt')).toHaveLength(1)
+  }, 10_000)
+
   test('ordinary dialogue retains private bootstrap/authentication and denies native permissions', async () => {
     const f = await fixture(
       {},

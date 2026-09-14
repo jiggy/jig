@@ -31,17 +31,11 @@ import {
 import { retainFlowSourcePackages } from '../src/project/retained-flow.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
+  agentChannelFiles,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from './fixtures/agent-contract.js'
 
-const acpPublicUpdates = await readFile(
-  new URL(
-    '../../../docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json',
-    import.meta.url,
-  ),
-  'utf8',
-)
 const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
@@ -292,7 +286,7 @@ describe('private package resolution', () => {
           }),
           'FLOW.ts': 'export {};\n',
           'contracts/agent-run/contract.json': agentRunContract,
-          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
           'settings.schema.json': JSON.stringify({
             $schema: 'https://flow.jig.md/schemas/schema-1.json',
             type: 'object',
@@ -365,7 +359,7 @@ describe('private package resolution', () => {
           }),
           'FLOW.ts': 'export {};\n',
           'contracts/agent-run/contract.json': agentRunContract,
-          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
         },
       },
       [binding('bindings/router.ts', { package: 'flows/router' })],
@@ -741,7 +735,7 @@ function agentFlow(): Readonly<Record<string, string>> {
     'flow.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
     'FLOW.ts': 'export {};\n',
     'FLOW.contract.json': agentRunContract,
-    'contracts/acp-public-updates.json': acpPublicUpdates,
+    ...agentChannelFiles('contracts'),
   }
 }
 

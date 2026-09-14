@@ -233,12 +233,21 @@
         {
           "type": "object",
           "properties": {
-            "kind": { "const": "acp" },
-            "client": { "enum": ["codex", "claude", "pi"] },
+            "kind": {
+              "const": "acp"
+            },
+            "client": {
+              "enum": ["codex", "claude", "pi"]
+            },
             "model": {
               "type": "string",
               "minLength": 1,
               "maxLength": 256
+            },
+            "maxTurns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
             }
           },
           "required": ["kind", "client"],

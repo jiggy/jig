@@ -5,7 +5,7 @@ export const PRIVATE_FINITE_ACP_LIMITS = Object.freeze({
   frameBytes: JSON_1_LIMITS.bytes,
   adapterBytes: 8 * 1024 * 1024,
   clientBytes: 32 * 1024 * 1024,
-  adapterFrames: 32,
+  adapterFrames: 64,
   clientFrames: 8_192,
   identifierBytes: 1_024,
   promptBytes: 1_048_576,
@@ -20,6 +20,7 @@ type Configuration =
   | { readonly configId: string; readonly type: 'boolean'; readonly value: boolean }
 
 export interface PrivateFiniteAcpConfiguration {
+  readonly maxTurns?: number
   readonly configuration?: readonly Configuration[]
   readonly modeId?: string
 }
@@ -53,6 +54,8 @@ const PERMISSION = 'session/request_permission'
  * owns no process, credentials, transport, or application-result interpretation.
  */
 export class PrivateFiniteAcpPolicy {
+  private readonly maxTurns: number
+  private turns = 0
   private readonly configuration: readonly Configuration[]
   private readonly modeId?: string
   private poisoned = false
@@ -78,7 +81,16 @@ export class PrivateFiniteAcpPolicy {
 
   constructor(configuration: PrivateFiniteAcpConfiguration = {}) {
     const policy = object(snapshotPrivateOrdinaryJson(configuration, 'finite ACP policy', invalid))
-    keys(policy, [], ['configuration', 'modeId'])
+    keys(policy, [], ['configuration', 'modeId', 'maxTurns'])
+    const maxTurns = policy.maxTurns ?? 1
+    if (
+      typeof maxTurns !== 'number' ||
+      !Number.isSafeInteger(maxTurns) ||
+      maxTurns < 1 ||
+      maxTurns > 8
+    )
+      fail('Invalid ACP turn allowance')
+    this.maxTurns = maxTurns
     const options = Object.hasOwn(policy, 'configuration') ? policy.configuration : []
     if (!Array.isArray(options) || options.length > 16) fail('Invalid finite ACP configuration')
     const ids = new Set<string>()
@@ -108,7 +120,7 @@ export class PrivateFiniteAcpPolicy {
       if (method === CANCEL) {
         keys(frame, ['jsonrpc', 'method', 'params'])
         this.ownedSession(params, [])
-        if (!this.promptSent || this.cancelSent || this.closeSent)
+        if (!this.promptSent || this.cancelSent || this.closeSent || this.peerFailed)
           fail('ACP cancellation is not available')
         this.cancelSent = true
         return frame
@@ -170,7 +182,7 @@ export class PrivateFiniteAcpPolicy {
         case PROMPT: {
           this.ownedSession(params, ['prompt'])
           if (
-            this.promptSent ||
+            this.turns >= this.maxTurns ||
             this.configured !== this.configuration.length ||
             (this.modeId !== undefined && !this.modeSet)
           )
@@ -189,6 +201,9 @@ export class PrivateFiniteAcpPolicy {
           )
             fail('ACP prompt exceeds its authority or bounds')
           this.promptSent = true
+          this.promptSettled = false
+          this.cancelSent = false
+          this.turns += 1
           break
         }
         case CLOSE:
@@ -306,6 +321,10 @@ export class PrivateFiniteAcpPolicy {
   }
 
   /** Protocol accounting only: this does not establish process or Agent success. */
+  get turnActive(): boolean {
+    return this.pending?.method === PROMPT
+  }
+
   assertSettled(): void {
     this.guard(() => {
       if (this.pending !== undefined || (!this.promptSettled && !this.peerFailed))
@@ -340,6 +359,7 @@ export class PrivateFiniteAcpPolicy {
     if (typeof update.sessionUpdate !== 'string') fail('Invalid ACP update')
     let projected: JsonObject
     if (update.sessionUpdate === 'agent_message_chunk') {
+      if (this.pending?.method !== PROMPT) fail('ACP text arrived outside an active turn')
       const content = object(update.content)
       if (content.type !== 'text') return Object.freeze({})
       if (typeof content.text !== 'string') fail('Invalid ACP text update')
@@ -353,6 +373,7 @@ export class PrivateFiniteAcpPolicy {
           : { messageId: identifier(update.messageId) }),
       }
     } else if (update.sessionUpdate === 'plan') {
+      if (this.pending?.method !== PROMPT) fail('ACP plan arrived outside an active turn')
       if (!Array.isArray(update.entries)) fail('Invalid ACP plan update')
       const entries = update.entries.map((value) => {
         const entry = object(value)

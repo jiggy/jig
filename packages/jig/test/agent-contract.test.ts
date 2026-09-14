@@ -15,17 +15,25 @@ const contractPath = new URL(
   import.meta.url,
 )
 let contract: ParsedInvocationContract
+async function channels(base: URL) {
+  return new Map(
+    await Promise.all(
+      ['acp-public-updates.json', 'agent-commands.json', 'agent-replies.json'].map(
+        async (name) =>
+          [
+            `contracts/${name}`,
+            await Bun.file(new URL(`contracts/${name}`, base)).bytes(),
+          ] as const,
+      ),
+    ),
+  )
+}
 
 beforeAll(async () => {
   contract = parseInvocationContract(
     await Bun.file(contractPath).bytes(),
     'agent-run/contract.json',
-    new Map([
-      [
-        'contracts/acp-public-updates.json',
-        await Bun.file(new URL('contracts/acp-public-updates.json', contractPath)).bytes(),
-      ],
-    ]),
+    await channels(contractPath),
   )
 })
 
@@ -40,6 +48,18 @@ describe('ordinary Agent Run contract', () => {
         direction: 'send',
         required: false,
         contract: './contracts/acp-public-updates.json',
+      },
+      commands: {
+        direction: 'receive',
+        required: false,
+        delivery: 'direct',
+        contract: './contracts/agent-commands.json',
+      },
+      replies: {
+        direction: 'send',
+        required: false,
+        delivery: 'direct',
+        contract: './contracts/agent-replies.json',
       },
     })
   })
@@ -63,14 +83,7 @@ describe('ordinary Agent Run contract', () => {
     const method = parseInvocationContract(
       await Bun.file(new URL('../../agent-method/FLOW.contract.json', import.meta.url)).bytes(),
       'FLOW.contract.json',
-      new Map([
-        [
-          'contracts/acp-public-updates.json',
-          await Bun.file(
-            new URL('../../agent-method/contracts/acp-public-updates.json', import.meta.url),
-          ).bytes(),
-        ],
-      ]),
+      await channels(new URL('../../agent-method/FLOW.contract.json', import.meta.url)),
     )
     expect(method.digest).toBe(contract.digest)
     for (const flow of [
@@ -83,12 +96,7 @@ describe('ordinary Agent Run contract', () => {
       const consumerContract = parseInvocationContract(
         await Bun.file(new URL('agent-run/contract.json', base)).bytes(),
         'agent-run/contract.json',
-        new Map([
-          [
-            'contracts/acp-public-updates.json',
-            await Bun.file(new URL('agent-run/contracts/acp-public-updates.json', base)).bytes(),
-          ],
-        ]),
+        await channels(new URL('agent-run/contract.json', base)),
       )
       expect(consumerContract.digest).toBe(contract.digest)
       expect(

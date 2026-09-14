@@ -12,6 +12,11 @@ import { ordinaryRecord, snapshot } from './values.js'
 export async function agentFlow(run: RunContext): Promise<RunResult> {
   try {
     const input = ordinaryRecord(snapshot(run.input, 'INVALID_INPUT'))
+    if (input?.conversation === true)
+      throw new OperationError(
+        'UNAVAILABLE',
+        'This Agent supports one-shot calls, not continuing conversations',
+      )
     if (
       input === undefined ||
       Object.keys(input).some(

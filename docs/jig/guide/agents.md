@@ -135,6 +135,13 @@ read Codex's OS-keyring credentials.
 The current adapter supplies a short-lived credential to the contained client;
 it does not give it your full authentication store or refresh credentials.
 
+## Continue a conversation
+
+For applications that revise an answer or interrupt a running turn, see
+[continuing conversations](conversations.md). The same ordinary Agent package
+uses paired control/reply channels; an explicit `maxTurns` grant bounds further
+prompts. One-shot calls require neither change.
+
 ## Switching
 
 Choose the new Binding configuration or replace its Flow package, then run `jig review` again.

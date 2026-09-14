@@ -62,14 +62,16 @@ async function prompt(message) {
   const text = message.params.prompt.map(item => item.text ?? '').join('');
   const scenario = ['schema-invalid','malformed','recovery','success','slow'].find(value => text.includes('scenario:' + value));
   if (!scenario || !authentication) throw new Error('invalid fixture prompt');
+  let wait;
+  if (scenario === 'slow' || scenario === 'recovery') wait = new Promise(resolve => {
+    const timer = setTimeout(resolve, 60000);
+    cancel = () => { clearTimeout(timer); resolve(); };
+  });
   const event = {scenario, selectedSkill:text.includes('SELECTED_SKILL_MARKER'), hiddenSkill:text.includes('HIDDEN_SKILL_MARKER'), keyInEnvironment:process.env.METHOD_TEST_TOKEN !== undefined};
   const recorded = await fetch(authentication.endpoint, {method:'POST', headers:{authorization:'Bearer ' + authentication.credential}, body:JSON.stringify(event)});
   if (!recorded.ok) throw new Error('fixture recorder rejected dispatch');
   if (scenario === 'slow' || scenario === 'recovery') {
-    await new Promise(resolve => {
-      const timer = setTimeout(resolve, 60000);
-      cancel = () => { clearTimeout(timer); resolve(); };
-    });
+    await wait;
     reply(message.id, {stopReason:'cancelled'});
     return;
   }

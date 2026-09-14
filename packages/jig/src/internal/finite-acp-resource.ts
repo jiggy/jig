@@ -78,10 +78,12 @@ export async function runPrivateFiniteAcpResource(
   runtime: PrivateAcpAgentRuntime,
   endpoints: PrivateFiniteAcpEndpoints,
   signal: AbortSignal,
+  maxTurns = 1,
 ): Promise<{ readonly fence: PrivateLinuxConfirmedEnforcementReceipt; readonly closed: boolean }> {
   const local = new AbortController()
   const stopped = (): void => local.abort(signal.reason)
   const policy = new PrivateFiniteAcpPolicy({
+    maxTurns,
     configuration: runtime.configuration,
     ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
   })
@@ -89,6 +91,7 @@ export async function runPrivateFiniteAcpResource(
     kind: 'ready',
     protocolVersion: 1,
     cwd: '/work',
+    maxTurns,
     configuration: runtime.configuration,
     ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
   })
@@ -101,6 +104,7 @@ export async function runPrivateFiniteAcpResource(
   const frames = new FiniteAcpFrames('requests')
   let writes = Promise.resolve()
   let closed = false
+  let interruptTimer: ReturnType<typeof setTimeout> | undefined
   let initialize: JsonObject | undefined
   let authenticationId: string | undefined
   const tasks: Promise<unknown>[] = []
@@ -108,6 +112,7 @@ export async function runPrivateFiniteAcpResource(
     const bytes = encoder.encode(`${JSON.stringify(value)}\n`)
     const pending = writes.then(async () => {
       local.signal.throwIfAborted()
+      if (value.method === 'session/cancel' && !policy.turnActive) return
       await component.write(bytes)
     })
     writes = pending.catch(() => undefined)
@@ -131,6 +136,15 @@ export async function runPrivateFiniteAcpResource(
       if (authenticationId !== undefined) invalid('Private ACP authentication is not settled')
       // The finite policy is the final authority check before each native write.
       const accepted = policy.fromAdapter(encoder.encode(text))
+      if (accepted.method === 'session/cancel') {
+        // Native settlement may race the queued cancellation notification.
+        // Consume an idle cancellation without sending it into a later turn.
+        if (!policy.turnActive) continue
+        interruptTimer = setTimeout(() => {
+          local.abort(new Error('ACP interruption did not settle'))
+          void component.terminate().catch(() => undefined)
+        }, 5_000)
+      }
       let native = accepted
       if (
         accepted.method === 'initialize' &&
@@ -207,6 +221,10 @@ export async function runPrivateFiniteAcpResource(
         continue
       }
       const delivery = policy.fromClient(bytes)
+      if (!policy.turnActive && interruptTimer !== undefined) {
+        clearTimeout(interruptTimer)
+        interruptTimer = undefined
+      }
       if (delivery.toClient !== undefined) await write(delivery.toClient)
       if (delivery.toAdapter !== undefined) await send(delivery.toAdapter)
     }
@@ -246,6 +264,7 @@ export async function runPrivateFiniteAcpResource(
     await Promise.allSettled(tasks)
     throw error
   } finally {
+    if (interruptTimer !== undefined) clearTimeout(interruptTimer)
     signal.removeEventListener('abort', stopped)
     local.abort()
   }

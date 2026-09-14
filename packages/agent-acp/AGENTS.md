@@ -2,17 +2,19 @@
 
 ## Purpose
 
-Make one native Agent turn an independently replaceable Flow while its host
+Make finite native Agent conversations independently replaceable Flows while the host
 retains credential, process, and dispatch authority.
 
 ## Ownership
 
 - `src/flow.ts` owns the ordinary Agent Run method and finite ACP dialogue.
+  `src/conversation.ts` owns serial turn controls and essential replies; native
+  dispatch authority remains in the resource, not this controller.
 - `src/transport.ts` owns the public finite-ACP text framing helper; it neither
   authenticates nor authorizes a frame. The host validates reassembled JSON/1
   and independently enforces its reviewed finite protocol policy.
 - `contracts/finite-acp/` mirrors `docs/jig/spec/contracts/finite-acp/` exactly.
-  `FLOW.contract.json` and `contracts/acp-public-updates.json` mirror Agent Run.
+  `FLOW.contract.json` and its three public channel descriptors mirror Agent Run.
 - Package source, tests, descriptors and the bundled runtime form one artifact.
 - `justfile` owns explicit build/test/pack recipes. Ordinary `bun pm pack`
   retains source and bundles with versioned development dependencies; no nested
@@ -38,8 +40,11 @@ retains credential, process, and dispatch authority.
   Optional public updates never supply execution evidence or authority.
   Their first loss or exhausted local relay bound discards the suffix and
   closes the writer with `error: 'LAGGED'`; no clean EOF hides incomplete output.
-- This package does not add follow-up, session replacement, tools, MCP, binary
-  transport, retries, or reusable sessions.
+- Optional conversational mode owns bounded direct commands/replies and per-turn
+  results in `src/conversation.ts`. Native maxTurns, serial dispatch and interruption
+  settlement remain host-enforced. One-shot calls retain their simple interface.
+  Essential replies never use the lossy progress relay. Session restoration,
+  replacement, tools, MCP, binary transport and retries are not provided.
 - Prompt settlement followed by clean request EOF delegates bounded process
   closure to its owner; the adapter does not wait for optional ACP close.
 - `./transport` is bounded framing, not an alternative host authority filter.

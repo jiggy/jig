@@ -1,6 +1,6 @@
 # Agent ACP Flow
 
-Run one native Agent task as an ordinary, replaceable Flow. The method prepares
+Run a native Agent task or bounded conversation as an ordinary, replaceable Flow. The method prepares
 explicit instructions, guidance and selected Skill text, receives the native
 answer, and checks structured output through `@jigging/agent-method`.
 
@@ -22,8 +22,18 @@ The Flow must receive a completed ACP answer **and** settled resource evidence.
 It does not turn channel EOF, a stopped process or a model's claim into success.
 Refusal returns `blocked`; a bounded model response limit returns `limit`.
 Cancellation, broken transport, invalid structured output and failed process
-settlement remain errors. There are no extra prompts, tools, retries, resumed
-sessions or implicit filesystem context.
+settlement remain errors. Conversational callers explicitly supply command/reply
+channels and use a grant with `maxTurns` (1–8); ordinary calls still perform one
+turn. Tools, retries, resumed sessions and implicit filesystem context are not supplied.
+
+For conversational use, add `conversation: true` to input and connect direct
+`commands` and `replies` channels from the complete contract bundle. Initial
+input starts turn 0. After a settled result, send a `prompt` for the next turn;
+`interrupt` targets a running turn and `close` names the last settled one.
+See [Agent conversation controls](https://jig.md/spec/agent-run#continuing-conversations)
+for complete shapes and failure behavior. Replies must fit 64 KiB and are
+essential; optional `events` remain presentation only. A closed conversation
+returns its settled turn count only after native cleanup.
 
 A terminal essential-channel failure waits for the resource's separate result,
 so an early disconnect cannot hide uncertain execution. Invalid ACP detected

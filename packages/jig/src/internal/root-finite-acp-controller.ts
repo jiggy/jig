@@ -144,6 +144,7 @@ export async function executePrivateRootFiniteAcp(
   let participant: ChannelParticipant | undefined
   try {
     const terminal = await executeOwnedProvider(input, provider, recipe, {
+      maxTurns: route.grant.maxTurns ?? 1,
       digest: privateDomainDigest('JIG-Private-Finite-ACP-Request/1', {
         providerDigest: provider.digest,
         grant: route.grant as unknown as JsonValue,
@@ -181,6 +182,7 @@ async function executeOwnedProvider(
   recipe: PrivateDirectRunRecipe,
   operation: {
     readonly digest: string
+    readonly maxTurns: number
     admit(): PrivateFiniteAcpEndpoints
   },
 ): Promise<RunHostOperationTerminal> {
@@ -297,6 +299,7 @@ async function executeOwnedProvider(
       privateAcpAgentRuntime(provider),
       endpoints,
       input.signal,
+      operation.maxTurns,
     )
     await releaseKnownAcp(input, lifecycle, execution.fence)
   } catch (error) {
