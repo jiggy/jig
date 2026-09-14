@@ -23,6 +23,7 @@ const sidebar = [
       { text: 'Reuse the Agent method', link: '/guide/agent-method' },
       { text: 'Flow dependencies', link: '/guide/dependencies' },
       { text: 'Author contracts', link: '/guide/contracts' },
+      { text: 'Markdown methods', link: '/guide/markdown' },
       { text: 'Delegate HTTP access', link: '/guide/http' },
       { text: 'Working with files', link: '/guide/files' },
       { text: 'Live progress', link: '/guide/channels' },

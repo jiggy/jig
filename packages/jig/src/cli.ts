@@ -27,7 +27,6 @@ import {
 } from './internal/activation-admission-store.js'
 import { CheckError } from './diagnostics.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
-import type { PrivateAgentChoice } from './internal/installed-bun-host.js'
 import {
   PrivateFileInputError,
   privateAttachmentName,
@@ -1259,6 +1258,16 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'the selected Binding files could not be retained consistently; review stable source directories again',
       PROJECT_BINDING_PACKAGE_MISSING:
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
+      PROJECT_DEFAULT_MISSING:
+        'a default in jig.ts names a missing Flow or Binding; create the selected local Binding and include its Flow in discovery, or correct the selector. Defaults do not install packages or create Bindings',
+      PROJECT_DEFAULT_CONTRACT:
+        'select an ordinary Flow that offers a named FLOW.contract.json; a default cannot select a host-only resource contract',
+      PROJECT_DEFAULT_CONFLICT:
+        'select only one project default for each offered contract; use explicit consumer slots for different implementations',
+      PROJECT_DEFAULT_INTERFACE_MISMATCH:
+        'the selected default must offer the identical required contract id, version and digest; correct the selection or use an explicit compatible slot',
+      PROJECT_DEFAULT_UNAVAILABLE:
+        'the selected default cannot run with its current configuration; configure its required slots and grants before review',
       PROJECT_BINDING_SLOT_MISSING:
         'a child slot references a target not selected by jig.ts; correct the slot or project membership',
       PROJECT_GRANT_MISSING:

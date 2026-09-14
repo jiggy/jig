@@ -17,9 +17,10 @@ A missing target lists targets from the approved revision; Jig never picks one
 for you.
 
 Use `jig inspect` to list targets in the last approved revision. Use
-`jig inspect binding:repair` (or an exact `flow:` target) to read its input,
-settings and result schemas, configured settings, child slots, capabilities,
-attachments, channels and commands. `--json` or redirected stdout returns JSON.
+`jig inspect binding:repair` (or an exact `flow:` target) to read its invocation
+contract, settings schema, configured settings, resolved slots, resource grants,
+and attachments. The contract includes input, outcomes and channels.
+`--json` or redirected stdout returns JSON.
 Inspection compares approval with current local execution identities, including
 selected children. It reports `environment-matches`, `review-required`, or
 `unchecked` when verification is unavailable. Missing Agent configuration can

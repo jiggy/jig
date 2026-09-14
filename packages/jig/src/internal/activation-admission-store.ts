@@ -3226,10 +3226,12 @@ export async function inspectPrivateApprovedProject(
     }
     const checkWithChildren = async (index: number): Promise<PrivateInspectionState> => {
       const states = [await check(index)]
-      for (const child of Object.values(candidate.candidate.targets[index]!.request.flowSlots)) {
+      for (const route of Object.values(candidate.candidate.targets[index]!.request.slots)) {
+        if (route.kind !== 'flow') continue
+        const child = route.target
         const childSelector = child.kind === 'flow' ? `flow:${child.path}` : `binding:${child.id}`
         const childIndex = targetIndexes.get(childSelector)
-        states.push(childIndex === undefined ? 'unchecked' : await check(childIndex))
+        states.push(childIndex === undefined ? 'unchecked' : await checkWithChildren(childIndex))
       }
       return inspectionState(states)
     }
@@ -3256,32 +3258,25 @@ export async function inspectPrivateApprovedProject(
           candidate.lock.packages[request.packagePath]!,
           inspected,
         )
-        const schemas: Record<string, JsonValue> = {}
-        for (const name of ['input', 'settings', 'result'] as const) {
-          if (inspected.schemas[name] !== undefined) {
-            schemas[name] = decodeJson1(await captured.read(`${name}.schema.json`, 262_144))
-          }
-        }
         result = {
           state,
           revision: candidate.candidate.lockDigest,
           target: selector,
           package: request.packagePath,
           digest: request.package.digest,
-          name: inspected.metadata.name,
-          description: inspected.metadata.description,
-          schemas,
+          ...(inspected.metadata.name === undefined ? {} : { name: inspected.metadata.name }),
+          ...(inspected.metadata.description === undefined
+            ? {}
+            : { description: inspected.metadata.description }),
+          contract: (inspected.contract?.descriptor ?? null) as JsonValue,
+          ...(inspected.schemas.settings === undefined
+            ? {}
+            : {
+                settingsSchema: decodeJson1(await captured.read('settings.schema.json', 262_144)),
+              }),
           settings: request.settings,
-          capabilities: request.capabilities as unknown as JsonValue,
-          children: Object.fromEntries(
-            Object.entries(request.flowSlots).map(([slot, target]) => [
-              slot,
-              target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`,
-            ]),
-          ),
+          slots: request.slots as unknown as JsonValue,
           attachments: request.attachments,
-          channels: (inspected.metadata.channels ?? {}) as unknown as JsonValue,
-          commands: (request.commands ?? {}) as unknown as JsonValue,
         }
       } finally {
         await captured.dispose()

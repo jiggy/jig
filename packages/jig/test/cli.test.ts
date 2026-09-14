@@ -322,7 +322,7 @@ test('default init writes an ordinary editable SDK Flow without installing or ap
       ).toBe(0)
       expect(help).toContain(`jig run flow:flows/hello --input '"Ada"'`)
     }
-    expect(await readFile(join(directory, 'flows/hello/flow.ts'), 'utf8')).toContain(
+    expect(await readFile(join(directory, 'flows/hello/FLOW.ts'), 'utf8')).toContain(
       'import { handle } from "@jigging/flow"',
     )
     const sdkManifest = JSON.parse(
@@ -1784,120 +1784,26 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
-  test.each([true, false])(
-    'Agent chooser preserves approval and filters unavailable options (interactive=%s)',
-    async (interactive) => {
-      const events: string[] = []
-      const answers = ['99', '1']
-      let chosen: string | undefined
-      const session = fakeSession(events, {
-        plan: {
-          state: 'applicable',
-          operation: 'admission',
-          planDigest: digest,
-          review: {
-            mediaType: 'text/plain; charset=utf-8',
-            text: 'review\n',
-            details: 'details\n',
-          },
-        },
-      })
-      const invocation = commandInvocation({
-        async acquire(_project, options) {
-          return {
-            ...session,
-            async plan(request) {
-              if (interactive) {
-                expect(options?.chooseAgent).toBeDefined()
-                chosen = await options!.chooseAgent!(
-                  [
-                    { id: 'codex', label: 'Codex — final result and live updates' },
-                    {
-                      id: 'api',
-                      label: 'API endpoint — final result only',
-                      unavailable: 'Configure API credentials first',
-                    },
-                  ],
-                  new AbortController().signal,
-                )
-              } else expect(options?.chooseAgent).toBeUndefined()
-              return session.plan(request)
-            },
-          }
-        },
-      })
-      expect(
-        await main(['review', '--yes'], {
-          ...invocation.options,
-          interactive,
-          answer: async () => answers.shift()!,
-        }),
-      ).toBe(0)
-      if (interactive) {
-        expect(chosen).toBe('codex')
-        expect(invocation.output).toContain('1. Codex')
-        expect(invocation.output).not.toContain('2. API')
-        expect(invocation.output).toContain('Unavailable: API')
-        expect(invocation.output).not.toContain('Configure API credentials first')
-        expect(invocation.output).not.toContain('this menu cannot detect that need')
-        expect(invocation.output).toContain('Setup: jig review --details')
-        expect(invocation.output.indexOf('1. Codex')).toBeGreaterThan(
-          invocation.output.indexOf('Unavailable: API'),
-        )
-        expect(invocation.output).toContain('Enter a number from 1 to 1')
-        expect(invocation.output).toContain('Approval remains a separate step')
-      } else expect(invocation.output).not.toContain('Choose an Agent')
-      expect(events).toContain(`apply:${digest}`)
-      expect(events.at(-1)).toBe('close')
-    },
-  )
-
-  test.each([false, true])(
-    'Agent setup instructions remain accessible (details=%s)',
-    async (details) => {
-      for (const usable of [false, true]) {
-        let prompts = 0
-        const session = fakeSession([], { plan: { state: 'unchanged' } })
-        const invocation = commandInvocation({
-          async acquire(_project, options) {
-            return {
-              ...session,
-              async plan(request) {
-                await options!.chooseAgent!(
-                  [
-                    ...(usable
-                      ? [{ id: 'codex' as const, label: 'Codex — final result and live updates' }]
-                      : []),
-                    {
-                      id: 'api',
-                      label: 'API endpoint — final result only',
-                      unavailable: 'Export OPENAI_API_KEY and OPENAI_MODEL before jig review.',
-                    },
-                  ],
-                  new AbortController().signal,
-                )
-                return session.plan(request)
-              },
-            }
-          },
-        })
-        await main(['review', ...(details ? ['--details'] : [])], {
-          ...invocation.options,
-          interactive: true,
-          answer: async () => {
-            prompts++
-            return ''
-          },
-        })
-        expect(prompts).toBe(usable ? 1 : 0)
-        if (details || !usable)
-          expect(invocation.output).toContain('Export OPENAI_API_KEY and OPENAI_MODEL')
-        else expect(invocation.output).not.toContain('Export OPENAI_API_KEY and OPENAI_MODEL')
-        if (!usable)
-          expect(invocation.output).toContain('No clients available. Configure a client above')
-      }
-    },
-  )
+  test('a missing selected Binding has an actionable configuration error', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError(
+      'INVALID_CANDIDATE',
+      'project candidate is invalid',
+      {
+        code: 'PROJECT_DEFAULT_MISSING',
+        path: 'jig.ts',
+        pointer: '/defaults',
+      },
+    )
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('PROJECT_DEFAULT_MISSING')
+    expect(invocation.error).toContain('missing Flow or Binding')
+    expect(invocation.error).toContain('Defaults do not install packages or create Bindings')
+    expect(invocation.error).not.toContain('INTERNAL')
+  })
 
   interface FakeSessionOptions {
     readonly plan?: ProjectPlanResult

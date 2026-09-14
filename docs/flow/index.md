@@ -33,7 +33,7 @@ showcase:
   caller:
     file: intake · the caller stays the same
     code: |-
-      return run.runChildFlow({
+      return run.call({
         operationId: 'classify-request',
         slot: 'classifier',
         input: run.input,
@@ -69,7 +69,7 @@ showcase:
 </section>
 
 <div className="ownership-grid">
-<section><span className="tile-index">01 / DESCRIBE</span><h3>Make the method understandable.</h3><p>FLOW.md explains its purpose, inputs, outcomes, and limits. Keep guidance and resources beside the work they support.</p></section>
+<section><span className="tile-index">01 / DESCRIBE</span><h3>Make the method understandable.</h3><p>Optional metadata describes the method; its contract declares inputs and outcomes. Keep guidance and resources beside the implementation.</p></section>
 <section><span className="tile-index">02 / IMPLEMENT</span><h3>Choose how the work happens.</h3><p>An executable entrypoint owns the procedure. Use code, prompts, Skills, libraries, and Agent judgment where each contributes.</p></section>
 <section><span className="tile-index">03 / COMPOSE</span><h3>Build with its capability.</h3><p>The next method supplies input and handles the result. It can use the work without adopting its internal orchestration model.</p></section>
 </div>
@@ -92,6 +92,6 @@ showcase:
 <a href="/guide/for-agents" className="reader-card"><span className="tile-index">FOR AGENTS</span><h3>Work from the source of truth.</h3><p>Read focused Markdown pages or the complete public bundle, generated from these docs.</p><span className="card-link">Get the context ↗</span></a>
 </div>
 
-<details className="honest-details"><summary>What to know before building</summary><p>The standard and SDKs are prerelease. Hosts support specific implementations and supply their own powers and policy. Instructions-only packages are valid, but need an executable implementation for invocation. Skills can also bundle runnable scripts; a Markdown rename does not establish executable behavior or universal format compatibility.</p><p><a href="/guide/start">Authoring paths</a> · <a href="/guide/">Specifications</a> · <a href="https://github.com/jiggy/jig/blob/main/Governance.md">Stewardship</a></p></details>
+<details className="honest-details"><summary>What to know before building</summary><p>The standard and SDKs are prerelease. Hosts support specific implementations and supply their own powers and policy. Markdown execution requires a compatible interpreter and authorized resources. Skill-compatible authoring does not promise identical behavior across runtimes or universal format compatibility.</p><p><a href="/guide/start">Authoring paths</a> · <a href="/guide/">Specifications</a> · <a href="https://github.com/jiggy/jig/blob/main/Governance.md">Stewardship</a></p></details>
 
 <section className="closing-cta"><p className="eyebrow">Begin with something useful</p><h2>Make a method.<br />Build what comes next.</h2><a className="action action--brand" href="/guide/start">Build your first Flow <span aria-hidden="true">↗</span></a><a className="text-link" href="/guide/overview">Find your path through the docs</a></section>

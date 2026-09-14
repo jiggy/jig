@@ -1,8 +1,0 @@
-{
-  "name": "dataset-investigation",
-  "description": "Connect a bounded threshold analysis to a sample reader and verify their finding against the original dataset.",
-  "uses": {
-    "analysis": {},
-    "dataset": {}
-  }
-}

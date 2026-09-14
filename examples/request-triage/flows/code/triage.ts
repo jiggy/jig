@@ -1,7 +1,7 @@
 import type { RunContext, RunResult } from '@jigging/flow'
 
 export async function triage(run: Pick<RunContext, 'input'>): Promise<RunResult> {
-  // input.schema.json is checked by the host before this method starts.
+  // FLOW.contract.json input is checked by the host before this method starts.
   const { message } = run.input as { message: string }
   return { outcome: 'done', output: { queue: explicitQueue(message) ?? 'manual' } }
 }

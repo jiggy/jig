@@ -111,12 +111,10 @@ describe.serial('direct alpha activation store', () => {
         state: 'unchecked',
         name: 'run',
         description: 'Direct alpha store fixture.',
-        schemas: { input: { type: 'object', required: ['value'] } },
-        capabilities: {},
+        contract: { input: { type: 'object', required: ['value'] } },
         attachments: {},
-        children: {},
+        slots: {},
         settings: {},
-        channels: {},
       })
       await expect(
         inspectPrivateApprovedProject(fixture.root, 'binding:missing'),

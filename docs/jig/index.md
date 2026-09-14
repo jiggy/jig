@@ -33,7 +33,7 @@ showcase:
   caller:
     file: intake · the caller stays the same
     code: |-
-      return run.runChildFlow({
+      return run.call({
         operationId: 'classify-request',
         slot: 'classifier',
         input: run.input,

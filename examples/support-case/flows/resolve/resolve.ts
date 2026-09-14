@@ -2,16 +2,16 @@ import type { RunContext, RunResult } from '@jigging/flow'
 import { type Account, type Proposal, decide } from './policy.ts'
 
 export async function resolve(
-  run: Pick<RunContext, 'input' | 'runChildFlow' | 'signal'>,
+  run: Pick<RunContext, 'input' | 'call' | 'signal'>,
 ): Promise<RunResult> {
-  // The host checks input.schema.json; this relational check needs application code.
+  // The host checks FLOW.contract.json input; this relational check needs application code.
   const input = run.input as { message: string; account: Account }
   if (
     new Set(input.account.charges.map((charge) => charge.id)).size !== input.account.charges.length
   )
     throw new TypeError('Account records must have unique charge IDs.')
   run.signal.throwIfAborted()
-  const assessment = await run.runChildFlow({
+  const assessment = await run.call({
     operationId: 'assess-case',
     slot: 'assessment',
     input: run.input,

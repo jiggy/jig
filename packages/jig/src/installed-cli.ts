@@ -113,8 +113,6 @@ async function runPrivateInstalledCli(
           location,
           operatorEnvironment,
           recovery.project,
-          undefined,
-          { remember: false },
         )
         const terminal = await recoverPrivateCheckpointRun(recovery, installedHost)
         process.stdout.write(`${Buffer.from(canonicalJson(publicTerminal(terminal))).toString()}\n`)
@@ -132,10 +130,6 @@ async function runPrivateInstalledCli(
             operatorEnvironment,
             project,
             options?.onStage,
-            {
-              remember: arguments_[0] === 'review',
-              ...(options?.chooseAgent === undefined ? {} : { choose: options.chooseAgent }),
-            },
           )
 
           options?.onStage?.('Opening project state and checking recovery')

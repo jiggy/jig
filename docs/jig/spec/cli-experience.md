@@ -90,16 +90,10 @@ makes usable control an observable requirement;
    A known mismatch between the current execution environment and the approved
    recipe must request `jig review`, not become a generic execution failure.
    Say no Flow started only when the host established a pre-execution refusal.
-   Agent selection follows [Agent Run](agent-run.md#alpha-host-implementations):
-   prompt only for Agent-using projects without explicit or remembered selection.
-   Number only available choices and distinguish final results from live updates.
-   When an API client is selectable, state that the menu cannot detect whether
-   the Flow needs native live updates. When usable clients exist,
-   summarize unavailable names in one secondary line; `--details` expands setup
-   explanations. If none are usable, show the actionable explanations immediately.
-   Keep selectable options adjacent to the prompt, after secondary context.
-   Suspend progress before input. Empty input, EOF and interruption choose nothing;
-   `--yes` never selects a client. Remembering a client does not approve execution.
+   Agent selection uses ordinary Flow targets and explicit resource grants;
+   see [Agent Run](agent-run.md). Missing selections identify the unresolved
+   target or resource. Review does not install an Agent, invent a Binding,
+   or choose a client on the operator's behalf.
 7. **Honest completion.** Command success follows required cleanup. Execution
    completion, application outcome, delivery, and cleanup remain separate.
    Cancellation requested is not cancellation complete. Lost work and unknown
@@ -139,8 +133,9 @@ makes usable control an observable requirement;
 `jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
 current project's last locally approved snapshot. Without a target it lists
 exact approved selectors; with one it projects retained package descriptions,
-schemas, settings, capability identities, child slots, attachments, channels and
-commands. It compares each selected target's retained recipe and observation
+invocation contract, settings schema, configured settings, resolved slots and
+resource grants, and attachments. Channels belong to the invocation contract.
+It compares each selected target's retained recipe and observation
 identities with the current installed runtime, local Agent configuration/support,
 and sandbox support, using the same identity calculation as Run. A selected
 Binding includes its child targets; unrelated targets do not affect an exact

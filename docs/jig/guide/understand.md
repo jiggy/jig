@@ -20,7 +20,7 @@ Imagine a support application asking a classifier which queue should inspect
 an incoming request. It calls a named slot with the message:
 
 ```ts
-return run.runChildFlow({
+return run.call({
   operationId: 'classify-request',
   slot: 'classifier',
   input: run.input,

@@ -1,9 +1,0 @@
-{
-  "name": "live-agent-chat",
-  "description": "Show selected public progress from one Agent call and retain its actual result.",
-  "uses": {
-    "agent": {
-      "contract": "./contracts/agent-run/contract.json"
-    }
-  }
-}

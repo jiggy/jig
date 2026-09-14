@@ -26,7 +26,7 @@ The queue is `billing`, `technical`, or `manual`. Manual classification is a
 valid suggestion when the request cannot be confidently categorized. The
 other declared outcomes, `blocked` and `limit`, carry `output.reason`.
 
-Each package supplies `input.schema.json` and `result.schema.json`. Jig
+Each package declares input and outcomes in `FLOW.contract.json`. Jig
 validates the input before execution and the result before admitting success.
 The input permits one nonempty message of at most 4000 characters. Valid shape
 does not establish that the selected queue is appropriate.
@@ -37,9 +37,9 @@ The intake method is the whole caller:
 import type { RunContext, RunResult } from '@jigging/flow'
 
 export async function triage(
-  run: Pick<RunContext, 'input' | 'runChildFlow'>,
+  run: Pick<RunContext, 'input' | 'call'>,
 ): Promise<RunResult> {
-  return run.runChildFlow({
+  return run.call({
     operationId: 'classify-request',
     slot: 'classifier',
     input: run.input,

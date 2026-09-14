@@ -26,7 +26,7 @@ credit eligibility and customer-facing claims.
   action owns current-state checks, authorization, and idempotency.
 - `done` includes an eligible, ineligible, or manual-review decision; assessment
   inability remains `blocked` or `limit`. Errors and cancellation never replay.
-- Each Flow is self-contained. Input/result schemas describe the shared boundary;
+- Each Flow is self-contained. `FLOW.contract.json` describes the shared boundary;
   code owns relational checks and semantic policy, not Jig.
 
 ## Work Guidance

@@ -118,7 +118,7 @@ function recoverable(error: unknown): error is OperationError {
 }
 
 export async function investigate(
-  run: Pick<RunContext, 'input' | 'signal' | 'channel' | 'runChildFlow'>,
+  run: Pick<RunContext, 'input' | 'signal' | 'channel' | 'call'>,
 ): Promise<RunResult> {
   run.signal.throwIfAborted()
   const input = validateInput(run.input)
@@ -160,7 +160,7 @@ export async function investigate(
     ) => {
       for (const endpoint of Object.values(channels)) offered.add(endpoint)
       try {
-        children[slot] = await run.runChildFlow(
+        children[slot] = await run.call(
           { operationId: slot, slot, input: value, channels },
           { signal: stop.signal },
         )

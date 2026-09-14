@@ -256,23 +256,6 @@ function createSession(
             'project has no exact Run target',
           )
         }
-        const agentRequest = requests.find((request) =>
-          Object.values(request.capabilities).some(
-            (use) => use.digest === AGENT_RUN_CONTRACT_DIGEST,
-          ),
-        )
-        const agentProvider =
-          agentRequest !== undefined && host.prepareAgent !== undefined
-            ? await host.prepareAgent(planningCancellation.signal)
-            : host.agentProvider
-        planningCancellation.signal.throwIfAborted()
-        if (agentRequest !== undefined && agentProvider === undefined)
-          throw new CheckError(
-            'unavailable',
-            'PROJECT_AGENT_UNAVAILABLE',
-            'Agent support is unavailable',
-            `${agentRequest.packagePath}/FLOW.md`,
-          )
         preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
         const recipes: PrivateDirectRunRecipe[] = []
         const executions = new Map<string, PrivateBunExecutionArtifact>()
@@ -713,6 +696,7 @@ export function projectError(
             code: error.code,
             path: error.path,
             ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
+            ...(error.typeMismatch === undefined ? {} : { typeMismatch: error.typeMismatch }),
           },
         )
       } catch {
@@ -798,6 +782,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
     code.startsWith('SCHEMA_') ||
     code.startsWith('PACKAGE_BUN_') ||
     code.startsWith('PROJECT_BINDING_') ||
+    code.startsWith('PROJECT_DEFAULT_') ||
     code.startsWith('PROJECT_GRANT') ||
     code.startsWith('PROJECT_DECLARATION_') ||
     code.startsWith('PROJECT_EVALUATION_') ||

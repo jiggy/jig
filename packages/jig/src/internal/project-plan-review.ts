@@ -79,7 +79,7 @@ export function renderPrivateProjectPlanReview(
   summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
   if (grants.length !== 0) {
     summary.write('Resource delegation changes (recipient, exact policy):\n')
-    writeAsciiJson(summary, grants, 0)
+    writePolicy(summary, grants, 1)
     summary.write(
       '\nNew or changed grants require explicit authority approval. Removed grants affect new Runs after admission.\n\n',
     )

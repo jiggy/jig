@@ -1,9 +1,0 @@
-{
-  "name": "evidence-reviewer",
-  "description": "Review a proposal against supplied evidence and an admitted review focus.",
-  "uses": {
-    "agent": {
-      "contract": "./contracts/agent-run/contract.json"
-    }
-  }
-}

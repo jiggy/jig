@@ -1,0 +1,9 @@
+{
+  "name": "request-triage-agent",
+  "description": "Interpret a support request using one bounded Agent call.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

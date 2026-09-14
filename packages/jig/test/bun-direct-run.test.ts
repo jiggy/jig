@@ -36,15 +36,25 @@ describe('private Bun direct Run', () => {
       bunPath: '/test/bun',
       bunHostLibraryPath: '/test/lib',
     })
-    const provider = (model: string, key: string) =>
-      openPrivateOpenAIAgentProvider(installedSupport, {
-        OPENAI_MODEL: model,
-        OPENAI_API_KEY: key,
-      })
+    const resources = (model: string, key: string) =>
+      openPrivateAcpResources(installedSupport, {}, process.cwd(), async () =>
+        createPrivateAcpAgentProvider({
+          client: 'openai-codex',
+          model,
+          modeId: 'default',
+          credentialMode: 'subscription',
+          adapterPath: installedSupport.installedCliPath,
+          sandboxAdapterPath: '/agent/adapter.js',
+          executablePath: installedSupport.executablePath,
+          sandboxExecutablePath: '/agent/client',
+          environment: {},
+          startupInput: new TextEncoder().encode(key),
+        }),
+      )
     const input = {
       request: activationRequest(true),
       installedSupport,
-      agentProvider: provider('test-model-a', 'test-key-a'),
+      acpResources: resources('test-model-a', 'test-key-a'),
     }
     const planned = await planPrivateBunDirectRun({ ...input, backend })
     const inspected = await inspectPrivateBunDirectIdentity(input, MECHANISM.support)
@@ -55,13 +65,13 @@ describe('private Bun direct Run', () => {
     expect(() => requirePrivateBunDirectRecipe(inspected)).toThrow()
     expect(
       await inspectPrivateBunDirectIdentity(
-        { ...input, agentProvider: provider('test-model-a', 'test-key-b') },
+        { ...input, acpResources: resources('test-model-a', 'test-key-b') },
         MECHANISM.support,
       ),
     ).toEqual(inspected)
     expect(
       await inspectPrivateBunDirectIdentity(
-        { ...input, agentProvider: provider('test-model-b', 'test-key-a') },
+        { ...input, acpResources: resources('test-model-b', 'test-key-a') },
         MECHANISM.support,
       ),
     ).not.toEqual(inspected)
@@ -72,7 +82,7 @@ describe('private Bun direct Run', () => {
       }),
     ).not.toEqual(inspected)
     await expect(
-      inspectPrivateBunDirectIdentity({ ...input, agentProvider: undefined }, MECHANISM.support),
+      inspectPrivateBunDirectIdentity({ ...input, acpResources: undefined }, MECHANISM.support),
     ).rejects.toBeDefined()
   })
 

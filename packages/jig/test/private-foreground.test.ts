@@ -82,7 +82,7 @@ describe('private foreground command boundary', () => {
         await writeChannelConversationProject(root, peer)
         for (const name of ['investigate', 'analysis', 'dataset']) {
           const built = await Bun.build({
-            entrypoints: [join(root, 'flows', name, 'flow.ts')],
+            entrypoints: [join(root, 'flows', name, 'FLOW.ts')],
             target: 'bun',
           })
           expect(built.success, String(built.logs)).toBeTrue()

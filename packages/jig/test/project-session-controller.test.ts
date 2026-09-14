@@ -17,6 +17,25 @@ import {
 const missingPlan = `sha256:${'0'.repeat(64)}`
 
 describe('private finite project session', () => {
+  test('preserves missing default diagnostics without exposing source error text', () => {
+    const failure = projectError(
+      new CheckError(
+        'invalid',
+        'PROJECT_DEFAULT_MISSING',
+        'private source detail',
+        'jig.ts',
+        '/defaults',
+      ),
+      'plan',
+    )
+    expect(failure.code).toBe('INVALID_CANDIDATE')
+    expect(failure.diagnostic).toEqual({
+      code: 'PROJECT_DEFAULT_MISSING',
+      path: 'jig.ts',
+      pointer: '/defaults',
+    })
+    expect(JSON.stringify(failure)).not.toContain('private source detail')
+  })
   test('preserves closed type facts while discarding private error messages', () => {
     const failure = projectError(
       new CheckError(

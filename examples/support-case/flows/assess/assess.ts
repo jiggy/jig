@@ -1,13 +1,10 @@
 import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
 import responseSchema from './proposal.schema.json'
 
-export async function assess(
-  run: Pick<RunContext, 'input' | 'callCapability'>,
-): Promise<RunResult> {
-  const result = await run.callCapability({
+export async function assess(run: Pick<RunContext, 'input' | 'call'>): Promise<RunResult> {
+  const reply = await run.call({
     operationId: 'assess-charge',
     slot: 'agent',
-    method: 'run',
     input: {
       instructions:
         'Identify the charge this customer disputes and the requested credit in USD cents. ' +
@@ -20,14 +17,15 @@ export async function assess(
       responseSchema,
     },
   })
+  const result = reply.output
   if (!isObject(result)) throw new TypeError('The Agent returned an invalid assessment.')
-  if (result.outcome === 'blocked' || result.outcome === 'limit') {
+  if (reply.outcome === 'blocked' || reply.outcome === 'limit') {
     if (typeof result.text !== 'string') throw new TypeError('The Agent omitted its reason.')
-    return { outcome: result.outcome, output: { reason: result.text } }
+    return { outcome: reply.outcome, output: { reason: result.text } }
   }
   const proposal = result.structured
   if (
-    result.outcome !== 'completed' ||
+    reply.outcome !== 'done' ||
     !isObject(proposal) ||
     Object.keys(proposal).sort().join(',') !== 'chargeId,requestedCreditCents' ||
     !(
