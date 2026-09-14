@@ -168,23 +168,27 @@ html.dark {
 .product-story .story-copy h2, .product-story .closing-cta h2 { border: 0; padding: 0; margin: .8rem 0 1.5rem; font-size: clamp(2rem, 3.4vw, 3.1rem); font-weight: 700; line-height: 1.16; letter-spacing: -.05em; }
 .product-story .story-copy p:not(.eyebrow) { color: var(--rp-c-text-2); font-size: .97rem; line-height: 1.8; }
 .story-section--reverse .story-copy { order: 2; }
-.package-reveal, .composition-reveal, .boundary-reveal { padding: 2rem; border-radius: 20px; background: var(--rp-c-bg-soft); }
+.package-reveal, .composition-reveal, .boundary-reveal { min-width: 0; }
 .product-story .visual-caption { margin: 0 0 1rem; }
-.package-reveal dl { margin: 0; }
-.package-reveal dl > div { padding: 1rem 0; border-top: 1px solid var(--rp-c-divider-light); }
+.package-reveal dl { display: grid; gap: 1rem; margin: 0; }
+.package-reveal dl > div { position: relative; padding: 1.1rem 1.4rem; margin-right: 1.5rem; border: 1px solid var(--rp-c-divider-light); border-radius: 12px; background: color-mix(in srgb, var(--wash) 18%, var(--rp-c-bg)); }
+.package-reveal dl > div:nth-child(2) { margin-left: 1.5rem; margin-right: 0; }
+.package-reveal dl > div::before { content: ''; position: absolute; top: 1.4rem; left: -.2rem; width: .35rem; height: .9rem; border-radius: 3px; background: var(--accent); }
 .package-reveal dt { font: 600 .88rem/1.7 'JetBrains Mono', monospace; }
 .package-reveal dd { margin: .35rem 0 0; color: var(--rp-c-text-2); font-size: .85rem; line-height: 1.7; }
 .product-story .visual-footnote { font-size: .75rem; line-height: 1.7; color: var(--rp-c-text-2); margin: 1rem 0 0; }
 .composition-reveal ol { margin: 0; padding-left: 1.4rem; }
-.composition-reveal li { padding: .8rem 0 .8rem .6rem; }
-.composition-reveal li::marker { color: var(--accent); }
+.composition-reveal li { padding: 1rem 1.2rem; margin: 0 0 1rem .5rem; border: 1px solid var(--rp-c-divider-light); border-radius: 12px; background: color-mix(in srgb, var(--wash) 12%, var(--rp-c-bg)); }
+.composition-reveal li::marker { color: var(--accent); font: 500 .8rem 'JetBrains Mono', monospace; }
 .composition-reveal strong, .composition-reveal span { display: block; }
 .composition-reveal span { font-size: .85rem; color: var(--rp-c-text-2); margin-top: .3rem; }
-.boundary-reveal { border: 1px solid var(--accent); }
-.boundary-method { background: var(--rp-c-bg); border: 1px solid var(--rp-c-divider-light); border-radius: 12px; padding: 1.3rem; }
+.boundary-reveal { padding: 1.4rem; border: 1px dashed var(--rp-c-divider); border-radius: 18px; }
+.boundary-method { background: color-mix(in srgb, var(--wash) 18%, var(--rp-c-bg)); border: 1px solid var(--rp-c-divider-light); border-radius: 12px; padding: 1.3rem; }
 .product-story .boundary-method p { font-size: .9rem; color: var(--accent); margin: .5rem 0; }
 .boundary-method span { font-size: .8rem; color: var(--rp-c-text-2); }
-.boundary-reveal ul { font-size: .85rem; padding-left: 1.2rem; }
+.boundary-reveal ul { font-size: .85rem; padding-left: 1.2rem; margin-block: 1.2rem; }
+.boundary-reveal li { padding: .4rem .3rem; }
+.boundary-reveal li::marker { color: var(--accent); }
 .product-story .closing-cta > p { max-width: 540px; margin: 0 auto 1.5rem; color: var(--rp-c-text-2); }
 .product-story .closing-cta .start-note { font-size: .8rem; margin: 1.2rem auto 0; }
 .landing-routes { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem 2rem; padding: 2rem 0 4rem; font-size: .85rem; }
@@ -257,7 +261,8 @@ html.dark {
   .method-steps { grid-template-columns: 1fr; gap: 0; }
   .method-steps li { text-align: left; border-top: 0; border-left: 2px solid var(--accent); padding: .4rem .8rem; }
   .method-envelope { padding: 1rem; }
-  .package-reveal, .composition-reveal, .boundary-reveal { padding: 1.4rem; }
+  .package-reveal dl > div, .package-reveal dl > div:nth-child(2) { margin-inline: 0; }
+  .composition-reveal li { padding: .9rem 1rem; }
   .hero-description { font-size: 1rem; }
   .hero-actions { gap: .6rem; }
   .hero-actions .action { font-size: .78rem; gap: .6rem; padding-inline: .9rem; }
@@ -342,7 +347,7 @@ button.rp-switch-appearance { border: 0; background: transparent; cursor: pointe
 .package-files code { font: 600 .85rem/1.5 'JetBrains Mono', monospace; color: var(--accent); }
 .package-files span { color: var(--rp-c-text-2); font-size: .75rem; }
 .package-stage-copy { margin: 1.2rem 0; }
-.package-stage-copy h3 { margin: 0 0 .6rem; font-size: 1.05rem; font-weight: 700; }
+.package-stage-copy h2 { margin: 0 0 .6rem; font-size: 1.05rem; font-weight: 700; }
 .package-stage-copy p { color: var(--rp-c-text-2); font-size: .87rem; line-height: 1.75; margin: 0; }
 .package-code { min-width: 0; }
 .package-code .rp-codeblock { margin: 0; }
@@ -375,3 +380,8 @@ button.rp-switch-appearance { border: 0; background: transparent; cursor: pointe
   word-break: normal !important;
   overflow-wrap: anywhere;
 }
+
+.package-showcase .package-caption { text-align: center; margin: 1.5rem auto 0; }
+.package-showcase .package-caption h2 { font-size: 1.3rem; line-height: 1.35; margin: 0 0 .6rem; font-weight: 650; }
+.package-showcase .package-caption p { margin: 0; font-size: .85rem; line-height: 1.7; }
+.package-showcase .showcase-example { margin-top: .9rem; }

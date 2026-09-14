@@ -61,7 +61,6 @@ export function PackageShowcase({ data }: { data: PackageShowcaseData }) {
     document.getElementById(`package-tab-${next}`)?.focus()
   }
   return <section id="showcase" className="showcase package-showcase" aria-labelledby="package-title">
-    <div className="showcase-intro"><h2 id="package-title">{data.title}</h2><p>{data.description}</p></div>
     <div className="showcase-instrument">
       <div className="showcase-tabs" role="tablist" aria-label={data.title}>
         {data.stages.map((stage, index) => <button key={stage.name} id={`package-tab-${index}`} role="tab" aria-selected={selected === index} aria-controls="package-panel" tabIndex={selected === index ? 0 : -1} onClick={() => setSelected(index)} onKeyDown={event => navigate(event, index)}>{stage.name}</button>)}
@@ -72,7 +71,7 @@ export function PackageShowcase({ data }: { data: PackageShowcaseData }) {
           <li><code>{data.source.file}</code><span>{data.requiredLabel}</span></li>
           {selected > 0 && <li><code>{implementation.file}</code><span>{data.implementationLabel}</span></li>}
         </ul>
-        <div className="package-stage-copy"><h3>{data.stages[selected].title}</h3><p>{data.stages[selected].description}</p></div>
+        <div className="package-stage-copy"><h2>{data.stages[selected].title}</h2><p>{data.stages[selected].description}</p></div>
         {selected === 1 && <div className="implementation-picker" role="group" aria-label={data.implementationLabel}>
           {data.implementations.map((item, index) => <button key={item.file} aria-pressed={language === index} onClick={() => setLanguage(index)}>{item.file}</button>)}
         </div>}
@@ -83,6 +82,7 @@ export function PackageShowcase({ data }: { data: PackageShowcaseData }) {
       <details className="package-precision"><summary>{data.precisionTitle}</summary><dl>{data.precision.map(item => <div key={item.file}><dt><Link href={item.link}>{item.file}</Link></dt><dd>{item.description}</dd></div>)}</dl></details>
       <p className="showcase-note">{data.note}</p>
     </div>
+    <div className="showcase-intro package-caption"><h2 id="package-title">{data.title}</h2><p>{data.description}</p></div>
     <Link className="text-link showcase-example" href={data.link}>{data.linkText}<Arrow /></Link>
   </section>
 }

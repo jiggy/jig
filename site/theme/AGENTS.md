@@ -54,6 +54,9 @@ shared reading experience.
 - Landing pages move from an early interactive demonstration to product-specific
   structure and one first-use path. Keep implementation details in disclosures,
   resource routing compact, and motion brief, optional, and reduced-motion aware.
+- Place the package explorer’s caption below its instrument. Supporting side
+  visuals use separated, lightly tinted elements and open space rather than
+  a single filled text panel; retain a visible boundary where it explains containment.
 
 ## Verification
 
