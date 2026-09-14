@@ -21,11 +21,11 @@ import {
 import { PrivateCliProgress } from './cli-progress.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
+import { CheckError } from './diagnostics.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
-import { CheckError } from './diagnostics.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -45,6 +45,7 @@ import {
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
+import { flowSelector, npmPackageName } from './project/package-selector.js'
 import { createProject, ProjectInitError } from './project-init.js'
 import { schemaTypeMismatchText } from './schema/types.js'
 
@@ -471,7 +472,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
   runtime.progress.note(
-    `Running ${asciiJsonString(parsed.target.kind === 'flow' ? `flow:${parsed.target.path}` : `binding:${parsed.target.id}`)}`,
+    `Running ${asciiJsonString(parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`)}`,
   )
   runtime.progress.stage('Reading selected inputs')
   const outputStop = new AbortController()
@@ -955,6 +956,11 @@ export function privateCliCommandLifetimeMs(arguments_: readonly string[]): numb
 
 function parseTarget(value: string): RunTargetRef {
   try {
+    if (value.startsWith('npm:')) {
+      npmPackageName(value)
+      return flowRef(value)
+    }
+    if (value.startsWith('flow:npm:')) throw new TypeError('use npm:<package>')
     if (value.startsWith('flow:')) return flowRef(value.slice('flow:'.length))
     if (value.startsWith('binding:')) return bindingRef(value.slice('binding:'.length))
   } catch {
@@ -962,7 +968,7 @@ function parseTarget(value: string): RunTargetRef {
   }
   throw new CliDiagnostic(
     'JIG_RUN_TARGET_INVALID',
-    'use flow:<path> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.',
+    'use flow:<path>, npm:<package> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.',
     1,
   )
 }
@@ -1259,15 +1265,25 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_BINDING_PACKAGE_MISSING:
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
       PROJECT_DEFAULT_MISSING:
-        'a default in jig.ts names a missing Flow or Binding; create the selected local Binding and include its Flow in discovery, or correct the selector. Defaults do not install packages or create Bindings',
+        'defaultProviders in jig.ts names a missing Flow or Binding; create the selected local Binding and include its Flow in discovery, or correct the selector. Provider selection does not create Bindings',
       PROJECT_DEFAULT_CONTRACT:
-        'select an ordinary Flow that offers a named FLOW.contract.json; a default cannot select a host-only resource contract',
-      PROJECT_DEFAULT_CONFLICT:
-        'select only one project default for each offered contract; use explicit consumer slots for different implementations',
+        'use a contract ID as the defaultProviders key and select an ordinary Flow offering that same named contract; host-only resource contracts are not eligible',
       PROJECT_DEFAULT_INTERFACE_MISMATCH:
         'the selected default must offer the identical required contract id, version and digest; correct the selection or use an explicit compatible slot',
       PROJECT_DEFAULT_UNAVAILABLE:
         'the selected default cannot run with its current configuration; configure its required slots and grants before review',
+      PROJECT_PROVIDER_AMBIGUOUS:
+        'more than one implementation matches this contract; choose one in defaultProviders or configure the consumer slot explicitly',
+      PROJECT_DEPENDENCY_MISSING:
+        'declare the selected npm package in this project package.json dependencies, then review its Flow and required grants',
+      PROJECT_DEPENDENCY_IDENTITY:
+        'the resolved package does not match its declared name; correct the dependency and review again',
+      PROJECT_DEPENDENCY_MANIFEST:
+        'provide a bounded valid package.json for the project and the selected Flow dependency',
+      PROJECT_DEPENDENCY_UNAVAILABLE:
+        'this host cannot prepare npm Flow targets; use a host with declared dependency support',
+      PROJECT_DEPENDENCY_LIMIT:
+        'select at most 256 npm Flow packages within the existing dependency preparation limits',
       PROJECT_BINDING_SLOT_MISSING:
         'a child slot references a target not selected by jig.ts; correct the slot or project membership',
       PROJECT_GRANT_MISSING:
@@ -1281,7 +1297,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_MEMBER_COLLISION:
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
-        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants and defaults',
+        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants and defaultProviders',
       PROJECT_EVALUATION_LIMIT:
         'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
       PROJECT_DECLARATION_INVALID:

@@ -14,7 +14,7 @@ const schema = compileSchemaFile(
 const project = defineJig({
   flows: discover('./flows'),
   bindings: ['./bindings/review.ts'],
-  defaults: ['binding:review'],
+  defaultProviders: { 'https://example.org/contracts/review': 'binding:review' },
 })
 const binding = defineBinding({
   package: './flows/review',
@@ -39,13 +39,20 @@ describe('Project Authoring SDK/1 shape schema', () => {
     [
       'object default selector',
       changed(project, (item) => {
-        item.defaults = [{ kind: 'binding', id: 'review' }]
+        item.defaultProviders = {
+          'https://example.org/contracts/review': { kind: 'binding', id: 'review' },
+        }
       }),
     ],
     [
       'oversized default list',
       changed(project, (item) => {
-        item.defaults = Array.from({ length: 257 }, () => 'binding:review')
+        item.defaultProviders = Object.fromEntries(
+          Array.from({ length: 257 }, (_, i) => [
+            `https://example.org/contracts/review-${i}`,
+            'binding:review',
+          ]),
+        )
       }),
     ],
     [

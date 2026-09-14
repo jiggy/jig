@@ -1,9 +1,8 @@
-import { requiresAuthorityApproval } from './grant-review.js'
-import { ProjectAdministrationError } from '../administration/project.js'
 import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { ProjectAdministrationError } from '../administration/project.js'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
@@ -17,6 +16,7 @@ import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
+import { flowSelector } from '../project/package-selector.js'
 import {
   openPrivateProjectRoot,
   type PrivateProjectRoot,
@@ -45,6 +45,7 @@ import {
 import { privateActivationTargetKey } from './activation-planning.js'
 import { verifyBoundAttachment } from './bound-attachments.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
@@ -2044,7 +2045,7 @@ function rootPreflightTerminal(
           .slice(0, 16)
           .map(({ request }) =>
             request.target.kind === 'flow'
-              ? `flow:${request.target.path}`
+              ? flowSelector(request.target.path)
               : `binding:${request.target.id}`,
           ),
         remainingTargets: Math.max(0, candidate.candidate.targets.length - 16),
@@ -3201,7 +3202,7 @@ export async function inspectPrivateApprovedProject(
     const targets = candidate.candidate.targets.map(({ request }) => ({
       target:
         request.target.kind === 'flow'
-          ? `flow:${request.target.path}`
+          ? flowSelector(request.target.path)
           : `binding:${request.target.id}`,
       package: request.packagePath,
     }))
@@ -3229,7 +3230,8 @@ export async function inspectPrivateApprovedProject(
       for (const route of Object.values(candidate.candidate.targets[index]!.request.slots)) {
         if (route.kind !== 'flow') continue
         const child = route.target
-        const childSelector = child.kind === 'flow' ? `flow:${child.path}` : `binding:${child.id}`
+        const childSelector =
+          child.kind === 'flow' ? flowSelector(child.path) : `binding:${child.id}`
         const childIndex = targetIndexes.get(childSelector)
         states.push(childIndex === undefined ? 'unchecked' : await checkWithChildren(childIndex))
       }

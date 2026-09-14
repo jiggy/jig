@@ -38,19 +38,24 @@ through ordinary error handling; the final answer remains separate.
 
 ## Configure and run
 
-Extract the complete package as `flows/agent` in a Jig project. Its Binding is:
+Declare `@jigging/agent-acp` in the Jig project's `package.json` dependencies
+(`workspace:*` for local source, or a published version with its Bun lock).
+Create `bindings/agent.ts`:
 
 ```ts
 import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
-  package: 'flows/agent',
+  package: 'npm:@jigging/agent-acp',
   slots: { native: { kind: 'acp', client: 'codex' } },
 })
 ```
 
-Select `defaults: ['binding:agent']` in `jig.ts` for matching callers, or use
-an explicit slot. The operator configures the native installation, model and
+Select `defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' }`
+in `jig.ts` with `bindings: discover('./bindings')` for matching callers, or use
+an explicit slot. With one eligible provider the mapping is optional.
+The example's client is a choice, not a Jig default; `codex`, `claude` and `pi`
+use the same grant interface. The operator configures the native installation, model and
 authentication described in [Choose an Agent](https://jig.md/guide/agents).
 
 ```sh

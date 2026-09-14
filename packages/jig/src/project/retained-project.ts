@@ -1,5 +1,3 @@
-import { captureGrantSource } from './grant-source.js'
-import type { GrantPolicy } from './grants.js'
 import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
@@ -17,12 +15,16 @@ import {
   type DeclarationSourceObservation,
 } from './declaration-source.js'
 import {
+  type CapturedFlowSource,
   captureOpenedFlowSource,
   type FlowDiscoveryObservation,
   type FlowExactObservation,
   type PrepareCapturedFlow,
 } from './flow-source.js'
+import { captureGrantSource } from './grant-source.js'
+import type { GrantPolicy } from './grants.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
+import { npmPackageName } from './package-selector.js'
 import { type RetainedAuthorClosure, retainAuthorClosure } from './retained-author-closure.js'
 import { type RetainedFlowInput, retainFlowSourcePackages } from './retained-flow.js'
 import {
@@ -44,6 +46,7 @@ export interface PrivateRetainedOpenedProjectOptions {
   readonly storeRoot: string
   readonly evaluator: PrivateAuthorEvaluatorOptions
   readonly prepareFlow?: PrepareCapturedFlow
+  readonly dependencyFlows?: (selectors: readonly string[]) => Promise<CapturedFlowSource>
 }
 
 export interface RetainedBindingDeclaration {
@@ -111,6 +114,7 @@ export async function retainOpenedPackageProject(
   let bootstrap: CapturedAuthorClosure | undefined
   let closure: CapturedAuthorClosure | undefined
   let flowSource: Awaited<ReturnType<typeof captureOpenedFlowSource>> | undefined
+  let dependencies: CapturedFlowSource | undefined
   let operationFailure: unknown
   try {
     bootstrap = await captureOpenedAuthorClosure(root, [entry])
@@ -184,8 +188,39 @@ export async function retainOpenedPackageProject(
     await bindingSource.verify()
     await grantSource.verify()
 
-    flowSource = await captureOpenedFlowSource(root, project.value.flows, options.prepareFlow)
-    const retainedFlows = await retainFlowSourcePackages(options.storeRoot, flowSource)
+    const selected = new Set<string>()
+    const select = (value: string): void => {
+      if (value.startsWith('npm:')) {
+        npmPackageName(value)
+        selected.add(value)
+      }
+    }
+    for (const value of Object.values(project.value.defaultProviders ?? {})) select(value)
+    for (const binding of bindings) {
+      select(binding.evaluation.value.package)
+      for (const value of Object.values(binding.evaluation.value.slots))
+        if (typeof value === 'string') select(value)
+    }
+    const configured = project.value.flows
+    if (configured?.kind === 'members') for (const path of configured.paths) select(path)
+    if (selected.size > 256)
+      invalid('PROJECT_DEPENDENCY_LIMIT', 'too many selected package dependencies')
+    flowSource = await captureOpenedFlowSource(
+      root,
+      configured?.kind === 'members'
+        ? { kind: 'members', paths: configured.paths.filter((path) => !path.startsWith('npm:')) }
+        : configured,
+      options.prepareFlow,
+    )
+    if (selected.size > 0) {
+      if (!options.dependencyFlows)
+        invalid('PROJECT_DEPENDENCY_UNAVAILABLE', 'this host cannot capture npm Flow targets')
+      dependencies = await options.dependencyFlows([...selected].sort())
+    }
+    const retainedFlows = [
+      ...(await retainFlowSourcePackages(options.storeRoot, flowSource)),
+      ...(dependencies ? await retainFlowSourcePackages(options.storeRoot, dependencies) : []),
+    ]
     const declarationArtifact = await retainAuthorClosure(options.storeRoot, closure)
     await bindingSource.verify()
     await grantSource.verify()
@@ -195,7 +230,9 @@ export async function retainOpenedPackageProject(
       {
         flows: retainedFlows,
         grants: grantSource.grants,
-        ...(project.value.defaults === undefined ? {} : { defaults: project.value.defaults }),
+        ...(project.value.defaultProviders === undefined
+          ? {}
+          : { defaultProviders: project.value.defaultProviders }),
         bindings: bindings.map(({ sourcePath, evaluation, attachments }) => ({
           sourcePath,
           definition: evaluation.value,
@@ -212,7 +249,7 @@ export async function retainOpenedPackageProject(
       root: rootIdentity,
       declarationArtifact,
       project,
-      flowSource: flowSource.observations,
+      flowSource: [...flowSource.observations, ...(dependencies?.observations ?? [])],
       bindingSource: bindingSource.observations,
       grantSource: grantSource.observations,
       grants: grantSource.grants,
@@ -224,7 +261,7 @@ export async function retainOpenedPackageProject(
       root: rootIdentity,
       declarationArtifact,
       project,
-      flowSource: flowSource.observations,
+      flowSource: [...flowSource.observations, ...(dependencies?.observations ?? [])],
       bindingSource: bindingSource.observations,
       grantSource: grantSource.observations,
       grants: grantSource.grants,
@@ -241,6 +278,11 @@ export async function retainOpenedPackageProject(
     const cleanupFailures: unknown[] = []
     try {
       await flowSource?.dispose()
+    } catch (error) {
+      cleanupFailures.push(error)
+    }
+    try {
+      await dependencies?.dispose()
     } catch (error) {
       cleanupFailures.push(error)
     }

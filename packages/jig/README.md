@@ -79,7 +79,10 @@ Use `jig <command> --help` for focused help and `jig --version` for the installe
 version.
 
 Agents are ordinary Flow packages. Select an admitted implementation with
-`defaults: ['binding:agent']` in `jig.ts`, or through an explicit consumer slot.
+`defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' }`
+in `jig.ts`, or through an explicit consumer slot. With one eligible provider,
+review can select it without a map. The Binding can select a declared dependency
+with `package: 'npm:@jigging/agent-acp'`.
 Its Binding grants the underlying HTTP endpoint or finite ACP resource;
 replacing the method does not require a host plugin.
 

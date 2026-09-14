@@ -13,9 +13,10 @@ See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-[Choose an Agent](./agents.md), install its complete Flow artifact, and create
-`bindings/agent.ts` in the example. Its project default already selects that
-Binding. Inspect `issue.json`, `bindings/specialist.ts`, and
+The example declares the ordinary ACP Agent dependency and includes
+`bindings/agent.ts`. [Choose your client](./agents.md) there; Pi is an example
+choice, not a Jig preference. The `defaultProviders` map selects that Binding
+for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/project/cases.json`.
 After [workspace setup](dependencies.md#local-workspace-packages), run from the example directory:
 

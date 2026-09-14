@@ -63,10 +63,10 @@ it does not reset admission, migrate records, or bypass pending cleanup.
 ## 2. Project sources
 
 `defineJig()` accepts the independently optional `flows`, `bindings`, and
-`grants` membership sources, plus exact ordinary implementation `defaults`.
+`grants` membership sources, plus the contract-keyed `defaultProviders` map.
 Omitted membership means an empty source, not implicit discovery. Omitted
-defaults select no ordinary implementations; [project defaults](#project-defaults)
-defines their separate resolution rules.
+provider mappings impose no explicit preference; [default providers](#default-providers-by-contract)
+defines sole-match selection and the separate resolution rules.
 
 `discover()` selects shallow membership beneath one or more project-relative
 directories. It is not a glob language. `*`, `?`, `[`, `]`, `{`, and `}` are
@@ -399,23 +399,44 @@ parent file access. Unsupported declaration counts reject the project candidate.
 Bindings contain no runtime command, environment map, package-manager policy,
 or generic permission bag.
 
-### Project defaults
+### Default providers by contract
 
-`defaults: ['binding:agent', 'flow:flows/reviewer']` selects ordinary
-implementations for omitted named invocation slots. The optional list contains
-at most 256 exact Flow or Binding selectors, normalized and sorted without
-duplicates. A selected package must offer a named root `FLOW.contract.json`;
-Jig derives the contract identity from that package, not a second authoring map.
-Two defaults offering the same contract ID reject the candidate, even if their
-versions, digests or target identities differ.
+`defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' }`
+selects an ordinary implementation for omitted slots requiring that contract.
+The optional map contains at most 256 contract IDs, canonically ordered by key.
+Each value is an exact Flow or Binding selector. The selected package must
+offer a named root `FLOW.contract.json` whose ID equals the map key. A key is
+not a consumer-local slot name, a URL to fetch, or a declaration of compatibility.
 
 For each target and requirement, review resolves in this order:
 
 1. An explicit Binding slot wins and must itself validate.
 2. Otherwise, a default selected for the required named contract ID must match
    its version and descriptor/closure digest exactly.
-3. A qualified root Run Checkpoint implementation may satisfy its unmapped
-   requirement. Other unresolved requirements do not gain implicit authority.
+3. Otherwise, exactly one structurally provisioned ordinary target offering the
+   required ID, version and closure digest supplies the route. Zero remains
+   unresolved; several require an explicit selection. Each configured Binding
+   is distinct, including an empty Binding and its directly invokable package.
+4. A qualified root Run Checkpoint implementation may satisfy its unmapped
+   requirement. Other native resources require explicit grants.
+
+Candidate construction does not allocate resources or test provider health.
+Targets with root attachments, invalid settings, missing explicit native grants,
+or unbound anonymous slots are not candidates. Ordinary named dependencies may
+themselves resolve; count candidates before validating the resulting graph,
+without pruning cycles or backtracking to manufacture a unique answer.
+An ambiguous unconfigured direct identity may remain ineligible when that
+package has a Binding; each Binding must still resolve independently. An
+explicit consumer selection must not be vetoed by its unused direct identity.
+
+An `npm:<name>` reference explicitly selects project dependency membership.
+The host captures the project dependency metadata and prepares its locked
+closure through existing Bun controls, then inspects the selected package's
+own FLOW files without executing them. Workspace source selection and registry
+installation keep their existing limits, permissions and source checks.
+No package source, installer alias, mutable manifest, or resource name grants
+execution authority. Review retains the exact effective routes and reachable
+resource policies; Run uses only those admitted bytes.
 
 A selected but incompatible default never falls back to native authority. It
 makes the package's automatic direct target ineligible; an omitted Binding slot
@@ -587,7 +608,7 @@ Only a package with `directRun: true` may contain `slots`. This optional map
 is present only when nonempty and contains only Flow or Binding identities
 resolved from project defaults, never grants. Binding `slots` includes its
 effective default selections as well as explicit routes and resolved grants.
-The authoring `defaults` list is not a runtime lock field. Exact interface
+The authoring `defaultProviders` map is not a runtime lock field. Exact interface
 matching, direct-target eligibility and the full bounded graph are validated
 with the retained packages, not inferred from lock shape alone.
 

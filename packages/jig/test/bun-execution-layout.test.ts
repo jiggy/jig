@@ -24,6 +24,30 @@ const regularFiles = [
 ]
 
 describe('private Bun execution layout', () => {
+  test('a dependency Flow root must identify a captured installed package', () => {
+    const layout = normalizePrivateBunExecutionLayout({
+      flowRoot: 'node_modules/@fixture/flow',
+      members: [],
+      aliases: [],
+    })
+    expect(() =>
+      assertPrivateBunExecutionLayoutFiles(layout, [
+        { path: 'package.json' },
+        { path: 'node_modules/@fixture/flow/package.json' },
+        { path: 'node_modules/@fixture/flow/FLOW.ts' },
+      ]),
+    ).not.toThrow()
+    expect(() => assertPrivateBunExecutionLayoutFiles(layout, [{ path: 'package.json' }])).toThrow()
+    for (const flowRoot of [
+      'node_modules/.hidden',
+      'node_modules/@fixture/.bin',
+      'node_modules/flow/FLOW.ts',
+      '../node_modules/flow',
+    ])
+      expect(() =>
+        normalizePrivateBunExecutionLayout({ flowRoot, members: [], aliases: [] }),
+      ).toThrow()
+  })
   test('normalizes standalone and workspace layouts into independent immutable values', () => {
     expect(normalizePrivateBunExecutionLayout({ flowRoot: '', members: [], aliases: [] })).toEqual(
       EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,

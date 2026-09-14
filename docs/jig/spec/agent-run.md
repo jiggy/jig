@@ -252,7 +252,7 @@ Two ordinary packages offer the same Agent Run contract:
 - `@jigging/agent-acp` drives the finite ACP dialogue through an exact
   [native resource grant](finite-acp.md), including optional public updates.
 
-A [project default](project-sdk.md#project-defaults) or explicit Binding route
+A [default provider](project-sdk.md#default-providers-by-contract) or explicit Binding route
 selects the package. Both execute as ordinary keyless, network-isolated Flows;
 their granted resources hold credentials and enforce dispatch and lifetime.
 Jig does not implement a hidden Agent method or fall back to another provider.

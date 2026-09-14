@@ -80,10 +80,15 @@ admitted FLOW packages.
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or
   execution; Runs use retained admitted bytes.
-- Project `defaults` selects existing named-contract Flow or Binding targets.
-  Linking fills only omitted matching requirements and retains effective routes
-  in each target; explicit routes win or fail. Include direct Flow routes in
-  graph, lock, review and admission checks. Execution never rereads the list.
+- Project `defaultProviders` maps contract IDs to exact Flow or Binding targets.
+  Explicit slots win; otherwise review uses the map or the sole structurally
+  provisioned exact match. Ambiguity requires a choice, never a client-availability
+  heuristic. Retain effective routes in graph, lock, review and admission;
+  execution never consults the authoring map.
+- `npm:<package>` selects a declared project dependency's own Flow through
+  ordinary contained Bun preparation. Capture source and execution closure;
+  never import its entrypoint into the coordinator or traverse live installation
+  links. Grants and settings still belong to its reviewed Binding.
 - Binding `attachments` selects project-relative read trees captured at review,
   using the existing portable attachment interface. Retained resources participate
   in review, lock and exact configuration identity; per-run mappings cannot
@@ -142,13 +147,9 @@ admitted FLOW packages.
   Render host-only REVIEW_REQUIRED with `jig review` as the next action.
   Flow-supplied error details cannot establish that execution never started.
 
-- Agent choice is guided, never inferred from credentials or a preferred vendor.
-  Interactive review prompts only for captured targets using Agent Run, before
-  dependency preparation; explicit selection overrides operator-local preference.
-  Keep selection distinct from approval, preserve noninteractive operation, and
-  disclose final-only API support without inferring runtime requirements from code.
-  Keep a usable chooser compact: secondary unavailable names, detailed setup only
-  with `--details` or when no client is usable, and options adjacent to the prompt.
+- Agent selection belongs to ordinary dependencies, Bindings and resource grants,
+  never inferred from credentials or a preferred vendor. Selection remains
+  distinct from authority approval; no privileged Agent picker is implemented.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
@@ -177,6 +178,10 @@ admitted FLOW packages.
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics
   under the selected temporary root for investigation.
+- `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1`,
+  exercises public installed review, inspection and direct/Binding/child invocation
+  of an ordinary declared workspace dependency, including admitted-byte pinning.
+  The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
   packed SDK in a consumer workspace, and the complete HTTP-backed Agent artifact

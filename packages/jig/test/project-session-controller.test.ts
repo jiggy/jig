@@ -24,7 +24,7 @@ describe('private finite project session', () => {
         'PROJECT_DEFAULT_MISSING',
         'private source detail',
         'jig.ts',
-        '/defaults',
+        '/defaultProviders',
       ),
       'plan',
     )
@@ -32,7 +32,7 @@ describe('private finite project session', () => {
     expect(failure.diagnostic).toEqual({
       code: 'PROJECT_DEFAULT_MISSING',
       path: 'jig.ts',
-      pointer: '/defaults',
+      pointer: '/defaultProviders',
     })
     expect(JSON.stringify(failure)).not.toContain('private source detail')
   })

@@ -10,7 +10,7 @@ instructions and selected guidance, prepares a bounded structured schema,
 decodes the returned JSON presentation, checks its shape and assembles the
 complete `done`, `blocked` or `limit` result.
 
-Use the complete archive built from the source revision you reviewed; the
+Use the complete package built from the source revision you reviewed; the
 [package source and build instructions](https://github.com/jiggy/jig/tree/main/packages/agent-method)
 describe that artifact. This source guide does not establish registry
 publication. The packed Flow includes its runtime, library and FLOW SDK,
@@ -59,8 +59,9 @@ instructions and schema guidance, has its own 1 MiB bound.
 Structured schemas use the [bounded profile](../spec/agent-run.md#structured-output-profile)
 and at most 256 KiB of canonical JSON/1.
 
-For Jig, extract the complete archive as a real project directory such as
-`flows/agent-method`, then select it with ordinary project membership:
+For Jig, declare `@jigging/agent-method` in the project's `package.json`
+dependencies. Use `workspace:*` for source in your Bun workspace or a selected
+published version with its Bun lock. Configure its ordinary Binding:
 
 ```ts
 import { defineJig, discover } from '@jigging/jig'
@@ -68,14 +69,13 @@ import { defineJig, discover } from '@jigging/jig'
 export default defineJig({
   flows: discover('./flows'),
   bindings: discover('./bindings'),
-  defaults: ['binding:agent'],
+  defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' },
 })
 ```
 
-An already installed real package directory can also be named explicitly if
-it satisfies Jig's normal capture rules. Package-manager links are still links:
-shallow discovery does not follow them, and an explicit symlink is not an
-adoption exception.
+The `npm:` selector uses declared dependency preparation, not traversal of the
+live installation tree. With one eligible configured provider the project
+mapping is optional. It remains useful for an explicit choice among providers.
 
 Create `bindings/agent.ts`:
 
@@ -83,7 +83,7 @@ Create `bindings/agent.ts`:
 import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
-  package: 'flows/agent-method',
+  package: 'npm:@jigging/agent-method',
   settings: { model: 'your-model', maxCompletionTokens: 4096 },
   slots: {
     http: {

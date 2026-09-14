@@ -9,7 +9,8 @@ application is not an unrestricted repository worker or independent probe.
 ## Ownership
 
 - `README.md` introduces the application; its public guide owns user instructions.
-- Root `package.json` owns development dependencies; Flow-local manifests
+- Root `package.json` owns development dependencies and the selected Agent
+  dependency; Flow-local manifests
   declare runtime dependencies prepared by Jig during review. This directory
   is the editable application; no custom distribution build is required.
 - `flows/project/` owns root file capture, fixed CLI cases, one- or two-job
@@ -35,8 +36,9 @@ application is not an unrestricted repository worker or independent probe.
 - The specialist accepts JSON `issue`, `files`, `editPaths`, and `cases`, without
   attachments. Its `agent` slot invokes the project-selected ordinary Agent;
   `tests` and `cli` invoke exact granted commands. The operator installs the
-  complete Agent artifact and configures `bindings/agent.ts`, selected in
-  `jig.ts` as the project default. `run.call()` returns a complete result, and
+  declared Agent dependency and configures the included `bindings/agent.ts`,
+  selected by contract in `jig.ts`'s `defaultProviders`. Its Pi selection is an
+  editable example choice, not a host preference. `run.call()` returns a complete result, and
   command evidence is validated from the `done` result's `output`.
 - A single job uses two siblings: repair publishes once through an optional
   `progress` sender; the root allocates separate broadcast subscriptions for

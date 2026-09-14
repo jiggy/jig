@@ -10,11 +10,6 @@ import {
   type PrivateActivationRecipeObservationInput,
 } from '../src/internal/activation-planning.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from './fixtures/agent-contract.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { defineBinding, defineJig } from '../src/project/author.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
@@ -34,6 +29,11 @@ import {
   restorePrivateActivationRequest,
 } from '../src/project/package-resolution.js'
 import { retainFlowSourcePackages } from '../src/project/retained-flow.js'
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from './fixtures/agent-contract.js'
 
 const acpPublicUpdates = await readFile(
   new URL(
@@ -398,7 +398,7 @@ describe('private package resolution', () => {
           ).toThrow('activation request digest does not match its canonical content')
         }
       },
-      ['flow:flows/agent'],
+      { 'https://jig.md/contracts/agent-run': 'flow:flows/agent' },
     )
   })
 
@@ -749,7 +749,7 @@ async function withProject(
   trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
   bindings: readonly InjectedBindingDeclaration[],
   action: (project: PackageProjectValue) => Promise<void> | void,
-  defaults: readonly string[] = [],
+  defaultProviders: Readonly<Record<string, string>> = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'jig-project-resolution-'))
   const store = join(root, 'store')
@@ -765,7 +765,13 @@ async function withProject(
     }
     source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows)
     const flows = await retainFlowSourcePackages(store, source)
-    await action(linkPackageProject({ flows, bindings, defaults }))
+    await action(
+      linkPackageProject({
+        flows,
+        bindings,
+        defaultProviders,
+      }),
+    )
   } finally {
     await source?.dispose()
     await rm(root, { recursive: true, force: true })

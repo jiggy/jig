@@ -35,8 +35,9 @@ authored examples, not independent consumer evidence or promoted Starters.
   application archives or per-Flow setup loops. Test unpublished SDK candidates
   separately from claims about registry availability.
 - Agents, models, credentials, and execution policy remain operator choices.
-  Agent-using applications select `binding:agent` as an ordinary project default;
-  the operator installs its complete package and configures its resource grants.
+  Agent-using applications choose an ordinary provider by contract or exact slot;
+  the operator declares its dependency and configures its resource grants.
+  `tested-patch` includes its `npm:` ACP dependency and editable Agent Binding.
   Do not add a source wrapper or repository-only route around that package.
 - Label synthetic evidence and keep it distinct from claims about real users.
 

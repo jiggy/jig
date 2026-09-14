@@ -522,7 +522,7 @@ void binding;
     try {
       await writeFile(
         join(agentProject, 'jig.ts'),
-        'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings"),defaults:["binding:agent"]});',
+        'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings"),defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }});',
       )
       await writeFile(
         join(agentProject, 'bindings/agent.ts'),

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { parse as parseYaml } from 'yaml'
 import {
   createPrivateAcpAgentProvider,
   privateAcpAgentRuntime,
@@ -215,7 +216,7 @@ describe('target-selected private ACP resources', () => {
       },
     } as unknown as PrivateActivationReviewPlan
     const rendered = renderPrivateProjectPlanReview(review, undefined, recipes)
-    const details = JSON.parse(rendered.details.slice(rendered.details.indexOf('{')))
+    const details = parseYaml(rendered.details.slice(rendered.details.indexOf('  "')))
     expect(details.proposedHostAcp).toEqual({
       'flow:flows/codex': {
         session: {

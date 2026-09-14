@@ -34,32 +34,36 @@ import { defineJig, discover } from '@jigging/jig'
 export default defineJig({
   flows: discover('./flows'),
   bindings: discover('./bindings'),
-  defaults: ['binding:agent'],
+  defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' },
 })
 ```
 
 `binding:agent` names your discovered `bindings/agent.ts`; Jig does not supply
-or install an Agent Binding. The file's `package` field selects the local Flow
-directory, and its slots configure that implementation's resources. A package
-name such as `@jigging/agent-acp` identifies distributed code, not this configured
-local target. A missing Binding is a configuration error.
+or install an Agent Binding. Its `package` selects the implementation and its
+slots configure that implementation's resources. The mapping is by contract,
+not by the consumer's local slot name. With exactly one eligible configured
+Agent, the `defaultProviders` line is optional. A missing explicitly selected
+Binding remains a configuration error.
 
 Matching code and Markdown Flows use that reviewed selection. An explicit
 Binding slot can choose another matching implementation. See
-[project defaults](../spec/project-sdk.md#project-defaults).
+[default providers](../spec/project-sdk.md#default-providers-by-contract).
 
 ## Local clients
 
-Extract the complete `@jigging/agent-acp` artifact into `flows/agent`. Its
+Declare `@jigging/agent-acp` in the project's `package.json` dependencies. Use
+`workspace:*` when it is a member of your Bun workspace; otherwise select a
+published version and retain the Bun lock. Its
 [source package](https://github.com/jiggy/jig/tree/main/packages/agent-acp)
 documents building and packing the candidate; this guide does not assert
-registry publication. Create `bindings/agent.ts`:
+registry publication. Build workspace source through its ordinary package build.
+Create `bindings/agent.ts`:
 
 ```ts
 import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
-  package: 'flows/agent',
+  package: 'npm:@jigging/agent-acp',
   slots: { native: { kind: 'acp', client: 'codex' } }, // choose codex, claude, or pi
 })
 ```

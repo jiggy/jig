@@ -20,9 +20,10 @@ descriptors.
   compiler operation, output ownership and interrupted-publication recovery.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient
   identity and explicit authority approval through the existing plan.
-- `project-sdk.md` and `project-policy.md` own exact project defaults and their
-  review-time resolution. Authoring and lock schemas mirror selected targets
-  and retained effective routes, not mutable runtime lookup.
+- `project-sdk.md` and `project-policy.md` own contract-keyed `defaultProviders`,
+  sole-match review-time resolution and declared `npm:` package targets.
+  Authoring and lock schemas mirror selected targets and retained effective
+  routes, not mutable runtime lookup or new resource authority.
 - `http-request.md` owns exact endpoint policy and requests,
   optional JSON/1 response decoding, explicit byte ceilings above unchanged
   defaults, private bearer delivery and finite contained-worker settlement. Its descriptor

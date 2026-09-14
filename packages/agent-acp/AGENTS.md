@@ -25,6 +25,9 @@ retains credential, process, and dispatch authority.
 - One `native` slot supplies a finite ACP resource through required direct
   requests/responses channels. Its ready record supplies reviewed configuration;
   the Flow has no duplicate model, provider, mode or credential settings.
+- Jig consumers may select this declared dependency with `npm:@jigging/agent-acp`
+  in a local Binding; the Binding still grants the exact native client.
+  Contract-keyed project selection does not create that grant or choose a vendor.
 - Reuse `@jigging/agent-method` for prompt preparation and result validation.
   Complete ACP dialogue and resource settlement are separate requirements.
 - Locally detected invalid ACP cancels the resource while preserving that

@@ -34,7 +34,8 @@ export default defineJig({
 ```
 
 `flows`, `bindings`, and `grants` are independently optional. Each accepts either a
-`discover()` value or an exact array of project-relative member paths.
+`discover()` value or an exact array of project-relative member paths
+(`flows` also accepts declared `npm:` package selectors).
 Omission means an empty source.
 
 Discovery is shallow and inert:
@@ -63,27 +64,27 @@ An exact source is the fail-closed alternative:
 flows: ["./flows/build", "./flows/review"]
 ```
 
-### Project defaults
+### Default providers by contract
 
-`defaults` is an independently optional array of at most 256 exact `flow:` or
-`binding:` selectors. It supplies ordinary implementations for omitted named
-invocation slots:
+`defaultProviders` is an optional map of at most 256 contract IDs to exact
+implementation selectors. It supplies ordinary implementations for omitted
+slots requiring those contracts, independently of their local slot names:
 
 ```ts
 export default defineJig({
   flows: discover("./flows"),
   bindings: discover("./bindings"),
-  defaults: ["binding:agent"],
+  defaultProviders: { 'https://jig.md/contracts/agent-run': "binding:agent" },
 });
 ```
 
-Each selected package must offer a named `FLOW.contract.json`. Jig derives the
-contract identity from that package; authors do not repeat it in `jig.ts`.
+Each selected package must offer a named `FLOW.contract.json` whose ID matches
+the map key. Keys identify contracts; they are never fetched or executed.
 In this example, `binding:agent` requires a local `bindings/agent.ts` included
 by discovery. That file selects an existing Flow package and its configuration;
 the default selector neither creates a Binding nor installs a package.
-At most one default may offer a given contract ID, even with different versions
-or digests. Selectors are normalized and sorted; duplicates fail.
+Keys are canonically ordered; each key selects one provider. The target's
+actual contract, not the map alone, establishes compatibility.
 
 Review resolves each target's omitted named requirements against these
 selections. An explicit Binding slot wins. Otherwise the default must match
@@ -91,7 +92,10 @@ the required contract ID, version and digest exactly; a mismatch never falls
 back to another implementation. An incompatible default makes an automatic
 direct target ineligible; an omitted Binding slot with that mismatch rejects
 the candidate. A correct explicit Binding override can still use the package.
-Anonymous requirements always need explicit slots.
+Anonymous requirements always need explicit slots. Without an explicit selection,
+review may select the sole structurally provisioned target offering the exact
+required contract. Multiple matches require a project mapping or consumer slot;
+runtime availability and credentials never break ties.
 
 A selected default must itself be invokable, require no attachments, and use
 an ordinary offered interface. A `flow:` selection requires a direct Run target.
@@ -103,6 +107,32 @@ Both direct Flows and Bindings receive their own reviewed, effective routes.
 Admission retains those exact routes, not a map consulted at runtime. Agent
 requirements need a matching ordinary implementation. Only qualified root Run
 Checkpoint requirements may resolve implicitly to host-owned retention.
+
+## Declared package targets
+
+`npm:<package-name>` selects a Flow from a dependency declared in the Jig
+project's `package.json` `dependencies`. It is valid in `defaultProviders`,
+Binding `package`, Binding Flow slots, exact `flows` membership, and CLI Run or
+inspection selectors. For example, `package: 'npm:@jigging/agent-acp'` configures
+the dependency's own Flow. Names have no version or subpath suffix; the manifest
+and Bun lock own dependency versions. The package must contain a valid FLOW
+entrypoint and its own declarations; JavaScript exports are not invoked to
+discover it. A library without a FLOW entrypoint is not a Flow provider.
+
+Workspace dependencies use the existing captured ancestor workspace; the Jig
+application must be a declared member. Workspace-root applications, patches,
+overrides and catalogs are not supported by that preparation profile. Registry
+dependencies use existing bounded, script-disabled Bun preparation. Review
+does not traverse live installation links. Missing locks require the existing
+explicit resolution-network permission; Run never installs or resolves.
+The resulting package source, contract and execution closure are retained
+together. Selecting an implementation does not grant its required resources.
+Dependency Flow selection is recaptured and prepared at each review, including
+the existing resolution permission for a missing lock.
+
+The wire target remains an ordinary Flow; its retained logical package address
+is the `npm:` selector. A dependency may require settings and grants through
+a local Binding just like a directory-based Flow.
 
 ## Binding declaration
 
@@ -126,7 +156,7 @@ must satisfy the package's `settings.schema.json` when one exists.
 
 `slots` is an optional map with at most 256 entries. Each key is a LocalName
 used by this Binding's package as a Run/1 `flow/call` slot. Each value is an
-exact `flow:<project-relative-path>` or `binding:<LocalName>` selector,
+exact `flow:<project-relative-path>`, `npm:<package-name>` or `binding:<LocalName>` selector,
 an inline resource grant, or a `grant:<LocalName>` selection. Grant names
 are slot selections, not CLI Run targets. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
@@ -260,6 +290,6 @@ applied retained Plan.
 SDK/1 does not define dynamic child-Flow resolution, candidate catalogues,
 semantic choice, Hooks, Services, Journal publishers, provider credentials,
 arbitrary permission grants, runtime selection, sandbox selection, attachment
-projection, or administration. Exact project `defaults` and Binding `slots`
+projection, or administration. Exact project `defaultProviders` and Binding `slots`
 select ordinary implementations; they do not introduce a runtime registry or
 widen the selected implementation's authority.

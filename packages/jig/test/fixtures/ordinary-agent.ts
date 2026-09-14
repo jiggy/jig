@@ -78,7 +78,7 @@ export async function writeOrdinaryAgent(
       join(root, 'jig.ts'),
       [
         'import { defineJig, discover } from "@jigging/jig";',
-        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings"), defaults: ["binding:method"] });',
+        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings"), defaultProviders: { "https://jig.md/contracts/agent-run": "binding:method" } });',
       ].join('\n'),
     )
 }

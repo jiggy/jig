@@ -1,14 +1,14 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { parseChannelContract } from '../src/channel-contract.js'
 import {
+  type ParsedInvocationContract,
+  parseInvocationContract,
+} from '../src/invocation-contract.js'
+import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from './fixtures/agent-contract.js'
-import {
-  type ParsedInvocationContract,
-  parseInvocationContract,
-} from '../src/invocation-contract.js'
 
 const contractPath = new URL(
   '../../../docs/jig/spec/contracts/agent-run/contract.json',
@@ -74,10 +74,10 @@ describe('ordinary Agent Run contract', () => {
     )
     expect(method.digest).toBe(contract.digest)
     for (const flow of [
-      'proposal-workshop/flows/drafter',
-      'proposal-workshop/flows/reviewer',
+      'request-triage/flows/agent',
+      'request-triage/flows/mixed',
       'tested-patch/flows/repair',
-      'live-agent/flows/chat',
+      'support-case/flows/assess',
     ]) {
       const base = new URL(`../../../examples/${flow}/contracts/`, import.meta.url)
       const consumerContract = parseInvocationContract(

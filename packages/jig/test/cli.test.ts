@@ -1553,7 +1553,7 @@ describe('finite Jig project commands', () => {
     const target = commandInvocation(unusedHost())
     expect(await main(['run', 'work'], target.options)).toBe(1)
     expect(target.error).toBe(
-      'Error: Run target is invalid\n\n  use flow:<path> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.\n\n  Diagnostic code: JIG_RUN_TARGET_INVALID\n',
+      'Error: Run target is invalid\n\n  use flow:<path>, npm:<package> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.\n\n  Diagnostic code: JIG_RUN_TARGET_INVALID\n',
     )
 
     const input = commandInvocation(unusedHost())
@@ -1678,7 +1678,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('unknown fields, invalid values')
     expect(invocation.error).toContain(
-      'defineJig accepts only flows, bindings, grants and defaults',
+      'defineJig accepts only flows, bindings, grants and defaultProviders',
     )
     expect(invocation.error).toContain('Location: "jig.ts"')
     expect(invocation.error).toContain('Diagnostic code: PROJECT_EVALUATION_FAILED')
@@ -1792,7 +1792,7 @@ describe('finite Jig project commands', () => {
       {
         code: 'PROJECT_DEFAULT_MISSING',
         path: 'jig.ts',
-        pointer: '/defaults',
+        pointer: '/defaultProviders',
       },
     )
     const invocation = commandInvocation(
@@ -1801,7 +1801,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('PROJECT_DEFAULT_MISSING')
     expect(invocation.error).toContain('missing Flow or Binding')
-    expect(invocation.error).toContain('Defaults do not install packages or create Bindings')
+    expect(invocation.error).toContain('Provider selection does not create Bindings')
     expect(invocation.error).not.toContain('INTERNAL')
   })
 

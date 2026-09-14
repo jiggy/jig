@@ -2,6 +2,7 @@ import type { JsonObject } from '../json.js'
 import { JSON_1_LIMITS, validateJson1 } from '../json.js'
 import { expectJsonObject, snapshotJson, snapshotJsonObject } from './author-value.js'
 import { type GrantInput, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
+import { flowSelector, normalizeFlowPackage, npmPackageName } from './package-selector.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -28,14 +29,14 @@ export interface JigDefinition {
   readonly flows?: ProjectSource
   readonly bindings?: ProjectSource
   readonly grants?: ProjectSource
-  readonly defaults?: readonly string[]
+  readonly defaultProviders?: Readonly<Record<string, string>>
 }
 
 export interface JigDefinitionInput {
   readonly flows?: ProjectSourceInput
   readonly bindings?: ProjectSourceInput
   readonly grants?: ProjectSourceInput
-  readonly defaults?: readonly string[]
+  readonly defaultProviders?: Readonly<Record<string, string>>
 }
 
 export interface FlowRef {
@@ -87,12 +88,16 @@ export function normalizeJigDefinition(input: unknown): JigDefinition {
 
 function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinition {
   const captured = snapshotJsonObject(input, 'Jig definition')
-  assertClosedObject(captured, ['flows', 'bindings', 'grants', 'defaults'], 'Jig definition')
+  assertClosedObject(
+    captured,
+    ['flows', 'bindings', 'grants', 'defaultProviders'],
+    'Jig definition',
+  )
   const output: {
     flows?: ProjectSource
     bindings?: ProjectSource
     grants?: ProjectSource
-    defaults?: readonly string[]
+    defaultProviders?: Readonly<Record<string, string>>
   } = {}
   if (Object.hasOwn(captured, 'flows')) {
     output.flows = normalizeSource(
@@ -115,24 +120,23 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
       canonical,
     )
   }
-  if (Object.hasOwn(captured, 'defaults')) {
-    output.defaults = normalizeDefaults(captured.defaults)
+  if (Object.hasOwn(captured, 'defaultProviders')) {
+    output.defaultProviders = normalizeDefaultProviders(captured.defaultProviders)
   }
   return record(output) as unknown as JigDefinition
 }
 
-function normalizeDefaults(value: unknown): readonly string[] {
-  const selections = snapshotStringArray(value, 'defaults')
-  if (selections.length > 256) throw new TypeError('defaults exceed 256 entries')
-  const targets = selections.map((selector) => {
-    const target = parseRunTargetSelector(selector, 'default')
-    return target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
-  })
-  targets.sort(compareUtf8)
-  for (let index = 1; index < targets.length; index += 1) {
-    if (targets[index] === targets[index - 1]) {
-      throw new TypeError(`defaults contain a duplicate target: ${targets[index]}`)
-    }
+function normalizeDefaultProviders(value: unknown): Readonly<Record<string, string>> {
+  const selections = snapshotJsonObject(value, 'defaultProviders')
+  if (Object.keys(selections).length > 256)
+    throw new TypeError('defaultProviders exceeds 256 entries')
+  const targets: Record<string, string> = Object.create(null)
+  for (const id of Object.keys(selections).sort(compareUtf8)) {
+    // The trusted linker validates canonical contract identity and compatibility.
+    if (id.length === 0 || id.length > 2048)
+      throw new TypeError('defaultProviders requires bounded contract IDs')
+    const target = parseRunTargetSelector(selections[id], 'default provider')
+    targets[id] = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
   }
   return Object.freeze(targets)
 }
@@ -176,7 +180,7 @@ function normalizeBinding(
     throw new TypeError('Binding kind must be package')
   }
   if (!Object.hasOwn(captured, 'package')) throw new TypeError('Binding package is required')
-  const packagePath = normalizeProjectPath(captured.package, 'package')
+  const packagePath = normalizeFlowPackage(captured.package)
   const settings = Object.hasOwn(captured, 'settings')
     ? expectJsonObject(captured.settings, 'settings')
     : emptyRecord()
@@ -228,7 +232,7 @@ function normalizeFlowSlots(value: unknown): Readonly<Record<string, string | Gr
       continue
     }
     const target = parseRunTargetSelector(value, `slot ${name}`)
-    output[name] = target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
+    output[name] = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
   }
   return Object.freeze(output)
 }
@@ -236,9 +240,14 @@ function normalizeFlowSlots(value: unknown): Readonly<Record<string, string | Gr
 /** Internal selector parsing shared by authoring and exact project linking. */
 export function parseRunTargetSelector(value: unknown, label: string): RunTargetRef {
   if (typeof value !== 'string') throw new TypeError(`${label} must be a target selector`)
+  if (value.startsWith('npm:')) {
+    npmPackageName(value)
+    return flowRef(value)
+  }
+  if (value.startsWith('flow:npm:')) throw new TypeError('use npm:<package> for dependency targets')
   if (value.startsWith('flow:')) return flowRef(normalizeProjectPath(value.slice(5), label))
   if (value.startsWith('binding:')) return bindingRef(validateLocalName(value.slice(8), label))
-  throw new TypeError(`${label} must select flow:<path> or binding:<id>`)
+  throw new TypeError(`${label} must select flow:<path>, npm:<package> or binding:<id>`)
 }
 
 function normalizeSource(

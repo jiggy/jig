@@ -9,9 +9,11 @@ stays unchanged.
 
 Install Jig on a [supported host](https://jig.md/guide/).
 
-Follow [Choose an Agent](https://jig.md/guide/agents) to install your chosen
-complete Agent Flow and create `bindings/agent.ts` here. The project already
-selects that Binding as its default. Then inspect `issue.json`,
+The application declares the ordinary ACP Agent package as a workspace dependency.
+Select your native client in `bindings/agent.ts`; it shows Pi as an example,
+with Codex and Claude supported by the same interface. Follow
+[Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
+Then inspect `issue.json`,
 `bindings/specialist.ts`, and `flows/project/cases.json`.
 From this directory:
 

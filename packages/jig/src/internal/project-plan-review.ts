@@ -1,6 +1,7 @@
 import { ProjectAdministrationError } from '../administration/project.js'
 import { privateCliValueFields } from '../cli-value-presentation.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
+import { flowSelector } from '../project/package-selector.js'
 import { privateAcpAgentRuntime, requirePrivateAcpAgentProvider } from './acp-agent-provider.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
@@ -474,7 +475,7 @@ function recordChanges(
 }
 
 function targetKey(target: RunTargetIdentity): string {
-  return target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
+  return target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
 }
 
 /**

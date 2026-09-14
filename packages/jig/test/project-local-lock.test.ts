@@ -3,11 +3,6 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from './fixtures/agent-contract.js'
-import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
@@ -27,6 +22,11 @@ import {
   restorePrivateActivationRequest,
 } from '../src/project/package-resolution.js'
 import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project/retained-flow.js'
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from './fixtures/agent-contract.js'
 
 const encoder = new TextEncoder()
 const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
@@ -575,15 +575,15 @@ describe('private package-project portable lock projection', () => {
         ),
       },
       (flows) => {
-        const defaults = ['binding:first']
+        const defaultProviders = { 'https://jig.md/contracts/agent-run': 'binding:first' }
         const bindings = ['first', 'second'].map((name) =>
           binding(`bindings/${name}.ts`, { package: `flows/${name}` }),
         )
-        const first = linkPackageProject({ flows, bindings, defaults })
+        const first = linkPackageProject({ flows, bindings, defaultProviders })
         const lock = createPrivateProjectLocalLock(first)
         const encoded = encodePrivateProjectLocalLock(lock)
-        defaults[0] = 'binding:second'
-        const second = linkPackageProject({ flows, bindings, defaults })
+        defaultProviders['https://jig.md/contracts/agent-run'] = 'binding:second'
+        const second = linkPackageProject({ flows, bindings, defaultProviders })
         expect(lock.packages['flows/consumer']!.slots).toEqual({
           agent: { kind: 'binding', id: 'first' },
         })

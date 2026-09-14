@@ -83,7 +83,9 @@ test('constructs the packed ACP Agent with an exact native grant and ordinary de
     expect(await readFile(join(root, 'bindings/agent.ts'), 'utf8')).toContain(
       '"native":{"kind":"acp","client":"codex"}',
     )
-    expect(await readFile(join(root, 'jig.ts'), 'utf8')).toContain('defaults:["binding:agent"]')
+    expect(await readFile(join(root, 'jig.ts'), 'utf8')).toContain(
+      'defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }',
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }

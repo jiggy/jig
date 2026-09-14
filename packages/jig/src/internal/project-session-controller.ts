@@ -46,6 +46,7 @@ import {
 } from './bun-package-input.js'
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
 import { prepareContractGeneration } from './contract-generation.js'
+import { captureDependencyFlows } from './dependency-flows.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import type { PrivateHttpGrants } from './http-grants.js'
@@ -230,10 +231,48 @@ function createSession(
           projectRoot: owner.root,
         })
         planningCancellation.signal.throwIfAborted()
+        preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
+        const executions = new Map<string, PrivateBunExecutionArtifact>()
+        const budget = preparationBudget
         const aggregate = await retainOpenedPackageProject(
           {
             projectRoot: owner.root,
             storeRoot: packageStoreRoot,
+            dependencyFlows: (selectors) =>
+              captureDependencyFlows({
+                root: owner.root,
+                selectors,
+                signal: budget.signal,
+                prepare: async (captured, workspace) => {
+                  budget.reserve(captured.digest, 'package.json')
+                  const unlocked = !captured.files.some((file) => file.path === 'bun.lock')
+                  if (unlocked && host.allowResolutionNetwork === true)
+                    host.onResolution?.('package.json')
+                  return preparePrivateBunPackage({
+                    captured,
+                    ...(workspace === undefined ? {} : { workspace }),
+                    installedSupport: host.installedBunSupport,
+                    backend: host.backend,
+                    projectRoot: owner.root.requestedPath,
+                    coordinator: owner.coordinator,
+                    deadlineUnixMs: budget.deadlineUnixMs,
+                    signal: budget.signal,
+                    allowResolutionNetwork: host.allowResolutionNetwork === true,
+                  })
+                },
+                retain: async (selector, source, prepared) => {
+                  budget.retain(
+                    prepared.captured.files,
+                    selector,
+                    Buffer.byteLength(JSON.stringify(prepared.layout)),
+                  )
+                  const artifact = await publishCapturedPackage(packageStoreRoot, prepared.captured)
+                  executions.set(
+                    `${selector}:${source.digest}`,
+                    privateBunExecutionArtifact(artifact, prepared.layout),
+                  )
+                },
+              }),
             prepareFlow: prepareContractGeneration({
               project: owner.root,
               generate: host.generateContracts === true,
@@ -256,9 +295,7 @@ function createSession(
             'project has no exact Run target',
           )
         }
-        preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
         const recipes: PrivateDirectRunRecipe[] = []
-        const executions = new Map<string, PrivateBunExecutionArtifact>()
         for (const request of requests) {
           preparationBudget.signal.throwIfAborted()
           if (request.mode !== 'run') {
@@ -783,6 +820,8 @@ function isCandidateDiagnosticCode(code: string): boolean {
     code.startsWith('PACKAGE_BUN_') ||
     code.startsWith('PROJECT_BINDING_') ||
     code.startsWith('PROJECT_DEFAULT_') ||
+    code.startsWith('PROJECT_PROVIDER_') ||
+    code.startsWith('PROJECT_DEPENDENCY_') ||
     code.startsWith('PROJECT_GRANT') ||
     code.startsWith('PROJECT_DECLARATION_') ||
     code.startsWith('PROJECT_EVALUATION_') ||

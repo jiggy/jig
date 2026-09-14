@@ -3,5 +3,5 @@ import { defineJig, discover } from '@jigging/jig'
 export default defineJig({
   flows: discover('flows'),
   bindings: discover('bindings'),
-  defaults: ['binding:agent'],
+  defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' },
 })

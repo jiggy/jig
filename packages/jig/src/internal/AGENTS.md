@@ -15,6 +15,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and HTTP controllers use these checks; resource ownership must not import Agent
   execution logic. Parent descriptors retain the exact bounded ancestry.
 - Package artifact retention, materialization, and preparation.
+- `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
+  contained Bun preparation. It inspects a regular-file package view and retains
+  the original dependency lookup layout with that package as the execution root.
+  No provider imports, live installation traversal or new native authority.
 - Contract generation owns captured TypeSpec requests, a bounded trusted Node
   subprocess with empty environment and stdin lifetime lease, and per-package
   publication journals beneath `.jig`. It requires separate `--generate-contracts` consent.

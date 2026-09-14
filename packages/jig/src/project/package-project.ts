@@ -23,6 +23,7 @@ import {
   resolveInvocationSlots,
   sameInvocationIdentity,
 } from './invocation-slots.js'
+import { flowSelector } from './package-selector.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -47,7 +48,7 @@ export interface PackageProjectInput {
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly InjectedBindingDeclaration[]
   readonly grants?: Readonly<Record<string, GrantPolicy>>
-  readonly defaults?: readonly string[]
+  readonly defaultProviders?: Readonly<Record<string, string>>
 }
 
 export interface LinkedFlow {
@@ -113,7 +114,7 @@ export function linkPackageProject(
       'flows',
       'bindings',
       ...(input && Object.hasOwn(input, 'grants') ? ['grants'] : []),
-      ...(input && Object.hasOwn(input, 'defaults') ? ['defaults'] : []),
+      ...(input && Object.hasOwn(input, 'defaultProviders') ? ['defaultProviders'] : []),
     ],
     'package project',
   )
@@ -137,7 +138,7 @@ export function linkPackageProject(
     budget,
   )
   const declaredBindingById = new Map(preparedBindings.map((binding) => [binding.id, binding]))
-  const defaults = prepareDefaults(root.defaults, flowByPath, declaredBindingById)
+  const defaults = prepareDefaults(root.defaultProviders, flowByPath, declaredBindingById)
   flows = flows.map((flow) => {
     let slots: Readonly<Record<string, RunTargetIdentity>> = {}
     let resolved: InvocationSlots | undefined
@@ -150,7 +151,12 @@ export function linkPackageProject(
       // native authority for the automatically derived direct target.
       if (
         !(error instanceof TypeError) &&
-        !(error instanceof CheckError && error.code === 'PROJECT_DEFAULT_INTERFACE_MISMATCH')
+        !(
+          error instanceof CheckError &&
+          (error.code === 'PROJECT_DEFAULT_INTERFACE_MISMATCH' ||
+            (error.code === 'PROJECT_PROVIDER_AMBIGUOUS' &&
+              preparedBindings.some((binding) => binding.flow === flow)))
+        )
       )
         throw error
     }
@@ -193,7 +199,7 @@ export function linkPackageProject(
     )
   }
   const bindingById = new Map(preparedBindings.map((binding) => [binding.id, binding]))
-  for (const { target } of defaults.values()) {
+  for (const { target } of defaults.explicit.values()) {
     const flow =
       target.kind === 'flow' ? flowByPath.get(target.path)! : bindingById.get(target.id)!.flow
     if (
@@ -204,7 +210,7 @@ export function linkPackageProject(
         'PROJECT_DEFAULT_UNAVAILABLE',
         'default must select an invokable Flow without root-only attachments',
         'jig.ts',
-        '/defaults',
+        '/defaultProviders',
       )
   }
   const value = Object.freeze({
@@ -484,15 +490,25 @@ interface DefaultTarget {
   readonly contract: InvocationIdentity
 }
 
+interface ProviderSelections {
+  readonly explicit: ReadonlyMap<string, DefaultTarget>
+  readonly candidates: ReadonlyMap<string, readonly DefaultTarget[]>
+}
+
+function providerKey(contract: InvocationRequirement): string {
+  return JSON.stringify([contract.id, contract.version, contract.digest])
+}
+
 function prepareDefaults(
   value: unknown,
   flows: ReadonlyMap<string, PreparedFlow>,
   bindings: ReadonlyMap<string, PreparedBinding>,
-): ReadonlyMap<string, DefaultTarget> {
-  const selectors = value === undefined ? [] : readBoundedArray(value, 'defaults')
-  if (selectors.length > 256) invalid('PROJECT_DEFAULT_LIMIT', 'defaults exceed 256 targets')
+): ProviderSelections {
+  const selectors = value === undefined ? {} : snapshotJsonObject(value, 'defaultProviders')
+  if (Object.keys(selectors).length > 256)
+    invalid('PROJECT_DEFAULT_LIMIT', 'defaultProviders exceeds 256 targets')
   const defaults = new Map<string, DefaultTarget>()
-  for (const selector of selectors) {
+  for (const [id, selector] of Object.entries(selectors)) {
     const target = parseRunTargetSelector(selector, 'default')
     const flow = target.kind === 'flow' ? flows.get(target.path) : bindings.get(target.id)?.flow
     if (flow === undefined)
@@ -500,7 +516,7 @@ function prepareDefaults(
         'PROJECT_DEFAULT_MISSING',
         `default selects unknown target ${selector}`,
         'jig.ts',
-        '/defaults',
+        `/defaultProviders/${pointerToken(id)}`,
       )
     const contract = flow.value.offeredContract
     if (contract === undefined || isHostOnlyInvocationId(contract.id))
@@ -508,31 +524,85 @@ function prepareDefaults(
         'PROJECT_DEFAULT_CONTRACT',
         'default must offer a named ordinary Flow contract',
         'jig.ts',
-        '/defaults',
+        `/defaultProviders/${pointerToken(id)}`,
       )
-    if (defaults.has(contract.id))
+    if (id !== contract.id)
       invalid(
-        'PROJECT_DEFAULT_CONFLICT',
-        `more than one default offers ${contract.id}`,
+        'PROJECT_DEFAULT_CONTRACT',
+        'default provider key does not match the selected Flow contract ID',
         'jig.ts',
-        '/defaults',
+        `/defaultProviders/${pointerToken(id)}`,
       )
     defaults.set(contract.id, Object.freeze({ target, contract }))
   }
-  return defaults
+  const candidates = new Map<string, DefaultTarget[]>()
+  const consider = (
+    flow: PreparedFlow,
+    target: RunTargetIdentity,
+    settings: JsonObject,
+    slots: PackageBindingDefinitionSlots,
+  ): void => {
+    const contract = flow.value.offeredContract
+    if (
+      !contract ||
+      isHostOnlyInvocationId(contract.id) ||
+      Object.keys(flow.value.invocation.attachments ?? {}).length > 0
+    )
+      return
+    try {
+      validateSettings(settings, flow.inspected, flow.value.provenance.projectPath)
+    } catch (error) {
+      if (error instanceof CheckError) return
+      throw error
+    }
+    // Missing native authority or an anonymous route cannot be supplied by inference.
+    for (const [slot, required] of Object.entries(flow.value.uses))
+      if (
+        (required.id === undefined || isHostOnlyInvocationId(required.id)) &&
+        !Object.hasOwn(slots, slot)
+      )
+        return
+    const key = providerKey(contract)
+    const matches = candidates.get(key) ?? []
+    matches.push(Object.freeze({ target, contract }))
+    candidates.set(key, matches)
+  }
+  for (const [path, flow] of flows) consider(flow, { kind: 'flow', path }, {}, {})
+  for (const [id, binding] of bindings)
+    consider(
+      binding.flow,
+      { kind: 'binding', id },
+      binding.definition.settings,
+      binding.definition.slots,
+    )
+  for (const matches of candidates.values()) Object.freeze(matches)
+  return Object.freeze({ explicit: defaults, candidates })
 }
+
+type PackageBindingDefinitionSlots = BindingDefinition['slots']
 
 /** Resolve meaning at review, never from mutable project settings at execution. */
 function defaultSlots(
   uses: LinkedFlow['uses'],
   explicit: NonNullable<PackageBindingInput['slots']>,
-  defaults: ReadonlyMap<string, DefaultTarget>,
+  defaults: ProviderSelections,
   path: string,
 ): Readonly<Record<string, RunTargetIdentity>> {
   const slots: Record<string, RunTargetIdentity> = Object.create(null)
   for (const [slot, required] of Object.entries(uses)) {
     if (Object.hasOwn(explicit, slot) || required.id === undefined) continue
-    const selected = defaults.get(required.id)
+    let selected = defaults.explicit.get(required.id)
+    if (selected === undefined && !isHostOnlyInvocationId(required.id)) {
+      const matches = defaults.candidates.get(providerKey(required)) ?? []
+      if (matches.length > 1)
+        invalid(
+          'PROJECT_PROVIDER_AMBIGUOUS',
+          'multiple exact providers match; select defaultProviders or an explicit consumer slot',
+          path,
+          `/uses/${pointerToken(slot)}`,
+        )
+      selected = matches[0]
+    }
     if (selected === undefined) continue
     if (!sameInvocationIdentity(required, selected.contract))
       invalid(
@@ -547,7 +617,7 @@ function defaultSlots(
 }
 
 function targetSelector(target: RunTargetIdentity): string {
-  return target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
+  return target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
 }
 
 function linkBinding(
@@ -555,7 +625,7 @@ function linkBinding(
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   grants: Readonly<Record<string, GrantPolicy>>,
-  defaults: ReadonlyMap<string, DefaultTarget>,
+  defaults: ProviderSelections,
 ): LinkedPackageBinding {
   const { id, declarationPath, definition } = prepared
   const selectedDefaults = defaultSlots(

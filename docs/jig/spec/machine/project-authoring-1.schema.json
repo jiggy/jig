@@ -22,14 +22,14 @@
     },
     "targetSelector": {
       "type": "string",
-      "description": "An exact flow:<path>, binding:<id>, or grant:<name> selector. Prefixes and canonical identities are additionally validated by Jig.",
-      "minLength": 6,
+      "description": "An exact flow:<path>, npm:<package>, binding:<id>, or grant:<name> selector. Prefixes and canonical identities are additionally validated by Jig.",
+      "minLength": 5,
       "maxLength": 1029
     },
     "defaultSelector": {
       "type": "string",
-      "description": "An exact flow:<path> or binding:<id> selecting an ordinary implementation with an offered named contract. Jig additionally validates selector grammar, canonical identity, uniqueness and default eligibility.",
-      "minLength": 6,
+      "description": "An exact flow:<path>, npm:<package> or binding:<id> selecting an ordinary implementation with an offered named contract. Jig additionally validates selector grammar, canonical identity and provider eligibility.",
+      "minLength": 5,
       "maxLength": 1029
     },
     "discoverSource": {
@@ -89,13 +89,13 @@
         "grants": {
           "$ref": "#/$defs/source"
         },
-        "defaults": {
-          "type": "array",
-          "description": "Normalized, sorted exact implementation selections; at most one per offered contract ID. Review resolves omitted named slots, not runtime discovery or authority grants.",
-          "items": {
+        "defaultProviders": {
+          "type": "object",
+          "description": "Exact contract ID to implementation selector. Each target must offer that named contract; review checks exact identity and resolves only omitted named slots.",
+          "additionalProperties": {
             "$ref": "#/$defs/defaultSelector"
           },
-          "maxItems": 256
+          "maxProperties": 256
         }
       },
       "additionalProperties": false

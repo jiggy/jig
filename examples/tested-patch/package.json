@@ -2,6 +2,9 @@
   "name": "tested-patch-example",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@jigging/agent-acp": "workspace:*"
+  },
   "devDependencies": {
     "@jigging/flow": "workspace:*"
   }
