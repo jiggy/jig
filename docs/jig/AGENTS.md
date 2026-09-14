@@ -21,7 +21,9 @@ use-case and orchestration hypotheses.
   Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
-- `guide/index.md#startup-verification` teaches operator-selected cached,
+- `guide/configuration.md` owns the settings reference, including terminal
+  appearance, operator configuration, and links to authored project settings.
+  Its startup verification section teaches operator-selected cached,
   strict and fast installation verification. Keep defaults and tradeoffs aligned
   with execution policy and `SECURITY.md`; never imply fast skips Flow approval
   or sandbox enforcement.
@@ -106,6 +108,10 @@ use-case and orchestration hypotheses.
 - Preserve the current uniform record shape within each catalogue.
 
 ## Work Guidance
+
+- Keep introductory guides focused on the first useful result. Put optional
+  tuning, environment variables, cache internals, and configuration tradeoffs
+  in `guide/configuration.md`, reachable through Reference navigation and links.
 
 - Use `sh` fences for shell commands; reserve `console` for transcripts with
   prompts and output, so command examples receive syntax highlighting.

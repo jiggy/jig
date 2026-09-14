@@ -47,6 +47,7 @@ const sidebar = [
     text: "Reference",
     collapsible: true,
     items: [
+      { text: "Settings and configuration", link: "/guide/configuration" },
       { text: "Project authoring", link: "/spec/project-sdk" },
       { text: "Execution policy", link: "/spec/project-policy" },
       { text: "Agent Run", link: "/spec/agent-run" },

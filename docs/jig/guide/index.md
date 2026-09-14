@@ -131,51 +131,6 @@ Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
 See [execution policy](../spec/project-policy.md) for current limits and
 lifecycle guarantees.
 
-## Startup verification
-
-Jig defaults to **cached** verification to avoid repeatedly hashing large
-installed tools. It reuses hashes while file identity and metadata match, and
-rehashes when they change. Use `--verification cached|strict|fast` to choose
-the policy for a command.
-
-| Mode | Installation check | Tradeoff |
-| --- | --- | --- |
-| `cached` (default) | Reuse hashes while file identity, permissions, size and modification/change times match | Detects ordinary tool updates; relies on filesystem metadata between hashes |
-| `strict` | Hash current tool bytes at every verification point | Stronger byte verification, with more startup work |
-| `fast` | Reuse stored hashes without checking freshness | Changed tool bytes at the same path can go undetected |
-
-Choose a mode explicitly:
-
-```sh
-jig run flow:flows/hello --input '"Ada"' --verification fast
-jig review --verification strict
-jig inspect --verification cached
-```
-
-The argument takes precedence over `JIG_VERIFICATION`. For a persistent shell
-or CI preference, use `export JIG_VERIFICATION=cached` (or `strict` or `fast`).
-When neither is supplied, Jig uses cached. Missing, invalid or repeated
-`--verification` values are usage errors.
-
-Fast mode suits operators who prioritize startup performance and trust their
-installation to remain suitable. All modes hash files on a cache miss, so the
-first use of a tool can take longer. Most savings come from avoiding repeated
-hashing; fast's extra benefit over cached depends on the installation and host.
-
-The setting applies to review, Run and inspection. It is an operator preference,
-separate from project configuration. Flow approval, retained package verification,
-sandbox requirements, permissions, resource limits, cancellation and cleanup
-still apply. Tool and runtime compromise remains outside Jig's threat model.
-
-The private installation cache lives at
-`$XDG_CACHE_HOME/jig/installation-verification`, or
-`$HOME/.cache/jig/installation-verification` by default. It contains tool paths,
-metadata and hashes, never credentials or project approvals. You can remove
-this directory to force fresh hashes next time. Unsafe or unusable caches fall
-back to full hashing. Strict bypasses the cache entirely; inspection never
-writes it. See the [exact policy](../spec/project-policy.md#installation-verification-policy)
-for the guarantees and limits.
-
 ## Read the result
 
 The greeting returns execution status, the method's outcome, and its output.
@@ -196,6 +151,7 @@ protocol failures, and retained-state recovery.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
 - [Choose an Agent](./agents.md) using an API or a supported local client.
 - [Work with files](./files.md) to capture inputs and export one result packet.
+- [Configure Jig](./configuration.md) for terminal appearance, startup verification, and operator settings.
 - [Manage dependencies](./dependencies.md) for reusable Flow packages.
 - [Repair a project](./tested-patch.md) or [handle a disputed charge](./support-case.md).
 - [Choose a workflow structure](./workflow-design.md) for your application.
