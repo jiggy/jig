@@ -148,7 +148,7 @@ try {
   try {
     const stderr = new Response(child.stderr).text()
     child.stdin.write(
-      `${JSON.stringify({ jsonrpc: '2.0', id: 'candidate', method: 'flow/run', params: null })}\n`,
+      `${JSON.stringify({ jsonrpc: '2.0', id: 'candidate', method: 'flow/run', params: {} })}\n`,
     )
     const record = JSON.parse(await new Response(child.stdout).text())
     child.stdin.end()
