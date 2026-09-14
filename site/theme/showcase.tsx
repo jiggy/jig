@@ -46,22 +46,17 @@ export function Showcase({ data }: { data: ShowcaseData }) {
     document.getElementById(`showcase-tab-${next}`)?.focus()
   }
   return <section id="showcase" className="showcase" aria-labelledby="showcase-title">
-    <div className="showcase-intro">
-      <p className="eyebrow">{data.label}</p>
-      <h2 id="showcase-title">{data.title}</h2>
-      <p>{data.description}</p>
-    </div>
     <div className="showcase-instrument">
       <div className="request-card"><span className="visual-caption">{data.inputLabel}</span><p>“{data.input}”</p></div>
       <div className="trace-connector" aria-hidden="true">↓</div>
       <div className="method-envelope">
-        <h3>{data.methodLabel}</h3>
+        <h2>{data.methodLabel}</h2>
         <div className="showcase-tabs" role="tablist" aria-label={data.title}>
           {data.stages.map((item, index) => <button key={item.name} role="tab" id={`showcase-tab-${index}`} aria-selected={index === selected} aria-controls="showcase-panel" tabIndex={index === selected ? 0 : -1} onClick={() => setSelected(index)} onKeyDown={event => navigate(event, index)}>{item.name}</button>)}
         </div>
         <div role="tabpanel" id="showcase-panel" aria-labelledby={`showcase-tab-${selected}`} tabIndex={0} className="showcase-panel">
           <ol className="method-steps" key={selected}>{stage.steps.map(step => <li key={step}>{step}</li>)}</ol>
-          <div className="showcase-explanation"><h4>{stage.title}</h4><p>{stage.description}</p></div>
+          <div className="showcase-explanation"><h3>{stage.title}</h3><p>{stage.description}</p></div>
           <div className="showcase-output"><span>{data.resultLabel}</span><strong>{stage.output}</strong></div>
         </div>
       </div>
@@ -73,6 +68,11 @@ export function Showcase({ data }: { data: ShowcaseData }) {
         <p className="showcase-contract">{data.result}</p>
       </details>
       <p className="showcase-note">{data.note}</p>
+    </div>
+    <div className="showcase-intro showcase-caption">
+      <p className="eyebrow">{data.label}</p>
+      <h2 id="showcase-title">{data.title}</h2>
+      <p>{data.description}</p>
     </div>
     <Link className="text-link showcase-example" href={data.link}>{data.linkText}<Arrow /></Link>
   </section>

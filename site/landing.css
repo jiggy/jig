@@ -140,7 +140,7 @@ html.dark {
 .request-card p { margin: .5rem 0 0; font-size: clamp(1.05rem, 2vw, 1.35rem); line-height: 1.6; font-weight: 600; }
 .trace-connector { text-align: center; color: var(--accent); font-size: 1.6rem; padding: .65rem; }
 .method-envelope { border: 1px solid var(--rp-c-divider); border-radius: 16px; padding: 1.4rem; background: var(--rp-c-bg); }
-.method-envelope > h3 { margin: 0; text-align: center; font-size: .9rem; }
+.method-envelope > h2 { margin: 0; text-align: center; font-size: .9rem; }
 .showcase-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; max-width: 360px; margin: 1rem auto 1.3rem; padding: .3rem; border-radius: 10px; background: var(--rp-c-bg-soft); }
 .showcase-tabs button { min-height: 44px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--rp-c-text-2); font-size: .85rem; font-weight: 700; cursor: pointer; }
 .showcase-tabs button[aria-selected='true'] { background: var(--signal); color: #17201a; }
@@ -151,7 +151,7 @@ html.dark {
 .method-steps li:nth-child(3) { animation-delay: .16s; }
 @keyframes reveal-step { from { opacity: .3; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .showcase-explanation { text-align: center; max-width: 570px; margin: 1rem auto; min-height: 92px; }
-.showcase-explanation h4 { font-size: .95rem; margin: 0 0 .5rem; }
+.showcase-explanation h3 { font-size: .95rem; margin: 0 0 .5rem; }
 .showcase-explanation p { font-size: .85rem; line-height: 1.7; color: var(--rp-c-text-2); margin: 0; }
 .showcase-output { display: flex; justify-content: center; align-items: center; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--rp-c-divider-light); font-size: .8rem; color: var(--rp-c-text-2); }
 .showcase-output strong { color: var(--accent); background: var(--wash); border-radius: 6px; padding: .4rem .8rem; font: 600 .9rem 'JetBrains Mono', monospace; }
@@ -381,7 +381,7 @@ button.rp-switch-appearance { border: 0; background: transparent; cursor: pointe
   overflow-wrap: anywhere;
 }
 
-.package-showcase .package-caption { text-align: center; margin: 1.5rem auto 0; }
-.package-showcase .package-caption h2 { font-size: 1.3rem; line-height: 1.35; margin: 0 0 .6rem; font-weight: 650; }
-.package-showcase .package-caption p { margin: 0; font-size: .85rem; line-height: 1.7; }
-.package-showcase .showcase-example { margin-top: .9rem; }
+.showcase .showcase-caption { text-align: center; margin: 1.5rem auto 0; }
+.showcase .showcase-caption h2 { font-size: 1.3rem; line-height: 1.35; margin: 0 0 .6rem; font-weight: 650; }
+.showcase .showcase-caption p { margin: 0; font-size: .85rem; line-height: 1.7; }
+.showcase .showcase-example { margin-top: .9rem; }

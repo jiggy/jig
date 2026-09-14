@@ -82,7 +82,7 @@ export function PackageShowcase({ data }: { data: PackageShowcaseData }) {
       <details className="package-precision"><summary>{data.precisionTitle}</summary><dl>{data.precision.map(item => <div key={item.file}><dt><Link href={item.link}>{item.file}</Link></dt><dd>{item.description}</dd></div>)}</dl></details>
       <p className="showcase-note">{data.note}</p>
     </div>
-    <div className="showcase-intro package-caption"><h2 id="package-title">{data.title}</h2><p>{data.description}</p></div>
+    <div className="showcase-intro showcase-caption"><h2 id="package-title">{data.title}</h2><p>{data.description}</p></div>
     <Link className="text-link showcase-example" href={data.link}>{data.linkText}<Arrow /></Link>
   </section>
 }
