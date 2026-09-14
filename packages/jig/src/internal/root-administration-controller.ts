@@ -142,6 +142,9 @@ function createController(input: {
   const cancellation = new AbortController()
   const operations = new Set<Promise<void>>()
   const tasks = new Map<string, Promise<void>>()
+  // Failed ownership settlement is not permission to dispatch again on each
+  // status poll. A new coordinator can recover the retained durable work.
+  const runFailures = new Map<string, unknown>()
   const failures: unknown[] = []
   let closed = false
   let identityLossNotified = false
@@ -201,7 +204,8 @@ function createController(input: {
       try {
         const request = normalizeRootRunStatusRequest(value)
         await pumpCurrent()
-        return projectStatus(
+        requireRunHealthy(request.runId)
+        const status = projectStatus(
           await retryPrivateBusy(() =>
             loadPrivateRootRunForCoordinator({
               coordinator: input.coordinator,
@@ -210,6 +214,8 @@ function createController(input: {
             }),
           ),
         )
+        requireRunHealthy(request.runId)
+        return status
       } catch (error) {
         observeFailure(error)
         throw administrationError(error, 'read root Run status')
@@ -221,17 +227,21 @@ function createController(input: {
   })
 
   function schedule(runId: string): void {
-    if (tasks.has(runId)) return
+    if (tasks.has(runId) || runFailures.has(runId)) return
     let task: Promise<void>
     task = settleRun(runId)
       .catch((error) => {
         observeFailure(error)
-        failures.push(error)
+        runFailures.set(runId, error)
       })
       .finally(() => {
         if (tasks.get(runId) === task) tasks.delete(runId)
       })
     tasks.set(runId, task)
+  }
+
+  function requireRunHealthy(runId: string): void {
+    if (runFailures.has(runId)) throw runFailures.get(runId)
   }
 
   async function settleRun(runId: string): Promise<void> {
@@ -305,8 +315,8 @@ function createController(input: {
     while (operations.size > 0) await Promise.all([...operations])
     await pumpCurrent()
     while (tasks.size > 0) await Promise.all([...tasks.values()])
-    if (failures.length > 0) {
-      const captured = failures.splice(0, failures.length)
+    if (failures.length > 0 || runFailures.size > 0) {
+      const captured = [...failures.splice(0, failures.length), ...runFailures.values()]
       throw new AggregateError(captured, 'root Run controller did not settle cleanly')
     }
   }

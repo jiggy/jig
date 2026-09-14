@@ -50,6 +50,7 @@ import {
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
 import { main } from '../src/cli.js'
+import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
@@ -80,6 +81,67 @@ const TABLES = [
 setDefaultTimeout(30_000)
 
 describe.serial('direct alpha activation store', () => {
+  for (const scenario of ['pending', 'throws'] as const) {
+    test(`root status exposes ${scenario} settlement without silently rescheduling`, async () => {
+      const fixture = await createFixture('ready')
+      let coordinator: PrivateProjectCoordinator | undefined
+      let controller:
+        | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+        | undefined
+      let executions = 0
+      try {
+        await admit(fixture)
+        coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+        controller = await attachPrivateRootAdministrationController({
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          coordinator,
+          runTimeoutMs: 60_000,
+          async execute() {
+            executions++
+            if (scenario === 'throws') throw new Error('private cleanup cause')
+            return { state: 'pending', reason: 'fence-unconfirmed' }
+          },
+        })
+        const { runId } = await controller.administration.startRun({
+          submissionId: 'failed-settlement',
+          target: { kind: 'flow', path: 'flows/run' },
+          input: { value: 'first' },
+        })
+        await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+        for (let poll = 0; poll < 4; poll++) {
+          const error = await controller.administration.runStatus({ runId }).catch((error) => error)
+          expect(error.code).toBe(scenario === 'pending' ? 'PROJECT_BUSY' : 'INTERNAL')
+          expect(JSON.stringify(error)).not.toContain('private cleanup cause')
+        }
+        expect(executions).toBe(1)
+        expect(
+          (
+            await loadPrivateRootRunForCoordinator({
+              coordinator,
+              projectRoot: fixture.root,
+              runId,
+            })
+          ).state,
+        ).toBe('spawn-intent')
+        // A second admitted root is independent; the first failure does not
+        // turn the controller into a global execution lock.
+        await controller.administration.startRun({
+          submissionId: 'independent-settlement',
+          target: { kind: 'flow', path: 'flows/run' },
+          input: { value: 'second' },
+        })
+        await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+        expect(executions).toBe(2)
+        await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
+        expect(executions).toBe(2)
+      } finally {
+        await controller?.dispose().catch(() => undefined)
+        await coordinator?.dispose()
+        await fixture.dispose()
+      }
+    })
+  }
   test('inspection reads only approved retained meaning without state writes or coordinator acquisition', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined

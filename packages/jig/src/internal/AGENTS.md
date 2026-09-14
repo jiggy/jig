@@ -98,6 +98,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Unconfirmed cleanup or fencing is fatal to the owning invocation even if code
   catches its operation error. A conclusively cleaned child failure remains
   recoverable with ordinary language handling; no result-acknowledgement ledger.
+- Root status reports a failed ownership-settlement attempt instead of silently
+  scheduling it again. Keep its durable work for coordinator recovery; polling
+  or draining does not clear that failure or authorize another dispatch.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,
