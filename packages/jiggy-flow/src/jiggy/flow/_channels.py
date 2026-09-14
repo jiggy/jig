@@ -158,6 +158,7 @@ class _Sender(_Endpoint):
         self._sealed = False
         self._sends = 0
         self._close_task: asyncio.Task[Any] | None = None
+        self._close_error: Literal["LAGGED"] | None = None
 
     @property
     def direction(self) -> Literal["send"]:
@@ -176,16 +177,24 @@ class _Sender(_Endpoint):
             on_settle=settled, on_admission_failure=settled,
         )
 
-    async def close(self) -> None:
+    async def close(self, *, error: Literal["LAGGED"] | None = None) -> None:
+        if error is not None and (type(error) is not str or error != "LAGGED"):
+            raise ValueError("Channel close accepts only error='LAGGED'")
         self._used = True
+        if self._close_task is not None and error is not None and self._close_error != error:
+            raise OperationError("INVALID_INPUT", "A clean channel end cannot become a failure")
         if self._sealed:
             return
-        if self._sends:
+        if self._sends and error is None:
             raise OperationError("INVALID_INPUT", "Channel writer has unsettled sends")
         if self._close_task is None:
+            self._close_error = error
             async def seal() -> None:
+                params: dict[str, Any] = {"endpoint": self._reference}
+                if error is not None:
+                    params["error"] = error
                 await self._runtime._send_request("channel/close", "channel/close",
-                                                 {"endpoint": self._reference}, settlement=True)
+                                                 params, settlement=True)
                 self._sealed = True
             self._close_task = self._runtime._track_settlement(seal())
         await asyncio.shield(self._close_task)

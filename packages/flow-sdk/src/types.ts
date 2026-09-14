@@ -28,6 +28,10 @@ export interface CallOptions {
   readonly signal?: AbortSignal
 }
 
+export interface ChannelCloseOptions extends CallOptions {
+  readonly error?: 'LAGGED'
+}
+
 export interface ChannelContractIdentity {
   readonly id: string
   readonly version: string
@@ -44,7 +48,7 @@ export interface ChannelSender {
   readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelContractIdentity
   send(value: JsonValue, options?: CallOptions): Promise<void>
-  close(options?: CallOptions): Promise<void>
+  close(options?: ChannelCloseOptions): Promise<void>
 }
 
 export interface ChannelReceiver extends AsyncIterableIterator<JsonValue> {

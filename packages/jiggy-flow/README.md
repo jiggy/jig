@@ -105,7 +105,10 @@ The application must still interpret the returned Agent outcome.
 `context.channels` contains declared, host-granted endpoints. An unused endpoint
 can be passed through `channels=` on an ordinary `call()`.
 `await sender.send(value)` acknowledges host acceptance, not processing;
-`await sender.close()` seals the writer. Receivers provide one async iterator,
+`await sender.close()` seals the writer. `await sender.close(error="LAGGED")`
+declares incomplete observations: active receivers receive the stream failure,
+without cancelling execution. A prior clean end cannot be changed retroactively.
+Receivers provide one async iterator,
 `start_sequence`, and `aclose()`. Use `async with` or `finally: await receiver.aclose()`
 when iteration may stop early. Disposal settles prior reads and exposes a racing
 failure once; cancelling observation does not cancel the work.

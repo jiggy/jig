@@ -40,6 +40,7 @@ each behaviour.
 | Legal stderr diagnostics | Yes | Yes |
 | Direct create, call endpoint mapping, structured items and clean end | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
 | Failed observation with a separately successful call result | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
+| Producer-declared `LAGGED` close, receiver recovery and separate successful Run | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
 | Incoming named grants, child mapping, onward call forwarding, and caught pre-transfer rejection | `channel-wiring.test.ts`, both SDKs | `test_channel_wiring.py`, both SDKs |
 | Parent/worker/opposite-language monitor exchange with optional output forwarding | `channel-wiring.test.ts`, three real SDK processes | Individual role exchanges in `test_channel_wiring.py`; not a three-process bridge |
 | Monitor filtering, deliberate receiver disposal, and incomplete observation without lost work results | `channel-wiring.test.ts` | `test_channel_wiring.py` |

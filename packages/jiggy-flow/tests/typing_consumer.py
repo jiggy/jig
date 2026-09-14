@@ -23,6 +23,7 @@ async def work(context: RunContext) -> RunResult:
     assert_type(feed, ChannelReceiver)
     assert_type(feed.start_sequence, int)
     await feed.aclose()
+    await source.send.close(error="LAGGED")
     try:
         child = await context.call(operation_id="child-1", slot="child", input=context.input)
         assert_type(child, RunResult)

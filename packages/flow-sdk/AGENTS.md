@@ -38,6 +38,10 @@ SDK/1 and Run/1.
   The host commits endpoint transfers and implicit writer sealing; never infer
   transfer from a call's final outcome or seal before completion eligibility.
   Reserve settlement capacity inside the existing wire limits.
+- Writer `close({error:'LAGGED'})` uses the ordinary close operation to declare
+  incomplete output, including while sends are pending. Snapshot its closed
+  options and retain cancellation settlement. Never rewrite an earlier clean
+  seal or confuse producer-declared stream failure with execution authority.
 - Broadcast subscription authority stays at the creating Run; it is not an
   endpoint or transferable data. Register subscription grants before exposing
   them, preserve suffix start identities, and dispose late cancelled allocations.

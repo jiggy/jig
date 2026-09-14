@@ -45,6 +45,10 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
   prevent success. Reserve settlement inside existing wire ceilings.
   Cancelled allocations retain late grants until their cleanup settles;
   allocating an unread broadcast subscription still creates a cleanup duty.
+- Writer `close(error="LAGGED")` declares incomplete output through ordinary
+  channel close, even with pending sends. Retain its settlement on waiter
+  cancellation and reject attempts to rewrite a prior clean end. The stream
+  failure does not cancel execution or change ordinary `try/except` recovery.
 - The runtime supports Python 3.11 or newer without third-party runtime
   dependencies.
 

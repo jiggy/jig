@@ -295,6 +295,19 @@
           "channels": {}
         }
       }
+    },
+    {
+      "name": "channel-producer-lagged",
+      "definition": "channelCloseRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/close",
+        "params": {
+          "endpoint": "source:write",
+          "error": "LAGGED"
+        }
+      }
     }
   ],
   "invalid": [
@@ -539,6 +552,71 @@
           "operationId": "op:1",
           "slot": "worker\n",
           "input": null
+        }
+      }
+    },
+    {
+      "name": "channel-producer-invalid-error-\"CANCELLED\"",
+      "definition": "channelCloseRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/close",
+        "params": {
+          "endpoint": "source:write",
+          "error": "CANCELLED"
+        }
+      }
+    },
+    {
+      "name": "channel-producer-invalid-error-null",
+      "definition": "channelCloseRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/close",
+        "params": {
+          "endpoint": "source:write",
+          "error": null
+        }
+      }
+    },
+    {
+      "name": "channel-producer-invalid-error-{}",
+      "definition": "channelCloseRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/close",
+        "params": {
+          "endpoint": "source:write",
+          "error": {}
+        }
+      }
+    },
+    {
+      "name": "channel-producer-invalid-error-false",
+      "definition": "channelCloseRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/close",
+        "params": {
+          "endpoint": "source:write",
+          "error": false
+        }
+      }
+    },
+    {
+      "name": "channel-next-cannot-declare-producer-error",
+      "definition": "channelNextRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/next",
+        "params": {
+          "endpoint": "source:read",
+          "error": "LAGGED"
         }
       }
     }

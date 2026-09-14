@@ -26,8 +26,8 @@ ChannelSender / ChannelReceiver / ChannelEndpoint / ChannelPair / ChannelBroadca
 ChannelContractIdentity
 ```
 
-The TypeScript projection additionally names `FlowCall`, `CallOptions`, and
-`ChannelOptions`; Python expresses the same values as keyword-only method
+The TypeScript projection additionally names `FlowCall`, `CallOptions`,
+`ChannelOptions`, and `ChannelCloseOptions`; Python expresses the same values as keyword-only method
 arguments and uses ordinary task cancellation.
 
 `handle` receives this Flow's `flow/run` invocation. `run.call(...)` invokes a
@@ -378,12 +378,15 @@ type ChannelOptions = {
   readonly schema?: JsonValue;
   readonly contract?: string;
 } & ({ readonly delivery?: 'direct' } | { readonly delivery: 'broadcast' });
+interface ChannelCloseOptions extends CallOptions {
+  readonly error?: 'LAGGED';
+}
 interface ChannelSender {
   readonly direction: 'send';
   readonly delivery: 'direct' | 'broadcast';
   readonly contract?: ChannelContractIdentity;
   send(value: JsonValue, options?: CallOptions): Promise<void>;
-  close(options?: CallOptions): Promise<void>;
+  close(options?: ChannelCloseOptions): Promise<void>;
 }
 interface ChannelReceiver extends AsyncIterableIterator<JsonValue> {
   readonly direction: 'receive';
@@ -423,6 +426,16 @@ Broadcast sends do not wait for readers. A slow reader fails locally with
 a source/writer error, which aborts unsealed output for all readers. The caller
 still awaits execution independently and handles recoverable channel errors
 with ordinary language constructs.
+
+`await sender.close({error: 'LAGGED'})`, or Python
+`await sender.close(error="LAGGED")`, declares incomplete output using ordinary
+writer authority. Clean `close()` is unchanged. Abnormal close may settle a
+source with pending sends; those send operations receive their own failures.
+The close acknowledgement is observation evidence, never execution evidence.
+It wakes active receivers with the sticky stream error without cancelling the
+work. Repeated same-cause closes join settlement; a previously requested clean
+end cannot be rewritten as failure. Cancellation of a close waiter retains
+its settlement as before. Other producer error values are rejected locally.
 
 There is one iterator and one pending read per receiver, without prefetch.
 TypeScript iterator `return()` disposes on early loop exit. Python early exit

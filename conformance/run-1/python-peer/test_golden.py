@@ -1272,7 +1272,12 @@ def validate_channel_message(definition: str, message: Any) -> None:
                                          or not params["contract"].startswith("./")):
                 raise ProtocolError("invalid local contract reference")
         else:
-            require_exact_object(params, {"endpoint", "value"} if definition == "channelSendRequest" else {"endpoint"})
+            expected = {"endpoint", "value"} if definition == "channelSendRequest" else {"endpoint"}
+            if definition == "channelCloseRequest" and "error" in params:
+                expected.add("error")
+                if params["error"] != "LAGGED":
+                    raise ProtocolError("unsupported producer channel error")
+            require_exact_object(params, expected)
             require_wire_id(params["endpoint"])
         return
     if definition != "channelSuccessResponse":

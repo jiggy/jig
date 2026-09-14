@@ -446,6 +446,15 @@
       "required": ["endpoint"],
       "additionalProperties": false
     },
+    "channelCloseParams": {
+      "type": "object",
+      "properties": {
+        "endpoint": { "$ref": "#/$defs/wireId" },
+        "error": { "const": "LAGGED" }
+      },
+      "required": ["endpoint"],
+      "additionalProperties": false
+    },
     "channelSubscribeParams": {
       "type": "object",
       "properties": {
@@ -719,7 +728,7 @@
           "const": "channel/close"
         },
         "params": {
-          "$ref": "#/$defs/channelEndpointParams"
+          "$ref": "#/$defs/channelCloseParams"
         }
       },
       "required": ["jsonrpc", "id", "method", "params"],

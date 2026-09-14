@@ -13,6 +13,34 @@ COMPONENTS = ROOT / "conformance/run-1/components"
 
 
 class DirectChannelPeerTests(unittest.TestCase):
+    def exercise_producer_close(self, command):
+        with HostPeer(command, environment={"PYTHONPATH": str(ROOT / "packages/jiggy-flow/src"), "PYTHONDONTWRITEBYTECODE": "1"}) as peer:
+            peer.send(flow_run_request("root:1", "producer-close"))
+            create = peer.receive_request("channel/create")
+            peer.send(success(create["id"], {
+                "send": {"endpoint": "writer:1", "direction": "send", "delivery": "direct"},
+                "receive": {"endpoint": "reader:1", "direction": "receive", "delivery": "direct", "startSequence": 1},
+            }))
+            send = peer.receive_request("channel/send")
+            peer.send(success(send["id"], None))
+            close = peer.receive_request("channel/close")
+            self.assertEqual(close["params"], {"endpoint": "writer:1", "error": "LAGGED"})
+            peer.send(success(close["id"], None))
+            read = peer.receive_request("channel/next")
+            peer.send({"jsonrpc": "2.0", "id": read["id"], "error": {"code": -32000, "message": "producer incomplete", "data": {"code": "LAGGED"}}})
+            release = peer.receive_request("channel/release")
+            peer.send(success(release["id"], {"status": "failed", "code": "LAGGED"}))
+            self.assertEqual(peer.receive()["result"], {"outcome": "done", "output": {"complete": False, "cause": "LAGGED"}})
+            peer.finish()
+
+    def test_producer_close_in_both_components(self):
+        commands = [[sys.executable, str(COMPONENTS / "channels.py")]]
+        if shutil.which("bun"):
+            commands.append([shutil.which("bun"), str(COMPONENTS / "channels.ts")])
+        for command in commands:
+            with self.subTest(command=command):
+                self.exercise_producer_close(command)
+
     def exercise(self, command, *, failed):
         with HostPeer(command, environment={
             "PYTHONPATH": str(ROOT / "packages/jiggy-flow/src"),

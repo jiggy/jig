@@ -122,6 +122,7 @@ interface Source {
   readonly pending: PendingSend[]
   send: Endpoint
   sealed: boolean
+  producerError?: 'LAGGED'
   sequence: number
   totalBytes: number
   failure?: ChannelOperationError
@@ -411,7 +412,13 @@ export class ChannelBroker {
       if (signal?.aborted) throw cancelled()
       return this.subscribe(owner, object.source) as unknown as JsonValue
     }
-    exactKeys(object, method === 'channel/send' ? ['endpoint', 'value'] : ['endpoint'], [])
+    exactKeys(
+      object,
+      method === 'channel/send' ? ['endpoint', 'value'] : ['endpoint'],
+      method === 'channel/close' ? ['error'] : [],
+    )
+    if (Object.hasOwn(object, 'error') && object.error !== 'LAGGED')
+      throw new TypeError('channel close accepts only error: LAGGED')
     if (typeof object.endpoint !== 'string') throw new TypeError('invalid endpoint')
     switch (method) {
       case 'channel/send':
@@ -419,7 +426,7 @@ export class ChannelBroker {
       case 'channel/next':
         return this.next(owner, object.endpoint, signal)
       case 'channel/close':
-        this.close(owner, object.endpoint)
+        this.close(owner, object.endpoint, object.error as 'LAGGED' | undefined)
         return null
       case 'channel/release':
         return this.release(owner, object.endpoint)
@@ -550,11 +557,28 @@ export class ChannelBroker {
     })
   }
 
-  close(owner: ChannelParticipant, token: string): void {
+  close(owner: ChannelParticipant, token: string, error?: 'LAGGED'): void {
     this.assertOpen(owner)
     const endpoint = this.held(owner, token, 'send')
+    if (error !== undefined && error !== 'LAGGED')
+      throw new ChannelOperationError('INVALID_INPUT', 'unsupported channel close error')
     endpoint.used = true
     const source = endpoint.source
+    if (error !== undefined) {
+      if (source.producerError === error) return
+      if (source.sealed)
+        throw new ChannelOperationError(
+          'INVALID_INPUT',
+          'a clean channel end cannot become a failure',
+        )
+      if (source.failure !== undefined) throw source.failure
+      source.producerError = error
+      this.fail(
+        source,
+        new ChannelOperationError(error, 'producer declared incomplete channel delivery'),
+      )
+      return
+    }
     if (source.failure !== undefined) throw source.failure
     if (source.sealed) return
     if (source.delivery === 'direct' && source.receivers[0]!.released)
@@ -917,8 +941,8 @@ export class ChannelParticipant {
   next(endpoint: string, signal?: AbortSignal) {
     return this.broker.next(this, endpoint, signal)
   }
-  close(endpoint: string) {
-    this.broker.close(this, endpoint)
+  close(endpoint: string, error?: 'LAGGED') {
+    this.broker.close(this, endpoint, error)
   }
   release(endpoint: string) {
     return this.broker.release(this, endpoint)

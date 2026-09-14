@@ -7,6 +7,7 @@ export type {
   AttachmentAccess,
   CallOptions,
   ChannelBroadcast,
+  ChannelCloseOptions,
   ChannelContractIdentity,
   ChannelEndpoint,
   ChannelOptions,

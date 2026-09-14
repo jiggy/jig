@@ -363,7 +363,7 @@ disposal independent of whether producer admission wins or loses that race.
 | `channel/subscribe` | `{source: opaqueReference}` | One broadcast receive grant owned by the creating invocation |
 | `channel/send` | `{endpoint, value}` | `null`: validated, snapshotted host acceptance, not processing or durability |
 | `channel/next` | `{endpoint}` | `{item: {sequence, value}}` or `{end: {lastSequence}}` |
-| `channel/close` | `{endpoint}` | `null`: writer sealed |
+| `channel/close` | `{endpoint, error?: "LAGGED"}` | `null`: clean writer seal or producer-declared abnormal end |
 | `channel/release` | `{endpoint}` | `{status: "released"}`, `{status: "ended", lastSequence}`, or `{status: "failed", code, details?}` |
 
 Creation defaults to direct delivery and generic JSON/1. Schemas use Schema/1;
@@ -392,11 +392,27 @@ retained/in-flight payload, pending sends, parser/writer buffers and lifetime
 allocations. A committed but unread response consumes receiver capacity until
 the next read releases its credit.
 
-Writer close rejects while sends remain unaccepted; otherwise it seals without
+Clean writer close rejects while sends remain unaccepted; otherwise it seals without
 waiting for the receiver or execution result. Accepted data can drain while
 the source owner lives. Failure before sealing aborts the source. Previously
 explicitly sealed intervals remain sealed despite subsequent producer failure;
 neither sealing nor receiver EOF establishes execution success.
+
+An owned writer may instead close with `error:"LAGGED"` to declare incomplete
+delivery. This optional cause is a closed enumeration, not an arbitrary error
+message or execution status. The host checks writer authority before changing
+the source, records its sticky abnormal end, rejects pending sends and wakes
+all still-active receivers with `LAGGED`. This abnormal close is allowed while
+sends remain pending; their operations still settle separately. Repeating the
+same abnormal close joins that end. An earlier explicit clean seal cannot be
+rewritten into a failure: such a later abnormal close rejects `INVALID_INPUT`.
+A prior source failure stays authoritative. Receiver disposal and committed
+read responses keep their ordinary ordering rules.
+
+The producer's declaration establishes only incomplete observation. It does
+not cancel producer execution or supply host-authenticated process, authority,
+or cleanup evidence. Ordinary calls and language-level failure recovery are
+unchanged.
 
 Failure discards only uncommitted queued values. A committed read response may
 still arrive; the next read or release reports the sticky cause. Revocation and

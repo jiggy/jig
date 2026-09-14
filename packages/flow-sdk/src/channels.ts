@@ -11,6 +11,7 @@ import {
 import {
   type CallOptions,
   type ChannelBroadcast,
+  type ChannelCloseOptions,
   type ChannelEndpoint,
   type ChannelOptions,
   type ChannelPair,
@@ -57,6 +58,7 @@ interface EndpointState {
   releasedEndSequence?: number
   read?: Promise<void>
   seal?: Promise<void>
+  sealError?: 'LAGGED'
   disposal?: Promise<void>
   cause?: unknown
   exposed: boolean
@@ -273,9 +275,17 @@ export class Channels {
             direction: 'send' as const,
             send: (value: JsonValue, options?: CallOptions) =>
               this.sendValue(state, value, options),
-            close: async (options?: CallOptions) => {
-              this.checkSignal(options)
-              await this.wait(this.seal(state), options)
+            close: async (options?: ChannelCloseOptions) => {
+              const data = snapshotDataObject(options ?? {}, 'channel close options', 2)
+              if (
+                Object.keys(data).some((key) => key !== 'signal' && key !== 'error') ||
+                (Object.hasOwn(data, 'error') && data.error !== 'LAGGED')
+              )
+                throw new TypeError('channel close accepts only optional signal and error: LAGGED')
+              const calls =
+                data.signal === undefined ? undefined : { signal: data.signal as AbortSignal }
+              this.checkSignal(calls)
+              await this.wait(this.seal(state, data.error as 'LAGGED' | undefined), calls)
             },
           })
         : Object.freeze({
@@ -331,24 +341,36 @@ export class Channels {
     })
   }
 
-  private seal(state: EndpointState): Promise<void> {
-    if (state.seal) return state.seal
+  private seal(state: EndpointState, error?: 'LAGGED'): Promise<void> {
+    if (state.seal) {
+      if (error !== undefined && state.sealError !== error)
+        return Promise.reject(
+          new OperationError('INVALID_INPUT', 'a clean channel end cannot become a failure'),
+        )
+      return state.seal
+    }
     if (state.closed) return Promise.resolve()
-    if (state.sends)
+    if (state.sends && error === undefined)
       return Promise.reject(
         new OperationError('INVALID_INPUT', 'channel writer has unaccepted sends'),
       )
     state.used = true
-    const promise = this.request('channel/close', { endpoint: state.grant.endpoint }, undefined, {
-      control: true,
-      settled: (settlement) => {
-        if ('result' in settlement) {
-          if (settlement.result !== null) throw new Error('invalid channel/close result')
-          state.closed = true
-        }
+    const promise = this.request(
+      'channel/close',
+      { endpoint: state.grant.endpoint, ...(error === undefined ? {} : { error }) },
+      undefined,
+      {
+        control: true,
+        settled: (settlement) => {
+          if ('result' in settlement) {
+            if (settlement.result !== null) throw new Error('invalid channel/close result')
+            state.closed = true
+          }
+        },
       },
-    }).then(() => undefined)
+    ).then(() => undefined)
     state.seal = promise
+    if (error !== undefined) state.sealError = error
     this.track(promise)
     return promise
   }

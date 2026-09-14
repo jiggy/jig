@@ -22,6 +22,8 @@ companions.
   meaning; Run/1 owns their transfer, transport and lifecycle. The current
   machine/SDK subset includes direct and isolated broadcast delivery, not
   binary transport or session control.
+  Writer-declared abnormal close owns only incomplete-observation semantics;
+  it does not change execution results, authority or ordinary error recovery.
 
 ## Local Contracts
 

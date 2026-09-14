@@ -197,6 +197,53 @@ class ChannelTests(unittest.TestCase):
 
 
 class ChannelCapacityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_producer_failure_close_settles_while_send_is_pending(self) -> None:
+        runtime, output = self.runtime()
+        sender = runtime._register_endpoint(grant("writer:1", "send"))
+        sending = asyncio.create_task(sender.send("pending"))
+        await self.until(lambda: len(output.payloads) == 1)
+        request = json.loads(output.payloads[0])
+        closing = asyncio.create_task(sender.close(error="LAGGED"))
+        await self.until(lambda: len(output.payloads) == 2)
+        closed = json.loads(output.payloads[1])
+        self.assertEqual(closed["params"], {"endpoint": "writer:1", "error": "LAGGED"})
+        await self.answer(runtime, closed)
+        await closing
+        await self.answer(runtime, request, code="LAGGED")
+        with self.assertRaises(OperationError) as caught:
+            await sending
+        self.assertEqual(caught.exception.code, "LAGGED")
+        await sender.close(error="LAGGED")
+        self.assertEqual(len(output.payloads), 2)
+
+    async def test_producer_close_cancellation_retains_its_settlement(self) -> None:
+        runtime, output = self.runtime()
+        sender = runtime._register_endpoint(grant("writer:1", "send"))
+        closing = asyncio.create_task(sender.close(error="LAGGED"))
+        await self.until(lambda: len(output.payloads) == 1)
+        closing.cancel()
+        await asyncio.gather(closing, return_exceptions=True)
+        self.assertFalse(sender._sealed)
+        await self.answer(runtime, json.loads(output.payloads[0]))
+        await sender.close(error="LAGGED")
+        self.assertEqual(len(output.payloads), 1)
+
+    async def test_clean_close_cannot_become_failure_and_invalid_causes_are_local(self) -> None:
+        runtime, output = self.runtime()
+        sender = runtime._register_endpoint(grant("writer:1", "send"))
+        for error in ("UNCERTAIN", False, {}, 1):
+            with self.assertRaises(ValueError):
+                await sender.close(error=error)
+        self.assertEqual(output.payloads, [])
+        closing = asyncio.create_task(sender.close())
+        await self.until(lambda: len(output.payloads) == 1)
+        with self.assertRaises(OperationError):
+            await sender.close(error="LAGGED")
+        await self.answer(runtime, json.loads(output.payloads[0]))
+        await closing
+        with self.assertRaises(OperationError):
+            await sender.close(error="LAGGED")
+
     async def test_cancelled_send_remains_unsettled_until_wire_response(self) -> None:
         runtime, output = self.runtime()
         sender = runtime._register_endpoint(grant("writer:1", "send"))

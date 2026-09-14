@@ -140,7 +140,10 @@ const result = execution.value; // Channel completion is not execution success.
 `run.channel()` accepts generic JSON values; `schema` optionally constrains
 their shape, or `contract` selects exact named meaning. The sender's
 `send(value, options?)` acknowledges host
-acceptance, and `close(options?)` seals the source. Neither promises processing
+acceptance, and `close(options?)` seals the source. A producer that cannot deliver
+complete observations can use `close({ error: 'LAGGED' })`; active receivers
+then receive that stream failure while execution remains separate. A previous
+clean end cannot be changed retroactively. Neither operation promises processing
 by the consumer. Closing with unaccepted sends rejects.
 
 A receiver supports one async iterator and one outstanding `next(options?)`.
