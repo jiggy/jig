@@ -78,6 +78,9 @@ admitted FLOW packages.
   a separate raw diagnostic style or route machine output through styling.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
+  A heading must never have less emphasis than its subordinate details. Expanded
+  unavailable-client labels use bold amber above normal-contrast setup instructions;
+  the compact names-only unavailable summary remains secondary.
   Dim executable paths and unchanged context; omit review categories with no
   changes from the ordinary summary. Changed-record labels and their identifiers
   use bold amber: they identify work requiring attention, not secondary metadata.

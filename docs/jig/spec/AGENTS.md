@@ -35,6 +35,8 @@ descriptors.
 ## Work Guidance
 
 - CLI syntax themes and shell selection belong in `cli-experience.md`; keep
+  heading emphasis at least as strong as subordinate details, including expanded
+  unavailable-client setup instructions. Keep
   token styling separate from exact review policy and machine output. Field
   diffs must explain execution-only changes without exposing private identities.
   Terminal Run presentation and `--json` selection must stay synchronized with

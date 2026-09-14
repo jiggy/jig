@@ -71,6 +71,21 @@ test('signed review YAML preserves complete multiline changes and diff direction
   }
 })
 
+test('expanded unavailable Agent headings stay prominent above their setup details', () => {
+  const heading = '  Unavailable: Codex — final result and live updates'
+  const details = '    Install the native client on the operator PATH, then retry jig review.'
+  const input = `${heading}\n${details}\n  1. API endpoint — final result only`
+  for (const JIG_THEME of ['one-dark', 'one-light', 'macchiato']) {
+    for (const width of [24, 80, undefined]) {
+      const rendered = privateCliHumanText(input, true, width, { JIG_THEME })
+      expect(strip(rendered)).toBe(privateCliHumanText(input, false, width))
+      expect(rendered).toStartWith('\u001b[1;33m  Unavailable:')
+      expect(rendered).not.toContain('\u001b[90m    Install')
+      expect(rendered).toContain('\u001b[0m\n    Install')
+    }
+  }
+})
+
 test('paths and unchanged context recede while changes and approval consequences stay prominent', () => {
   const lines = [
     '  Executable: "/nix/store/installation/bin/codex"',

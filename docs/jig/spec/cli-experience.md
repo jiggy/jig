@@ -40,6 +40,9 @@ makes usable control an observable requirement;
    Keep permission consequences, changed policy values, failures,
    and next actions at normal or emphasized contrast. Gray never hides content
    or substitutes for labels, spacing, or explicit status words.
+   A heading must never be less prominent than the details it introduces.
+   Expanded unavailable-client labels use bold amber above normal-contrast
+   setup instructions; compact names-only summaries remain secondary gray.
    Render structured human values as YAML using the shared standard serializer:
    mappings, sequences, empty containers and multiline block strings convey types
    without `(object)`, `(list)` or `(text)` labels. Quote strings and keys to preserve

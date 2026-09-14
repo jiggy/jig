@@ -82,7 +82,7 @@ export function privateCliHumanText(
   let literal: { indent: number; prefix: string } | undefined
   return text
     .split('\n')
-    .map((line) => {
+    .map((line, index, lines) => {
       const prefix = /^[+-] /.test(line) ? line.slice(0, 2) : ''
       const body = line.slice(prefix.length)
       const indent = /^ */.exec(body)![0].length
@@ -114,7 +114,9 @@ export function privateCliHumanText(
             color,
           )
       } else if (color) {
-        if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
+        if (/^ {2}Unavailable:/.test(line) && /^ {4}\S/.test(lines[index + 1] ?? ''))
+          rendered = privateCliHeading(wrapped, 'warning', true)
+        else if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
           rendered = privateCliHeading(wrapped, 'error', true)
         else if (
           /^(Changed:|Warning:|Approval validity not checked|Approval required|Review required|Review declined|Command interrupted|Run cancelled)/.test(
