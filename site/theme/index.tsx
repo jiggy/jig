@@ -13,7 +13,6 @@ export { NavHamburger } from './navigation'
 
 interface HomeData {
   hero: { name: string; text: string; tagline: string; eyebrow: string; status: string; statusLink: string; actions: { text: string; link: string; theme: string }[] }
-  features: { title: string; details: string }[]
   showcase: ShowcaseData
 }
 
@@ -23,6 +22,7 @@ export function HomeLayout() {
   if (import.meta.env.SSG_MD) return <><DefaultHomeLayout /><Showcase data={data.showcase} /><Content /></>
   return <>
     <main id="main-content" className="landing">
+      <div className="landing-opening">
       <header className="hero">
         <div className="hero-field" aria-hidden="true"><div className="field-line" /><div className="field-line" /><div className="field-line" /><div className="field-core" /></div>
         <p className="eyebrow">{data.hero.eyebrow}</p>
@@ -31,8 +31,9 @@ export function HomeLayout() {
         <nav className="hero-actions" aria-label="Get started">{data.hero.actions.map(action => <Link key={action.link} href={action.link} className={`action action--${action.theme}`}>{action.text}<Arrow /></Link>)}</nav>
         <Link className="hero-status" href={data.hero.statusLink}><span aria-hidden="true" />{data.hero.status}</Link>
       </header>
-      <div className="principle-strip">{data.features.map(feature => <div key={feature.title}><span aria-hidden="true">↗</span><h2>{feature.title}</h2><p>{feature.details}</p></div>)}</div>
-      <div className="landing-content"><Showcase data={data.showcase} /><div className="product-story rp-doc"><DocContent isOverviewPage /></div></div>
+      <Showcase data={data.showcase} />
+      </div>
+      <div className="landing-content"><div className="product-story rp-doc"><DocContent isOverviewPage /></div></div>
     </main>
     <HomeFooter />
   </>

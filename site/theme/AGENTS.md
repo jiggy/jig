@@ -10,8 +10,9 @@ shared reading experience.
 - `index.tsx` extends the default layout with homepage composition, document
   context, and a direct Markdown resource link beside Rspress's copy action.
 - `showcase.tsx` renders illustrative implementations from homepage frontmatter,
-  keeping the caller and result contract visible while the reader selects a
-  method. Caller, contract, and all variants remain in generated Markdown.
+  showing a request, selectable method steps, and an illustrative result.
+  A native disclosure reveals the unchanged caller and implementation. All
+  inputs, variants, results, and qualifications remain in generated Markdown.
   It never executes product work.
 - `search.tsx` uses Rspress's native local search with conditional mounting,
   modal semantics, keyboard controls, focus containment, and focus restoration.
@@ -46,6 +47,9 @@ shared reading experience.
 ## Work Guidance
 
 - Prefer the default theme and small extensions over a copied theme.
+- Landing pages move from an early interactive demonstration to product-specific
+  structure and one first-use path. Keep implementation details in disclosures,
+  resource routing compact, and motion brief, optional, and reduced-motion aware.
 
 ## Verification
 

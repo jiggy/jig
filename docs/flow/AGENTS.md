@@ -18,8 +18,9 @@ and capability-contract semantics.
 
 - `index.md` and `guide/understand.md` introduce one compositional boundary for
   code and Agents through the request-triage example on Jig, then develop the
-  Skills bridge, capability compounding, and host independence. Keep the host
-  example distinct from portable FLOW requirements.
+  Skills bridge, capability compounding, and host independence. The landing page
+  opens the conceptual package after the demonstration and ends at first
+  authoring. Keep the host example distinct from portable FLOW requirements.
 - `guide/start.mdx` routes authors to complete SDK or host tutorials without
   treating a source candidate as a published install. Its native language tabs
   preserve both examples in the generated `/guide/start.md` resource.

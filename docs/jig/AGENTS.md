@@ -37,6 +37,8 @@ use-case and orchestration hypotheses.
   retained-state recovery; the quickstart links to it after the first outcome.
 - `index.md` and `guide/understand.md` introduce Agent work inside applications
   through the common Flow boundary and Jig's microkernel-inspired responsibilities.
+  The landing page follows a suggestion into application checks, reveals Jig's
+  execution boundary, and ends at a first run with visible prerequisites.
 - `guide/request-triage.md` owns the one-caller, three-implementation walkthrough:
   code, Agent, and mixed classifiers share a result contract; changed targets
   need review, and suggestions never authorize business actions.

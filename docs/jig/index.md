@@ -1,12 +1,12 @@
 ---
 pageType: home
 title: "Build with Agents as naturally as you build with code."
-description: "A Flow can run code, use an Agent, or combine both. Your application calls each through the same interface. Jig runs the methods you choose, with explicit powers and limits."
+description: "Call Agent work from your application through a Flow: a method that can use code, an Agent, or both. Jig runs it with the powers and limits you choose."
 hero:
   name: Jig
-  eyebrow: "Code and Agents, working together"
-  text: "Build with Agents\nas naturally as\nyou build with code."
-  tagline: "A Flow can run code, use an Agent, or combine both. Your application calls each through the same interface. Jig runs the methods you choose, with explicit powers and limits."
+  eyebrow: "Jig · Run code and Agents together"
+  text: "Build with Agents\nas naturally as code."
+  tagline: "Call Agent work from your application through a Flow: a method that can use code, an Agent, or both. Jig runs it with the powers and limits you choose."
   status: "Developer alpha · supported Linux hosts"
   statusLink: "/guide/#supported-host"
   actions:
@@ -14,24 +14,22 @@ hero:
       text: "Start building"
       link: "/guide/"
     - theme: alt
-      text: See the architecture
-      link: /guide/understand
-features:
-  - title: "Call code and Agents"
-    details: "Use the same interface for both."
-  - title: "Choose how it runs"
-    details: "Review your methods and choose their powers."
-  - title: "Handle what happens"
-    details: "Use results, handle failures, and stop work."
+      text: See it work
+      link: "#showcase"
 showcase:
-  label: One caller · three implementations
+  label: Explore a support-request classifier
   title: One call. Code, an Agent, or both.
-  description: Your app needs to route a support request. Start with a rule, ask an Agent to interpret the message, or combine the two. Switch between implementations below—the caller stays the same.
-  note: Illustrative excerpts from the request-triage example on Jig. This page runs no Flows. A shared result shape does not promise identical judgment, cost, latency, or powers.
+  description: Your app needs to route a request. Change how the classifier works below. Your application still makes the same call.
+  inputLabel: A request arrives
+  input: "I was charged twice for my subscription."
+  methodLabel: Classify the request
+  resultLabel: Suggested queue
+  detailsLabel: See the caller and implementation
+  note: Illustrative walkthrough, not a live run. Agent suggestions can differ; code checks their shape, not their correctness. Changing a method can change its cost, latency, and required powers.
   link: "/guide/request-triage"
   linkText: Run the complete example
   caller:
-    file: intake · the caller stays the same
+    file: The caller stays the same
     code: |-
       return run.runChildFlow({
         operationId: 'classify-request',
@@ -41,57 +39,38 @@ showcase:
   result: 'done → { queue: billing | technical | manual }'
   stages:
     - name: "Code"
+      output: manual
+      steps: [Read the request, Look for an explicit label, Use the fallback]
       title: "Run the known procedure directly."
       description: "Recognize an explicit billing or technical label. Send anything else to manual classification. No Agent interprets these steps."
       file: "Implementation excerpt · code"
       code: "queue: explicitQueue(message) ?? 'manual'"
-      tags: ["Direct execution", "No Agent call"]
     - name: "Agent"
+      output: billing
+      steps: [Read the request, Ask an Agent to interpret, Validate the suggestion]
       title: "Give interpretation its own method."
       description: "Ask an Agent to interpret the message, then validate its queue suggestion. Its judgment stays behind the same caller-facing contract."
       file: "Implementation sketch · Agent"
       code: "message → Agent interpretation\n        → validate queue suggestion"
-      tags: ["One Agent call", "Structured suggestion"]
     - name: "Both"
+      output: billing
+      steps: [Look for an explicit label, Ask an Agent when absent, Validate the suggestion]
       title: "Put code and judgment in one method."
       description: "Use the same label rule first. Ask an Agent only when a message needs interpretation. The caller still makes the same call."
       file: "Implementation sketch · mixed"
       code: "explicit label → code\notherwise      → Agent interpretation\n               → validate queue suggestion"
-      tags: ["Zero or one Agent call", "Same method contract"]
 ---
 
-<section className="statement">
-<p className="eyebrow">From a useful result to something you can build with</p>
-<h2>Call the work.<br />Build on what comes back.</h2>
-<p>You already work with Agents, Skills, and code. Flows give you a way to bring them into your application as methods you can call. Supply an input, get a result, and use it in the next part of your program.</p>
-<p>In the classifier above, you can add Agent interpretation without rewriting the caller. Your application decides what to do with the suggested queue. Jig runs the methods you have reviewed and keeps their powers and execution limits explicit.</p>
-<a className="text-link" href="/guide/understand">See how Jig works <span aria-hidden="true">↗</span></a>
+<section className="story-section">
+<div className="story-copy"><p className="eyebrow">Build around the result</p><h2>Let Agents interpret.<br />Let your code decide.</h2><p>A suggested queue is a starting point. Your application can check records, ask for more information, or call another method. An Agent’s answer becomes an action through rules you write.</p><p>Bring your Skills, prompts, and libraries into the methods that need them. Code and Agent work share the same callable boundary, defined by the independent <a href="https://flow.jig.md/">FLOW standard</a>.</p><a className="text-link" href="/guide/support-case">See code check an Agent’s proposal ↗</a></div>
+<div className="composition-reveal"><p className="visual-caption">Your application directs the work</p><ol><li><strong>Get a suggestion</strong><span>A Flow returns an Agent’s interpretation.</span></li><li><strong>Check what matters</strong><span>Your code applies the relevant rules.</span></li><li><strong>Decide what follows</strong><span>Continue, ask for help, or handle a failure.</span></li></ol><p className="visual-footnote">Checks need domain knowledge. A well-formed answer can still be wrong.</p></div>
 </section>
 
-<div className="ownership-grid">
-<section><span className="tile-index">01 / APPLICATION</span><h3>Set the purpose and consequences.</h3><p>Your application owns domain rules, checks, and what happens with a result. A suggestion becomes an action only through its policy.</p></section>
-<section><span className="tile-index">02 / FLOW</span><h3>Give the method room to work.</h3><p>Code, Agent judgment, Skills, and internal control live together behind an input, outcome, and result.</p></section>
-<section><span className="tile-index">03 / JIG</span><h3>Keep execution accountable.</h3><p>The operator chooses Agents and powers. Jig runs the accepted methods with limits and accounts for completion, failure, cancellation, and cleanup.</p></section>
-</div>
-
-<section className="feature-editorial">
-<div><p className="eyebrow">A microkernel for agent-native systems</p><h2>A small core.<br />Room for capable methods.</h2></div>
-<div><p>Your methods contain the work: code, Agent instructions, Skills, and checks. Jig handles the shared execution responsibilities around them, including starting reviewed work, supplying its chosen powers, and stopping owned processes when you cancel.</p><p>This separation is why Jig takes inspiration from microkernels. You can build new methods without adding each workflow to the host. The independent <a href="https://flow.jig.md/">FLOW standard</a> defines how those methods are packaged and called; Jig puts them to work on your machine.</p><a className="text-link" href="/guide/understand#why-a-microkernel-inspired-host">Understand the architecture <span aria-hidden="true">↗</span></a></div>
+<section className="story-section story-section--reverse">
+<div className="story-copy"><p className="eyebrow">A microkernel for agent-native systems</p><h2>A small core.<br />Room for capable methods.</h2><p>Methods own the work. Jig handles the execution around them: running reviewed methods, supplying authorized powers, and stopping owned processes when you cancel.</p><p>This separation lets you build new capabilities without adding each workflow to the host. Agents have room to reason inside their methods; their judgment does not grant them more authority.</p><a className="text-link" href="/guide/understand#why-a-microkernel-inspired-host">Understand the architecture ↗</a></div>
+<div className="boundary-reveal"><p className="visual-caption">Jig’s execution boundary</p><div className="boundary-method"><strong>Your Flow</strong><p>Code · Agents · Skills · Libraries</p><span>The method owns how the work happens.</span></div><ul><li>Run the reviewed method</li><li>Supply chosen powers and limits</li><li>Account for completion and cleanup</li></ul><p className="visual-footnote">Jig governs execution. Your application checks meaning and consequences.</p></div>
 </section>
 
-<section className="statement statement--compact">
-<p className="eyebrow">Build around judgment, including when it is wrong</p>
-<h2>Intelligence can be uncertain.<br />Its authority must be explicit.</h2>
-<p>An Agent can hallucinate, misunderstand, or follow injected instructions. Jig makes its work governable and composable; it does not make its judgment correct. Your application checks meaning and consequences. Jig enforces its execution boundaries without asking the model to authorize itself.</p>
-<p>See code check an Agent’s proposal in <a href="/guide/support-case">support-case handling</a>, or see how a repair method puts <a href="/guide/tested-patch">executed checks beside a proposed patch</a>.</p>
-</section>
-
-<div className="reader-grid">
-<a href="/guide/" className="reader-card"><span className="tile-index">FOR DEVELOPERS</span><h3>Run your first Flow.</h3><p>Create a method, run it, and change its result. The first example uses ordinary code and needs no Agent.</p><span className="card-link">Start building ↗</span></a>
-<a href="/guide/teams" className="reader-card"><span className="tile-index">FOR TEAMS</span><h3>Build with your teammates.</h3><p>Share a useful method, review changes together, and choose how it runs in your own project.</p><span className="card-link">Plan your workflow ↗</span></a>
-<a href="/guide/for-agents" className="reader-card"><span className="tile-index">FOR AGENTS</span><h3>Bring the right context.</h3><p>Read the same documentation as Markdown. Find focused guides and exact contracts for the task.</p><span className="card-link">Get the context ↗</span></a>
-</div>
-
-<details className="honest-details"><summary>What to know about this alpha</summary><p>Jig is open-source local software for supported Linux hosts. Check the installation prerequisites. Remote Agents receive the data intentionally sent to them. Cancellation cannot retract accepted remote requests or undo completed effects. A harmful decision within granted authority remains possible; this architecture is not a guarantee of correct judgment or production-scale performance.</p><p><a href="/guide/#supported-host">Supported hosts</a> · <a href="/guide/agents">Agent choices</a> · <a href="/spec/project-policy">Execution guarantees</a></p></details>
-
-<section className="closing-cta"><p className="eyebrow">Power under control</p><h2>Run one Flow.<br />Build a system from there.</h2><a className="action action--brand" href="/guide/">Create your first Flow <span aria-hidden="true">↗</span></a><a className="text-link" href="/guide/overview">Find your path through the docs</a></section>
+<section className="closing-cta"><h2>Run one Flow.<br />Build from there.</h2><p>Create a small project, run a method, and change its result. The first run uses ordinary code and needs no Agent.</p><a className="action action--brand" href="/guide/">Start building <span aria-hidden="true">↗</span></a><p className="start-note">Developer alpha · <a href="/guide/#supported-host">Check supported Linux hosts and prerequisites</a></p></section>
+<details className="honest-details"><summary>What to know about this alpha</summary><p>Jig is open-source local software. Agents can hallucinate or follow injected instructions; Jig does not guarantee correct judgment. Harmful decisions within granted authority remain possible. Remote Agents receive the data intentionally sent to them. Cancellation cannot retract accepted remote requests or undo completed effects. Production-scale performance is not established.</p><p><a href="/guide/agents">Agent choices</a> · <a href="/spec/project-policy">Execution guarantees</a></p></details>
+<nav className="landing-routes" aria-label="More Jig resources"><a href="/guide/overview">Documentation</a><a href="/guide/teams">With your team</a><a href="/guide/for-agents">For Agents</a><a href="/spec/project-policy">Execution specification</a></nav>
