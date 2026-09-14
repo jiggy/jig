@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { main, type PrivateCliOptions } from '../src/cli.js'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
+import { qualifyIncidentBrief } from './fixtures/incident-brief-consumer.js'
 import { writeOrdinaryAcpAgent, writeConversationCaller } from './fixtures/ordinary-acp-agent.js'
 import {
   openDeterministicFiniteAcpHost,
@@ -16,6 +17,11 @@ const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial :
 // The external native peer is deterministic; package, channels, authentication
 // mediation, command owner, containment and cleanup are the production path.
 proof('ordinary packed ACP Agent with a finite resource', () => {
+  test(
+    'hands off a drafting conversation while an independent worker progresses',
+    qualifyIncidentBrief,
+    180_000,
+  )
   test('returns checked text and live updates, rejects malformed work, and settles cancellation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-finite-acp-proof-'))
     const project = join(root, 'project')

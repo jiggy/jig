@@ -19,7 +19,8 @@ use-case and orchestration hypotheses.
 - `guide/agents.md` owns ordinary Agent Flow selection, explicit operator
   resource configuration, and current adapter limitations.
   `guide/conversations.md` owns bounded same-session follow-up and interruption,
-  including the distinction between control replies and final settlement.
+  including the distinction between control replies and final settlement, and
+  routes to the application-owned summary handoff example.
   `guide/dependencies.md` owns package dependency preparation guidance.
 - `guide/files.md` explains per-run files and review-pinned Binding resources,
   their shared read attachment interface, retention and root-only limits.

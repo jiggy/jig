@@ -1,0 +1,5 @@
+{
+  "name": "incident-brief-worker",
+  "description": "Draft with one bounded summary handoff, or independently identify questions from supplied facts.",
+  "uses": { "agent": { "contract": "./contracts/agent-run/contract.json" } }
+}

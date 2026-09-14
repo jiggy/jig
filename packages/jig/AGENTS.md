@@ -200,6 +200,9 @@ admitted FLOW packages.
 - Agent lifecycle suites accept `AGENT_METHOD_PACKAGE_ARCHIVE` and
   `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged ordinary method artifacts; otherwise
   they pack already-built packages without rebuilding during execution.
+  `finite-acp-lifecycle.test.ts` also runs the unchanged incident-brief application
+  with packed dependencies and a deterministic native peer. It checks two
+  branches, predecessor settlement, one successor and residue, not model quality.
 - Test diagnostic usefulness as well as redaction, and human-facing output
   alongside its machine-readable contract.
 

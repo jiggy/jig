@@ -147,6 +147,20 @@ Connect the optional `events` channel to show selected text or plans. Its values
 carry the turn number, but progress can be incomplete and never substitutes for
 the essential replies. A failed progress display need not stop the conversation.
 
+## Hand work to a fresh conversation
+
+The [incident brief example](https://github.com/jiggy/jig/tree/main/examples/incident-brief)
+uses these controls for an application-owned summary handoff. One worker drafts,
+summarizes and settles its predecessor before calling a successor. Earlier
+context, current file text and later instructions remain separate from the
+model's summary; the application carries its remaining turn budget and root
+deadline forward. Another worker independently prepares review questions.
+
+That is a new conversation with explicit context, not native session restoration.
+Its input is a supplied snapshot, not an interactive instruction inbox; its
+output is for human review, not permission to publish. It demonstrates the
+lifecycle without introducing a host scheduler or changing one-shot calls.
+
 ## Limits
 
 Essential replies are bounded to 64 KiB each; ask for concise answers. Blocked

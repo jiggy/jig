@@ -68,7 +68,7 @@ JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
 sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
-for application in tested-patch request-triage support-case; do
+for application in tested-patch request-triage support-case incident-brief; do
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
   cp "examples/$application/package.json" "$application_copy/"

@@ -1,0 +1,5 @@
+{
+  "name": "incident-brief",
+  "description": "Prepare an internal brief and separate review questions while one worker hands off its context.",
+  "uses": { "worker": {} }
+}
