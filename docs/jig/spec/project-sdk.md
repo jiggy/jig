@@ -79,6 +79,9 @@ export default defineJig({
 
 Each selected package must offer a named `FLOW.contract.json`. Jig derives the
 contract identity from that package; authors do not repeat it in `jig.ts`.
+In this example, `binding:agent` requires a local `bindings/agent.ts` included
+by discovery. That file selects an existing Flow package and its configuration;
+the default selector neither creates a Binding nor installs a package.
 At most one default may offer a given contract ID, even with different versions
 or digests. Selectors are normalized and sorted; duplicates fail.
 

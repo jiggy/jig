@@ -168,6 +168,18 @@ not authorize reuse of an older local library. Builds remain the author's
 toolchain responsibility. File, Git, or symlink dependencies are not runtime
 escape hatches. Jig owns capture and admission, not a new package manager.
 
+Keep workspace development connected to current source through declared
+workspace dependencies and ordinary explicit builds. Do not pack and unpack
+sibling archives, vendor dependency copies, or rewrite consumer manifests to
+wire local packages together. Do not embed dependency archives inside another
+package as a substitute for normal dependency declarations. Fix a preparation
+or packaging gap at its responsible layer instead of adding example-only
+delivery machinery.
+
+Package archives belong at distribution and isolated installed-artifact test
+boundaries. Retained test archives are evidence for those exact bytes, not live
+workspace dependencies; rebuild the candidate before testing changed source.
+
 ### Ordinary invocation and private implementation
 
 Finite invocation should remain simple for authors as well as consumers.

@@ -25,9 +25,12 @@ environment variable. For example, an OpenRouter grant can name
 `OPENROUTER_API_KEY` directly. The package supports Chat Completions and Responses
 without host-specific API dispatch or a default model.
 
-Select the configured Binding once in `jig.ts`:
+First create the local `bindings/agent.ts` described in that guide (or use the
+native-client definition below). Then select it in `jig.ts`:
 
 ```ts
+import { defineJig, discover } from '@jigging/jig'
+
 export default defineJig({
   flows: discover('./flows'),
   bindings: discover('./bindings'),
@@ -35,9 +38,15 @@ export default defineJig({
 })
 ```
 
-Import `defineJig` and `discover` from `@jigging/jig`. Matching code and Markdown
-Flows use that reviewed selection. An explicit Binding slot can choose another
-matching implementation. See [project defaults](../spec/project-sdk.md#project-defaults).
+`binding:agent` names your discovered `bindings/agent.ts`; Jig does not supply
+or install an Agent Binding. The file's `package` field selects the local Flow
+directory, and its slots configure that implementation's resources. A package
+name such as `@jigging/agent-acp` identifies distributed code, not this configured
+local target. A missing Binding is a configuration error.
+
+Matching code and Markdown Flows use that reviewed selection. An explicit
+Binding slot can choose another matching implementation. See
+[project defaults](../spec/project-sdk.md#project-defaults).
 
 ## Local clients
 
@@ -51,12 +60,15 @@ import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
   package: 'flows/agent',
-  slots: { native: { kind: 'acp', client: 'codex' } },
+  slots: { native: { kind: 'acp', client: 'codex' } }, // choose codex, claude, or pi
 })
 ```
 
-Use the same project default shown above. The grant selects `codex`, `claude`,
-or `pi`; the package has no second client or model selector. Operator environment
+Use the same project default shown above. `client` is required; Codex is only
+the concrete choice in this example, not a product default or recommendation.
+The same grant shape accepts `claude` or `pi`; choose your installed client and
+consult its [configuration profile](../spec/finite-acp.md#native-client-profiles).
+The package has no second client or model selector. Operator environment
 supplies the chosen client's model and authentication. Review shows the exact
 native grant and installation before launch.
 

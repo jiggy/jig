@@ -112,6 +112,8 @@ use-case and orchestration hypotheses.
 
 - Use `sh` fences for shell commands; reserve `console` for transcripts with
   prompts and output, so command examples receive syntax highlighting.
+- Present supported Agent clients as operator choices, not a product ranking.
+  A preferred client in the development environment is not a user default.
 - Keep the first greeting input simple: a JSON string with one type check
   and a fallback. Keep the generated starter, commands, and before/after
   results aligned throughout the tutorial.

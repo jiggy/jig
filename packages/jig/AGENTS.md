@@ -42,7 +42,9 @@ admitted FLOW packages.
   the root Bun `patchedDependencies` before the ordinary package build. Pi ACP
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
-  when changing its patch.
+  when changing its patch. Each patch has a same-basename `.md` note explaining
+  the defect, verification, concrete removal conditions, and known upstream
+  issue or pull-request links. Distinguish related reports from an exact fix.
 - `scripts/pack.ts` stages the complete script-disabled npm compiler installation
   under private `libexec/authoring`, then archives the allowlisted package tree.
   Consumers do not resolve the authoring workspace package from a registry.
