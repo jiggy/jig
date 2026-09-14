@@ -1453,7 +1453,7 @@ function projectError(code: ProjectAdministrationError['code']): {
     PROJECT_STATE_INVALID:
       'the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run jig review again',
     INVALID_CANDIDATE:
-      'The project definition is invalid. Check jig.ts and the selected FLOW.md metadata; see https://jig.md/guide/.',
+      'The project definition is invalid. Check jig.ts and the selected Flow declarations; see https://jig.md/guide/.',
     LOCK_MISMATCH:
       'The project lock does not match the reviewed state. Run jig review to inspect and approve the current revision.',
     PLAN_NOT_FOUND:

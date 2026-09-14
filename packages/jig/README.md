@@ -54,7 +54,7 @@ A Binding can pin a declared read attachment with
 identifies its files; Runs use those approved bytes without repeating `--attach`
 or exposing the live source directory. See [working with files](https://jig.md/guide/files).
 
-For service access, `slots: { reference: { grant: 'documents' } }` selects an independently
+For service access, `slots: { reference: 'grant:documents' }` selects an independently
 configured operator grant. Jig enforces its exact endpoint, method, credential
 reference and limits outside the Flow. The same ordinary call can retrieve a
 document or support an editable API client without handing it a secret or a
