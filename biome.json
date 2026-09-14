@@ -30,5 +30,15 @@
       "attributePosition": "auto",
       "bracketSpacing": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/jig.ts"],
+      "javascript": {
+        "formatter": {
+          "expand": "always"
+        }
+      }
+    }
+  ]
 }
