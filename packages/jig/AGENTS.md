@@ -68,7 +68,7 @@ admitted FLOW packages.
 - `run`, `review`, and `inspect` expose `--verification cached|strict|fast`.
   Precedence is argument, then `JIG_VERIFICATION`, then cached. Validate with
   each command grammar before acquisition, and preserve the choice on reexecution. This is captured operator policy, never project-controlled.
-  Keep help, the startup guide, security statement and execution policy aligned;
+  Keep help, the configuration reference, security statement and execution policy aligned;
   describe the weaker freshness guarantee of fast mode explicitly. Cache only
   installed support, never approval, retained package or invocation authority.
 
@@ -84,6 +84,8 @@ admitted FLOW packages.
   A heading must never have less emphasis than its subordinate details. Expanded
   unavailable-client labels use bold amber above normal-contrast setup instructions;
   the compact names-only unavailable summary remains secondary.
+  Separate unchanged prepared-file and dependency-layout explanations onto a
+  secondary gray line beneath the prominent explanation of what changed.
   Dim executable paths and unchanged context; omit review categories with no
   changes from the ordinary summary. Changed-record labels and their identifiers
   use bold amber: they identify work requiring attention, not secondary metadata.

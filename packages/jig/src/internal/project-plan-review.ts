@@ -159,8 +159,8 @@ function executionChangeExplanation(
     )
       reasons.push(
         before.disposition.execution?.preparationInputDigest === undefined
-          ? 'This review records captured workspace inputs for future preparation reuse. Prepared files and dependency layout are unchanged.'
-          : 'Workspace preparation inputs changed; prepared files and dependency layout are unchanged.',
+          ? 'This review records captured workspace inputs for future preparation reuse.\n  Prepared files and dependency layout are unchanged.'
+          : 'Workspace preparation inputs changed.\n  Prepared files and dependency layout are unchanged.',
       )
     if (reasons.length === 0) {
       reasons.push(

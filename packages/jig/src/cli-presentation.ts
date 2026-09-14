@@ -127,7 +127,7 @@ export function privateCliHumanText(
         else if (/^(Project ready|Created |Execution completed)/.test(line))
           rendered = privateCliHeading(wrapped, 'success', true)
         else if (
-          /^\s*(?:Diagnostic code:|Category:|Executable:|Diagnostics:|"digest": "sha256:|Unavailable:|Flows needing live updates|Flow source, prepared dependencies, settings and permissions are unchanged\.)/.test(
+          /^\s*(?:Diagnostic code:|Category:|Executable:|Diagnostics:|"digest": "sha256:|Unavailable:|Flows needing live updates|Prepared files and dependency layout are unchanged\.|Flow source, prepared dependencies, settings and permissions are unchanged\.)/.test(
             line,
           ) ||
           /^(Unchanged policy is omitted|Remembered locally\.)/.test(line)
