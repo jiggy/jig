@@ -32,6 +32,12 @@ import type { AcpGrant } from '../src/project/grants.js'
 import type { InvocationSlots } from '../src/project/invocation-slots.js'
 import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
+import {
+  ACP_SETUP_HINTS,
+  acpSetupCode,
+  PrivateAcpSetupError,
+  type AcpSetupStage,
+} from '../src/internal/acp-setup-diagnostics.js'
 import { nativeElf } from './fixtures/native-elf.js'
 
 const temporary: string[] = []
@@ -40,6 +46,56 @@ afterEach(async () => {
 })
 
 describe('target-selected private ACP resources', () => {
+  test('real missing executable discovery retains each selected client diagnostic', async () => {
+    const f = await fixture()
+    const owner = openPrivateAcpResources(f.support, { PATH: '' }, f.project)
+    for (const client of ['codex', 'claude', 'pi'] as const) {
+      await expect(
+        selectPrivateAcpResources(owner, slots({ native: client }), f.support),
+      ).rejects.toMatchObject({ code: acpSetupCode(client, 'executable') })
+    }
+  })
+
+  test('known setup stages survive planning while private errors and forged codes stay hidden', async () => {
+    const f = await fixture()
+    const backend = new StaticMechanismBackend({
+      bunPath: '/test/bun',
+      bunHostLibraryPath: '/test/lib',
+    })
+    for (const client of ['codex', 'claude', 'pi'] as const) {
+      for (const stage of [
+        'executable',
+        'installation',
+        'login',
+        'api',
+        'model',
+      ] as const satisfies readonly AcpSetupStage[]) {
+        const cause = new PrivateAcpSetupError(stage)
+        cause.message = 'private-token /private/installation'
+        const owner = openPrivateAcpResources(f.support, {}, f.project, async () => {
+          throw cause
+        })
+        const error = await planPrivateBunDirectRun({
+          request: activationRequest(slots({ native: client })),
+          backend,
+          installedSupport: f.support,
+          acpResources: owner,
+        }).catch((error) => error)
+        expect(error.code).toBe(acpSetupCode(client, stage))
+        expect(error.path).toBe('flows/example/FLOW.ts')
+        expect(error.message).not.toContain('private-token')
+        expect(error.message).not.toContain('/private/')
+        expect(ACP_SETUP_HINTS[error.code]).toContain('jig review')
+      }
+    }
+    const owner = openPrivateAcpResources(f.support, {}, f.project, async () => {
+      throw { code: acpSetupCode('pi', 'login'), stage: 'login', message: 'secret' }
+    })
+    await expect(
+      selectPrivateAcpResources(owner, slots({ native: 'pi' }), f.support),
+    ).rejects.toMatchObject({ code: 'PROJECT_ACP_UNAVAILABLE' })
+  })
+
   test('snapshots operator configuration before lazy discovery', async () => {
     const f = await fixture()
     const seen: unknown[] = []

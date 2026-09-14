@@ -37,6 +37,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   loading and resolves only each target's exact granted clients. Selected
   runtime identities enter the recipe and review; launch revalidates their
   bytes and authentication. Unavailable clients do not block unrelated targets.
+- `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
+  corrective hints. Preserve known failures through planning and CLI rendering;
+  raw exceptions, private paths and credentials never become recovery text.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
   conversation. `finite-acp-resource.ts` owns bounded framing, private startup
   and authentication, and essential channel delivery. Ordinary Agent Flows own

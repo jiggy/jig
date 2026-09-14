@@ -293,8 +293,14 @@ for `store: false`; this is not a promise about an endpoint's retention or
 training policy.
 
 If the selected client, executable support, credential, or model is missing or
-invalid, reviewing a native-grant target reports it unavailable. A
-target without native requirements in an already admitted generation remains runnable
+invalid, reviewing a native-grant target reports it unavailable. A known setup
+failure uses `PROJECT_ACP_<CLIENT>_<STAGE>`, with client `CODEX`,
+`CLAUDE` or `PI`. Stages distinguish `EXECUTABLE` discovery, `INSTALLATION`
+support, Codex `SANDBOX` support, `LOGIN` subscription authentication, `API`
+configuration and missing `MODEL` selection. The CLI gives client-specific
+corrections without publishing raw exceptions or secret values. Unclassified
+failures remain `PROJECT_ACP_UNAVAILABLE`; the host does not guess their cause.
+A target without native requirements in an already admitted generation remains runnable
 because its recipe does not depend on the Agent implementation.
 
 `jig review` authenticates and admits the selected local configuration. It does

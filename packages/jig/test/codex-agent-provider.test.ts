@@ -203,7 +203,7 @@ describe('private native Codex Agent provider', () => {
         CODEX_PATH: fixture.executablePath,
         OPENAI_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('Responses API configuration is unavailable')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
         CODEX_PATH: fixture.executablePath,
@@ -211,7 +211,7 @@ describe('private native Codex Agent provider', () => {
         OPENAI_API_KEY: 'gateway-secret',
         OPENAI_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('requires the OpenAI Responses API')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
         CODEX_HOME: join(fixture.root, 'missing-home'),

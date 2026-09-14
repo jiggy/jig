@@ -146,7 +146,7 @@ async function describePrivateBunDirectRun(
     acp = await selectPrivateAcpResources(input.acpResources, request.slots, installedSupport)
   } catch (error) {
     unavailable(
-      'PROJECT_ACP_UNAVAILABLE',
+      error instanceof PrivateAcpResourceUnavailableError ? error.code : 'PROJECT_ACP_UNAVAILABLE',
       error instanceof PrivateAcpResourceUnavailableError
         ? error.message
         : 'the target requires private operator resources for its selected ACP grants',

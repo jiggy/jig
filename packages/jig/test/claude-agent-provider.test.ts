@@ -82,18 +82,18 @@ describe('private native Claude Code Agent provider', () => {
         ANTHROPIC_AUTH_TOKEN: 'auth-token-secret',
         ANTHROPIC_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('authentication is ambiguous')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateClaudeAgentProvider(fixture.releaseRoot, {
         CLAUDE_PATH: fixture.executablePath,
         ANTHROPIC_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('API configuration is unavailable')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateClaudeAgentProvider(fixture.releaseRoot, {
         CLAUDE_PATH: fixture.executablePath,
       }),
-    ).rejects.toThrow('subscription credential is unavailable')
+    ).rejects.toMatchObject({ stage: 'login' })
   })
 
   test('projects a subscription token only through bounded startup input', async () => {

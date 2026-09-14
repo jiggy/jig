@@ -12,6 +12,14 @@ import {
   requirePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
 import { openPrivatePiAgentProvider } from './pi-agent-provider.js'
+import { acpSetupCode, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { PrivateNativeAgentExecutableUnavailableError } from './native-agent-executable.js'
+import {
+  PrivateCodexExecutableUnavailableError,
+  PrivateCodexLoginUnavailableError,
+  PrivateCodexRuntimeUnavailableError,
+  PrivateCodexSandboxUnavailableError,
+} from './codex-agent-provider.js'
 
 /** Private operator authority, not a provider registry or a Flow-visible resource. */
 export interface PrivateAcpResources {
@@ -27,9 +35,24 @@ export type PrivateAcpClientOpener = (
 ) => Promise<PrivateAcpAgentProvider>
 
 export class PrivateAcpResourceUnavailableError extends Error {
-  constructor(slot: string, client: AcpGrant['client']) {
+  readonly code: string
+  constructor(slot: string, client: AcpGrant['client'], error?: unknown) {
     super(`ACP slot ${JSON.stringify(slot)} could not open its selected ${client} runtime`)
     this.name = 'PrivateAcpResourceUnavailableError'
+    const stage =
+      error instanceof PrivateAcpSetupError
+        ? error.stage
+        : error instanceof PrivateNativeAgentExecutableUnavailableError ||
+            error instanceof PrivateCodexExecutableUnavailableError
+          ? 'executable'
+          : error instanceof PrivateCodexLoginUnavailableError
+            ? 'login'
+            : error instanceof PrivateCodexSandboxUnavailableError
+              ? 'sandbox'
+              : error instanceof PrivateCodexRuntimeUnavailableError
+                ? 'installation'
+                : undefined
+    this.code = stage === undefined ? 'PROJECT_ACP_UNAVAILABLE' : acpSetupCode(client, stage)
   }
 }
 
@@ -96,9 +119,9 @@ export async function selectPrivateAcpResources(
         state.clients.set(client, pending)
       }
       provider = requirePrivateAcpAgentProvider(await pending)
-    } catch {
+    } catch (error) {
       // Native errors may include private paths or host configuration. Publish only the selection.
-      throw new PrivateAcpResourceUnavailableError(name, client)
+      throw new PrivateAcpResourceUnavailableError(name, client, error)
     }
     if (provider.client !== CLIENT_IDENTITIES[client])
       throw new TypeError('the selected ACP client does not match')

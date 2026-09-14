@@ -1765,6 +1765,34 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
+  test.each([
+    ['PROJECT_ACP_CODEX_EXECUTABLE', 'CODEX_PATH'],
+    ['PROJECT_ACP_CLAUDE_LOGIN', 'CLAUDE_CODE_OAUTH_TOKEN'],
+    ['PROJECT_ACP_PI_MODEL', 'PI_PROVIDER and PI_MODEL'],
+    ['PROJECT_ACP_PI_INSTALLATION', 'standalone Linux x86-64 Pi 0.84.4'],
+    ['PROJECT_ACP_CODEX_API', 'OPENAI_API_KEY and OPENAI_MODEL'],
+  ])(
+    'ACP setup code %s identifies a specific correction without private errors',
+    async (code, hint) => {
+      const events: string[] = []
+      const failure = new ProjectAdministrationError(
+        'UNAVAILABLE',
+        'secret-token /private/runtime',
+        { code, path: 'flows/agent/FLOW.ts' },
+      )
+      const invocation = commandInvocation(
+        fakeHost(fakeSession(events, { planFailure: failure }), events),
+      )
+      expect(await main(['review'], invocation.options)).toBe(2)
+      expect(invocation.error).toContain(hint)
+      expect(invocation.error).toContain(code)
+      expect(invocation.error).toContain('retry jig review')
+      expect(invocation.error).not.toContain('secret-token')
+      expect(invocation.error).not.toContain('/private/runtime')
+      expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
+    },
+  )
+
   test('ACP grant failure explains its selected runtime', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('UNAVAILABLE', 'secret-token /private/runtime', {

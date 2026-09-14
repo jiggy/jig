@@ -9,6 +9,7 @@ import {
 } from './acp-agent-provider.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
+import { checkAcpSetup, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const CODEX_CLIENT = 'openai-codex'
 const SANDBOX_LAUNCHER_PATH = '/agent/codex-agent-launcher.js'
@@ -158,18 +159,19 @@ export async function openPrivateCodexAgentProvider(
     apiBaseURL !== undefined ||
     api !== undefined
   ) {
-    if (apiKey === undefined || apiModel === undefined) {
-      throw new Error('the OpenAI Responses API configuration is unavailable')
-    }
+    if (apiModel === undefined) throw new PrivateAcpSetupError('model')
+    if (apiKey === undefined) throw new PrivateAcpSetupError('api')
     if (api !== undefined && api !== 'responses') {
-      throw new Error('native Codex requires the OpenAI Responses API')
+      throw new PrivateAcpSetupError('api')
     }
-    const provider = await createPrivateCodexOpenAIApiAgentProvider({
-      ...support,
-      apiKey,
-      model: apiModel,
-      ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
-    })
+    const provider = await checkAcpSetup('api', () =>
+      createPrivateCodexOpenAIApiAgentProvider({
+        ...support,
+        apiKey,
+        model: apiModel,
+        ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
+      }),
+    )
     runtime.verifyProvider(provider)
     bubblewrapRuntime.verifyProvider(provider)
     return provider

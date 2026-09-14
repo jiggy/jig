@@ -7,6 +7,7 @@ import {
 } from './acp-agent-provider.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
+import { checkAcpSetup, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const CLAUDE_CLIENT = 'anthropic-claude-code'
 const DEFAULT_MODEL = 'default'
@@ -66,7 +67,9 @@ export async function openPrivateClaudeAgentProvider(
     environment,
     projectDirectory,
   )
-  const runtime = await inspectPrivateNativeAgentRuntime(executablePath, projectDirectory)
+  const runtime = await checkAcpSetup('installation', () =>
+    inspectPrivateNativeAgentRuntime(executablePath, projectDirectory),
+  )
   const support = Object.freeze({
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-acp.js'),
@@ -81,7 +84,7 @@ export async function openPrivateClaudeAgentProvider(
   const hasApiKey = apiKey !== undefined && apiKey.length > 0
   const hasAuthToken = authToken !== undefined && authToken.length > 0
   if (hasApiKey && hasAuthToken) {
-    throw new Error('the Anthropic API authentication is ambiguous')
+    throw new PrivateAcpSetupError('api')
   }
   if (
     apiKey !== undefined ||
@@ -89,28 +92,31 @@ export async function openPrivateClaudeAgentProvider(
     apiModel !== undefined ||
     apiBaseURL !== undefined
   ) {
-    if (apiModel === undefined || (!hasApiKey && !hasAuthToken)) {
-      throw new Error('the Anthropic API configuration is unavailable')
-    }
-    const provider = await createPrivateClaudeAnthropicApiAgentProvider({
-      ...support,
-      authentication: hasAuthToken ? 'auth-token' : 'api-key',
-      credential: (hasAuthToken ? authToken : apiKey)!,
-      model: apiModel,
-      ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
-    })
+    if (apiModel === undefined) throw new PrivateAcpSetupError('model')
+    if (!hasApiKey && !hasAuthToken) throw new PrivateAcpSetupError('api')
+    const provider = await checkAcpSetup('api', () =>
+      createPrivateClaudeAnthropicApiAgentProvider({
+        ...support,
+        authentication: hasAuthToken ? 'auth-token' : 'api-key',
+        credential: (hasAuthToken ? authToken : apiKey)!,
+        model: apiModel,
+        ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
+      }),
+    )
     runtime.verifyProvider(provider)
     return provider
   }
   const token = environment.CLAUDE_CODE_OAUTH_TOKEN
   if (token === undefined) {
-    throw new Error('the Claude subscription credential is unavailable')
+    throw new PrivateAcpSetupError('login')
   }
-  const provider = await createPrivateClaudeSubscriptionAgentProvider({
-    ...support,
-    token,
-    ...(environment.CLAUDE_MODEL === undefined ? {} : { model: environment.CLAUDE_MODEL }),
-  })
+  const provider = await checkAcpSetup('login', () =>
+    createPrivateClaudeSubscriptionAgentProvider({
+      ...support,
+      token,
+      ...(environment.CLAUDE_MODEL === undefined ? {} : { model: environment.CLAUDE_MODEL }),
+    }),
+  )
   runtime.verifyProvider(provider)
   return provider
 }

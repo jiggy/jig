@@ -22,6 +22,7 @@ import { PrivateCliProgress } from './cli-progress.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
+import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
@@ -1208,6 +1209,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
+      ...ACP_SETUP_HINTS,
       AUTHORING_STALE:
         'run jig review --generate-contracts to refresh the authored contract before review',
       AUTHORING_INTERRUPTED:
@@ -1289,7 +1291,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_GRANT_MISSING:
         'the slot names a grant not included by jig.ts; include grants: discover("./grants") and provide the matching <name>.json, or use an inline policy',
       PROJECT_GRANT_INVALID:
-        'the grant must contain a supported closed HTTP or command policy; check its kind, endpoint, limits and body schema against https://jig.md/spec/grants',
+        'the grant must contain a supported closed HTTP, command or ACP policy; check its fields against https://jig.md/spec/grants',
       PROJECT_GRANTS_LIMIT:
         'keep the grant catalog within 256 entries and 1 MiB total, with at most 32 KiB per file',
       PROJECT_MEMBER_MISSING:

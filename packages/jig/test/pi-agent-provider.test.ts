@@ -346,7 +346,7 @@ describe('private native Pi Agent provider', () => {
         PI_MODEL: 'google/test-model:free',
         PI_API_KEY: 'gateway-secret',
       }),
-    ).rejects.toThrow('native Pi package manifest is invalid')
+    ).rejects.toMatchObject({ stage: 'installation' })
     await rm(support.darkThemePath)
     await expect(
       createPrivatePiApiKeyAgentProvider({
