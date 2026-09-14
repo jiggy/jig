@@ -195,6 +195,7 @@ export async function retainOpenedPackageProject(
       {
         flows: retainedFlows,
         grants: grantSource.grants,
+        ...(project.value.defaults === undefined ? {} : { defaults: project.value.defaults }),
         bindings: bindings.map(({ sourcePath, evaluation, attachments }) => ({
           sourcePath,
           definition: evaluation.value,

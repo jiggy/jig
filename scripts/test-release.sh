@@ -40,7 +40,7 @@ trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 # Test authored applications against this SDK candidate, including before
 # its new immutable version is in the registry. Only the disposable copy's
 # development dependency changes; Flow source and repository manifests do not.
-mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/jig"
+mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/jig"
 bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts/flow-sdk"
 set -- "$release_tmp"/artifacts/flow-sdk/*.tgz
 test "$#" -eq 1 && test -f "$1"
@@ -51,12 +51,17 @@ bun packages/agent-method/scripts/pack.ts --destination "$release_tmp/artifacts/
 set -- "$release_tmp"/artifacts/agent-method/*.tgz
 test "$#" -eq 1 && test -f "$1"
 AGENT_METHOD_PACKAGE_ARCHIVE=$1
+export AGENT_METHOD_PACKAGE_ARCHIVE
+bun packages/agent-acp/scripts/pack.ts --destination "$release_tmp/artifacts/agent-acp"
+set -- "$release_tmp"/artifacts/agent-acp/*.tgz
+test "$#" -eq 1 && test -f "$1"
+AGENT_ACP_PACKAGE_ARCHIVE=$1
 bun packages/jig/scripts/pack.ts --destination "$release_tmp/artifacts/jig"
 set -- "$release_tmp"/artifacts/jig/*.tgz
 test "$#" -eq 1 && test -f "$1"
 JIG_PACKAGE_ARCHIVE=$1
-export AGENT_METHOD_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
-sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
+export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
+sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
 for application in tested-patch request-triage support-case; do
   application_copy="$release_tmp/$application"
@@ -82,7 +87,7 @@ for application in tested-patch request-triage support-case; do
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
-bun test packages/agent-method packages/flow-sdk packages/jig conformance/run-1 "$@"
+bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-1 "$@"
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 

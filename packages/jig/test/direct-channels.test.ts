@@ -3,10 +3,28 @@ import type { JsonValue } from '../src/json.js'
 import {
   type ChannelGrant,
   ChannelBroker,
+  CHANNEL_LIMITS,
   type ResolvedChannelContract,
 } from '../src/run/channels.js'
 
 describe('finite direct channel broker', () => {
+  test('draining messages does not replenish the finite source byte allowance', async () => {
+    const owner = new ChannelBroker().participant('root')
+    const pair = await owner.create({ schema: { type: 'string' } })
+    const value = 'x'.repeat(CHANNEL_LIMITS.itemBytes - 2)
+    for (let index = 0; index < CHANNEL_LIMITS.sourceBytes / CHANNEL_LIMITS.itemBytes; index++) {
+      await owner.send(pair.send.endpoint, value)
+      await owner.next(pair.receive.endpoint)
+    }
+    await expect(owner.send(pair.send.endpoint, '')).rejects.toMatchObject({
+      code: 'RESOURCE_EXHAUSTED',
+    })
+    await expect(owner.next(pair.receive.endpoint)).rejects.toMatchObject({
+      code: 'RESOURCE_EXHAUSTED',
+    })
+    owner.finalize(true)
+  })
+
   test('an unused writer can move after observer disposal without reviving delivery', async () => {
     for (const required of [true, false]) {
       const broker = new ChannelBroker()

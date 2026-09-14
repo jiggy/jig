@@ -8,6 +8,12 @@ export const HTTP_LIMITS = Object.freeze({
   responseBytes: 1048576,
   timeoutMs: 60000,
 })
+/** Explicit reviewed ceilings; omitted fields retain the smaller defaults above. */
+export const HTTP_MAX_LIMITS = Object.freeze({
+  requestBytes: 8_388_608,
+  responseBytes: 12_582_912,
+  timeoutMs: HTTP_LIMITS.timeoutMs,
+})
 export interface HttpGrant {
   readonly url: string
   readonly method: 'GET' | 'POST'
@@ -62,7 +68,7 @@ export function normalizeHttpGrant(value: unknown): HttpGrant {
       typeof value !== 'number' ||
       !Number.isSafeInteger(value) ||
       value < 1 ||
-      value > HTTP_LIMITS[key]
+      value > HTTP_MAX_LIMITS[key]
     )
       throw new HttpGrantError()
     return value
@@ -87,9 +93,15 @@ export type HttpGrantInput = Omit<HttpGrant, 'requestBytes' | 'responseBytes' | 
 export type GrantInput =
   | ({ readonly kind: 'http' } & HttpGrantInput)
   | ({ readonly kind: 'command' } & ProjectCommand)
+  | AcpGrant
 export type GrantPolicy =
   | ({ readonly kind: 'http' } & HttpGrant)
   | ({ readonly kind: 'command' } & ProjectCommand)
+  | AcpGrant
+export interface AcpGrant {
+  readonly kind: 'acp'
+  readonly client: 'codex' | 'claude' | 'pi'
+}
 export interface GrantedSlot {
   readonly kind: 'grant'
   readonly policy: GrantPolicy
@@ -104,7 +116,15 @@ export function normalizeGrant(value: unknown): GrantPolicy {
   const { kind, ...policy } = item as JsonObject
   if (kind === 'http') return Object.freeze({ kind, ...normalizeHttpGrant(policy) })
   if (kind === 'command') return Object.freeze({ kind, ...normalizeProjectCommand(policy) })
-  throw new TypeError('grant kind must be http or command')
+  if (kind === 'acp') {
+    if (
+      Object.keys(policy).length !== 1 ||
+      !['codex', 'claude', 'pi'].includes(policy.client as string)
+    )
+      throw new TypeError('ACP grant requires one supported native client')
+    return Object.freeze({ kind, client: policy.client as AcpGrant['client'] })
+  }
+  throw new TypeError('grant kind must be http, command, or acp')
 }
 
 export function grantName(value: unknown): string {

@@ -2,7 +2,6 @@ import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
 import {
   type PrivateBunDirectRecipe,
   planPrivateBunDirectRun,
@@ -15,6 +14,7 @@ import {
   requirePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
 import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 
 export type PrivateDirectRunRecipe = PrivateBunDirectRecipe
 export type PrivateDirectRunInstalledSupport = PrivateInstalledBunSupport
@@ -26,7 +26,7 @@ export async function planPrivateDirectRun(input: {
   readonly backend: PrivateLinuxCgroupBackend
   readonly execution?: PrivateBunExecutionArtifact
   readonly httpGrants?: PrivateHttpGrants | undefined
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request)
   if (request.entrypoint.path !== 'FLOW.ts' && request.entrypoint.path !== 'FLOW.md') {

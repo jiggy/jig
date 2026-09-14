@@ -4,6 +4,7 @@ import {
   inspectPrivateBunDirectIdentity,
   requirePrivateBunDirectRecipe,
 } from '../src/internal/bun-direct-run.js'
+import { createPrivateAcpAgentProvider } from '../src/internal/acp-agent-provider.js'
 import {
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
   privateBunExecutionArtifact,
@@ -11,16 +12,16 @@ import {
 import { privateDomainDigest } from '../src/internal/identity.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { openPrivateInstalledBunSupport } from '../src/internal/installed-bun-support.js'
+import { openPrivateAcpResources } from '../src/internal/private-acp-resources.js'
 import {
   type PrivateLinuxBackendMechanismObservation,
   PrivateLinuxCgroupBackend,
 } from '../src/internal/linux-rootless-backend.js'
-import { openPrivateOpenAIAgentProvider } from '../src/internal/openai-agent-provider.js'
 import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from '../src/internal/private-agent-run.js'
+  FINITE_ACP_CONTRACT_DIGEST,
+  FINITE_ACP_CONTRACT_ID,
+  FINITE_ACP_CONTRACT_VERSION,
+} from '../src/internal/private-finite-acp-contract.js'
 import type { JsonValue } from '../src/json.js'
 import {
   type PrivateActivationRequest,
@@ -188,7 +189,7 @@ describe('private Bun direct Run', () => {
     }
   })
 
-  test('requires an authenticated Agent provider without identifying its credential', async () => {
+  test('requires authenticated ACP resources and pins runtime policy without identifying credentials', async () => {
     const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
     const backend = new StaticMechanismBackend({
       bunPath: '/test/bun',
@@ -204,88 +205,102 @@ describe('private Bun direct Run', () => {
       }),
     ).rejects.toMatchObject({
       kind: 'unavailable',
-      code: 'PROJECT_AGENT_UNAVAILABLE',
+      code: 'PROJECT_ACP_UNAVAILABLE',
       path: `${request.packagePath}/FLOW.ts`,
     })
 
-    const firstProvider = openPrivateOpenAIAgentProvider(installedSupport, {
-      OPENAI_API_KEY: 'first-secret',
-      OPENAI_MODEL: 'provider/test-model',
-    })!
-    const rotatedProvider = openPrivateOpenAIAgentProvider(installedSupport, {
-      OPENAI_API_KEY: 'rotated-secret',
-      OPENAI_MODEL: 'provider/test-model',
-    })!
-    const differentModelProvider = openPrivateOpenAIAgentProvider(installedSupport, {
-      OPENAI_API_KEY: 'first-secret',
-      OPENAI_MODEL: 'provider/other-model',
-    })!
-    const differentApiProvider = openPrivateOpenAIAgentProvider(installedSupport, {
-      OPENAI_API_KEY: 'first-secret',
-      OPENAI_MODEL: 'provider/test-model',
-      OPENAI_BASE_URL: 'https://gateway.example/v1',
-      OPENAI_API: 'chat-completions',
-    })!
+    // Planning-only authenticated ACP fixtures: none of these files execute.
+    const provider = (secret: string, model = 'provider/test-model', modeId = 'default') =>
+      createPrivateAcpAgentProvider({
+        client: 'openai-codex',
+        model,
+        modeId,
+        credentialMode: 'subscription',
+        adapterPath: installedSupport.installedCliPath,
+        sandboxAdapterPath: '/agent/adapter.js',
+        executablePath: installedSupport.executablePath,
+        sandboxExecutablePath: '/agent/client',
+        environment: {},
+        startupInput: new TextEncoder().encode(secret),
+      })
+    const firstProvider = await provider('first-secret')
+    const rotatedProvider = await provider('rotated-secret')
+    const differentModelProvider = await provider('first-secret', 'provider/other-model')
+    const differentModeProvider = await provider('first-secret', 'provider/test-model', 'review')
     const first = await planPrivateBunDirectRun({
       request,
       installedSupport,
       backend,
-      agentProvider: firstProvider,
+      acpResources: openPrivateAcpResources(
+        installedSupport,
+        {},
+        process.cwd(),
+        async () => firstProvider,
+      ),
     })
     const rotated = await planPrivateBunDirectRun({
       request,
       installedSupport,
       backend,
-      agentProvider: rotatedProvider,
+      acpResources: openPrivateAcpResources(
+        installedSupport,
+        {},
+        process.cwd(),
+        async () => rotatedProvider,
+      ),
     })
     const differentModel = await planPrivateBunDirectRun({
       request,
       installedSupport,
       backend,
-      agentProvider: differentModelProvider,
+      acpResources: openPrivateAcpResources(
+        installedSupport,
+        {},
+        process.cwd(),
+        async () => differentModelProvider,
+      ),
     })
-    const differentApi = await planPrivateBunDirectRun({
+    const differentMode = await planPrivateBunDirectRun({
       request,
       installedSupport,
       backend,
-      agentProvider: differentApiProvider,
+      acpResources: openPrivateAcpResources(
+        installedSupport,
+        {},
+        process.cwd(),
+        async () => differentModeProvider,
+      ),
     })
 
     expect(first.digest).toBe(rotated.digest)
     expect(first.observation.digest).toBe(rotated.observation.digest)
     expect(first.digest).not.toBe(differentModel.digest)
     expect(first.observation.digest).not.toBe(differentModel.observation.digest)
-    expect(first.digest).not.toBe(differentApi.digest)
-    expect(first.observation.digest).not.toBe(differentApi.observation.digest)
-    expect(first.agentProvider).toBe(firstProvider)
+    expect(first.digest).not.toBe(differentMode.digest)
+    expect(first.observation.digest).not.toBe(differentMode.observation.digest)
+    expect(first.acp.session).toBe(firstProvider)
     expect(JSON.stringify(first.observation)).not.toContain('secret')
   })
 
-  test('keeps unavailable Agent configuration scoped to Agent-bearing recipes', async () => {
+  test('keeps unavailable native runtime configuration scoped to matching ACP grants', async () => {
     const backend = new StaticMechanismBackend({
       bunPath: '/test/bun',
       bunHostLibraryPath: '/test/lib',
     })
     const environments = [
-      { JIG_AGENT_CLIENT: 'unknown' },
-      { JIG_AGENT_CLIENT: 'codex', CODEX_PATH: '/missing/codex' },
-      { OPENAI_API_KEY: 'test-secret', OPENAI_MODEL: 'invalid model' },
-      {
-        OPENAI_API_KEY: 'test-secret',
-        OPENAI_MODEL: 'provider/test-model',
-        OPENAI_API: 'invented',
-      },
+      { CODEX_PATH: '/missing/codex' },
+      { CLAUDE_PATH: '/missing/claude' },
+      {},
     ] as const
 
     for (const environment of environments) {
       const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
-      expect(host.agentProvider).toBeUndefined()
       await expect(
         planPrivateBunDirectRun({
           request: activationRequest(),
           installedSupport: host.installedBunSupport,
           backend,
-          agentProvider: host.agentProvider,
+          acpResources: host.acpResources,
         }),
       ).resolves.toMatchObject({ request: { slots: {} } })
       await expect(
@@ -293,9 +308,9 @@ describe('private Bun direct Run', () => {
           request: activationRequest(true),
           installedSupport: host.installedBunSupport,
           backend,
-          agentProvider: host.agentProvider,
+          acpResources: host.acpResources,
         }),
-      ).rejects.toMatchObject({ code: 'PROJECT_AGENT_UNAVAILABLE' })
+      ).rejects.toMatchObject({ code: 'PROJECT_ACP_UNAVAILABLE' })
     }
   })
 })
@@ -332,7 +347,7 @@ const MECHANISM: PrivateLinuxBackendMechanismObservation = Object.freeze({
   }),
 })
 
-function activationRequest(agent = false): PrivateActivationRequest {
+function activationRequest(acp = false): PrivateActivationRequest {
   const fields = Object.freeze({
     kind: 'activation-request/4' as const,
     target: Object.freeze({ kind: 'flow' as const, path: 'flows/example' }),
@@ -344,15 +359,16 @@ function activationRequest(agent = false): PrivateActivationRequest {
     }),
     entrypoint: Object.freeze({ path: 'FLOW.ts', suffix: 'ts', selector: 'bun' }),
     settings: Object.freeze({}),
-    slots: agent
+    slots: acp
       ? Object.freeze({
-          agent: Object.freeze({
+          session: Object.freeze({
             kind: 'native' as const,
-            native: 'agent' as const,
+            native: 'finite-acp' as const,
+            grant: Object.freeze({ kind: 'acp' as const, client: 'codex' as const }),
             contract: Object.freeze({
-              id: AGENT_RUN_CONTRACT_ID,
-              version: AGENT_RUN_CONTRACT_VERSION,
-              digest: AGENT_RUN_CONTRACT_DIGEST,
+              id: FINITE_ACP_CONTRACT_ID,
+              version: FINITE_ACP_CONTRACT_VERSION,
+              digest: FINITE_ACP_CONTRACT_DIGEST,
             }),
           }),
         })

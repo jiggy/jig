@@ -6,7 +6,7 @@ import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
-} from '../src/internal/private-agent-run.js'
+} from './fixtures/agent-contract.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
@@ -202,6 +202,11 @@ describe('private package-project portable lock projection', () => {
         expect(decoded).toEqual(lock)
         const changed = structuredClone(lock)
         ;(changed.packages['flows/router']!.uses.agent as { version: string }).version = '2.0.0'
+        ;(changed.packages['flows/router'] as { directRun: boolean }).directRun = true
+        expect(() => decodePrivateProjectLocalLock(lockBytes(changed))).toThrow(
+          'requires an explicit matching',
+        )
+        ;(changed.packages['flows/router'] as { directRun: boolean }).directRun = false
         const changedDecoded = decodePrivateProjectLocalLock(lockBytes(changed))
         expect(changedDecoded.packages['flows/router']!.uses.agent!.version).toBe('2.0.0')
         expect(privateProjectLocalLockDigest(changedDecoded)).not.toBe(
@@ -281,80 +286,103 @@ describe('private package-project portable lock projection', () => {
   })
 
   test('retains configured Agent child identity and rejects widened slot relations on decode', async () => {
-    await withFlows(projectTrees(), async (flows) => {
-      const lock = createPrivateProjectLocalLock(
-        linkPackageProject({
-          flows,
-          bindings: [
-            binding('bindings/router.ts', {
-              package: 'flows/worker',
-              slots: { review: 'binding:reviewer' },
-            }),
-            binding('bindings/reviewer.ts', {
-              package: 'flows/configured',
-              settings: { maxRetries: 7 },
-            }),
-          ],
-        }),
-      )
-      const value = JSON.parse(new TextDecoder().decode(encodePrivateProjectLocalLock(lock)))
-      value.packages['flows/configured'].uses = {
-        agent: {
-          id: AGENT_RUN_CONTRACT_ID,
-          version: AGENT_RUN_CONTRACT_VERSION,
-          digest: AGENT_RUN_CONTRACT_DIGEST,
+    const trees = projectTrees()
+    await withFlows(
+      {
+        ...trees,
+        'flows/configured': {
+          ...trees['flows/configured'],
+          'flow.meta.json': metadata({
+            name: 'configured',
+            description: 'Configured Agent consumer.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'contracts/agent-run/contract.json': agentRunContract,
+          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
         },
-      }
-      const decoded = decodePrivateProjectLocalLock(lockBytes(value))
-      expect(decoded.bindings.router!.slots.review).toEqual({ kind: 'binding', id: 'reviewer' })
-      expect(Object.isFrozen(decoded.bindings.router!.slots.review)).toBeTrue()
-      expect(decoded.bindings.reviewer!.settings).toEqual({ maxRetries: 7 })
-      const base = value
-      expectInvalid(
-        base,
-        (item) => {
-          item.bindings.router.slots.review = 'flows/configured'
+        'flows/agent': {
+          'flow.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
+          'FLOW.ts': 'export {};\n',
+          'FLOW.contract.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
         },
-        'must be an object',
-      )
-      expectInvalid(
-        base,
-        (item) => {
-          item.bindings.router.slots.review = { kind: 'binding', id: 'missing' }
-        },
-        'unknown Binding',
-      )
-      expectInvalid(
-        base,
-        (item) => {
-          item.bindings.router.slots.review = { kind: 'binding', id: 'router' }
-        },
-        'own package',
-      )
-      expectInvalid(
-        base,
-        (item) => {
-          item.bindings.router.slots.review = {
-            kind: 'binding',
-            id: 'reviewer',
-            path: 'flows/configured',
-          }
-        },
-        'must contain exactly',
-      )
-      const deeper = structuredClone(base)
-      deeper.bindings.reviewer.slots = { nested: { kind: 'flow', path: 'flows/backup' } }
-      expect(
-        decodePrivateProjectLocalLock(lockBytes(deeper)).bindings.reviewer!.slots.nested,
-      ).toEqual({ kind: 'flow', path: 'flows/backup' })
-      expectInvalid(
-        base,
-        (item) => {
-          item.bindings.reviewer.slots = { nested: { kind: 'binding', id: 'router' } }
-        },
-        'cycle',
-      )
-    })
+      },
+      async (flows) => {
+        const lock = createPrivateProjectLocalLock(
+          linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/router.ts', {
+                package: 'flows/worker',
+                slots: { review: 'binding:reviewer' },
+              }),
+              binding('bindings/reviewer.ts', {
+                package: 'flows/configured',
+                settings: { maxRetries: 7 },
+                slots: { agent: 'flow:flows/agent' },
+              }),
+            ],
+          }),
+        )
+        const value = JSON.parse(new TextDecoder().decode(encodePrivateProjectLocalLock(lock)))
+        expect(value.packages['flows/configured'].uses).toEqual({
+          agent: {
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          },
+        })
+        const decoded = decodePrivateProjectLocalLock(lockBytes(value))
+        expect(decoded.bindings.router!.slots.review).toEqual({ kind: 'binding', id: 'reviewer' })
+        expect(Object.isFrozen(decoded.bindings.router!.slots.review)).toBeTrue()
+        expect(decoded.bindings.reviewer!.settings).toEqual({ maxRetries: 7 })
+        const base = value
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = 'flows/configured'
+          },
+          'must be an object',
+        )
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = { kind: 'binding', id: 'missing' }
+          },
+          'unknown Binding',
+        )
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = { kind: 'binding', id: 'router' }
+          },
+          'own package',
+        )
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = {
+              kind: 'binding',
+              id: 'reviewer',
+              path: 'flows/configured',
+            }
+          },
+          'must contain exactly',
+        )
+        const deeper = structuredClone(base)
+        deeper.bindings.reviewer.slots.nested = { kind: 'flow', path: 'flows/backup' }
+        expect(
+          decodePrivateProjectLocalLock(lockBytes(deeper)).bindings.reviewer!.slots.nested,
+        ).toEqual({ kind: 'flow', path: 'flows/backup' })
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.reviewer.slots.nested = { kind: 'binding', id: 'router' }
+          },
+          'cycle',
+        )
+      },
+    )
   })
 
   test('changes when package bytes or Binding settings change', async () => {
@@ -519,6 +547,136 @@ describe('private package-project portable lock projection', () => {
     expect(() => decodePrivateProjectLocalLock(lockBytes(rootPackageCollection(257)))).not.toThrow()
     expect(() => decodePrivateProjectLocalLock(lockBytes(rootPackageCollection(4_097)))).toThrow(
       'activation targets exceed 4096 targets',
+    )
+  })
+
+  test('retains default-selected direct routes and changes lock and activation identities on retarget', async () => {
+    await withFlows(
+      {
+        'flows/consumer': {
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+        },
+        ...Object.fromEntries(
+          ['first', 'second'].map((name) => [
+            `flows/${name}`,
+            {
+              'flow.meta.json': metadata({ name }),
+              'FLOW.ts': 'export {};\n',
+              'FLOW.contract.json': agentRunContract,
+              'contracts/acp-public-updates.json': acpPublicUpdates,
+            },
+          ]),
+        ),
+      },
+      (flows) => {
+        const defaults = ['binding:first']
+        const bindings = ['first', 'second'].map((name) =>
+          binding(`bindings/${name}.ts`, { package: `flows/${name}` }),
+        )
+        const first = linkPackageProject({ flows, bindings, defaults })
+        const lock = createPrivateProjectLocalLock(first)
+        const encoded = encodePrivateProjectLocalLock(lock)
+        defaults[0] = 'binding:second'
+        const second = linkPackageProject({ flows, bindings, defaults })
+        expect(lock.packages['flows/consumer']!.slots).toEqual({
+          agent: { kind: 'binding', id: 'first' },
+        })
+        expect(decodePrivateProjectLocalLock(encoded)).toEqual(lock)
+        expect(encodePrivateProjectLocalLock(lock)).toEqual(encoded)
+        expect(privateProjectLocalLockDigest(createPrivateProjectLocalLock(second))).not.toBe(
+          privateProjectLocalLockDigest(lock),
+        )
+        const requestFor = (project: PackageProjectValue) =>
+          buildPrivateActivationRequests(project).find(
+            (request) => request.target.kind === 'flow' && request.target.path === 'flows/consumer',
+          )!
+        expect(requestFor(first).slots.agent).toMatchObject({
+          kind: 'flow',
+          target: { kind: 'binding', id: 'first' },
+        })
+        expect(requestFor(second).digest).not.toBe(requestFor(first).digest)
+        expect(restorePrivateActivationRequest(structuredClone(requestFor(first)))).toEqual(
+          requestFor(first),
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].slots.agent.id = 'missing'
+          },
+          'unknown Binding',
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].slots.agent = { kind: 'flow', path: 'flows/consumer' }
+          },
+          'own package',
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].directRun = false
+          },
+          'direct Flow',
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].slots.agent = {
+              kind: 'grant',
+              policy: { kind: 'command', run: 'src/cli.ts' },
+            }
+          },
+          'ordinary routes',
+        )
+      },
+    )
+  })
+
+  test('decoded direct Flow routes cannot hide a cycle or an excessive-depth path', () => {
+    const entry = (slots: Record<string, unknown> = {}) => ({
+      digest: `sha256:${'e'.repeat(64)}`,
+      directRun: true,
+      uses: {},
+      ...(Object.keys(slots).length === 0 ? {} : { slots }),
+    })
+    const next = (path: string) => ({ next: { kind: 'flow', path } })
+    const base = {
+      packages: {
+        'flows/first': entry(next('flows/second')),
+        'flows/second': entry(next('flows/third')),
+        'flows/third': entry(),
+        'flows/fourth': entry(),
+      },
+      bindings: {},
+    }
+    expect(() => decodePrivateProjectLocalLock(lockBytes(base))).not.toThrow()
+    expectInvalid(
+      base,
+      (value) => {
+        value.packages['flows/second'].slots = next('flows/first')
+      },
+      'cycle',
+    )
+    expectInvalid(
+      base,
+      (value) => {
+        value.packages['flows/third'].slots = next('flows/fourth')
+      },
+      'two child levels',
+    )
+    expectInvalid(
+      base,
+      (value) => {
+        value.packages['flows/second'].slots = next('flows/missing')
+      },
+      'unknown package',
     )
   })
 

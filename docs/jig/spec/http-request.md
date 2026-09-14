@@ -12,7 +12,7 @@ HTTP Request uses the existing Run/1 `flow/call`. It adds no FLOW protocol or
 SDK method. Other hosts may implement the same interface under their own
 authority policy. Its [descriptor](https://jig.md/contracts/http-request/contract.json)
 has ID `https://jig.md/contracts/http-request`, version `1.0.0`, and digest
-`sha256:08a5f03724125edf863c4592c3558b7cda097e9cf7501f4d8c60dcbf6502bb0d`.
+`sha256:2738827364016ec63be3ffbf47265869cfce9daa6be4ce1f6ff865a732a3196d`.
 
 ## Declaration, selection, permission
 
@@ -34,8 +34,8 @@ The closed HTTP grant contains `kind: 'http'` and these fields:
 | `url` | Required exact canonical URL, at most 2,048 characters. HTTPS, or HTTP to numeric loopback `127.0.0.1` / `[::1]`. No userinfo or fragment. Query and path are fixed. |
 | `method` | Required `GET` or `POST`. |
 | `bearerEnv` | Optional operator environment reference matching `[A-Z][A-Z0-9_]{0,127}`. Its value is 1–8,192 printable non-space ASCII bytes, sent as a Bearer credential only to the chosen endpoint. |
-| `requestBytes` | Positive integer, default and maximum 262,144. UTF-8 bytes of the canonical JSON request body. |
-| `responseBytes` | Positive integer, default and maximum 1,048,576. Complete response-body bytes before text decoding. |
+| `requestBytes` | Positive integer, default 262,144; explicitly reviewed maximum 8,388,608. UTF-8 bytes of the canonical JSON request body. |
+| `responseBytes` | Positive integer, default 1,048,576; explicitly reviewed maximum 12,582,912. Complete response-body bytes before decoding. |
 | `timeoutMs` | Positive integer, default and maximum 60,000; shortened by enclosing deadlines. |
 | `bodySchema` | Optional embedded Schema/1 declaration, at most 16 KiB canonical JSON, only for POST. Validates the request body before dispatch. No remote schema resolution. |
 
@@ -54,7 +54,7 @@ const result = await run.call({
 })
 ```
 
-Input is an object with only optional `body`. GET forbids a body; POST
+Input is an object with optional `body` and `response: 'json'`. GET forbids a body; POST
 requires a JSON/1 value, including `null` when its schema allows that. There
 are no caller-selected URLs, methods, headers, credentials, redirects, retries,
 cookies, proxies, streaming switches or channel endpoints. To request another
@@ -66,13 +66,36 @@ A complete exchange returns:
 {"outcome":"done","output":{"status":200,"body":"the complete response text"}}
 ```
 
-`status` is the collected final HTTP status (200–599); `body` is strict UTF-8
-text. Redirects are returned, not followed. Non-2xx responses are HTTP evidence,
+`status` is the collected final HTTP status (200–599). Without `response`, `body`
+is strict UTF-8 text. With `response: 'json'`, the worker decodes the complete body
+as JSON/1 and returns that value directly; even a JSON string, scalar or `null`
+is returned without another serialization layer. Invalid JSON/1 fails rather
+than falling back to text. This is a response codec, not new request authority.
+Redirects are returned, not followed. Non-2xx responses are HTTP evidence,
 not transport failures or domain success. Compressed or malformed text responses
 reject; the worker requests identity encoding. Parsed response-header fields
 over 16 KiB are rejected; headers are not exposed. Parser allocation remains
 subject to the worker's containment limits.
 The application checks the status and validates provider data itself.
+
+For a JSON API, request decoding explicitly:
+
+```ts
+const result = await run.call({
+  operationId: 'fetch-data',
+  slot: 'reference',
+  input: { response: 'json' },
+})
+// result.output.body is the decoded JSON/1 value.
+```
+
+Larger byte allowances require explicit grant changes; defaults do not increase.
+All modes also retain JSON/1's 8 MiB per-string and 16 MiB complete-value limits.
+The complete private request envelope is checked before dispatch, and decoded
+worker and FLOW results must fit those limits after escaping and framing.
+Thus a raw byte allowance is not a promise that every body of that size fits.
+JSON mode avoids wrapping a structured response in an additional JSON string;
+the worker retains its original byte count privately for collector validation.
 
 Invalid input fails before dispatch. Oversized responses fail with
 `RESOURCE_EXHAUSTED`; malformed or rejected responses with `INVALID_RESULT`.
@@ -89,6 +112,8 @@ It has the installed runtime, resolver configuration, that request's policy and
 credential, and no Flow source or project dependency imports. The enclosing
 Flow remains network-isolated and keyless. Both host and worker validate the
 request; the collector validates the bounded reply outside the worker scope.
+Both sides reject literal credential echoes, including decoded JSON keys and
+string values in JSON mode.
 Credentials are delivered over private stdin, never through FLOW input,
 project records, command-line arguments or public diagnostics.
 

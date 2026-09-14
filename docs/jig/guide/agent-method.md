@@ -21,13 +21,14 @@ consumer build hook or unpublished runtime dependency.
 
 | Entry | Guidance source | Use |
 | --- | --- | --- |
-| Native Agent Run | Explicit caller Skill contents and guidance | Use the installed native clients. |
-| Ordinary Agent Flow | The same explicit contents and guidance | Select or adapt a method through ordinary Run/1. |
+| HTTP Agent Flow | Explicit caller Skill contents and guidance | Call a reviewed Chat Completions or Responses endpoint. |
+| ACP Agent Flow | The same explicit contents and guidance | Drive a reviewed native client through the finite resource. |
 | Pure method library | Explicit text and structured Skill data supplied by its caller | Reuse preparation and interpretation inside an existing method. |
 
-Both implementations offer the exact Agent Run contract. An explicit Binding
-route chooses the ordinary Flow; its settings choose a model and token cap,
-and its HTTP slot receives endpoint authority from the operator. Skill names
+Both implementations offer the exact Agent Run contract. A project default or
+explicit Binding route chooses the ordinary Flow. The HTTP method's settings
+choose a model and token cap; its HTTP slot receives endpoint authority from
+the operator. The ACP method follows the configuration of its native grant. Skill names
 and paths describe supplied data, not host-attested provenance. Consumers check
 structured results independently of the selected implementation.
 
@@ -62,9 +63,13 @@ For Jig, extract the complete archive as a real project directory such as
 `flows/agent-method`, then select it with ordinary project membership:
 
 ```ts
-import { defineJig } from '@jigging/jig'
+import { defineJig, discover } from '@jigging/jig'
 
-export default defineJig({ flows: ['./flows/agent-method'] })
+export default defineJig({
+  flows: discover('./flows'),
+  bindings: discover('./bindings'),
+  defaults: ['binding:agent'],
+})
 ```
 
 An already installed real package directory can also be named explicitly if
@@ -72,8 +77,7 @@ it satisfies Jig's normal capture rules. Package-manager links are still links:
 shallow discovery does not follow them, and an explicit symlink is not an
 adoption exception.
 
-Add `bindings: discover('./bindings')` to the project (import `discover` from
-`@jigging/jig`) and create `bindings/agent.ts`:
+Create `bindings/agent.ts`:
 
 ```ts
 import { defineBinding } from '@jigging/jig'
@@ -100,7 +104,7 @@ jig review
 jig run binding:agent --input '{"instructions":"Explain a useful way to check an assumption."}'
 ```
 
-The Flow builds one non-streaming Chat Completions request and calls its exact
+The Flow builds one non-streaming Chat Completions request by default and calls its exact
 `http` slot. Jig holds the credential and network access; the package interprets
 the HTTP status, response text and stop reason. The method returns the complete
 `{ outcome: 'done' | 'blocked' | 'limit', output: { text, structured? } }`.
@@ -116,11 +120,19 @@ guide the admitted method. To enforce them against malicious method code, add
 matching constraints in the HTTP grant's `bodySchema`. The endpoint still owns
 its billing and data policy. See [HTTP Request](../spec/http-request.md).
 
-HTTP narrows the library bounds above: the complete canonical request must fit
-256 KiB, the response 1 MiB, and execution the grant's timeout (at most 60 seconds)
-and remaining Run deadline. Requests are rejected, not truncated. Structured
-output is requested in the prompt and checked by the method; this does not claim
-provider-enforced schemas or semantic correctness.
+Set `api: 'responses'` in the Binding settings and grant the exact `/v1/responses`
+endpoint to use Responses instead. `structuredOutput: 'json-schema'` requests
+the selected API's strict schema format; the default `'prompt'` requests the
+shape in instructions. Both modes validate returned data locally and fail on
+unsupported responses. Neither establishes semantic correctness.
+
+HTTP grants default to a 256 KiB request and 1 MiB response. For larger explicit
+context or answers, set `requestBytes` up to 8 MiB and `responseBytes` up to 12 MiB
+in the reviewed HTTP slot. The method requests `response: 'json'`, so a structured
+API response is passed as data rather than wrapped in another JSON string.
+The shared 1 MiB rendered-prompt and 8 MiB text limits still apply, as do JSON/1's
+complete-value bounds, the grant's timeout (at most 60 seconds), and the Run
+deadline. Requests are rejected, not truncated.
 
 ## Reuse the library
 
@@ -133,16 +145,14 @@ const prepared = prepareAgent({
   instructions: 'Summarize the supplied observation.',
   guidance: [{ label: 'observation', text: 'The second measurement was lower.' }],
 })
-const exchange = await run.call({
-  operationId: 'summarize',
-  slot: 'exchange',
-  input: { ...prepared.request },
-})
-const result = finishAgent(prepared, exchange)
+// Your transport supplies bounded text and an interpreted stop reason.
+const response = await yourTransport(prepared.request)
+const result = finishAgent(prepared, response)
 ```
 
-This excerpt belongs inside an existing Run handler whose package declares
-the exact Exchange dependency. `prepared.request` is ordinary data, with
+`yourTransport` stands for the implementation's own transport code, not a Jig
+API or an implicit service. The HTTP and ACP packages provide concrete examples
+using ordinary granted slots. `prepared.request` is ordinary data, with
 `prompt` and optional `responseSchema`; it grants no execution rights.
 Neither pure function performs a provider call or reads files. The optional
 second preparation argument uses `SkillText` values shaped as
@@ -169,10 +179,9 @@ This pure check requires matching `structured` data for `done`, permits an
 honest blocked or limited answer, and throws on malformed results. Application
 checks still decide whether a schema-valid answer is useful or true.
 
-When using Exchange with a native ACP client, a prepared prompt beginning with
-`/` after leading whitespace is rejected as `INVALID_INPUT` before allocation
-or dispatch: these clients interpret it as a control command. This host safeguard leaves accepted prompts
-unchanged. See the [Exchange authority boundary](../spec/agent-exchange.md#host-authority-and-composition).
+The finite ACP resource rejects prompts beginning with `/` after whitespace
+before native dispatch: these clients interpret them as control commands.
+See the [finite authority profile](../spec/finite-acp.md#finite-acp-authority-profile).
 
 Use [ordinary workspace dependencies](dependencies.md#local-workspace-packages)
 for development in the source workspace. To adapt the shared method, edit its
@@ -186,10 +195,10 @@ Keep source and rebuilt runtime together; do not hand-edit generated files.
 ## Composition and observations
 
 A Jig root can call this Flow directly or through a specialist's ordinary
-slot. Each Flow uses its own Binding; the Agent's HTTP grant remains separate
+slot. Each Flow uses its own admitted routes; the Agent's HTTP grant remains separate
 from the specialist's authority. Two direct Agent siblings fit the root budget.
-A specialist → Agent branch uses both child levels and reserves enough capacity
-to exclude a concurrent second branch. Existing aggregate resources and the
+A specialist → Agent branch uses both child levels. Two such branches fit the
+fixed aggregate reservation; a third is rejected rather than queued. Aggregate resources and the
 remaining root deadline apply. See [project policy](../spec/project-policy.md).
 
 For a specialist accepting a text input, the existing SDK call is sufficient:
@@ -204,18 +213,19 @@ await handle(run => run.call({
 }))
 ```
 
-Configure its Binding with `slots: { agent: 'binding:agent' }`, where the
-`agent` Binding selects the ordinary method and its HTTP grant as shown above.
-An application's Binding can then select that specialist with
-`slots: { specialist: 'binding:specialist' }`. Each call returns the method's
+Declare the exact Agent Run requirement in its metadata. The project default
+above resolves it without a specialist Binding. An application's Binding can
+select `slots: { specialist: 'flow:flows/specialist' }`. An explicit specialist
+Binding may instead set `slots: { agent: 'binding:another-agent' }`.
+Each call returns the method's
 ordinary outcome and output; a failed descendant call throws through `run.call`
 and may be handled with normal `try/catch` after cleanup.
 
 The shared contract declares optional Agent updates, but this text-only HTTP
 implementation does not support them. A requested channel fails before HTTP
-dispatch. Native clients remain available for callers requiring ACP updates.
+dispatch. Select the ordinary ACP package for callers requiring ACP updates.
 
-Markdown uses the same contract: its Binding can select
+Markdown uses the same project default, or an explicit Binding can select
 `slots: { 'markdown-agent': 'binding:agent' }`. The interpreter checks each
 structured decision before activating an exact authored recipe.
 

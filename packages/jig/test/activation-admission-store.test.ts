@@ -192,7 +192,7 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  test('reserves a two-level branch and prevents dispatch beneath a fenced ancestor', async () => {
+  test('reserves two deep branches and fences descendants without disabling their sibling', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -211,11 +211,26 @@ describe.serial('direct alpha activation store', () => {
         allocationDigest: branch.allocation.digest,
         sandbox: { kind: 'test-flow-sandbox' },
       })
+      const sibling = await allocatePrivateRootChildOwner({
+        ...context,
+        operationId: 'sibling',
+        allocation: {
+          kind: 'private-root-child-owner-allocation/1',
+          flowDepth: 2,
+          owner: 'sibling',
+        },
+      })
+      await recordPrivateRootChildSandbox({
+        ...context,
+        operationId: sibling.operationId,
+        allocationDigest: sibling.allocation.digest,
+        sandbox: { kind: 'test-flow-sandbox', owner: 'sibling' },
+      })
       await expect(
         allocatePrivateRootChildOwner({
           ...context,
-          operationId: 'sibling',
-          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 },
+          operationId: 'exclusive-http',
+          allocation: { kind: 'private-contained-effect-owner/1' },
         }),
       ).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
       const childInput = {
@@ -239,7 +254,36 @@ describe.serial('direct alpha activation store', () => {
         allocation: { kind: 'private-contained-effect-owner/1' },
       }
       const effect = await allocatePrivateRootChildOwner(effectInput)
-      expect((await listPrivateRootChildOwners(context)).length).toBe(3)
+      const siblingChild = await allocatePrivateRootChildOwner({
+        ...childInput,
+        parentOperationId: sibling.operationId,
+        operationId: 'sibling-agent-flow',
+        allocation: {
+          kind: 'private-root-child-owner-allocation/1',
+          flowDepth: 1,
+          owner: 'sibling-agent-flow',
+        },
+      })
+      await recordPrivateRootChildSandbox({
+        ...context,
+        parentOperationId: sibling.operationId,
+        operationId: siblingChild.operationId,
+        allocationDigest: siblingChild.allocation.digest,
+        sandbox: { kind: 'test-flow-sandbox', owner: 'sibling-agent-flow' },
+      })
+      const siblingEffectInput = {
+        ...effectInput,
+        parentOperationId: siblingChild.operationId,
+        allocation: { kind: 'private-contained-effect-owner/1', owner: 'sibling-agent-flow' },
+      }
+      const siblingEffect = await allocatePrivateRootChildOwner(siblingEffectInput)
+      expect((await listPrivateRootChildOwners(context)).length).toBe(6)
+      await expect(
+        allocatePrivateRootChildOwner({ ...effectInput, operationId: 'overlapping-http' }),
+      ).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
+      await expect(
+        allocatePrivateRootChildOwner({ ...childInput, operationId: 'overlapping-flow' }),
+      ).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
       await expect(
         closePrivateRootChildOwner({
           ...context,
@@ -277,6 +321,20 @@ describe.serial('direct alpha activation store', () => {
       await expect(
         allocatePrivateRootChildOwner({ ...effectInput, operationId: 'late-http' }),
       ).rejects.toMatchObject({ code: 'RUN_CHILD_PARENT_INACTIVE' })
+      await closePrivateRootChildOwner({
+        ...context,
+        parentOperationId: siblingChild.operationId,
+        operationId: siblingEffect.operationId,
+        allocationDigest: siblingEffect.allocation.digest,
+        sandboxDigest: null,
+        fenceDigest: null,
+        cleanupDigest: null,
+      })
+      await expect(
+        allocatePrivateRootChildOwner({ ...siblingEffectInput, operationId: 'next-http' }),
+      ).resolves.toMatchObject({
+        allocation: { value: { kind: 'private-contained-effect-owner/1' } },
+      })
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()
@@ -362,7 +420,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('reserves two branches atomically and retains capacity through fencing until cleanup', async () => {
+  test('reserves two deep branches atomically and retains capacity through fencing until cleanup', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -374,7 +432,7 @@ describe.serial('direct alpha activation store', () => {
         allocatePrivateRootChildOwner({
           ...context,
           operationId,
-          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1, operationId },
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 2, operationId },
         })
       const raced = await Promise.allSettled([
         allocate('worker:a'),

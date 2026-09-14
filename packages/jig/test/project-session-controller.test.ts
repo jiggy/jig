@@ -416,14 +416,14 @@ describe('private finite project session', () => {
       projectError(
         new CheckError(
           'unavailable',
-          'PROJECT_AGENT_UNAVAILABLE',
+          'PROJECT_ACP_UNAVAILABLE',
           'private configuration',
           'flows/drafter/FLOW.md',
         ),
         'plan',
       ).diagnostic,
     ).toEqual({
-      code: 'PROJECT_AGENT_UNAVAILABLE',
+      code: 'PROJECT_ACP_UNAVAILABLE',
       path: 'flows/drafter/FLOW.md',
     })
   })

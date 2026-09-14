@@ -1,6 +1,12 @@
 import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
-import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
+import {
+  canonicalJson,
+  decodeJson1,
+  JSON_1_LIMITS,
+  type JsonObject,
+  type JsonValue,
+} from '../json.js'
 import type { ProjectCommand } from '../project/commands.js'
 import type { GrantPolicy, HttpGrant } from '../project/grants.js'
 import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
@@ -14,13 +20,13 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
-import { HTTP_LIMITS, httpCredential, type PrivateHttpGrants } from './http-grants.js'
+import { httpCredential, type PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
@@ -53,6 +59,8 @@ import {
   type PreparedHttpRequest,
   parseHttpRequest,
   parseHttpWorkerResult,
+  encodeHttpWorkerInput,
+  httpCredentialEcho,
 } from './private-http-request.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 import {
@@ -69,7 +77,7 @@ interface Context extends PrivateInvocationContext {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
 }
 interface Allocation {
   readonly kind: typeof KIND
@@ -107,6 +115,8 @@ export async function executePrivateContainedEffect(
   let prepared:
     | { kind: 'command'; value: PreparedProjectCommand }
     | { kind: 'http'; value: PreparedHttpRequest }
+  let httpInput: string | undefined
+  let bearer: string | undefined
   try {
     prepared =
       route.grant.kind === 'command'
@@ -118,6 +128,10 @@ export async function executePrivateContainedEffect(
             kind: 'http',
             value: parseHttpRequest(input.call.input, httpPolicy(route.grant)),
           }
+    if (prepared.kind === 'http') {
+      bearer = httpCredential(input.httpGrants, prepared.value.grant)
+      httpInput = Buffer.from(encodeHttpWorkerInput(prepared.value, bearer)).toString('utf8')
+    }
   } catch {
     return failed(
       'INVALID_INPUT',
@@ -239,24 +253,11 @@ export async function executePrivateContainedEffect(
     })
     attempted = true
     const component = await sealed.admit(input.signal)
-    const bearer =
-      prepared.kind === 'http' ? httpCredential(input.httpGrants, prepared.value.grant) : undefined
-    const stdin =
-      prepared.kind === 'command'
-        ? (prepared.value.input.stdin ?? '')
-        : Buffer.from(
-            canonicalJson({
-              grant: prepared.value.grant as unknown as JsonValue,
-              ...(prepared.value.body === undefined ? {} : { body: prepared.value.body }),
-              ...(bearer === undefined ? {} : { bearer }),
-            }),
-          ).toString('utf8')
+    const stdin = prepared.kind === 'command' ? (prepared.value.input.stdin ?? '') : httpInput!
     const observed = await collectEffect(
       component,
       stdin,
-      prepared.kind === 'http'
-        ? HTTP_LIMITS.responseBytes * 6 + 4096
-        : PROJECT_COMMAND_LIMITS.streamBytes,
+      prepared.kind === 'http' ? JSON_1_LIMITS.bytes : PROJECT_COMMAND_LIMITS.streamBytes,
     )
     await releaseEffect(input, lifecycle, observed.fence)
     const reason = observed.fence.stopReason
@@ -283,8 +284,13 @@ export async function executePrivateContainedEffect(
         result = parseHttpWorkerResult(
           decodeJson1(Buffer.from(observed.stdout.text)),
           prepared.value.grant,
+          prepared.value.response,
         )
-        if ('response' in result && bearer !== undefined && result.response.body.includes(bearer))
+        if (
+          'response' in result &&
+          bearer !== undefined &&
+          httpCredentialEcho(result.response.body, bearer)
+        )
           throw new Error('credential echo')
       } catch {
         return failed('INVALID_RESULT', 'HTTP response rejected; remote effects may have occurred')

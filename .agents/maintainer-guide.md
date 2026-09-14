@@ -241,14 +241,14 @@ Backend boundary. One mechanism alone has not earned it.
 A Binding gives one Flow package a reusable project-local configuration.
 Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
 targets from the same admitted generation. A child uses its selected target's
-settings, native Agent route, and reviewed command/HTTP slot grants;
+settings, ordinary Agent route, and reviewed resource grants;
 parent configuration is not inherited. Selected
 child Bindings may expose further Flow slots within two child levels. At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
 scheduler authority. Child and Agent scopes inherit the remaining root deadline
-and cannot extend it. A root may await two shallow sibling specialists; each child may
-await one Flow or effect. A two-level branch reserves its additional Flow and
-excludes a concurrent second branch under the unchanged aggregate ceiling.
+and cannot extend it. A root may await two sibling specialists; each child may
+await one Flow or effect. The fixed aggregate ceiling reserves both complete
+two-level branches and their effects before dispatch.
 Root worker effects remain exclusive.
 Root-owned [checkpoints](../docs/jig/spec/run-checkpoint.md) use separate bounded
 control capacity to retain completed evidence while workers remain active.
@@ -289,7 +289,7 @@ or arbitrary-process delegation.
 A named **Invocation Contract** describes an exact interface for independently
 maintained consumers and implementations. It is offered by a Flow's optional
 `FLOW.contract.json` and required through a package-local `uses` reference. **Agent
-Run** is a native host implementation of such an interface, consumed through
+Run** is such an interface, implemented by an ordinary Flow and consumed through
 the same Run/1 `flow/call` as an exact Flow dependency.
 It is not a new FLOW method, model authority, or public provider framework.
 The public value contract belongs in
@@ -297,14 +297,14 @@ The public value contract belongs in
 
 `@jigging/agent-method` owns the reusable preparation and interpretation code,
 with a complete ordinary Flow entrypoint. Its keyless method owns one text-only
-Chat Completions request through an HTTP grant, with reviewed model/token settings.
-Native Agent Run imports the same pure code and independently validates its
-provider boundary. Both implementations accept explicit Skill contents and
+Chat Completions or Responses request through an HTTP grant, with reviewed
+model/token settings. The ordinary `@jigging/agent-acp` package uses the same
+pure code and drives a granted finite native conversation. Both accept explicit Skill contents and
 guidance, not host-attested caller provenance. Consumers check replacement
-results with the pure library or application validation. Existing specialists can reuse the library with
-[Agent Exchange](../docs/jig/spec/agent-exchange.md) without another Flow level.
-An ordinary specialist can call the HTTP method through its own exact slot;
-this does not replace native streaming.
+results with the pure library or application validation. A specialist calls
+either method through its own exact slot or a reviewed project default.
+The ACP package projects optional updates through ordinary channels. The host
+neither prepares Agent prompts nor reconstructs answers.
 Endpoint permissions, credentials and cleanup remain host-owned.
 
 The Flow supplies bounded instructions, optional explicit Skill contents and
@@ -327,8 +327,9 @@ meaning.
 
 Native clients share one bounded Agent Client Protocol (ACP) lifecycle while
 retaining thin, client-specific launch and authentication adapters. They begin
-without filesystem, terminal, MCP, or arbitrary tool authority unless a future
-admitted capability explicitly grants it. Product code never fixes a model for
+without host filesystem, terminal or MCP client authority. Exact native tool
+restrictions are client-specific and remain part of the reviewed trusted
+profile, not authority of the editable Agent Flow. Product code never fixes a model for
 the sake of a development test; omission uses the selected client's own
 operator configuration or default. Test credentials, endpoints, and low-cost
 models remain test inputs.

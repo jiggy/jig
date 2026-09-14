@@ -9,14 +9,14 @@ export const PRIVATE_FLOW_RESOURCE_CEILINGS = Object.freeze({
 })
 export const PRIVATE_AGENT_PROVIDER_PIDS = 128
 
-/** Fixed aggregate payload budget; trusted supervisors remain outside it. */
+/** Root plus two two-level branches and their largest effects; no borrowed capacity. */
 export const PRIVATE_ROOT_RESOURCE_POLICY = Object.freeze({
   siblingFlows: 2,
   leafEffects: 1,
   childFlowLevels: 2,
-  memoryBytes: 1280 * 1024 * 1024,
-  pids: 448,
-  cpuQuotaMicros: 250_000,
+  memoryBytes: 1792 * 1024 * 1024,
+  pids: 576,
+  cpuQuotaMicros: 350_000,
   cpuPeriodMicros: 100_000,
   reservation: 'whole-branch-until-cleanup' as const,
 })

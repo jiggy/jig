@@ -1,15 +1,18 @@
 import { type ClientRequest, request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
-import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
-import { HTTP_LIMITS, httpRequestBody, normalizeHttpGrant } from './http-grants.js'
-import type { HttpWorkerResult } from './private-http-request.js'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
+import { httpRequestBody, normalizeHttpGrant } from './http-grants.js'
+import { httpCredentialEcho, type HttpWorkerResult } from './private-http-request.js'
 
 /** Trusted transport only: no authored imports, ambient credentials or retry policy. */
 export async function requestGrantedHttp(value: unknown): Promise<HttpWorkerResult> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new TypeError('invalid HTTP dispatch')
   const input = value as Record<string, unknown>
-  if (Object.keys(input).some((key) => !['grant', 'body', 'bearer'].includes(key)))
+  if (
+    Object.keys(input).some((key) => !['grant', 'body', 'bearer', 'response'].includes(key)) ||
+    (Object.hasOwn(input, 'response') && input.response !== 'json')
+  )
     throw new TypeError('invalid HTTP dispatch')
   const grant = normalizeHttpGrant(input.grant)
   const bearer = input.bearer
@@ -82,9 +85,25 @@ export async function requestGrantedHttp(value: unknown): Promise<HttpWorkerResu
                 throw new Error()
               const text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))
               if (typeof bearer === 'string' && text.includes(bearer)) throw new Error()
-              finish({ response: { status: response.statusCode, body: text } })
-            } catch {
-              finish({ failure: 'INVALID_RESULT' })
+              let body: JsonValue = text
+              if (input.response === 'json') {
+                try {
+                  body = decodeJson1(Buffer.from(text))
+                } catch {
+                  finish({ failure: 'INVALID_RESULT' })
+                  return
+                }
+              }
+              if (typeof bearer === 'string' && httpCredentialEcho(body, bearer)) throw new Error()
+              const result = { response: { status: response.statusCode, body }, bodyBytes: bytes }
+              // Raw body permission never overrides the portable value/envelope bounds.
+              canonicalJson(result)
+              canonicalJson({ outcome: 'done', output: result.response })
+              finish(result)
+            } catch (error) {
+              finish({
+                failure: error instanceof Json1Error ? 'RESOURCE_EXHAUSTED' : 'INVALID_RESULT',
+              })
             }
           })
           response.on('close', () => {
@@ -112,7 +131,7 @@ if (import.meta.main) {
     let bytes = 0
     for await (const chunk of process.stdin) {
       bytes += chunk.length
-      if (bytes > HTTP_LIMITS.requestBytes * 6 + 131072) throw new Error('HTTP input limit')
+      if (bytes > JSON_1_LIMITS.bytes) throw new Error('HTTP input limit')
       chunks.push(Buffer.from(chunk))
     }
     result = await requestGrantedHttp(decodeJson1(Buffer.concat(chunks)))

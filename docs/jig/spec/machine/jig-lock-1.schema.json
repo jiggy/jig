@@ -1,7 +1,7 @@
 {
   "$schema": "https://flow.jig.md/schemas/schema-1.json",
   "title": "Jig lock/1",
-  "description": "The portable desired-state value stored as canonical JSON/1 plus LF in jig.lock. Project-path, LocalName, digest, collision, protected-path, aggregate-target, and canonical-byte rules are additionally enforced by Jig.",
+  "description": "The portable desired-state value stored as canonical JSON/1 plus LF in jig.lock. Project-path, LocalName, digest, collision, protected-path, exact interface matching, acyclic child-depth, aggregate-target, and canonical-byte rules are additionally enforced by Jig.",
   "type": "object",
   "properties": {
     "packages": {
@@ -46,10 +46,29 @@
             "$ref": "#/$defs/invocationRequirement"
           },
           "maxProperties": 256
+        },
+        "slots": {
+          "type": "object",
+          "description": "Effective ordinary routes resolved from project defaults for this direct Flow. Omitted when empty; grants and a live defaults map are never stored here.",
+          "additionalProperties": {
+            "$ref": "#/$defs/ordinaryTargetIdentity"
+          },
+          "minProperties": 1,
+          "maxProperties": 256
         }
       },
       "required": ["digest", "directRun", "uses"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "if": {
+        "required": ["slots"]
+      },
+      "then": {
+        "properties": {
+          "directRun": {
+            "const": true
+          }
+        }
+      }
     },
     "binding": {
       "type": "object",
@@ -67,7 +86,7 @@
         },
         "slots": {
           "type": "object",
-          "description": "Exact Flow, bounded Binding, or resolved resource policy keyed by consumer-local slot.",
+          "description": "Effective exact Flow, bounded Binding, or resolved resource policy keyed by consumer-local slot; explicit Binding selections override project defaults.",
           "additionalProperties": {
             "$ref": "#/$defs/targetIdentity"
           },
@@ -123,7 +142,7 @@
       "required": ["source", "digest", "files"],
       "additionalProperties": false
     },
-    "targetIdentity": {
+    "ordinaryTargetIdentity": {
       "oneOf": [
         {
           "type": "object",
@@ -154,6 +173,13 @@
           },
           "required": ["kind", "id"],
           "additionalProperties": false
+        }
+      ]
+    },
+    "targetIdentity": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ordinaryTargetIdentity"
         },
         {
           "type": "object",
@@ -207,6 +233,15 @@
         {
           "type": "object",
           "properties": {
+            "kind": { "const": "acp" },
+            "client": { "enum": ["codex", "claude", "pi"] }
+          },
+          "required": ["kind", "client"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "kind": {
               "const": "http"
             },
@@ -226,12 +261,12 @@
             "requestBytes": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 262144
+              "maximum": 8388608
             },
             "responseBytes": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 1048576
+              "maximum": 12582912
             },
             "timeoutMs": {
               "type": "integer",

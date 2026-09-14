@@ -7,10 +7,13 @@ stays unchanged.
 
 ## Try it
 
-Complete [workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
-and [configure an Agent](https://jig.md/guide/agents) on a
-[supported host](https://jig.md/guide/). Inspect `issue.json`,
-`bindings/specialist.ts`, and `flows/project/cases.json`, then run here:
+Install Jig on a [supported host](https://jig.md/guide/).
+
+Follow [Choose an Agent](https://jig.md/guide/agents) to install your chosen
+complete Agent Flow and create `bindings/agent.ts` here. The project already
+selects that Binding as its default. Then inspect `issue.json`,
+`bindings/specialist.ts`, and `flows/project/cases.json`.
+From this directory:
 
 ```sh
 jig review

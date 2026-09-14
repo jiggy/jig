@@ -17,12 +17,12 @@ import {
 } from "@jigging/jig";
 ```
 
-No administration, runtime, sandbox, event, Agent, or routing API is exported
+No administration, execution, sandbox, event, or live routing API is exported
 from this surface.
 
 ## Project declaration
 
-A bare project makes its defaults explicit:
+A bare project makes its membership explicit:
 
 ```ts
 import { defineJig, discover } from "@jigging/jig";
@@ -63,6 +63,44 @@ An exact source is the fail-closed alternative:
 flows: ["./flows/build", "./flows/review"]
 ```
 
+### Project defaults
+
+`defaults` is an independently optional array of at most 256 exact `flow:` or
+`binding:` selectors. It supplies ordinary implementations for omitted named
+invocation slots:
+
+```ts
+export default defineJig({
+  flows: discover("./flows"),
+  bindings: discover("./bindings"),
+  defaults: ["binding:agent"],
+});
+```
+
+Each selected package must offer a named `FLOW.contract.json`. Jig derives the
+contract identity from that package; authors do not repeat it in `jig.ts`.
+At most one default may offer a given contract ID, even with different versions
+or digests. Selectors are normalized and sorted; duplicates fail.
+
+Review resolves each target's omitted named requirements against these
+selections. An explicit Binding slot wins. Otherwise the default must match
+the required contract ID, version and digest exactly; a mismatch never falls
+back to another implementation. An incompatible default makes an automatic
+direct target ineligible; an omitted Binding slot with that mismatch rejects
+the candidate. A correct explicit Binding override can still use the package.
+Anonymous requirements always need explicit slots.
+
+A selected default must itself be invokable, require no attachments, and use
+an ordinary offered interface. A `flow:` selection requires a direct Run target.
+HTTP Request, Finite ACP, Project Command and Run Checkpoint are host-only interfaces, not
+eligible ordinary defaults. Selecting a provider does not grant powers: its own
+Binding must still obtain explicit admission for any resource grants it uses.
+
+Both direct Flows and Bindings receive their own reviewed, effective routes.
+Admission retains those exact routes, not a map consulted at runtime. Agent
+requirements need a matching ordinary implementation. Only qualified root Run
+Checkpoint requirements may resolve implicitly to host-owned retention.
+
 ## Binding declaration
 
 A Binding configures one exact project Flow package:
@@ -89,21 +127,22 @@ exact `flow:<project-relative-path>` or `binding:<LocalName>` selector,
 an inline resource grant, or a `grant:<LocalName>` selection. Grant names
 are slot selections, not CLI Run targets. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
-Either child may use the exact native Agent Run or Agent Exchange invocation; a configured Binding may
-also use explicitly granted Project Command or HTTP slots. A selected Binding
+Either child may invoke an ordinary Agent Flow; a configured Binding may
+also use explicitly granted Project Command, HTTP or Finite ACP slots. A selected Flow or Binding
 may have further Flow/Binding child routes within two child levels; resource
 slots do not count as child routes. Aggregate reservations may limit concurrency
 for deeper branches; see [project policy](project-policy.md). A Binding cannot select its own package, directly or
-through another Binding. Omitting `slots` normalizes to `{}`.
+through another Flow or Binding. Omitting `slots` normalizes the declaration to
+`{}`; review then fills matching named requirements from project defaults.
 The example's `critic` Binding selects a separate package such as
 `flows/critique`, with its own settings and no slots.
 
 Slots are exact project links, not requests for later resolution. Project
 review binds each slot to the named Flow or Binding target in the same candidate,
 and admission retains that complete relation in one immutable generation.
-Explicit Flow routes belong only to the Binding declaration: running the package
-through its `flow:` identity never borrows them. Native defaults are resolved
-from that target's own requirements.
+Explicit Binding routes belong only to that Binding: running the package through
+its `flow:` identity never borrows them. Project defaults and qualified native
+implementations are resolved independently from each target's own requirements.
 Plain package paths are not slot selectors. A leading `./` after `flow:` is
 normalized away; the `binding:` suffix must be a LocalName.
 
@@ -120,8 +159,9 @@ For reuse, select `reference: 'grant:documents'` and include
 `grants: discover('./grants')` in `jig.ts`. The filename
 `grants/documents.json` supplies the policy name; its object uses exactly the
 same grammar as an inline grant. Each selected slot must declare the exact
-supported contract for its resource kind. Both resource kinds permit eight
-slots per Binding without increasing execution capacity.
+supported contract for its resource kind. HTTP, Project Command, and Finite ACP
+use the ordinary Binding slot limit of eight total; selecting a resource does
+not increase execution capacity.
 [Grants](grants.md) owns capture limits and explicit authority approval.
 Parent permissions are never inherited.
 
@@ -146,19 +186,19 @@ field, profile inheritance, overlay, ambient environment fallback, or per-Run
 settings override.
 
 Bindings are optional. A discovered Run package which is valid with empty
-settings, fits the root attachment profile, and uses only the supported
-[Agent Run](agent-run.md), [Agent Exchange](agent-exchange.md) and/or
-[Run Checkpoint](run-checkpoint.md) contracts
-(or no requirements) is also an exact direct Flow
-target. There is no hidden generated Binding.
+settings, fits the root attachment profile, and has all requirements resolved
+by reviewed ordinary defaults or qualified root Run Checkpoint support is also an
+exact direct Flow target. A package without requirements needs no defaults.
+The complete direct-Flow and Binding graph must be acyclic and fit within two
+child levels. There is no hidden generated Binding.
 
 A required named invocation is declared by `uses.<slot>.contract` in package
 metadata. The selected Flow must offer exactly that ID, version and digest
 through its root `FLOW.contract.json`; anonymous ordinary calls need no contract.
-Unmapped qualified Agent Run, Agent Exchange and Run Checkpoint slots
-resolve to their native defaults. HTTP Request and Project Command require
-explicit slot grants. Native authority cannot be
-replaced by mapping a package that merely claims its contract identity.
+Only qualified [Run Checkpoint](run-checkpoint.md) slots resolve implicitly to
+host support. HTTP Request, Finite ACP and Project Command require explicit
+slot grants. Those three contracts and Run Checkpoint cannot be
+implemented by mapping a package that merely claims their host-only identity.
 Review shows expected contracts and selected routes together. See
 [project policy](project-policy.md#5-bindings) for qualification and limits.
 
@@ -215,8 +255,8 @@ applied retained Plan.
 ## Deliberate exclusions
 
 SDK/1 does not define dynamic child-Flow resolution, candidate catalogues,
-semantic choice, Hooks, Services, Journal publishers, Agent selection, arbitrary
-permission grants, runtime selection, sandbox selection, attachment projection, or
-administration. A Binding's exact `slots` map includes its complete child-Flow
-authoring surface; the excluded concepts are absent rather than represented by
-placeholders.
+semantic choice, Hooks, Services, Journal publishers, provider credentials,
+arbitrary permission grants, runtime selection, sandbox selection, attachment
+projection, or administration. Exact project `defaults` and Binding `slots`
+select ordinary implementations; they do not introduce a runtime registry or
+widen the selected implementation's authority.

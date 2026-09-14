@@ -24,8 +24,6 @@ const expectedInstalledFiles = [
   'libexec/markdown-runtime.js',
   'libexec/http-request-worker.js',
   'libexec/flow.LICENSE',
-  'libexec/agent/openai.LICENSE',
-  'libexec/agent/openai-agent-worker.js',
   'libexec/agent/codex-acp.LICENSE',
   'libexec/agent/codex-acp.js',
   'libexec/agent/codex-agent-launcher.js',
@@ -259,7 +257,6 @@ using FLOW;
     'libexec/markdown-runtime.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
-    'libexec/agent/openai-agent-worker.js',
     'libexec/agent/codex-agent-launcher.js',
     'libexec/agent/claude-agent-acp.js',
     'libexec/agent/claude-agent-launcher.js',
@@ -464,17 +461,39 @@ void binding;
         requests++
         assert.equal(request.headers.get('authorization'), 'Bearer local-method-test-token')
         const body = (await request.json()) as any
+        const responses = new URL(request.url).pathname === '/v1/responses'
         assert.equal(body.model, 'recorded-model')
-        assert.equal(body.max_completion_tokens, 32)
+        assert.equal(responses ? body.max_output_tokens : body.max_completion_tokens, 32)
         assert.equal(body.stream, false)
         assert.equal(body.store, false)
-        assert.equal(body.n, 1)
+        assert.equal(body.n, responses ? undefined : 1)
         assert.equal(body.tools, undefined)
         assert.match(
-          body.messages[0].content,
+          responses ? body.input : body.messages[0].content,
           mode.startsWith('markdown') ? /Return the word READY/ : /Classify this request/,
         )
+        const format = responses ? body.text.format : body.response_format.json_schema
+        assert.equal(format.strict, true)
+        assert.equal(format.name, 'flow_agent_result')
         assert.doesNotMatch(JSON.stringify(body), /local-method-test-token/)
+        if (responses)
+          return Response.json({
+            object: 'response',
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                role: 'assistant',
+                status: 'completed',
+                content: [
+                  {
+                    type: 'output_text',
+                    text: mode === 'answer' ? '{"category":"support"}' : '{"category":42}',
+                  },
+                ],
+              },
+            ],
+          })
         return Response.json({
           object: 'chat.completion',
           choices: [
@@ -503,14 +522,18 @@ void binding;
     try {
       await writeFile(
         join(agentProject, 'jig.ts'),
-        'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings")});',
+        'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings"),defaults:["binding:agent"]});',
       )
       await writeFile(
         join(agentProject, 'bindings/agent.ts'),
         'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
           JSON.stringify({
             package: 'flows/agent',
-            settings: { model: 'recorded-model', maxCompletionTokens: 32 },
+            settings: {
+              model: 'recorded-model',
+              maxCompletionTokens: 32,
+              structuredOutput: 'json-schema',
+            },
             slots: {
               http: {
                 kind: 'http',
@@ -522,9 +545,16 @@ void binding;
           }) +
           ');',
       )
-      const environment = { METHOD_TEST_TOKEN: 'local-method-test-token' }
+      const environment: NodeJS.ProcessEnv = {
+        ...Object.fromEntries(
+          Object.keys(process.env)
+            .filter((name) => /^(OPENAI_|OPENROUTER_|CODEX_|CLAUDE_|PI_)/.test(name))
+            .map((name) => [name, undefined]),
+        ),
+        METHOD_TEST_TOKEN: 'local-method-test-token',
+      }
       await run(
-        [command, 'review', '--yes', '--allow-authority-changes'],
+        [command, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
         agentProject,
         environment,
         120000,
@@ -571,7 +601,7 @@ void binding;
         }),
       )
       for (const [name, slot, target] of [
-        ['application', 'specialist', 'binding:specialist'],
+        ['application', 'specialist', 'flow:flows/specialist'],
         ['specialist', 'agent', 'binding:agent'],
       ]) {
         const flow = join(agentProject, 'flows', name!)
@@ -605,12 +635,13 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
             JSON.stringify({ uses: { agent: { contract: './contracts/agent/contract.json' } } }),
           )
         }
-        await writeFile(
-          join(agentProject, 'bindings', `${name}.ts`),
-          'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
-            JSON.stringify({ package: `flows/${name}`, slots: { [slot!]: target } }) +
-            ');',
-        )
+        if (name === 'application')
+          await writeFile(
+            join(agentProject, 'bindings', `${name}.ts`),
+            'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+              JSON.stringify({ package: `flows/${name}`, slots: { [slot!]: target } }) +
+              ');',
+          )
       }
       await run(
         [command, 'review', '--yes', '--allow-resolution-network'],
@@ -619,6 +650,9 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
         120000,
       )
       mode = 'answer'
+      // Execution uses retained effective routes, never the live default list.
+      const admittedDeclaration = await readFile(join(agentProject, 'jig.ts'))
+      await writeFile(join(agentProject, 'jig.ts'), 'throw new Error("not admitted");')
       const composed = await run(
         [command, 'run', 'binding:application', '--input', input],
         agentProject,
@@ -638,14 +672,11 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
         /INVALID_RESULT/,
       )
       assert.equal(requests, 4)
+      await writeFile(join(agentProject, 'jig.ts'), admittedDeclaration)
       // A Markdown consumer selects the same ordinary Agent, with no native
       // provider setup. The interpreter retains its independent decision gate.
       await mkdir(join(agentProject, 'flows/markdown'))
       await writeFile(join(agentProject, 'flows/markdown/FLOW.md'), 'Return the word READY.\n')
-      await writeFile(
-        join(agentProject, 'bindings/markdown.ts'),
-        'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/markdown",slots:{"markdown-agent":"binding:agent"}});',
-      )
       await run(
         [command, 'review', '--yes', '--allow-resolution-network'],
         agentProject,
@@ -654,7 +685,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'markdown'
       const markdown = await run(
-        [command, 'run', 'binding:markdown', '--input', 'null'],
+        [command, 'run', 'flow:flows/markdown', '--input', 'null'],
         agentProject,
         environment,
         120000,
@@ -664,7 +695,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       mode = 'markdown-malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'binding:markdown', '--input', 'null'],
+          [command, 'run', 'flow:flows/markdown', '--input', 'null'],
           agentProject,
           environment,
           120000,
@@ -672,6 +703,55 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
         /INVALID_RESULT/,
       )
       assert.equal(requests, 6)
+      // The same installed package switches API syntax through settings. The
+      // separately reviewed HTTP grant remains the only endpoint authority.
+      await writeFile(
+        join(agentProject, 'bindings/agent.ts'),
+        'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+          JSON.stringify({
+            package: 'flows/agent',
+            settings: {
+              model: 'recorded-model',
+              api: 'responses',
+              maxCompletionTokens: 32,
+              structuredOutput: 'json-schema',
+            },
+            slots: {
+              http: {
+                kind: 'http',
+                method: 'POST',
+                url: `http://127.0.0.1:${server.port}/v1/responses`,
+                bearerEnv: 'METHOD_TEST_TOKEN',
+              },
+            },
+          }) +
+          ');',
+      )
+      await run(
+        [command, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
+        agentProject,
+        environment,
+        120000,
+      )
+      mode = 'answer'
+      const response = await run(
+        [command, 'run', 'flow:flows/specialist', '--input', input],
+        agentProject,
+        environment,
+        120000,
+      )
+      assert.deepEqual(JSON.parse(response.stdout).output.structured, { category: 'support' })
+      mode = 'malformed'
+      await assert.rejects(
+        run(
+          [command, 'run', 'flow:flows/specialist', '--input', input],
+          agentProject,
+          environment,
+          120000,
+        ),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 8)
     } finally {
       await server.stop(true)
     }

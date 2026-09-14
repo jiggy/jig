@@ -1677,7 +1677,9 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('unknown fields, invalid values')
-    expect(invocation.error).toContain('defineJig accepts only flows, bindings and grants')
+    expect(invocation.error).toContain(
+      'defineJig accepts only flows, bindings, grants and defaults',
+    )
     expect(invocation.error).toContain('Location: "jig.ts"')
     expect(invocation.error).toContain('Diagnostic code: PROJECT_EVALUATION_FAILED')
     expect(invocation.error).not.toContain('secret')
@@ -1731,11 +1733,6 @@ describe('finite Jig project commands', () => {
 
   test.each([
     [
-      'PROJECT_AGENT_UNAVAILABLE',
-      'flows/drafter/FLOW.md',
-      'configure the host Agent before review; check exported credentials, model, and selected client',
-    ],
-    [
       'PACKAGE_BUN_NODE_MODULES',
       'flows/drafter/node_modules',
       'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies',
@@ -1768,19 +1765,23 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
-  test("reports the installed host's closed Agent configuration hint", async () => {
+  test('ACP grant failure explains its selected runtime', async () => {
     const events: string[] = []
-    const failure = new ProjectAdministrationError('UNAVAILABLE', 'private-secret', {
-      code: 'PROJECT_AGENT_UNAVAILABLE',
-      path: 'flows/reviewer/FLOW.md',
+    const failure = new ProjectAdministrationError('UNAVAILABLE', 'secret-token /private/runtime', {
+      code: 'PROJECT_ACP_UNAVAILABLE',
+      path: 'flows/agent/FLOW.ts',
     })
-    const invocation = commandInvocation({
-      ...fakeHost(fakeSession(events, { planFailure: failure }), events),
-      agentUnavailableHint: 'export OPENAI_MODEL before jig review',
-    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
     expect(await main(['review'], invocation.options)).toBe(2)
-    expect(invocation.error).toContain('export OPENAI_MODEL before jig review')
-    expect(invocation.error).not.toContain('private-secret')
+    expect(invocation.error).toContain('native client named in the affected ACP grant')
+    expect(invocation.error).toContain('operator executable, model and authentication')
+    expect(invocation.error).toContain('retry jig review')
+    expect(invocation.error).toContain('PROJECT_ACP_UNAVAILABLE')
+    expect(invocation.error).not.toContain('secret-token')
+    expect(invocation.error).not.toContain('/private/runtime')
+    expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
   test.each([true, false])(

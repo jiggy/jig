@@ -6,9 +6,15 @@
     just --list
 
 # Compile the library and bundle the complete ordinary Flow runtime
-@build:
+@build: clean
     bun node_modules/typescript/bin/tsc -p tsconfig.json
     bun build src/flow.ts --target=node --format=esm --outfile=dist/flow.js
+
+# Remove only the package's generated output before compiling
+clean:
+    #!/usr/bin/env bun
+    import { rm } from 'node:fs/promises';
+    await rm('dist', { recursive: true, force: true });
 
 # Build, then pack a complete archive without installation hooks
 [positional-arguments]

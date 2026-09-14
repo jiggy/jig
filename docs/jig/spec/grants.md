@@ -22,11 +22,19 @@ export default defineBinding({
 ```
 
 Each slot must declare the exact supported contract for its grant kind:
-[HTTP Request](http-request.md) or [Project Command](project-command.md).
+[HTTP Request](http-request.md), [Project Command](project-command.md), or
+[Finite ACP](finite-acp.md).
 The call selects the slot, not another resource name inside its input.
 Flow and Binding selectors remain available in the same `slots` map.
 
-Only these two resource kinds are supported. A grant is closed policy data,
+The finite native grant is `native: { kind: 'acp', client: 'codex' }`, with
+`claude` and `pi` as the other qualified client choices. It grants one bounded
+ACP conversation, not arbitrary process I/O. The operator's captured native
+configuration supplies the executable, model and private authentication; review
+shows that selected runtime beside the exact recipient. The ordinary Agent
+package drives the dialogue and interprets the answer.
+
+Only these three resource kinds are supported. A grant is closed policy data,
 not a plugin, executable code, generic permission bag, or credentials object.
 Inline authoring validates inert value structure; trusted project linking also
 validates exact URLs, embedded schemas, contract compatibility and resource bounds.
@@ -56,7 +64,7 @@ symlinks or globs. Exact member arrays are also supported. A missing discovery
 directory is empty; a missing selected grant or exact file is an error. Duplicate
 names across roots fail. Capture permits at most 256 policies, 32 KiB per file
 and 1 MiB total. Files must be singly linked. Each Binding permits at most eight
-HTTP and eight command slots within its 256-slot bound. Multiple slots do not
+slots of each resource kind within its 256-slot bound. Multiple slots do not
 increase concurrent effect capacity, root reservations or deadlines.
 
 ## Review and admission

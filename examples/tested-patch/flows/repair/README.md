@@ -1,10 +1,11 @@
 # project-repair
 
-This reusable leaf takes `issue`, a `files` map of paths to text, selected
+This reusable specialist takes `issue`, a `files` map of paths to text, selected
 `editPaths`, and independently authored CLI `cases`. Each case supplies an
 `id`, `args`, `stdin`, expected `stdout`, `stderr`, and `exitCode`. It accepts
 16 files totaling 64 KiB, up to eight editable source paths, and eight cases.
-There are no attachments or child Flows.
+There are no attachments. Its Agent slot selects an ordinary Flow through
+project defaults or an explicit Binding route.
 
 An optional direct or broadcast `progress` sender publishes at most six phase records. `baseline`
 precedes original checks (`attempt: 0`), `proposal` precedes an Agent request,

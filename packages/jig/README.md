@@ -40,7 +40,7 @@ Project commands:
 
 ```text
 jig init [--bare] <directory>
-jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--details]
+jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run <flow:path|binding:id> [options]
 jig inspect [flow:path|binding:id] [--json]
 ```
@@ -54,7 +54,7 @@ A Binding can pin a declared read attachment with
 identifies its files; Runs use those approved bytes without repeating `--attach`
 or exposing the live source directory. See [working with files](https://jig.md/guide/files).
 
-For service access, `http: { reference: 'documents' }` selects an independently
+For service access, `slots: { reference: { grant: 'documents' } }` selects an independently
 configured operator grant. Jig enforces its exact endpoint, method, credential
 reference and limits outside the Flow. The same ordinary call can retrieve a
 document or support an editable API client without handing it a secret or a
@@ -78,13 +78,12 @@ as `blocked` is not task success even when execution completed correctly.
 Use `jig <command> --help` for focused help and `jig --version` for the installed
 version.
 
-For projects that use an Agent, interactive `jig review` asks you to choose a
-locally available client and remembers the choice for this project. Credentials
-alone do not select a provider. Scripts can set `JIG_AGENT_CLIENT` to `codex`,
-`claude`, `pi`, or `api`; `--yes` approves changes without choosing a client.
-The menu distinguishes native live updates from API final results.
+Agents are ordinary Flow packages. Select an admitted implementation with
+`defaults: ['binding:agent']` in `jig.ts`, or through an explicit consumer slot.
+Its Binding grants the underlying HTTP endpoint or finite ACP resource;
+replacing the method does not require a host plugin.
 
-Native Codex, Claude Code, and Pi clients are discovered on the operator's
+Native Codex, Claude Code, and Pi clients selected by ACP grants are discovered on the operator's
 `PATH`. Absolute `CODEX_PATH`, `CLAUDE_PATH`, and `PI_PATH` overrides select a
 specific installation. Review shows the resolved executable; project-local
 binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/guide/agents)

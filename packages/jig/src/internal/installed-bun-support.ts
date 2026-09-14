@@ -19,7 +19,6 @@ const LIBRARY_DESTINATION = '/jig-runtime/lib'
 const EVALUATOR_DESTINATION = '/jig-evaluator'
 const PREPARATION_WORKER_DESTINATION = '/jig-preparation-worker.js'
 const HTTP_WORKER_DESTINATION = '/jig-http-worker.js'
-const AGENT_WORKER_DESTINATION = '/jig-agent-worker.js'
 const MARKDOWN_RUNTIME_DESTINATION = '/jig-markdown-runtime.js'
 const BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
 const BUN_VERSION = '1.3.3'
@@ -54,9 +53,6 @@ export interface PrivateInstalledBunSupport {
   readonly httpWorkerPath: string
   readonly httpWorkerDigest: string
   readonly sandboxHttpWorkerPath: typeof HTTP_WORKER_DESTINATION
-  readonly agentWorkerPath: string
-  readonly agentWorkerDigest: string
-  readonly sandboxAgentWorkerPath: typeof AGENT_WORKER_DESTINATION
   readonly markdownRuntimePath: string
   readonly markdownRuntimeDigest: string
   readonly sandboxMarkdownRuntimePath: typeof MARKDOWN_RUNTIME_DESTINATION
@@ -130,11 +126,6 @@ export async function openPrivateInstalledBunSupport(
     false,
     'installed HTTP worker',
   )
-  const agentWorkerPath = await exactRegularFile(
-    join(releaseRoot, 'libexec', 'agent', 'openai-agent-worker.js'),
-    false,
-    'installed Agent provider worker',
-  )
   const markdownRuntimePath = await exactRegularFile(
     join(releaseRoot, 'libexec', 'markdown-runtime.js'),
     false,
@@ -168,7 +159,6 @@ export async function openPrivateInstalledBunSupport(
     evaluatorDigests,
     preparationWorkerDigest,
     httpWorkerDigest,
-    agentWorkerDigest,
     markdownRuntimeDigest,
   ] = await Promise.all([
     privateFileDigest(executablePath),
@@ -193,7 +183,6 @@ export async function openPrivateInstalledBunSupport(
     ),
     privateFileDigest(preparationWorkerPath),
     privateFileDigest(httpWorkerPath),
-    privateFileDigest(agentWorkerPath),
     privateFileDigest(markdownRuntimePath),
   ])
   const bun = (
@@ -223,7 +212,6 @@ export async function openPrivateInstalledBunSupport(
     evaluatorSupportDigest,
     preparationWorkerDigest,
     httpWorkerDigest,
-    agentWorkerDigest,
     markdownRuntimeDigest,
   })
   const runtimeMounts = Object.freeze([
@@ -256,10 +244,7 @@ export async function openPrivateInstalledBunSupport(
     sandboxPreparationWorkerPath: PREPARATION_WORKER_DESTINATION,
     httpWorkerPath,
     sandboxHttpWorkerPath: HTTP_WORKER_DESTINATION,
-    agentWorkerPath,
     httpWorkerDigest,
-    agentWorkerDigest,
-    sandboxAgentWorkerPath: AGENT_WORKER_DESTINATION,
     markdownRuntimePath,
     markdownRuntimeDigest,
     sandboxMarkdownRuntimePath: MARKDOWN_RUNTIME_DESTINATION,
@@ -296,7 +281,6 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
     current.evaluatorSupportPath !== support.evaluatorSupportPath ||
     current.preparationWorkerPath !== support.preparationWorkerPath ||
     current.httpWorkerPath !== support.httpWorkerPath ||
-    current.agentWorkerPath !== support.agentWorkerPath ||
     current.markdownRuntimePath !== support.markdownRuntimePath
   ) {
     throw new Error('installed Bun support changed after selection')

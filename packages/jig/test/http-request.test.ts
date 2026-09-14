@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createServer as createHttpsServer } from 'node:https'
 import {
   HTTP_LIMITS,
+  HTTP_MAX_LIMITS,
   httpCredential,
   normalizeHttpGrant,
   openPrivateHttpGrants,
@@ -14,6 +15,7 @@ import {
   HTTP_REQUEST_CONTRACT_DIGEST,
   parseHttpRequest,
   parseHttpWorkerResult,
+  encodeHttpWorkerInput,
 } from '../src/internal/private-http-request.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
 import { normalizeGrant } from '../src/project/grants.js'
@@ -24,6 +26,19 @@ import { compileSchemaFile } from '../src/schema/index.js'
 import { untrustedCertificate, untrustedKey } from './http-tls-fixture.js'
 
 describe('delegated HTTP policy and trusted transport', () => {
+  test('the ordinary Agent package carries the exact canonical HTTP descriptor', async () => {
+    expect(
+      await readFile(
+        new URL('../../agent-method/contracts/http-request/contract.json', import.meta.url),
+        'utf8',
+      ),
+    ).toBe(
+      await readFile(
+        new URL('../../../docs/jig/spec/contracts/http-request/contract.json', import.meta.url),
+        'utf8',
+      ),
+    )
+  })
   test('normalizes inert Binding selections and the exact invocation companion', async () => {
     const binding = defineBinding({
       package: 'flows/read',
@@ -35,6 +50,14 @@ describe('delegated HTTP policy and trusted transport', () => {
       ),
     )
     schema.validate(binding)
+    schema.validate(
+      defineBinding({
+        package: 'flows/read',
+        slots: {
+          source: { kind: 'http', url: 'https://example.org/', method: 'POST', ...HTTP_MAX_LIMITS },
+        },
+      }),
+    )
     for (const source of [null, [], 'https://example.org/', '../secret'])
       expect(() =>
         defineBinding({ package: 'flows/read', slots: { source: source as never } }),
@@ -112,6 +135,8 @@ describe('delegated HTTP policy and trusted transport', () => {
       { ...base, timeoutMs: HTTP_LIMITS.timeoutMs + 1 },
       { ...base, bodySchema: {} },
       { ...base, responseBytes: 0 },
+      { ...base, responseBytes: HTTP_MAX_LIMITS.responseBytes + 1 },
+      { ...base, requestBytes: HTTP_MAX_LIMITS.requestBytes + 1 },
       { ...base, responseBytes: null },
       { ...base, requestBytes: null },
       { ...base, timeoutMs: null },
@@ -119,6 +144,110 @@ describe('delegated HTTP policy and trusted transport', () => {
     ])
       expect(() => normalizeHttpGrant(value)).toThrow()
     expect(() => parseHttpRequest({ body: null }, normalizeHttpGrant(base))).toThrow()
+    expect(normalizeHttpGrant(base)).toEqual({ ...base, ...HTTP_LIMITS })
+    expect(normalizeHttpGrant({ ...base, ...HTTP_MAX_LIMITS })).toEqual({
+      ...base,
+      ...HTTP_MAX_LIMITS,
+    })
+  })
+
+  test('larger requests require an explicit grant; JSON response decoding avoids string wrapping', async () => {
+    let dispatched = 0
+    const content = 'x'.repeat(2 * 1024 * 1024)
+    const payload = { prompt: 'p'.repeat(400_000) }
+    await endpoint(
+      async (request, response) => {
+        dispatched++
+        const chunks: Buffer[] = []
+        for await (const chunk of request) chunks.push(Buffer.from(chunk))
+        expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual(payload)
+        response.end(JSON.stringify({ content }))
+      },
+      async (url) => {
+        const defaults = normalizeHttpGrant({ url: `${url}/`, method: 'POST' })
+        await expect(
+          requestGrantedHttp({ grant: defaults, body: JSON.stringify(payload), response: 'json' }),
+        ).rejects.toThrow('exceeds its grant')
+        expect(dispatched).toBe(0)
+        const grant = normalizeHttpGrant({
+          ...defaults,
+          requestBytes: 500_000,
+          responseBytes: 3 * 1024 * 1024,
+        })
+        const request = parseHttpRequest({ body: payload, response: 'json' }, grant)
+        const result = await requestGrantedHttp(
+          JSON.parse(Buffer.from(encodeHttpWorkerInput(request)).toString()),
+        )
+        expect(result).toEqual({
+          response: { status: 200, body: { content } },
+          bodyBytes: Buffer.byteLength(JSON.stringify({ content })),
+        })
+        expect(parseHttpWorkerResult(result, grant, 'json')).toEqual(result)
+        expect(() => parseHttpWorkerResult(result, grant)).toThrow()
+        expect(dispatched).toBe(1)
+        expect(
+          await requestGrantedHttp({
+            grant: { ...grant, responseBytes: HTTP_LIMITS.responseBytes },
+            body: JSON.stringify(payload),
+            response: 'json',
+          }),
+        ).toEqual({ failure: 'RESOURCE_EXHAUSTED' })
+        expect(dispatched).toBe(2)
+      },
+    )
+  })
+
+  test('JSON mode is explicit, strict and bounded, including decoded credential echoes', async () => {
+    const cases = [
+      '{"x":1,"x":2}',
+      '{"x":9007199254740992}',
+      'not JSON',
+      '"\\ud800"',
+      '{"token":"\\u0073ecret-token"}',
+    ]
+    let next = 0
+    await endpoint(
+      (_request, response) => response.end(cases[next++]!),
+      async (url) => {
+        const grant = normalizeHttpGrant({ url: `${url}/`, method: 'GET', bearerEnv: 'TOKEN' })
+        for (const _ of cases)
+          expect(
+            await requestGrantedHttp({ grant, bearer: 'secret-token', response: 'json' }),
+          ).toEqual({ failure: 'INVALID_RESULT' })
+        for (const response of ['text', 'auto', null, true])
+          expect(() => parseHttpRequest({ response }, grant)).toThrow()
+      },
+    )
+  })
+
+  test('complete private envelopes remain bounded even within a raw body grant', () => {
+    const grant = normalizeHttpGrant({
+      url: 'https://example.org/',
+      method: 'POST',
+      ...HTTP_MAX_LIMITS,
+    })
+    const request = parseHttpRequest({ body: { text: '\\'.repeat(4_194_290) } }, grant)
+    expect(Buffer.byteLength(request.body!)).toBeLessThanOrEqual(grant.requestBytes)
+    expect(() => encodeHttpWorkerInput(request)).toThrow('maximum encoded bytes')
+  })
+
+  test('JSON response mode carries an exact 8 MiB string; text mode retains JSON/1 string bounds', async () => {
+    const text = 'x'.repeat(8_388_608)
+    await endpoint(
+      (_request, response) => response.end(JSON.stringify({ text })),
+      async (url) => {
+        const grant = normalizeHttpGrant({
+          url: `${url}/`,
+          method: 'GET',
+          responseBytes: HTTP_MAX_LIMITS.responseBytes,
+        })
+        const result = await requestGrantedHttp({ grant, response: 'json' })
+        expect('response' in result && (result.response.body as { text: string }).text.length).toBe(
+          text.length,
+        )
+        expect(await requestGrantedHttp({ grant })).toEqual({ failure: 'RESOURCE_EXHAUSTED' })
+      },
+    )
   })
   test('sends exactly one authorized request with JSON and bearer, reports HTTP rejection as a response', async () => {
     const seen: unknown[] = []
@@ -147,7 +276,7 @@ describe('delegated HTTP policy and trusted transport', () => {
             bearer: 'private-test-token',
             body: '{"text":"hello"}',
           }),
-        ).toEqual({ response: { status: 403, body: 'service denied' } })
+        ).toEqual({ response: { status: 403, body: 'service denied' }, bodyBytes: 14 })
         expect(seen).toEqual([
           {
             method: 'POST',
@@ -188,7 +317,10 @@ describe('delegated HTTP policy and trusted transport', () => {
             }),
             bearer: 'private-test-token',
           })
-        expect(await call('/redirect')).toEqual({ response: { status: 302, body: 'moved' } })
+        expect(await call('/redirect')).toEqual({
+          response: { status: 302, body: 'moved' },
+          bodyBytes: 5,
+        })
         expect(await call('/big')).toEqual({ failure: 'RESOURCE_EXHAUSTED' })
         expect(await call('/utf8')).toEqual({ failure: 'INVALID_RESULT' })
         expect(await call('/headers')).toEqual({ failure: 'RESOURCE_EXHAUSTED' })

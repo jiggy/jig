@@ -32,12 +32,12 @@ export interface AgentCallInput extends AgentInput {
   readonly skills?: readonly SkillText[]
 }
 
-export interface ExchangeInput {
+export interface AgentTransportInput {
   readonly prompt: string
   readonly responseSchema?: JsonObject
 }
 
-export interface ExchangeResult {
+export interface AgentTransportResult {
   readonly outcome: 'done'
   readonly output: {
     readonly text: string
@@ -46,7 +46,7 @@ export interface ExchangeResult {
 }
 
 export interface PreparedAgent {
-  readonly request: ExchangeInput
+  readonly request: AgentTransportInput
 }
 
 export interface AgentResult {
@@ -207,7 +207,7 @@ export function prepareAgent(
   return Object.freeze({ request })
 }
 
-/** Interpret complete Exchange transport facts with the exact prepared method. */
+/** Interpret complete transport facts with the exact prepared method. */
 export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResult {
   const preparedValue = ordinaryRecord(snapshot(prepared, 'INVALID_INPUT'))
   const request = preparedValue === undefined ? undefined : ordinaryRecord(preparedValue.request)
@@ -219,7 +219,7 @@ export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResu
     request.prompt.length === 0 ||
     Object.keys(request).some((key) => !['prompt', 'responseSchema'].includes(key))
   ) {
-    invalidInput('Finish requires a PreparedAgent with a bounded Exchange request')
+    invalidInput('Finish requires a PreparedAgent with a bounded transport request')
   }
   if (encoder.encode(request.prompt).byteLength > MAX_CONTENT_BYTES)
     exhausted('Prepared prompt exceeds 1 MiB')
@@ -238,7 +238,7 @@ export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResu
     typeof output.stop !== 'string' ||
     !['end-turn', 'refusal', 'limit'].includes(output.stop)
   ) {
-    throw new AgentMethodError('INVALID_RESULT', 'Agent Exchange returned invalid transport facts')
+    throw new AgentMethodError('INVALID_RESULT', 'Agent transport returned invalid facts')
   }
   const outcome =
     output.stop === 'end-turn' ? 'done' : output.stop === 'refusal' ? 'blocked' : 'limit'

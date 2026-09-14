@@ -1,15 +1,16 @@
 import { unavailable } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
-import { isAgentInvocation, nativeSlotRoutes } from '../project/invocation-slots.js'
+import { nativeSlotRoutes } from '../project/invocation-slots.js'
 import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
+import { CHANNEL_LIMITS } from '../run/channels.js'
+import type { PrivateAcpAgentProvider } from './acp-agent-provider.js'
 import {
   createPrivateActivationRecipeObservation,
   type PrivateActivationRecipeObservation,
 } from './activation-planning.js'
-import { type PrivateAgentProvider, requirePrivateAgentProvider } from './agent-provider.js'
 import {
   normalizePrivateBunExecutionArtifact,
   type PrivateBunExecutionArtifact,
@@ -26,12 +27,13 @@ import {
   type PrivateLinuxCgroupBackend,
   requirePrivateLinuxCgroupBackend,
 } from './linux-rootless-backend.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import {
-  PROJECT_COMMAND_CONTRACT_DIGEST,
-  PROJECT_COMMAND_LIMITS,
-} from './private-project-command.js'
-import { RUN_CHECKPOINT_CONTRACT_DIGEST, RUN_CHECKPOINT_LIMITS } from './private-run-checkpoint.js'
+  type PrivateAcpResources,
+  PrivateAcpResourceUnavailableError,
+  selectPrivateAcpResources,
+} from './private-acp-resources.js'
+import { PROJECT_COMMAND_LIMITS } from './private-project-command.js'
+import { RUN_CHECKPOINT_LIMITS } from './private-run-checkpoint.js'
 import {
   PRIVATE_ROOT_RESOURCE_POLICY,
   PRIVATE_FLOW_RESOURCE_CEILINGS as RESOURCE_CEILINGS,
@@ -69,7 +71,7 @@ export interface PrivateBunDirectRecipe {
   readonly privateProcessFilesystem: true
   readonly privateRuntimeDevices: true
   readonly http: Readonly<Record<string, HttpGrant>>
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly acp: Readonly<Record<string, PrivateAcpAgentProvider>>
 }
 
 /** Plan one exact, dependency-closed Bun FLOW.ts Run. */
@@ -80,7 +82,7 @@ export async function planPrivateBunDirectRun(input: {
   readonly execution?: PrivateBunExecutionArtifact
   readonly selector?: string
   readonly httpGrants?: PrivateHttpGrants | undefined
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
 }): Promise<PrivateBunDirectRecipe> {
   const backend = requirePrivateLinuxCgroupBackend(input.backend)
   const fields = await describePrivateBunDirectRun(
@@ -139,17 +141,17 @@ async function describePrivateBunDirectRun(
     !Object.values(request.attachments).includes('read-write')
   )
     throw new TypeError('Run Checkpoint requires a root writable attachment')
-  const usesAgent = nativeRoutes.some(({ native }) => isAgentInvocation(native))
-  if (usesAgent && input.agentProvider === undefined) {
+  let acp: Readonly<Record<string, PrivateAcpAgentProvider>>
+  try {
+    acp = await selectPrivateAcpResources(input.acpResources, request.slots, installedSupport)
+  } catch (error) {
     unavailable(
-      'PROJECT_AGENT_UNAVAILABLE',
-      'the target requires a configured host Agent',
+      'PROJECT_ACP_UNAVAILABLE',
+      error instanceof PrivateAcpResourceUnavailableError
+        ? error.message
+        : 'the target requires private operator resources for its selected ACP grants',
       `${request.packagePath}/${request.entrypoint.path}`,
     )
-  }
-  const agentProvider = !usesAgent ? undefined : requirePrivateAgentProvider(input.agentProvider)
-  if (agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST) {
-    throw new TypeError('private Bun recipe requires qualified native invocation support')
   }
   let http: Readonly<Record<string, HttpGrant>>
   const usesHttp = nativeRoutes.some(({ native }) => native === 'http-request')
@@ -193,8 +195,8 @@ async function describePrivateBunDirectRun(
     execution,
     installedSupport,
     support,
-    agentProvider,
     http,
+    acp,
   )
   const observation = createPrivateActivationRecipeObservation({
     requestDigest: request.digest,
@@ -216,7 +218,6 @@ async function describePrivateBunDirectRun(
     installedSupportDigest: installedSupport.digest,
     mechanismDigest: support.digest,
     observationDigest: observation.digest,
-    ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   })
   const recipe = Object.freeze({
     kind: identity.kind,
@@ -227,6 +228,7 @@ async function describePrivateBunDirectRun(
     request,
     execution,
     http,
+    acp,
     installedSupport,
     runtimeMounts: Object.freeze([
       ...installedSupport.runtimeMounts,
@@ -255,7 +257,6 @@ async function describePrivateBunDirectRun(
     bunPolicy: BUN_POLICY,
     privateProcessFilesystem: true,
     privateRuntimeDevices: true,
-    ...(agentProvider === undefined ? {} : { agentProvider }),
   })
   return recipe
 }
@@ -272,8 +273,8 @@ function logicalLaunchDigest(
   execution: PrivateBunExecutionArtifact,
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismSupport,
-  agentProvider: PrivateAgentProvider | undefined,
   http: Readonly<Record<string, HttpGrant>>,
+  acp: Readonly<Record<string, PrivateAcpAgentProvider>>,
 ): string {
   return privateDomainDigest('JIG-Private-Bun-Logical-Launch/1', {
     requestDigest: request.digest,
@@ -288,7 +289,9 @@ function logicalLaunchDigest(
     resourceCeilings: RESOURCE_CEILINGS,
     wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
     rootResourcePolicy: PRIVATE_ROOT_RESOURCE_POLICY,
+    channelLimits: CHANNEL_LIMITS,
     http,
+    acp: Object.fromEntries(Object.entries(acp).map(([slot, provider]) => [slot, provider.digest])),
     environment: Object.freeze({
       LD_LIBRARY_PATH: '/jig-runtime/lib',
     }),
@@ -307,6 +310,5 @@ function logicalLaunchDigest(
     ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'run-checkpoint')
       ? { checkpointLimits: RUN_CHECKPOINT_LIMITS }
       : {}),
-    ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   } as unknown as JsonValue)
 }

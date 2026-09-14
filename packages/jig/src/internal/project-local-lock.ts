@@ -34,6 +34,7 @@ export interface PrivateLockPackage {
   readonly digest: string
   readonly directRun: boolean
   readonly uses: Readonly<Record<string, InvocationRequirement>>
+  readonly slots?: Readonly<Record<string, RunTargetIdentity>>
 }
 
 export interface PrivateLockBinding {
@@ -62,6 +63,7 @@ export function createPrivateProjectLocalLock(
       digest: flow.package.digest,
       directRun: flow.directRun,
       uses: flow.uses,
+      ...(flow.slots === undefined ? {} : { slots: flow.slots }),
     })
   }
   const bindings: Record<string, PrivateLockBinding> = Object.create(null) as Record<
@@ -131,14 +133,35 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] 
   >
   for (const path of paths.sort()) {
     projectPath(path, `package ${JSON.stringify(path)}`)
-    const item = exactObject(input[path], ['digest', 'directRun', 'uses'], `package ${path}`)
+    const item = exactObject(
+      input[path],
+      [
+        'digest',
+        'directRun',
+        'uses',
+        ...(Object.hasOwn(object(input[path], `package ${path}`), 'slots') ? ['slots'] : []),
+      ],
+      `package ${path}`,
+    )
     if (typeof item.directRun !== 'boolean') {
       throw new TypeError(`package ${path} directRun must be boolean`)
     }
+    const slots =
+      item.slots === undefined ? undefined : normalizeSlots(item.slots, `package ${path}`)
+    if (
+      slots !== undefined &&
+      (!item.directRun ||
+        Object.keys(slots).length === 0 ||
+        Object.values(slots).some((slot) => slot.kind === 'grant'))
+    )
+      throw new TypeError('package slots must be nonempty ordinary routes of a direct Flow')
     output[path] = Object.freeze({
       digest: digest(item.digest, `package ${path}`),
       directRun: item.directRun,
       uses: normalizeUses(item.uses, `package ${path}`),
+      ...(slots === undefined
+        ? {}
+        : { slots: slots as Readonly<Record<string, RunTargetIdentity>> }),
     })
   }
   return Object.freeze(output)
@@ -201,7 +224,15 @@ function validateReferences(
   packages: PrivateProjectLocalLock['packages'],
   bindings: PrivateProjectLocalLock['bindings'],
 ): void {
-  for (const [id, binding] of Object.entries(bindings)) {
+  const directFlows = new Map(
+    Object.entries(packages)
+      .filter(([, flow]) => flow.directRun)
+      .map(([path, flow]) => [path, { packagePath: path, slots: flow.slots ?? {} }]),
+  )
+  for (const [id, binding] of [
+    ...Object.entries(bindings),
+    ...Array.from(directFlows, ([path, flow]) => [`flow:${path}`, flow] as const),
+  ]) {
     const selected = packages[binding.packagePath]
     if (selected === undefined) throw new TypeError(`Binding ${id} selects an unknown package`)
     resolveInvocationSlots(selected.uses, binding.slots)
@@ -226,7 +257,7 @@ function validateReferences(
       }
     }
   }
-  validateChildGraph(new Map(Object.entries(bindings)))
+  validateChildGraph(new Map(Object.entries(bindings)), directFlows)
 }
 
 function normalizeSlots(

@@ -1,9 +1,9 @@
 import { ProjectAdministrationError } from '../administration/project.js'
 import { privateCliValueFields } from '../cli-value-presentation.js'
-import { isAgentInvocation } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
+import { privateAcpAgentRuntime, requirePrivateAcpAgentProvider } from './acp-agent-provider.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
+import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { grantChanges, requiresAuthorityApproval } from './grant-review.js'
 
 // Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
@@ -26,7 +26,7 @@ export interface PrivateProjectPlanReview {
 export function renderPrivateProjectPlanReview(
   review: PrivateActivationReviewPlan,
   maximumBytes = MAX_REVIEW_BYTES,
-  agentProvider?: PrivateAgentProvider,
+  recipes: readonly PrivateDirectRunRecipe[] = [],
 ): PrivateProjectPlanReview {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > MAX_REVIEW_BYTES) {
     throw new TypeError('project plan review byte limit is invalid')
@@ -43,26 +43,7 @@ export function renderPrivateProjectPlanReview(
     review.baseCandidate?.candidate.targets ?? [],
     plan.proposed.targets,
   )
-  const agent =
-    agentProvider !== undefined &&
-    plan.proposed.targets.some((target) =>
-      Object.values(target.request.slots).some(
-        (route) => route.kind === 'native' && isAgentInvocation(route.native),
-      ),
-    )
-      ? agentProvider.kind === 'private-openai-agent-provider/1'
-        ? {
-            client: 'OpenAI-compatible API',
-            api: agentProvider.api,
-            endpoint: agentProvider.baseURL,
-            model: agentProvider.model,
-          }
-        : {
-            client: agentProvider.client,
-            model: agentProvider.model,
-            authentication: agentProvider.credentialMode,
-          }
-      : undefined
+  const acp = projectAcpSelections(plan.proposed.targets, recipes)
   const grants = grantChanges(review.baseCandidate?.lock ?? null, plan.proposed.lock)
   const authorityChanges = requiresAuthorityApproval(
     review.baseCandidate?.lock ?? null,
@@ -85,7 +66,7 @@ export function renderPrivateProjectPlanReview(
     ),
     current,
     proposed,
-    ...(agent === undefined ? {} : { proposedHostAgent: agent }),
+    ...(Object.keys(acp).length === 0 ? {} : { proposedHostAcp: acp }),
   }
   const writer = new BoundedAsciiWriter(maximumBytes)
   writer.write('Jig project plan review\n\n')
@@ -103,11 +84,11 @@ export function renderPrivateProjectPlanReview(
       '\nNew or changed grants require explicit authority approval. Removed grants affect new Runs after admission.\n\n',
     )
   }
-  if (agent !== undefined) {
-    summary.write('Host Agent selected for methods requiring it:\n')
-    writePolicy(summary, agent, 1)
+  if (Object.keys(acp).length !== 0) {
+    summary.write('ACP runtimes selected for resource slots:\n')
+    writePolicy(summary, acp, 1)
     summary.write(
-      '\nInstructions and selected data go to this Agent. Credentials are never part of the review.\n\n',
+      '\nData supplied to these slots goes to the selected clients. Credentials remain private.\n\n',
     )
   }
   writeChanges(
@@ -166,6 +147,48 @@ export function renderPrivateProjectPlanReview(
 }
 
 type ReviewedTarget = PrivateActivationReviewPlan['candidate']['candidate']['targets'][number]
+
+function projectAcpSelections(
+  targets: readonly ReviewedTarget[],
+  recipes: readonly PrivateDirectRunRecipe[],
+): Record<
+  string,
+  Record<string, { client: string; model: string; authentication: string; executable: string }>
+> {
+  const byTarget = new Map<string, PrivateDirectRunRecipe>()
+  for (const value of recipes) {
+    const recipe = requirePrivateDirectRunRecipe(value)
+    const key = targetKey(recipe.request.target)
+    if (byTarget.has(key)) throw new TypeError('duplicate ACP review target recipe')
+    byTarget.set(key, recipe)
+  }
+  const result: ReturnType<typeof projectAcpSelections> = Object.create(null)
+  for (const target of targets) {
+    if (target.disposition.state !== 'ready') continue
+    const selected: ReturnType<typeof projectAcpSelections>[string] = Object.create(null)
+    for (const [slot, route] of Object.entries(target.request.slots)) {
+      if (route.kind !== 'native' || route.native !== 'finite-acp') continue
+      const recipe = byTarget.get(targetKey(target.request.target))
+      if (
+        recipe === undefined ||
+        recipe.request.digest !== target.request.digest ||
+        recipe.digest !== target.disposition.recipeDigest ||
+        recipe.observation.digest !== target.disposition.observationDigest ||
+        route.grant?.kind !== 'acp'
+      )
+        throw new TypeError('ACP review selection does not match the exact proposed recipe')
+      const provider = requirePrivateAcpAgentProvider(recipe.acp[slot])
+      selected[slot] = {
+        client: route.grant.client,
+        model: provider.model,
+        authentication: provider.credentialMode,
+        executable: privateAcpAgentRuntime(provider).executablePath,
+      }
+    }
+    if (Object.keys(selected).length !== 0) result[targetKey(target.request.target)] = selected
+  }
+  return result
+}
 
 function executionChangeExplanation(
   before: ReviewedTarget | undefined,

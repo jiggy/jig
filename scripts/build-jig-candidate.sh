@@ -71,6 +71,7 @@ bun install \
   --cwd "$temporary/source" \
   --filter @jigging/jig \
   --filter @jigging/agent-method \
+  --filter @jigging/agent-acp \
   --filter @jigging/flow-authoring \
   --filter @jigging/flow \
   --ignore-scripts \

@@ -1,5 +1,5 @@
 import { handle, OperationError, type RunContext, type RunResult } from '@jigging/flow'
-import { chatRequest, chatResult } from './chat.js'
+import { parseApiResult, prepareApiRequest } from './api.js'
 import {
   type AgentInput,
   AgentMethodError,
@@ -34,16 +34,16 @@ export async function agentFlow(run: RunContext): Promise<RunResult> {
       methodInput as unknown as AgentInput,
       (skills === undefined ? [] : skills) as unknown as readonly SkillText[],
     )
-    const body = chatRequest(prepared, run.settings)
+    const { api, body } = prepareApiRequest(prepared, run.settings)
     const result = await run.call(
       {
         operationId: 'completion',
         slot: 'http',
-        input: { body },
+        input: { body, response: 'json' },
       },
       { signal: run.signal },
     )
-    const resultValue = finishAgent(prepared, chatResult(result))
+    const resultValue = finishAgent(prepared, parseApiResult(result, api))
     return { outcome: resultValue.outcome, output: { ...resultValue.output } }
   } catch (error) {
     if (error instanceof AgentMethodError) throw new OperationError(error.code, error.message)

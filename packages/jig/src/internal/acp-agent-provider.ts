@@ -4,10 +4,8 @@ import { access, lstat, realpath } from 'node:fs/promises'
 import type * as acp from '@agentclientprotocol/sdk'
 
 import type { JsonObject, JsonValue } from '../json.js'
-import type { PrivateAcpSessionConfiguration } from './acp-agent-client.js'
 import { privateDomainDigest, privateFileDigest } from './identity.js'
 import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$/
@@ -18,13 +16,17 @@ const authenticProviders = new WeakMap<PrivateAcpAgentProvider, PrivateAcpAgentR
 export interface PrivateAcpAgentProvider {
   readonly kind: 'private-acp-agent-provider/1'
   readonly digest: string
-  readonly contractDigest: typeof AGENT_RUN_CONTRACT_DIGEST
   readonly client: string
   readonly model: string
   readonly credentialMode: string
   readonly adapterDigest: string
   readonly executableDigest: string
 }
+
+/** The qualified runtime's non-secret session selections, independent of any Agent method. */
+export type PrivateAcpSessionConfiguration =
+  | { readonly configId: string; readonly value: string }
+  | { readonly configId: string; readonly type: 'boolean'; readonly value: boolean }
 
 export interface PrivateAcpAgentProviderConfiguration {
   readonly client: string
@@ -144,7 +146,6 @@ export async function createPrivateAcpAgentProvider(
   ])
   const identity = Object.freeze({
     kind: 'private-acp-agent-provider/1' as const,
-    contractDigest: AGENT_RUN_CONTRACT_DIGEST,
     client: value.client,
     model: value.model,
     credentialMode: value.credentialMode,
@@ -174,7 +175,6 @@ export async function createPrivateAcpAgentProvider(
       'JIG-Private-ACP-Agent-Provider/1',
       identity as unknown as JsonValue,
     ),
-    contractDigest: identity.contractDigest,
     client: value.client,
     model: value.model,
     credentialMode: value.credentialMode,

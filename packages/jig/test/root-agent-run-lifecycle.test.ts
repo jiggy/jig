@@ -15,9 +15,10 @@ import {
 import { createServer, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
 import { main } from '../src/cli.js'
+import { requirePrivateBunResolutionManifest } from '../src/internal/bun-native-lock-policy.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import type { PrivateInstalledBunLocation } from '../src/internal/installed-bun-support.js'
@@ -28,7 +29,14 @@ import {
 } from '../src/internal/private-run-checkpoint.js'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { checkPackageDirectory } from '../src/package/inspect.js'
+import {
+  deterministicAcpProgram,
+  openDeterministicFiniteAcpHost,
+  writeDeterministicAcpAgent,
+} from './fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
+import { writeOrdinaryAcpAgent } from './fixtures/ordinary-acp-agent.js'
+import { completedResponse, writeOrdinaryAgent } from './fixtures/ordinary-agent.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
@@ -56,11 +64,41 @@ test('constructs the Agent fixture with the complete current SDK', async () => {
   }
 })
 
+test('constructs a deterministic ACP peer without importing a private API worker', () => {
+  const transpiler = new Bun.Transpiler({ loader: 'js', target: 'bun' })
+  expect(() => transpiler.transformSync(deterministicAcpProgram())).not.toThrow()
+})
+
+test('constructs the packed ACP Agent with an exact native grant and ordinary default', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-ordinary-acp-fixture-'))
+  try {
+    await writeProject(root)
+    await writeOrdinaryAcpAgent(root, 'codex')
+    const method = join(root, 'flows/agent')
+    expect((await checkPackageDirectory(method)).entrypoint.path).toBe('FLOW.ts')
+    expect(await readFile(join(method, 'FLOW.ts'), 'utf8')).toContain('./dist/flow.js')
+    expect(await Bun.file(join(method, 'dist/flow.js')).exists()).toBe(true)
+    expect(await Bun.file(join(method, 'README.md')).exists()).toBe(true)
+    expect(await Bun.file(join(method, 'node_modules')).exists()).toBe(false)
+    expect(await readFile(join(root, 'bindings/agent.ts'), 'utf8')).toContain(
+      '"native":{"kind":"acp","client":"codex"}',
+    )
+    expect(await readFile(join(root, 'jig.ts'), 'utf8')).toContain('defaults:["binding:agent"]')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
 test('constructs a locked local workspace for root and child Skill-delivery evidence', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-skill-fixture-'))
   try {
     await writeProject(root)
     await writeSpecialistParent(root)
+    await writeOrdinaryAgent(root, {
+      url: 'http://127.0.0.1:1/v1/responses',
+      api: 'responses',
+      default: true,
+    })
     await writeSkillWorkspace(root, true)
     const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'bun' })
     for (const member of ['router', 'parent']) {
@@ -71,7 +109,14 @@ test('constructs a locked local workspace for root and child Skill-delivery evid
     }
     const lock = await readFile(join(root, 'bun.lock'), 'utf8')
     expect(lock).toContain('skill-context@workspace:libs/context')
+    // The self-contained packed Agent is not a workspace dependency of either caller.
+    expect(lock).not.toContain('@jigging/agent-method')
+    expect(lock).not.toContain('file:')
     expect(lock).not.toContain('https://')
+    for (const member of ['flows/router', 'flows/parent', 'libs/context']) {
+      const manifest = JSON.parse(await readFile(join(root, member, 'package.json'), 'utf8'))
+      expect(() => requirePrivateBunResolutionManifest(manifest, 'member')).not.toThrow()
+    }
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -156,27 +201,15 @@ proofDescribe('contained repair file application', () => {
             return
           }
           response.writeHead(200, { 'content-type': 'application/json' }).end(
-            JSON.stringify({
-              status: 'completed',
-              output: [
-                {
-                  type: 'message',
-                  role: 'assistant',
-                  content: [
-                    {
-                      type: 'output_text',
-                      text: JSON.stringify({
-                        replacements: repairPasses
-                          ? selectedReplacements
-                          : [selectedReplacements[1]],
-                        summary:
-                          'Apply the two source corrections and keep all acceptance checks unchanged.',
-                      }),
-                    },
-                  ],
-                },
-              ],
-            }),
+            JSON.stringify(
+              completedResponse(
+                JSON.stringify({
+                  replacements: repairPasses ? selectedReplacements : [selectedReplacements[1]],
+                  summary:
+                    'Apply the two source corrections and keep all acceptance checks unchanged.',
+                }),
+              ),
+            ),
           )
         })
         const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
@@ -214,25 +247,14 @@ proofDescribe('contained repair file application', () => {
           if (!address || typeof address === 'string') throw new Error('no local fixture endpoint')
           await mkdir(release)
           const location = await writeInstalledFixture(release)
-          const workerPath = join(release, 'libexec/agent/openai-agent-worker.js')
-          const worker = await readFile(
-            join(installedBunLocation.releaseRoot, 'libexec/agent/openai-agent-worker.js'),
-            'utf8',
-          )
-          await writeFile(
-            workerPath,
-            `const recordedFetch = globalThis.fetch;
-globalThis.fetch = (url, init) => {
-  if (String(url) !== 'https://repair-proof.invalid/v1/responses') throw new Error('unexpected endpoint');
-  return recordedFetch('http://127.0.0.1:${address.port}/v1/responses', init);
-};\n` + worker,
-          )
+          await writeOrdinaryAgent(project, {
+            url: `http://127.0.0.1:${address.port}/v1/responses`,
+            api: 'responses',
+            model: 'local-fixed-response',
+            default: true,
+          })
           const installed = await openPrivateInstalledBunHost(location, {
-            OPENAI_API: 'responses',
-            OPENAI_BASE_URL: 'https://repair-proof.invalid/v1',
-            OPENAI_MODEL: 'local-fixed-response',
-            JIG_AGENT_CLIENT: 'api',
-            OPENAI_API_KEY: 'synthetic-no-remote-credential',
+            METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
           })
           let stdout = '',
             stderr = ''
@@ -521,7 +543,7 @@ const initialCgroups = new Set(await rootlessCgroups())
 
 interface DispatchEvent {
   readonly scenario: string
-  readonly keyInEnvironment: boolean
+  readonly keyInEnvironment?: boolean
   readonly selectedSkill: boolean
   readonly hiddenSkill: boolean
 }
@@ -595,32 +617,21 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-project-'))
       const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-release-'))
       const requests: { url: string | undefined; method: string | undefined; body: any }[] = []
-      // Only transport is redirected. The installed worker, SDK, request encoding,
-      // capture/admission, selected-skill projection, and contained launch stay real.
+      // The complete packed method and HTTP worker use an exact local grant.
+      // No private provider, rewritten worker or ambient network reaches a Flow.
       const server = createServer(async (request, response) => {
         try {
+          expect(request.headers.authorization).toBe('Bearer synthetic-unused-credential')
           requests.push({
             url: request.url,
             method: request.method,
             body: JSON.parse(await new Response(request as any).text()),
           })
-          response.writeHead(200, { 'content-type': 'application/json' }).end(
-            JSON.stringify({
-              status: 'completed',
-              output: [
-                {
-                  type: 'message',
-                  role: 'assistant',
-                  content: [
-                    {
-                      type: 'output_text',
-                      text: JSON.stringify(EXPECTED_STRUCTURED_AGENT_RESULT),
-                    },
-                  ],
-                },
-              ],
-            }),
-          )
+          response
+            .writeHead(200, { 'content-type': 'application/json' })
+            .end(
+              JSON.stringify(completedResponse(JSON.stringify(EXPECTED_STRUCTURED_AGENT_RESULT))),
+            )
         } catch {
           response.writeHead(400).end()
         }
@@ -634,21 +645,6 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         const address = server.address()
         if (address === null || typeof address === 'string') throw new Error('no recorder port')
         const location = await writeInstalledFixture(releaseRoot)
-        const worker = await readFile(
-          join(installedBunLocation.releaseRoot, 'libexec/agent/openai-agent-worker.js'),
-          'utf8',
-        )
-        await writeFile(
-          join(releaseRoot, 'libexec/agent/openai-agent-worker.js'),
-          [
-            'const recorderFetch = globalThis.fetch;',
-            'globalThis.fetch = (input, init) => {',
-            '  if (String(input) !== "https://skill-proof.invalid/v1/responses") throw new Error("unexpected test endpoint");',
-            `  return recorderFetch("http://127.0.0.1:${address.port}/v1/responses", init);`,
-            '};',
-            worker,
-          ].join('\n'),
-        )
         await writeProject(root)
         if (nested) {
           await writeSpecialistParent(root)
@@ -658,6 +654,11 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             'PARENT_SKILL_MUST_NOT_LEAK',
           )
         }
+        await writeOrdinaryAgent(root, {
+          url: `http://127.0.0.1:${address.port}/v1/responses`,
+          api: 'responses',
+          default: true,
+        })
         await writeSkillWorkspace(root, nested)
         const selected = join(root, 'flows/router/skills/selected')
         const skill = [
@@ -673,16 +674,12 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         session = await openPrivateProjectSession({
           directory: root,
           host: await openPrivateInstalledBunHost(location, {
-            OPENAI_API: 'responses',
-            OPENAI_BASE_URL: 'https://skill-proof.invalid/v1',
-            OPENAI_MODEL: 'local-recording-fixture',
-            JIG_AGENT_CLIENT: 'api',
-            OPENAI_API_KEY: 'synthetic-unused-credential',
+            METHOD_TEST_TOKEN: 'synthetic-unused-credential',
           }),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable') throw new Error('Skill fixture did not produce a Plan')
-        await session.apply({ planDigest: plan.planDigest })
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
         await writeFile(join(selected, 'SKILL.md'), 'UNADMITTED_EDIT_MUST_NOT_LEAK')
         await writeFile(join(root, 'libs/context/marker.txt'), 'UNADMITTED_WORKSPACE_EDIT')
         expect(
@@ -711,8 +708,10 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           method: 'POST',
           body: {
             model: 'local-recording-fixture',
+            max_output_tokens: 4096,
             store: false,
             stream: false,
+            text: { format: { type: 'json_schema', strict: true } },
           },
         })
         const projected = agentPromptPayload(recorded.body.input)
@@ -751,10 +750,10 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   for (const nested of [false, true]) {
     test(
       nested
-        ? 'runs an unchanged packed HTTP Agent through a specialist'
+        ? 'runs two unchanged packed HTTP Agents through simultaneous deep specialist branches'
         : 'runs unchanged packed HTTP Agent siblings without a native Agent provider',
       async () => {
-        const expectedLanes = nested ? ['left'] : ['left', 'right']
+        const expectedLanes = ['left', 'right']
         const root = await mkdtemp(join(tmpdir(), 'jig-agent-method-project-'))
         const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-method-release-'))
         const requests: {
@@ -863,7 +862,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
               )
             }
           }
-          for (const scenario of ['invalid-input', 'oversized']) {
+          for (const scenario of ['invalid-input', 'over-grant', 'oversized']) {
             expect(await run(scenario)).toMatchObject({
               terminal: {
                 status: 'succeeded',
@@ -934,7 +933,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
               target: { kind: 'binding', id: 'method-pair' },
               input: { scenario: 'batch' },
             })
-            await waitForRequest(2)
+            await waitForRequest(4)
             await session.close()
             session = await openPrivateProjectSession({
               directory: root,
@@ -969,7 +968,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             let receipt: StartRootRunReceipt
             try {
               receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt
-              await waitForRequest(3)
+              await waitForRequest(6)
             } finally {
               if (crashed.exitCode === null) crashed.kill('SIGKILL')
               await crashed.exited
@@ -985,7 +984,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             expect(await waitForTerminal(session.rootAdministration, receipt)).toMatchObject({
               terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
             })
-            expect(requests).toHaveLength(3)
+            expect(requests).toHaveLength(6)
             await expectNoAgentOwner(root)
           }
           await session.close()
@@ -1011,28 +1010,32 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   }
 
   nativeCodexTest(
-    'executes native Codex through ACP with an operator-provided file-backed subscription',
+    'executes the ordinary ACP Agent with native Codex through ACP with an operator-provided file-backed subscription',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-native-codex-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
+        await writeOrdinaryAcpAgent(root, 'codex')
         session = await openPrivateProjectSession({
           directory: root,
           host: Object.freeze({
-            ...(await openPrivateInstalledBunHost(installedBunLocation, {
-              CODEX_HOME: process.env.CODEX_HOME,
-              CODEX_MODEL: 'gpt-5.3-codex-spark',
-              CODEX_PATH: await realpath(nativeCodexPath!),
-              JIG_AGENT_CLIENT: 'codex',
-            })),
+            ...(await openPrivateInstalledBunHost(
+              installedBunLocation,
+              {
+                CODEX_HOME: process.env.CODEX_HOME,
+                CODEX_MODEL: 'gpt-5.3-codex-spark',
+                CODEX_PATH: await realpath(nativeCodexPath!),
+              },
+              root,
+            )),
             runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
           }),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable')
           throw new Error('native Codex fixture did not produce a Plan')
-        await session.apply({ planDigest: plan.planDigest })
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
 
         expect(
           await runToTerminal(
@@ -1067,30 +1070,34 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   )
 
   nativeCodexApiTest(
-    'executes native Codex through ACP with a Responses-compatible endpoint',
+    'executes the ordinary ACP Agent with native Codex through ACP with a Responses-compatible endpoint',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-native-codex-api-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
+        await writeOrdinaryAcpAgent(root, 'codex')
         session = await openPrivateProjectSession({
           directory: root,
           host: Object.freeze({
-            ...(await openPrivateInstalledBunHost(installedBunLocation, {
-              CODEX_PATH: await realpath(nativeCodexPath!),
-              JIG_AGENT_CLIENT: 'codex',
-              OPENAI_API: 'responses',
-              OPENAI_API_KEY: process.env.OPENROUTER_API_KEY,
-              OPENAI_BASE_URL: OPENROUTER_RESPONSES_TEST_BASE_URL,
-              OPENAI_MODEL: nativeCodexApiModel,
-            })),
+            ...(await openPrivateInstalledBunHost(
+              installedBunLocation,
+              {
+                CODEX_PATH: await realpath(nativeCodexPath!),
+                OPENAI_API: 'responses',
+                OPENAI_API_KEY: process.env.OPENROUTER_API_KEY,
+                OPENAI_BASE_URL: OPENROUTER_RESPONSES_TEST_BASE_URL,
+                OPENAI_MODEL: nativeCodexApiModel,
+              },
+              root,
+            )),
             runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
           }),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable')
           throw new Error('native Codex fixture did not produce a Plan')
-        await session.apply({ planDigest: plan.planDigest })
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
 
         const terminal = await runToTerminal(
           session.rootAdministration,
@@ -1126,30 +1133,34 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   )
 
   nativeClaudeApiTest(
-    'executes native Claude Code through ACP with an Anthropic-compatible endpoint',
+    'executes the ordinary ACP Agent with native Claude Code through ACP with an Anthropic-compatible endpoint',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-native-claude-api-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
+        await writeOrdinaryAcpAgent(root, 'claude')
         session = await openPrivateProjectSession({
           directory: root,
           host: Object.freeze({
-            ...(await openPrivateInstalledBunHost(installedBunLocation, {
-              CLAUDE_PATH: await realpath(nativeClaudePath!),
-              JIG_AGENT_CLIENT: 'claude',
-              ANTHROPIC_API_KEY: '',
-              ANTHROPIC_AUTH_TOKEN: process.env.OPENROUTER_API_KEY,
-              ANTHROPIC_BASE_URL: OPENROUTER_ANTHROPIC_TEST_BASE_URL,
-              ANTHROPIC_MODEL: nativeClaudeApiModel,
-            })),
+            ...(await openPrivateInstalledBunHost(
+              installedBunLocation,
+              {
+                CLAUDE_PATH: await realpath(nativeClaudePath!),
+                ANTHROPIC_API_KEY: '',
+                ANTHROPIC_AUTH_TOKEN: process.env.OPENROUTER_API_KEY,
+                ANTHROPIC_BASE_URL: OPENROUTER_ANTHROPIC_TEST_BASE_URL,
+                ANTHROPIC_MODEL: nativeClaudeApiModel,
+              },
+              root,
+            )),
             runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
           }),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable')
           throw new Error('native Claude fixture did not produce a Plan')
-        await session.apply({ planDigest: plan.planDigest })
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
 
         const terminal = await runToTerminal(
           session.rootAdministration,
@@ -1184,28 +1195,32 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   )
 
   nativePiApiTest(
-    'executes native Pi through ACP with an explicit built-in API provider',
+    'executes the ordinary ACP Agent with native Pi through ACP with an explicit built-in API provider',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-native-pi-api-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
+        await writeOrdinaryAcpAgent(root, 'pi')
         session = await openPrivateProjectSession({
           directory: root,
           host: Object.freeze({
-            ...(await openPrivateInstalledBunHost(installedBunLocation, {
-              JIG_AGENT_CLIENT: 'pi',
-              PI_API_KEY: process.env.OPENROUTER_API_KEY,
-              PI_MODEL: nativePiApiModel,
-              PI_PATH: await realpath(nativePiPath!),
-              PI_PROVIDER: nativePiApiProvider,
-            })),
+            ...(await openPrivateInstalledBunHost(
+              installedBunLocation,
+              {
+                PI_API_KEY: process.env.OPENROUTER_API_KEY,
+                PI_MODEL: nativePiApiModel,
+                PI_PATH: await realpath(nativePiPath!),
+                PI_PROVIDER: nativePiApiProvider,
+              },
+              root,
+            )),
             runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
           }),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable') throw new Error('native Pi fixture did not produce a Plan')
-        await session.apply({ planDigest: plan.planDigest })
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
 
         const terminal = await runToTerminal(
           session.rootAdministration,
@@ -1239,24 +1254,25 @@ proofDescribe('private contained Agent Run lifecycle', () => {
     NATIVE_AGENT_TEST_TIMEOUT_MS,
   )
 
-  for (const { nested, exchange } of [
-    { nested: false, exchange: false },
-    { nested: true, exchange: false },
-    { nested: false, exchange: true },
+  for (const { nested, acp } of [
+    { nested: false, acp: false },
+    { nested: true, acp: false },
+    { nested: false, acp: true },
   ]) {
     test(
-      `fences ${nested ? 'specialist' : 'root'} Agent ${exchange ? 'Exchange' : 'Run'} success, invalid output, cancellation, deadline, and loss`,
+      `fences ${nested ? 'specialist' : 'root'} Agent ${acp ? 'ACP' : 'Run'} success, invalid output, cancellation, deadline, and loss`,
       async () => {
         const root = await mkdtemp(join(tmpdir(), 'jig-agent-lifecycle-project-'))
         const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-lifecycle-release-'))
         const events: DispatchEvent[] = []
-        const server = await dispatchServer(events)
+        const key = `synthetic-bearer-${basename(root)}`
+        const server = await dispatchServer(events, key, acp)
         const environment = { ...process.env }
         for (const name of Object.keys(environment)) {
           if (
             name.startsWith('OPENAI_') ||
             name.startsWith('OPENROUTER_') ||
-            name === 'JIG_AGENT_CLIENT'
+            name === 'ACP_TEST_ENDPOINT'
           )
             delete environment[name]
         }
@@ -1265,26 +1281,37 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         const request = (id: string, scenario: string) => runRequest(id, scenario, nested)
         const run = (id: string, scenario: string, timeoutMs = 30_000) =>
           runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested)
-        const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 2 : 1)
+        const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 3 : 2)
+        const openHost = (location: PrivateInstalledBunLocation) =>
+          acp
+            ? openDeterministicFiniteAcpHost(location, environment, root)
+            : openPrivateInstalledBunHost(location, environment, root)
         try {
           const address = server.address()
           if (address === null || typeof address === 'string')
             throw new Error('dispatch server has no port')
-          const key = `http://127.0.0.1:${address.port}/dispatch?proof=transient`
           const location = await writeInstalledFixture(releaseRoot)
-          await writeProject(root, exchange)
+          await writeProject(root)
           if (nested) await writeSpecialistParent(root)
-          environment.JIG_AGENT_CLIENT = 'api'
-          environment.OPENAI_API_KEY = key
-          environment.OPENAI_MODEL = 'provider/test-model'
+          environment.METHOD_TEST_TOKEN = key
+          if (acp) {
+            environment.ACP_TEST_ENDPOINT = `http://127.0.0.1:${address.port}/dispatch`
+            await writeDeterministicAcpAgent(releaseRoot)
+            await writeOrdinaryAcpAgent(root, 'codex')
+          } else
+            await writeOrdinaryAgent(root, {
+              url: `http://127.0.0.1:${address.port}/v1/responses`,
+              api: 'responses',
+              default: true,
+            })
 
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location, environment),
+            host: await openHost(location),
           })
           const plan = await session.plan({ lockMode: 'update' })
           if (plan.state !== 'applicable') throw new Error('Agent fixture did not produce a Plan')
-          await session.apply({ planDigest: plan.planDigest })
+          await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
 
           const success = await run('agent-success', 'success')
           expect(success).toMatchObject({
@@ -1297,9 +1324,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
                 parentHasKey: false,
                 agent: {
                   outcome: 'done',
-                  output: exchange
-                    ? { stop: 'end-turn' }
-                    : { structured: EXPECTED_STRUCTURED_AGENT_RESULT },
+                  output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT },
                 },
               },
             },
@@ -1307,8 +1332,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           expect(events).toEqual([
             {
               scenario: 'success',
-              keyInEnvironment: false,
-              selectedSkill: !exchange,
+              ...(acp ? { keyInEnvironment: false } : {}),
+              selectedSkill: true,
               hiddenSkill: false,
             },
           ])
@@ -1338,27 +1363,16 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             nested ? 4 : 3,
           )
 
-          if (exchange) {
-            const uninterpreted = await run('exchange-domain-schema-invalid', 'schema-invalid')
-            expect(uninterpreted).toMatchObject({
-              terminal: {
-                status: 'succeeded',
-                output: {
-                  status: 'succeeded',
-                  agent: { outcome: 'done', output: { stop: 'end-turn' } },
-                },
-              },
-            })
-            expect(JSON.parse(agentText(uninterpreted)).decision.route).toBe('invalid')
-            await expectNoAgentOwner(root)
-          }
-          for (const scenario of exchange ? ['malformed'] : ['schema-invalid', 'malformed']) {
+          for (const scenario of ['schema-invalid', 'malformed']) {
             expect(await run(`agent-${scenario}`, scenario)).toMatchObject({
               state: 'terminal',
               terminal: {
                 status: 'succeeded',
                 outcome: 'done',
-                output: { status: 'failed', code: 'INVALID_RESULT' },
+                output: {
+                  status: 'failed',
+                  code: acp && scenario === 'malformed' ? 'UNCERTAIN' : 'INVALID_RESULT',
+                },
               },
             })
             await expectNoAgentOwner(root)
@@ -1378,7 +1392,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
 
           await session.close()
           session = undefined
-          const deadlineHost = await openPrivateInstalledBunHost(location, environment)
+          const deadlineHost = await openHost(location)
           session = await openPrivateProjectSession({
             directory: root,
             host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
@@ -1392,7 +1406,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location, environment),
+            host: await openHost(location),
           })
           const cancellation = await session.rootAdministration.startRun(
             request('agent-cancellation', 'slow'),
@@ -1401,7 +1415,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location, environment),
+            host: await openHost(location),
           })
           expect(
             await session.rootAdministration.startRun(request('agent-cancellation', 'slow')),
@@ -1423,7 +1437,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
               location.releaseRoot,
               location.executablePath,
               'agent-coordinator-loss',
-              nested ? 'specialist' : 'root',
+              acp ? 'acp' : nested ? 'specialist' : 'root',
             ],
             {
               env: environment,
@@ -1445,10 +1459,10 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           expect(await crashed.exited).toBe(137)
           await waitForCgroups(initialCgroups)
 
-          delete environment.OPENAI_API_KEY
+          delete environment.METHOD_TEST_TOKEN
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location, environment),
+            host: await openHost(location),
           })
           expect(
             await session.rootAdministration.startRun(
@@ -1516,7 +1530,6 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
     ].map((path) => mkdir(join(root, path), { recursive: true })),
   )
   await Promise.all(files.map((path) => copyFile(join(source, path), join(root, path))))
-  await writeFile(join(root, 'libexec/agent/openai-agent-worker.js'), deterministicWorker())
   const executablePath = await realpath(installedBunLocation.executablePath)
   await symlink(executablePath, join(root, 'node_modules/@oven/bun-linux-x64-baseline/bin/bun'))
   return Object.freeze({
@@ -1526,36 +1539,9 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
   })
 }
 
-function deterministicWorker(): string {
-  return [
-    'const raw = await new Response(Bun.stdin.stream()).text();',
-    'const request = JSON.parse(raw);',
-    'const marker = (value) => request.instructions.includes(value);',
-    'const scenarios = ["schema-invalid", "malformed", "recovery", "success", "slow"];',
-    'const scenario = scenarios.find((value) => marker(`scenario:${value}`));',
-    'if (scenario === undefined || typeof request.apiKey !== "string") throw new Error("invalid fixture request");',
-    'const event = { scenario, keyInEnvironment: process.env.OPENAI_API_KEY !== undefined,',
-    '  selectedSkill: marker("SELECTED_SKILL_MARKER"), hiddenSkill: marker("HIDDEN_SKILL_MARKER") };',
-    'const response = await fetch(request.apiKey, { method: "POST", body: JSON.stringify(event) });',
-    'if (!response.ok) throw new Error("fixture observer rejected dispatch");',
-    'if (scenario === "slow" || scenario === "recovery") await Bun.sleep(60_000);',
-    'if (scenario === "malformed") { process.stdout.write("not-json"); process.exit(0); }',
-    'const structured = { decision: {',
-    '  route: scenario === "schema-invalid" ? "invalid" : "technical",',
-    '  evidence: [{ keyLocation: event.keyInEnvironment ? "environment" : "stdin",',
-    '    selectedSkill: event.selectedSkill ? "present" : "absent",',
-    '    hiddenSkill: event.hiddenSkill ? "present" : "absent", sourceLine: 1, amount: null }],',
-    '  ambiguity: null,',
-    '} };',
-    'process.stdout.write(JSON.stringify({ protocol: "jig-private-openai-agent/1", status: "ok",',
-    '  value: { text: JSON.stringify(structured), stop: "end-turn" } }));',
-    '',
-  ].join('\n')
-}
-
-async function writeProject(root: string, exchange = false): Promise<void> {
+async function writeProject(root: string): Promise<void> {
   const flow = join(root, 'flows', 'router')
-  const contract = exchange ? 'agent-exchange' : 'agent-run'
+  const contract = 'agent-run'
   await Promise.all(
     [
       join(flow, 'contracts', contract),
@@ -1612,7 +1598,7 @@ async function writeProject(root: string, exchange = false): Promise<void> {
       },
     }),
   )
-  await writeFile(join(flow, 'FLOW.ts'), flowProgram(exchange))
+  await writeFile(join(flow, 'FLOW.ts'), flowProgram())
   await cp(join(import.meta.dir, '../../flow-sdk/src'), join(flow, 'flow-sdk'), { recursive: true })
 }
 
@@ -1626,43 +1612,8 @@ function agentPromptPayload(prompt: string): any {
 
 async function writeAgentMethodProject(root: string, url: string, nested = false): Promise<void> {
   await writeProject(root)
+  await writeOrdinaryAgent(root, { url, maxCompletionTokens: 128 })
   const method = join(root, 'flows/method')
-  const artifacts = join(root, 'artifacts')
-  await mkdir(method)
-  await mkdir(artifacts)
-  const supplied = process.env.AGENT_METHOD_PACKAGE_ARCHIVE
-  let archive: string
-  if (supplied !== undefined) {
-    archive = await realpath(resolve(supplied))
-    if (!(await lstat(archive)).isFile())
-      throw new Error('Agent method archive must be a regular file')
-  } else {
-    // Pack the built public distribution unchanged. The host build owns compiling it.
-    const pack = Bun.spawn(
-      [process.execPath, '--no-env-file', 'scripts/pack.ts', '--destination', artifacts],
-      { cwd: join(import.meta.dir, '../../agent-method'), stdout: 'pipe', stderr: 'pipe' },
-    )
-    const [exit, stdout, stderr] = await Promise.all([
-      pack.exited,
-      new Response(pack.stdout).text(),
-      new Response(pack.stderr).text(),
-    ])
-    expect(exit, `${stdout}\n${stderr}`).toBe(0)
-    const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
-    expect(archives).toHaveLength(1)
-    archive = join(artifacts, archives[0]!)
-  }
-  const extract = Bun.spawn(['tar', '-xzf', archive, '--strip-components=1', '-C', method], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [exit, stdout, stderr] = await Promise.all([
-    extract.exited,
-    new Response(extract.stdout).text(),
-    new Response(extract.stderr).text(),
-  ])
-  expect(exit, `${stdout}\n${stderr}`).toBe(0)
-  await mkdir(join(root, 'bindings'))
   await writeFile(
     join(root, 'jig.ts'),
     [
@@ -1675,7 +1626,7 @@ async function writeAgentMethodProject(root: string, url: string, nested = false
     [
       'import { defineBinding } from "@jigging/jig";',
       'export default defineBinding({ package: "flows/router",',
-      `  slots: { left: "binding:${nested ? 'specialist' : 'method'}", right: "binding:method" } });`,
+      `  slots: { left: "binding:${nested ? 'specialist' : 'method'}", right: "binding:${nested ? 'specialist' : 'method'}" } });`,
     ].join('\n'),
   )
   const router = join(root, 'flows/router')
@@ -1683,15 +1634,6 @@ async function writeAgentMethodProject(root: string, url: string, nested = false
   await copyFile(
     join(method, 'skills/answer-check/SKILL.md'),
     join(router, 'skills/answer-check/SKILL.md'),
-  )
-  await writeFile(
-    join(root, 'bindings/method.ts'),
-    [
-      'import { defineBinding } from "@jigging/jig";',
-      'export default defineBinding({ package: "flows/method",',
-      'settings: { model: "local-recording-fixture", maxCompletionTokens: 128 },',
-      `slots: { http: { kind: "http", method: "POST", url: ${JSON.stringify(url)}, bearerEnv: "METHOD_TEST_TOKEN" } } });`,
-    ].join('\n'),
   )
   await writeFile(
     join(router, 'flow.meta.json'),
@@ -1708,7 +1650,7 @@ async function writeAgentMethodProject(root: string, url: string, nested = false
         type: 'object',
         properties: {
           scenario: {
-            enum: ['batch', 'invalid-input', 'oversized'],
+            enum: ['batch', 'invalid-input', 'over-grant', 'oversized'],
           },
         },
         required: ['scenario'],
@@ -1716,7 +1658,7 @@ async function writeAgentMethodProject(root: string, url: string, nested = false
       },
     }),
   )
-  await writeFile(join(router, 'FLOW.ts'), agentMethodCallerProgram(nested))
+  await writeFile(join(router, 'FLOW.ts'), agentMethodCallerProgram())
   if (nested) {
     const specialist = join(root, 'flows/specialist')
     await mkdir(specialist)
@@ -1737,18 +1679,20 @@ export default defineBinding({package:'flows/specialist', slots:{agent:'binding:
   }
 }
 
-function agentMethodCallerProgram(nested = false): string {
+function agentMethodCallerProgram(): string {
   return [
     'import { handle } from "./flow-sdk/index.ts";',
     'await handle(async (run) => {',
     '  const { scenario } = run.input as { scenario: string };',
     '  try {',
     '    if (scenario !== "batch") {',
-    '      const input = scenario === "oversized" ? { instructions: "é".repeat(150000) } : { instructions: "Rejected authority", provider: "package-selected" };',
+    '      const input = scenario === "oversized" ? { instructions: "é".repeat(524289) }',
+    '        : scenario === "over-grant" ? { instructions: "é".repeat(150000) }',
+    '        : { instructions: "Rejected authority", provider: "package-selected" };',
     '      await run.call({ operationId: scenario, slot: "left", input });',
     '      return { outcome: "done", output: { status: "unexpected-dispatch" } };',
     '    }',
-    `    const results = await Promise.all(${JSON.stringify(nested ? ['left'] : ['left', 'right'])}.map(async (lane) => run.call({`,
+    `    const results = await Promise.all(["left", "right"].map(async (lane) => run.call({`,
     '      operationId: lane, slot: lane, input: {',
     '        instructions: "Return the lane from explicit guidance as JSON.",',
     '        guidance: [{ label: "lane", text: lane }], skills: [{ name: "answer-check", files: [{ path: "SKILL.md", text: await Bun.file(new URL("./skills/answer-check/SKILL.md", import.meta.url)).text() }] }],',
@@ -1773,7 +1717,9 @@ async function writeSkillWorkspace(root: string, nested: boolean): Promise<void>
     join(root, 'package.json'),
     JSON.stringify({
       private: true,
-      workspaces: ['flows/*', 'libs/*'],
+      workspaces: nested
+        ? ['flows/router', 'flows/parent', 'libs/context']
+        : ['flows/router', 'libs/context'],
     }),
   )
   await writeFile(
@@ -1888,7 +1834,7 @@ async function writeSpecialistParent(root: string): Promise<void> {
   }
 }
 
-function flowProgram(exchange = false): string {
+function flowProgram(): string {
   return [
     '#!/usr/bin/env bun',
     'import { handle } from "./flow-sdk/index.ts";',
@@ -1924,27 +1870,18 @@ function flowProgram(exchange = false): string {
     '  try {',
     '    const agent = await run.call({',
     '      operationId: `agent:${input.scenario}`, slot: "agent",',
-    ...(exchange
-      ? [
-          '      input: { prompt: `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`,',
-          '        responseSchema: input.scenario === "schema-input-invalid"',
-          '          ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
-          '          : responseSchema },',
-        ]
-      : [
-          '      input: { instructions: input.scenario === "api-structured"',
-          '        ? "Return only JSON matching the response schema. Set route to technical, evidence to one item with keyLocation stdin, selectedSkill present, hiddenSkill absent, sourceLine 1, and amount null; set ambiguity to null."',
-          '        : input.scenario === "api-text" ? "Reply with exactly READY and nothing else."',
-          '        : `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`, skills: await selectedSkills(),',
-          '        ...(input.scenario === "api-text" ? {} : {',
-          '          responseSchema: input.scenario === "schema-input-invalid"',
-          '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
-          '            : responseSchema,',
-          '        }) },',
-        ]),
+    '      input: { instructions: input.scenario === "api-structured"',
+    '        ? "Return only JSON matching the response schema. Set route to technical, evidence to one item with keyLocation stdin, selectedSkill present, hiddenSkill absent, sourceLine 1, and amount null; set ambiguity to null."',
+    '        : input.scenario === "api-text" ? "Reply with exactly READY and nothing else."',
+    '        : `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`, skills: await selectedSkills(),',
+    '        ...(input.scenario === "api-text" ? {} : {',
+    '          responseSchema: input.scenario === "schema-input-invalid"',
+    '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
+    '            : responseSchema,',
+    '        }) },',
     '    });',
     '    return { outcome: "done", output: { status: "succeeded", agent, settings: run.settings,',
-    '      parentHasKey: process.env.OPENAI_API_KEY !== undefined ||',
+    '      parentHasKey: process.env.METHOD_TEST_TOKEN !== undefined || process.env.OPENAI_API_KEY !== undefined ||',
     '        process.env.ANTHROPIC_API_KEY !== undefined ||',
     '        process.env.ANTHROPIC_AUTH_TOKEN !== undefined ||',
     '        process.env.PI_API_KEY !== undefined } };',
@@ -2051,7 +1988,7 @@ async function expectNoAgentOwner(root: string): Promise<void> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [] as string[]
     throw error
   })
-  expect(values.filter((value) => value.startsWith('a-') || value.startsWith('c-'))).toEqual([])
+  expect(values.filter((value) => /^(a-|c-|x-)/.test(value))).toEqual([])
   const materializations = await readdir(join(root, '.jig', 'private-root-materializations'))
   expect(materializations.filter((value) => value.startsWith('child-'))).toEqual([])
 }
@@ -2069,16 +2006,60 @@ function withStore<Value>(root: string, use: (database: any) => Value): Value {
   }
 }
 
-async function dispatchServer(events: DispatchEvent[]): Promise<Server> {
+async function dispatchServer(events: DispatchEvent[], key: string, acp: boolean): Promise<Server> {
   const server = createServer(async (request, response) => {
     try {
-      if (request.method !== 'POST' || !request.url?.startsWith('/dispatch?proof=transient')) {
+      if (
+        request.method !== 'POST' ||
+        request.url !== (acp ? '/dispatch' : '/v1/responses') ||
+        request.headers.authorization !== `Bearer ${key}`
+      ) {
         response.writeHead(404).end()
         return
       }
       const text = await new Response(request as any).text()
-      events.push(JSON.parse(text) as DispatchEvent)
-      response.writeHead(204).end()
+      if (acp) {
+        events.push(JSON.parse(text) as DispatchEvent)
+        response.writeHead(204).end()
+        return
+      }
+      const body = JSON.parse(text)
+      if (
+        body.stream !== false ||
+        body.store !== false ||
+        body.max_output_tokens !== 4096 ||
+        typeof body.input !== 'string'
+      )
+        throw new Error('invalid request controls')
+      const prompt = body.input as string
+      const scenario = ['schema-invalid', 'malformed', 'recovery', 'success', 'slow'].find(
+        (value) => prompt.includes(`scenario:${value}`),
+      )
+      if (scenario === undefined) throw new Error('missing fixture scenario')
+      events.push({
+        scenario,
+        selectedSkill: prompt.includes('SELECTED_SKILL_MARKER'),
+        hiddenSkill: prompt.includes('HIDDEN_SKILL_MARKER'),
+      })
+      // Keep the request pending until the owned HTTP worker is cancelled/fenced.
+      if (scenario === 'slow' || scenario === 'recovery') return
+      if (scenario === 'malformed') {
+        response.writeHead(200).end('not-json')
+        return
+      }
+      response.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify(
+          completedResponse(
+            JSON.stringify({
+              ...EXPECTED_STRUCTURED_AGENT_RESULT,
+              decision: {
+                ...EXPECTED_STRUCTURED_AGENT_RESULT.decision,
+                route: scenario === 'schema-invalid' ? 'invalid' : 'technical',
+              },
+            }),
+          ),
+        ),
+      )
     } catch {
       response.writeHead(400).end()
     }
@@ -2095,12 +2076,13 @@ async function dispatchServer(events: DispatchEvent[]): Promise<Server> {
 
 async function closeServer(server: Server): Promise<void> {
   if (!server.listening) return
-  await new Promise<void>((resolve, reject) =>
+  await new Promise<void>((resolve, reject) => {
     server.close((error) => {
       if (error === undefined) resolve()
       else reject(error)
-    }),
-  )
+    })
+    server.closeAllConnections()
+  })
 }
 
 async function waitForEvents(

@@ -804,7 +804,9 @@ function requireRequestLockProjection(
     throw new TypeError('activation request package does not match its lock projection')
   }
   const selected =
-    request.target.kind === 'binding' ? (lock.bindings[request.target.id]?.slots ?? {}) : {}
+    request.target.kind === 'binding'
+      ? (lock.bindings[request.target.id]?.slots ?? {})
+      : (packageValue.slots ?? {})
   if (!sameJson(resolveInvocationSlots(packageValue.uses, selected), request.slots)) {
     throw new TypeError('activation request invocation routes do not match its lock projection')
   }
@@ -821,11 +823,7 @@ function requireRequestLockProjection(
     }
     return
   }
-  if (
-    Object.keys(request.settings).length !== 0 ||
-    Object.keys(flowSlotTargets(request.slots)).length !== 0 ||
-    request.boundAttachments !== undefined
-  ) {
+  if (Object.keys(request.settings).length !== 0 || request.boundAttachments !== undefined) {
     throw new TypeError('direct Flow activation request must have empty configuration')
   }
 }

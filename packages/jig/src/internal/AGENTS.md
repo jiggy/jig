@@ -11,8 +11,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
 - `invocation-context.ts` owns shared admitted-parent identity and durable
-  parent-owner checks, plus protected owner-root validation. Agent, command and
-  HTTP controllers use these checks; resource ownership must not import Agent
+  parent-owner checks, plus protected owner-root validation. Finite ACP, command
+  and HTTP controllers use these checks; resource ownership must not import Agent
   execution logic. Parent descriptors retain the exact bounded ancestry.
 - Package artifact retention, materialization, and preparation.
 - Contract generation owns captured TypeSpec requests, a bounded trusted Node
@@ -25,14 +25,23 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and separate command-owned publication after execution fencing.
 - Installed Bun authentication, rootless acquisition, delegation,
   containment, supervision, and execution.
-- Agent clients and launchers, native invocation enforcement, credential
-  isolation, explicit-context bounds and independent native result validation.
-  Agent Run and Agent Exchange share the same bounded provider owner. The
-  former imports the pinned `@jigging/agent-method` library; editable Flow
-  implementations never execute in the coordinator.
+- Native client launchers, reviewed runtime policy, private authentication and
+  bounded process ownership. Ordinary Agent packages own method preparation,
+  response interpretation and optional updates; no Agent method runs inside
+  the coordinator.
+- `private-acp-resources.ts` captures operator configuration before project
+  loading and resolves only each target's exact granted clients. Selected
+  runtime identities enter the recipe and review; launch revalidates their
+  bytes and authentication. Unavailable clients do not block unrelated targets.
+- `finite-acp-policy.ts` authorizes each native write for one finite ACP
+  conversation. `finite-acp-resource.ts` owns bounded framing, private startup
+  and authentication, and essential channel delivery. Ordinary Agent Flows own
+  protocol dialogue and answer interpretation. The resource reports actual
+  termination only; `root-finite-acp-controller.ts` owns its durable lifetime,
+  cancellation, fencing and recovery.
 - Channel integration resolves admitted package contracts and binds root
-  output, exact child endpoints, or native Agent endpoints. Unused incoming rights
-  may move onward; each child and effect retains its own participant identity.
+  output, exact child endpoints, or finite ACP resource endpoints. Unused incoming
+  rights may move onward; each child and effect retains its own participant identity.
   Child input, recipe, capacity and sealed-owner checks precede atomic transfer.
   Receiver disposal preserves an unused writer's transfer rights, not delivery;
   a disposed direct receiver makes later sends fail disconnected. Root and child
@@ -47,12 +56,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
 - Command and HTTP effects share the contained-effect owner and recovery path.
-  HTTP/command grants resolve at Binding slots and are pinned in review and
-  recipe identity. Optional catalog files are captured project proposals. The
+  HTTP, command and finite ACP grants resolve at Binding slots and are pinned in
+  review and recipe identity. Optional catalog files are captured project proposals. The
   apply boundary checks explicit authority approval for new/changed recipients
-  or policies; it never infers consent from file access or normal --yes. The fixed worker receives only one
-  request's credential over private stdin; it imports no authored code. The
-  collector validates its bounded result after fencing. No redirect, proxy,
+  or policies; it never infers consent from file access or normal --yes. The fixed
+  HTTP worker receives only one request's credential over private stdin; it imports
+  no authored code. The collector validates its bounded result after fencing. No redirect, proxy,
   automatic retry or raw credential projection is permitted. Remote effects
   remain possible after an unsuccessful local result.
 
@@ -72,7 +81,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - One resolved slot table pins exact Flow targets or qualified native invocations.
   An explicit typed route must match its provider's offered contract; it cannot
   fall back or turn a claimed native descriptor into package-held authority.
-  Markdown reasoning derives its reserved native Agent requirement during inert
+  Project defaults resolve ordinary routes before admission, including direct
+  Flow routes. Lock projection and complete graph checks retain those choices.
+  Markdown reasoning derives its reserved Agent requirement during inert
   inspection and executes through that same table. Installed interpreter bytes
   participate in runtime identity; Markdown resources never trigger installation.
 - Unconfirmed cleanup or fencing is fatal to the owning invocation even if code
@@ -109,10 +120,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   installation, not a parallel Jig resolver.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
-- Agent Exchange passes accepted prompts unchanged and enforces its prompt,
-  schema and provider bounds before allocation. Native ACP leading-slash prompts
-  are rejected because clients interpret them as control commands; a method's
-  prefix is not the authority safeguard.
+- The finite resource enforces native protocol and prompt bounds before writes.
+  Leading-slash prompts are rejected because clients interpret them as control
+  commands; a method's prefix is not the authority safeguard.
 - The finite ACP peer refuses permission requests with the protocol's cancelled
   outcome, never a peer-supplied option ID. Permission refusal does not issue
   session control against an identity supplied by the request; Run cancellation
@@ -189,7 +199,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Cancellation and expiry escalate against the exact trusted child after a
   bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
 - Exact child slots may select a Flow or a bounded Binding with its own admitted
-  settings, Agent invocation, reviewed command and HTTP slot grants. An effect belongs to that child
+  settings, ordinary invocation routes and reviewed command, HTTP or finite ACP
+  grants. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
   releasing the child owner. Two child Flow levels use their own admitted slot
   maps; private nested Flow identifiers include their parent identity.
@@ -198,8 +209,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   root budget before dispatch; retain its
   reservation until confirmed fencing and cleanup. Kernel envelope limits and
   the recipe-bound reservation policy must agree. Each child admits one Flow or
-  effect; the second child level admits only an effect. A deeper branch excludes
-  any concurrent second branch under the unchanged root ceiling. There is no
+  effect; the second child level admits only an effect. The aggregate envelope
+  accommodates two complete two-level branches and their effects. There is no
   queue, borrowing, recursive budget, or public scheduler. An ancestor fence
   prevents all further descendant dispatch; recovery drains descendants before
   releasing each Flow owner and its branch reservation.
@@ -248,13 +259,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Do not weaken production checks for an unprovisioned unit test. Use private
   injection seams for units and the proof host for kernel behavior.
 - A provider adapter may narrow common Agent authority, never widen it.
-- One direct official OpenAI-SDK client and native Codex, Claude Code, and Pi
-  are the owner-selected initial Agent breadth. Compatible endpoints remain
-  protocol-specific host configuration; an endpoint, credential, provider, or
+- API-backed Agent behavior belongs to the ordinary Agent package and its
+  exact HTTP grant. Native Codex, Claude Code, and Pi retain constrained ACP
+  launch and authentication support. An endpoint, credential, provider, or
   model used in development must not become a product default.
-- OpenRouter's natural credential/model pair is a convenience for its fixed
-  compatible endpoint, not a provider registry. Ambiguous provider families
-  fail closed.
 - Native Codex, Claude Code, and Pi use a snapshot of the operator
   environment captured before project loading. Absolute client overrides are
   authoritative; otherwise search absolute PATH entries in order, excluding the

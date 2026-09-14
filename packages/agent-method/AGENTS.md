@@ -10,8 +10,7 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - `src/` owns prompt preparation, structured schema checking, JSON/1 decoding,
   result assembly, the optional package Skill reader, and ordinary Run/1 wiring.
 - The root `FLOW.ts` invokes the bundled runtime; it performs no implicit Skill reads.
-- `contracts/agent-exchange/` mirrors the exact public descriptor and channel
-  closure for library consumers. `contracts/http-request/` mirrors the ordinary
+- `contracts/http-request/` mirrors the ordinary
   Flow's exact delegated HTTP interface. Canonical descriptors live under
   `docs/jig/spec/contracts/`.
 - Package source, declarations, built runtime, licenses, tests, and build
@@ -24,16 +23,20 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - Pure exports perform no provider dispatch or filesystem access. The separate
   `./skills` export reads only explicitly selected package-local Skill trees.
-- The ordinary Flow owns one non-streaming text-only Chat Completions exchange
-  through its HTTP slot, with model/token settings checked before dispatch.
+- The ordinary Flow owns one non-streaming text-only Chat Completions or
+  Responses exchange through its HTTP slot. Closed API/model/token settings
+  are checked before dispatch. `structuredOutput: 'json-schema'` explicitly
+  adds the API's strict schema request; prompt mode is the default. Both modes
+  check results locally and never fall back or retry on rejection.
   Endpoint, credentials and request policy belong to the host grant. No retries,
   native Agent dependency, channel projection or direct networking. Skill contents
   and guidance arrive as explicit caller data, not host-authenticated provenance.
   `FLOW.contract.json` offers the exact Agent Run interface; an unsupported
   optional channel rejects before HTTP dispatch.
-- `settings.schema.json` owns model/token authoring validation. HTTP request
-  and response limits narrow the shared library's larger prompt bounds; reject
-  oversized requests before dispatch, never truncate them.
+- `settings.schema.json` owns API/model/token/output-mode authoring validation.
+  The HTTP call requests decoded JSON/1 responses. Its 8 MiB request / 12 MiB
+  response ceilings do not increase the operator's smaller default grant or
+  JSON/1 value limits; reject oversized requests before dispatch, never truncate.
 - Preserve the shared 64-group, 1,024-item, 1 MiB content and 1 MiB rendered
   prompt limits. Reject duplicate selections, invalid UTF-8 and symlinks.
 - Runtime dependencies are bundled; installed consumers need no build hook.
@@ -44,8 +47,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - Workspace packing may consume `FLOW_SDK_PACKAGE_ARCHIVE` to include the exact
   complete SDK artifact already tested by release automation. Match its package
   identity; the supplied archive digest records the actual candidate bytes.
-- Native Jig imports this same method and independently validates its trusted
-  boundaries. `checkAgentResult` lets consumers independently check any selected
+- The ordinary ACP package imports this same method. `checkAgentResult` lets
+  consumers independently check any selected
   Agent's dynamic structured result; it grants no authority or provenance.
 
 ## Work Guidance
@@ -56,6 +59,9 @@ ordinary Flow, preserving operator ownership of Agent execution.
   method. Do not edit generated `dist/` files.
 
 ## Verification
+
+- The build clears only generated `dist/` before compiling, so removed source
+  cannot survive in the packed runtime or declaration files.
 
 - `just build` compiles declarations and bundles the ordinary runtime.
 - `just test` checks the method, JSON/1, bounded reader, and Flow wiring.

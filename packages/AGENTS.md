@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Contains the independently built FLOW SDKs, reusable Agent method, Jig host,
+Contains the independently built FLOW SDKs, reusable Agent methods, Jig host,
 and optional contract authoring toolchain.
 
 ## Ownership
@@ -52,6 +52,8 @@ and optional contract authoring toolchain.
 
 - [agent-method/AGENTS.md](agent-method/AGENTS.md) — Shared Agent procedure,
   bounded Skill reader, and complete ordinary Flow artifact.
+- [agent-acp/AGENTS.md](agent-acp/AGENTS.md) — Ordinary finite native Agent
+  dialogue and public ACP resource framing, without credentials or launch authority.
 
 - [flow-authoring/AGENTS.md](flow-authoring/AGENTS.md) — Optional TypeSpec
   mapping toolchain, generated contracts, Agent projections and editor types.

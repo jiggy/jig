@@ -7,7 +7,9 @@
 
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun clean
+    just --justfile ../flow-sdk/justfile build
     just --justfile ../agent-method/justfile build
+    just --justfile ../agent-acp/justfile build
     just --justfile ../flow-authoring/justfile build
     mkdir -p bin libexec/agent libexec/evaluator libexec/preparation libexec/authoring
     cp scripts/installed-jig.sh bin/jig
@@ -18,7 +20,6 @@
     bun build src/installed-cli.ts --target=bun --format=esm --outfile=libexec/installed-cli.js
     bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js
     bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js
-    bun build src/internal/openai-agent-worker.ts --target=bun --format=esm --outfile=libexec/agent/openai-agent-worker.js
     bun build src/internal/http-request-worker.ts --target=bun --format=esm --outfile=libexec/http-request-worker.js
     bun build src/internal/markdown-runtime-worker.ts --target=bun --format=esm --outfile=libexec/markdown-runtime.js
     cp ../flow-sdk/LICENSE libexec/flow.LICENSE
@@ -36,7 +37,6 @@
     bun build src/internal/bun-native-preparation-worker.ts --target=bun --format=esm --outfile=libexec/preparation/bun-native-preparation-worker.js
     bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js
     cp ../../docs/jig/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json
-    cp node_modules/openai/LICENSE libexec/agent/openai.LICENSE
 
 # Remove only generated package output
 clean:
@@ -84,4 +84,5 @@ check: build test
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/run-checkpoint-lifecycle.test.ts --timeout 90000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/markdown-worker.test.ts --timeout 120000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000
+    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/finite-acp-lifecycle.test.ts --timeout 180000
     bun test test/native-agent-startup.test.ts --timeout 60000

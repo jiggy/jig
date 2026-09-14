@@ -1,0 +1,32 @@
+# ---------------------------------------------------------------------------- #
+#                                   COMMANDS                                   #
+# ---------------------------------------------------------------------------- #
+
+@default:
+    just --list
+
+# Compile the public transport and bundle the complete ordinary Flow runtime
+@build: clean
+    bun node_modules/typescript/bin/tsc -p tsconfig.json
+    bun build src/flow.ts --target=node --format=esm --outfile=dist/flow.js
+
+# Remove only this package's generated output before compiling
+clean:
+    #!/usr/bin/env bun
+    import { rm } from 'node:fs/promises';
+    await rm('dist', { recursive: true, force: true });
+
+# Build, then pack complete public dependency archives for source rebuilds
+[positional-arguments]
+@pack *args: build
+    bun scripts/pack.ts "$@"
+
+# ---------------------------------------------------------------------------- #
+#                                    CHECKS                                    #
+# ---------------------------------------------------------------------------- #
+
+[positional-arguments]
+@test *args:
+    bun test "$@"
+
+check: build test

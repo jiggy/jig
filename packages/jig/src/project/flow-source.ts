@@ -11,7 +11,7 @@ import {
 } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import type { ProjectSource } from './author.js'
-import { isAgentInvocation, nativeInvocationKind } from './invocation-slots.js'
+import { nativeInvocationKind, type InvocationSlots } from './invocation-slots.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -685,7 +685,10 @@ function assertProjectPathCollisions(paths: readonly string[]): void {
   }
 }
 
-export function isDirectRunEligible(inspected: InspectedPackage): boolean {
+export function isDirectRunEligible(
+  inspected: InspectedPackage,
+  resolved?: InvocationSlots,
+): boolean {
   if (
     inspected.mode !== 'run' ||
     inspected.invocation === undefined ||
@@ -693,7 +696,7 @@ export function isDirectRunEligible(inspected: InspectedPackage): boolean {
   )
     return false
   const uses = Object.entries(inspected.metadata.uses ?? {})
-  if (uses.length > 2) return false
+  if (resolved === undefined && uses.length > 2) return false
   const seen = new Set<string>()
   for (const [slot, declaration] of uses) {
     if (declaration.contract === undefined) return false
@@ -701,15 +704,14 @@ export function isDirectRunEligible(inspected: InspectedPackage): boolean {
     if (
       reference === undefined ||
       reference.contract.profile !== 'single' ||
-      seen.has(reference.contract.digest)
+      (resolved === undefined && seen.has(reference.contract.digest))
     )
       return false
     const { id, version } = reference.contract.descriptor
     if (id === undefined || version === undefined) return false
+    if (resolved?.[slot]?.kind === 'flow') continue
     const native = nativeInvocationKind({ id, version, digest: reference.contract.digest })
-    if (isAgentInvocation(native) && inspected.markdown !== undefined) return false
     if (
-      !isAgentInvocation(native) &&
       !(
         native === 'run-checkpoint' &&
         Object.values(inspected.invocation.attachments ?? {}).includes('read-write')

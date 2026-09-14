@@ -8,6 +8,7 @@ import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { isDirectRunEligible } from '../project/flow-source.js'
+import { resolveInvocationSlots } from '../project/invocation-slots.js'
 import {
   projectInvocationRequirements,
   type RunTargetIdentity,
@@ -4808,6 +4809,18 @@ function requirePackageProjection(
   let uses: PrivateLockPackage['uses']
   try {
     uses = projectInvocationRequirements(inspected, path)
+    // Routing is retained project policy, not a fact derivable from package
+    // bytes alone. Revalidate admitted eligibility against those exact routes;
+    // an ineligible automatic target may remain inert and be configured by a
+    // separate Binding. Never reread project defaults during reacquisition.
+    if (
+      expected.directRun &&
+      !isDirectRunEligible(
+        inspected,
+        expected.slots === undefined ? undefined : resolveInvocationSlots(uses, expected.slots),
+      )
+    )
+      throw new TypeError('retained direct target no longer qualifies')
   } catch {
     invalid(
       'ADMISSION_ARTIFACT_MISMATCH',
@@ -4816,8 +4829,9 @@ function requirePackageProjection(
   }
   const observed = {
     digest: inspected.digest,
-    directRun: isDirectRunEligible(inspected),
+    directRun: expected.directRun,
     uses,
+    ...(expected.slots === undefined ? {} : { slots: expected.slots }),
   } as unknown as JsonValue
   if (!sameBytes(canonicalJson(observed), canonicalJson(expected as unknown as JsonValue))) {
     invalid(

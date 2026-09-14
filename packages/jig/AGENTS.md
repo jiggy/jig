@@ -24,18 +24,25 @@ admitted FLOW packages.
   transfer, bounded direct delivery, isolated broadcast subscriptions and source
   lifetime. It is not an event bus or execution scheduler; package validation
   precedes implicit writer sealing.
+  A writer may declare `LAGGED` on close; check its held rights before recording
+  sticky source failure, settle pending sends and preserve earlier clean seals.
+  Producer declarations are observation evidence, not execution authority.
 - `test/` owns unit, integration, fault-injection, packed-package, and
   proof-host evidence. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
-- Native Agent Run imports `@jigging/agent-method` for preparation and result
-  interpretation. Agent Exchange exposes only bounded provider facts; Jig
-  retains source admission, resource authority and owned execution. Agent Run
-  and Exchange can route to exact ordinary Flow implementations. Skill content
-  is explicit caller data; consumers independently check dynamic results.
+- Agent Run resolves to an ordinary Flow through defaults or exact slots.
+  Jig retains source admission, resource grants and owned execution, not Agent
+  preparation or answer interpretation. Skill content is explicit caller data;
+  consumers independently check dynamic results.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, and `libexec/` are generated.
+- `patches/` owns version-pinned third-party dependency corrections, applied by
+  the root Bun `patchedDependencies` before the ordinary package build. Pi ACP
+  preserves RPC rejection and authoritative assistant stop reasons; never infer
+  success or failure from answer length. Update the notice and adapter regression
+  when changing its patch.
 - `scripts/pack.ts` stages the complete script-disabled npm compiler installation
   under private `libexec/authoring`, then archives the allowlisted package tree.
   Consumers do not resolve the authoring workspace package from a registry.
@@ -56,8 +63,9 @@ admitted FLOW packages.
   Run stdout is readable on terminals; redirection or `--json` selects exact
   JSON/NDJSON. Elapsed status uses terminal stderr only;
   cancellation requested and cleanup confirmed are separate facts. Acquisition
-  reports Jig runtime verification, Agent verification, and project-state recovery
-  as separate stages instead of hiding them behind a prerequisites label.
+  reports Jig runtime verification, operator resource configuration, and
+  project-state recovery separately. Capturing configuration does not verify a
+  native client; only targets selecting an ACP grant trigger that verification.
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required
   and unverifiable comparisons as unchecked. It does not evaluate source,
@@ -70,12 +78,17 @@ admitted FLOW packages.
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or
   execution; Runs use retained admitted bytes.
+- Project `defaults` selects existing named-contract Flow or Binding targets.
+  Linking fills only omitted matching requirements and retains effective routes
+  in each target; explicit routes win or fail. Include direct Flow routes in
+  graph, lock, review and admission checks. Execution never rereads the list.
 - Binding `attachments` selects project-relative read trees captured at review,
   using the existing portable attachment interface. Retained resources participate
   in review, lock and exact configuration identity; per-run mappings cannot
   override them. Keep this root-only profile and its bounds synchronized with
   `docs/jig/spec/project-policy.md`.
-- Binding slots select inline HTTP/command grants or optional named JSON policies.
+- Binding slots select inline HTTP, command or finite ACP grants, or optional
+  named JSON policies.
   `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
   New or changed delegations require explicit authority approval in the same
   retained plan; source edits cannot mutate active generations. Secrets remain
@@ -170,9 +183,9 @@ admitted FLOW packages.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
-- The Agent lifecycle suite accepts `AGENT_METHOD_PACKAGE_ARCHIVE` for the
-  unchanged ordinary method artifact; otherwise it packs the already-built
-  package without rebuilding runtime assets during contained execution.
+- Agent lifecycle suites accept `AGENT_METHOD_PACKAGE_ARCHIVE` and
+  `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged ordinary method artifacts; otherwise
+  they pack already-built packages without rebuilding during execution.
 - Test diagnostic usefulness as well as redaction, and human-facing output
   alongside its machine-readable contract.
 

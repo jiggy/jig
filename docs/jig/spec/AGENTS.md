@@ -13,19 +13,25 @@ descriptors.
   invocation behavior.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
-- `agent-run.md` owns the explicit-context Agent method interface;
-  `agent-exchange.md` owns the bounded prepared-prompt transport interface.
-  Their descriptor-relative channel closures remain exact. The reusable
-  method package offers Agent Run and mirrors Exchange; it owns method interpretation.
+- `agent-run.md` owns the explicit-context Agent method interface. Ordinary
+  HTTP and ACP method packages offer it and own answer interpretation. Their
+  descriptor-relative channel closures remain exact.
 - `contract-authoring.md` owns explicit generation, local freshness, bounded
   compiler operation, output ownership and interrupted-publication recovery.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient
   identity and explicit authority approval through the existing plan.
+- `project-sdk.md` and `project-policy.md` own exact project defaults and their
+  review-time resolution. Authoring and lock schemas mirror selected targets
+  and retained effective routes, not mutable runtime lookup.
 - `http-request.md` owns exact endpoint policy and requests,
-  private bearer delivery and finite contained-worker settlement. Its descriptor
+  optional JSON/1 response decoding, explicit byte ceilings above unchanged
+  defaults, private bearer delivery and finite contained-worker settlement. Its descriptor
   is a native invocation companion, not a FLOW-wide resource model.
-- `channels.md` owns Jig's direct/broadcast channel support, local limits, native update
-  projection and installed NDJSON output. `contracts/acp-public-updates.json`
+- `finite-acp.md` owns the finite native resource grant, exact request/response
+  channel bundle, credential separation and independently enforced dispatch
+  and cleanup. Ordinary packages own Agent dialogue and answer interpretation.
+- `channels.md` owns Jig's direct/broadcast channel support, local limits and
+  installed NDJSON output. `contracts/acp-public-updates.json`
   defines the exact optional Agent update meaning, not raw ACP access.
 
 ## Local Contracts

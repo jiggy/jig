@@ -9,7 +9,7 @@ export const CHANNEL_LIMITS = Object.freeze({
   sources: 16,
   receivers: 16,
   itemBytes: 64 * 1024,
-  sourceBytes: 8 * 1024 * 1024,
+  sourceBytes: 64 * 1024 * 1024,
   bufferedItems: 16,
   bufferedBytes: 256 * 1024,
   pendingSends: 16,

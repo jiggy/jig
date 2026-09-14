@@ -14,9 +14,10 @@ makes usable control an observable requirement;
    Name stages in ordinary language. Internal lifecycle and implementation
    terms appear only when needed to understand or repair a problem.
 2. **Stable progress.** Acquisition distinguishes Jig runtime verification,
-   Agent configuration/runtime verification, and opening project state with
-   recovery checks. These labels describe actual work, not a generic prerequisites
-   wait.
+   preparing operator resource configuration, and opening project state with
+   recovery checks. Native runtime verification occurs only when a target selects
+   an ACP resource; capturing configuration must not imply that a client was
+   verified. These labels describe actual work, not a generic prerequisites wait.
    Interactive terminal stderr has one active line with
    elapsed time. Preserve completed stages; never mark a failed or merely
    departed stage complete. Update waiting time in place, not by appending

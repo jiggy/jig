@@ -104,7 +104,7 @@ export function buildPrivateActivationRequests(
         package: flow.package,
         entrypoint: flow.entrypoint,
         settings: emptyRecord(),
-        slots: resolveInvocationSlots(flow.uses, {}),
+        slots: resolveInvocationSlots(flow.uses, flow.slots ?? {}),
         attachments: normalizeRequestAttachments(flow.invocation.attachments ?? {}),
       }),
     )
@@ -387,6 +387,7 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       entrypoint: flow.entrypoint ?? null,
       directRun: flow.directRun,
       uses: flow.uses,
+      ...(flow.slots === undefined ? {} : { slots: flow.slots }),
     })),
     bindings: project.bindings.map((binding) => ({
       kind: binding.kind,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 
-import { AGENT_RUN_CONTRACT_DIGEST } from '../src/internal/private-agent-run.js'
+import { AGENT_RUN_CONTRACT_DIGEST } from './fixtures/agent-contract.js'
 import { compileSchemaFile, SchemaDiagnostic } from '../src/schema/index.js'
 
 const schema = compileSchemaFile(
@@ -54,6 +54,20 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 describe('Jig lock/1 shape schema', () => {
   test('accepts the complete current lock shape', () => {
     expect(() => schema.validate(lock, 'INVALID_JIG_LOCK')).not.toThrow()
+  })
+
+  test('describes retained ordinary routes on a direct Flow without admitting grants', () => {
+    const value = changed(lock, (item) => {
+      item.packages['flows/direct'].slots = { agent: { kind: 'binding', id: 'configured' } }
+    })
+    expect(() => schema.validate(value, 'INVALID_JIG_LOCK')).not.toThrow()
+    const grant = changed(value, (item) => {
+      item.packages['flows/direct'].slots.agent = {
+        kind: 'grant',
+        policy: { kind: 'command', run: 'index.ts' },
+      }
+    })
+    expect(() => schema.validate(grant, 'INVALID_JIG_LOCK')).toThrow(SchemaDiagnostic)
   })
 
   test('accepts explicit uncontracted slots and arbitrary exact invocation requirements', () => {

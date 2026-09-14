@@ -54,16 +54,18 @@ test('the shared owner directory rejects exposed permissions and symlinks', asyn
   }
 })
 
-test('HTTP and command ownership no longer import the Agent controller', async () => {
+test('HTTP and command ownership remain independent of the finite ACP controller', async () => {
   const source = await readFile(
     new URL('../src/internal/root-contained-effect-controller.ts', import.meta.url),
     'utf8',
   )
   expect(source).toContain("from './invocation-context.js'")
-  expect(source).not.toContain("from './root-agent-run-controller.js'")
+  expect(source).not.toContain("from './root-finite-acp-controller.js'")
   const context = await readFile(
     new URL('../src/internal/invocation-context.ts', import.meta.url),
     'utf8',
   )
-  expect(context).not.toMatch(/from ['"].*(?:agent-provider|agent-run-controller|acp-agent-client)/)
+  expect(context).not.toMatch(
+    /from ['"].*(?:acp-agent-provider|finite-acp-controller|finite-acp-resource)/,
+  )
 })

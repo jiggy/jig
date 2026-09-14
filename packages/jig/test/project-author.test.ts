@@ -40,6 +40,22 @@ describe('Jig project authoring SDK/1', () => {
     expect(() => defineBinding(binding as never)).toThrow()
   })
 
+  test('captures canonical default target selections without resolving their contracts', () => {
+    const defaults = ['flow:./flows/reviewer', 'binding:agent']
+    const project = defineJig({ defaults })
+    defaults[0] = 'binding:changed'
+    expect(project).toEqual({ defaults: ['binding:agent', 'flow:flows/reviewer'] })
+    expect(Object.isFrozen(project.defaults)).toBeTrue()
+    expect(normalizeJigDefinition(project)).toEqual(project)
+    expect(defineJig({ defaults: [] })).toEqual({ defaults: [] })
+    expect(defineJig({})).toEqual({})
+  })
+
+  test('accepts the bounded default-selection limit', () => {
+    const defaults = Array.from({ length: 256 }, (_, index) => `binding:worker-${index}`)
+    expect(defineJig({ defaults }).defaults).toHaveLength(256)
+  })
+
   test('captures exact child Flow and Binding selectors', () => {
     const slots = { question: 'flow:./flows/answer-question', bug: 'binding:handle-bug' }
     const binding = defineBinding({ package: './flows/router', slots })
@@ -56,6 +72,33 @@ describe('Jig project authoring SDK/1', () => {
   for (const [name, action] of [
     ['unknown project field', () => defineJig({ extra: true } as never)],
     ['undefined optional', () => defineJig({ flows: undefined } as never)],
+    ['undefined defaults', () => defineJig({ defaults: undefined } as never)],
+    ['non-array defaults', () => defineJig({ defaults: 'binding:agent' } as never)],
+    ['non-string default', () => defineJig({ defaults: [3] } as never)],
+    ['plain default path', () => defineJig({ defaults: ['flows/agent'] })],
+    ['default grant', () => defineJig({ defaults: ['grant:agent'] })],
+    ['native default', () => defineJig({ defaults: ['agent:worker'] })],
+    ['invalid default Binding', () => defineJig({ defaults: ['binding:Bad'] })],
+    ['escaping default path', () => defineJig({ defaults: ['flow:../agent'] })],
+    [
+      'duplicate default targets',
+      () => defineJig({ defaults: ['binding:agent', 'binding:agent'] }),
+    ],
+    [
+      'normalized duplicate default targets',
+      () => defineJig({ defaults: ['flow:./flows/agent', 'flow:flows/agent'] }),
+    ],
+    [
+      'spoofed default target',
+      () => defineJig({ defaults: [{ kind: 'binding', id: 'agent' }] } as never),
+    ],
+    [
+      'oversized defaults',
+      () =>
+        defineJig({
+          defaults: Array.from({ length: 257 }, (_, index) => `binding:worker-${index}`),
+        }),
+    ],
     ['empty discovery', () => discover([])],
     ['glob root', () => discover('./flows/*')],
     ['escaping package', () => defineBinding({ package: '../flow' })],
@@ -111,6 +154,24 @@ describe('Jig project authoring SDK/1', () => {
     settings.nested.enabled = false
     expect(binding.settings).toEqual({ nested: { enabled: true } })
     expect(Object.isFrozen(binding.settings.nested)).toBeTrue()
+  })
+
+  test('rejects accessor-backed and nonordinary default selections without invoking them', () => {
+    let invoked = false
+    const accessor = Object.defineProperty(['binding:agent'], '0', {
+      get() {
+        invoked = true
+        return 'binding:changed'
+      },
+      enumerable: true,
+    })
+    const extended = Object.assign(['binding:agent'], { extra: true })
+    class Defaults extends Array<string> {}
+    for (const defaults of [accessor, new Array(1), extended, new Defaults('binding:agent')]) {
+      expect(() => defineJig({ defaults })).toThrow()
+      expect(() => normalizeJigDefinition({ defaults })).toThrow()
+    }
+    expect(invoked).toBeFalse()
   })
 
   test('preserves prototype-sensitive JSON member names', () => {

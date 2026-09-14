@@ -18,6 +18,7 @@ import { type GrantedSlot, type GrantPolicy, grantName, normalizeGrant } from '.
 import {
   type InvocationIdentity,
   type InvocationRequirement,
+  type InvocationSlots,
   isHostOnlyInvocationId,
   resolveInvocationSlots,
   sameInvocationIdentity,
@@ -46,6 +47,7 @@ export interface PackageProjectInput {
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly InjectedBindingDeclaration[]
   readonly grants?: Readonly<Record<string, GrantPolicy>>
+  readonly defaults?: readonly string[]
 }
 
 export interface LinkedFlow {
@@ -58,6 +60,8 @@ export interface LinkedFlow {
   readonly offeredContract?: InvocationIdentity
   readonly entrypoint?: InspectedPackage['entrypoint']
   readonly directRun: boolean
+  /** Ordinary routes resolved from project defaults; absent when empty. */
+  readonly slots?: Readonly<Record<string, RunTargetIdentity>>
 }
 
 export type RunTargetIdentity =
@@ -105,7 +109,12 @@ export function linkPackageProject(
   }
   const root = readClosedRecord(
     input,
-    ['flows', 'bindings', ...(input && Object.hasOwn(input, 'grants') ? ['grants'] : [])],
+    [
+      'flows',
+      'bindings',
+      ...(input && Object.hasOwn(input, 'grants') ? ['grants'] : []),
+      ...(input && Object.hasOwn(input, 'defaults') ? ['defaults'] : []),
+    ],
     'package project',
   )
   const grantValues = root.grants === undefined ? {} : snapshotJsonObject(root.grants, 'grants')
@@ -120,12 +129,60 @@ export function linkPackageProject(
     ),
   )
   const budget = new WorkBudget()
-  const flows = prepareFlows(readBoundedArray(root.flows, 'flows'), budget)
-  const flowByPath = new Map(flows.map((flow) => [flow.value.provenance.projectPath, flow]))
-  const preparedBindings = prepareBindings(
+  let flows = prepareFlows(readBoundedArray(root.flows, 'flows'), budget)
+  let flowByPath = new Map(flows.map((flow) => [flow.value.provenance.projectPath, flow]))
+  let preparedBindings = prepareBindings(
     readBoundedArray(root.bindings, 'bindings'),
     flowByPath,
     budget,
+  )
+  const declaredBindingById = new Map(preparedBindings.map((binding) => [binding.id, binding]))
+  const defaults = prepareDefaults(root.defaults, flowByPath, declaredBindingById)
+  flows = flows.map((flow) => {
+    let slots: Readonly<Record<string, RunTargetIdentity>> = {}
+    let resolved: InvocationSlots | undefined
+    try {
+      slots = defaultSlots(flow.value.uses, {}, defaults, flow.value.provenance.projectPath)
+      resolved = resolveInvocationSlots(flow.value.uses, slots)
+    } catch (error) {
+      // An ordinary package with unsatisfied dependencies can still be configured
+      // through an explicit Binding. An incompatible default never reverts to
+      // native authority for the automatically derived direct target.
+      if (
+        !(error instanceof TypeError) &&
+        !(error instanceof CheckError && error.code === 'PROJECT_DEFAULT_INTERFACE_MISMATCH')
+      )
+        throw error
+    }
+    // A default implementation may itself consume the same interface through
+    // an explicitly configured backend. Its unconfigured direct identity must
+    // not select itself or veto that valid Binding's separate configuration.
+    const selfDefault = Object.values(slots).some((target) => {
+      const path =
+        target.kind === 'flow'
+          ? target.path
+          : declaredBindingById.get(target.id)?.definition.package
+      return path === flow.value.provenance.projectPath
+    })
+    const directRun =
+      !selfDefault &&
+      resolved !== undefined &&
+      isDirectRunEligible(flow.inspected, Object.keys(slots).length === 0 ? undefined : resolved)
+    return Object.freeze({
+      inspected: flow.inspected,
+      value: Object.freeze({
+        ...flow.value,
+        directRun,
+        ...(directRun && Object.keys(slots).length > 0 ? { slots } : {}),
+      }),
+    })
+  })
+  flowByPath = new Map(flows.map((flow) => [flow.value.provenance.projectPath, flow]))
+  preparedBindings = preparedBindings.map((binding) =>
+    Object.freeze({
+      ...binding,
+      flow: flowByPath.get(binding.definition.package)!,
+    }),
   )
   const activationTargetCount =
     preparedBindings.length + flows.filter(({ value }) => value.directRun).length
@@ -136,16 +193,64 @@ export function linkPackageProject(
     )
   }
   const bindingById = new Map(preparedBindings.map((binding) => [binding.id, binding]))
+  for (const { target } of defaults.values()) {
+    const flow =
+      target.kind === 'flow' ? flowByPath.get(target.path)! : bindingById.get(target.id)!.flow
+    if (
+      Object.keys(flow.inspected.invocation?.attachments ?? {}).length > 0 ||
+      (target.kind === 'flow' && !flow.value.directRun)
+    )
+      invalid(
+        'PROJECT_DEFAULT_UNAVAILABLE',
+        'default must select an invokable Flow without root-only attachments',
+        'jig.ts',
+        '/defaults',
+      )
+  }
   const value = Object.freeze({
     flows: Object.freeze(flows.map((flow) => flow.value)),
     bindings: Object.freeze(
-      preparedBindings.map((binding) => linkBinding(binding, flowByPath, bindingById, grants)),
+      preparedBindings.map((binding) =>
+        linkBinding(binding, flowByPath, bindingById, grants, defaults),
+      ),
     ),
   })
   // Inspect the complete linked graph, not only each immediate target. This
   // bounds every possible invocation path before any package is admitted.
-  validateChildGraph(new Map(value.bindings.map((binding) => [binding.id, binding])), (units) =>
-    budget.consume(units),
+  for (const flow of flows) {
+    if (!flow.value.directRun) continue
+    linkFlowSlots(
+      {
+        label: `Flow ${flow.value.provenance.projectPath}`,
+        path: flow.value.provenance.projectPath,
+        packagePath: flow.value.provenance.projectPath,
+        uses: flow.value.uses,
+        selectors: Object.fromEntries(
+          Object.entries(flow.value.slots ?? {}).map(([slot, target]) => [
+            slot,
+            targetSelector(target),
+          ]),
+        ),
+      },
+      flowByPath,
+      bindingById,
+      grants,
+    )
+  }
+  validateChildGraph(
+    new Map(value.bindings.map((binding) => [binding.id, binding])),
+    new Map(
+      value.flows
+        .filter((flow) => flow.directRun)
+        .map((flow) => [
+          flow.provenance.projectPath,
+          {
+            packagePath: flow.provenance.projectPath,
+            slots: flow.slots ?? {},
+          },
+        ]),
+    ),
+    (units) => budget.consume(units),
   )
   authenticPackageProjects.add(value)
   return value
@@ -374,14 +479,108 @@ function prepareBindings(
   return Object.freeze(bindings)
 }
 
+interface DefaultTarget {
+  readonly target: RunTargetIdentity
+  readonly contract: InvocationIdentity
+}
+
+function prepareDefaults(
+  value: unknown,
+  flows: ReadonlyMap<string, PreparedFlow>,
+  bindings: ReadonlyMap<string, PreparedBinding>,
+): ReadonlyMap<string, DefaultTarget> {
+  const selectors = value === undefined ? [] : readBoundedArray(value, 'defaults')
+  if (selectors.length > 256) invalid('PROJECT_DEFAULT_LIMIT', 'defaults exceed 256 targets')
+  const defaults = new Map<string, DefaultTarget>()
+  for (const selector of selectors) {
+    const target = parseRunTargetSelector(selector, 'default')
+    const flow = target.kind === 'flow' ? flows.get(target.path) : bindings.get(target.id)?.flow
+    if (flow === undefined)
+      invalid(
+        'PROJECT_DEFAULT_MISSING',
+        `default selects unknown target ${selector}`,
+        'jig.ts',
+        '/defaults',
+      )
+    const contract = flow.value.offeredContract
+    if (contract === undefined || isHostOnlyInvocationId(contract.id))
+      invalid(
+        'PROJECT_DEFAULT_CONTRACT',
+        'default must offer a named ordinary Flow contract',
+        'jig.ts',
+        '/defaults',
+      )
+    if (defaults.has(contract.id))
+      invalid(
+        'PROJECT_DEFAULT_CONFLICT',
+        `more than one default offers ${contract.id}`,
+        'jig.ts',
+        '/defaults',
+      )
+    defaults.set(contract.id, Object.freeze({ target, contract }))
+  }
+  return defaults
+}
+
+/** Resolve meaning at review, never from mutable project settings at execution. */
+function defaultSlots(
+  uses: LinkedFlow['uses'],
+  explicit: NonNullable<PackageBindingInput['slots']>,
+  defaults: ReadonlyMap<string, DefaultTarget>,
+  path: string,
+): Readonly<Record<string, RunTargetIdentity>> {
+  const slots: Record<string, RunTargetIdentity> = Object.create(null)
+  for (const [slot, required] of Object.entries(uses)) {
+    if (Object.hasOwn(explicit, slot) || required.id === undefined) continue
+    const selected = defaults.get(required.id)
+    if (selected === undefined) continue
+    if (!sameInvocationIdentity(required, selected.contract))
+      invalid(
+        'PROJECT_DEFAULT_INTERFACE_MISMATCH',
+        `default for ${required.id} does not match slot ${slot}'s exact contract`,
+        path,
+        `/uses/${pointerToken(slot)}`,
+      )
+    slots[slot] = selected.target
+  }
+  return Object.freeze(slots)
+}
+
+function targetSelector(target: RunTargetIdentity): string {
+  return target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
+}
+
 function linkBinding(
   prepared: PreparedBinding,
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   grants: Readonly<Record<string, GrantPolicy>>,
+  defaults: ReadonlyMap<string, DefaultTarget>,
 ): LinkedPackageBinding {
   const { id, declarationPath, definition } = prepared
-  const slots = linkFlowSlots(prepared, flowByPath, bindingById, grants)
+  const selectedDefaults = defaultSlots(
+    prepared.flow.value.uses,
+    definition.slots,
+    defaults,
+    declarationPath,
+  )
+  const slots = linkFlowSlots(
+    {
+      label: `Binding ${id}`,
+      path: declarationPath,
+      packagePath: definition.package,
+      uses: prepared.flow.value.uses,
+      selectors: {
+        ...Object.fromEntries(
+          Object.entries(selectedDefaults).map(([slot, target]) => [slot, targetSelector(target)]),
+        ),
+        ...definition.slots,
+      },
+    },
+    flowByPath,
+    bindingById,
+    grants,
+  )
   try {
     resolveInvocationSlots(prepared.flow.value.uses, slots)
   } catch (error) {
@@ -401,14 +600,20 @@ function linkBinding(
 }
 
 function linkFlowSlots(
-  binding: PreparedBinding,
+  owner: {
+    label: string
+    path: string
+    packagePath: string
+    uses: LinkedFlow['uses']
+    selectors: PackageBindingInput['slots']
+  },
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   grants: Readonly<Record<string, GrantPolicy>>,
 ): Readonly<Record<string, RunTargetIdentity | GrantedSlot>> {
-  const { id: bindingId, declarationPath, definition } = binding
+  const { label, path: declarationPath, packagePath } = owner
   const slots: Record<string, RunTargetIdentity | GrantedSlot> = Object.create(null)
-  for (const [name, selector] of Object.entries(definition.slots)) {
+  for (const [name, selector] of Object.entries(owner.selectors ?? {})) {
     const pointer = `/slots/${pointerToken(name)}`
     if (typeof selector !== 'string' || selector.startsWith('grant:')) {
       const resourceName = typeof selector === 'string' ? grantName(selector.slice(6)) : undefined
@@ -433,15 +638,15 @@ function linkFlowSlots(
     if (target === undefined) {
       invalid(
         'PROJECT_BINDING_SLOT_MISSING',
-        `Binding ${bindingId} slot ${name} selects unknown target ${selector}`,
+        `${label} slot ${name} selects unknown target ${selector}`,
         declarationPath,
         pointer,
       )
     }
-    if (target.value.provenance.projectPath === definition.package) {
+    if (target.value.provenance.projectPath === packagePath) {
       invalid(
         'PROJECT_BINDING_SLOT_RECURSIVE',
-        `Binding ${bindingId} slot ${name} selects its own Flow package`,
+        `${label} slot ${name} selects its own Flow package`,
         declarationPath,
         pointer,
       )
@@ -449,7 +654,7 @@ function linkFlowSlots(
     if (Object.keys(target.inspected.invocation?.attachments ?? {}).length !== 0) {
       invalid(
         'PROJECT_BINDING_SLOT_ATTACHMENTS_UNSUPPORTED',
-        `Binding ${bindingId} slot ${name} requires root-only file attachments`,
+        `${label} slot ${name} requires root-only file attachments`,
         declarationPath,
         pointer,
       )
@@ -457,12 +662,12 @@ function linkFlowSlots(
     if (identity.kind === 'flow' && !target.value.directRun) {
       invalid(
         'PROJECT_BINDING_SLOT_NOT_DIRECT',
-        `Binding ${bindingId} slot ${name} must select a direct Flow target or configured Binding`,
+        `${label} slot ${name} must select a direct Flow target or configured Binding`,
         declarationPath,
         pointer,
       )
     }
-    const expected = binding.flow.value.uses[name]
+    const expected = owner.uses[name]
     if (
       expected?.id !== undefined &&
       (isHostOnlyInvocationId(expected.id) ||

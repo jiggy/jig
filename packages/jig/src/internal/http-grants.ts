@@ -11,6 +11,7 @@ import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 export {
   type HttpGrant,
   HTTP_LIMITS,
+  HTTP_MAX_LIMITS,
   HttpGrantError,
 } from '../project/grants.js'
 

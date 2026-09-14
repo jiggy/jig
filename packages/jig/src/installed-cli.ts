@@ -106,7 +106,7 @@ async function runPrivateInstalledCli(
         executablePath,
         installedCliPath,
       })
-      let selectedHost: Awaited<ReturnType<typeof openPrivateInstalledBunHost>> | undefined
+
       if (recovery !== undefined) {
         delete process.env.JIG_PRIVATE_FILE_RECOVERY
         const installedHost = await openPrivateInstalledBunHost(
@@ -122,9 +122,7 @@ async function runPrivateInstalledCli(
       }
       const host: PrivateCliCommandHost = Object.freeze({
         ...(delivery === undefined ? {} : { delivery }),
-        get agentUnavailableHint() {
-          return selectedHost?.agentUnavailableHint
-        },
+
         acquire: async (
           project: string,
           options?: Parameters<PrivateCliCommandHost['acquire']>[1],
@@ -139,26 +137,7 @@ async function runPrivateInstalledCli(
               ...(options?.chooseAgent === undefined ? {} : { choose: options.chooseAgent }),
             },
           )
-          selectedHost = installedHost
-          const noticeAgent = () => {
-            if (arguments_[0] !== 'review') return
-            const selected = installedHost.agentExecutable
-            const provider = installedHost.agentProvider
-            const quote = (value: string) =>
-              JSON.stringify(value).replace(
-                /[\u007f-\uffff]/g,
-                (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`,
-              )
-            if (selected !== undefined)
-              options?.onNotice?.(
-                `Selected Agent:\n\n  Client: ${selected.client}\n  Executable: ${quote(selected.path)}\n\n`,
-              )
-            else if (provider?.kind === 'private-openai-agent-provider/1')
-              options?.onNotice?.(
-                `Selected Agent:\n\n  Client: API endpoint (final result only)\n  Endpoint: ${quote(provider.baseURL)}\n  Model: ${quote(provider.model)}\n\n`,
-              )
-          }
-          noticeAgent()
+
           options?.onStage?.('Opening project state and checking recovery')
           return openPrivateProjectSession({
             directory: project,

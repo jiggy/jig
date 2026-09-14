@@ -167,7 +167,6 @@ export interface PrivateCliCommandHost {
     },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
-  readonly agentUnavailableHint?: string | undefined
   pause?(milliseconds: number): Promise<void>
 }
 
@@ -1273,7 +1272,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_MEMBER_COLLISION:
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
-        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings and grants',
+        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants and defaults',
       PROJECT_EVALUATION_LIMIT:
         'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
       PROJECT_DECLARATION_INVALID:
@@ -1302,20 +1301,19 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'workspace inputs changed during capture; retry review after the edits settle',
       PROJECT_HTTP_UNAVAILABLE:
         'configure the selected slot grants and bearer environment variables before review',
+      PROJECT_ACP_UNAVAILABLE:
+        'configure the native client named in the affected ACP grant: its operator executable, model and authentication; then retry jig review',
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_BUN_LOCK_STALE:
         'package.json and bun.lock disagree; update the supplied lock explicitly',
     }
     const hint =
       candidateHints[error.diagnostic?.code ?? ''] ??
-      (error.diagnostic?.code === 'PROJECT_AGENT_UNAVAILABLE'
-        ? (runtime.host.agentUnavailableHint ??
-          'configure the host Agent before review; check exported credentials, model, and selected client')
-        : error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
-          ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
-          : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
-            ? 'locked dependencies could not be prepared; check registry access and package availability'
-            : undefined)
+      (error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
+        ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
+        : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
+          ? 'locked dependencies could not be prepared; check registry access and package availability'
+          : undefined)
     runtime.writeError(
       error.diagnostic !== undefined
         ? renderProjectDiagnostic(error, hint ?? projected.message)

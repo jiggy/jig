@@ -26,6 +26,7 @@ import {
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { checkPackageDirectory } from '../src/package/inspect.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
+import { writeOrdinaryAgent } from './fixtures/ordinary-agent.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
@@ -808,16 +809,15 @@ proofDescribe('private rootless project session', () => {
     }
   }, 180_000)
 
-  test('keeps unavailable Agent configuration out of capability-free review and Run', async () => {
+  test('keeps unavailable native clients out of resource-free review and Run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-agent-isolation-'))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     try {
       await writeAgentFreeProject(root)
       const host = await openPrivateInstalledBunHost(installedBunLocation, {
-        JIG_AGENT_CLIENT: 'codex',
         CODEX_PATH: '/missing/codex',
       })
-      expect(host.agentProvider).toBeUndefined()
+      expect(host.acpResources).toEqual({ kind: 'private-acp-resources/1' })
       session = await openPrivateProjectSession({ directory: root, host })
 
       const plan = await session.plan({ lockMode: 'update' })
@@ -1182,20 +1182,38 @@ proofDescribe('private rootless project session', () => {
   }, 300_000)
 
   agentProofTest(
-    'executes one contained Agent choice and exact child without retaining its key',
+    'executes one packed ordinary HTTP Agent choice and exact child without retaining its key',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-private-agent-router-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeAgentRouterProject(root)
+        const api = process.env.OPENAI_API ?? 'responses'
+        const model = process.env.OPENAI_MODEL
+        const credential = process.env.OPENAI_API_KEY
+        if ((api !== 'responses' && api !== 'chat-completions') || !model || !credential)
+          throw new Error(
+            'The opted-in HTTP Agent proof requires OPENAI_MODEL, OPENAI_API_KEY and a supported OPENAI_API',
+          )
+        const base = (process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '')
+        await writeOrdinaryAgent(root, {
+          url: `${base}/${api === 'responses' ? 'responses' : 'chat/completions'}`,
+          api,
+          model,
+          bearerEnv: 'OPENAI_API_KEY',
+          maxCompletionTokens: 4096,
+          default: true,
+        })
         session = await openPrivateProjectSession({
           directory: root,
-          host: await openPrivateInstalledBunHost(installedBunLocation),
+          host: await openPrivateInstalledBunHost(installedBunLocation, {
+            OPENAI_API_KEY: credential,
+          }),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable') throw new Error('Agent router did not produce a Plan')
         expect(plan.review.text).toContain('https://jig.md/contracts/agent-run')
-        await session.apply({ planDigest: plan.planDigest })
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
 
         const started = Date.now()
         const receipt = await session.rootAdministration.startRun({
@@ -1224,7 +1242,7 @@ proofDescribe('private rootless project session', () => {
         await session.close()
         session = undefined
         await expectNoChildResidue(root)
-        expect(await treeContains(root, process.env.OPENAI_API_KEY!)).toBeFalse()
+        expect(await treeContains(root, credential)).toBeFalse()
         await waitForRootlessCgroups(initialRootlessCgroups)
         await waitForRootlessTemporaryState(initialRootlessTemporaryState)
       } finally {
@@ -2631,7 +2649,7 @@ async function expectNoChildResidue(root: string): Promise<void> {
     directoryEntries(join(root, '.jig', 'private-root-linux-owners')),
   ])
   expect(materializations.filter((entry) => entry.startsWith('child-'))).toEqual([])
-  expect(owners.filter((entry) => entry.startsWith('c-') || entry.startsWith('a-'))).toEqual([])
+  expect(owners.filter((entry) => /^(c-|a-|x-)/.test(entry))).toEqual([])
 }
 
 async function treeContains(root: string, needle: string): Promise<boolean> {

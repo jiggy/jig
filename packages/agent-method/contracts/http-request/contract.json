@@ -5,7 +5,8 @@
   "input": {
     "type": "object",
     "properties": {
-      "body": {}
+      "body": {},
+      "response": { "const": "json" }
     },
     "required": [],
     "additionalProperties": false
@@ -24,10 +25,7 @@
             "minimum": 200,
             "maximum": 599
           },
-          "body": {
-            "type": "string",
-            "maxLength": 1048576
-          }
+          "body": {}
         },
         "required": ["status", "body"],
         "additionalProperties": false

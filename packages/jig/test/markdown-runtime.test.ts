@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { assertResponseSchema } from '@jigging/agent-method'
+import {
+  assertResponseSchema,
+  checkAgentResult,
+  prepareAgent,
+  type AgentCallInput,
+} from '@jigging/agent-method'
 import {
   type ChannelEndpoint,
   type FlowCall,
@@ -10,7 +15,6 @@ import {
   type RunResult,
 } from '@jigging/flow'
 import { markdownAgentContract } from '../src/internal/markdown-agent-contract.js'
-import { parseAgentRunInput, parseAgentRunResult } from '../src/internal/private-agent-run.js'
 import { INVOCATION_CONTRACT_SCHEMA, parseInvocationContract } from '../src/invocation-contract.js'
 import { compileMarkdown } from '../src/markdown/parser.js'
 import {
@@ -122,7 +126,7 @@ describe('finite Markdown runtime', () => {
     expect(calls).toBe(1)
   })
 
-  test('qualifies the actual decision request and result through the native Agent schema seam', async () => {
+  test('qualifies the actual decision request and result through the ordinary Agent method', async () => {
     const contract = markdownAgentContract()
     let calls = 0
     const result = await runMarkdown(
@@ -130,17 +134,21 @@ describe('finite Markdown runtime', () => {
       context(async (call) => {
         calls++
         reasoningContext(call)
-        const prepared = parseAgentRunInput(contract, call.input)
-        expect(prepared.input.responseSchema?.$schema).toBe(
-          'https://flow.jig.md/schemas/schema-1.json',
-        )
-        expect(() => assertResponseSchema(prepared.input.responseSchema!)).not.toThrow()
+        contract.schemas.get('/input')!.validate(call.input)
+        const input = call.input as unknown as AgentCallInput
+        const { skills, ...request } = input
+        prepareAgent(request, skills)
+        expect(input.responseSchema?.$schema).toBe('https://flow.jig.md/schemas/schema-1.json')
+        expect(() => assertResponseSchema(input.responseSchema!)).not.toThrow()
         const structured = finish('qualified')
         expect(
-          parseAgentRunResult(contract, prepared, {
-            outcome: 'done',
-            output: { text: '', structured },
-          }).output.structured,
+          checkAgentResult(
+            {
+              outcome: 'done',
+              output: { text: '', structured },
+            },
+            input.responseSchema,
+          ).output.structured,
         ).toEqual(structured)
         return decision(structured)
       }),

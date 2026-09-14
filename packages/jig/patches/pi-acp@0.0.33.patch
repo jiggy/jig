@@ -1,0 +1,78 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -780,6 +780,8 @@ var PiAcpSession = class {
+   // Used to map abort semantics to ACP stopReason.
+   // Applies to the currently running turn.
+   cancelRequested = false;
++  lastAssistantStop = null;
++  promptAccepted = Promise.resolve();
+   // Current in-flight turn (if any). Additional prompts are queued.
+   pendingTurn = null;
+   turnQueue = [];
+@@ -918,13 +920,15 @@ var PiAcpSession = class {
+   }
+   startTurn(t) {
+     this.cancelRequested = false;
++    this.lastAssistantStop = null;
+     this.inAgentLoop = false;
+     this.pendingTurn = { resolve: t.resolve, reject: t.reject };
+     this.emit({
+       sessionUpdate: "session_info_update",
+       _meta: { piAcp: { queueDepth: this.turnQueue.length, running: true } }
+     });
+-    this.proc.prompt(t.message, t.images).catch((err) => {
++    this.promptAccepted = this.proc.prompt(t.message, t.images);
++    this.promptAccepted.catch((err) => {
+       void this.flushEmits().finally(() => {
+         const authErr = maybeAuthRequiredError(err);
+         if (authErr) {
+@@ -946,6 +950,14 @@ var PiAcpSession = class {
+   handlePiEvent(ev) {
+     const type = String(ev.type ?? "");
+     switch (type) {
++      case "message_end": {
++        if (ev.message?.role === "assistant") {
++          const reason = ev.message.stopReason;
++          this.lastAssistantStop = ["stop", "length", "toolUse", "error", "aborted"].includes(reason)
++            ? reason : "error";
++        }
++        break;
++      }
+       case "message_update": {
+         const ame = ev.assistantMessageEvent;
+         if (ame?.type === "text_delta" && typeof ame.delta === "string") {
+@@ -1210,8 +1222,11 @@ var PiAcpSession = class {
+         break;
+       }
+       case "agent_settled": {
+-        void this.flushEmits().finally(() => {
+-          const reason = this.cancelRequested ? "cancelled" : "end_turn";
++        void this.promptAccepted.then(() => this.flushEmits()).then(() => {
++          const reason = this.cancelRequested || this.lastAssistantStop === "aborted" ? "cancelled"
++            : this.lastAssistantStop === "error" ? "error"
++            : this.lastAssistantStop === "length" ? "max_tokens"
++            : "end_turn";
+           this.pendingTurn?.resolve(reason);
+           this.pendingTurn = null;
+           this.inAgentLoop = false;
+@@ -1228,7 +1243,7 @@ var PiAcpSession = class {
+               _meta: { piAcp: { queueDepth: 0, running: false } }
+             });
+           }
+-        });
++        }).catch(() => {});
+         break;
+       }
+       default:
+@@ -2432,8 +2447,8 @@ var PiAcpAgent = class {
+       }
+     }
+     const result = await session.prompt(message, images);
+-    const stopReason = result === "error" ? session.wasCancelRequested() ? "cancelled" : "end_turn" : result;
+-    return { stopReason };
++    if (result === "error") throw RequestError3.internalError({}, "Pi prompt failed");
++    return { stopReason: result };
+   }
+   async cancel(params) {
+     const session = this.sessions.maybeGet(params.sessionId);

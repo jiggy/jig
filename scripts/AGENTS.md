@@ -19,9 +19,9 @@ operational baselines, and public-site assembly.
   calls the standard Python build frontend directly.
 - `test-release.sh` includes the authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
-  It also checks the shared Agent method and its native Exchange integration.
-  It freezes complete SDK, method and Jig archives through their package-owned
-  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
+  It also checks the shared Agent method and ordinary ACP package.
+  It freezes complete SDK, HTTP Agent, ACP Agent and Jig archives through their package-owned
+  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE` and
   `JIG_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes afterward.
   The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
   it installs the freshly packed SDK as a development dependency of

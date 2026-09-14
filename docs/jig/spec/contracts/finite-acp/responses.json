@@ -1,0 +1,92 @@
+{
+  "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+  "id": "https://jig.md/contracts/finite-acp-responses",
+  "version": "1.0.0",
+  "semantics": "Required direct responses for one host-authorized finite ACP conversation. Exactly one ready item precedes data. Ready describes non-secret reviewed configuration and an armed transport, not completed authentication or an Agent result. Data items frame host-validated and authority-filtered ACP responses and public updates using the same bounded framing as finite-acp-requests. Thoughts, tools, permissions, credentials and raw diagnostic fields are not forwarded. This stream is essential: loss or incomplete framing fails the resource, not merely observation. EOF is not successful execution; await the separate resource result and interpret the Agent result separately.",
+  "item": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "const": "ready"
+          },
+          "protocolVersion": {
+            "const": 1
+          },
+          "cwd": {
+            "const": "/work"
+          },
+          "configuration": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "configId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    }
+                  },
+                  "required": ["configId", "value"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "configId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "type": {
+                      "const": "boolean"
+                    },
+                    "value": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["configId", "type", "value"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "modeId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": ["kind", "protocolVersion", "cwd", "configuration"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "const": "data"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "end": {
+            "type": "boolean"
+          }
+        },
+        "required": ["kind", "text", "end"],
+        "additionalProperties": false
+      }
+    ]
+  }
+}

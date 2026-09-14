@@ -33,7 +33,7 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
 import {
   type PrivateDirectRunInstalledSupport,
@@ -78,9 +78,9 @@ import {
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
 import {
-  executePrivateRootAgentRun,
-  recoverPrivateRootAgentRunOwners,
-} from './root-agent-run-controller.js'
+  executePrivateRootFiniteAcp,
+  recoverPrivateRootFiniteAcpOwners,
+} from './root-finite-acp-controller.js'
 import {
   executePrivateContainedEffect,
   recoverPrivateContainedEffectOwners,
@@ -129,7 +129,7 @@ interface ChildInput {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
   readonly channels?: {
     readonly caller: ChannelParticipant
     readonly broker: ChannelBroker
@@ -226,7 +226,7 @@ async function executePreparedChild(
       installedSupport: input.installedSupport,
       backend: input.backend,
       httpGrants: input.httpGrants,
-      agentProvider: input.agentProvider,
+      acpResources: input.acpResources,
     })
   } catch {
     return failed('UNAVAILABLE', 'the admitted child recipe cannot be reproduced')
@@ -358,7 +358,14 @@ async function executePreparedChild(
         signal: input.signal,
       },
       { cancellationGraceMs: CANCELLATION_GRACE_MS },
-      specialistDispatcher(input, selected, effectiveDeadlineUnixMs, inspected, participant),
+      specialistDispatcher(
+        input,
+        selected,
+        effectiveDeadlineUnixMs,
+        inspected,
+        participant,
+        recipe,
+      ),
     ).run()
     const fence = await component.enforcement
     await releaseKnownChild(input, lifecycle, lease, fence)
@@ -448,6 +455,7 @@ function specialistDispatcher(
   parentDeadlineUnixMs: number,
   inspected: InspectedPackage,
   participant: ChannelParticipant | undefined,
+  recipe: PrivateDirectRunRecipe,
 ): RunHostOperationDispatcher {
   let active = false
   return {
@@ -505,12 +513,12 @@ function specialistDispatcher(
             signal,
           })
         }
-        if (input.agentProvider === undefined)
-          return failed('UNAVAILABLE', 'the admitted Agent provider is unavailable')
-        return await executePrivateRootAgentRun({
+        const provider = recipe.acp[call.slot]
+        if (provider === undefined)
+          return failed('UNAVAILABLE', 'the admitted finite ACP provider is unavailable')
+        const invocation = {
           ...input,
           httpGrants: input.httpGrants,
-          agentProvider: input.agentProvider,
           ...(participant === undefined || input.channels === undefined
             ? {}
             : { channels: { caller: participant, broker: input.channels.broker } }),
@@ -523,7 +531,8 @@ function specialistDispatcher(
           call,
           parentDeadlineUnixMs,
           signal,
-        })
+        }
+        return await executePrivateRootFiniteAcp({ ...invocation, provider })
       } finally {
         active = false
       }
@@ -673,7 +682,7 @@ async function recoverDescendants(
     },
   }
   await recoverPrivateRootFlowCallOwners(context)
-  await recoverPrivateRootAgentRunOwners(context)
+  await recoverPrivateRootFiniteAcpOwners(context)
   await recoverPrivateContainedEffectOwners(context)
 }
 

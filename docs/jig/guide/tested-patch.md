@@ -13,8 +13,10 @@ See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-[Configure an Agent](./agents.md) and inspect
-`issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
+[Choose an Agent](./agents.md), install its complete Flow artifact, and create
+`bindings/agent.ts` in the example. Its project default already selects that
+Binding. Inspect `issue.json`, `bindings/specialist.ts`, and
+`flows/project/cases.json`.
 After [workspace setup](dependencies.md#local-workspace-packages), run from the example directory:
 
 ```sh
@@ -105,14 +107,14 @@ The application accepts 16 UTF-8 files totaling 64 KiB and up to eight editable
 during capture, take an atomic Git snapshot, or filter secrets for you.
 
 In `bindings/specialist.ts`, name your existing Bun test files under
-`commands.tests.test` and CLI entrypoint under `commands.cli.run`.
+`slots.tests.test` and CLI entrypoint under `slots.cli.run`.
 Write independent cases in `flows/project/cases.json`: each has an ID,
 arguments, stdin, expected stdout/stderr, and exit code. Review again after
 changing either. Candidate dependencies must be source-local or supported
 Bun/Node built-ins; network and installation are unavailable.
 
-The repair leaf itself needs no attachment or child Flow. Another root can
-reuse it through an exact Binding with its own command policy and JSON cases.
+The repair specialist needs no attachment. Another root can reuse it through
+an exact Binding with its own Agent selection, command grants, and JSON cases.
 For application development, work in the repository's authoring directory:
 use the root workspace installation and run `bun test test` there. Those checks establish application
 policy, not model quality or a market advantage.

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { JsonValue } from '../src/json.js'
 import {
   ChannelBroker,
+  CHANNEL_LIMITS,
   type ChannelParticipant,
   type ResolvedChannelContract,
 } from '../src/run/channels.js'
@@ -234,7 +235,8 @@ describe('finite isolated broadcast channels', () => {
     const owner = new ChannelBroker().participant('root')
     const source = await owner.create({ delivery: 'broadcast' })
     const exactly64KiB = 'x'.repeat(64 * 1024 - 2)
-    for (let index = 0; index < 128; index++) await owner.send(source.send.endpoint, exactly64KiB)
+    for (let index = 0; index < CHANNEL_LIMITS.sourceBytes / CHANNEL_LIMITS.itemBytes; index++)
+      await owner.send(source.send.endpoint, exactly64KiB)
     await expect(owner.send(source.send.endpoint, 0)).rejects.toMatchObject({
       code: 'RESOURCE_EXHAUSTED',
     })

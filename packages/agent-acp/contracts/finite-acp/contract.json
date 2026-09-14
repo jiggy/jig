@@ -1,0 +1,49 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "id": "https://jig.md/contracts/finite-acp",
+  "version": "1.0.0",
+  "input": {
+    "type": "null"
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "const": "done"
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "exitCode": {
+            "type": ["integer", "null"]
+          },
+          "signal": {
+            "type": ["string", "null"]
+          },
+          "cleanup": {
+            "const": "complete"
+          },
+          "stopReason": {
+            "enum": ["exited", "closed"]
+          }
+        },
+        "required": ["exitCode", "signal", "cleanup", "stopReason"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "channels": {
+    "requests": {
+      "direction": "receive",
+      "required": true,
+      "contract": "./requests.json"
+    },
+    "responses": {
+      "direction": "send",
+      "required": true,
+      "contract": "./responses.json"
+    }
+  }
+}

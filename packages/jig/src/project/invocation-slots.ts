@@ -1,14 +1,9 @@
 import { isContractId, isContractVersion } from '../contract-identity.js'
 import {
-  AGENT_EXCHANGE_CONTRACT_DIGEST,
-  AGENT_EXCHANGE_CONTRACT_ID,
-  AGENT_EXCHANGE_CONTRACT_VERSION,
-} from '../internal/private-agent-exchange.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from '../internal/private-agent-run.js'
+  FINITE_ACP_CONTRACT_ID,
+  FINITE_ACP_CONTRACT_VERSION,
+  FINITE_ACP_CONTRACT_DIGEST,
+} from '../internal/private-finite-acp-contract.js'
 import {
   HTTP_REQUEST_CONTRACT_DIGEST,
   HTTP_REQUEST_CONTRACT_ID,
@@ -37,12 +32,7 @@ export interface InvocationIdentity {
 }
 
 export type InvocationRequirement = InvocationIdentity | Readonly<Record<string, never>>
-export type NativeInvocation =
-  | 'http-request'
-  | 'agent'
-  | 'agent-exchange'
-  | 'project-command'
-  | 'run-checkpoint'
+export type NativeInvocation = 'http-request' | 'project-command' | 'run-checkpoint' | 'finite-acp'
 export type InvocationSlot =
   | {
       readonly kind: 'flow'
@@ -58,20 +48,15 @@ export type InvocationSlot =
 export type InvocationSlots = Readonly<Record<string, InvocationSlot>>
 
 const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.freeze({
+  'finite-acp': Object.freeze({
+    id: FINITE_ACP_CONTRACT_ID,
+    version: FINITE_ACP_CONTRACT_VERSION,
+    digest: FINITE_ACP_CONTRACT_DIGEST,
+  }),
   'http-request': Object.freeze({
     id: HTTP_REQUEST_CONTRACT_ID,
     version: HTTP_REQUEST_CONTRACT_VERSION,
     digest: HTTP_REQUEST_CONTRACT_DIGEST,
-  }),
-  agent: Object.freeze({
-    id: AGENT_RUN_CONTRACT_ID,
-    version: AGENT_RUN_CONTRACT_VERSION,
-    digest: AGENT_RUN_CONTRACT_DIGEST,
-  }),
-  'agent-exchange': Object.freeze({
-    id: AGENT_EXCHANGE_CONTRACT_ID,
-    version: AGENT_EXCHANGE_CONTRACT_VERSION,
-    digest: AGENT_EXCHANGE_CONTRACT_DIGEST,
   }),
   'project-command': Object.freeze({
     id: PROJECT_COMMAND_CONTRACT_ID,
@@ -85,9 +70,19 @@ const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.fr
   }),
 })
 
-/** Both Agent interfaces use the same authenticated, bounded provider owner. */
-export function isAgentInvocation(native: NativeInvocation | undefined): boolean {
-  return native === 'agent' || native === 'agent-exchange'
+function grantInvocationKind(policy: GrantPolicy): NativeInvocation {
+  switch (policy.kind) {
+    case 'http':
+      return 'http-request'
+    case 'command':
+      return 'project-command'
+    case 'acp':
+      return 'finite-acp'
+  }
+}
+
+function isGrantedInvocation(native: NativeInvocation): boolean {
+  return native === 'http-request' || native === 'project-command' || native === 'finite-acp'
 }
 
 export function nativeInvocationKind(
@@ -99,9 +94,7 @@ export function nativeInvocationKind(
 }
 
 export function isHostOnlyInvocationId(id: string | undefined): boolean {
-  return Object.entries(NATIVE).some(
-    ([kind, identity]) => !isAgentInvocation(kind as NativeInvocation) && identity.id === id,
-  )
+  return Object.values(NATIVE).some((identity) => identity.id === id)
 }
 
 export function sameInvocationIdentity(
@@ -116,14 +109,14 @@ export function sameInvocationIdentity(
   )
 }
 
-/** Resolve only recognized native defaults. This does not qualify operator support. */
+/** Resolve an unrouted requirement set; only root checkpoint may be implicit. */
 export function defaultInvocationSlots(
   uses: Readonly<Record<string, InvocationRequirement>>,
 ): InvocationSlots {
   return resolveInvocationSlots(uses, {})
 }
 
-/** Explicit selections always win or fail; only omitted native requirements have defaults. */
+/** Resolve retained ordinary routes and explicit grants, with implicit root checkpoint only. */
 export function resolveInvocationSlots(
   uses: Readonly<Record<string, InvocationRequirement>>,
   targets: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>,
@@ -132,7 +125,7 @@ export function resolveInvocationSlots(
   for (const [name, target] of Object.entries(targets)) {
     const requirement = uses[name]
     if (target.kind === 'grant') {
-      const native = target.policy.kind === 'http' ? 'http-request' : 'project-command'
+      const native = grantInvocationKind(target.policy)
       if (requirement === undefined || !sameInvocationIdentity(requirement, NATIVE[native]))
         throw new TypeError('slot ' + name + ' requires the exact contract for its grant kind')
       slots[name] = Object.freeze({
@@ -152,7 +145,7 @@ export function resolveInvocationSlots(
   for (const [name, contract] of Object.entries(uses)) {
     if (Object.hasOwn(slots, name)) continue
     const native = nativeInvocationKind(contract)
-    if (native === undefined || native === 'http-request' || native === 'project-command')
+    if (native === undefined || isGrantedInvocation(native))
       throw new TypeError(`slot ${name} requires an explicit matching Flow, Binding, or grant`)
     slots[name] = Object.freeze({ kind: 'native', native, contract: NATIVE[native] })
   }
@@ -216,18 +209,17 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
       if (
         native === undefined ||
         slot.native !== native ||
-        (usedNative.has(native) && native !== 'http-request' && native !== 'project-command')
+        (usedNative.has(native) && !isGrantedInvocation(native))
       )
         throw new TypeError(
           `slot ${name} does not select one distinct supported native implementation`,
         )
       usedNative.add(native)
-      const requiresGrant = native === 'http-request' || native === 'project-command'
+      const requiresGrant = isGrantedInvocation(native)
       const grant = slot.grant === undefined ? undefined : normalizeGrant(slot.grant)
       if (
         requiresGrant !== (grant !== undefined) ||
-        (grant !== undefined &&
-          (grant.kind === 'http' ? native !== 'http-request' : native !== 'project-command'))
+        (grant !== undefined && grantInvocationKind(grant) !== native)
       )
         throw new TypeError('slot ' + name + ' requires its matching resource grant')
       if (grant !== undefined) validateGrantPolicy(grant)
@@ -262,7 +254,7 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
       })
     } else throw new TypeError(`slot ${name} has an unknown implementation kind`)
   }
-  for (const native of ['http-request', 'project-command']) {
+  for (const native of ['http-request', 'project-command', 'finite-acp']) {
     if (
       Object.values(output).filter((slot) => slot.kind === 'native' && slot.native === native)
         .length > 8

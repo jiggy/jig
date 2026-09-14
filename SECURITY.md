@@ -32,23 +32,27 @@ lasts only for that review; `--yes` is separate Run-admission approval. Known
 unsupported root declarations are rejected first; the resolved graph must
 pass the usual source/integrity policy before frozen installation and
 admission. Bun sees only manifest and lock during installation, not other
-authored configuration or foreign lockfiles. The Agent worker
-inherits networking only for an admitted native Agent `flow/call`. The host may use
-the official OpenAI JavaScript SDK against an operator-selected HTTPS endpoint
-with either the `responses` or `chat-completions` wire shape, or run native
-Codex, Claude Code, or Pi through one private ACP mechanism. Client paths,
-selected APIs, endpoints, models, and credentials are trusted host
-configuration, not FLOW values. Jig supplies no default model.
+authored configuration or foreign lockfiles. An ordinary API-backed Agent
+prepares its request as data and uses an exact reviewed HTTP grant; the
+separate HTTP owner holds the credential and network authority. Native Codex,
+Claude Code, or Pi clients inherit networking only inside their admitted ACP
+execution scope. Their executable, authentication and launch policy remain
+operator configuration. Jig supplies no default model.
 
-The selected Agent scope receives its bounded credential projection,
-instructions, and selected skill text through a transient private channel. A
+The selected native-client scope receives its bounded credential projection
+through a transient private channel. Instructions and selected Skill text
+arrive through the ordinary Agent Flow's admitted resource call. A
 native ACP client starts with an empty work directory. Jig provides it no
 filesystem, terminal, or MCP client capability, no MCP servers, and no
-persistent permission. Fixed profiles disable client tools, extensions,
-plugins, and native skills. The secret, instructions, and skills do not enter
-the Flow environment, launch arguments, Plans, locks, or retained Run state;
-non-secret client, selected API, endpoint, model, and exact support identities
-are reviewed as provider identity but are not exposed to the Flow. Jig exposes
+persistent permission. Claude and Pi profiles disable their tools; Codex uses
+its qualified constrained workspace mode, with managed restrictions protecting
+projected authentication. This is not a universal claim that native tools are
+disabled. Profiles also restrict extensions, plugins and native Skills as
+specified in [Finite ACP](docs/jig/spec/finite-acp.md). Secrets never enter Flow environments, launch
+arguments, Plans, locks, or retained Run state. Instructions and selected Skills
+are explicit caller data, not secret authority or host-attested provenance.
+Non-secret native client, model, and exact support identities
+are reviewed as provider identity. Jig exposes
 no public provider SPI or registry.
 
 The HTTP Request worker receives one reviewed exact URL/method grant and its
@@ -70,7 +74,7 @@ Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.
 
 The bundled Markdown interpreter runs inside that same keyless Flow envelope.
-It selects only captured original recipes and calls the reviewed native Agent
+It selects only captured original recipes and calls an admitted ordinary Agent
 through the reserved `markdown-agent` route. Model decisions, resource content
 and `allowed-tools` text cannot create routes, credentials or host permissions.
 Raw resource reads are limited to captured package bytes. Reasoning requests
@@ -123,16 +127,19 @@ A Binding child Flow or effect runs in a separate scope while its parent
 remains live. The root permits two sibling Flows or one exclusive effect;
 each child permits one Flow or effect, within two child Flow levels. Before
 dispatch, durable root ownership reserves the longest admitted Flow path in
-each branch, including its largest possible effect. A two-level branch excludes
-a concurrent second branch under the unchanged aggregate ceilings. Reservations last
+each branch, including its largest possible effect. Two simultaneous two-level
+branches fit, each with its own effect. Reservations last
 through confirmed fencing and cleanup, even after execution fails.
 
-At most five payload/provider envelopes fit the fixed root aggregate ceiling:
-1,280 MiB memory, 448 tasks, and 2.5 CPU cores (100 ms quota period). The table's
+At most seven payload/provider envelopes fit the fixed root aggregate ceiling:
+the root, four child Flows, and two effects. The budget is 1,792 MiB memory,
+576 tasks, and 3.5 CPU cores (100 ms quota period). The table's
 individual kernel ceilings stay unchanged and their reserved sum cannot exceed
 that budget. Unused reservations are not borrowed. Trusted coordinators and
 supervisors are outside this budget; this is not combined utilization accounting
 or fair-share scheduling. Every child's deadline is capped by the root deadline.
+The fixed reservation policy is part of the admitted launch identity; changing
+it requires review, not silent reuse of an earlier admission.
 
 After bounded project capture, one `jig review` dependency-planning phase uses
 one 180-second cancellation deadline, performs at most 16 distinct dependency

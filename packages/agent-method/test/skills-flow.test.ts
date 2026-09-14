@@ -108,6 +108,7 @@ describe('ordinary Flow wiring', () => {
         expect(call.operationId).toBe('completion')
         expect(call.slot).toBe('http')
         expect(call.channels).toBeUndefined()
+        expect((call.input as any).response).toBe('json')
         expect(options.signal).toBe(signal)
         const body = (call.input as any).body
         expect(body).toMatchObject({
@@ -122,7 +123,7 @@ describe('ordinary Flow wiring', () => {
           outcome: 'done',
           output: {
             status: 200,
-            body: JSON.stringify({
+            body: {
               object: 'chat.completion',
               choices: [
                 {
@@ -131,7 +132,7 @@ describe('ordinary Flow wiring', () => {
                   message: { role: 'assistant', content: 'Answer.' },
                 },
               ],
-            }),
+            },
           },
         }
       },
@@ -156,5 +157,85 @@ describe('ordinary Flow wiring', () => {
     } as unknown as RunContext
     await expect(agentFlow(run)).rejects.toBe(failure)
     expect(calls).toBe(1)
+  })
+
+  test('selected Responses schema mode reaches HTTP once and returns a checked result', async () => {
+    let calls = 0
+    const signal = new AbortController().signal
+    const responseSchema = {
+      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+      additionalProperties: false,
+    }
+    const run = {
+      input: { instructions: 'Answer.', responseSchema },
+      settings: { model: 'fixture-model', api: 'responses', structuredOutput: 'json-schema' },
+      attachments: {},
+      channels: {},
+      signal,
+      call: async (call: FlowCall, options: { signal: AbortSignal }) => {
+        calls++
+        expect(options.signal).toBe(signal)
+        expect(call.slot).toBe('http')
+        const body = (call.input as any).body
+        expect(body.max_output_tokens).toBe(4096)
+        expect(body.text.format.strict).toBe(true)
+        expect(body.text.format.schema.$schema).toBeUndefined()
+        expect(body.messages).toBeUndefined()
+        return {
+          outcome: 'done',
+          output: {
+            status: 200,
+            body: {
+              object: 'response',
+              status: 'completed',
+              output: [
+                {
+                  type: 'message',
+                  role: 'assistant',
+                  status: 'completed',
+                  content: [{ type: 'output_text', text: '{"answer":"checked"}' }],
+                },
+              ],
+            },
+          },
+        }
+      },
+    } as unknown as RunContext
+    expect(await agentFlow(run)).toEqual({
+      outcome: 'done',
+      output: { text: '{"answer":"checked"}', structured: { answer: 'checked' } },
+    })
+    expect(calls).toBe(1)
+  })
+
+  test('provider rejection of a strict schema never falls back or retries', async () => {
+    for (const api of ['chat-completions', 'responses']) {
+      let calls = 0
+      const run = {
+        input: {
+          instructions: 'Answer.',
+          responseSchema: {
+            $schema: 'https://flow.jig.md/schemas/schema-1.json',
+            type: 'object',
+            properties: { answer: { type: 'string' } },
+            required: ['answer'],
+            additionalProperties: false,
+          },
+        },
+        settings: { model: 'fixture-model', api, structuredOutput: 'json-schema' },
+        attachments: {},
+        channels: {},
+        signal: new AbortController().signal,
+        call: async () => {
+          calls++
+          return { outcome: 'done', output: { status: 400, body: 'private-provider-error' } }
+        },
+      } as unknown as RunContext
+      await expect(agentFlow(run)).rejects.toThrow('HTTP 400')
+      expect(calls).toBe(1)
+    }
   })
 })

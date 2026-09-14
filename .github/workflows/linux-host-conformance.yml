@@ -7,6 +7,7 @@ on:
       - ".github/workflows/linux-host-conformance.yml"
       - "packages/jig/**"
       - "packages/agent-method/**"
+      - "packages/agent-acp/**"
       - "packages/flow-authoring/**"
       - "packages/flow-sdk/**"
       - "docs/jig/spec/**"
@@ -59,6 +60,7 @@ jobs:
         run: >-
           bun install --ignore-scripts --filter @jigging/jig
           --filter @jigging/agent-method --filter @jigging/flow-authoring
+          --filter @jigging/agent-acp
           --filter @jigging/flow
 
       - name: Build the FLOW SDK used by host fixtures
@@ -72,7 +74,7 @@ jobs:
           just --justfile packages/jig/justfile build
           artifact_directory="$RUNNER_TEMP/jig-artifact"
           mkdir "$artifact_directory"
-          mkdir "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/jig"
+          mkdir "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
           one_archive() {
             local -a archives
             mapfile -t archives < <(find "$1" -maxdepth 1 -type f -name '*.tgz' -print)
@@ -87,12 +89,16 @@ jobs:
           export FLOW_SDK_PACKAGE_ARCHIVE
           bun packages/agent-method/scripts/pack.ts --destination "$artifact_directory/agent-method"
           AGENT_METHOD_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-method")
+          export AGENT_METHOD_PACKAGE_ARCHIVE
+          bun packages/agent-acp/scripts/pack.ts --destination "$artifact_directory/agent-acp"
+          AGENT_ACP_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-acp")
           bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
           JIG_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/jig")
-          sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" |
+          sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" |
             tee "$artifact_directory/SHA256SUMS"
           printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\nAGENT_METHOD_PACKAGE_ARCHIVE=%s\nJIG_PACKAGE_ARCHIVE=%s\n' \
             "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" >> "$GITHUB_ENV"
+          printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$AGENT_ACP_PACKAGE_ARCHIVE" >> "$GITHUB_ENV"
           printf 'JIG_CI_ARCHIVE_DIGESTS=%s\n' "$artifact_directory/SHA256SUMS" >> "$GITHUB_ENV"
 
       - name: Prove transient delegation and lifetime fencing
@@ -149,7 +155,16 @@ jobs:
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
           "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE"
+          "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts
+          --timeout 180000
+
+      - name: Prove ordinary ACP Agent progress and cancellation
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE"
+          "$JIG_CI_BUN" test packages/jig/test/finite-acp-lifecycle.test.ts
           --timeout 180000
 
       - name: Prove installed Markdown and exact typed calls

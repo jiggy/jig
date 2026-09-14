@@ -27,8 +27,9 @@ docs/flow/spec/machine/schema-1.json|schemas/schema-1.json'
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
 docs/jig/spec/contracts/agent-run/contract.json|contracts/agent-run/contract.json
 docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json|contracts/agent-run/contracts/acp-public-updates.json
-docs/jig/spec/contracts/agent-exchange/contract.json|contracts/agent-exchange/contract.json
-docs/jig/spec/contracts/agent-exchange/contracts/acp-public-updates.json|contracts/agent-exchange/contracts/acp-public-updates.json
+docs/jig/spec/contracts/finite-acp/contract.json|contracts/finite-acp/contract.json
+docs/jig/spec/contracts/finite-acp/requests.json|contracts/finite-acp/requests.json
+docs/jig/spec/contracts/finite-acp/responses.json|contracts/finite-acp/responses.json
 docs/jig/spec/contracts/acp-public-updates.json|contracts/acp-public-updates.json
 docs/jig/spec/contracts/http-request/contract.json|contracts/http-request/contract.json
 docs/jig/spec/contracts/project-command/contract.json|contracts/project-command/contract.json
@@ -68,14 +69,14 @@ grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 
 if [ "$site_name" = jig ]; then
-  for contract in agent-run agent-exchange project-command http-request run-checkpoint acp-public-updates; do
+  for contract in agent-run project-command http-request run-checkpoint acp-public-updates finite-acp; do
     case $contract in
       agent-run) title='<title>Agent Run contract - Jig</title>' ;;
-      agent-exchange) title='<title>Agent Exchange contract - Jig</title>' ;;
       http-request) title='<title>HTTP Request contract - Jig</title>' ;;
       project-command) title='<title>Project Command contract - Jig</title>' ;;
       run-checkpoint) title='<title>Run Checkpoint contract - Jig</title>' ;;
       acp-public-updates) title='<title>ACP public updates contract - Jig</title>' ;;
+      finite-acp) title='<title>Finite ACP contract - Jig</title>' ;;
     esac
     curl --fail --location --silent --show-error \
       "$base/contracts/$contract" > "$temporary/contract.html"

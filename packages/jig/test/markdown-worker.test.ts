@@ -12,10 +12,14 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { assertResponseSchema } from '@jigging/agent-method'
+import {
+  assertResponseSchema,
+  checkAgentResult,
+  prepareAgent,
+  type AgentCallInput,
+} from '@jigging/agent-method'
 
 import { markdownAgentContract } from '../src/internal/markdown-agent-contract.js'
-import { parseAgentRunInput, parseAgentRunResult } from '../src/internal/private-agent-run.js'
 import { MARKDOWN_INTERPRETER_TEMPLATE } from '../src/markdown/runtime.js'
 
 const packageRoot = resolve(import.meta.dir, '..')
@@ -208,13 +212,14 @@ describe('bundled Markdown worker over FLOW/1', () => {
         return done(authored === 1 ? exact : { forwarded: true })
       }
       expect(call.slot).toBe('markdown-agent')
-      const prepared = parseAgentRunInput(contract, call.input)
-      assertResponseSchema(prepared.input.responseSchema!)
-      expect(prepared.input.instructions.startsWith(MARKDOWN_INTERPRETER_TEMPLATE + '\n\n')).toBe(
-        true,
-      )
+      contract.schemas.get('/input')!.validate(call.input)
+      const agentInput = call.input as AgentCallInput
+      const { skills, ...methodInput } = agentInput
+      prepareAgent(methodInput, skills)
+      assertResponseSchema(agentInput.responseSchema!)
+      expect(agentInput.instructions.startsWith(MARKDOWN_INTERPRETER_TEMPLATE + '\n\n')).toBe(true)
       const context = JSON.parse(
-        prepared.input.instructions.slice(MARKDOWN_INTERPRETER_TEMPLATE.length + 2),
+        agentInput.instructions.slice(MARKDOWN_INTERPRETER_TEMPLATE.length + 2),
       )
       expect(context.authoredProcedure.body).toBe(body)
       expect(context.recipes).toHaveLength(3)
@@ -248,10 +253,13 @@ describe('bundled Markdown worker over FLOW/1', () => {
         default:
           throw new Error('unexpected repair/reasoning call')
       }
-      parseAgentRunResult(contract, prepared, {
-        outcome: 'done',
-        output: { text: '', structured: decision },
-      })
+      checkAgentResult(
+        {
+          outcome: 'done',
+          output: { text: '', structured: decision },
+        },
+        agentInput.responseSchema,
+      )
       return agent(decision)
     })
     expect(messages.at(-1)).toEqual({
@@ -364,17 +372,22 @@ hosted('fresh installed Markdown admission on the provisioned proof host', () =>
       await selectArchive(sdkArtifacts, undefined, 'flow-sdk'),
     )
     for (const name of ['recipes', 'prose', 'code-echo']) {
+      const markdown = name !== 'code-echo'
+      if (markdown)
+        await writeFile(
+          join(project, 'bindings/selected.ts'),
+          `import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/${name}"});`,
+        )
       await writeFile(
         join(project, 'jig.ts'),
-        `import { defineJig } from "@jigging/jig"; export default defineJig({ flows: ["flows/${name}"] });\n`,
+        `import { defineJig } from "@jigging/jig"; export default defineJig({ flows: ["flows/${name}"], bindings: ${markdown ? '["bindings/selected.ts"]' : '[]'} });\n`,
       )
-      const markdown = name !== 'code-echo'
       await command(
         [jig, 'review', '--yes'],
         project,
         markdown ? 2 : 0,
         `review ${name}`,
-        markdown ? `PROJECT_AGENT_UNAVAILABLE at "flows/${name}/FLOW.md"` : undefined,
+        markdown ? 'PROJECT_BINDING_INTERFACE_UNRESOLVED' : undefined,
       )
     }
     const output = { exact: ['😺', null], text: 'x'.repeat(102_400) }

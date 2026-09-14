@@ -54,28 +54,23 @@ Improve these public paths rather than rebuilding them.
 Qualify Markdown-to-code substitution and supported Skill reuse through ordinary
 interpreted calls. The sequential Markdown profile does not promise universal
 Skill support or reliable model judgment; method quality needs its own evidence.
-Native Agent, command and checkpoint powers retain their actual host owners.
+Agent methods are ordinary Flows. Native launch, authenticated HTTP, contained
+commands and checkpoint retention keep their reviewed host-owned boundaries.
 
-### Immediate: Decoupling
+### Foundation: replaceable Agents
 
-Make the Agent independently replaceable through ordinary Flows and reviewed
-resource grants. Each slice must remove the path it supersedes, without adding
-another invocation API or weakening existing authority and lifecycle promises.
+Use an ordinary HTTP or finite ACP Agent through the same offered contract and
+exact slot calls. Project defaults select an admitted implementation; explicit
+slots remain authoritative. Packages own prompts, protocol dialogue, response
+interpretation and selected progress. Resource grants own only the approved
+endpoint or native-client powers, with host-enforced lifetime and cleanup.
 
-1. **Run an ordinary HTTP-backed Agent.** The package owns request construction,
-   response interpretation and structured checks; Jig holds endpoint authority,
-   credentials and cleanup. Finish with installed use and honest failure evidence,
-   without a privileged Agent Exchange underneath.
-2. **Use that Agent from existing specialists.** Support the exact bounded
-   application → specialist → Agent → resource chain. Preserve explicit selected
-   caller context, independent result checks, remaining deadlines, aggregate capacity
-   and complete descendant cleanup. Make Markdown selection ordinary too;
-   remove superseded API-provider paths once their promises are replaced.
-3. **Move one finite native ACP adapter into a Flow.** Qualify narrowly reviewed
-   executable/runtime, authentication and bidirectional I/O authority. The package
-   owns ACP behavior; the host owns constrained launch and settlement. Delete the
-   replaced adapter path. Native workspace tools and continuing sessions remain
-   separate authority decisions.
+Keep this boundary useful as the product advances: an independent author must
+be able to replace the Agent without changing Jig or its consumers. Complete
+packages must remain inspectable, editable and rebuildable outside this repository.
+Maintain actual installed evidence for selected context, structured results,
+ordinary recovery and the application → specialist → Agent → resource chain.
+Native workspace tools and continuing sessions remain separate authority decisions.
 
 ### Alongside: dependable batch repair
 

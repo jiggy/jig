@@ -26,6 +26,12 @@
       "minLength": 6,
       "maxLength": 1029
     },
+    "defaultSelector": {
+      "type": "string",
+      "description": "An exact flow:<path> or binding:<id> selecting an ordinary implementation with an offered named contract. Jig additionally validates selector grammar, canonical identity, uniqueness and default eligibility.",
+      "minLength": 6,
+      "maxLength": 1029
+    },
     "discoverSource": {
       "type": "object",
       "properties": {
@@ -82,6 +88,14 @@
         },
         "grants": {
           "$ref": "#/$defs/source"
+        },
+        "defaults": {
+          "type": "array",
+          "description": "Normalized, sorted exact implementation selections; at most one per offered contract ID. Review resolves omitted named slots, not runtime discovery or authority grants.",
+          "items": {
+            "$ref": "#/$defs/defaultSelector"
+          },
+          "maxItems": 256
         }
       },
       "additionalProperties": false
@@ -132,6 +146,15 @@
         {
           "type": "object",
           "properties": {
+            "kind": { "const": "acp" },
+            "client": { "enum": ["codex", "claude", "pi"] }
+          },
+          "required": ["kind", "client"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "kind": {
               "const": "http"
             },
@@ -151,12 +174,12 @@
             "requestBytes": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 262144
+              "maximum": 8388608
             },
             "responseBytes": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 1048576
+              "maximum": 12582912
             },
             "timeoutMs": {
               "type": "integer",

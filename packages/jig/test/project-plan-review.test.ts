@@ -2,12 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import { parse as parseYaml } from 'yaml'
 
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
-import type { PrivateAgentProvider } from '../src/internal/agent-provider.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
-} from '../src/internal/private-agent-run.js'
+} from './fixtures/agent-contract.js'
 import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 
 describe('private project Plan review', () => {
@@ -33,73 +32,6 @@ describe('private project Plan review', () => {
     expect(rendered.text).not.toContain('unchanged sentinel')
     expect(rendered.details).toContain('unchanged sentinel')
     expect(rendered.text).toContain('jig review --details')
-  })
-
-  test('review names selected Agent behavior without credentials or private support', () => {
-    const plan = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
-    const review = {
-      plan: {
-        ...plan,
-        proposed: {
-          ...plan.proposed,
-          targets: [
-            {
-              request: {
-                target: { kind: 'flow', path: 'flows/agent' },
-                mode: 'run',
-                packagePath: 'flows/agent',
-                entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
-                settings: {},
-                attachments: {},
-                slots: {
-                  agent: {
-                    kind: 'native',
-                    native: 'agent',
-                    contract: {
-                      id: AGENT_RUN_CONTRACT_ID,
-                      version: AGENT_RUN_CONTRACT_VERSION,
-                      digest: AGENT_RUN_CONTRACT_DIGEST,
-                    },
-                  },
-                },
-              },
-              disposition: { state: 'ready' },
-            },
-          ],
-        },
-      },
-      baseCandidate: null,
-    } as unknown as PrivateActivationReviewPlan
-    for (const provider of [
-      {
-        kind: 'private-openai-agent-provider/1',
-        api: 'responses',
-        baseURL: 'https://api.example.test/v1',
-        model: 'selected-test-model',
-        credential: 'secret-sentinel',
-        executable: '/private/host/path',
-      },
-      {
-        kind: 'private-acp-agent-provider/1',
-        client: 'codex',
-        model: 'selected-test-model',
-        credentialMode: 'subscription',
-        credential: 'secret-sentinel',
-        executable: '/private/host/path',
-      },
-    ]) {
-      const rendered = renderPrivateProjectPlanReview(
-        review,
-        undefined,
-        provider as unknown as PrivateAgentProvider,
-      )
-      for (const value of [rendered.text, rendered.details]) {
-        expect(value).toContain('selected-test-model')
-        expect(value).not.toContain('secret-sentinel')
-        expect(value).not.toContain('/private/host/path')
-      }
-      expect(rendered.text).toContain('Instructions and selected data go to this Agent')
-    }
   })
 
   test('renders complete portable policy while omitting private host identities', () => {

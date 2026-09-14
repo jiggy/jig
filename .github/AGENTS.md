@@ -39,8 +39,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
 - Host conformance includes Agent method and contract-authoring source changes.
-  Freeze the built SDK, Agent method and Jig archives once through their owning
-  packers. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
+  Freeze the built SDK, HTTP Agent, ACP Agent and Jig archives once through their owning
+  packers. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
   archives to installed Markdown tests across the provisioned host boundary;
   verify the same archive hashes afterward. Jig's packer supplies the complete
   private authoring closure, and the method embeds the frozen SDK for adaptation.

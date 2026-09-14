@@ -16,6 +16,7 @@ Findings identify material evidence defects or unmet explicit requirements,
 not optional presentation improvements. A responsible conditional proposal
 may disclose prerequisites without claiming they have already been satisfied.
 
-This method owns no child Flow slots and depends on no workshop implementation.
-Another application can supply the same ordinary input and its own admitted
-review focus. Its judgment is advisory; an approval is not authority to act.
+This method delegates through its named Agent slot and depends on no workshop
+implementation. Another application can supply the same input, select its own
+Agent Flow, and configure its review focus. Its judgment is advisory; an
+approval is not authority to act.

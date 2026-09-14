@@ -1,4 +1,9 @@
 import { expect, test } from 'bun:test'
+import {
+  FINITE_ACP_CONTRACT_ID,
+  FINITE_ACP_CONTRACT_VERSION,
+  FINITE_ACP_CONTRACT_DIGEST,
+} from '../src/internal/private-finite-acp-contract.js'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,6 +28,35 @@ const command = {
   digest: PROJECT_COMMAND_CONTRACT_DIGEST,
 }
 const policy = normalizeGrant({ kind: 'http', url: 'https://example.org/', method: 'GET' })
+const finiteAcp = {
+  id: FINITE_ACP_CONTRACT_ID,
+  version: FINITE_ACP_CONTRACT_VERSION,
+  digest: FINITE_ACP_CONTRACT_DIGEST,
+}
+
+test('finite ACP is an exact resource grant, never an implicit Agent permission', () => {
+  const grant = normalizeGrant({ kind: 'acp', client: 'codex' })
+  const binding = defineBinding({ package: 'flows/agent', slots: { native: grant } })
+  expect(binding.slots.native).toEqual(grant)
+  const selected = { kind: 'grant' as const, policy: grant }
+  expect(resolveInvocationSlots({ native: finiteAcp }, { native: selected }).native).toEqual({
+    kind: 'native',
+    native: 'finite-acp',
+    grant,
+    contract: finiteAcp,
+  })
+  expect(() => resolveInvocationSlots({ native: finiteAcp }, {})).toThrow('explicit')
+  expect(() => resolveInvocationSlots({ native: http }, { native: selected })).toThrow('exact')
+  expect(() => resolveInvocationSlots({}, { native: selected })).toThrow('exact')
+  for (const policy of [
+    { kind: 'acp' },
+    { kind: 'acp', client: 'unknown' },
+    { kind: 'acp', client: 'codex', executable: '/bin/sh' },
+    { kind: 'acp', client: 'codex', permissions: ['*'] },
+    { kind: 'acp', client: 'codex', environment: { SECRET: 'value' } },
+  ])
+    expect(() => normalizeGrant(policy)).toThrow()
+})
 
 test('one slot grammar supports inline policies and optional named reuse', () => {
   expect(defineJig({})).toEqual({})

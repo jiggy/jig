@@ -14,7 +14,7 @@ import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
-} from '../src/internal/private-agent-run.js'
+} from './fixtures/agent-contract.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { defineBinding, defineJig } from '../src/project/author.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
@@ -283,6 +283,7 @@ describe('private package resolution', () => {
     await withProject(
       {
         'flows/router': run('router'),
+        'flows/agent': agentFlow(),
         'flows/reviewer': {
           'flow.meta.json': metadata({
             name: 'reviewer',
@@ -308,6 +309,7 @@ describe('private package resolution', () => {
         binding('bindings/reviewer.ts', {
           package: 'flows/reviewer',
           settings: { style: 'critical' },
+          slots: { agent: 'flow:flows/agent' },
         }),
       ],
       async (project) => {
@@ -323,8 +325,8 @@ describe('private package resolution', () => {
         })
         expect(child.settings).toEqual({ style: 'critical' })
         expect(child.slots.agent).toEqual({
-          kind: 'native',
-          native: 'agent',
+          kind: 'flow',
+          target: { kind: 'flow', path: 'flows/agent' },
           contract: {
             id: AGENT_RUN_CONTRACT_ID,
             version: AGENT_RUN_CONTRACT_VERSION,
@@ -351,9 +353,10 @@ describe('private package resolution', () => {
     )
   })
 
-  test('pins exact native Agent identity into Flow and Binding requests', async () => {
+  test('pins an exact ordinary Agent default into Flow and Binding requests', async () => {
     await withProject(
       {
+        'flows/agent': agentFlow(),
         'flows/router': {
           'flow.meta.json': metadata({
             name: 'router',
@@ -367,13 +370,15 @@ describe('private package resolution', () => {
       },
       [binding('bindings/router.ts', { package: 'flows/router' })],
       async (project) => {
-        const requests = buildPrivateActivationRequests(project)
+        const requests = buildPrivateActivationRequests(project).filter(
+          ({ packagePath }) => packagePath === 'flows/router',
+        )
         expect(requests).toHaveLength(2)
         for (const request of requests) {
           expect(request.slots).toEqual({
             agent: {
-              kind: 'native',
-              native: 'agent',
+              kind: 'flow',
+              target: { kind: 'flow', path: 'flows/agent' },
               contract: {
                 id: AGENT_RUN_CONTRACT_ID,
                 version: AGENT_RUN_CONTRACT_VERSION,
@@ -393,6 +398,7 @@ describe('private package resolution', () => {
           ).toThrow('activation request digest does not match its canonical content')
         }
       },
+      ['flow:flows/agent'],
     )
   })
 
@@ -730,10 +736,20 @@ function digest(label: string): string {
   return `sha256:${createHash('sha256').update(label).digest('hex')}`
 }
 
+function agentFlow(): Readonly<Record<string, string>> {
+  return {
+    'flow.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
+    'FLOW.ts': 'export {};\n',
+    'FLOW.contract.json': agentRunContract,
+    'contracts/acp-public-updates.json': acpPublicUpdates,
+  }
+}
+
 async function withProject(
   trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
   bindings: readonly InjectedBindingDeclaration[],
   action: (project: PackageProjectValue) => Promise<void> | void,
+  defaults: readonly string[] = [],
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'jig-project-resolution-'))
   const store = join(root, 'store')
@@ -749,7 +765,7 @@ async function withProject(
     }
     source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows)
     const flows = await retainFlowSourcePackages(store, source)
-    await action(linkPackageProject({ flows, bindings }))
+    await action(linkPackageProject({ flows, bindings, defaults }))
   } finally {
     await source?.dispose()
     await rm(root, { recursive: true, force: true })

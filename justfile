@@ -4,6 +4,7 @@
 
 mod flow "packages/flow-sdk/justfile"
 mod agent "packages/agent-method/justfile"
+mod acp "packages/agent-acp/justfile"
 mod authoring "packages/flow-authoring/justfile"
 mod python "packages/jiggy-flow/justfile"
 mod jig "packages/jig/justfile"
@@ -42,7 +43,7 @@ build: flow::build jig::build authoring::build
 # Run ordinary method, SDK, Jig, and Run/1 tests
 [positional-arguments]
 @test *args:
-    bun test packages/agent-method packages/flow-sdk packages/jig conformance/run-1 "$@"
+    bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-1 "$@"
 
 # Run the portable Run/1 corpus
 [positional-arguments]

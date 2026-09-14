@@ -12,80 +12,37 @@ import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 describe('fixed installed Bun support', () => {
   test.each([
-    [{}, 'no Agent client is selected'],
-    [{ OPENAI_API_KEY: 'not-a-real-credential' }, 'export OPENAI_MODEL'],
-    [
-      {
-        OPENAI_API_KEY: 'not-a-real-credential',
-        OPENAI_MODEL: 'model',
-        OPENAI_API: 'invalid-private-value',
-      },
-      'correct the exported OPENAI_API',
-    ],
-    [
-      { OPENAI_API_KEY: 'not-a-real-credential', OPENAI_MODEL: 'invalid private value' },
-      'correct the exported OPENAI_MODEL',
-    ],
-    [
-      {
-        OPENAI_API_KEY: 'not-a-real-credential',
-        OPENAI_MODEL: 'model',
-        OPENAI_BASE_URL: 'http://private.invalid',
-      },
-      'correct the exported OPENAI_BASE_URL',
-    ],
-    [
-      { JIG_AGENT_CLIENT: 'invalid-private-value' },
-      'JIG_AGENT_CLIENT must be codex, claude, pi, or api',
-    ],
-    [{ OPENROUTER_API_KEY: 'not-a-real-credential' }, 'export OPENROUTER_MODEL'],
-    [
-      {
-        OPENROUTER_API_KEY: 'not-a-real-credential',
-        OPENROUTER_MODEL: 'provider/test-model',
-        OPENAI_API_KEY: 'other-private-credential',
-        OPENAI_MODEL: 'provider/other-model',
-      },
-      'choose either OPENROUTER_API_KEY and OPENROUTER_MODEL',
-    ],
+    {},
+    { CODEX_PATH: '/missing/native-codex' },
+    { CLAUDE_PATH: '/missing/native-claude', ANTHROPIC_API_KEY: 'private-credential' },
   ] as const)(
-    'keeps configuration failures target-scoped and safe to explain: %j',
-    async (environment, hint) => {
-      const host = await openPrivateInstalledBunHost(installedBunLocation, {
-        ...(Object.keys(environment).some((key) => key.startsWith('OPEN'))
-          ? { JIG_AGENT_CLIENT: 'api' }
-          : {}),
-        ...environment,
-      })
-      expect(host.agentProvider).toBeUndefined()
-      expect(host.agentUnavailableHint).toContain(hint)
-      expect(host.agentUnavailableHint).not.toContain('not-a-real-credential')
-      expect(host.agentUnavailableHint).not.toContain('private.invalid')
-      expect(host.agentUnavailableHint).not.toContain('invalid-private-value')
+    'captures private resources without probing unselected native clients: %j',
+    async (environment) => {
+      const stages: string[] = []
+      const host = await openPrivateInstalledBunHost(
+        installedBunLocation,
+        environment,
+        process.cwd(),
+        (stage) => stages.push(stage),
+      )
+      expect(host.acpResources).toEqual({ kind: 'private-acp-resources/1' })
+      expect(stages).toEqual(['Preparing operator resource configuration'])
+      expect(JSON.stringify(host.acpResources)).not.toContain('private-credential')
     },
   )
 
-  test('accepts natural OpenRouter variables as one fixed compatible endpoint', async () => {
-    const host = await openPrivateInstalledBunHost(installedBunLocation, {
-      JIG_AGENT_CLIENT: 'api',
-      OPENROUTER_API_KEY: 'not-a-real-credential',
-      OPENROUTER_MODEL: 'provider/test-model',
-    })
-    const explicit = await openPrivateInstalledBunHost(installedBunLocation, {
-      JIG_AGENT_CLIENT: 'api',
-      OPENAI_API: 'chat-completions',
-      OPENAI_API_KEY: 'other-private-credential',
-      OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
-      OPENAI_MODEL: 'provider/test-model',
-    })
-    expect(host.agentProvider).toMatchObject({
-      kind: 'private-openai-agent-provider/1',
-      api: 'chat-completions',
-      baseURL: 'https://openrouter.ai/api/v1',
-      model: 'provider/test-model',
-    })
-    expect(host.agentProvider?.digest).toBe(explicit.agentProvider?.digest)
-    expect(JSON.stringify(host.agentProvider)).not.toContain('not-a-real-credential')
+  test('available API credentials remain in private resource owners', async () => {
+    for (const environment of [
+      { OPENAI_API_KEY: 'private-credential', OPENAI_MODEL: 'provider/test-model' },
+      { OPENROUTER_API_KEY: 'private-credential', OPENROUTER_MODEL: 'provider/test-model' },
+      { METHOD_API_TOKEN: 'private-credential' },
+    ]) {
+      const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
+      expect(host.acpResources).toEqual({ kind: 'private-acp-resources/1' })
+      expect(JSON.stringify([host.acpResources, host.httpGrants])).not.toContain(
+        'private-credential',
+      )
+    }
   })
 
   test('workspace fixtures name the canonical installed runtime', async () => {
@@ -101,12 +58,10 @@ describe('fixed installed Bun support', () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-installed-support-'))
     const executable = join(root, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
     const installedCli = join(root, 'libexec', 'installed-cli.js')
-    const agent = join(root, 'libexec', 'agent')
     const evaluator = join(root, 'libexec', 'evaluator')
     const preparation = join(root, 'libexec', 'preparation')
     try {
       await mkdir(join(executable, '..'), { recursive: true })
-      await mkdir(agent, { recursive: true })
       await mkdir(evaluator, { recursive: true })
       await mkdir(preparation, { recursive: true })
       await copyFile(installedBunLocation.executablePath, executable)
@@ -117,7 +72,6 @@ describe('fixed installed Bun support', () => {
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'worker\n')
       await writeFile(join(evaluator, 'project-evaluator-sdk.bundle.js'), 'sdk\n')
       await writeFile(join(evaluator, 'project-authoring-1.schema.json'), '{}\n')
-      await writeFile(join(agent, 'openai-agent-worker.js'), 'agent worker\n')
       await writeFile(join(preparation, 'bun-native-preparation-worker.js'), 'preparation\n')
 
       const location = {
@@ -134,7 +88,6 @@ describe('fixed installed Bun support', () => {
       expect(support.sandboxExecutablePath).toBe('/jig-runtime/bun')
       expect(support.sandboxHttpWorkerPath).toBe('/jig-http-worker.js')
       expect(support.httpWorkerDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
-      expect(support.sandboxAgentWorkerPath).toBe('/jig-agent-worker.js')
       expect(support.sandboxMarkdownRuntimePath).toBe('/jig-markdown-runtime.js')
       expect(support.markdownRuntimePath).toBe(join(root, 'libexec', 'markdown-runtime.js'))
       expect(support.markdownRuntimeDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
@@ -167,13 +120,6 @@ describe('fixed installed Bun support', () => {
         'installed Bun support changed after selection',
       )
       await writeFile(join(preparation, 'bun-native-preparation-worker.js'), 'preparation\n')
-      await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
-
-      await writeFile(join(agent, 'openai-agent-worker.js'), 'changed\n')
-      await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
-        'installed Bun support changed after selection',
-      )
-      await writeFile(join(agent, 'openai-agent-worker.js'), 'agent worker\n')
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
 
       await writeFile(installedCli, 'changed command\n')

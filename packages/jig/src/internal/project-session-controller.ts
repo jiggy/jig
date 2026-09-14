@@ -28,7 +28,6 @@ import {
   PRIVATE_PACKAGE_STORE_DIRECTORY as STORE_DIRECTORY,
 } from './activation-admission-store.js'
 import { createPrivateActivationPlanningObservation } from './activation-planning.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
 import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
@@ -58,7 +57,7 @@ import {
   type PackageArtifactRef,
   publishCapturedPackage,
 } from './package-artifact-store.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
 import { renderPrivateProjectPlanReview } from './project-plan-review.js'
 import {
@@ -79,8 +78,7 @@ export interface PrivateProjectSessionHost {
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
   readonly httpGrants?: PrivateHttpGrants | undefined
-  readonly agentProvider?: PrivateAgentProvider | undefined
-  readonly prepareAgent?: (signal: AbortSignal) => Promise<PrivateAgentProvider | undefined>
+  readonly acpResources?: PrivateAcpResources | undefined
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
@@ -165,7 +163,7 @@ export async function openPrivateProjectSession(input: {
           installedSupport: input.host.installedBunSupport,
           backend: input.host.backend,
           httpGrants: input.host.httpGrants,
-          agentProvider: input.host.agentProvider,
+          acpResources: input.host.acpResources,
           ...(input.host.files === undefined ? {} : { files: input.host.files }),
           ...(input.host.channelOutput === undefined
             ? {}
@@ -357,7 +355,7 @@ function createSession(
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
                         httpGrants: host.httpGrants,
-                        agentProvider: host.agentProvider,
+                        acpResources: host.acpResources,
                       })
                       if (
                         current.digest === admitted.recipeDigest &&
@@ -412,7 +410,7 @@ function createSession(
                 installedSupport: host.installedBunSupport,
                 backend: host.backend,
                 httpGrants: host.httpGrants,
-                agentProvider: host.agentProvider,
+                acpResources: host.acpResources,
               }),
             )
           } catch (error) {
@@ -457,7 +455,7 @@ function createSession(
           candidate,
           lockMode: request.lockMode,
           beforePersistApplicable(applicable): void {
-            review = renderPrivateProjectPlanReview(applicable, undefined, host.agentProvider)
+            review = renderPrivateProjectPlanReview(applicable, undefined, recipes)
           },
         })
         preparationBudget.signal.throwIfAborted()
@@ -781,7 +779,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
     code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
     code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
-    code === 'PROJECT_AGENT_UNAVAILABLE' ||
+    code === 'PROJECT_ACP_UNAVAILABLE' ||
     code === 'PROJECT_HTTP_UNAVAILABLE' ||
     code === 'PACKAGE_PROFILE_UNSUPPORTED' ||
     code === 'PACKAGE_METADATA_UNSUPPORTED' ||

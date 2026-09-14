@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
-import { isAgentInvocation } from '../project/invocation-slots.js'
 import { ChannelOperationError } from '../run/channels.js'
 import {
   type RunHostOperationDispatcher,
@@ -23,7 +22,7 @@ import {
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
 } from './activation-admission-store.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import { openBoundAttachments } from './bound-attachments.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
 import {
@@ -62,9 +61,9 @@ import {
 import { admitPrivatePackageResult } from './package-result-admission.js'
 import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
 import {
-  executePrivateRootAgentRun,
-  recoverPrivateRootAgentRunOwners,
-} from './root-agent-run-controller.js'
+  executePrivateRootFiniteAcp,
+  recoverPrivateRootFiniteAcpOwners,
+} from './root-finite-acp-controller.js'
 import {
   executePrivateContainedEffect,
   recoverPrivateContainedEffectOwners,
@@ -126,7 +125,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly signal?: AbortSignal
@@ -319,6 +318,7 @@ async function startOrResumeCurrentExecution(
         plan.effectiveDeadlineUnixMs,
         channels,
         channelInspected,
+        recipe,
       )
       provisional = await new RunHostSession(
         component,
@@ -730,7 +730,7 @@ async function reproduceRecipe(
     installedSupport: input.installedSupport,
     backend: input.backend,
     httpGrants: input.httpGrants,
-    agentProvider: input.agentProvider,
+    acpResources: input.acpResources,
   })
   if (
     recipe.digest !== work.intent.recipeDigest ||
@@ -1070,7 +1070,7 @@ function operationInput(input: RootExecutionInput, parent: PrivateReacquiredRoot
     installedSupport: input.installedSupport,
     backend: input.backend,
     httpGrants: input.httpGrants,
-    agentProvider: input.agentProvider,
+    acpResources: input.acpResources,
   } as const
 }
 
@@ -1078,7 +1078,7 @@ async function recoverPrivateRootOperationOwners(
   input: ReturnType<typeof operationInput>,
 ): Promise<void> {
   await recoverPrivateRootFlowCallOwners(input)
-  await recoverPrivateRootAgentRunOwners(input)
+  await recoverPrivateRootFiniteAcpOwners(input)
   await recoverPrivateContainedEffectOwners(input)
 }
 
@@ -1088,6 +1088,7 @@ function operationDispatcher(
   parentDeadlineUnixMs: number,
   channels: PrivateRunChannels,
   inspected: InspectedPackage,
+  recipe: PrivateDirectRunRecipe,
 ): RunHostOperationDispatcher | undefined {
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (target === undefined) return undefined
@@ -1156,7 +1157,7 @@ function operationDispatcher(
             }),
           operationBusy(),
         )
-      if (Object.keys(call.channels ?? {}).length !== 0 && !isAgentInvocation(route.native))
+      if (Object.keys(call.channels ?? {}).length !== 0 && route.native !== 'finite-acp')
         return {
           status: 'failed',
           code: 'UNAVAILABLE',
@@ -1213,24 +1214,26 @@ function operationDispatcher(
             }),
           operationBusy(),
         )
-      if (input.agentProvider === undefined) {
+      const provider = recipe.acp[call.slot]
+      if (provider === undefined) {
         return Object.freeze({
           status: 'failed' as const,
           code: 'UNAVAILABLE' as const,
-          message: 'the admitted Agent provider is unavailable',
+          message: 'the admitted finite ACP provider is unavailable',
         })
       }
       return enter(
         'effect',
-        () =>
-          executePrivateRootAgentRun({
+        () => {
+          const invocation = {
             ...operationInput(input, parent),
-            agentProvider: input.agentProvider!,
             channels: { caller: channels.root, broker: channels.broker },
             call,
             parentDeadlineUnixMs,
             signal,
-          }),
+          }
+          return executePrivateRootFiniteAcp({ ...invocation, provider })
+        },
         operationBusy(),
       )
     },

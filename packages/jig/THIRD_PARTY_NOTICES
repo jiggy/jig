@@ -46,17 +46,6 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-openai 7.9.0
-------------
-
-Jig bundles portions of the official OpenAI TypeScript and JavaScript library
-in its private OpenAI Agent worker.
-
-Copyright 2026 OpenAI
-
-Licensed under the Apache License, Version 2.0. The complete license is shipped
-as `libexec/agent/openai.LICENSE`.
-
 @agentclientprotocol/codex-acp 1.8.0
 ------------------------------------
 
@@ -90,6 +79,11 @@ Jig bundles the ACP adapter for native Pi as optional inert support. The
 adapter is selected only when the operator explicitly enables Pi; Jig does not
 include credentials or the operator-supplied native Pi executable and sibling
 runtime-support files.
+
+Jig carries a version-pinned dependency patch preserving failed RPC prompts,
+assistant errors, cancellation, and token limits as distinct ACP results.
+The patch is maintained at `packages/jig/patches/pi-acp@0.0.33.patch` in source;
+the installed bundle includes that correction.
 
 Copyright (c) 2026 Sergii Kozak
 

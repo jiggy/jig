@@ -1,0 +1,24 @@
+{
+  "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+  "id": "https://jig.md/contracts/finite-acp-requests",
+  "version": "1.0.0",
+  "semantics": "Required direct requests for one host-authorized finite ACP conversation. Each data item carries 1 to 8192 UTF-8 bytes, cut only between Unicode scalars. Concatenate in order until end:true to obtain one JSON/1 ACP frame. There is no interleaving, replay, binary data, or independent chunk identity. The host validates the complete frame and reviewed authority before dispatch; accepting a fragment does not establish dispatch. EOF inside a frame fails the resource. Clean EOF requests process settlement only after the allowed conversation has settled. Bounds and the finite operation profile are specified by the finite-acp contract documentation.",
+  "item": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "const": "data"
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8192
+      },
+      "end": {
+        "type": "boolean"
+      }
+    },
+    "required": ["kind", "text", "end"],
+    "additionalProperties": false
+  }
+}

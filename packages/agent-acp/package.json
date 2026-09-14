@@ -1,0 +1,46 @@
+{
+  "name": "@jigging/agent-acp",
+  "version": "0.1.0-alpha.1",
+  "description": "An ordinary Agent Flow over a finite, host-authorized ACP resource",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiggy/jig.git",
+    "directory": "packages/agent-acp"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./transport": {
+      "types": "./dist/transport.d.ts",
+      "import": "./dist/transport.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "FLOW.ts",
+    "FLOW.contract.json",
+    "flow.meta.json",
+    "contracts",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES",
+    "licenses",
+    "tooling",
+    "scripts",
+    "justfile",
+    "tsconfig.json",
+    "test"
+  ],
+  "devDependencies": {
+    "@jigging/flow": "workspace:*",
+    "@jigging/agent-method": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,15 @@
+@jigging/agent-acp is distributed under the Mozilla Public License 2.0.
+Its ordinary Flow runtime bundles the following public dependencies:
+
+@jigging/agent-method, MPL-2.0. The complete public package, including its
+source and notices, is included as tooling/agent-method.tgz. Its governing
+license is included as licenses/agent-method.LICENSE.
+
+@jigging/flow, Apache-2.0. Its license is included as licenses/flow.LICENSE.
+The complete public SDK archive is included as tooling/flow-sdk.tgz.
+
+tooling/dependencies.json records the exact package names, versions and SHA-256
+digests used for editable source rebuilds. Both archives retain their own
+licenses and notices. Runtime execution needs no installation or build hook.
+
+No native client, credentials or provider SDK is included in this artifact.

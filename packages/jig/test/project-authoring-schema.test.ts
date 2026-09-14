@@ -14,6 +14,7 @@ const schema = compileSchemaFile(
 const project = defineJig({
   flows: discover('./flows'),
   bindings: ['./bindings/review.ts'],
+  defaults: ['binding:review'],
 })
 const binding = defineBinding({
   package: './flows/review',
@@ -35,6 +36,18 @@ describe('Project Authoring SDK/1 shape schema', () => {
   })
 
   for (const [name, value] of [
+    [
+      'object default selector',
+      changed(project, (item) => {
+        item.defaults = [{ kind: 'binding', id: 'review' }]
+      }),
+    ],
+    [
+      'oversized default list',
+      changed(project, (item) => {
+        item.defaults = Array.from({ length: 257 }, () => 'binding:review')
+      }),
+    ],
     [
       'unknown project field',
       changed(project, (item) => {

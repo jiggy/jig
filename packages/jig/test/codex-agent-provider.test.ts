@@ -19,6 +19,12 @@ import {
   projectPrivateCodexSubscriptionCredential,
 } from '../src/internal/codex-agent-provider.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
+import { selectPrivateAcpResources } from '../src/internal/private-acp-resources.js'
+import {
+  FINITE_ACP_CONTRACT_ID,
+  FINITE_ACP_CONTRACT_VERSION,
+  FINITE_ACP_CONTRACT_DIGEST,
+} from '../src/internal/private-finite-acp-contract.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 import { nativeElf } from './fixtures/native-elf.js'
@@ -110,18 +116,13 @@ describe('private native Codex Agent provider', () => {
     const fixture = await files()
     const environment = {
       PATH: dirname(fixture.executablePath),
-      JIG_AGENT_CLIENT: 'codex',
       OPENAI_API_KEY: 'test-secret',
       OPENAI_MODEL: 'test-model',
     }
     const pending = openPrivateInstalledBunHost(installedBunLocation, environment)
     environment.PATH = '/missing-after-snapshot'
     const host = await pending
-    expect(host.agentUnavailableHint).toBeUndefined()
-    expect(host.agentExecutable).toEqual({ client: 'codex', path: fixture.executablePath })
-    const provider = host.agentProvider
-    if (provider?.kind !== 'private-acp-agent-provider/1')
-      throw new Error('missing native provider')
+    const provider = await selectCodex(host)
     expect(privateAcpAgentRuntime(provider).executablePath).toBe(fixture.executablePath)
     await revalidatePrivateAcpAgentProvider(provider)
     await writeFile(fixture.executablePath, 'replacement executable', { mode: 0o700 })
@@ -134,8 +135,7 @@ describe('private native Codex Agent provider', () => {
       },
       fixture.root,
     )
-    expect(rejected.agentProvider).toBeUndefined()
-    expect(rejected.agentUnavailableHint).toContain('operator PATH outside the project')
+    await expect(selectCodex(rejected)).rejects.toThrow('selected codex runtime')
   })
 
   test('a PATH-selected installation with missing support does not fall back', async () => {
@@ -221,12 +221,8 @@ describe('private native Codex Agent provider', () => {
     const unavailable = await openPrivateInstalledBunHost(installedBunLocation, {
       CODEX_HOME: join(fixture.root, 'missing-home'),
       CODEX_PATH: fixture.executablePath,
-      JIG_AGENT_CLIENT: 'codex',
     })
-    expect(unavailable.agentProvider).toBeUndefined()
-    expect(unavailable.agentUnavailableHint).toContain(
-      'cli_auth_credentials_store="file", run codex login as this OS user',
-    )
+    await expect(selectCodex(unavailable)).rejects.toThrow('selected codex runtime')
     await expect(
       openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
         CODEX_PATH: join(fixture.root, 'missing-codex'),
@@ -234,23 +230,15 @@ describe('private native Codex Agent provider', () => {
     ).rejects.toBeInstanceOf(PrivateCodexExecutableUnavailableError)
     const missingExecutable = await openPrivateInstalledBunHost(installedBunLocation, {
       CODEX_PATH: join(fixture.root, 'missing-codex'),
-      JIG_AGENT_CLIENT: 'codex',
     })
-    expect(missingExecutable.agentUnavailableHint).toContain('export CODEX_PATH')
+    await expect(selectCodex(missingExecutable)).rejects.toThrow('selected codex runtime')
     await rename(fixture.nativeBubblewrapPath, join(fixture.root, 'outer-bwrap'))
     const missingSandbox = await openPrivateInstalledBunHost(installedBunLocation, {
       CODEX_HOME: codexHome,
       CODEX_PATH: fixture.executablePath,
-      JIG_AGENT_CLIENT: 'codex',
       JIG_BWRAP_PATH: join(fixture.root, 'outer-bwrap'),
     })
-    expect(missingSandbox.agentUnavailableHint).toContain(
-      'make an unprivileged bwrap available on operator PATH',
-    )
-    const unsupported = await openPrivateInstalledBunHost(installedBunLocation, {
-      JIG_AGENT_CLIENT: 'unknown',
-    })
-    expect(unsupported.agentProvider).toBeUndefined()
+    await expect(selectCodex(missingSandbox)).rejects.toThrow('selected codex runtime')
   })
 
   test('resolves a Codex link and preserves its bundled helper despite outer overrides', async () => {
@@ -639,6 +627,28 @@ describe('private native Codex Agent provider', () => {
     ).rejects.toThrow('managed requirements are invalid')
   })
 })
+
+async function selectCodex(host: Awaited<ReturnType<typeof openPrivateInstalledBunHost>>) {
+  const resources = await selectPrivateAcpResources(
+    host.acpResources,
+    {
+      session: {
+        kind: 'native',
+        native: 'finite-acp',
+        contract: {
+          id: FINITE_ACP_CONTRACT_ID,
+          version: FINITE_ACP_CONTRACT_VERSION,
+          digest: FINITE_ACP_CONTRACT_DIGEST,
+        },
+        grant: { kind: 'acp', client: 'codex' },
+      },
+    },
+    host.installedBunSupport,
+  )
+  const provider = resources.session
+  if (!provider) throw new Error('The test did not select its ACP session resource.')
+  return provider
+}
 
 async function files(): Promise<{
   readonly root: string

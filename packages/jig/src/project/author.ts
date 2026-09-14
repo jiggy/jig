@@ -1,6 +1,6 @@
-import { snapshotJsonObject, snapshotJson, expectJsonObject } from './author-value.js'
-import type { JsonObject, JsonValue } from '../json.js'
+import type { JsonObject } from '../json.js'
 import { JSON_1_LIMITS, validateJson1 } from '../json.js'
+import { expectJsonObject, snapshotJson, snapshotJsonObject } from './author-value.js'
 import { type GrantInput, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
 import {
   assertNoProjectPathCollisions,
@@ -28,12 +28,14 @@ export interface JigDefinition {
   readonly flows?: ProjectSource
   readonly bindings?: ProjectSource
   readonly grants?: ProjectSource
+  readonly defaults?: readonly string[]
 }
 
 export interface JigDefinitionInput {
   readonly flows?: ProjectSourceInput
   readonly bindings?: ProjectSourceInput
   readonly grants?: ProjectSourceInput
+  readonly defaults?: readonly string[]
 }
 
 export interface FlowRef {
@@ -85,8 +87,13 @@ export function normalizeJigDefinition(input: unknown): JigDefinition {
 
 function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinition {
   const captured = snapshotJsonObject(input, 'Jig definition')
-  assertClosedObject(captured, ['flows', 'bindings', 'grants'], 'Jig definition')
-  const output: { flows?: ProjectSource; bindings?: ProjectSource; grants?: ProjectSource } = {}
+  assertClosedObject(captured, ['flows', 'bindings', 'grants', 'defaults'], 'Jig definition')
+  const output: {
+    flows?: ProjectSource
+    bindings?: ProjectSource
+    grants?: ProjectSource
+    defaults?: readonly string[]
+  } = {}
   if (Object.hasOwn(captured, 'flows')) {
     output.flows = normalizeSource(
       captured.flows as unknown as ProjectSourceInput,
@@ -108,7 +115,26 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
       canonical,
     )
   }
+  if (Object.hasOwn(captured, 'defaults')) {
+    output.defaults = normalizeDefaults(captured.defaults)
+  }
   return record(output) as unknown as JigDefinition
+}
+
+function normalizeDefaults(value: unknown): readonly string[] {
+  const selections = snapshotStringArray(value, 'defaults')
+  if (selections.length > 256) throw new TypeError('defaults exceed 256 entries')
+  const targets = selections.map((selector) => {
+    const target = parseRunTargetSelector(selector, 'default')
+    return target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
+  })
+  targets.sort(compareUtf8)
+  for (let index = 1; index < targets.length; index += 1) {
+    if (targets[index] === targets[index - 1]) {
+      throw new TypeError(`defaults contain a duplicate target: ${targets[index]}`)
+    }
+  }
+  return Object.freeze(targets)
 }
 
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {

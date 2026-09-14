@@ -3,7 +3,9 @@
   "type": "object",
   "properties": {
     "model": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "maxCompletionTokens": { "type": "integer", "minimum": 1, "maximum": 65536 }
+    "maxCompletionTokens": { "type": "integer", "minimum": 1, "maximum": 65536 },
+    "api": { "type": "string", "enum": ["chat-completions", "responses"] },
+    "structuredOutput": { "type": "string", "enum": ["prompt", "json-schema"] }
   },
   "required": ["model"],
   "additionalProperties": false
