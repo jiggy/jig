@@ -136,9 +136,34 @@ try {
     ],
     consumer,
   )
-  // Enter the installed Flow under its advertised runtime, with input closed.
-  // This checks runtime closure, not native Agent or model behavior.
-  command(process.execPath, [join(consumer, 'node_modules', name, 'FLOW.ts')], consumer)
+  // A real protocol rejection checks the installed runtime closure. Closing stdin
+  // before a Run completes would itself be a transport failure, not a startup test.
+  const child = Bun.spawn([process.execPath, join(consumer, 'node_modules', name, 'FLOW.ts')], {
+    cwd: consumer,
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const deadline = setTimeout(() => child.kill(), 10_000)
+  try {
+    const stderr = new Response(child.stderr).text()
+    child.stdin.write(
+      `${JSON.stringify({ jsonrpc: '2.0', id: 'candidate', method: 'flow/run', params: null })}\n`,
+    )
+    const record = JSON.parse(await new Response(child.stdout).text())
+    child.stdin.end()
+    if (
+      record.id !== 'candidate' ||
+      record.error?.code !== -32602 ||
+      (await child.exited) !== 0 ||
+      (await stderr) !== ''
+    )
+      throw new Error('installed Agent did not return its exact invalid-input rejection')
+  } finally {
+    clearTimeout(deadline)
+    child.kill()
+    await child.exited
+  }
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   if (
     createHash('sha256')
@@ -161,7 +186,7 @@ try {
         bunRevision: Bun.revision,
         nodeVersion: command(node!, ['--version']),
         npmVersion: command(npm!, ['--version']),
-        gates: ['package-tests', 'npm-install-import', 'installed-flow-startup'],
+        gates: ['package-tests', 'npm-install-import', 'installed-flow-invalid-input'],
       },
       null,
       2,
