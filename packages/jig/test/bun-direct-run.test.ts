@@ -298,9 +298,9 @@ describe('private Bun direct Run', () => {
       bunHostLibraryPath: '/test/lib',
     })
     const environments = [
-      { CODEX_PATH: '/missing/codex' },
-      { CLAUDE_PATH: '/missing/claude' },
-      {},
+      { PATH: '', CODEX_PATH: '/missing/codex' },
+      { PATH: '', CLAUDE_PATH: '/missing/claude' },
+      { PATH: '' },
     ] as const
 
     for (const environment of environments) {
@@ -320,7 +320,7 @@ describe('private Bun direct Run', () => {
           backend,
           acpResources: host.acpResources,
         }),
-      ).rejects.toMatchObject({ code: 'PROJECT_ACP_UNAVAILABLE' })
+      ).rejects.toMatchObject({ code: 'PROJECT_ACP_CODEX_EXECUTABLE' })
     }
   })
 })
