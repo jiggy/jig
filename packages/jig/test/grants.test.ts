@@ -79,6 +79,32 @@ test('one slot grammar supports inline policies and optional named reuse', () =>
     expect(() => defineBinding({ package: 'flows/use', slots: { api: value as never } })).toThrow()
 })
 
+test('ACP model is bounded reviewed policy, not an environment or prompt override', () => {
+  for (const model of ['', null, 42, ' model', 'model\n', '../model', 'a'.repeat(257)])
+    expect(() => normalizeGrant({ kind: 'acp', client: 'codex', model })).toThrow()
+  const grant = normalizeGrant({ kind: 'acp', client: 'pi', model: 'provider/model:free' })
+  expect(defineBinding({ package: 'flows/agent', slots: { native: grant } }).slots.native).toEqual(
+    grant,
+  )
+  const lock = (model: string) => ({
+    packages: { 'flows/agent': { digest: 'code', directRun: false, uses: { native: finiteAcp } } },
+    bindings: {
+      agent: {
+        packagePath: 'flows/agent',
+        settings: {},
+        slots: {
+          native: {
+            kind: 'grant' as const,
+            policy: normalizeGrant({ kind: 'acp', client: 'codex', model }),
+          },
+        },
+      },
+    },
+  })
+  expect(requiresAuthorityApproval(lock('one'), lock('one'))).toBeFalse()
+  expect(requiresAuthorityApproval(lock('one'), lock('two'))).toBeTrue()
+})
+
 test('grants require exact declared contracts and do not add native defaults or capacity', () => {
   const selected = { kind: 'grant' as const, policy }
   expect(resolveInvocationSlots({ api: http }, { api: selected }).api).toMatchObject({

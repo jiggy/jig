@@ -85,9 +85,11 @@ Use the same project default shown above. `client` is required; Codex is only
 the concrete choice in this example, not a product default or recommendation.
 The same grant shape accepts `claude` or `pi`; choose your installed client and
 consult its [configuration profile](../spec/finite-acp.md#native-client-profiles).
-The package has no second client or model selector. Operator environment
-supplies the chosen client's model and authentication. Review shows the exact
-native grant and installation before launch.
+The package has no second client selector. Add `model: 'your-model-id'` beside
+`client` in the grant to select a model for that Binding; omission uses the
+operator environment or the client's documented default. Authentication stays
+with the operator. Review shows the exact grant, model and installation before
+launch; changing the grant requires renewed approval.
 
 ```sh
 jig review

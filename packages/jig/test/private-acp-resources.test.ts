@@ -139,6 +139,46 @@ describe('target-selected private ACP resources', () => {
     expect(Object.isFrozen(a)).toBe(true)
   })
 
+  test('two Bindings can select different models of the same client without changing operator credentials', async () => {
+    const f = await fixture()
+    const calls: Array<string | undefined> = []
+    const owner = openPrivateAcpResources(
+      f.support,
+      { MODEL: 'ambient', TOKEN: 'private' },
+      f.project,
+      async (...args) => {
+        calls.push(args[4])
+        expect(args[2]).toEqual({ MODEL: 'ambient', TOKEN: 'private' })
+        return f.open(...args)
+      },
+    )
+    const select = (model?: string) => {
+      const route = slots({ session: 'codex' }).session!
+      return selectPrivateAcpResources(
+        owner,
+        {
+          session: {
+            ...route,
+            grant: { kind: 'acp', client: 'codex', ...(model === undefined ? {} : { model }) },
+          },
+        } as InvocationSlots,
+        f.support,
+      )
+    }
+    const [a, b, again, ambient] = await Promise.all([
+      select('one'),
+      select('two'),
+      select('one'),
+      select(),
+    ])
+    expect(a.session?.model).toBe('one')
+    expect(b.session?.model).toBe('two')
+    expect(ambient.session?.model).toBe('ambient')
+    expect(a.session).toBe(again.session)
+    expect(a.session?.digest).not.toBe(b.session?.digest)
+    expect(calls).toEqual(['one', 'two', undefined])
+  })
+
   test('unavailable clients stay target-scoped, with no retry or alternative client fallback', async () => {
     const f = await fixture()
     const calls: string[] = []
@@ -338,10 +378,10 @@ async function fixture() {
   await writeFile(executable, nativeElf(), { mode: 0o700 })
   await writeFile(adapter, 'inert ACP metadata fixture')
   const support = await openPrivateInstalledBunSupport(installedBunLocation)
-  const open: PrivateAcpClientOpener = async (client, _, environment) =>
+  const open: PrivateAcpClientOpener = async (client, _, environment, _project, model) =>
     createPrivateAcpAgentProvider({
       client: { codex: 'openai-codex', claude: 'anthropic-claude-code', pi: 'pi' }[client],
-      model: environment.MODEL ?? 'fixture-model',
+      model: model ?? environment.MODEL ?? 'fixture-model',
       credentialMode: environment.MODE ?? 'fixture-auth',
       adapterPath: adapter,
       sandboxAdapterPath: '/agent/adapter.js',

@@ -32,6 +32,7 @@ export type PrivateAcpClientOpener = (
   support: PrivateInstalledBunSupport,
   environment: Readonly<Record<string, string | undefined>>,
   projectDirectory: string,
+  model?: string,
 ) => Promise<PrivateAcpAgentProvider>
 
 export class PrivateAcpResourceUnavailableError extends Error {
@@ -60,7 +61,7 @@ interface ResourceOwner {
   readonly support: PrivateInstalledBunSupport
   readonly environment: Readonly<Record<string, string | undefined>>
   readonly projectDirectory: string
-  readonly clients: Map<AcpGrant['client'], Promise<PrivateAcpAgentProvider>>
+  readonly clients: Map<string, Promise<PrivateAcpAgentProvider>>
   readonly openClient: PrivateAcpClientOpener
 }
 const owners = new WeakMap<PrivateAcpResources, ResourceOwner>()
@@ -111,12 +112,19 @@ export async function selectPrivateAcpResources(
     )
       throw new TypeError('the selected ACP resource has no matching private operator owner')
     const client = route.grant.client
+    const key = JSON.stringify([client, route.grant.model ?? null])
     let provider: PrivateAcpAgentProvider
     try {
-      let pending = state.clients.get(client)
+      let pending = state.clients.get(key)
       if (pending === undefined) {
-        pending = state.openClient(client, state.support, state.environment, state.projectDirectory)
-        state.clients.set(client, pending)
+        pending = state.openClient(
+          client,
+          state.support,
+          state.environment,
+          state.projectDirectory,
+          route.grant.model,
+        )
+        state.clients.set(key, pending)
       }
       provider = requirePrivateAcpAgentProvider(await pending)
     } catch (error) {
@@ -135,6 +143,7 @@ async function openQualifiedClient(
   support: PrivateInstalledBunSupport,
   environment: Readonly<Record<string, string | undefined>>,
   projectDirectory: string,
+  model?: string,
 ): Promise<PrivateAcpAgentProvider> {
   const open =
     client === 'codex'
@@ -142,5 +151,5 @@ async function openQualifiedClient(
       : client === 'claude'
         ? openPrivateClaudeAgentProvider
         : openPrivatePiAgentProvider
-  return await open(support.releaseRoot, environment, projectDirectory)
+  return await open(support.releaseRoot, environment, projectDirectory, model)
 }

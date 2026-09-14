@@ -101,6 +101,7 @@ export type GrantPolicy =
 export interface AcpGrant {
   readonly kind: 'acp'
   readonly client: 'codex' | 'claude' | 'pi'
+  readonly model?: string
 }
 export interface GrantedSlot {
   readonly kind: 'grant'
@@ -118,11 +119,20 @@ export function normalizeGrant(value: unknown): GrantPolicy {
   if (kind === 'command') return Object.freeze({ kind, ...normalizeProjectCommand(policy) })
   if (kind === 'acp') {
     if (
-      Object.keys(policy).length !== 1 ||
-      !['codex', 'claude', 'pi'].includes(policy.client as string)
+      Object.keys(policy).some((key) => key !== 'client' && key !== 'model') ||
+      !['codex', 'claude', 'pi'].includes(policy.client as string) ||
+      ('model' in policy &&
+        (typeof policy.model !== 'string' ||
+          !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))
     )
-      throw new TypeError('ACP grant requires one supported native client')
-    return Object.freeze({ kind, client: policy.client as AcpGrant['client'] })
+      throw new TypeError(
+        'ACP grant requires a supported native client and optional model identifier',
+      )
+    return Object.freeze({
+      kind,
+      client: policy.client as AcpGrant['client'],
+      ...('model' in policy ? { model: policy.model as string } : {}),
+    })
   }
   throw new TypeError('grant kind must be http, command, or acp')
 }

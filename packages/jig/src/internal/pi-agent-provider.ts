@@ -39,6 +39,7 @@ export async function openPrivatePiAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
+  selectedModel?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   const executablePath = await resolvePrivateNativeAgentExecutable(
@@ -81,7 +82,7 @@ export async function openPrivatePiAgentProvider(
   )
 
   const provider = environment.PI_PROVIDER
-  const model = environment.PI_MODEL
+  const model = selectedModel ?? environment.PI_MODEL
   const apiKey = environment.PI_API_KEY
   if (provider !== undefined || model !== undefined || apiKey !== undefined) {
     if (provider === undefined || model === undefined) {

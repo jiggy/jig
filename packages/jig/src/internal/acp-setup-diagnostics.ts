@@ -29,7 +29,8 @@ const clients = {
     login:
       'Run codex login and use its operator-owned file-backed authentication; an expired credential needs a fresh login.',
     api: 'Configure OPENAI_API_KEY and OPENAI_MODEL for Responses; OPENAI_API, if set, must be responses. Check OPENAI_BASE_URL if overridden.',
-    model: 'Set a valid OPENAI_MODEL for API access, or CODEX_MODEL for subscription access.',
+    model:
+      'Set a valid model in the ACP grant, or OPENAI_MODEL for API access / CODEX_MODEL for subscription access.',
   },
   claude: {
     name: 'Claude Code',
@@ -38,7 +39,8 @@ const clients = {
       'Use a supported Linux x86-64 native Claude Code installation with its required libraries.',
     login: 'Configure CLAUDE_CODE_OAUTH_TOKEN with a valid Claude setup token.',
     api: 'Set ANTHROPIC_MODEL and exactly one of ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN. Check ANTHROPIC_BASE_URL if overridden.',
-    model: 'Set a valid ANTHROPIC_MODEL for API access, or CLAUDE_MODEL for subscription access.',
+    model:
+      'Set a valid model in the ACP grant, or ANTHROPIC_MODEL for API access / CLAUDE_MODEL for subscription access.',
   },
   pi: {
     name: 'Pi',
@@ -48,7 +50,7 @@ const clients = {
     login:
       'Use valid Pi subscription authentication for PI_PROVIDER in the operator auth.json; check PI_CODING_AGENT_DIR if overridden.',
     api: 'Configure PI_PROVIDER, PI_MODEL and a valid PI_API_KEY for the selected Pi API provider.',
-    model: 'Configure PI_PROVIDER and PI_MODEL with valid explicit provider and model names.',
+    model: 'Configure PI_PROVIDER and a valid model in the ACP grant or PI_MODEL.',
   },
 } as const
 

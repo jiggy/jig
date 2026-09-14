@@ -234,7 +234,13 @@
           "type": "object",
           "properties": {
             "kind": { "const": "acp" },
-            "client": { "enum": ["codex", "claude", "pi"] }
+            "client": { "enum": ["codex", "claude", "pi"] },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\\s\\S])"
+            }
           },
           "required": ["kind", "client"],
           "additionalProperties": false

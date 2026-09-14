@@ -64,6 +64,33 @@ describe('private native Claude Code Agent provider', () => {
       model: 'default',
     })
     expect(pinnedSubscription.model).toBe('subscription/model')
+    const selectedSubscription = await openPrivateClaudeAgentProvider(
+      fixture.releaseRoot,
+      {
+        CLAUDE_PATH: fixture.executablePath,
+        CLAUDE_CODE_OAUTH_TOKEN: 'subscription-secret',
+        CLAUDE_MODEL: 'ambient',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedSubscription).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'claude-subscription',
+    })
+    const selectedApi = await openPrivateClaudeAgentProvider(
+      fixture.releaseRoot,
+      {
+        CLAUDE_PATH: fixture.executablePath,
+        ANTHROPIC_API_KEY: 'api-key-secret',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedApi).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'anthropic-api-key',
+    })
     expect(apiKey).toMatchObject({
       client: 'anthropic-claude-code',
       credentialMode: 'anthropic-api-key',

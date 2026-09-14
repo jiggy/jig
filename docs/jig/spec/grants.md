@@ -30,7 +30,8 @@ Flow and Binding selectors remain available in the same `slots` map.
 The finite native grant is `native: { kind: 'acp', client: 'codex' }`, with
 `claude` and `pi` as the other qualified client choices. It grants one bounded
 ACP conversation, not arbitrary process I/O. The operator's captured native
-configuration supplies the executable, model and private authentication; review
+configuration supplies the executable and private authentication; an optional
+grant `model` overrides its model selection for this recipient. Review
 shows that selected runtime beside the exact recipient. The ordinary Agent
 package drives the dialogue and interprets the answer.
 

@@ -60,6 +60,7 @@ export async function openPrivateClaudeAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
+  selectedModel?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   const executablePath = await resolvePrivateNativeAgentExecutable(
@@ -92,14 +93,15 @@ export async function openPrivateClaudeAgentProvider(
     apiModel !== undefined ||
     apiBaseURL !== undefined
   ) {
-    if (apiModel === undefined) throw new PrivateAcpSetupError('model')
+    const model = selectedModel ?? apiModel
+    if (model === undefined) throw new PrivateAcpSetupError('model')
     if (!hasApiKey && !hasAuthToken) throw new PrivateAcpSetupError('api')
     const provider = await checkAcpSetup('api', () =>
       createPrivateClaudeAnthropicApiAgentProvider({
         ...support,
         authentication: hasAuthToken ? 'auth-token' : 'api-key',
         credential: (hasAuthToken ? authToken : apiKey)!,
-        model: apiModel,
+        model,
         ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
       }),
     )
@@ -110,11 +112,12 @@ export async function openPrivateClaudeAgentProvider(
   if (token === undefined) {
     throw new PrivateAcpSetupError('login')
   }
+  const model = selectedModel ?? environment.CLAUDE_MODEL
   const provider = await checkAcpSetup('login', () =>
     createPrivateClaudeSubscriptionAgentProvider({
       ...support,
       token,
-      ...(environment.CLAUDE_MODEL === undefined ? {} : { model: environment.CLAUDE_MODEL }),
+      ...(model === undefined ? {} : { model }),
     }),
   )
   runtime.verifyProvider(provider)

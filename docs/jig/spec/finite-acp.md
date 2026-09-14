@@ -31,6 +31,14 @@ authentication mode and executable. No global Agent selection, guessed slot
 name or Flow-authored environment creates this authority. Changed runtime
 identity requires renewed review; the launch still revalidates its artifacts.
 
+An optional grant `model` selects the model for this recipient, overriding the
+matching operator model variable without changing authentication mode, endpoint,
+provider or executable. It is 1–256 ASCII characters: an initial letter or digit,
+then letters, digits or `._:/+-`. Omission retains the selected client's operator
+configuration and documented default. Two Bindings can use the same client with
+different models. Changing this policy requires renewed authority approval;
+the ready configuration and native dispatch enforce the selected model.
+
 Input is `null`. Both channels are required and direct: the resource receives
 `requests` and sends `responses`. The adapter creates the channels through the
 ordinary SDK and transfers the opposite endpoints in one exact slot call:
@@ -191,9 +199,9 @@ adapter:
 
 | Client | Host selection | Subscription configuration | API configuration |
 | --- | --- | --- | --- |
-| Codex | `{ kind: 'acp', client: 'codex' }`; optional absolute `CODEX_PATH` | Operator-owned, file-backed `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), created by `codex login`; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
-| Claude Code | `{ kind: 'acp', client: 'claude' }`; optional absolute `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
-| Pi | `{ kind: 'acp', client: 'pi' }`; optional absolute `PI_PATH` | `PI_PROVIDER` and `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
+| Codex | `{ kind: 'acp', client: 'codex' }`; optional absolute `CODEX_PATH` | Operator-owned, file-backed `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), created by `codex login`; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and a grant `model` or `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
+| Claude Code | `{ kind: 'acp', client: 'claude' }`; optional absolute `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus a grant `model` or `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
+| Pi | `{ kind: 'acp', client: 'pi' }`; optional absolute `PI_PATH` | `PI_PROVIDER` and a grant `model` or `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, a grant `model` or `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
 
 The current Pi profile accepts the official self-contained Linux x64 Pi
 0.84.4 release layout. It does not interpret the multi-file npm installation

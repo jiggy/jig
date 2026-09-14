@@ -91,6 +91,7 @@ export async function openPrivateCodexAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
+  selectedModel?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   let executablePath: string
@@ -159,7 +160,8 @@ export async function openPrivateCodexAgentProvider(
     apiBaseURL !== undefined ||
     api !== undefined
   ) {
-    if (apiModel === undefined) throw new PrivateAcpSetupError('model')
+    const model = selectedModel ?? apiModel
+    if (model === undefined) throw new PrivateAcpSetupError('model')
     if (apiKey === undefined) throw new PrivateAcpSetupError('api')
     if (api !== undefined && api !== 'responses') {
       throw new PrivateAcpSetupError('api')
@@ -168,7 +170,7 @@ export async function openPrivateCodexAgentProvider(
       createPrivateCodexOpenAIApiAgentProvider({
         ...support,
         apiKey,
-        model: apiModel,
+        model,
         ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
       }),
     )
@@ -183,10 +185,11 @@ export async function openPrivateCodexAgentProvider(
   } catch {
     throw new PrivateCodexLoginUnavailableError('Codex file-backed login is unavailable')
   }
+  const model = selectedModel ?? environment.CODEX_MODEL
   const provider = await createPrivateCodexSubscriptionAgentProvider({
     ...support,
     credential,
-    ...(environment.CODEX_MODEL === undefined ? {} : { model: environment.CODEX_MODEL }),
+    ...(model === undefined ? {} : { model }),
   })
   runtime.verifyProvider(provider)
   bubblewrapRuntime.verifyProvider(provider)

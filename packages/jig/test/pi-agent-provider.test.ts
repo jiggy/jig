@@ -43,6 +43,21 @@ describe('private native Pi Agent provider', () => {
       },
     )
     expect(privateAcpAgentRuntime(provider).executablePath).toBe(support.executablePath)
+    const selected = await openPrivatePiAgentProvider(
+      join(support.launcherPath, '..', '..', '..'),
+      {
+        PI_PATH: support.executablePath,
+        PI_PROVIDER: 'openrouter',
+        PI_MODEL: 'ambient',
+        PI_API_KEY: 'test-secret',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selected).toMatchObject({
+      model: 'openrouter/binding-model',
+      credentialMode: 'pi-api-key',
+    })
   })
 
   test('opens Pi from a native path and explicit provider selection', async () => {

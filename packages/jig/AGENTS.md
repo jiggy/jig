@@ -99,6 +99,8 @@ admitted FLOW packages.
   `docs/jig/spec/project-policy.md`.
 - Binding slots select inline HTTP, command or finite ACP grants, or optional
   named JSON policies.
+  An ACP grant may pin a recipient-specific model; this changes approval and
+  runtime identity without changing operator authentication or client selection.
   `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
   New or changed delegations require explicit authority approval in the same
   retained plan; source edits cannot mutate active generations. Secrets remain

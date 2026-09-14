@@ -193,6 +193,33 @@ describe('private native Codex Agent provider', () => {
       model: 'client-default',
     })
     expect(pinnedSubscription.model).toBe('gpt-5.3-codex-spark')
+    const selectedSubscription = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      {
+        CODEX_HOME: codexHome,
+        CODEX_PATH: fixture.executablePath,
+        CODEX_MODEL: 'ambient',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedSubscription).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'openai-subscription',
+    })
+    const selectedApi = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      {
+        CODEX_PATH: fixture.executablePath,
+        OPENAI_API_KEY: 'gateway-secret',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedApi).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'openai-responses-api-key',
+    })
     expect(gateway).toMatchObject({
       client: 'openai-codex',
       credentialMode: 'openai-responses-api-key',
