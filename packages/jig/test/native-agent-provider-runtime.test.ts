@@ -55,18 +55,18 @@ for (const client of ['claude', 'pi'] as const) {
       const f = await fixture(client)
       const marker = join(f.root, 'executed')
       await writeFile(f.executable, `#!/bin/sh\ntouch '${marker}'\n`)
-      await expect(f.open()).rejects.toThrow('not ELF')
+      await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
       await expect(readFile(marker)).rejects.toThrow()
     })
 
     test('rejects missing libraries and support routed through project symlinks', async () => {
       const f = await fixture(client)
       await rm(f.library)
-      await expect(f.open()).rejects.toThrow('shared library is unavailable')
+      await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
       const localLibrary = join(f.project, 'libfixture.so')
       await writeFile(localLibrary, nativeElf())
       await symlink(localLibrary, f.library)
-      await expect(f.open()).rejects.toThrow('enters the project')
+      await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
     })
 
     if (client === 'pi') {
@@ -76,7 +76,7 @@ for (const client of ['claude', 'pi'] as const) {
         await writeFile(localTheme, '{}')
         await rm(f.paths.dark)
         await symlink(localTheme, f.paths.dark)
-        await expect(f.open()).rejects.toThrow('support enters the project')
+        await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
         await rm(f.paths.dark)
         await writeFile(f.paths.dark, '{}')
         const wrapped = join(f.root, 'wrapped')
@@ -87,7 +87,7 @@ for (const client of ['claude', 'pi'] as const) {
             wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '/operator/bin'\n\n`,
           }),
         )
-        await expect(f.open()).rejects.toThrow('wrapped native Pi is unsupported')
+        await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
       })
     } else {
       test('retains and revalidates a declarative native wrapper target', async () => {

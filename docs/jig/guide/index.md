@@ -94,7 +94,7 @@ previously accepted version. The network flag has the same dependency-resolution
 meaning described above; it does not authorize the Flow to access the network.
 
 You have now created, run, and adapted a method. Next,
-[add a support-reply Agent to this same project](./agents.md#build-your-first-agent-method), or see
+[choose an ordinary Agent for this same project](./agents.md), or see
 [one caller use code, an Agent, or both](./request-triage.md). The method boundary
 stays consistent as the implementation changes. Read [how Jig works](./understand.md)
 for the architecture behind it, or try [a tested patch](./tested-patch.md)
@@ -147,7 +147,7 @@ protocol failures, and retained-state recovery.
 
 ## Next steps
 
-- [Build your first Agent method](./agents.md#build-your-first-agent-method) in the project you just created.
+- [Add an ordinary Agent](./agents.md) to the project you just created.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
 - [Run a Markdown method](./markdown.md) without an SDK dependency.
 - [Choose an Agent](./agents.md) using an API or a supported local client.

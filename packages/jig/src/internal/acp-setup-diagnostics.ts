@@ -28,7 +28,7 @@ const clients = {
       'Use a supported Linux x86-64 Codex installation with its required libraries and sandbox helper.',
     login:
       'Run codex login and use its operator-owned file-backed authentication; an expired credential needs a fresh login.',
-    api: 'Configure OPENAI_API_KEY and OPENAI_MODEL for Responses; OPENAI_API, if set, must be responses. Check OPENAI_BASE_URL if overridden.',
+    api: 'Configure OPENAI_API_KEY and a model in the ACP grant or OPENAI_MODEL for Responses; OPENAI_API, if set, must be responses. Check OPENAI_BASE_URL if overridden.',
     model:
       'Set a valid model in the ACP grant, or OPENAI_MODEL for API access / CODEX_MODEL for subscription access.',
   },
@@ -38,7 +38,7 @@ const clients = {
     installation:
       'Use a supported Linux x86-64 native Claude Code installation with its required libraries.',
     login: 'Configure CLAUDE_CODE_OAUTH_TOKEN with a valid Claude setup token.',
-    api: 'Set ANTHROPIC_MODEL and exactly one of ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN. Check ANTHROPIC_BASE_URL if overridden.',
+    api: 'Set exactly one of ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN and a model in the ACP grant or ANTHROPIC_MODEL. Check ANTHROPIC_BASE_URL if overridden.',
     model:
       'Set a valid model in the ACP grant, or ANTHROPIC_MODEL for API access / CLAUDE_MODEL for subscription access.',
   },
@@ -49,7 +49,7 @@ const clients = {
       'Use the supported standalone Linux x86-64 Pi 0.84.4 distribution with its package.json and theme directory; a Node/npm launcher is not supported.',
     login:
       'Use valid Pi subscription authentication for PI_PROVIDER in the operator auth.json; check PI_CODING_AGENT_DIR if overridden.',
-    api: 'Configure PI_PROVIDER, PI_MODEL and a valid PI_API_KEY for the selected Pi API provider.',
+    api: 'Configure PI_PROVIDER, a model in the ACP grant or PI_MODEL, and a valid PI_API_KEY for the selected Pi API provider.',
     model: 'Configure PI_PROVIDER and a valid model in the ACP grant or PI_MODEL.',
   },
 } as const

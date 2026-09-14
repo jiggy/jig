@@ -24,6 +24,11 @@ if [ "$node_identity" != FLOW_NODE_OK ]; then
   exit 1
 fi
 
+# The host compiler tests use the same explicitly qualified Node as the SDK gate.
+# Preserve a separately selected operator path when supplied.
+JIG_AUTHORING_NODE_PATH=${JIG_AUTHORING_NODE_PATH:-"$FLOW_NODE"}
+export JIG_AUTHORING_NODE_PATH
+
 python_bin=${PYTHON:-python3}
 if ! "$python_bin" --version >/dev/null 2>&1; then
   echo "Run/1 release tests require Python 3; set PYTHON to its executable." >&2

@@ -16,6 +16,7 @@ import { linkPackageProject } from '../src/project/package-project.js'
 import { HTTP_REQUEST_CONTRACT_DIGEST } from '../src/internal/private-http-request.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../src/internal/private-project-command.js'
 import { requiresAuthorityApproval, grantChanges } from '../src/internal/grant-review.js'
+import { compileSchemaFile } from '../src/schema/index.js'
 
 const http = {
   id: 'https://jig.md/contracts/http-request',
@@ -79,10 +80,24 @@ test('one slot grammar supports inline policies and optional named reuse', () =>
     expect(() => defineBinding({ package: 'flows/use', slots: { api: value as never } })).toThrow()
 })
 
-test('ACP model is bounded reviewed policy, not an environment or prompt override', () => {
+test('ACP model is bounded reviewed policy, not an environment or prompt override', async () => {
   for (const model of ['', null, 42, ' model', 'model\n', '../model', 'a'.repeat(257)])
     expect(() => normalizeGrant({ kind: 'acp', client: 'codex', model })).toThrow()
   const grant = normalizeGrant({ kind: 'acp', client: 'pi', model: 'provider/model:free' })
+  for (const name of ['project-authoring', 'jig-lock']) {
+    const bytes = await Bun.file(
+      new URL(`../../../docs/jig/spec/machine/${name}-1.schema.json`, import.meta.url),
+    ).arrayBuffer()
+    compileSchemaFile(new Uint8Array(bytes))
+  }
+  const authoringSchema = compileSchemaFile(
+    new Uint8Array(
+      await Bun.file(
+        new URL('../../../docs/jig/spec/machine/project-authoring-1.schema.json', import.meta.url),
+      ).arrayBuffer(),
+    ),
+  )
+  authoringSchema.validate(defineBinding({ package: 'flows/agent', slots: { native: grant } }))
   expect(defineBinding({ package: 'flows/agent', slots: { native: grant } }).slots.native).toEqual(
     grant,
   )
