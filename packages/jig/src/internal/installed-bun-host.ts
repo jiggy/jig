@@ -9,6 +9,7 @@ import {
   PrivateCodexRuntimeUnavailableError,
   PrivateCodexSandboxUnavailableError,
 } from './codex-agent-provider.js'
+import { excludePrivateVerificationProject } from './installation-verification.js'
 import {
   openPrivateInstalledBunSupport,
   type PrivateInstalledBunLocation,
@@ -93,6 +94,7 @@ export async function openPrivateInstalledBunHost(
   },
 ): Promise<PrivateProjectSessionHost & AgentSelection> {
   let operatorEnvironment = Object.freeze({ ...environment })
+  await excludePrivateVerificationProject(projectDirectory)
   let preferenceFailure = false
   if (selection !== undefined && operatorEnvironment.JIG_AGENT_CLIENT === undefined) {
     try {

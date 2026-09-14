@@ -26,6 +26,10 @@ descriptors.
 - A descriptor-byte change must reconcile its documented digest, host
   allowlist, fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.
+- `project-policy.md` owns installation verification modes and their integrity
+  limits. Cached is the installed default; fast may miss changed tool bytes.
+  Agent and CLI contracts reference that policy instead of promising unconditional
+  fresh byte checks. FLOW schemas and approval authority remain independent.
 
 ## Work Guidance
 

@@ -696,6 +696,48 @@ do not introduce Flow-controlled policy or a new public timeout API.
 
 ## 9. Execution envelope
 
+### Installation verification policy
+
+The operator selects installation verification through
+`JIG_VERIFICATION=cached|strict|fast`, captured before project loading. Omission
+selects `cached`; any other value is a configuration error before execution.
+This is a host performance/integrity choice, never a `jig.ts`, FLOW, Binding,
+approval, or capability setting. It applies to review, Run, and environment
+inspection, including each later installed-support revalidation boundary.
+
+- `cached` reuses an installed file's SHA-256 while its selected canonical path,
+  device, inode, ownership, permissions, link count, size, modification time,
+  and change time match. Times use filesystem nanosecond precision. A miss or
+  mismatch hashes current bytes and checks metadata again before retaining the
+  digest. This detects ordinary installation updates, including in-place edits
+  with restored modification time; it does not promise fresh byte verification
+  when filesystem identity and metadata appear unchanged.
+- `strict` hashes current installed bytes at every verification boundary. It
+  neither reads nor writes the installation cache.
+- `fast` reuses a stored digest for the selected canonical file path without
+  comparing file freshness. A cache miss still hashes current bytes. Changed
+  installed bytes can therefore retain their old identity without requiring
+  review; operators selecting this mode accept that limit.
+
+The bounded, disposable cache contains only installed tool/support paths,
+metadata and digests. It lives in owner-private storage outside project source
+at `$XDG_CACHE_HOME/jig/installation-verification`, or
+`$HOME/.cache/jig/installation-verification` when XDG cache home is unset.
+Unsafe locations, symlink cache routes, invalid entries or cache failures fall
+back to fresh hashing. Cache deletion is harmless. Inspection can reuse valid
+entries but never creates or updates them. A cache grants no approval or
+execution authority. Mode selection alone does not change execution identity
+when the observed installation bytes agree.
+
+All modes retain executable/path eligibility, supported-runtime and sandbox
+feature checks, credential validation, capability permissions, resource limits,
+recovery, cancellation and cleanup. Package capture, retained artifacts and
+invocation files keep their existing exact verification. These policies concern
+change detection for the trusted installation; none protects against a
+compromised host administrator, same-user process, runtime or containment tool.
+
+### Containment and lifetime
+
 The direct alpha has one Linux rootless containment mechanism. Before package
 bytes execute, it establishes one Run-owned cgroup and configures aggregate
 memory, PID, and CPU limits. The same pre-exec path then enters isolated user,

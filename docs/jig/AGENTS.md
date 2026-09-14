@@ -21,6 +21,10 @@ use-case and orchestration hypotheses.
   Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
+- `guide/index.md#startup-verification` teaches operator-selected cached,
+  strict and fast installation verification. Keep defaults and tradeoffs aligned
+  with execution policy and `SECURITY.md`; never imply fast skips Flow approval
+  or sandbox enforcement.
 - `guide/channels.md` teaches optional Flow progress and subprocess
   consumption; `contracts/` also explains named channel agreements.
   Root and package READMEs introduce the product and link to these owners.

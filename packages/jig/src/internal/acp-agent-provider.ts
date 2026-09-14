@@ -5,7 +5,8 @@ import type * as acp from '@agentclientprotocol/sdk'
 
 import type { JsonObject, JsonValue } from '../json.js'
 import type { PrivateAcpSessionConfiguration } from './acp-agent-client.js'
-import { privateDomainDigest, privateFileDigest } from './identity.js'
+import { privateDomainDigest } from './identity.js'
+import { privateInstallationFileDigest } from './installation-verification.js'
 import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
 import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
@@ -139,8 +140,8 @@ export async function createPrivateAcpAgentProvider(
     exactMounts.map(({ source, destination }) => Object.freeze({ source, destination })),
   )
   const [adapterDigest, executableDigest] = await Promise.all([
-    privateFileDigest(adapterPath),
-    privateFileDigest(executablePath),
+    privateInstallationFileDigest(adapterPath),
+    privateInstallationFileDigest(executablePath),
   ])
   const identity = Object.freeze({
     kind: 'private-acp-agent-provider/1' as const,
@@ -270,8 +271,8 @@ export async function revalidatePrivateAcpAgentProvider(value: unknown): Promise
     exactFile(runtime.executablePath, true, 'native Agent client'),
   ])
   const [adapterDigest, executableDigest] = await Promise.all([
-    privateFileDigest(adapterPath),
-    privateFileDigest(executablePath),
+    privateInstallationFileDigest(adapterPath),
+    privateInstallationFileDigest(executablePath),
   ])
   if (
     adapterPath !== runtime.adapterPath ||
@@ -287,7 +288,8 @@ export async function revalidatePrivateAcpAgentProvider(value: unknown): Promise
       const source = await exactFile(mount.source, false, 'ACP Agent mount')
       if (
         source !== mount.source ||
-        (mount.digest !== undefined && (await privateFileDigest(source)) !== mount.digest)
+        (mount.digest !== undefined &&
+          (await privateInstallationFileDigest(source)) !== mount.digest)
       ) {
         throw new Error('ACP Agent support changed after selection')
       }
@@ -352,7 +354,7 @@ async function normalizeMount(mount: PrivateAcpReadOnlyMount): Promise<ExactMoun
     source,
     destination: mount.destination,
     role: mount.role,
-    ...(mount.role === 'support' ? { digest: await privateFileDigest(source) } : {}),
+    ...(mount.role === 'support' ? { digest: await privateInstallationFileDigest(source) } : {}),
   })
 }
 

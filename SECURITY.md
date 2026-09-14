@@ -61,6 +61,25 @@ must inspect captured behavior without importing candidate code.
 
 ## Supported trust boundary
 
+The operator controls installation change detection with
+`JIG_VERIFICATION=cached|strict|fast`. The default, `cached`, reuses SHA-256
+digests while the selected canonical path and filesystem identity/metadata
+match, including inode, permissions, size, and nanosecond modification/change
+times. `strict` hashes current bytes at every verification boundary and bypasses
+the cache. `fast` reuses stored digests without checking freshness; changed tool
+bytes at the same path can retain an old reviewed identity. Cache misses require
+hashing in every mode that uses the cache. These modes are an explicit
+performance/integrity tradeoff, not equivalent byte-integrity guarantees.
+
+The disposable cache is operator-private, outside project source, and stores
+only installation paths, metadata and digests. Unsafe or invalid caches fall
+back to fresh hashes. The policy never caches approval authority or changes
+verification of captured packages, retained artifacts or invocation files.
+All modes retain executable eligibility, sandbox enforcement, credential and
+permission checks, limits, recovery, cancellation and cleanup. See
+[installation verification](docs/jig/spec/project-policy.md#installation-verification-policy)
+for the exact contract.
+
 The alpha does not defend against:
 
 - compromise of the Linux kernel, systemd, Bubblewrap, cgroup v2, or Jig's

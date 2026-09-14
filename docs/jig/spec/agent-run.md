@@ -322,8 +322,10 @@ same validation and identity checks with either selection method. Invalid client
 support fails without trying another installation. Review shows
 the native client and its resolved operator executable path. Launch uses the
 resolved executable checked against admitted provider identity, without repeating
-host PATH discovery. A changed selection cannot silently replace reviewed
-executable or support bytes.
+host PATH discovery. Installed-byte change detection follows the operator's
+[installation verification policy](project-policy.md#installation-verification-policy).
+Default cached verification detects ordinary file changes; fast mode can reuse
+an older identity for changed bytes at the same selected path.
 
 All three native adapters inspect Linux x86-64 ELF executables. Codex and
 Claude Code also accept the declarative `makeBinaryWrapper` form which preserves
@@ -349,7 +351,8 @@ eligible helper, it selects the installation's matching `codex-resources/bwrap`
 beside the executable directory or its parent. A PATH-selected helper is never
 substituted at the vendor bundle path. `JIG_BWRAP_PATH` selects only Jig's outer
 containment tool. Executable, wrapper, helper, shared-library bytes, and their
-contained paths enter provider identity and are revalidated before launch.
+contained paths enter provider identity and are revalidated before launch under
+that installation verification policy.
 A bundled fallback stays off PATH so Codex applies its vendor integrity check.
 For a PATH-selected helper, only its directory enters the initial contained
 PATH; other operator PATH entries do not become filesystem authority.

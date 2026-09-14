@@ -1,20 +1,20 @@
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import {
+  type FileHandle,
   link,
   lstat,
   mkdir,
   mkdtemp,
   open,
-  readFile,
   readdir,
+  readFile,
   realpath,
   rm,
   rmdir,
   stat,
   statfs,
   unlink,
-  type FileHandle,
 } from 'node:fs/promises'
 import { createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -24,14 +24,15 @@ import { types as utilTypes } from 'node:util'
 
 import type { JsonValue } from '../json.js'
 import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
+import { privateDomainDigest } from './identity.js'
+import { privateInstallationFileDigest } from './installation-verification.js'
+import { PRIVATE_FILE_LIMITS, privateVerifySealedFile } from './linux-file-input.js'
 import {
   acquirePrivateRootlessLinux,
   inspectPrivateRootlessLinuxSupport,
-  revalidatePrivateRootlessLinux,
   type PrivateRootlessLinuxAcquisitionObservation,
+  revalidatePrivateRootlessLinux,
 } from './linux-rootless-acquisition.js'
-import { privateDomainDigest, privateFileDigest } from './identity.js'
-import { PRIVATE_FILE_LIMITS, privateVerifySealedFile } from './linux-file-input.js'
 
 const RUN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 const OWNER_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/
@@ -501,7 +502,8 @@ export class PrivateLinuxCgroupBackend {
 
   async #observeMechanism(): Promise<PrivateLinuxBackendMechanismObservation> {
     if (this.#acquisition === undefined) {
-      const initial = (this.#initialObservation ??= observeInitialMechanism(this.#options))
+      this.#initialObservation ??= observeInitialMechanism(this.#options)
+      const initial = this.#initialObservation
       try {
         const observed = await initial
         this.#acquisition = observed.acquisition
@@ -1224,7 +1226,7 @@ export async function releasePrivateLinuxOwnerState(
     : releaseReferenceForOwner(ownerValue, proofValue)
   await requireExactParent(reference.parent, reference.parentDevice, reference.parentInode)
   const receipt = releaseReceipt(reference)
-  let directoryInformation
+  let directoryInformation: import('node:fs').BigIntStats
   try {
     directoryInformation = await lstat(reference.directory, { bigint: true })
   } catch (error) {
@@ -1406,9 +1408,9 @@ async function observeMechanismSupport(
   requireRegularFile(supervisor, 'rootless supervisor')
   requireExecutable(bubblewrap, 'Bubblewrap')
   const [bunDigest, supervisorDigest, bubblewrapDigest] = await Promise.all([
-    privateFileDigest(bunPath),
-    privateFileDigest(supervisorPath),
-    privateFileDigest(authority.bubblewrapPath),
+    privateInstallationFileDigest(bunPath),
+    privateInstallationFileDigest(supervisorPath),
+    privateInstallationFileDigest(authority.bubblewrapPath),
   ])
   // The mechanism identity describes reproducible host support. The delegated
   // cgroup is invocation authority: retain and recheck it for this launch,

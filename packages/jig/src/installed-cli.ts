@@ -18,6 +18,10 @@ import {
   privateOwnFileCommand,
 } from './internal/file-command.js'
 import {
+  PrivateInstallationVerificationConfigurationError,
+  withPrivateInstallationVerification,
+} from './internal/installation-verification.js'
+import {
   openPrivateInstalledBunHost,
   privateInstalledEnvironmentCheck,
 } from './internal/installed-bun-host.js'
@@ -66,6 +70,34 @@ async function runPrivateInstalledCli(
   arguments_: readonly string[] = process.argv.slice(2),
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
+  const operatorEnvironment = Object.freeze({ ...process.env })
+  const run = () => runWithEnvironment(arguments_, operatorEnvironment, signal)
+  if (
+    !privateCliRequiresHost(arguments_) &&
+    (arguments_[0] !== 'inspect' || arguments_.includes('--help') || arguments_.includes('-h'))
+  )
+    return run()
+  try {
+    return await withPrivateInstallationVerification(operatorEnvironment, run, {
+      readOnly: arguments_[0] === 'inspect',
+    })
+  } catch (error) {
+    if (!(error instanceof PrivateInstallationVerificationConfigurationError)) throw error
+    process.stderr.write(
+      privateCliStderrDiagnostic(
+        'JIG_VERIFICATION_INVALID',
+        'Choose JIG_VERIFICATION=cached (default), strict, or fast. Fast reuses installation identities without checking file freshness.\nNext step: https://jig.md/guide/#startup-verification\nNo Flow was started.',
+      ),
+    )
+    return exit(2)
+  }
+}
+
+async function runWithEnvironment(
+  arguments_: readonly string[],
+  operatorEnvironment: Readonly<Record<string, string | undefined>>,
+  signal?: AbortSignal,
+): Promise<InstalledCliOutcome> {
   if (!privateCliRequiresHost(arguments_)) {
     return exit(
       await main(arguments_, {
@@ -75,7 +107,7 @@ async function runPrivateInstalledCli(
           : {
               inspectEnvironment: privateInstalledEnvironmentCheck(
                 { releaseRoot, executablePath, installedCliPath },
-                process.env,
+                operatorEnvironment,
                 process.cwd(),
               ),
             }),
@@ -83,7 +115,6 @@ async function runPrivateInstalledCli(
     )
   }
 
-  const operatorEnvironment = Object.freeze({ ...process.env })
   try {
     const recovery = privateFileRecovery()
     if (recovery === undefined && privateNeedsFileOwner(arguments_)) {

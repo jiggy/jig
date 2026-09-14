@@ -3,9 +3,10 @@ import { access, lstat, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import type { JsonValue } from '../json.js'
-import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
-import { privateDomainDigest, privateFileDigest } from './identity.js'
+import { privateDomainDigest } from './identity.js'
+import { privateInstallationFileDigest } from './installation-verification.js'
 import { resolvePrivateLinuxHostLoader } from './linux-host-paths.js'
+import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
 
 const ELF_INTERPRETER = '/lib64/ld-linux-x86-64.so.2'
 const LIBRARIES = Object.freeze([
@@ -151,15 +152,15 @@ export async function openPrivateInstalledBunSupport(
     preparationWorkerDigest,
     agentWorkerDigest,
   ] = await Promise.all([
-    privateFileDigest(executablePath),
-    privateFileDigest(installedCliPath),
-    privateFileDigest(supervisorPath),
-    privateFileDigest(loaderPath),
+    privateInstallationFileDigest(executablePath),
+    privateInstallationFileDigest(installedCliPath),
+    privateInstallationFileDigest(supervisorPath),
+    privateInstallationFileDigest(loaderPath),
     Promise.all(
       libraries.map(async ({ name, path }) =>
         Object.freeze({
           name,
-          digest: await privateFileDigest(path),
+          digest: await privateInstallationFileDigest(path),
         }),
       ),
     ),
@@ -167,12 +168,12 @@ export async function openPrivateInstalledBunSupport(
       evaluatorFiles.map(async ({ name, path }) =>
         Object.freeze({
           name,
-          digest: await privateFileDigest(path),
+          digest: await privateInstallationFileDigest(path),
         }),
       ),
     ),
-    privateFileDigest(preparationWorkerPath),
-    privateFileDigest(agentWorkerPath),
+    privateInstallationFileDigest(preparationWorkerPath),
+    privateInstallationFileDigest(agentWorkerPath),
   ])
   const bun = (
     globalThis as typeof globalThis & {

@@ -131,6 +131,48 @@ Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
 See [execution policy](../spec/project-policy.md) for current limits and
 lifecycle guarantees.
 
+## Startup verification
+
+Jig defaults to **cached** verification to avoid repeatedly hashing large
+installed tools. It reuses hashes while file identity and metadata match, and
+rehashes when they change. Choose the policy in your shell:
+
+```sh
+export JIG_VERIFICATION=cached
+```
+
+| Mode | Installation check | Tradeoff |
+| --- | --- | --- |
+| `cached` (default) | Reuse hashes while file identity, permissions, size and modification/change times match | Detects ordinary tool updates; relies on filesystem metadata between hashes |
+| `strict` | Hash current tool bytes at every verification point | Stronger byte verification, with more startup work |
+| `fast` | Reuse stored hashes without checking freshness | Changed tool bytes at the same path can go undetected |
+
+For a single command, prefix it with the setting:
+
+```sh
+JIG_VERIFICATION=fast jig run flow:flows/hello --input '"Ada"'
+JIG_VERIFICATION=strict jig review
+```
+
+Fast mode suits operators who prioritize startup performance and trust their
+installation to remain suitable. All modes hash files on a cache miss, so the
+first use of a tool can take longer. Most savings come from avoiding repeated
+hashing; fast's extra benefit over cached depends on the installation and host.
+
+The setting applies to review, Run and inspection. It is an operator preference,
+separate from project configuration. Flow approval, retained package verification,
+sandbox requirements, permissions, resource limits, cancellation and cleanup
+still apply. Tool and runtime compromise remains outside Jig's threat model.
+
+The private installation cache lives at
+`$XDG_CACHE_HOME/jig/installation-verification`, or
+`$HOME/.cache/jig/installation-verification` by default. It contains tool paths,
+metadata and hashes, never credentials or project approvals. You can remove
+this directory to force fresh hashes next time. Unsafe or unusable caches fall
+back to full hashing. Strict bypasses the cache entirely; inspection never
+writes it. See the [exact policy](../spec/project-policy.md#installation-verification-policy)
+for the guarantees and limits.
+
 ## Read the result
 
 The greeting returns execution status, the method's outcome, and its output.

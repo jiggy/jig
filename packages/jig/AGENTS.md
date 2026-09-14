@@ -62,6 +62,11 @@ admitted FLOW packages.
   [usable-control principle](../../.agents/doctrine/jig.md#understandable-feedback-and-actionable-errors).
 - Build with the exact pinned Bun version and reconcile dependency changes
   with the lock, package inventory, licenses, and notices.
+- Installed commands use `JIG_VERIFICATION=cached|strict|fast`, with cached
+  as the default. This is captured operator policy, never project-controlled.
+  Keep help, the startup guide, security statement and execution policy aligned;
+  describe the weaker freshness guarantee of fast mode explicitly. Cache only
+  installed support, never approval, retained package or invocation authority.
 
 ## Work Guidance
 

@@ -6,7 +6,7 @@ import {
   type PrivateAcpReadOnlyMount,
   verifyPrivateAcpAgentFileDigests,
 } from './acp-agent-provider.js'
-import { privateFileDigest } from './identity.js'
+import { privateInstallationFileDigest } from './installation-verification.js'
 import { privateNativeAgentSupportResolver } from './native-agent-executable.js'
 
 interface Elf {
@@ -18,7 +18,7 @@ interface Elf {
 }
 
 /** Read installation metadata as data. Never run ldd, a shell, or the selected client.
- * The returned inspection is provisional until verifyProvider closes its byte check.
+ * Inspection is provisional until verifyProvider checks it under operator policy.
  */
 export async function inspectPrivateNativeAgentRuntime(
   executable: string,
@@ -55,7 +55,7 @@ export async function inspectPrivateNativeAgentRuntime(
     mounts.set(destination, Object.freeze({ source, destination, role: 'support' }))
     if (inspected.has(source)) return
     inspected.add(source)
-    digests.set(source, await privateFileDigest(source))
+    digests.set(source, await privateInstallationFileDigest(source))
     const elf = await readElf(source)
     if (elf === undefined) throw new Error('native Agent runtime is not ELF')
     const search = elf.search.map((path) => {
@@ -118,8 +118,8 @@ export async function inspectPrivateNativeAgentRuntime(
   return Object.freeze({
     pathPrefix,
     mounts: Object.freeze([...mounts.values()]),
-    // Provider construction hashes every selected file after metadata traversal.
-    // Comparing that evidence with the pre-inspection hashes closes the whole
+    // Provider construction verifies every selected file under operator policy.
+    // Comparing that evidence with the pre-inspection identities closes the whole
     // inspection interval; another full-file pass inside visit would duplicate it.
     verifyProvider: (provider: PrivateAcpAgentProvider) =>
       verifyPrivateAcpAgentFileDigests(provider, digests),

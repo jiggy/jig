@@ -394,6 +394,7 @@ describe('finite Jig project commands', () => {
       ['init', '--help'],
       ['review', '-h'],
       ['run', '--help'],
+      ['inspect', '--help'],
     ]) {
       const invocation = commandInvocation(unusedHost())
       expect(await main(arguments_, invocation.options)).toBe(0)
@@ -408,7 +409,13 @@ describe('finite Jig project commands', () => {
         expect(invocation.output).toContain('--yes does not grant resolution networking')
       } else if (arguments_[0] === 'init') {
         expect(invocation.output).toContain('--bare')
-      } else expect(invocation.output).toContain('jig --version')
+      } else if (arguments_[0] !== 'inspect') expect(invocation.output).toContain('jig --version')
+      if (arguments_[0] !== 'init') {
+        expect(invocation.output).toContain('JIG_VERIFICATION=cached')
+        expect(invocation.output).toContain('JIG_VERIFICATION=strict')
+        expect(invocation.output).toContain('JIG_VERIFICATION=fast')
+        expect(invocation.output).toContain('Fast can miss changed tool bytes')
+      }
       expect(invocation.output).not.toContain('package check')
       expect(invocation.error).toBe('')
     }

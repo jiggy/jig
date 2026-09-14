@@ -50,7 +50,9 @@ child calls, project commands, and Agent providers.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,
-  execute. Never execute mutable project source or stale host evidence.
+  execute. Never execute mutable project source. Installed-support evidence
+  follows the operator's verification policy below; execution authority and
+  lifecycle observations remain fresh.
 - Flow code receives no ambient host authority. Minimize environment, mounts,
   executables, network, credentials, and capabilities explicitly.
 - Stage only captured manifests and the supplied root lock for Bun installation;
@@ -98,14 +100,15 @@ child calls, project commands, and Agent providers.
   Pi retains its unwrapped standalone layout and project-excluded sibling assets.
   Resolve loader-owned libraries through the interpreter's canonical location;
   retain individual executable, loader, and
-  library files at installation paths, hash their bytes, and revalidate before
-  launch. Hash each native file before reading its metadata; inspection remains
-  provisional until provider construction's fresh hashes close that interval.
+  library files at installation paths, identify them under the selected
+  verification policy, and revalidate before launch. Identify each native file
+  before reading its metadata; inspection remains provisional until provider
+  construction checks that interval under the same policy.
   Every native factory must verify the complete inspection against its authentic
   provider before returning it. Do not add an intermediate full-file hash pass
-  or treat path, size, or timestamps as byte evidence. This comparison never
-  replaces launch-time filesystem and byte revalidation or establishes a
-  persistent verification cache. Reject unsupported or project-selected dependencies; never mount a
+  or claim metadata reuse establishes fresh byte evidence. This comparison never
+  replaces launch-time filesystem eligibility and installation verification.
+  Reject unsupported or project-selected dependencies; never mount a
   whole installation/store or import ambient loader variables. Each native
   launcher removes Bun's private loader override before starting its client.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
@@ -123,7 +126,8 @@ child calls, project commands, and Agent providers.
   Root execution compares the actual sealed owner's mechanism identity with the
   reviewed recipe before admission, using sealing's fresh observation instead of
   a duplicate pre-seal observation. Retain and settle the sealed owner on refusal;
-  final admission still revalidates support bytes and invocation authority.
+  final admission still verifies installation support under operator policy
+  and freshly revalidates invocation authority.
 - Review projects only explicit public policy and allowlisted non-secret Agent
   selections. Environment-only target changes name the execution environment,
   distinguish unchanged source/dependencies/policy, and explain the new approval.
@@ -174,7 +178,7 @@ child calls, project commands, and Agent providers.
   process evidence, not an independent test verdict. Candidate bytes are copied
   from sealed descriptors into named files in a bounded private tmpfs, made
   read-only before payload execution so Bun can resolve modules safely.
-- Fail closed on unsupported hosts, changed bytes, missing enforcement,
+- Fail closed on unsupported hosts, detected identity changes, missing enforcement,
   malformed protocol, cleanup failure, or unverifiable provenance.
   Hold the trusted entry until the coordinator validates cgroup membership and
   any output handoff; short-lived commands must not race that check. Close the
@@ -215,7 +219,8 @@ child calls, project commands, and Agent providers.
   actual project tree and ancestor dependency directories through every symlink
   hop. Review may show the resolved operator executable path, never credentials
   or private retained paths. Launch revalidates the selected executable and
-  support bytes against reviewed identity; it never repeats PATH discovery.
+  support against reviewed identity under installation verification policy;
+  it never repeats PATH discovery.
 - Keep each native client a thin profile over the common ACP lifecycle. A new
   client must not require FLOW changes, and a public provider/customization SPI
   requires independent installed consumers to earn its shape.
@@ -227,6 +232,19 @@ child calls, project commands, and Agent providers.
   preserve durable recovery and independent launch checks. Use disposable reviewed
   consumer projects for before/after measurements, never alter a user's approval
   or replay their work to benchmark startup.
+- `installation-verification.ts` owns command-scoped operator policy and the
+  bounded installation cache. `JIG_VERIFICATION` defaults to cached; strict
+  freshly hashes at every boundary, and fast accepts cached path identities
+  without freshness checks. Cached compares inode/device, ownership/mode/link
+  count, size and nanosecond mtime/ctime on every lookup. Hash misses and check
+  metadata before/after; never reuse atime as freshness evidence. Private calls
+  outside an explicit command scope remain strict.
+  Register the actual project before opening support. Cache storage must be
+  owner-private and outside project routes; invalid or unsafe cache falls back
+  to hashing. Inspection never writes it. Snapshot policy before project loading,
+  isolate concurrent contexts, and preserve it through launch and recovery.
+  Cache no credentials, packages, attachments, approval or containment authority.
+  Mode alone must not alter recipe identity for unchanged installations.
 
 ## Verification
 

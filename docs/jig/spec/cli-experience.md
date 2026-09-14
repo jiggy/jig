@@ -133,6 +133,15 @@ makes usable control an observable requirement;
     policy, and no premature success. An unfamiliar reader must be able to
     identify the outcome and next action from the transcript alone.
 
+Help for review, Run and inspection exposes the operator's
+`JIG_VERIFICATION=cached|strict|fast` choice and names cached as the default.
+Explain fast mode's missing installation-freshness check and initial hashing
+on cache misses; never imply that it bypasses approval or containment. Invalid
+values produce `JIG_VERIFICATION_INVALID` with accepted settings and no Flow
+started. Help and initialization remain available without valid verification
+configuration. The exact guarantees belong to
+[installation verification policy](project-policy.md#installation-verification-policy).
+
 ## Implementation and review ownership
 
 `jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
@@ -141,7 +150,9 @@ exact approved selectors; with one it projects retained package descriptions,
 schemas, settings, capability identities, child slots, attachments, channels and
 commands. It compares each selected target's retained recipe and observation
 identities with the current installed runtime, local Agent configuration/support,
-and sandbox support, using the same identity calculation as Run. A selected
+and sandbox support, using the same identity calculation and operator-selected
+installation verification policy as Run. Fast mode compares cached installation
+identities without establishing current byte freshness. A selected
 Binding includes its child targets; unrelated targets do not affect an exact
 target's result. No target argument checks all approved targets.
 

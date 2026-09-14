@@ -21,11 +21,11 @@ import {
 import { PrivateCliProgress } from './cli-progress.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
+import { CheckError } from './diagnostics.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
-import { CheckError } from './diagnostics.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import type { PrivateAgentChoice } from './internal/installed-bun-host.js'
 import {
@@ -49,6 +49,13 @@ import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import { createProject, ProjectInitError } from './project-init.js'
 import { schemaTypeMismatchText } from './schema/types.js'
 
+const VERIFICATION_HELP = `Startup verification (operator environment):
+  JIG_VERIFICATION=cached  Reuse installation hashes while file metadata matches (default)
+  JIG_VERIFICATION=strict  Hash installed tool bytes at every verification boundary
+  JIG_VERIFICATION=fast    Reuse installation hashes without checking freshness
+Cache misses require hashing. Fast can miss changed tool bytes; approval and
+sandbox requirements still apply. See https://jig.md/guide/#startup-verification.`
+
 const HELP = `Jig runs reusable methods with powers you approve.
 
 Usage:
@@ -63,6 +70,8 @@ Start here:
   cd hello-jig
   jig review --allow-resolution-network
   jig run flow:flows/hello --input '"Ada"'
+
+${VERIFICATION_HELP}
 
 Use jig <command> --help for options and examples.
 Guide: https://jig.md/guide/`
@@ -83,7 +92,9 @@ Visible edits, launch readiness and remote provider availability are not checked
 Examples:
   jig inspect
   jig inspect flow:flows/hello
-  jig inspect binding:repair --json`,
+  jig inspect binding:repair --json
+
+${VERIFICATION_HELP}`,
   init: `Usage: jig init [--bare] <directory>
 
 Create a new editable project and greeting Flow. No installation, network
@@ -111,7 +122,9 @@ Examples:
 Resolution can contact dependency-selected public or private-network services
 before graph validation. Requests cannot be undone by declining approval.
 When an Agent is needed and none is selected, interactive review asks you to\nchoose and remembers the client locally. For scripts, set JIG_AGENT_CLIENT to\ncodex, claude, pi, or api. --yes approves changes; it does not choose an Agent.\n--yes does not grant resolution networking. Runs gain no network access.
-Supplied locks stay frozen; stale locks must be updated explicitly.`,
+Supplied locks stay frozen; stale locks must be updated explicitly.
+
+${VERIFICATION_HELP}`,
   run: `Usage: jig run <flow:path|binding:id> [options]
 
 Run an exact reviewed target in the current project. No dependencies are
@@ -134,7 +147,9 @@ Examples:
 Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work.
 Terminal stdout shows readable results and live channel text. Redirect stdout or
 use --json for JSON (NDJSON with --receive). Diagnostics and status use stderr.
-Scripts should check the result and exit status.`,
+Scripts should check the result and exit status.
+
+${VERIFICATION_HELP}`,
 } as const
 
 function usage(command: keyof typeof COMMAND_HELP, message: string): never {
