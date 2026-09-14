@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   initializePrivateActivationState,
   openPrivateProjectCoordinator,
@@ -12,8 +12,10 @@ import {
   preparePrivateBunPackage,
   recoverPrivateBunPreparationOwner,
 } from '../src/internal/bun-native-preparation.js'
+import { withPrivateInstallationVerification } from '../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { PrivateLinuxFenceUnconfirmedError } from '../src/internal/linux-rootless-backend.js'
+import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
@@ -21,6 +23,121 @@ const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
 
 proofDescribe('private contained Bun dependency preparation', () => {
+  test('workspace preparation reuse stays in the approving project and checks fresh shared inputs', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-workspace-reuse-'))
+    const put = async (path: string, value: unknown) => {
+      await mkdir(dirname(join(root, path)), { recursive: true })
+      await writeFile(join(root, path), typeof value === 'string' ? value : JSON.stringify(value))
+    }
+    try {
+      await put('package.json', { private: true, workspaces: ['apps/*/flows/*', 'libs/*'] })
+      await put('libs/helper/package.json', {
+        name: 'helper',
+        version: '1.0.0',
+        type: 'module',
+        exports: './index.js',
+      })
+      await put('libs/helper/index.js', 'export const value = 1')
+      // The enclosing Jig project selects the exact same Flow and workspace
+      // capture as project a, but owns a different approval store.
+      await put(
+        'jig.ts',
+        "import { defineJig, discover } from '@jigging/jig'; export default defineJig({ flows: discover('apps/a/flows') })",
+      )
+      for (const project of ['a', 'b']) {
+        await put(
+          `apps/${project}/jig.ts`,
+          "import { defineJig, discover } from '@jigging/jig'; export default defineJig({ flows: discover('flows') })",
+        )
+        await put(`apps/${project}/flows/work/package.json`, {
+          name: `${project}-work`,
+          type: 'module',
+          dependencies: { helper: 'workspace:*' },
+        })
+        await put(
+          `apps/${project}/flows/work/FLOW.md`,
+          '---\nname: work\ndescription: Workspace reuse proof.\n---\n',
+        )
+        await put(
+          `apps/${project}/flows/work/flow.ts`,
+          "import { value } from 'helper'; void value",
+        )
+      }
+      await withPrivateInstallationVerification(
+        { ...process.env, JIG_VERIFICATION: 'cached', XDG_CACHE_HOME: join(root, 'cache') },
+        async () => {
+          const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+          const review = async (project: string, allowResolutionNetwork: boolean, apply = true) => {
+            const stages: string[] = []
+            const session = await openPrivateProjectSession({
+              directory: join(root, 'apps', project),
+              host: { ...host, allowResolutionNetwork, onStage: (stage) => stages.push(stage) },
+            })
+            try {
+              const plan = await session.plan({ lockMode: 'update' })
+              if (apply && plan.state === 'applicable')
+                await session.apply({ planDigest: plan.planDigest })
+              return { plan, stages }
+            } finally {
+              await session.close()
+            }
+          }
+          const first = await review('a', true, false)
+          expect(
+            first.stages.filter((stage) => stage.startsWith('Preparing dependencies')),
+          ).toHaveLength(1)
+          // A declined/unapproved preparation supplies no reusable admission.
+          await expect(review('a', false)).rejects.toMatchObject({
+            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
+          })
+          await review('a', true)
+          const warm = await review('a', false)
+          expect(warm.plan.state).toBe('unchanged')
+          expect(
+            warm.stages.some((stage) => stage.startsWith('Reusing approved dependencies')),
+          ).toBeTrue()
+          expect(
+            warm.stages.some((stage) => stage.startsWith('Preparing dependencies')),
+          ).toBeFalse()
+          await expect(review('..', false)).rejects.toMatchObject({
+            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
+          })
+          // Same ancestor workspace and shared library, but a different Jig project.
+          await expect(review('b', false)).rejects.toMatchObject({
+            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
+          })
+          expect(
+            (await review('b', true)).stages.some((stage) =>
+              stage.startsWith('Preparing dependencies'),
+            ),
+          ).toBeTrue()
+          await put('libs/helper/index.js', 'export const value = 2')
+          await expect(review('a', false)).rejects.toMatchObject({
+            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
+          })
+          await review('a', true)
+          expect((await review('a', false)).plan.state).toBe('unchanged')
+          await put('libs/helper/added.txt', 'new captured file')
+          await expect(review('a', false)).rejects.toMatchObject({
+            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
+          })
+          await rm(join(root, 'libs/helper/added.txt'))
+          expect((await review('a', false)).plan.state).toBe('unchanged')
+          await put('package.json', {
+            private: true,
+            description: 'Changed workspace metadata',
+            workspaces: ['apps/*/flows/*', 'libs/*'],
+          })
+          await expect(review('a', false)).rejects.toMatchObject({
+            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
+          })
+        },
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
   test.each([false, true])(
     'prepares a transitive graph without scripts or authored config (resolve=%s)',
     async (resolve) => {

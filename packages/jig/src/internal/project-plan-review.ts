@@ -148,8 +148,20 @@ function executionChangeExplanation(
       reasons.push(
         'The execution request changed; see the package, settings and permission changes in this review.',
       )
-    if (!samePolicy(before.disposition.execution, after.disposition.execution))
+    if (
+      !samePolicy(before.disposition.execution?.package, after.disposition.execution?.package) ||
+      !samePolicy(before.disposition.execution?.layout, after.disposition.execution?.layout)
+    )
       reasons.push('Prepared execution files or dependency layout changed.')
+    else if (
+      before.disposition.execution?.preparationInputDigest !==
+      after.disposition.execution?.preparationInputDigest
+    )
+      reasons.push(
+        before.disposition.execution?.preparationInputDigest === undefined
+          ? 'This review records captured workspace inputs for future preparation reuse. Prepared files and dependency layout are unchanged.'
+          : 'Workspace preparation inputs changed; prepared files and dependency layout are unchanged.',
+      )
     if (reasons.length === 0) {
       reasons.push(
         'Execution environment changed: Jig installation, Agent configuration, or sandbox support.',

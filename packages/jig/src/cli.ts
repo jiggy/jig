@@ -437,9 +437,8 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     parsed.project,
     runtime,
     async (session) => {
-      runtime.progress.stage('Capturing source and preparing dependencies')
       const plan = await session.plan({ lockMode: 'update' })
-      runtime.progress.complete()
+      runtime.progress.complete(true)
       if (plan.state === 'unchanged') return 0
 
       runtime.writeOutput(
@@ -505,7 +504,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
                   ? available[Number(answer) - 1]
                   : undefined
                 if (selected !== undefined) {
-                  runtime.progress.stage('Capturing source and preparing dependencies')
+                  runtime.progress.stage('Preparing the project review')
                   return selected.id
                 }
                 runtime.writeOutput(
@@ -1064,7 +1063,7 @@ async function withProjectSession<T>(
     ...acquisition,
     onNotice: (text) => runtime.writeNotice(text),
     onStage: (stage) => {
-      runtime.progress.complete()
+      runtime.progress.complete(true)
       runtime.progress.stage(stage)
     },
   })

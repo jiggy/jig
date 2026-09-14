@@ -82,6 +82,7 @@ export interface PrivateProjectSessionHost {
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
+  readonly onStage?: (stage: string) => void
   readonly onResolution?: (packagePath: string) => void
 }
 
@@ -227,6 +228,7 @@ function createSession(
           projectRoot: owner.root,
         })
         planningCancellation.signal.throwIfAborted()
+        host.onStage?.('Capturing project source and declarations')
         const aggregate = await retainOpenedPackageProject(
           {
             projectRoot: owner.root,
@@ -251,6 +253,7 @@ function createSession(
             (use) => use.digest === AGENT_RUN_CONTRACT_DIGEST,
           ),
         )
+        host.onStage?.('Checking Agent requirements')
         const agentProvider =
           agentRequest !== undefined && host.prepareAgent !== undefined
             ? await host.prepareAgent(planningCancellation.signal)
@@ -267,6 +270,10 @@ function createSession(
         const recipes: PrivateDirectRunRecipe[] = []
         const executions = new Map<string, PrivateBunExecutionArtifact>()
         for (const request of requests) {
+          const packageLabel = JSON.stringify(request.packagePath).replace(
+            /[\u007f-\uffff]/g,
+            (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+          )
           preparationBudget.signal.throwIfAborted()
           if (request.mode !== 'run') {
             throw new ProjectAdministrationError(
@@ -280,6 +287,7 @@ function createSession(
             if (execution === undefined) {
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
+                host.onStage?.(`Capturing dependency inputs for ${packageLabel}`)
                 const workspace = await capturePrivateBunWorkspace({
                   projectRoot: owner.root,
                   packagePath: request.packagePath,
@@ -288,40 +296,64 @@ function createSession(
                 })
                 if (workspace !== undefined) {
                   try {
-                    preparationBudget.reserve(workspace.captured.digest, request.packagePath)
-                    const unlocked = !workspace.captured.files.some(
-                      ({ path }) => path === 'bun.lock',
-                    )
-                    requirePrivateBunResolutionPermission(
-                      unlocked
-                        ? { state: 'unlocked', manifestPath: 'package.json' }
-                        : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
-                      host.allowResolutionNetwork,
-                    )
-                    if (unlocked) host.onResolution?.(request.packagePath)
-                    const prepared = await preparePrivateBunPackage({
-                      captured: workspace.captured,
-                      workspace,
-                      installedSupport: host.installedBunSupport,
-                      backend: host.backend,
-                      projectRoot: owner.root.requestedPath,
-                      coordinator: owner.coordinator,
-                      deadlineUnixMs: preparationBudget.deadlineUnixMs,
-                      signal: preparationBudget.signal,
-                      allowResolutionNetwork: host.allowResolutionNetwork === true,
-                    })
-                    try {
-                      preparationBudget.retain(
-                        prepared.captured.files,
-                        request.packagePath,
-                        Buffer.byteLength(JSON.stringify(prepared.layout)),
+                    const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
+                    if (
+                      admitted?.execution.preparationInputDigest === workspace.captured.digest &&
+                      admitted.execution.layout.flowRoot === workspace.target
+                    ) {
+                      const current = await planPrivateDirectRun({
+                        request,
+                        execution: admitted.execution,
+                        installedSupport: host.installedBunSupport,
+                        backend: host.backend,
+                        agentProvider,
+                      })
+                      if (
+                        current.digest === admitted.recipeDigest &&
+                        current.observation.digest === admitted.observationDigest
+                      ) {
+                        execution = admitted.execution
+                        host.onStage?.(`Reusing approved dependencies for ${packageLabel}`)
+                      }
+                    }
+                    if (execution === undefined) {
+                      preparationBudget.reserve(workspace.captured.digest, request.packagePath)
+                      const unlocked = !workspace.captured.files.some(
+                        ({ path }) => path === 'bun.lock',
                       )
-                      execution = privateBunExecutionArtifact(
-                        await publishCapturedPackage(packageStoreRoot, prepared.captured),
-                        prepared.layout,
+                      requirePrivateBunResolutionPermission(
+                        unlocked
+                          ? { state: 'unlocked', manifestPath: 'package.json' }
+                          : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
+                        host.allowResolutionNetwork,
                       )
-                    } finally {
-                      await prepared.captured.dispose()
+                      if (unlocked) host.onResolution?.(request.packagePath)
+                      host.onStage?.(`Preparing dependencies for ${packageLabel}`)
+                      const prepared = await preparePrivateBunPackage({
+                        captured: workspace.captured,
+                        workspace,
+                        installedSupport: host.installedBunSupport,
+                        backend: host.backend,
+                        projectRoot: owner.root.requestedPath,
+                        coordinator: owner.coordinator,
+                        deadlineUnixMs: preparationBudget.deadlineUnixMs,
+                        signal: preparationBudget.signal,
+                        allowResolutionNetwork: host.allowResolutionNetwork === true,
+                      })
+                      try {
+                        preparationBudget.retain(
+                          prepared.captured.files,
+                          request.packagePath,
+                          Buffer.byteLength(JSON.stringify(prepared.layout)),
+                        )
+                        execution = privateBunExecutionArtifact(
+                          await publishCapturedPackage(packageStoreRoot, prepared.captured),
+                          prepared.layout,
+                          workspace.captured.digest,
+                        )
+                      } finally {
+                        await prepared.captured.dispose()
+                      }
                     }
                   } finally {
                     await workspace.captured.dispose()
@@ -355,6 +387,7 @@ function createSession(
                       preparationBudget.reserve(request.package.digest, request.packagePath)
                       if (dependencyInput.state === 'unlocked')
                         host.onResolution?.(request.packagePath)
+                      host.onStage?.(`Preparing dependencies for ${packageLabel}`)
                       const prepared = await preparePrivateBunPackage({
                         captured: source,
                         installedSupport: host.installedBunSupport,
@@ -408,6 +441,7 @@ function createSession(
           }
         }
         preparationBudget.signal.throwIfAborted()
+        host.onStage?.('Checking execution recipes and retaining the review')
         const mechanismDigests = new Set(recipes.map(({ mechanismDigest }) => mechanismDigest))
         if (mechanismDigests.size !== 1) {
           throw new Error('planned targets did not resolve through one exact host mechanism')

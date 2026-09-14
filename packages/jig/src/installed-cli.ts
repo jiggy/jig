@@ -206,6 +206,7 @@ async function runWithEnvironment(
             directory: project,
             host: Object.freeze({
               ...installedHost,
+              ...(options?.onStage === undefined ? {} : { onStage: options.onStage }),
               get agentProvider() {
                 return installedHost.agentProvider
               },

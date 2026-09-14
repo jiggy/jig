@@ -40,6 +40,9 @@ admitted FLOW packages.
   cancellation requested and cleanup confirmed are separate facts. Acquisition
   reports Jig runtime verification, Agent verification, and project-state recovery
   as separate stages instead of hiding them behind a prerequisites label.
+  Review also separates source capture, per-package dependency capture,
+  preparation/reuse and review retention, with stage-local timing. Prepared
+  workspace artifact reuse stays within the approving Jig project.
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required
   and unverifiable comparisons as unchecked. It does not evaluate source,

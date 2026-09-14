@@ -92,10 +92,13 @@ workspace aliases within the retained snapshot, so nested versions and shared
 library instances keep their usual resolution behavior.
 Registry dependencies still use the locked default-registry policy above.
 
-Workspace dependencies are recaptured and prepared on each review. Editing a
-library changes the proposed execution revision, even if its Flow is unchanged.
-Existing admissions continue using their original bytes. A missing root lock
-requires the same explicit resolution permission; stale locks require updating.
+Workspace dependencies are recaptured on each review. When the complete inputs
+and execution environment still match, Jig reuses that project's approved
+preparation without installing or resolving again. Preparation is never shared
+between separate Jig projects, even in the same workspace. Editing a library
+invalidates reuse, even if its Flow is unchanged. Existing admissions continue
+using their original bytes. When fresh preparation needs a missing root lock,
+it requires explicit resolution permission; stale supplied locks require updating.
 
 Workspace members must have unique names and safe relative paths. Local member
 locks, filesystem links, dependency overrides, patches, and catalogs are not

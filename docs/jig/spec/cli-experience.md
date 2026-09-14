@@ -17,6 +17,10 @@ makes usable control an observable requirement;
    Agent configuration/runtime verification, and opening project state with
    recovery checks. These labels describe actual work, not a generic prerequisites
    wait.
+   Review reports project-source capture, per-package dependency-input capture,
+   dependency preparation or approved reuse, and final recipe/review retention
+   separately. Active elapsed time belongs to the current stage. In animated
+   terminals, completed timed stages retain their duration as secondary text.
    Interactive terminal stderr has one active line with
    elapsed time. Preserve completed stages; never mark a failed or merely
    departed stage complete. Update waiting time in place, not by appending

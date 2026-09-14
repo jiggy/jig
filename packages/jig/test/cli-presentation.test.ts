@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import { ProjectAdministrationError, type ProjectSession } from '../src/administration/project.js'
 import { main } from '../src/cli.js'
 import {
@@ -23,6 +23,36 @@ function screen(text: string): string {
 }
 
 describe('CLI experience contract', () => {
+  test('completed stage durations measure each stage rather than command age', () => {
+    const clock = spyOn(performance, 'now').mockReturnValue(0)
+    let output = ''
+    const stop = new AbortController()
+    const progress = new PrivateCliProgress(
+      true,
+      (text) => {
+        output += text
+      },
+      stop.signal,
+      true,
+    )
+    try {
+      progress.stage('Capturing project source')
+      clock.mockReturnValue(4500)
+      progress.complete(true)
+      progress.stage('Reusing approved dependencies')
+      clock.mockReturnValue(4600)
+      progress.complete(true)
+      expect(screen(output)).toContain('Capturing project source (4.5s)')
+      expect(screen(output)).toContain('Reusing approved dependencies (0.1s)')
+      progress.stage('Waiting for the Flow result')
+      clock.mockReturnValue(9000)
+      stop.abort()
+      expect(screen(output)).toContain('waiting for work to stop and clean up 0s')
+    } finally {
+      progress.close()
+      clock.mockRestore()
+    }
+  })
   test('inspection states keep section boundaries and distinguish warnings from matching identities', () => {
     for (const heading of [
       'Approval environment matches',

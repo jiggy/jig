@@ -73,6 +73,13 @@ child calls, project commands, and Agent providers.
   handle recorded aliases without following them. Package/1 stays
   regular-file-only. Runs receive no live workspace authority. Bun owns
   installation, not a parallel Jig resolver.
+  Reuse workspace preparation only from this Jig project's active admission:
+  match freshly captured complete workspace inputs to the artifact's retained
+  preparation fingerprint and reproduce its recipe/observation. Never share
+  preparation between Jig projects under one workspace. Recapture source on
+  every review; source, manifest, lock or membership changes invalidate reuse.
+  Missing evidence requires preparation; missing/corrupt admitted bytes fail
+  closed. Reuse performs no network activity and does not retain a network grant.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 - Installed Agent selection accepts explicit codex/claude/pi/api, then an

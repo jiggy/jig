@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  planPrivateBunDirectRun,
   inspectPrivateBunDirectIdentity,
+  planPrivateBunDirectRun,
   requirePrivateBunDirectRecipe,
 } from '../src/internal/bun-direct-run.js'
 import {
@@ -112,13 +112,14 @@ describe('private Bun direct Run', () => {
       members: ['flows/first', 'flows/second', 'libs/first', 'libs/second'],
       aliases: [{ path: 'node_modules/helper', target: 'libs/first' }],
     }
-    const plan = (layout: typeof executionLayout) =>
+    const plan = (layout: typeof executionLayout, preparationInputDigest?: string) =>
       planPrivateBunDirectRun({
         request,
-        execution: privateBunExecutionArtifact(executionPackage, layout),
+        execution: privateBunExecutionArtifact(executionPackage, layout, preparationInputDigest),
         installedSupport,
         backend,
       })
+    const withInputs = await plan(executionLayout, digest('workspace-inputs'))
     const original = await plan(executionLayout)
     const repeated = await plan(JSON.parse(JSON.stringify(executionLayout)))
     const differentRoot = await plan({ ...executionLayout, flowRoot: 'flows/second' })
@@ -129,7 +130,7 @@ describe('private Bun direct Run', () => {
 
     expect(repeated.digest).toBe(original.digest)
     expect(repeated.observation.digest).toBe(original.observation.digest)
-    for (const changed of [differentRoot, differentAlias]) {
+    for (const changed of [differentRoot, differentAlias, withInputs]) {
       expect(changed.request).toEqual(original.request)
       expect(changed.execution.package).toEqual(original.execution.package)
       expect(changed.digest).not.toBe(original.digest)

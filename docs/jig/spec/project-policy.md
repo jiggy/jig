@@ -230,9 +230,15 @@ Ancestor runtime configuration outside selected packages is not captured.
 Registry dependencies retain the same integrity and source policy.
 
 Workspace members use the root lock; member locks, dependency patches, overrides,
-catalogs, and alternate sources are unsupported. A new review recaptures and
-prepares the workspace, rather than reusing dependencies merely because the Flow
-source has not changed. Prepared bytes and normalized layout participate in
+catalogs, and alternate sources are unsupported. A new review recaptures the
+workspace. It may reuse this Jig project's approved preparation only when the
+complete captured input digest matches the preparation evidence bound to that
+artifact and the current request reproduces its approved recipe and observation.
+Inputs include root manifest and lock presence/bytes, member manifests and selected
+local source bytes. Flow identity alone is insufficient. Reuse never crosses Jig
+project boundaries, even within one ancestor workspace, and performs no resolution
+or installation. Missing preparation evidence or changed inputs require preparation.
+Prepared bytes and normalized layout participate in
 target-change review, exact admission, launch and durable materialization identity.
 The host creates only recorded aliases after copying regular bytes, verifies both
 on reopen, and unlinks aliases without following their targets during cleanup.

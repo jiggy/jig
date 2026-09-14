@@ -15,6 +15,7 @@ export class PrivateCliProgress {
     this.pause()
     this.#cancelled = true
     this.#stage = 'Cancellation requested; waiting for work to stop and clean up'
+    this.#started = performance.now()
     this.#write()
   }
 
@@ -37,6 +38,7 @@ export class PrivateCliProgress {
       }
     }
     this.#stage = value
+    this.#started = performance.now()
     if (this.signal?.aborted) this.#abort()
     else this.#write()
   }
@@ -57,7 +59,7 @@ export class PrivateCliProgress {
     if (this.animated) this.#write()
   }
 
-  complete(): void {
+  complete(timing = false): void {
     if (this.#cancelled) {
       this.pause()
       return
@@ -66,7 +68,7 @@ export class PrivateCliProgress {
     if (this.#visible) this.write('\r\u001b[2K')
     if (this.animated)
       this.write(
-        `${privateCliHeading('  ✓', 'success', true)} ${privateCliSecondary(this.#stage, true)}\n`,
+        `${privateCliHeading('  ✓', 'success', true)} ${privateCliSecondary(this.#stage + (timing ? ` (${((performance.now() - this.#started) / 1000).toFixed(1)}s)` : ''), true)}\n`,
       )
     this.#visible = false
     this.#stage = ''

@@ -85,6 +85,19 @@ describe('private Candidate/5', () => {
     expectInvalidCandidate(encoded, malformed, 'Package/1 artifact digest')
   })
 
+  test('retains bounded preparation evidence in the admitted execution identity', () => {
+    const first = readyCandidateFixture('prepared', undefined, digest('workspace-input'))
+    const reopened = decodePrivateActivationCandidateV5(encodePrivateActivationCandidateV5(first))
+    expect(reopened.candidate.targets[0]!.disposition).toMatchObject({
+      execution: { preparationInputDigest: digest('workspace-input') },
+    })
+    const second = readyCandidateFixture('prepared', undefined, digest('changed-input'))
+    expect(first.candidate.activationMeaningDigest).not.toBe(
+      second.candidate.activationMeaningDigest,
+    )
+    expect(() => readyCandidateFixture('prepared', undefined, 'untrusted-value')).toThrow()
+  })
+
   test('retains workspace layout and distinguishes layout-only admission changes', () => {
     const layout = {
       flowRoot: 'flows/work',
@@ -654,6 +667,7 @@ function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPa
 function readyCandidateFixture(
   executionPackage: string,
   executionLayout: PrivateBunExecutionLayout = EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  preparationInputDigest?: string,
 ) {
   const unavailable = candidateFixture()
   const encoded = encodePrivateActivationCandidateV5(unavailable)
@@ -665,6 +679,7 @@ function readyCandidateFixture(
     execution: privateBunExecutionArtifact(
       { kind: 'flow-package/1', digest: digest(executionPackage) },
       executionLayout,
+      preparationInputDigest,
     ),
   }
   candidate.activationMeaningDigest = activationMeaningDigest(

@@ -550,7 +550,14 @@ describe('private project Plan review', () => {
         settings: {},
         attachments: {},
       },
-      disposition: { state: 'ready', recipeDigest: 'private-before' },
+      disposition: {
+        state: 'ready',
+        recipeDigest: 'private-before',
+        execution: {
+          package: { kind: 'flow-package/1', digest: `sha256:${'a'.repeat(64)}` },
+          layout: { flowRoot: 'flows/test', members: ['flows/test'], aliases: [] },
+        },
+      },
     }
     const plan = reviewPlan('admission', 'unused')
     const render = (next: unknown) =>
@@ -560,7 +567,7 @@ describe('private project Plan review', () => {
       } as unknown as PrivateActivationReviewPlan)
     const changed = render({
       ...target,
-      disposition: { state: 'ready', recipeDigest: 'private-after' },
+      disposition: { ...target.disposition, recipeDigest: 'private-after' },
     })
     expect(changed.text).toContain(
       'Execution environment changed: Jig installation, Agent configuration, or sandbox support.',
@@ -572,6 +579,21 @@ describe('private project Plan review', () => {
     )
     expect(changed.text).toContain('cannot identify which individual component changed')
     expect(changed.details).toContain('Execution environment changed:')
+    const evidence = render({
+      ...target,
+      disposition: {
+        ...target.disposition,
+        execution: {
+          ...target.disposition.execution,
+          preparationInputDigest: `sha256:${'b'.repeat(64)}`,
+        },
+      },
+    })
+    expect(evidence.text).toContain(
+      'records captured workspace inputs for future preparation reuse',
+    )
+    expect(evidence.text).toContain('Prepared files and dependency layout are unchanged.')
+    expect(evidence.text).not.toContain('Workspace preparation inputs changed')
     const reordered = render({
       disposition: target.disposition,
       request: Object.fromEntries(Object.entries(target.request).reverse()),

@@ -76,21 +76,39 @@ export function assertPrivateBunExecutionLayoutFiles(
 export interface PrivateBunExecutionArtifact {
   readonly package: PackageArtifactRef
   readonly layout: PrivateBunExecutionLayout
+  /** Exact captured preparation inputs; evidence for reuse, never execution authority. */
+  readonly preparationInputDigest?: string
 }
 
 export function normalizePrivateBunExecutionArtifact(value: unknown): PrivateBunExecutionArtifact {
-  const record = exact(value, ['package', 'layout'])
+  const record = exact(value, ['package', 'layout'], ['preparationInputDigest'])
+  if (
+    Object.hasOwn(record, 'preparationInputDigest') &&
+    (typeof record.preparationInputDigest !== 'string' ||
+      !/^sha256:[0-9a-f]{64}$/.test(record.preparationInputDigest))
+  )
+    invalid()
   return Object.freeze({
     package: normalizePackageArtifactRef(exact(record.package, ['kind', 'digest'])),
     layout: normalizePrivateBunExecutionLayout(record.layout),
+    ...(record.preparationInputDigest === undefined
+      ? {}
+      : {
+          preparationInputDigest: record.preparationInputDigest as string,
+        }),
   })
 }
 
 export function privateBunExecutionArtifact(
   artifact: PackageArtifactRef,
   layout: PrivateBunExecutionLayout = EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  preparationInputDigest?: string,
 ): PrivateBunExecutionArtifact {
-  return normalizePrivateBunExecutionArtifact({ package: artifact, layout })
+  return normalizePrivateBunExecutionArtifact({
+    package: artifact,
+    layout,
+    ...(preparationInputDigest === undefined ? {} : { preparationInputDigest }),
+  })
 }
 
 /** Project runtime meaning into the materializer's runtime-independent file contract. */
@@ -111,7 +129,11 @@ export function privateBunAliasPackageName(path: string): string | undefined {
     : name
 }
 
-function exact(value: unknown, keys: readonly string[]): Record<string, unknown> {
+function exact(
+  value: unknown,
+  keys: readonly string[],
+  optional: readonly string[] = [],
+): Record<string, unknown> {
   if (
     value === null ||
     typeof value !== 'object' ||
@@ -122,6 +144,7 @@ function exact(value: unknown, keys: readonly string[]): Record<string, unknown>
     invalid()
   const record = value as Record<string, unknown>
   const actual = Reflect.ownKeys(record)
+  keys = [...keys, ...optional.filter((key) => actual.includes(key))]
   if (
     actual.length !== keys.length ||
     actual.some((key) => typeof key !== 'string' || !keys.includes(key))

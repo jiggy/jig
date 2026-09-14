@@ -31,6 +31,9 @@ descriptors.
   default. Fast may miss changed tool bytes.
   Agent and CLI contracts reference that policy instead of promising unconditional
   fresh byte checks. FLOW schemas and approval authority remain independent.
+  Workspace preparation reuse is project-scoped and bound to freshly captured
+  complete inputs plus current execution evidence; sibling Jig projects never
+  supply reusable preparations. Keep dependency guidance aligned with that scope.
 
 ## Work Guidance
 
