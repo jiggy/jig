@@ -41,6 +41,7 @@ describe('private foreground command boundary', () => {
     const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'bun' })
     for (const construct of [
       writeProject,
+      writeAgentFreeProject,
       writeAgentRouterProject,
       writeChannelProject,
       writeChildChannelProject,
@@ -758,7 +759,7 @@ proofDescribe('private rootless project session', () => {
         bunHostLibraryPath: host.installedBunSupport.hostLibraryDirectory,
         supervisorPath: supervisor,
       })
-      await writeCapabilityFreeProject(root)
+      await writeAgentFreeProject(root)
       session = await openPrivateProjectSession({ directory: root, host: { ...host, backend } })
       const review = await session.plan({ lockMode: 'update' })
       if (review.state !== 'applicable') throw new Error('expected initial review')
