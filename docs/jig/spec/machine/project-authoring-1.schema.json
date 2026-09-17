@@ -161,9 +161,14 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 8
+            },
+            "retainSessions": {
+              "const": true
             }
           },
           "required": ["kind", "client"],
+          "if": { "required": ["retainSessions"] },
+          "then": { "properties": { "client": { "const": "codex" } } },
           "additionalProperties": false
         },
         {

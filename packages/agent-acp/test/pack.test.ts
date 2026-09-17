@@ -47,7 +47,11 @@ test('ordinary packing retains editable source, registry dependencies and a stan
       process.execPath,
       [
         '-e',
-        'await import("./dist/flow.js"); const transport = await import("./dist/transport.js"); new transport.FiniteAcpFrames("requests").finish()',
+        `await import('./dist/flow.js');
+        const transport = await import('@jigging/agent-acp/transport');
+        new transport.FiniteAcpFrames('requests').finish();
+        const ready = transport.readFiniteAcpReady({ kind: 'ready', protocolVersion: 1, cwd: '/work', configuration: [], maxTurns: 1, restoreSessionId: 'owned-session' });
+        if (ready.restoreSessionId !== 'owned-session') throw new Error('missing owned restore identity')`,
       ],
       { cwd: extracted, stdio: 'pipe' },
     )

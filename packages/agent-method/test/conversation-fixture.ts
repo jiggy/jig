@@ -9,7 +9,12 @@ await handle(async (run) => {
         operationId: 'dialogue',
         slot: 'agent',
         contractDirectory: './contracts/agent-run',
-        input: { instructions: 'Draft from these facts' },
+        input: {
+          instructions: 'Draft from these facts',
+          ...(['retained', 'missing-session', 'invalid-session'].includes(run.input as string)
+            ? { session: { retain: true as const } }
+            : {}),
+        },
       },
       async (conversation) => {
         if (run.input === 'abandoned') return null

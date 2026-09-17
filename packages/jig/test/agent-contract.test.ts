@@ -38,6 +38,40 @@ beforeAll(async () => {
 })
 
 describe('ordinary Agent Run contract', () => {
+  test('accepts explicit session requests and final receipts without admitting them to turn commands', async () => {
+    const reference = '013579ab-cdef-4567-89ab-0123456789ab'
+    const input = contract.schemas.get('/input')!
+    const result = contract.schemas.get('/result')!
+    for (const session of [{ retain: true }, { restore: reference }])
+      input.validate({ instructions: 'Answer.', session })
+    for (const session of [
+      null,
+      {},
+      { retain: false },
+      { restore: 'path' },
+      { retain: true, restore: reference },
+    ])
+      expect(() => input.validate({ instructions: 'Answer.', session })).toThrow()
+    for (const session of [{ status: 'retained', reference }, { status: 'unavailable' }]) {
+      result.validate({ outcome: 'done', output: { text: 'answer', session } })
+      result.validate({ outcome: 'done', output: { turns: 1, session } })
+    }
+    for (const session of [null, {}, { status: 'retained' }, { status: 'unavailable', reference }])
+      expect(() =>
+        result.validate({ outcome: 'done', output: { text: 'answer', session } }),
+      ).toThrow()
+    const commands = parseChannelContract(
+      await Bun.file(new URL('contracts/agent-commands.json', contractPath)).bytes(),
+    )
+    expect(() =>
+      commands.itemSchema.validate({
+        type: 'prompt',
+        turn: 1,
+        input: { instructions: 'Continue.', session: { retain: true } },
+      }),
+    ).toThrow()
+  })
+
   test('publishes and exact-matches the current Jig-owned descriptor', () => {
     expect(contract.descriptor.id).toBe(AGENT_RUN_CONTRACT_ID)
     expect(contract.descriptor.version).toBe(AGENT_RUN_CONTRACT_VERSION)
@@ -86,11 +120,20 @@ describe('ordinary Agent Run contract', () => {
       await channels(new URL('../../agent-method/FLOW.contract.json', import.meta.url)),
     )
     expect(method.digest).toBe(contract.digest)
+    const acp = new URL('../../agent-acp/FLOW.contract.json', import.meta.url)
+    expect(
+      parseInvocationContract(
+        await Bun.file(acp).bytes(),
+        'FLOW.contract.json',
+        await channels(acp),
+      ).digest,
+    ).toBe(contract.digest)
     for (const flow of [
       'request-triage/flows/agent',
       'request-triage/flows/mixed',
       'tested-patch/flows/repair',
       'support-case/flows/assess',
+      'incident-brief/flows/worker',
     ]) {
       const base = new URL(`../../../examples/${flow}/contracts/`, import.meta.url)
       const consumerContract = parseInvocationContract(

@@ -112,6 +112,7 @@ function pair(): ChannelPair & { fail(error: OperationError): void } {
 
 type Frame = JsonObject
 interface Options {
+  readonly ready?: JsonObject
   readonly output?: string
   readonly stop?: string
   readonly result?: RunResult
@@ -167,7 +168,12 @@ function fixture(options: Options = {}) {
     },
     async call(call: FlowCall, settings: { signal: AbortSignal }) {
       calls++
-      expect(call).toMatchObject({ operationId: 'native', slot: 'native', input: null })
+      const session = (run.input as JsonObject).session
+      expect(call).toMatchObject({
+        operationId: 'native',
+        slot: 'native',
+        input: session === undefined ? null : { session },
+      })
       expect(call.channels?.requests).toBe(channels[0]!.receive)
       expect(call.channels?.responses).toBe(channels[1]!.send)
       const receive = call.channels!.requests as ChannelReceiver
@@ -181,7 +187,7 @@ function fixture(options: Options = {}) {
         { once: true },
       )
       try {
-        await send.send(ready)
+        await send.send(options.ready ?? ready)
         for (;;) {
           const item = await receive.next({ signal: settings.signal })
           if (item.done) {
@@ -198,7 +204,7 @@ function fixture(options: Options = {}) {
             case 'initialize':
               result = {
                 protocolVersion: 1,
-                agentCapabilities: { sessionCapabilities: { close: {} } },
+                agentCapabilities: { sessionCapabilities: { close: {}, resume: {} } },
               }
               break
             case 'session/new':
@@ -214,7 +220,7 @@ function fixture(options: Options = {}) {
                 jsonrpc: '2.0',
                 method: 'session/update',
                 params: {
-                  sessionId: 'owned-session',
+                  sessionId: (frame.params as JsonObject).sessionId!,
                   update: {
                     sessionUpdate: 'agent_message_chunk',
                     content: { type: 'text', text: options.output ?? 'The answer.' },
@@ -241,6 +247,157 @@ function fixture(options: Options = {}) {
     failResponses: (error: OperationError) => channels[1]!.fail(error),
   }
 }
+
+describe('ordinary session retention and restoration', () => {
+  const reference = '013579ab-cdef-4567-89ab-0123456789ab'
+  const retained = { status: 'retained', reference }
+  const result = (session: JsonValue, stopReason = 'exited'): RunResult => ({
+    outcome: 'done',
+    output: { ...(completed.output as JsonObject), stopReason, session },
+  })
+
+  test('relays requested retention after resource settlement without changing the answer', async () => {
+    for (const [session, stop] of [
+      [retained, 'exited'],
+      [{ status: 'unavailable' }, 'closed'],
+    ] as const) {
+      const f = fixture({
+        input: { instructions: 'Answer.', session: { retain: true } },
+        result: result(session, stop),
+      })
+      expect(await agentAcpFlow(f.run)).toEqual({
+        outcome: 'done',
+        output: { text: 'The answer.', session },
+      })
+      expect(f.stats().settled).toBe(true)
+      expect(f.frames.map((frame) => frame.method)).not.toContain('session/resume')
+    }
+  })
+
+  test('resumes only the host-owned identity and reapplies every reviewed configuration before prompting', async () => {
+    const f = fixture({
+      input: { instructions: 'Continue.', session: { restore: reference } },
+      ready: { ...ready, restoreSessionId: 'restored-native-session' },
+      result: result(retained),
+    })
+    expect(await agentAcpFlow(f.run)).toEqual({
+      outcome: 'done',
+      output: { text: 'The answer.', session: retained },
+    })
+    expect(f.frames.map((frame) => frame.method)).toEqual([
+      'initialize',
+      'session/resume',
+      'session/set_config_option',
+      'session/set_config_option',
+      'session/set_mode',
+      'session/prompt',
+    ])
+    expect(f.frames[1]!.params).toEqual({
+      sessionId: 'restored-native-session',
+      cwd: '/work',
+      mcpServers: [],
+    })
+    for (const frame of f.frames.slice(2))
+      expect(frame.params).toMatchObject({ sessionId: 'restored-native-session' })
+    expect(JSON.stringify(f.frames)).not.toContain(reference)
+  })
+
+  test('rejects mismatched ready metadata and missing resume capability without a fresh-session fallback', async () => {
+    for (const mode of ['missing-id', 'unexpected-id', 'unsupported', 'new-id']) {
+      const f = fixture({
+        input: {
+          instructions: 'Answer.',
+          ...(mode === 'unexpected-id' ? {} : { session: { restore: reference } }),
+        },
+        ready: mode === 'missing-id' ? ready : { ...ready, restoreSessionId: 'owned-session' },
+        async emit(frame, send) {
+          if (mode === 'unsupported' && frame.method === 'initialize') {
+            await f.frameSend(send, {
+              jsonrpc: '2.0',
+              id: frame.id!,
+              result: { protocolVersion: 1, agentCapabilities: { sessionCapabilities: {} } },
+            })
+            return true
+          }
+          if (mode === 'new-id' && frame.method === 'session/resume') {
+            await f.frameSend(send, {
+              jsonrpc: '2.0',
+              id: frame.id!,
+              result: { sessionId: 'replacement' },
+            })
+            return true
+          }
+          return false
+        },
+      })
+      await expect(agentAcpFlow(f.run)).rejects.toMatchObject({ code: 'INVALID_RESULT' })
+      expect(
+        f.frames.some((frame) =>
+          ['session/new', 'session/prompt'].includes(frame.method as string),
+        ),
+      ).toBe(false)
+      expect(f.stats().settled).toBe(true)
+    }
+  })
+
+  test('rejects missing, unsolicited, malformed or unclean retained receipts', async () => {
+    for (const native of [
+      completed,
+      result(null),
+      result({ status: 'retained' }),
+      result({ status: 'retained', reference: 'private/path' }),
+      result({ status: 'retained', reference: `${reference}\n` }),
+      result({ status: 'unavailable', reference }),
+      result(retained, 'closed'),
+    ]) {
+      const f = fixture({
+        input: { instructions: 'Answer.', session: { retain: true } },
+        result: native,
+      })
+      await expect(agentAcpFlow(f.run)).rejects.toMatchObject({ code: 'INVALID_RESULT' })
+      expect(f.stats().settled).toBe(true)
+    }
+    const unsolicited = fixture({ result: result(retained) })
+    await expect(agentAcpFlow(unsolicited.run)).rejects.toMatchObject({ code: 'INVALID_RESULT' })
+    const malformed = fixture({ input: { instructions: 'Answer.', session: { retain: false } } })
+    await expect(agentAcpFlow(malformed.run)).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    expect(malformed.stats().calls).toBe(0)
+  })
+
+  test('returns the receipt only after conversation close and rejects mid-conversation session intent', async () => {
+    const commands = pair(),
+      replies = pair()
+    const f = fixture({
+      input: { instructions: 'Answer.', conversation: true, session: { retain: true } },
+      commands: commands.receive,
+      replies: replies.send,
+      result: result(retained),
+    })
+    const work = agentAcpFlow(f.run)
+    expect((await replies.receive.next()).value).toEqual({
+      type: 'result',
+      turn: 0,
+      result: { outcome: 'done', output: { text: 'The answer.' } },
+    })
+    await commands.send.send({
+      type: 'prompt',
+      turn: 1,
+      input: { instructions: 'Continue.', session: { retain: true } },
+    })
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'rejected',
+      command: 'prompt',
+      code: 'INVALID_INPUT',
+    })
+    await commands.send.send({ type: 'close', turn: 0 })
+    await commands.send.close()
+    expect((await replies.receive.next()).value).toMatchObject({
+      type: 'accepted',
+      command: 'close',
+    })
+    expect(await work).toEqual({ outcome: 'done', output: { turns: 1, session: retained } })
+  })
+})
 
 describe('ordinary continuing Agent', () => {
   test('continues, rejects stale control, interrupts and settles before another turn', async () => {

@@ -28,6 +28,7 @@ import {
   allocatePrivateRootChildOwner,
   applyPrivateActivationReviewPlan,
   capturePrivateActivationPlanningBase,
+  claimPrivateNativeSession,
   closePrivateRootChildOwner,
   closePrivateRootExecution,
   initializePrivateActivationState,
@@ -46,6 +47,7 @@ import {
   recordPrivateRootChildSandbox,
   recordPrivateRootExecutionCheckpoint,
   replacePrivateBunPreparationOwner,
+  savePrivateNativeSession,
   submitPrivateRootRun,
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
@@ -70,6 +72,7 @@ const TABLES = [
   'candidate_head',
   'candidates',
   'coordinator_head',
+  'native_sessions',
   'review_plans',
   'root_child_owners',
   'root_execution_lifecycles',
@@ -81,6 +84,274 @@ const TABLES = [
 setDefaultTimeout(30_000)
 
 describe.serial('direct alpha activation store', () => {
+  test('native sessions are immutable UTF-8 snapshots claimed once across root Runs', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const parentRunId = await prepareNativeSessionParent(fixture, coordinator, 'native-first')
+      const access = {
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: digest('a'),
+      }
+      const bytes = Buffer.from('{"message":"retained 🧵"}\n')
+      const expected = Uint8Array.from(bytes)
+      const startedAt = Date.now()
+      const saving = savePrivateNativeSession({ ...access, ...nativeSession(), bytes })
+      bytes.fill(0)
+      const receipt = await saving
+      expect(receipt?.reference).toMatch(/^[0-9a-f-]{36}$/)
+      expect(receipt!.expiresAtUnixMs).toBeGreaterThanOrEqual(startedAt + 86_400_000)
+      expect(receipt!.expiresAtUnixMs).toBeLessThanOrEqual(Date.now() + 86_400_000)
+      expect(
+        await claimPrivateNativeSession({
+          ...access,
+          scopeDigest: digest('b'),
+          reference: receipt!.reference,
+        }),
+      ).toBeUndefined()
+      const nextRunId = await prepareNativeSessionParent(fixture, coordinator, 'native-next')
+      const results = await Promise.all([
+        claimPrivateNativeSession({
+          ...access,
+          parentRunId: nextRunId,
+          reference: receipt!.reference,
+        }),
+        claimPrivateNativeSession({
+          ...access,
+          parentRunId: nextRunId,
+          reference: receipt!.reference,
+        }),
+      ])
+      const claimed = results.find((result) => result !== undefined)!
+      expect(results.filter((result) => result !== undefined)).toHaveLength(1)
+      expect(claimed).toMatchObject({
+        ...nativeSession(),
+        ...receipt,
+        digest: `sha256:${createHash('sha256').update(expected).digest('hex')}`,
+      })
+      expect(claimed.bytes).toEqual(expected)
+      expect(
+        await claimPrivateNativeSession({ ...access, reference: receipt!.reference }),
+      ).toBeUndefined()
+      const database = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(database.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(0)
+      } finally {
+        database.close(true)
+      }
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('native sessions survive coordinator replacement but require its current active root', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const parentRunId = await prepareNativeSessionParent(fixture, coordinator, 'native-old-owner')
+      const access = { projectRoot: fixture.root, parentRunId, scopeDigest: digest('a') }
+      const receipt = (await savePrivateNativeSession({
+        ...access,
+        coordinator,
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+      }))!
+      await coordinator.dispose()
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      await expect(
+        claimPrivateNativeSession({ ...access, coordinator, reference: receipt.reference }),
+      ).rejects.toMatchObject({ code: 'RUN_OWNER_CHANGED' })
+      const nextRunId = await prepareNativeSessionParent(
+        fixture,
+        coordinator,
+        'native-current-owner',
+      )
+      expect(
+        await claimPrivateNativeSession({
+          ...access,
+          coordinator,
+          parentRunId: nextRunId,
+          reference: receipt.reference,
+        }),
+      ).toMatchObject(nativeSession())
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('native session access rejects forged and foreign coordinators and inactive roots', async () => {
+    const fixture = await createFixture('ready')
+    const foreign = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const { run } = await submitReadyRun(fixture, coordinator, 'native-inactive')
+      const input = {
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: run.runId,
+        scopeDigest: digest('a'),
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+      }
+      await expect(
+        savePrivateNativeSession({ ...input, coordinator: { ...coordinator } }),
+      ).rejects.toThrow('private lease boundary')
+      await expect(
+        savePrivateNativeSession({ ...input, projectRoot: foreign.root }),
+      ).rejects.toMatchObject({ code: 'COORDINATOR_PROJECT_MISMATCH' })
+      await expect(savePrivateNativeSession(input)).rejects.toMatchObject({
+        code: 'RUN_CHILD_PARENT_INACTIVE',
+      })
+      await prepareNativeSessionLifecycle(fixture, coordinator, run.runId)
+      const receipt = (await savePrivateNativeSession(input))!
+      await checkpoint(fixture, coordinator, run.runId, 'fence', { populated: false })
+      await expect(
+        claimPrivateNativeSession({ ...input, reference: receipt.reference }),
+      ).rejects.toMatchObject({ code: 'RUN_CHILD_PARENT_INACTIVE' })
+      await expect(savePrivateNativeSession(input)).rejects.toMatchObject({
+        code: 'RUN_CHILD_PARENT_INACTIVE',
+      })
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+      await foreign.dispose()
+    }
+  })
+
+  test('native sessions enforce sixteen available records and prune expired bytes on access', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const parentRunId = await prepareNativeSessionParent(fixture, coordinator, 'native-capacity')
+      const input = {
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: digest('a'),
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+      }
+      const saved = []
+      for (let i = 0; i < 16; i++) saved.push((await savePrivateNativeSession(input))!)
+      expect(await savePrivateNativeSession(input)).toBeUndefined()
+      expect(
+        await claimPrivateNativeSession({ ...input, reference: saved[0]!.reference }),
+      ).toBeDefined()
+      expect(await savePrivateNativeSession(input)).toBeDefined()
+      expect(await savePrivateNativeSession(input)).toBeUndefined()
+      const database = openSqlite(fixture.database, 'readwrite')
+      try {
+        const expired = Date.now() - 1
+        database
+          .query('UPDATE native_sessions SET created_at = ?1, expires_at = ?2 WHERE reference = ?3')
+          .run(expired - 86_400_000, expired, saved[1]!.reference)
+      } finally {
+        database.close(true)
+      }
+      expect(
+        await claimPrivateNativeSession({ ...input, reference: saved[1]!.reference }),
+      ).toBeUndefined()
+      expect(await savePrivateNativeSession(input)).toBeDefined()
+      const check = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(check.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(16)
+        expect(
+          check
+            .query('SELECT reference FROM native_sessions WHERE reference = ?1')
+            .get(saved[1]!.reference),
+        ).toBeNull()
+      } finally {
+        check.close(true)
+      }
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('native session storage bounds input, paths and byte identity without consuming corruption', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const parentRunId = await prepareNativeSessionParent(
+        fixture,
+        coordinator,
+        'native-validation',
+      )
+      const input = {
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: digest('a'),
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+      }
+      for (const bytes of [
+        new Uint8Array(),
+        new Uint8Array(8 * 1024 * 1024 + 1),
+        new Uint8Array([0xc0, 0xaf]),
+      ])
+        await expect(savePrivateNativeSession({ ...input, bytes })).rejects.toThrow()
+      for (const rolloutPath of [
+        '../auth.json',
+        '/sessions/owned.jsonl',
+        input.rolloutPath.replace(input.nativeId, '00000000-0000-0000-0000-000000000000'),
+      ])
+        await expect(savePrivateNativeSession({ ...input, rolloutPath })).rejects.toThrow(
+          'owned UUID',
+        )
+      await expect(
+        savePrivateNativeSession({ ...input, scopeDigest: 'not-a-digest' }),
+      ).rejects.toThrow('digest')
+      for (const reference of ['../native', `${input.nativeId}\n`])
+        await expect(claimPrivateNativeSession({ ...input, reference })).rejects.toThrow('UUID')
+      const largest = new Uint8Array(8 * 1024 * 1024).fill(32)
+      const receipt = (await savePrivateNativeSession({ ...input, bytes: largest }))!
+      expect(
+        (await claimPrivateNativeSession({ ...input, reference: receipt.reference }))!.bytes,
+      ).toEqual(largest)
+      const corruptReceipt = (await savePrivateNativeSession(input))!
+      const database = openSqlite(fixture.database, 'readwrite')
+      try {
+        database
+          .query('UPDATE native_sessions SET content_digest = ?1 WHERE reference = ?2')
+          .run(digest('f'), corruptReceipt.reference)
+      } finally {
+        database.close(true)
+      }
+      await expect(
+        claimPrivateNativeSession({ ...input, reference: corruptReceipt.reference }),
+      ).rejects.toThrow('bounded identity')
+      const check = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(
+          check
+            .query('SELECT reference FROM native_sessions WHERE reference = ?1')
+            .get(corruptReceipt.reference),
+        ).toBeDefined()
+      } finally {
+        check.close(true)
+      }
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   for (const scenario of ['pending', 'throws'] as const) {
     test(`root status exposes ${scenario} settlement without silently rescheduling`, async () => {
       const fixture = await createFixture('ready')
@@ -553,7 +824,7 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  test('creates only the current eleven-table schema', async () => {
+  test('creates only the current twelve-table schema', async () => {
     const fixture = await createEmptyFixture()
     try {
       const database = openSqlite(fixture.database, 'readonly')
@@ -2605,6 +2876,35 @@ async function submitReadyRun(
     input: { value: submissionId },
     deadlineUnixMs,
   })
+}
+
+function nativeSession() {
+  const nativeId = '0194b66c-1800-7403-a21b-7ac00d721b0a'
+  return {
+    nativeId,
+    rolloutPath: `sessions/2026/09/14/rollout-2026-09-14T17-31-09-${nativeId}.jsonl`,
+  }
+}
+
+async function prepareNativeSessionParent(
+  fixture: Fixture,
+  coordinator: PrivateProjectCoordinator,
+  submissionId: string,
+): Promise<string> {
+  const { run } = await submitReadyRun(fixture, coordinator, submissionId)
+  await prepareNativeSessionLifecycle(fixture, coordinator, run.runId)
+  return run.runId
+}
+
+async function prepareNativeSessionLifecycle(
+  fixture: Fixture,
+  coordinator: PrivateProjectCoordinator,
+  runId: string,
+): Promise<void> {
+  await checkpoint(fixture, coordinator, runId, 'plan', { recipe: 'exact' })
+  await checkpoint(fixture, coordinator, runId, 'backing', { package: 'retained' })
+  await checkpoint(fixture, coordinator, runId, 'sandbox', { owner: 'sandbox' })
+  await checkpoint(fixture, coordinator, runId, 'prepared', { ready: true })
 }
 
 function checkpoint(

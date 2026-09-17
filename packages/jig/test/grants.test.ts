@@ -24,6 +24,18 @@ const http = {
   version: '1.0.0',
   digest: HTTP_REQUEST_CONTRACT_DIGEST,
 }
+
+test('session retention is separately reviewed and restricted to qualified Codex', () => {
+  expect(normalizeGrant({ kind: 'acp', client: 'codex', retainSessions: true })).toEqual({
+    kind: 'acp',
+    client: 'codex',
+    retainSessions: true,
+  })
+  for (const retainSessions of [false, 1, 'true', null])
+    expect(() => normalizeGrant({ kind: 'acp', client: 'codex', retainSessions })).toThrow()
+  for (const client of ['claude', 'pi'])
+    expect(() => normalizeGrant({ kind: 'acp', client, retainSessions: true })).toThrow()
+})
 const command = {
   id: 'https://jig.md/contracts/project-command',
   version: '1.0.0',

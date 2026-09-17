@@ -52,6 +52,7 @@ class Queue<T> implements AsyncIterable<T> {
 
 interface FakeOptions {
   hangOnClose?: boolean
+  closeDelayMs?: number
   hangPrompt?: boolean
   malformed?: boolean
   failedAuth?: boolean
@@ -66,6 +67,10 @@ function component(options: FakeOptions = {}) {
   let terminated = 0
   let permissionCount = 0
   let ended = false
+  let inputClosed!: () => void
+  const closing = new Promise<void>((resolve) => {
+    inputClosed = resolve
+  })
   let authenticationStarted!: () => void
   const authenticating = new Promise<void>((resolve) => {
     authenticationStarted = resolve
@@ -159,14 +164,27 @@ function component(options: FakeOptions = {}) {
       }
     },
     async closeInput() {
-      if (!options.hangOnClose) settle(false)
+      inputClosed()
+      if (!options.hangOnClose) {
+        if (options.closeDelayMs) setTimeout(() => settle(false), options.closeDelayMs)
+        else settle(false)
+      }
     },
     async terminate() {
       terminated++
       settle(true)
     },
   } as unknown as PrivateLinuxComponentProcess
-  return { process, writes, bootstrap, emit, stdout, authenticating, terminated: () => terminated }
+  return {
+    process,
+    writes,
+    bootstrap,
+    emit,
+    stdout,
+    authenticating,
+    closing,
+    terminated: () => terminated,
+  }
 }
 
 async function fixture(options: FakeOptions = {}, selected = runtime, maxTurns = 1) {
@@ -315,6 +333,19 @@ describe('finite ACP resource transport (fake native process)', () => {
     expect(f.native.terminated()).toBe(0)
   })
 
+  test('clean native shutdown can finish beyond half a second without controlled termination', async () => {
+    const f = await fixture({ closeDelayMs: 650 })
+    await f.initialize()
+    await f.prompt()
+    f.app.close(f.requests.send.endpoint)
+    expect(await f.next()).toBeUndefined()
+    expect(await f.resource).toMatchObject({
+      closed: false,
+      fence: { exitCode: 0, signal: null, stopReason: 'payload_exit' },
+    })
+    expect(f.native.terminated()).toBe(0)
+  })
+
   test('settled request EOF permits bounded controlled close, preserving actual termination', async () => {
     const f = await fixture({ hangOnClose: true })
     await f.initialize()
@@ -420,6 +451,19 @@ describe('finite ACP resource transport (fake native process)', () => {
     f.abort.abort()
     await expect(f.resource).rejects.toThrow()
     expect(f.native.terminated()).toBeGreaterThan(0)
+  })
+
+  test('cancellation interrupts natural-close grace without waiting for its timeout', async () => {
+    const f = await fixture({ hangOnClose: true })
+    await f.initialize()
+    await f.prompt()
+    f.app.close(f.requests.send.endpoint)
+    await f.native.closing
+    const started = Date.now()
+    f.abort.abort()
+    await expect(f.resource).rejects.toThrow()
+    expect(f.native.terminated()).toBeGreaterThan(0)
+    expect(Date.now() - started).toBeLessThan(1_000)
   })
 
   test('essential response disposal terminates native work', async () => {

@@ -83,6 +83,14 @@ describe('ordinary Flow wiring', () => {
     await expect(
       agentFlow({ ...run, input: { instructions: 'Answer.', conversation: true } } as RunContext),
     ).rejects.toMatchObject({ code: 'UNAVAILABLE' })
+    for (const session of [
+      { retain: true },
+      { restore: '013579ab-cdef-4567-89ab-0123456789ab' },
+      null,
+    ])
+      await expect(
+        agentFlow({ ...run, input: { instructions: 'Answer.', session } } as RunContext),
+      ).rejects.toMatchObject({ code: 'UNAVAILABLE' })
     await expect(
       agentFlow({
         ...run,

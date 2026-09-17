@@ -209,6 +209,19 @@ retained raw prefix. The command's named input tree uses the same bounded,
 read-only projection. These invocation bytes do not become installed code
 or retained package artifacts.
 
+An explicit Codex `retainSessions: true` grant permits a separate private history
+store: at most sixteen available 8 MiB snapshots per project, with 24-hour logical
+expiry pruned on access. Only the owned, complete rollout for the qualified native
+version is collected from bounded anonymous output, after clean process exit and
+fencing. Credentials, native home directories, SQLite and logs are not copied.
+The collector rejects known credential bytes; this is not a detector for secrets
+explicitly supplied as conversation content. Retained history is sensitive local
+data protected by the admission store's filesystem/ownership checks, not encrypted
+storage or a secure-erasure promise. A current authorized caller atomically consumes
+an exact-scope reference before restoration; uncertain or interrupted work is never
+replayed. New references follow cleanup and store commit. See
+[Finite ACP](docs/jig/spec/finite-acp.md) for the exact qualification ceiling.
+
 The independent outer command owns output staging and removes it if its
 execution coordinator dies during copying. Flow code sees neither the host
 destination nor the delivery socket. On cancellation or command expiry, the

@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto'
 import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -127,6 +128,10 @@ const MAX_STORED_BYTES = 16_777_216
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER)
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/
+const NATIVE_SESSION_BYTES = 8 * 1024 * 1024
+const NATIVE_SESSION_COUNT = 16
+const NATIVE_SESSION_RETENTION_MS = 24 * 60 * 60 * 1_000
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])/
 const stateTurns = new Map<string, Promise<void>>()
 
 const CREATE_CANDIDATES =
@@ -153,6 +158,8 @@ const CREATE_ROOT_TERMINALS =
   'CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT'
 const CREATE_COORDINATOR_LOCK =
   'CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT'
+const CREATE_NATIVE_SESSIONS =
+  'CREATE TABLE native_sessions (reference TEXT PRIMARY KEY, scope_digest TEXT NOT NULL, native_id TEXT NOT NULL, rollout_path TEXT NOT NULL, content_digest TEXT NOT NULL, content_bytes BLOB NOT NULL CHECK (length(content_bytes) BETWEEN 1 AND 8388608), created_at INTEGER NOT NULL CHECK (created_at BETWEEN 0 AND 9007199168340991), expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000)) STRICT'
 const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({
     type: 'table',
@@ -173,6 +180,12 @@ const EXPECTED_SCHEMA = Object.freeze([
     name: 'coordinator_head',
     table: 'coordinator_head',
     sql: CREATE_COORDINATOR_HEAD,
+  }),
+  Object.freeze({
+    type: 'table',
+    name: 'native_sessions',
+    table: 'native_sessions',
+    sql: CREATE_NATIVE_SESSIONS,
   }),
   Object.freeze({
     type: 'table',
@@ -486,6 +499,36 @@ export interface PrivateRootChildOwnerLifecycle {
   readonly sandbox?: PrivateRootChildOwnerFact
   readonly fence?: PrivateRootChildOwnerFact
   readonly cleanup?: PrivateRootChildOwnerFact
+}
+
+export interface PrivateNativeSessionReceipt {
+  readonly reference: string
+  readonly expiresAtUnixMs: number
+}
+
+export interface PrivateNativeSessionSnapshot extends PrivateNativeSessionReceipt {
+  readonly nativeId: string
+  readonly rolloutPath: string
+  readonly bytes: Uint8Array
+  readonly digest: string
+}
+
+interface NativeSessionAccess {
+  readonly coordinator: PrivateProjectCoordinator
+  readonly projectRoot: string
+  readonly parentRunId: string
+  readonly scopeDigest: string
+}
+
+interface NativeSessionRow {
+  readonly reference: string
+  readonly scope_digest: string
+  readonly native_id: string
+  readonly rollout_path: string
+  readonly content_digest: string
+  readonly content_bytes: Uint8Array
+  readonly created_at: bigint
+  readonly expires_at: bigint
 }
 
 export interface PrivateRootExecutionWork {
@@ -1803,6 +1846,191 @@ function findFlowOwner(
   } finally {
     query.finalize()
   }
+}
+
+/** Retain one collector-validated native rollout; grants and clean close remain caller-owned. */
+export async function savePrivateNativeSession(
+  input: NativeSessionAccess & {
+    readonly nativeId: string
+    readonly rolloutPath: string
+    readonly bytes: Uint8Array
+  },
+): Promise<PrivateNativeSessionReceipt | undefined> {
+  const { nativeId, rolloutPath, scopeDigest } = input
+  requireNativeSessionPath(nativeId, rolloutPath)
+  const bytes = copyNativeSessionBytes(input.bytes)
+  const digest = nativeSessionContentDigest(bytes)
+  return await accessNativeSessions(input, (database, now) => {
+    const query = statement<{ readonly count: bigint }>(
+      database,
+      'SELECT count(*) AS count FROM native_sessions',
+    )
+    let count: bigint
+    try {
+      count = query.get()!.count
+    } finally {
+      query.finalize()
+    }
+    if (count > BigInt(NATIVE_SESSION_COUNT)) corrupt('native session count exceeds its bound')
+    if (count === BigInt(NATIVE_SESSION_COUNT)) return undefined
+    const receipt = Object.freeze({
+      reference: randomUUID(),
+      expiresAtUnixMs: now + NATIVE_SESSION_RETENTION_MS,
+    })
+    runFinalized(
+      database,
+      'INSERT INTO native_sessions(reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)',
+      [
+        receipt.reference,
+        scopeDigest,
+        nativeId,
+        rolloutPath,
+        digest,
+        bytes,
+        now,
+        receipt.expiresAtUnixMs,
+      ],
+    )
+    return receipt
+  })
+}
+
+/** Atomically consumes the reference. Missing receipts never authorize a replay or release. */
+export async function claimPrivateNativeSession(
+  input: NativeSessionAccess & { readonly reference: string },
+): Promise<PrivateNativeSessionSnapshot | undefined> {
+  const { reference, scopeDigest } = input
+  if (typeof reference !== 'string' || !UUID.test(reference))
+    throw new TypeError('native session reference must be a lowercase UUID')
+  return await accessNativeSessions(input, (database) => {
+    const query = statement<NativeSessionRow>(
+      database,
+      'SELECT reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2',
+    )
+    let row: NativeSessionRow | null
+    try {
+      row = query.get(reference, scopeDigest)
+    } finally {
+      query.finalize()
+    }
+    if (row === null) return undefined
+    let bytes: Uint8Array
+    try {
+      requireNativeSessionPath(row.native_id, row.rollout_path)
+      bytes = copyNativeSessionBytes(row.content_bytes)
+      if (
+        row.reference !== reference ||
+        row.scope_digest !== scopeDigest ||
+        nativeSessionContentDigest(bytes) !== row.content_digest ||
+        typeof row.created_at !== 'bigint' ||
+        typeof row.expires_at !== 'bigint' ||
+        row.created_at < 0n ||
+        row.expires_at > MAX_SAFE_REVISION ||
+        row.expires_at - row.created_at !== BigInt(NATIVE_SESSION_RETENTION_MS)
+      )
+        throw new TypeError('native session record is inconsistent')
+    } catch {
+      corrupt('stored native session differs from its bounded identity')
+    }
+    const removed = runFinalized(
+      database,
+      'DELETE FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2',
+      [reference, scopeDigest],
+    )
+    if (removed.changes !== 1) corrupt('native session claim did not consume its reference')
+    return Object.freeze({
+      reference: row.reference,
+      nativeId: row.native_id,
+      rolloutPath: row.rollout_path,
+      bytes,
+      digest: row.content_digest,
+      expiresAtUnixMs: Number(row.expires_at),
+    })
+  })
+}
+
+async function accessNativeSessions<T>(
+  input: NativeSessionAccess,
+  operation: (database: SqliteDatabase, now: number) => T,
+): Promise<T> {
+  const { projectRoot, parentRunId, scopeDigest } = input
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator)
+  await coordinator.verify()
+  requireDigest(parentRunId, 'native session parent root Run')
+  requireDigest(scopeDigest, 'native session recipient scope')
+  const owner = await openStateOwner(projectRoot, false)
+  let failure: unknown
+  try {
+    requireCoordinatorRoot(coordinator, owner.root)
+    const result = await immediate(owner, async () => {
+      await coordinator.verify()
+      const now = Date.now()
+      if (
+        !Number.isSafeInteger(now) ||
+        now < 0 ||
+        now > Number.MAX_SAFE_INTEGER - NATIVE_SESSION_RETENTION_MS
+      )
+        throw new TypeError('native session retention time is invalid')
+      const runRow = requireRootRunRow(owner.database, parentRunId)
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root)
+      if (run.state === 'terminal')
+        invalid('RUN_ALREADY_TERMINAL', 'native session parent root Run is already terminal')
+      if (run.coordinatorEpoch !== coordinator.epoch)
+        invalid('RUN_OWNER_CHANGED', 'native sessions require the active parent coordinator')
+      const lifecycle = loadRootExecutionLifecycle(
+        owner.database,
+        requireRootExecutionLifecycle(owner.database, parentRunId),
+        runRow,
+      )
+      if (lifecycle.prepared === undefined || lifecycle.fence !== undefined)
+        invalid('RUN_CHILD_PARENT_INACTIVE', 'native sessions require an active prepared root Run')
+      if (now >= run.deadlineUnixMs)
+        invalid('RUN_CHILD_PARENT_INACTIVE', 'native session parent deadline has elapsed')
+      runFinalized(
+        owner.database,
+        'DELETE FROM native_sessions WHERE expires_at <= ?1 OR created_at > ?1',
+        [now],
+      )
+      return operation(owner.database, now)
+    })
+    await coordinator.verify()
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+function requireNativeSessionPath(nativeId: unknown, path: unknown): void {
+  if (
+    typeof nativeId !== 'string' ||
+    !UUID.test(nativeId) ||
+    typeof path !== 'string' ||
+    !/^sessions\/[0-9]{4}\/[0-9]{2}\/[0-9]{2}\/rollout-[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9a-f-]{36}\.jsonl$/.test(
+      path,
+    ) ||
+    !path.endsWith(`-${nativeId}.jsonl`)
+  )
+    throw new TypeError('native session rollout path differs from its owned UUID')
+}
+
+function copyNativeSessionBytes(value: unknown): Uint8Array {
+  if (
+    !(value instanceof Uint8Array) ||
+    value.byteLength === 0 ||
+    value.byteLength > NATIVE_SESSION_BYTES
+  )
+    throw new TypeError('native session bytes exceed the 8 MiB retention bound')
+  const bytes = Uint8Array.from(value)
+  new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
+  return bytes
+}
+
+function nativeSessionContentDigest(bytes: Uint8Array): string {
+  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
 }
 
 /** Reopen one durable root Run while proving affinity to a live coordinator. */
@@ -3675,6 +3903,7 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_EXECUTION_LIFECYCLES)
       database.exec(CREATE_ROOT_CHILD_OWNERS)
       database.exec(CREATE_ROOT_TERMINALS)
+      database.exec(CREATE_NATIVE_SESSIONS)
       database.exec('INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)')
       database.exec('INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)')
       database.exec('INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)')

@@ -445,6 +445,8 @@ describe('private native Codex Agent provider', () => {
         check_for_update_on_startup: false,
         features: {
           apps: false,
+          code_mode: false,
+          code_mode_host: false,
           plugins: false,
           remote_plugin: false,
           tool_suggest: false,

@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import type { FileHandle } from 'node:fs/promises'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import { nativeInvocationKind } from '../project/invocation-slots.js'
@@ -23,7 +24,18 @@ import {
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
+  claimPrivateNativeSession,
+  savePrivateNativeSession,
 } from './activation-admission-store.js'
+import {
+  collectPrivateCodexSession,
+  parsePrivateNativeSessionRequest,
+  privateCodexSessionBootstrap,
+  privateCodexSessionSecrets,
+  validatePrivateCodexSession,
+  type PrivateCodexSessionState,
+  type PrivateNativeSessionRequest,
+} from './codex-session-state.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
@@ -130,7 +142,14 @@ export async function executePrivateRootFiniteAcp(
     nativeInvocationKind(route.contract) !== 'finite-acp'
   )
     return failed('UNAVAILABLE', 'the requested slot has no admitted finite ACP grant')
-  if (input.call.input !== null) return failed('INVALID_INPUT', 'finite ACP accepts null input')
+  let session: PrivateNativeSessionRequest | undefined
+  try {
+    session = parsePrivateNativeSessionRequest(input.call.input)
+  } catch {
+    return failed('INVALID_INPUT', 'finite ACP accepts null or an exact session request')
+  }
+  if (session !== undefined && route.grant.retainSessions !== true)
+    return failed('UNAVAILABLE', 'finite ACP session retention requires a reviewed grant')
   if (input.signal.aborted) return failed('CANCELLED', 'the finite ACP operation was cancelled')
   let provider: PrivateAcpAgentProvider
   let recipe: PrivateDirectRunRecipe
@@ -138,6 +157,8 @@ export async function executePrivateRootFiniteAcp(
     provider = requirePrivateAcpAgentProvider(input.provider)
     // The reproduced slot selects the authenticated client for this exact grant.
     recipe = await reproduceParentRecipe(input, provider)
+    if (session !== undefined && provider.client !== 'openai-codex')
+      return failed('UNAVAILABLE', 'this native client does not support retained sessions')
   } catch {
     return failed('UNAVAILABLE', 'the admitted finite ACP client cannot be reproduced')
   }
@@ -145,9 +166,11 @@ export async function executePrivateRootFiniteAcp(
   try {
     const terminal = await executeOwnedProvider(input, provider, recipe, {
       maxTurns: route.grant.maxTurns ?? 1,
+      ...(session === undefined ? {} : { session }),
       digest: privateDomainDigest('JIG-Private-Finite-ACP-Request/1', {
         providerDigest: provider.digest,
         grant: route.grant as unknown as JsonValue,
+        session: (session as unknown as JsonValue) ?? null,
       }),
       admit() {
         if (input.channels === undefined)
@@ -183,6 +206,7 @@ async function executeOwnedProvider(
   operation: {
     readonly digest: string
     readonly maxTurns: number
+    readonly session?: PrivateNativeSessionRequest
     admit(): PrivateFiniteAcpEndpoints
   },
 ): Promise<RunHostOperationTerminal> {
@@ -274,10 +298,42 @@ async function executeOwnedProvider(
 
   let attemptedDispatch = false
   let execution: ProviderExecution
+  let output: FileHandle | undefined
+  let retained: PrivateCodexSessionState | undefined
+  let credentialBootstrap: Uint8Array | undefined
+  const runtime = privateAcpAgentRuntime(provider)
+  const scopeDigest = nativeSessionScope(input, provider)
   try {
     await revalidateProviderSupport(recipe, provider, input)
+    let restored: PrivateCodexSessionState | undefined
+    if (operation.session !== undefined && 'restore' in operation.session) {
+      restored = await claimPrivateNativeSession({
+        coordinator: input.coordinator,
+        projectRoot: input.projectRoot,
+        parentRunId: input.parent.run.runId,
+        scopeDigest,
+        reference: operation.session.restore,
+      })
+      if (restored === undefined) throw new NativeSessionUnavailable()
+      try {
+        validatePrivateCodexSession(restored)
+      } catch {
+        throw new NativeSessionUnavailable()
+      }
+    }
+    if (operation.session !== undefined) credentialBootstrap = runtime.startupInput?.()
+    const secrets =
+      operation.session === undefined
+        ? []
+        : privateCodexSessionSecrets(runtime, credentialBootstrap)
     const sealed = await input.backend.seal(
-      backendPlan(recipe, provider, effectiveDeadlineUnixMs, identity),
+      backendPlan(
+        recipe,
+        provider,
+        effectiveDeadlineUnixMs,
+        identity,
+        operation.session !== undefined,
+      ),
       ownerAllocation,
     )
     const sandbox: AcpSandbox = Object.freeze({ kind: SANDBOX_KIND, owner: sealed.identity })
@@ -294,13 +350,39 @@ async function executeOwnedProvider(
     })
     attemptedDispatch = true
     const component = await sealed.admit(input.signal)
+    output = component.outputDirectory
     execution = await runPrivateFiniteAcpResource(
       component,
-      privateAcpAgentRuntime(provider),
+      runtime,
       endpoints,
       input.signal,
       operation.maxTurns,
+      ...(operation.session === undefined
+        ? []
+        : [
+            {
+              bootstrap: privateCodexSessionBootstrap(restored),
+              ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
+              ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
+            },
+          ]),
     )
+    if (
+      operation.session !== undefined &&
+      output !== undefined &&
+      execution.sessionId !== undefined &&
+      !execution.closed &&
+      execution.fence.stopReason === 'payload_exit' &&
+      execution.fence.exitCode === 0 &&
+      execution.fence.signal === null &&
+      !input.signal.aborted
+    ) {
+      try {
+        retained = collectPrivateCodexSession(output, execution.sessionId, secrets)
+      } catch {
+        /* Completed work may outlive unavailable or unrecognized native history. */
+      }
+    }
     await releaseKnownAcp(input, lifecycle, execution.fence)
   } catch (error) {
     try {
@@ -323,9 +405,20 @@ async function executeOwnedProvider(
     if (Date.now() >= effectiveDeadlineUnixMs) {
       return failed('DEADLINE_EXCEEDED', 'the finite ACP operation deadline elapsed')
     }
+    if (error instanceof NativeSessionUnavailable)
+      return failed('UNAVAILABLE', 'the retained session is unavailable for this admitted caller')
     return attemptedDispatch
       ? failed('UNCERTAIN', 'Finite ACP dispatch may have occurred but no result was proved')
       : failed('EXECUTION_FAILED', 'finite ACP execution failed before dispatch')
+  } finally {
+    credentialBootstrap?.fill(0)
+    try {
+      await output?.close()
+    } catch (error) {
+      // Descriptor release is owned cleanup. A failure here must not mask a
+      // fatal fence failure with an ordinary, catchable operation exception.
+      throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
+    }
   }
 
   if ((execution.fence.stopReason === 'cancelled' && !execution.closed) || input.signal.aborted) {
@@ -343,6 +436,24 @@ async function executeOwnedProvider(
       'the native provider did not prove an ordinary or controlled terminal',
     )
 
+  let sessionReceipt: JsonValue | undefined
+  if (operation.session !== undefined) {
+    const saved =
+      retained === undefined
+        ? undefined
+        : await savePrivateNativeSession({
+            coordinator: input.coordinator,
+            projectRoot: input.projectRoot,
+            parentRunId: input.parent.run.runId,
+            scopeDigest,
+            ...retained,
+          })
+    input.signal.throwIfAborted()
+    sessionReceipt =
+      saved === undefined
+        ? { status: 'unavailable' }
+        : { status: 'retained', reference: saved.reference }
+  }
   return {
     status: 'succeeded',
     result: {
@@ -352,9 +463,24 @@ async function executeOwnedProvider(
         signal: execution.fence.signal,
         cleanup: 'complete',
         stopReason: execution.closed ? 'closed' : 'exited',
+        ...(sessionReceipt === undefined ? {} : { session: sessionReceipt }),
       },
     },
   }
+}
+
+class NativeSessionUnavailable extends Error {}
+
+function nativeSessionScope(input: ProviderCallInput, provider: PrivateAcpAgentProvider): string {
+  const ancestors = []
+  for (let parent = input.parentFlow; parent; parent = parent.parent ?? undefined)
+    ancestors.unshift({ target: parent.target, requestDigest: parent.requestDigest })
+  return privateDomainDigest('JIG-Private-Native-Session-Scope/1', {
+    root: { target: input.parent.run.target, requestDigest: input.parent.intent.requestDigest },
+    ancestors,
+    slot: input.call.slot,
+    providerDigest: provider.digest,
+  } as unknown as JsonValue)
 }
 
 /** Identify finite ACP rows without interpreting Flow-child allocation formats. */
@@ -507,6 +633,7 @@ function backendPlan(
   provider: PrivateAcpAgentProvider,
   deadlineUnixMs: number,
   identity: string,
+  retainSession = false,
 ): PrivateLinuxLaunchPlan {
   const acp = privateAcpAgentRuntime(provider)
   return Object.freeze({
@@ -536,7 +663,10 @@ function backendPlan(
       ...recipe.bunPolicy,
       acp.sandboxAdapterPath,
     ]) as readonly [string, ...string[]],
-    environment: acp.environment,
+    environment: retainSession
+      ? { ...acp.environment, JIG_CODEX_SESSION_STATE: '1' }
+      : acp.environment,
+    ...(retainSession ? { output: true } : {}),
     network: 'inherited',
     ...(acp.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
   })

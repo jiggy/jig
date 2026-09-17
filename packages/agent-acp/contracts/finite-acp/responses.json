@@ -65,6 +65,11 @@
             "minLength": 1,
             "maxLength": 1024
           },
+          "restoreSessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
           "maxTurns": {
             "type": "integer",
             "minimum": 1,

@@ -55,6 +55,9 @@
           "output": {
             "type": "object",
             "properties": {
+              "session": {
+                "$ref": "#/$defs/SessionReceipt"
+              },
               "turns": {
                 "type": "integer",
                 "minimum": 1,
@@ -94,6 +97,43 @@
     }
   },
   "$defs": {
+    "SessionRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "retain": { "const": true } },
+          "required": ["retain"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "restore": { "type": "string", "minLength": 36, "maxLength": 36 }
+          },
+          "required": ["restore"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SessionReceipt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": { "const": "retained" },
+            "reference": { "type": "string", "minLength": 36, "maxLength": 36 }
+          },
+          "required": ["status", "reference"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "status": { "const": "unavailable" } },
+          "required": ["status"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "RunInput": {
       "type": "object",
       "properties": {
@@ -128,6 +168,9 @@
         },
         "conversation": {
           "const": true
+        },
+        "session": {
+          "$ref": "#/$defs/SessionRequest"
         }
       },
       "required": ["instructions"],
@@ -140,7 +183,10 @@
           "type": "string",
           "maxLength": 8388608
         },
-        "structured": true
+        "structured": true,
+        "session": {
+          "$ref": "#/$defs/SessionReceipt"
+        }
       },
       "required": ["text"],
       "additionalProperties": false

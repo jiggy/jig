@@ -43,8 +43,17 @@ retains credential, process, and dispatch authority.
 - Optional conversational mode owns bounded direct commands/replies and per-turn
   results in `src/conversation.ts`. Native maxTurns, serial dispatch and interruption
   settlement remain host-enforced. One-shot calls retain their simple interface.
-  Essential replies never use the lossy progress relay. Session restoration,
-  replacement, tools, MCP, binary transport and retries are not provided.
+  Essential replies never use the lossy progress relay. Tools, MCP, binary
+  transport, implicit replacement and retries are not provided.
+- Optional session intent is relayed to the native resource; ordinary input
+  remains null. Restoration requires the ready record's owned session ID and
+  advertised resume support, never a new-session fallback. Resume returns an
+  empty projected result; reapply every reviewed configuration before prompting.
+  The Flow validates a requested final retention receipt only after independent
+  native settlement and appends it to the final answer or conversation summary.
+  A retained receipt requires natural zero exit with no signal; a valid answer
+  can instead carry unavailable retention after confirmed cleanup. Storage,
+  current authority, one-use claims and actual collection remain host-owned.
 - Prompt settlement followed by clean request EOF delegates bounded process
   closure to its owner; the adapter does not wait for optional ACP close.
 - `./transport` is bounded framing, not an alternative host authority filter.
@@ -59,6 +68,9 @@ retains credential, process, and dispatch authority.
 
 - `bun test packages/agent-acp/test` exercises pure framing and public RunContext
   wiring using in-process channel/resource peers.
+  Session cases cover resume ordering, exact owned identity, readiness/capability
+  failures, final-only receipts and invalid retention facts. These deterministic
+  checks do not qualify native saved-state restoration.
 - `just build` compiles declarations/public transport and bundles `src/flow.ts`.
 - `just pack --destination <directory>` builds and packs explicitly. For existing
   output use `bun pm pack --ignore-scripts --destination <directory>`.

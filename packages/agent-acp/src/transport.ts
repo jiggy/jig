@@ -21,6 +21,7 @@ export interface FiniteAcpReady {
   readonly maxTurns: number
   readonly configuration: readonly FiniteAcpConfiguration[]
   readonly modeId?: string
+  readonly restoreSessionId?: string
 }
 
 export interface FiniteAcpFragment {
@@ -93,7 +94,11 @@ function identifier(value: unknown): string {
 /** Snapshot the host's non-secret ready record; this copy grants no authority. */
 export function readFiniteAcpReady(value: unknown): FiniteAcpReady {
   const record = object(value)
-  exact(record, ['kind', 'protocolVersion', 'cwd', 'maxTurns', 'configuration'], ['modeId'])
+  exact(
+    record,
+    ['kind', 'protocolVersion', 'cwd', 'maxTurns', 'configuration'],
+    ['modeId', 'restoreSessionId'],
+  )
   if (
     record.kind !== 'ready' ||
     record.protocolVersion !== 1 ||
@@ -137,6 +142,9 @@ export function readFiniteAcpReady(value: unknown): FiniteAcpReady {
     maxTurns: record.maxTurns as number,
     configuration: Object.freeze(configuration),
     ...(Object.hasOwn(record, 'modeId') ? { modeId: identifier(record.modeId) } : {}),
+    ...(Object.hasOwn(record, 'restoreSessionId')
+      ? { restoreSessionId: identifier(record.restoreSessionId) }
+      : {}),
   })
   if (encoder.encode(JSON.stringify(ready)).byteLength > 65_536)
     invalid('Ready record exceeds the channel item bound')

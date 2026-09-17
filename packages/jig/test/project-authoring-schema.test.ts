@@ -30,6 +30,16 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 }
 
 describe('Project Authoring SDK/1 shape schema', () => {
+  test('retention policy is explicit and confined to the qualified native client', () => {
+    const value = changed(binding, (item) => {
+      item.slots.native = { kind: 'acp', client: 'codex', retainSessions: true }
+    })
+    expect(() => schema.validate(value, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
+    for (const patch of [{ client: 'pi' }, { client: 'claude' }, { retainSessions: false }]) {
+      const invalid = changed(value, (item) => Object.assign(item.slots.native, patch))
+      expect(() => schema.validate(invalid, 'INVALID_PROJECT_AUTHORING')).toThrow(SchemaDiagnostic)
+    }
+  })
   test('accepts the complete direct-alpha authoring surface', () => {
     expect(() => schema.validate(project, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
     expect(() => schema.validate(binding, 'INVALID_PROJECT_AUTHORING')).not.toThrow()

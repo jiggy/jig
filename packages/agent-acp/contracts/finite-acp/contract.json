@@ -3,7 +3,15 @@
   "id": "https://jig.md/contracts/finite-acp",
   "version": "1.0.0",
   "input": {
-    "type": "null"
+    "oneOf": [
+      { "type": "null" },
+      {
+        "type": "object",
+        "properties": { "session": { "$ref": "#/$defs/SessionRequest" } },
+        "required": ["session"],
+        "additionalProperties": false
+      }
+    ]
   },
   "result": {
     "type": "object",
@@ -25,6 +33,9 @@
           },
           "stopReason": {
             "enum": ["exited", "closed"]
+          },
+          "session": {
+            "$ref": "#/$defs/SessionReceipt"
           }
         },
         "required": ["exitCode", "signal", "cleanup", "stopReason"],
@@ -33,6 +44,45 @@
     },
     "required": ["outcome", "output"],
     "additionalProperties": false
+  },
+  "$defs": {
+    "SessionRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "retain": { "const": true } },
+          "required": ["retain"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "restore": { "type": "string", "minLength": 36, "maxLength": 36 }
+          },
+          "required": ["restore"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SessionReceipt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": { "const": "retained" },
+            "reference": { "type": "string", "minLength": 36, "maxLength": 36 }
+          },
+          "required": ["status", "reference"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "status": { "const": "unavailable" } },
+          "required": ["status"],
+          "additionalProperties": false
+        }
+      ]
+    }
   },
   "channels": {
     "requests": {

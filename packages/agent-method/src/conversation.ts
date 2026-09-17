@@ -1,5 +1,6 @@
 import type { ChannelPair, ChannelSender, JsonValue, RunContext, RunResult } from '@jigging/flow'
 import type { AgentCallInput, AgentInput } from './index.js'
+import { exactKeys, ordinaryRecord, validSessionReceipt } from './values.js'
 
 export type AgentTurn =
   | { readonly type: 'result'; readonly turn: number; readonly result: RunResult }
@@ -13,7 +14,7 @@ export type AgentTurn =
 
 export interface AgentConversation {
   readonly initial: Promise<AgentTurn>
-  prompt(input: AgentInput): Promise<AgentTurn>
+  prompt(input: Omit<AgentInput, 'session'>): Promise<AgentTurn>
   /** Acknowledges control, not cancellation. Await the turn for its actual outcome. */
   interrupt(): Promise<'accepted' | 'not-running'>
 }
@@ -73,6 +74,7 @@ export async function withAgentConversation<T>(
     throw new TypeError(
       'contractDirectory must name the public Agent Run bundle without a trailing slash',
     )
+  const requestedSession = options.input.session !== undefined
   const turns: AgentTurn[] = []
   const errors: unknown[] = []
   const record = (error: unknown) => {
@@ -288,10 +290,14 @@ export async function withAgentConversation<T>(
     }
   }
   if (run.signal.aborted) record(run.signal.reason ?? invalid('Run cancelled'))
+  const output = ordinaryRecord(settlement?.output)
   if (
     !settlement ||
     settlement.outcome !== 'done' ||
-    (settlement.output as { turns?: unknown } | null)?.turns !== turns.length
+    !output ||
+    output.turns !== turns.length ||
+    !exactKeys(output, ['turns', ...(requestedSession ? ['session'] : [])]) ||
+    (requestedSession && !validSessionReceipt(output.session))
   )
     record(invalid('Agent omitted matching conversation settlement'))
   if (errors.length) throw new AgentConversationError(errors, Object.freeze(turns), settlement)

@@ -23,6 +23,7 @@ export interface PrivateFiniteAcpConfiguration {
   readonly maxTurns?: number
   readonly configuration?: readonly Configuration[]
   readonly modeId?: string
+  readonly restoreSessionId?: string
 }
 
 export interface PrivateFiniteAcpDelivery {
@@ -40,6 +41,7 @@ export class PrivateFiniteAcpPolicyError extends Error {
 const encoder = new TextEncoder()
 const INITIALIZE = 'initialize'
 const NEW = 'session/new'
+const RESUME = 'session/resume'
 const CONFIGURE = 'session/set_config_option'
 const MODE = 'session/set_mode'
 const PROMPT = 'session/prompt'
@@ -58,6 +60,8 @@ export class PrivateFiniteAcpPolicy {
   private turns = 0
   private readonly configuration: readonly Configuration[]
   private readonly modeId?: string
+  private readonly restoreSessionId?: string
+  private canResume = false
   private poisoned = false
   private initialized = false
   private sessionId?: string
@@ -81,7 +85,9 @@ export class PrivateFiniteAcpPolicy {
 
   constructor(configuration: PrivateFiniteAcpConfiguration = {}) {
     const policy = object(snapshotPrivateOrdinaryJson(configuration, 'finite ACP policy', invalid))
-    keys(policy, [], ['configuration', 'modeId', 'maxTurns'])
+    keys(policy, [], ['configuration', 'modeId', 'maxTurns', 'restoreSessionId'])
+    if (Object.hasOwn(policy, 'restoreSessionId'))
+      this.restoreSessionId = identifier(policy.restoreSessionId)
     const maxTurns = policy.maxTurns ?? 1
     if (
       typeof maxTurns !== 'number' ||
@@ -145,7 +151,11 @@ export class PrivateFiniteAcpPolicy {
           break
         }
         case NEW:
-          if (!this.initialized || this.sessionId !== undefined)
+          if (
+            !this.initialized ||
+            this.sessionId !== undefined ||
+            this.restoreSessionId !== undefined
+          )
             fail('ACP session creation is not available')
           keys(params, ['cwd', 'mcpServers'])
           if (
@@ -154,6 +164,23 @@ export class PrivateFiniteAcpPolicy {
             params.mcpServers.length !== 0
           )
             fail('ACP session authority differs from its policy')
+          break
+        case RESUME:
+          if (
+            !this.initialized ||
+            !this.canResume ||
+            this.sessionId !== undefined ||
+            this.restoreSessionId === undefined
+          )
+            fail('ACP session restoration is not available')
+          keys(params, ['sessionId', 'cwd', 'mcpServers'])
+          if (
+            params.sessionId !== this.restoreSessionId ||
+            params.cwd !== '/work' ||
+            !Array.isArray(params.mcpServers) ||
+            params.mcpServers.length !== 0
+          )
+            fail('ACP restoration authority differs from its policy')
           break
         case CONFIGURE: {
           this.ownedSession(params, ['configId', 'value'], ['type'])
@@ -257,16 +284,32 @@ export class PrivateFiniteAcpPolicy {
           const sessions = optionalObject(capabilities.sessionCapabilities)
           this.canClose = sessions.close !== undefined && sessions.close !== null
           if (this.canClose) object(sessions.close)
+          this.canResume = sessions.resume !== undefined && sessions.resume !== null
+          if (this.canResume) object(sessions.resume)
+          if (this.restoreSessionId !== undefined && !this.canResume)
+            fail('ACP client does not support restoration')
           this.initialized = true
           projected = {
             protocolVersion: 1,
-            agentCapabilities: this.canClose ? { sessionCapabilities: { close: {} } } : {},
+            agentCapabilities:
+              this.canClose || this.canResume
+                ? {
+                    sessionCapabilities: {
+                      ...(this.canClose ? { close: {} } : {}),
+                      ...(this.canResume ? { resume: {} } : {}),
+                    },
+                  }
+                : {},
           }
           break
         }
         case NEW:
           this.sessionId = identifier(result.sessionId)
           projected = { sessionId: this.sessionId }
+          break
+        case RESUME:
+          this.sessionId = this.restoreSessionId!
+          projected = {}
           break
         case CONFIGURE: {
           const required = this.configuration[this.configured]!
@@ -325,6 +368,12 @@ export class PrivateFiniteAcpPolicy {
     return this.pending?.method === PROMPT
   }
 
+  /** An owned, finally settled conversation, not a persistence receipt. */
+  get settledSessionId(): string | undefined {
+    this.assertSettled()
+    return this.peerFailed || !this.promptSettled ? undefined : this.sessionId
+  }
+
   assertSettled(): void {
     this.guard(() => {
       if (this.pending !== undefined || (!this.promptSettled && !this.peerFailed))
@@ -348,7 +397,10 @@ export class PrivateFiniteAcpPolicy {
     if (++this.updates > PRIVATE_FINITE_ACP_LIMITS.updates) fail('ACP update capacity exceeded')
     // Initial client notifications can precede session/new's response. They
     // cannot nominate our session or be exposed before its identity is known.
-    if (this.sessionId === undefined && this.pending?.method === NEW) {
+    if (
+      this.sessionId === undefined &&
+      (this.pending?.method === NEW || this.pending?.method === RESUME)
+    ) {
       keys(params, ['sessionId', 'update'], ['_meta'])
       identifier(params.sessionId)
       object(params.update)

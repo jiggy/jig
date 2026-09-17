@@ -35,6 +35,14 @@ admitted FLOW packages.
   Jig retains source admission, resource grants and owned execution, not Agent
   preparation or answer interpretation. Skill content is explicit caller data;
   consumers independently check dynamic results.
+- Optional Codex session retention stays below the ordinary Agent boundary:
+  reviewed grants, exact recipient scope, single-use protected history, clean
+  native exit, fencing and cleanup precede a new receipt. The opt-in
+  `native-session-restoration.test.ts` uses installed archives and at most two
+  subscription model calls with synthetic input; `JIG_NATIVE_AGENT_RESTORE=1`,
+  `JIG_RESTORE_ARCHIVES`, `JIG_CODEX_STARTUP_PATH` and `JIG_RESTORE_MODEL` select
+  that explicit test.
+  It is separate from the deterministic protocol and protected-store tests.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, and `libexec/` are generated.

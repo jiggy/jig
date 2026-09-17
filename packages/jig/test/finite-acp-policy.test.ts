@@ -59,6 +59,52 @@ function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown):
 }
 
 describe('finite ACP authority policy', () => {
+  test('resume names only the claimed session, never a fallback new session', () => {
+    const policy = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
+    policy.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
+    policy.fromClient(
+      reply(1, { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } } }),
+    )
+    policy.fromAdapter(
+      request(2, 'session/resume', { sessionId: 'saved-session', cwd: '/work', mcpServers: [] }),
+    )
+    expect(policy.fromClient(reply(2, { configOptions: [] }))).toEqual({
+      toAdapter: { jsonrpc: '2.0', id: 2, result: {} },
+    })
+    policy.fromAdapter(
+      request(3, 'session/prompt', {
+        sessionId: 'saved-session',
+        prompt: [{ type: 'text', text: 'Continue' }],
+      }),
+    )
+    policy.fromClient(reply(3, { stopReason: 'end_turn' }))
+    expect(policy.settledSessionId).toBe('saved-session')
+    for (const method of ['session/new', 'session/resume']) {
+      const other = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
+      other.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
+      other.fromClient(
+        reply(1, {
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { resume: {} } },
+        }),
+      )
+      expect(() =>
+        other.fromAdapter(
+          request(2, method, { sessionId: 'foreign', cwd: '/work', mcpServers: [] }),
+        ),
+      ).toThrow()
+    }
+    const noSupport = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
+    noSupport.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
+    expect(() => noSupport.fromClient(reply(1, { protocolVersion: 1 }))).toThrow('does not support')
+    const ordinary = new PrivateFiniteAcpPolicy()
+    initialize(ordinary)
+    expect(() =>
+      ordinary.fromAdapter(
+        request(2, 'session/resume', { sessionId: 'saved-session', cwd: '/work', mcpServers: [] }),
+      ),
+    ).toThrow()
+  })
   test('only an explicit turn allowance permits serial continuation, including after cancellation', () => {
     const policy = session({ maxTurns: 2 })
     prompt(policy)

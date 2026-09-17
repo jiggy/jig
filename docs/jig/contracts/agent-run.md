@@ -10,7 +10,7 @@ The Flow supplies instructions, any selected package-local Skills, and an
 optional structured-result schema. The operator chooses the Agent, model,
 credentials, and endpoint.
 
-Jig's native implementation and the ordinary [Agent Flow](../guide/agent-method.md)
+The ordinary HTTP and native [Agent Flows](../guide/agent-method.md)
 share this interface. Selected Skill contents are explicit caller data, not
 host-attested provenance. Consumers independently check structured answers;
 the operator chooses an implementation and grants its required resources.
@@ -23,7 +23,7 @@ an Agent server or an API endpoint. You may have found it in a
 
 That file is a local copy of the interface the Flow expects, not a new Agent
 implementation. Jig matches its contract ID, exact version, and canonical
-descriptor digest against the selected Flow or supported native implementation. Copying the file does
+descriptor digest against the selected Flow implementation. Copying the file does
 not provide an Agent or grant permission to use one.
 
 This page is an explanatory guide. Jig does not fetch it to resolve an
@@ -36,7 +36,7 @@ versions; the descriptor carries the version and exact interface.
 - **Use the invocation:** read the [Agent Run specification](../spec/agent-run.md)
   for request and result fields, Skills, limits, and failure behavior.
 - **Configure an Agent:** follow the
-  [host configuration instructions](../spec/agent-run.md#alpha-host-implementations).
+  [Agent configuration guide](../guide/agents.md).
   Do not use this contract ID as your provider's base URL.
 - **Get the interface file:** download the
   [Agent Run JSON descriptor](https://jig.md/contracts/agent-run/contract.json).
@@ -46,6 +46,10 @@ versions; the descriptor carries the version and exact interface.
   `flow.meta.json` (or Markdown frontmatter), as the specification shows.
 - **See it in an application:** try the
   [support-case application](../guide/support-case.md).
+- **Continue or restore work:** read [Agent conversations](../guide/conversations.md).
+  Native restoration is a source candidate requiring a separately reviewed
+  retention grant and a single-use reference. Its receipt appears only in the
+  final invocation output; an individual answer does not prove retention.
 - **Understand contract matching:** read
   [FLOW Invocation Contract/1](https://flow.jig.md/spec/invocation-contracts).
 

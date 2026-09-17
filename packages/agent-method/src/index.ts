@@ -7,8 +7,10 @@ import {
   freezeJson,
   localName,
   ordinaryRecord,
+  sessionReference,
   skillPath,
   snapshot,
+  validSessionReceipt,
 } from './values.js'
 
 export type { AgentMethodErrorCode } from './errors.js'
@@ -16,10 +18,17 @@ export { AgentMethodError } from './errors.js'
 export type { JsonObject, JsonValue } from './json.js'
 export { assertResponseSchema, projectResponseSchema } from './schema.js'
 
+export type AgentSessionRequest = { readonly retain: true } | { readonly restore: string }
+
+export type AgentSessionReceipt =
+  | { readonly status: 'retained'; readonly reference: string }
+  | { readonly status: 'unavailable' }
+
 export interface AgentInput {
   readonly instructions: string
   readonly guidance?: readonly { readonly label: string; readonly text: string }[]
   readonly responseSchema?: JsonObject
+  readonly session?: AgentSessionRequest
 }
 
 export interface SkillText {
@@ -47,6 +56,7 @@ export interface AgentTransportResult {
 
 export interface PreparedAgent {
   readonly request: AgentTransportInput
+  readonly session?: AgentSessionRequest
 }
 
 export interface AgentResult {
@@ -54,6 +64,7 @@ export interface AgentResult {
   readonly output: {
     readonly text: string
     readonly structured?: JsonValue
+    readonly session?: AgentSessionReceipt
   }
 }
 
@@ -69,7 +80,8 @@ export function checkAgentResult(value: unknown, responseSchema?: JsonObject): A
     !['done', 'blocked', 'limit'].includes(record.outcome as string) ||
     output === undefined ||
     typeof output.text !== 'string' ||
-    Object.keys(output).some((key) => key !== 'text' && key !== 'structured')
+    Object.keys(output).some((key) => !['text', 'structured', 'session'].includes(key)) ||
+    (Object.hasOwn(output, 'session') && !validSessionReceipt(output.session))
   )
     throw new AgentMethodError('INVALID_RESULT', 'Agent returned an invalid result')
   if (responseSchema !== undefined) {
@@ -105,10 +117,14 @@ export function prepareAgent(
     record === undefined ||
     typeof record.instructions !== 'string' ||
     record.instructions.length === 0 ||
-    Object.keys(record).some((key) => !['instructions', 'guidance', 'responseSchema'].includes(key))
+    Object.keys(record).some(
+      (key) => !['instructions', 'guidance', 'responseSchema', 'session'].includes(key),
+    )
   ) {
-    invalidInput('Supply instructions and optional guidance or responseSchema')
+    invalidInput('Supply instructions and optional guidance, responseSchema or session')
   }
+  if (Object.hasOwn(record, 'session') && !validSessionRequest(record.session))
+    invalidInput('Session requires retain: true or one opaque restore reference')
   const guidance = record.guidance === undefined ? [] : record.guidance
   const skills = snapshot(selectedSkills, 'INVALID_INPUT')
   if (!Array.isArray(guidance) || !Array.isArray(skills))
@@ -204,7 +220,12 @@ export function prepareAgent(
     prompt,
     ...(schema === undefined ? {} : { responseSchema: schema }),
   })
-  return Object.freeze({ request })
+  return Object.freeze({
+    request,
+    ...(record.session === undefined
+      ? {}
+      : { session: freezeJson(record.session as JsonValue) as unknown as AgentSessionRequest }),
+  })
 }
 
 /** Interpret complete transport facts with the exact prepared method. */
@@ -213,7 +234,8 @@ export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResu
   const request = preparedValue === undefined ? undefined : ordinaryRecord(preparedValue.request)
   if (
     preparedValue === undefined ||
-    !exactKeys(preparedValue, ['request']) ||
+    Object.keys(preparedValue).some((key) => !['request', 'session'].includes(key)) ||
+    (Object.hasOwn(preparedValue, 'session') && !validSessionRequest(preparedValue.session)) ||
     request === undefined ||
     typeof request.prompt !== 'string' ||
     request.prompt.length === 0 ||
@@ -266,6 +288,15 @@ export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResu
   } as const
   // The complete result has its own JSON/1 byte/node budget, including both presentations.
   return freezeJson(snapshot(completed, 'INVALID_RESULT')) as unknown as AgentResult
+}
+
+function validSessionRequest(value: unknown): boolean {
+  const record = ordinaryRecord(value)
+  return (
+    record !== undefined &&
+    ((exactKeys(record, ['retain']) && record.retain === true) ||
+      (exactKeys(record, ['restore']) && sessionReference(record.restore)))
+  )
 }
 
 function decodePresentation(text: string): JsonValue {

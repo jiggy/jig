@@ -122,6 +122,11 @@ export async function converse(
         try {
           // Initial context remains in the native conversation; these are new turn instructions.
           prepared = prepareAgent(value.input as unknown as AgentInput)
+          if (prepared.session !== undefined)
+            throw new AgentMethodError(
+              'INVALID_INPUT',
+              'Session requests belong to the initial invocation',
+            )
         } catch (error) {
           if (!(error instanceof AgentMethodError)) throw error
           await reject('INVALID_INPUT')

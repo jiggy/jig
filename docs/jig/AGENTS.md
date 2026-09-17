@@ -20,7 +20,10 @@ use-case and orchestration hypotheses.
   resource configuration, and current adapter limitations.
   `guide/conversations.md` owns bounded same-session follow-up and interruption,
   including the distinction between control replies and final settlement, and
-  routes to the application-owned summary handoff example.
+  explicit native retention and restoration under a separately reviewed grant.
+  It distinguishes final retention receipts from turn answers and installed
+  qualification from the source candidate, and routes to the application-owned
+  summary handoff example.
   `guide/dependencies.md` owns package dependency preparation guidance.
 - `guide/files.md` explains per-run files and review-pinned Binding resources,
   their shared read attachment interface, retention and root-only limits.

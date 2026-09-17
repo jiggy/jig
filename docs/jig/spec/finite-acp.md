@@ -1,5 +1,9 @@
 # Finite ACP resource
 
+**Status:** experimental alpha candidate. Native restoration requires matching
+source artifacts and separate installed-client qualification; this specification
+does not establish registry availability or successful live restoration.
+
 This invocation connects an ordinary Agent Flow to one host-authorized native
 ACP conversation. The Flow owns the procedure and interprets its answer. The
 host owns the native process, private authentication, reviewed configuration,
@@ -39,7 +43,15 @@ configuration and documented default. Two Bindings can use the same client with
 different models. Changing this policy requires renewed authority approval;
 the ready configuration and native dispatch enforce the selected model.
 
-Input is `null`. Both channels are required and direct: the resource receives
+Input is normally `null`. A requested native session uses the closed shape
+`{session:{retain:true}}` or `{session:{restore:reference}}`, where `reference`
+is an opaque, canonical lowercase 36-character UUID from a previous final
+resource result. Either request requires
+the separately reviewed grant `retainSessions:true`; omission of that grant
+permits only ephemeral calls. `restore` also requests a successor snapshot after
+the new invocation settles. See [retained native state](#retained-native-state).
+
+Both channels are required and direct: the resource receives
 `requests` and sends `responses`. The adapter creates the channels through the
 ordinary SDK and transfers the opposite endpoints in one exact slot call:
 
@@ -73,7 +85,11 @@ policy grants dispatch. Changing the allowance requires renewed approval.
 `{configId,value}`; Boolean settings use `{configId,type:"boolean",value}`.
 Configuration IDs are unique; at most 16 are supplied. Identifiers and string
 values are nonempty Unicode scalar text, contain no NUL, and are at most 1,024
-UTF-8 bytes. `modeId` is optional. The complete ready item must fit 64 KiB.
+UTF-8 bytes. `modeId` is optional. For an authorized restoration, ready also
+contains `restoreSessionId`, the host-owned native ACP session identifier from
+the claimed snapshot. It is private transport metadata, distinct from the
+public opaque reference; the Agent method must not copy it into public output.
+It is absent for a new session. The complete ready item must fit 64 KiB.
 Fields are closed: no credential, executable path, authentication request,
 provider endpoint or unrestricted client metadata belongs here.
 
@@ -121,7 +137,11 @@ bounded native text response when its necessary framing crosses a Flow boundary.
 The host accepts one serial sequence, with unique bounded request IDs:
 
 1. ACP `initialize` at version 1, without client tool or authentication powers.
-2. One `session/new` at `/work`, with an empty `mcpServers` array and no `_meta`.
+2. One `session/new` at `/work`, with an empty `mcpServers` array and no `_meta`,
+   or, when ready contains `restoreSessionId`, exactly one `session/resume` with
+   `{sessionId:restoreSessionId,cwd:"/work",mcpServers:[]}`. Restoration requires
+   initialization to advertise `agentCapabilities.sessionCapabilities.resume`;
+   no `session/new` fallback is permitted.
 3. Each exact ready configuration transition, in order, with confirmation of
    its reviewed value; then the exact mode transition if present.
 4. Up to the grant's `maxTurns` serial `session/prompt` requests on the owned
@@ -133,10 +153,13 @@ After each prompt is dispatched, at most one `session/cancel` notification may
 name that owned session. It cannot settle pending work by itself. A cancellation
 that races completed settlement is consumed without forwarding to the idle
 client. An active interruption must settle within five seconds; otherwise the
-host fences the resource and reports unsuccessful/uncertain execution. Session IDs
-come from the correlated `session/new` response, never from a notification.
+host fences the resource and reports unsuccessful/uncertain execution. New
+session IDs come from the correlated `session/new` response, never from a
+notification. A restored session uses only the already-claimed identifier in
+ready; its correlated resume result is projected as exactly `{}`. Current
+reviewed configuration and mode must be reapplied before the first prompt.
 Excess prompts, overlapping prompts, extra sessions, provider selection, authentication, tools, filesystem
-requests, mode changes, session replacement and metadata are rejected. Native
+requests, unreviewed mode changes, unclaimed session replacement and metadata are rejected. Native
 permission requests receive the host's fixed cancelled answer, not a choice
 made by the editable adapter.
 
@@ -185,6 +208,70 @@ returns. Essential channel failure cancels/fences the resource and waits for
 owned work to settle. No uncertain operation is retried. Process settlement,
 ACP stop reason and the application-checked Agent answer remain distinct.
 The host does not reconstruct an Agent answer in this resource result.
+
+If input requested a session, the successful final resource `output` also
+contains exactly one receipt: `session:{status:"retained",reference:uuid}` or
+`session:{status:"unavailable"}`. Otherwise it omits `session`. Receipt meaning
+is independent of the Agent's answer and requires the additional evidence below.
+
+## Retained native state
+
+Retention crosses a lifetime and authority boundary, so the host owns its
+collection, protected storage and restoration. The ordinary Agent Flow passes
+the explicit request and final receipt without reading native files or supplying
+storage paths. `retainSessions:true` is separate reviewed authority from model,
+credentials and `maxTurns`; possession of a reference cannot replace it.
+
+The initial collection profile accepts Codex 0.154.0 with exactly one owned
+rollout JSONL file. Its records must identify the owned session, be complete,
+contain the required final turn completion, fit the bound and exclude credential
+content. Unrecognized versions, extra or unowned rollout files, invalid paths,
+incomplete records and oversized or credential-bearing state are unavailable.
+The profile copies no home directory, SQLite database, authentication, tools,
+forks, partial turns or compaction state. These restrictions do not grant the
+native client additional tools or workspace access.
+
+The host returns `retained` only after the final native turn has settled, an
+actual clean native exit has been observed, the complete owned scope has been
+fenced, bounded collection has passed profile validation, execution resources
+have been cleaned up and the protected snapshot has committed atomically.
+Controlled or forced closure cannot yield a reference, even if a termination
+handler exits zero. A clean protocol close that needs controlled termination
+may still produce the ordinary successful resource result with
+`session:{status:"unavailable"}`. Retention failure does not invalidate a
+separately valid Agent answer, but it never hides a resource execution or cleanup
+failure that already requires an invocation error.
+
+Before consuming a reference, the host checks current authorization against
+the protected project identity, root target and request digest, ordered
+target/request-digest ancestry, immediate native slot and exact provider/profile
+digest. Run and operation identifiers and ordinary prompt input do not bind
+restoration. Aliases selecting the same admitted target are equivalent; this
+profile does not promise isolation by incoming slot alias. Accepted code or
+configuration changes that alter these identities require a new conversation.
+
+A reference is claimed atomically once before native startup, with restored
+bytes placed in a fresh private scope. Concurrent claims cannot create two
+owners. A claim is consumed even if subsequent startup, resume or execution
+fails. Unsupported, expired, foreign and reused references fail visibly. The
+host does not silently create a session, replay a transcript, retry uncertain
+work or restore authentication. Current grants and current credentials are
+revalidated independently of retained content.
+
+The protected project store permits at most 16 available snapshots, each at
+most 8 MiB. Available snapshots expire logically after 24 hours and are pruned
+on the next store access; this is not an automatic secure-erasure promise.
+Consumed payloads are replaced rather than accumulating tombstones, references
+are never recycled, and active ownership remains accountable after expiry.
+A successor reference is exposed only after the full settlement and commit
+sequence above. Exhausted storage or failed validation yields unavailable
+retention rather than an invented reference. Corrupt protected state, storage
+commit uncertainty or lost coordinator authority fails the operation; it is
+not downgraded to optional retention loss.
+
+Protocol and storage tests establish only their tested boundaries. Actual
+save, clean exit and restoration across fresh Runs through the installed
+Agent/ACP/Jig path require separate native-client qualification.
 
 ## Optional presentation is separate
 

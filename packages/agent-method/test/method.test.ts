@@ -23,6 +23,41 @@ const answerSchema = schema({ answer: { type: 'string', enum: ['READY'] } })
 const exchange = (text: string, stop = 'end-turn') => ({ outcome: 'done', output: { text, stop } })
 
 describe('shared Agent method', () => {
+  test('validates session intent as frozen metadata without changing the model prompt', () => {
+    const reference = '013579ab-cdef-4567-89ab-0123456789ab'
+    const ordinary = prepareAgent({ instructions: 'Answer.' })
+    for (const session of [{ retain: true } as const, { restore: reference }]) {
+      const prepared = prepareAgent({ instructions: 'Answer.', session })
+      expect(prepared.request).toEqual(ordinary.request)
+      expect(prepared.session).toEqual(session)
+      expect(prepared.session).not.toBe(session)
+      expect(Object.isFrozen(prepared.session)).toBe(true)
+      expect(finishAgent(prepared, exchange('answer'))).toEqual({
+        outcome: 'done',
+        output: { text: 'answer' },
+      })
+    }
+    expect(ordinary).not.toHaveProperty('session')
+    for (const session of [
+      null,
+      {},
+      { retain: false },
+      { restore: '' },
+      { restore: reference.toUpperCase() },
+      { restore: `${reference}\n` },
+      { retain: true, restore: reference },
+      { restore: reference, extra: true },
+      { reference },
+    ]) {
+      expect(() => prepareAgent({ instructions: 'Answer.', session } as never)).toThrow(
+        AgentMethodError,
+      )
+      expect(() => finishAgent({ ...ordinary, session } as never, exchange('answer'))).toThrow(
+        AgentMethodError,
+      )
+    }
+  })
+
   test('renders canonically sorted Skills and explicitly ordered separate guidance', () => {
     const makeSkill = (name: string) => ({
       name,

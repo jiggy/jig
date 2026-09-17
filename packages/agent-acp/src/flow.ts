@@ -3,6 +3,7 @@ import {
   finishAgent,
   prepareAgent,
   type AgentInput,
+  type AgentSessionReceipt,
   type SkillText,
 } from '@jigging/agent-method'
 import {
@@ -48,7 +49,14 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
       Array.isArray(run.input) ||
       Object.keys(run.input).some(
         (key) =>
-          !['instructions', 'guidance', 'skills', 'responseSchema', 'conversation'].includes(key),
+          ![
+            'instructions',
+            'guidance',
+            'skills',
+            'responseSchema',
+            'conversation',
+            'session',
+          ].includes(key),
       )
     )
       throw new OperationError(
@@ -100,7 +108,7 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
         {
           operationId: 'native',
           slot: 'native',
-          input: null,
+          input: prepared.session === undefined ? null : { session: { ...prepared.session } },
           channels: { requests: requests.receive, responses: responses.send },
         },
         { signal },
@@ -115,6 +123,9 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
     const first = await essential(responses.receive.next({ signal }))
     if (first.done) failure('Native ACP transport omitted its ready record')
     const ready = readFiniteAcpReady(first.value)
+    const restoring = prepared.session !== undefined && 'restore' in prepared.session
+    if (restoring !== (ready.restoreSessionId !== undefined))
+      failure('Native ACP ready record does not match the session request')
     const peer = new FinitePeer(requests.send, responses.receive, signal, updates)
     const initialized = await peer.request('initialize', {
       protocolVersion: ready.protocolVersion,
@@ -123,9 +134,23 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
     })
     if (initialized.protocolVersion !== 1)
       failure('Native ACP transport selected an unsupported version')
-    const created = await peer.request('session/new', { cwd: ready.cwd, mcpServers: [] })
-    keys(created, ['sessionId'])
-    peer.sessionId = identifier(created.sessionId)
+    if (restoring) {
+      const capabilities = object(object(initialized.agentCapabilities).sessionCapabilities)
+      if (!Object.hasOwn(capabilities, 'resume'))
+        failure('Native ACP transport does not advertise session resume')
+      object(capabilities.resume)
+      peer.sessionId = ready.restoreSessionId!
+      const resumed = await peer.request('session/resume', {
+        sessionId: peer.sessionId,
+        cwd: ready.cwd,
+        mcpServers: [],
+      })
+      keys(resumed, [])
+    } else {
+      const created = await peer.request('session/new', { cwd: ready.cwd, mcpServers: [] })
+      keys(created, ['sessionId'])
+      peer.sessionId = identifier(created.sessionId)
+    }
     for (const configuration of ready.configuration) {
       const result = await peer.request('session/set_config_option', {
         sessionId: peer.sessionId,
@@ -155,10 +180,15 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
     await peer.end()
     const settled = await work
     if ('error' in settled) throw settled.error
-    checkSettlement(settled.result)
+    const session = checkSettlement(settled.result, prepared.session !== undefined)
     signal.throwIfAborted()
     if (conversational) await (replies as ChannelSender).close()
-    return answer
+    return session === undefined
+      ? answer
+      : {
+          ...answer,
+          output: { ...object(answer.output), session: { ...session } },
+        }
   } catch (error) {
     failed = true
     const resourceFailed = owned.signal.aborted
@@ -365,11 +395,20 @@ class FinitePeer {
   }
 }
 
-function checkSettlement(result: RunResult): void {
+function checkSettlement(
+  result: RunResult,
+  requestedSession: boolean,
+): AgentSessionReceipt | undefined {
   const value = object(result)
   keys(value, ['outcome', 'output'])
   const output = object(value.output)
-  keys(output, ['stopReason', 'exitCode', 'signal', 'cleanup'])
+  keys(output, [
+    'stopReason',
+    'exitCode',
+    'signal',
+    'cleanup',
+    ...(requestedSession ? ['session'] : []),
+  ])
   if (
     value.outcome !== 'done' ||
     output.cleanup !== 'complete' ||
@@ -381,6 +420,24 @@ function checkSettlement(result: RunResult): void {
     failure('Native ACP resource did not supply complete settlement')
   if (output.stopReason === 'exited' && (output.exitCode !== 0 || output.signal !== null))
     throw new OperationError('EXECUTION_FAILED', 'Native ACP process exited unsuccessfully')
+  if (!requestedSession) return undefined
+  const session = object(output.session)
+  if (session.status === 'unavailable') {
+    keys(session, ['status'])
+    return { status: 'unavailable' }
+  }
+  keys(session, ['status', 'reference'])
+  if (
+    session.status !== 'retained' ||
+    typeof session.reference !== 'string' ||
+    session.reference.length !== 36 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(session.reference) ||
+    output.stopReason !== 'exited' ||
+    output.exitCode !== 0 ||
+    output.signal !== null
+  )
+    failure('Native ACP resource returned an invalid session receipt')
+  return { status: 'retained', reference: session.reference }
 }
 
 function object(value: unknown): JsonObject {

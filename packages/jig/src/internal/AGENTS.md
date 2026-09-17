@@ -10,6 +10,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+- Admission storage retains private native-session snapshots under exact
+  recipient scopes: at most sixteen 8 MiB UTF-8 rollouts, with 24-hour logical
+  expiry and atomic single-use claims that delete the payload. Access requires
+  the current coordinator and an active prepared root Run. Native collectors
+  own clean-close, content and current-grant validation; a reference grants no
+  authority. Storage or ownership uncertainty must not become successful retention.
 - `invocation-context.ts` owns shared admitted-parent identity and durable
   parent-owner checks, plus protected owner-root validation. Finite ACP, command
   and HTTP controllers use these checks; resource ownership must not import Agent
@@ -150,6 +156,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   file-backed Codex login. Project only its short-lived bearer; never embed a
   development login, retain its refresh token, mount `CODEX_HOME`, or expose a
   host keyring to Agent execution.
+  Its constrained profile disables Code Mode and its helper host; unsupported
+  optional tool startup must not inject private-path warnings into Agent answers.
 - Codex's nested sandbox uses an unprivileged Bubblewrap selected from its
   declarative binary wrapper's PATH prefix and operator PATH, excluding project
   routes, or the matching bundled helper when no eligible PATH helper exists.

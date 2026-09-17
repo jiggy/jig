@@ -15,7 +15,9 @@ descriptors.
 - FLOW specifications continue to own portable package and Run semantics.
 - `agent-run.md` owns the explicit-context Agent method interface. Ordinary
   HTTP and ACP method packages offer it and own answer interpretation. Their
-  descriptor-relative channel closures remain exact.
+  descriptor-relative channel closures remain exact. Optional native session
+  requests produce retention receipts only in final invocation output, never
+  individual conversation-turn replies.
 - `contract-authoring.md` owns explicit generation, local freshness, bounded
   compiler operation, output ownership and interrupted-publication recovery.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient
@@ -30,7 +32,9 @@ descriptors.
   is a native invocation companion, not a FLOW-wide resource model.
 - `finite-acp.md` owns the finite native resource grant, exact request/response
   channel bundle, credential separation and independently enforced dispatch
-  and cleanup. Ordinary packages own Agent dialogue and answer interpretation.
+  and cleanup, including separately authorized bounded native retention,
+  single-use restoration and clean-exit receipts. Ordinary packages own Agent
+  dialogue and answer interpretation.
 - `channels.md` owns Jig's direct/broadcast channel support, local limits and
   installed NDJSON output. `contracts/acp-public-updates.json`
   defines the exact optional Agent update meaning, not raw ACP access.
@@ -44,6 +48,10 @@ descriptors.
 - A descriptor-byte change must reconcile its documented digest, host
   allowlist, fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.
+- Native restoration specifications remain distinct from installed-client
+  qualification and registry support. Retention requires actual clean native
+  exit, validated collection, complete fencing and cleanup, and atomic commit;
+  a completed answer or forced closure alone cannot establish retained state.
 
 ## Work Guidance
 

@@ -10,6 +10,27 @@ const schema = {
 }
 
 describe('consumer-side Agent result checking', () => {
+  test('validates immutable retained and unavailable session receipts', () => {
+    const reference = '013579ab-cdef-4567-89ab-0123456789ab'
+    for (const session of [{ status: 'retained', reference }, { status: 'unavailable' }]) {
+      const result = checkAgentResult({ outcome: 'done', output: { text: 'answer', session } })
+      expect(result.output.session).toEqual(session)
+      expect(result.output.session).not.toBe(session)
+      expect(Object.isFrozen(result.output.session)).toBe(true)
+    }
+    for (const session of [
+      null,
+      {},
+      { status: 'retained' },
+      { status: 'retained', reference: 'private/path' },
+      { status: 'retained', reference: reference.toUpperCase() },
+      { status: 'retained', reference: `${reference}\n` },
+      { status: 'unavailable', reference },
+      { status: 'retained', reference, extra: true },
+    ])
+      expect(() => checkAgentResult({ outcome: 'done', output: { text: '', session } })).toThrow()
+  })
+
   test('takes an immutable snapshot independent of the selected implementation', () => {
     const input = { outcome: 'done', output: { text: 'answer', structured: { answer: 'yes' } } }
     const result = checkAgentResult(input, schema)

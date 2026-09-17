@@ -52,6 +52,21 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 }
 
 describe('Jig lock/1 shape schema', () => {
+  test('retains only the qualified explicitly authorized session policy', () => {
+    const value = changed(lock, (item) => {
+      item.bindings.configured.slots.native = {
+        kind: 'grant',
+        policy: { kind: 'acp', client: 'codex', retainSessions: true },
+      }
+    })
+    expect(() => schema.validate(value, 'INVALID_JIG_LOCK')).not.toThrow()
+    for (const patch of [{ client: 'pi' }, { client: 'claude' }, { retainSessions: false }]) {
+      const invalid = changed(value, (item) =>
+        Object.assign(item.bindings.configured.slots.native.policy, patch),
+      )
+      expect(() => schema.validate(invalid, 'INVALID_JIG_LOCK')).toThrow(SchemaDiagnostic)
+    }
+  })
   test('accepts the complete current lock shape', () => {
     expect(() => schema.validate(lock, 'INVALID_JIG_LOCK')).not.toThrow()
   })

@@ -48,7 +48,15 @@ test('ordinary packing retains editable source, registry dependencies and a stan
       process.execPath,
       [
         '-e',
-        'await import("./dist/flow.js"); const method = await import("./dist/index.js"); if (typeof method.prepareAgent !== "function") throw new Error("missing public method"); const conversation = await import("@jigging/agent-method/conversation"); if (typeof conversation.withAgentConversation !== "function") throw new Error("missing public conversation helper")',
+        `await import('./dist/flow.js');
+        const { prepareAgent, checkAgentResult } = await import('@jigging/agent-method');
+        const reference = '013579ab-cdef-4567-89ab-0123456789ab';
+        const prepared = prepareAgent({ instructions: 'Answer.', session: { restore: reference } });
+        if (prepared.session.restore !== reference || prepared.request.prompt.includes(reference)) throw new Error('invalid session preparation');
+        const result = checkAgentResult({ outcome: 'done', output: { text: 'answer', session: { status: 'retained', reference } } });
+        if (result.output.session.reference !== reference || !Object.isFrozen(result.output.session)) throw new Error('invalid session receipt');
+        const conversation = await import('@jigging/agent-method/conversation');
+        if (typeof conversation.withAgentConversation !== 'function') throw new Error('missing public conversation helper')`,
       ],
       { cwd: extracted, stdio: 'pipe' },
     )

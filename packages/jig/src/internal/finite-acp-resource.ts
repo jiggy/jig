@@ -32,7 +32,9 @@ import type {
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', { fatal: true })
-const CLOSE_GRACE_MS = 500
+// Allow the adapter's bounded native shutdown (two seconds) to settle and
+// report its actual exit before host fencing. Cancellation still interrupts.
+const CLOSE_GRACE_MS = 3_000
 const STDERR_BYTES = 65_536
 
 function channel(value: JsonValue): ResolvedChannelContract {
@@ -79,13 +81,25 @@ export async function runPrivateFiniteAcpResource(
   endpoints: PrivateFiniteAcpEndpoints,
   signal: AbortSignal,
   maxTurns = 1,
-): Promise<{ readonly fence: PrivateLinuxConfirmedEnforcementReceipt; readonly closed: boolean }> {
+  session?: {
+    readonly bootstrap: Uint8Array
+    readonly restoreSessionId?: string
+    readonly credentialBootstrap?: Uint8Array
+  },
+): Promise<{
+  readonly fence: PrivateLinuxConfirmedEnforcementReceipt
+  readonly closed: boolean
+  readonly sessionId?: string
+}> {
   const local = new AbortController()
   const stopped = (): void => local.abort(signal.reason)
   const policy = new PrivateFiniteAcpPolicy({
     maxTurns,
     configuration: runtime.configuration,
     ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
+    ...(session?.restoreSessionId === undefined
+      ? {}
+      : { restoreSessionId: session.restoreSessionId }),
   })
   const ready = readFiniteAcpReady({
     kind: 'ready',
@@ -94,6 +108,9 @@ export async function runPrivateFiniteAcpResource(
     maxTurns,
     configuration: runtime.configuration,
     ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
+    ...(session?.restoreSessionId === undefined
+      ? {}
+      : { restoreSessionId: session.restoreSessionId }),
   })
   // Validate before native startup; configuration is public policy, never auth.
   PRIVATE_FINITE_ACP_CHANNELS.responses!.contract!.validate(ready as unknown as JsonValue)
@@ -174,7 +191,7 @@ export async function runPrivateFiniteAcpResource(
     policy.assertSettled()
     await writes
     await component.closeInput()
-    const natural = await within(component.enforcement, CLOSE_GRACE_MS)
+    const natural = await within(component.enforcement, CLOSE_GRACE_MS, local.signal)
     if (natural === undefined) {
       local.signal.throwIfAborted()
       closed = true
@@ -246,13 +263,27 @@ export async function runPrivateFiniteAcpResource(
     const stderr = discard(component.stderr)
     track(stderr)
     // The trusted launcher consumes startup bytes before it starts the native client.
-    if (runtime.startupInput !== undefined) await component.write(runtime.startupInput())
+    const credential =
+      session === undefined ? runtime.startupInput?.() : session.credentialBootstrap
+    if (credential !== undefined) {
+      try {
+        await component.write(credential)
+      } finally {
+        credential.fill(0)
+      }
+    }
+    if (session !== undefined) await component.write(session.bootstrap)
     await endpoints.owner.send(endpoints.responses, ready as unknown as JsonValue, local.signal)
     track(requests())
     track(responses())
     track(component.enforcement)
     await Promise.all(tasks)
-    return Object.freeze({ fence: await component.enforcement, closed })
+    const sessionId = policy.settledSessionId
+    return Object.freeze({
+      fence: await component.enforcement,
+      closed,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    })
   } catch (error) {
     local.abort()
     endpoints.owner.failWriter(
@@ -326,11 +357,22 @@ async function discard(source: AsyncIterable<Uint8Array>): Promise<void> {
   }
 }
 
-async function within<T>(pending: Promise<T>, milliseconds: number): Promise<T | undefined> {
+async function within<T>(
+  pending: Promise<T>,
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<T | undefined> {
+  signal.throwIfAborted()
   let cancelTimer = (): void => {}
+  let removeAbort = (): void => {}
   try {
     return await Promise.race([
       pending,
+      new Promise<never>((_, reject) => {
+        const abort = () => reject(signal.reason)
+        signal.addEventListener('abort', abort, { once: true })
+        removeAbort = () => signal.removeEventListener('abort', abort)
+      }),
       new Promise<undefined>((resolve) => {
         const timer = setTimeout(resolve, milliseconds)
         cancelTimer = () => clearTimeout(timer)
@@ -338,6 +380,7 @@ async function within<T>(pending: Promise<T>, milliseconds: number): Promise<T |
     ])
   } finally {
     cancelTimer()
+    removeAbort()
   }
 }
 

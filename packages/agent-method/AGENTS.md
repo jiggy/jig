@@ -27,8 +27,16 @@ ordinary Flow, preserving operator ownership of Agent execution.
   calls and channels. It owns correlation, local endpoint disposal and an
   uncancelled invocation waiter; it imports no native or private host code.
   Received turn outcomes and final invocation settlement remain distinct.
+  Final receipt presence must match the initial session request; malformed or
+  unsolicited receipts fail without discarding settled turn evidence.
   Callback or cleanup failures retain received turns in `AgentConversationError`.
-- The HTTP Flow rejects conversational mode before resource dispatch. Its
+- Session requests are invocation metadata, separate from rendered instructions
+  and transport requests. `prepareAgent` validates and snapshots them;
+  `finishAgent` assembles answer facts only. `checkAgentResult` validates optional
+  final session receipts without granting authority or reading retained state.
+  Follow-up conversation prompts cannot change session intent; the receipt belongs
+  to final invocation settlement, never an individual turn reply.
+- The HTTP Flow rejects conversational mode and any session request before resource dispatch. Its
   shared Agent contract does not imply support for native continuing sessions.
 - The ordinary Flow owns one non-streaming text-only Chat Completions or
   Responses exchange through its HTTP slot. Closed API/model/token settings
@@ -68,6 +76,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - `just build` compiles declarations and bundles the ordinary runtime.
 - `just test` checks the method, JSON/1, bounded reader, and Flow wiring.
+  Session tests cover strict opaque references, immutable metadata and receipts,
+  unchanged model prompts, and pre-dispatch HTTP refusal.
 - `just pack --destination <directory>` builds the complete archive explicitly.
 - After building, `bun pm pack --ignore-scripts --destination <directory>` packs
   existing output. Package tests verify source, ordinary dependency versions,

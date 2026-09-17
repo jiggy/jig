@@ -15,7 +15,7 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:6372b2fce7854fccafe9fd079a79a27e504fc26a9d4e62027ee0b3d79b3df5f5
+digest   sha256:6a60e417a4f4181a938e4acc5cb1a9b1547727881336462386df8853fb3567d6
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
@@ -56,6 +56,7 @@ The contract has one invocation, with no method selector. Its input is:
   skills?: readonly { name: string; files: readonly { path: string; text: string }[] }[];
   guidance?: readonly { label: string; text: string }[];
   responseSchema?: JsonObject;
+  session?: { retain: true } | { restore: string }; // opaque UUID reference
 }
 ```
 
@@ -64,7 +65,11 @@ Its result is:
 ```ts
 {
   outcome: "done" | "blocked" | "limit";
-  output: { text: string; structured?: JsonValue };
+  output: {
+    text: string;
+    structured?: JsonValue;
+    session?: { status: "retained"; reference: string } | { status: "unavailable" };
+  };
 }
 ```
 
@@ -80,6 +85,11 @@ An ordinary Flow offering the exact descriptor can replace the Agent through
 a project default or explicit Binding route. Its own grants supply its powers; matching a
 descriptor grants neither credentials nor network access. Supported optional
 channels still require qualification by the selected implementation.
+The optional `session` input requests native retention or restoration under a
+separately reviewed grant. Its receipt appears only in the final invocation
+output, after resource settlement; calls without a request omit it. The supplied
+HTTP method rejects a session request before dispatch. See
+[retaining a native conversation](#retaining-a-native-conversation).
 
 ## Continuing conversations
 
@@ -118,6 +128,10 @@ not native completion. Each turn separately produces one of:
   cannot satisfy the requested structured result. A caller may issue another
   turn after that error; malformed ACP or uncertain native work is fatal instead.
 
+Per-turn results contain the answer's `text` and optional `structured` value,
+never a `session` receipt. Only the initial invocation input may request
+retention or restoration; follow-up prompt inputs cannot change that request.
+
 Replies are essential and fit the ordinary 64 KiB channel item bound. Oversized
 results fail visibly rather than truncate. A reply blocked for five seconds
 fails the conversation and settles its resource. Command EOF without an accepted
@@ -128,6 +142,8 @@ releasing its receiver; further controls after accepted close are invalid.
 On accepted close, the invocation returns `{outcome:"done",output:{turns:N}}`
 only after native cleanup. `N` counts all settled turns, including cancelled or
 invalid answers; conversation completion does not imply every turn succeeded.
+When the initial input requests a session, this final `output` also contains
+the retention receipt defined below.
 
 Optional public events add `turn` in conversational mode. They remain lossy
 observation, never the source of turn-result or interruption acknowledgement.
@@ -136,8 +152,60 @@ ordering depends on the qualified client's ACP compliance; local turn labels
 are not independent proof of native causality. All turn text and frame limits
 remain cumulative across the invocation.
 
-This mode does not retain sessions across Runs, restore native history, expose
-workspace tools or perform automatic handoff. Those require separate contracts.
+The live conversation stays within one invocation. Cross-Run restoration uses
+the explicit session request below; neither path grants native workspace tools
+or performs automatic handoff.
+
+## Retaining a native conversation
+
+The optional `session` field is exactly one of `{retain:true}` or
+`{restore:reference}`, where `reference` is an opaque, canonical lowercase
+36-character UUID returned by a previous
+final invocation. The request applies to one-shot and conversational native
+calls. Omission keeps the invocation ephemeral. Retention is a separately
+reviewed native grant, `retainSessions:true`; a request or a reference never
+grants this authority.
+
+`retain` starts a new conversation and requests retention when it closes.
+`restore` consumes previously retained native state before starting the current
+prompt, then requests a successor snapshot after this invocation settles.
+The current instructions, Skills and guidance supply the new prompt. The host
+restores the native conversation; the Agent Flow relays metadata and does not
+read native storage, replay a transcript or synthesize an earlier answer.
+
+Only the final invocation output carries one of these closed receipts:
+
+```ts
+{ status: "retained", reference: "opaque-UUID" }
+{ status: "unavailable" }
+```
+
+`retained` means that the final turn settled, the native client actually exited
+cleanly, all owned execution was fenced, and bounded validated state was
+collected, cleaned up and committed atomically. Accepted ACP close, a completed
+answer, channel EOF or controlled termination alone cannot establish retention.
+A successfully settled answer may therefore include `session:{status:"unavailable"}`;
+the answer remains valid under its ordinary result checks. An invocation error
+does not return a usable successor reference.
+
+Restoration requires the current grant and the same protected project,
+admitted recipient and ancestry, native slot, and exact provider/profile
+identity. Changing the accepted package or configuration can invalidate access
+to an earlier snapshot; a reference is identity, never permission. The host
+claims a reference once before native startup. A used, expired, foreign or
+unsupported reference fails visibly, with no fresh-conversation fallback or
+automatic retry. Failure after a claim does not make the old reference reusable.
+
+The initial host profile permits at most 16 available snapshots per project,
+each at most 8 MiB. References expire logically after 24 hours; expired state is
+pruned on the next store access, without promising automatic secure erasure.
+Active execution ownership outlives snapshot expiry. Credentials, native tools
+and arbitrary workspaces are outside retained state. Exact collection and
+restore requirements belong to [Finite ACP](finite-acp.md#retained-native-state).
+
+This is the synchronized source candidate contract. Installed-client
+save-and-restore qualification and publication of matching artifacts are
+separate requirements; the descriptor alone establishes neither.
 
 ## Structured-output profile
 
@@ -288,6 +356,8 @@ Parent settings, slots, and native authority are never inherited implicitly.
 Each specialist selects Skills from its own admitted package for each Agent
 call. A fresh call does not include the parent's or another specialist's
 conversation unless the application explicitly passes that content as input.
+Native restoration can access only the current recipient's authorized snapshot;
+it does not inherit another specialist's conversation.
 The operator selects the implementation and its grants. The caller does not
 inherit the selected implementation's credentials or source files.
 

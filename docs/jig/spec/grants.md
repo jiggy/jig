@@ -40,6 +40,13 @@ within that one invocation; omission permits one. Turns share the original
 deadline and aggregate resource bounds. Changing the allowance changes reviewed
 authority. It does not permit session restoration or additional native tools.
 
+For the qualified Codex profile, `retainSessions: true` separately authorizes
+bounded native history retention and restoration. The caller must still request
+it explicitly; ordinary calls remain ephemeral. A saved reference is not a
+grant and cannot cross the exact admitted recipient/provider scope. The
+[finite ACP contract](finite-acp.md#retained-native-state) owns limits,
+single-use claims and clean-close requirements.
+
 Only these three resource kinds are supported. A grant is closed policy data,
 not a plugin, executable code, generic permission bag, or credentials object.
 Inline authoring validates inert value structure; trusted project linking also

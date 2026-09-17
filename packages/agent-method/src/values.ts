@@ -14,6 +14,25 @@ export function exactKeys(value: object, expected: readonly string[]): boolean {
   return actual.length === sorted.length && actual.every((name, index) => name === sorted[index])
 }
 
+export function sessionReference(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length === 36 &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
+  )
+}
+
+export function validSessionReceipt(value: unknown): boolean {
+  const record = ordinaryRecord(value)
+  return (
+    record !== undefined &&
+    ((exactKeys(record, ['status']) && record.status === 'unavailable') ||
+      (exactKeys(record, ['status', 'reference']) &&
+        record.status === 'retained' &&
+        sessionReference(record.reference)))
+  )
+}
+
 export function snapshot(value: unknown, code: AgentMethodErrorCode): JsonValue {
   try {
     return decodeJson1(canonicalJson(value as JsonValue))

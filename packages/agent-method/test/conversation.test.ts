@@ -85,6 +85,11 @@ async function exercise(mode: string) {
         } else if (request.method === 'flow/call') {
           call = request
           expect(p.channels).toEqual({ commands: 'commands:r', replies: 'replies:s' })
+          expect(p.input.session).toEqual(
+            ['retained', 'missing-session', 'invalid-session'].includes(mode)
+              ? { retain: true }
+              : undefined,
+          )
           if (mode === 'unavailable') {
             nativeSettled = true
             fail(call, 'UNAVAILABLE')
@@ -119,7 +124,24 @@ async function exercise(mode: string) {
           if (call && !nativeSettled) {
             nativeSettled = true
             if (p.error) fail(call, 'EXECUTION_FAILED')
-            else ok(call, { outcome: 'done', output: { turns: mode === 'callback-error' ? 1 : 2 } })
+            else
+              ok(call, {
+                outcome: 'done',
+                output: {
+                  turns: mode === 'callback-error' ? 1 : 2,
+                  ...(['retained', 'invalid-session', 'unsolicited-session'].includes(mode)
+                    ? {
+                        session: {
+                          status: 'retained',
+                          reference:
+                            mode === 'invalid-session'
+                              ? 'x'.repeat(36)
+                              : '013579ab-cdef-4567-89ab-0123456789ab',
+                        },
+                      }
+                    : {}),
+                },
+              })
           }
         } else if (request.method === 'channel/release') {
           expect(['replies:r', ...(mode === 'partial-allocation' ? ['commands:r'] : [])]).toContain(
@@ -163,6 +185,27 @@ for (const mode of ['normal', 'interrupt', 'completion-race']) {
     expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
   })
 }
+test('public conversation helper keeps requested retention on final settlement only', async () => {
+  const { output } = await exercise('retained')
+  expect(output.turns).toHaveLength(2)
+  expect(output.turns.every((turn: any) => turn.result.output.session === undefined)).toBe(true)
+  expect(output.settlement).toEqual({
+    outcome: 'done',
+    output: {
+      turns: 2,
+      session: { status: 'retained', reference: '013579ab-cdef-4567-89ab-0123456789ab' },
+    },
+  })
+})
+for (const mode of ['missing-session', 'invalid-session', 'unsolicited-session']) {
+  test(`public conversation helper refuses ${mode} while retaining settled turns`, async () => {
+    const { output } = await exercise(mode)
+    expect(output.errors).toContain('Agent omitted matching conversation settlement')
+    expect(output.turns).toHaveLength(2)
+    expect(output.settlement.output.turns).toBe(2)
+  })
+}
+
 for (const mode of [
   'unavailable',
   'late-error',

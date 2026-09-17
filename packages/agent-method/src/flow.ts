@@ -12,6 +12,11 @@ import { ordinaryRecord, snapshot } from './values.js'
 export async function agentFlow(run: RunContext): Promise<RunResult> {
   try {
     const input = ordinaryRecord(snapshot(run.input, 'INVALID_INPUT'))
+    if (input && Object.hasOwn(input, 'session'))
+      throw new OperationError(
+        'UNAVAILABLE',
+        'This HTTP Agent cannot retain or restore native sessions',
+      )
     if (input?.conversation === true)
       throw new OperationError(
         'UNAVAILABLE',

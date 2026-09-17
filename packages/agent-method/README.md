@@ -54,19 +54,25 @@ projectResponseSchema(schema: JsonObject): JsonObject
 ```
 
 The package also exports `AgentMethodError`, `AgentMethodErrorCode`, and the
-`AgentInput`, `AgentCallInput`, `SkillText`, `PreparedAgent`, `AgentResult`, `AgentTransportInput`,
+`AgentInput`, `AgentCallInput`, `AgentSessionRequest`, `AgentSessionReceipt`,
+`SkillText`, `PreparedAgent`, `AgentResult`, `AgentTransportInput`,
 `AgentTransportResult`, `JsonObject`, and `JsonValue` types.
 
-`AgentInput` is `{ instructions, guidance?: [{ label, text }], responseSchema? }`.
+`AgentInput` is
+`{ instructions, guidance?: [{ label, text }], responseSchema?, session? }`.
+`AgentSessionRequest` is `{ retain: true } | { restore: string }`, with an opaque
+UUID reference for restoration. It requests native state handling from a
+compatible implementation under its current grant; it confers no authority.
 Selected `SkillText` values are `{ name, files: [{ path, text }] }`; every Skill
 requires `SKILL.md`. Names use lowercase letters, digits and separating hyphens,
 up to 64 characters. Paths are relative to the selected Skill, with no empty,
 `.` or `..` components, backslashes or NULs.
 
 Preparation snapshots the input and returns frozen ordinary data:
-`{ request: { prompt, responseSchema? } }`. It can be inspected, serialized,
-cloned and adapted; finishing validates that data again. It is not an
-authorization token. `projectResponseSchema` returns a fresh copy with only
+`{ request: { prompt, responseSchema? }, session? }`. Session metadata remains
+outside `request` and is never rendered into the prompt. The data can be
+inspected, serialized, cloned and adapted; finishing validates it again. It is
+not an authorization token. `projectResponseSchema` returns a fresh copy with only
 the root FLOW `$schema` removed for a provider's structured-output API.
 
 The transport supplies `{ outcome: 'done', output: { text, stop } }`, where `stop`
@@ -77,6 +83,13 @@ One complete `json` Markdown fence is accepted, as is raw JSON; surrounding
 prose, duplicate members and malformed JSON reject. For blocked or limited
 answers, non-JSON text is retained without `structured`. If such an answer
 does contain JSON, that value must still match the requested schema.
+
+`finishAgent` returns only the interpreted answer; it never manufactures a
+session receipt. A selected native Agent Flow can add `output.session` after
+its resource settles. `AgentSessionReceipt` is
+`{ status: 'retained', reference: string } | { status: 'unavailable' }`.
+`checkAgentResult` validates that optional receipt's closed shape and UUID
+alongside the answer, but does not access storage or establish host authority.
 
 Invalid inputs and prepared values throw `AgentMethodError('INVALID_INPUT')`;
 explicit method bounds use `RESOURCE_EXHAUSTED`; invalid transport facts or
@@ -111,6 +124,13 @@ settled conversation and awaits owned invocation completion before returning.
 It does not judge answer quality. `initial` and `prompt()` resolve to a
 `result`, `cancelled`, or `error` turn; domain outcomes remain explicit data.
 
+To request native retention or restoration, supply `session` in the initial
+`input`. Its receipt appears only in `completed.settlement.output.session`,
+after resource settlement, never in `turns`. Follow-up
+`prompt(input: Omit<AgentInput, 'session'>)` supplies new instructions, optional
+guidance and a response schema; it cannot change the invocation's session
+request. The selected implementation and reviewed native grant must support it.
+
 `interrupt()` resolves to `accepted` or `not-running`; await the active turn to
 learn whether native cancellation or ordinary completion won. Concurrent prompts
 are rejected, never queued. A callback that leaves a live turn unfinished fails
@@ -128,7 +148,9 @@ control semantics, and the raw channel interface.
 ## Ordinary Flow and explicit Skills
 
 The root `FLOW.ts` runs the bundled method through Run/1. Its input adds
-`skills?: SkillText[]` to `AgentInput`. Omission supplies none. For example:
+`skills?: SkillText[]` to the shared input. This HTTP implementation rejects any
+`session` field, conversational mode and requested channels before HTTP
+dispatch. Omitted Skills supply none. For example:
 
 ```json
 {

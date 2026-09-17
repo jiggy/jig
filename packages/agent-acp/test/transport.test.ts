@@ -89,6 +89,9 @@ describe('reviewed ready record', () => {
     expect(Object.isFrozen(ready.configuration)).toBe(true)
     expect(Object.isFrozen(ready.configuration[0])).toBe(true)
     expect(
+      readFiniteAcpReady({ ...input, restoreSessionId: 'owned-session' }).restoreSessionId,
+    ).toBe('owned-session')
+    expect(
       readFiniteAcpReady({
         ...input,
         configuration: [{ configId: 'compaction', type: 'boolean', value: false }],
@@ -103,6 +106,10 @@ describe('reviewed ready record', () => {
       { ...base, protocolVersion: 2 },
       { ...base, token: 'secret' },
       { ...base, modeId: null },
+      ...[null, '', 'x\0y', 'x'.repeat(1_025)].map((restoreSessionId) => ({
+        ...base,
+        restoreSessionId,
+      })),
       { ...base, configuration: [{ configId: 'model', value: 'x', type: 'string' }] },
       {
         ...base,

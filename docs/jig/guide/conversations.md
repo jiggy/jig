@@ -161,6 +161,83 @@ Its input is a supplied snapshot, not an interactive instruction inbox; its
 output is for human review, not permission to publish. It demonstrates the
 lifecycle without introducing a host scheduler or changing one-shot calls.
 
+## Restore after a clean close
+
+A later Run can request the earlier native conversation through an opaque
+reference. This is the synchronized source candidate: use matching Agent and
+Jig artifacts, and qualify the installed client's save-and-restore path before
+relying on it. The initial retention profile is Codex 0.154.0; successful live
+follow-up alone does not qualify restoration.
+
+In the Agent Binding, separately grant retention and review the changed
+authority:
+
+```ts
+slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } }
+```
+
+Request retention in the initial Agent input. A one-shot call needs no
+conversation channels:
+
+```ts
+const first = await run.call({
+  operationId: 'draft', slot: 'agent',
+  input: {
+    instructions: `Draft an incident brief from these facts: ${facts}`,
+    session: { retain: true },
+  },
+})
+```
+
+Check the ordinary answer, then inspect the final `first.output.session`.
+`{status:'retained',reference}` provides a UUID to keep as application data.
+`{status:'unavailable'}` means no reusable state was committed; an otherwise
+valid answer remains usable. Receipt availability requires actual clean native
+exit, validated collection and complete cleanup, so accepting a close command
+or receiving the answer does not predict it. Forced closure cannot retain a
+session.
+
+In a later authorized Run, pass the retained reference with the next
+instructions:
+
+```ts
+const revision = await run.call({
+  operationId: 'revise', slot: 'agent',
+  input: {
+    instructions: `Revise the incident brief using this correction: ${correction}`,
+    session: { restore: retainedReference },
+  },
+})
+```
+
+`retainedReference` is the UUID from the previous receipt. The host restores
+the native conversation and reapplies current reviewed configuration before
+the new prompt. It uses current credentials separately from conversation data.
+The previous transcript is not submitted again as application input, and a
+failed restoration does not silently start a fresh conversation.
+
+Each reference can be claimed once. Use the new final receipt for any successor;
+do not retry the old reference after a failed claim. Restoration requires the
+same authorized recipient and ancestry in the same protected project with the
+matching native profile. Changed accepted code or configuration may invalidate
+access. A reference identifies state and grants no permission by itself.
+
+The project retains at most 16 available snapshots of at most 8 MiB each.
+References expire after 24 hours; physical pruning happens on the next store
+access. The profile retains only bounded validated native conversation records,
+never credentials, arbitrary workspaces or tool authority. Expiry is not a
+secure-erasure guarantee.
+
+For a continuing conversation, put `session` beside `instructions` in its
+initial input. The receipt is in the final invocation output—
+`completed.settlement.output.session` when using the helper—and never in an
+individual turn reply. Later prompt controls cannot request another retention
+policy. The HTTP Agent package rejects session requests before dispatch.
+
+The [Agent Run contract](../spec/agent-run.md#retaining-a-native-conversation)
+defines the request and receipt; [Finite ACP](../spec/finite-acp.md#retained-native-state)
+defines native qualification, authorization and cleanup.
+
 ## Limits
 
 Essential replies are bounded to 64 KiB each; ask for concise answers. Blocked
@@ -168,8 +245,8 @@ reply delivery fails after five seconds rather than silently losing a result.
 All turns share the original deadline, byte budgets, and native owner. The
 maximum grant is eight turns; no current conversation can extend its own grant.
 
-This is one finite live session, not cross-Run restoration, durable replay, or
-permission to use native workspace tools. The [exact contract](../spec/agent-run.md#continuing-conversations)
+Each live invocation remains finite. Explicit restoration does not grant durable
+replay, automatic handoff or native workspace tools. The [exact contract](../spec/agent-run.md#continuing-conversations)
 defines controls, failure cases, and the separate final result. Client startup,
 live follow-up, interruption, and restoration need distinct qualification;
 support for one does not establish the others.

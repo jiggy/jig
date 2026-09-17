@@ -103,6 +103,7 @@ export interface AcpGrant {
   readonly client: 'codex' | 'claude' | 'pi'
   readonly model?: string
   readonly maxTurns?: number
+  readonly retainSessions?: true
 }
 export interface GrantedSlot {
   readonly kind: 'grant'
@@ -120,7 +121,11 @@ export function normalizeGrant(value: unknown): GrantPolicy {
   if (kind === 'command') return Object.freeze({ kind, ...normalizeProjectCommand(policy) })
   if (kind === 'acp') {
     if (
-      Object.keys(policy).some((key) => !['client', 'model', 'maxTurns'].includes(key)) ||
+      Object.keys(policy).some(
+        (key) => !['client', 'model', 'maxTurns', 'retainSessions'].includes(key),
+      ) ||
+      ('retainSessions' in policy &&
+        (policy.retainSessions !== true || policy.client !== 'codex')) ||
       ('maxTurns' in policy &&
         (typeof policy.maxTurns !== 'number' ||
           !Number.isSafeInteger(policy.maxTurns) ||
@@ -132,13 +137,14 @@ export function normalizeGrant(value: unknown): GrantPolicy {
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))
     )
       throw new TypeError(
-        'ACP grant requires a supported native client, optional model, and maxTurns from 1 to 8',
+        'ACP grant requires a supported native client, optional model, maxTurns from 1 to 8, and optional retainSessions: true for Codex',
       )
     return Object.freeze({
       kind,
       client: policy.client as AcpGrant['client'],
       ...('model' in policy ? { model: policy.model as string } : {}),
       ...('maxTurns' in policy ? { maxTurns: policy.maxTurns as number } : {}),
+      ...('retainSessions' in policy ? { retainSessions: true as const } : {}),
     })
   }
   throw new TypeError('grant kind must be http, command, or acp')

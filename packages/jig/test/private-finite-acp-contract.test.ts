@@ -24,6 +24,34 @@ test('finite ACP grants pin the complete public invocation and channel closure',
   expect(contract.descriptor.id).toBe(FINITE_ACP_CONTRACT_ID)
   expect(contract.descriptor.version).toBe(FINITE_ACP_CONTRACT_VERSION)
   expect(contract.digest).toBe(FINITE_ACP_CONTRACT_DIGEST)
+  const mirror = new URL('../../agent-acp/contracts/finite-acp/', import.meta.url)
+  for (const name of ['contract.json', 'requests.json', 'responses.json'])
+    expect(await readFile(new URL(name, mirror))).toEqual(await readFile(new URL(name, root)))
+  const input = contract.schemas.get('/input')!
+  const result = contract.schemas.get('/result')!
+  const reference = '013579ab-cdef-4567-89ab-0123456789ab'
+  input.validate(null)
+  for (const session of [{ retain: true }, { restore: reference }]) input.validate({ session })
+  for (const value of [
+    {},
+    { session: {} },
+    { session: { retain: false } },
+    { session: { retain: true, restore: reference } },
+  ])
+    expect(() => input.validate(value)).toThrow()
+  for (const session of [{ status: 'retained', reference }, { status: 'unavailable' }])
+    result.validate({
+      outcome: 'done',
+      output: { exitCode: 0, signal: null, cleanup: 'complete', stopReason: 'exited', session },
+    })
+  contract.channelContracts.get('responses.json')!.itemSchema.validate({
+    kind: 'ready',
+    protocolVersion: 1,
+    cwd: '/work',
+    configuration: [],
+    maxTurns: 1,
+    restoreSessionId: 'owned-session',
+  })
   expect(contract.invocation?.channels).toEqual({
     requests: { direction: 'receive', required: true, contract: './requests.json' },
     responses: { direction: 'send', required: true, contract: './responses.json' },
