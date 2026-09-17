@@ -34,6 +34,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
   and transport requests. `prepareAgent` validates and snapshots them;
   `finishAgent` assembles answer facts only. `checkAgentResult` validates optional
   final session receipts without granting authority or reading retained state.
+  Unavailable receipts require one of the contract's closed retention reasons;
+  neither missing reasons nor arbitrary diagnostic text are accepted.
   Follow-up conversation prompts cannot change session intent; the receipt belongs
   to final invocation settlement, never an individual turn reply.
 - The HTTP Flow rejects conversational mode and any session request before resource dispatch. Its

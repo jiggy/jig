@@ -18,6 +18,9 @@ descriptors.
   descriptor-relative channel closures remain exact. Optional native session
   requests produce retention receipts only in final invocation output, never
   individual conversation-turn replies.
+  Unavailable receipts include a closed retention reason without weakening
+  collection, storage or cleanup failure rules. Finite ACP projects sanitized
+  native warnings separately from answer text and never discards typed errors.
 - `contract-authoring.md` owns explicit generation, local freshness, bounded
   compiler operation, output ownership and interrupted-publication recovery.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient

@@ -52,11 +52,23 @@ describe('ordinary Agent Run contract', () => {
       { retain: true, restore: reference },
     ])
       expect(() => input.validate({ instructions: 'Answer.', session })).toThrow()
-    for (const session of [{ status: 'retained', reference }, { status: 'unavailable' }]) {
+    for (const session of [
+      { status: 'retained', reference },
+      ...['not-cleanly-closed', 'missing-history', 'unsupported-history', 'capacity'].map(
+        (reason) => ({ status: 'unavailable', reason }),
+      ),
+    ]) {
       result.validate({ outcome: 'done', output: { text: 'answer', session } })
       result.validate({ outcome: 'done', output: { turns: 1, session } })
     }
-    for (const session of [null, {}, { status: 'retained' }, { status: 'unavailable', reference }])
+    for (const session of [
+      null,
+      {},
+      { status: 'retained' },
+      { status: 'unavailable' },
+      { status: 'unavailable', reason: 'unknown' },
+      { status: 'unavailable', reason: 'capacity', reference },
+    ])
       expect(() =>
         result.validate({ outcome: 'done', output: { text: 'answer', session } }),
       ).toThrow()

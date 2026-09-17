@@ -59,6 +59,85 @@ function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown):
 }
 
 describe('finite ACP authority policy', () => {
+  const diagnostic = (severity: string) => ({
+    jetbrains: {
+      air: {
+        version: 1,
+        sessionFailure: {
+          severity,
+          category: 'unknown',
+          title: '/private/home secret-token',
+          actions: [{ secret: 'private-action' }],
+        },
+      },
+    },
+  })
+  test('native notices are closed diagnostics, never answer text or raw metadata', () => {
+    const policy = session()
+    prompt(policy)
+    const projected = policy.fromClient(
+      update({ sessionUpdate: 'session_info_update', _meta: diagnostic('warning') }),
+    )
+    expect(projected).toMatchObject({
+      toAdapter: {
+        params: {
+          update: {
+            sessionUpdate: 'session_info_update',
+            _meta: { notice: { code: 'NATIVE_WARNING' } },
+          },
+        },
+      },
+    })
+    expect(JSON.stringify(projected)).not.toContain('private')
+    policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+    expect(policy.settledSessionId).toBe('owned-session')
+  })
+  test('coalesces startup warnings behind the correlated owned identity and preserves late notices', () => {
+    const policy = new PrivateFiniteAcpPolicy()
+    initialize(policy)
+    policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
+    const warning = { sessionUpdate: 'session_info_update', _meta: diagnostic('warning') }
+    expect(policy.fromClient(update(warning, 'not-authority'))).toEqual({})
+    expect(policy.fromClient(update(warning, 'not-authority'))).toEqual({})
+    const created = policy.fromClient(reply(2, { sessionId: 'owned-session' }))
+    expect(created.toAdapter).toEqual({
+      jsonrpc: '2.0',
+      id: 2,
+      result: { sessionId: 'owned-session' },
+    })
+    expect(created.afterResponse).toMatchObject({
+      params: {
+        sessionId: 'owned-session',
+        update: { _meta: { notice: { code: 'NATIVE_WARNING' } } },
+      },
+    })
+    prompt(policy)
+    const completed = policy.fromClient(
+      reply(10, { stopReason: 'end_turn', _meta: diagnostic('warning') }),
+    )
+    expect(completed.afterResponse).toMatchObject({ params: { sessionId: 'owned-session' } })
+    expect(policy.fromClient(update(warning)).toAdapter).toBeDefined()
+    expect(policy.settledSessionId).toBe('owned-session')
+  })
+  test('authoritative typed errors cannot disappear at startup, during a turn, on a result, or after settlement', () => {
+    for (const phase of ['startup', 'turn', 'result', 'late']) {
+      const policy = phase === 'startup' ? new PrivateFiniteAcpPolicy() : session()
+      if (phase === 'startup') {
+        initialize(policy)
+        policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
+      } else {
+        prompt(policy)
+        if (phase === 'late') policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+      }
+      deniesAndCloses(policy, () =>
+        policy.fromClient(
+          phase === 'result'
+            ? reply(10, { stopReason: 'end_turn', _meta: diagnostic('error') })
+            : update({ sessionUpdate: 'session_info_update', _meta: diagnostic('error') }),
+        ),
+      )
+    }
+  })
   test('resume names only the claimed session, never a fallback new session', () => {
     const policy = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
     policy.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))

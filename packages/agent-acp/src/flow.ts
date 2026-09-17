@@ -333,8 +333,11 @@ class FinitePeer {
 
   async end(): Promise<void> {
     // No late update may change the text already completed by session/prompt.
-    if ((await this.next()) !== undefined)
-      failure('Native ACP transport continued after completion')
+    for (;;) {
+      const frame = await this.next()
+      if (frame === undefined) return
+      this.update(frame)
+    }
   }
 
   private async next(): Promise<JsonObject | undefined> {
@@ -365,7 +368,18 @@ class FinitePeer {
     keys(params, ['sessionId', 'update'])
     if (params.sessionId !== this.sessionId) failure('Native ACP update belongs to another session')
     const update = object(params.update)
-    if (update.sessionUpdate === 'agent_message_chunk') {
+    if (update.sessionUpdate === 'session_info_update') {
+      keys(update, ['sessionUpdate', '_meta'])
+      const metadata = object(update._meta)
+      keys(metadata, ['notice'])
+      const notice = object(metadata.notice)
+      keys(notice, ['code'])
+      if (notice.code !== 'NATIVE_WARNING') failure('Unknown native ACP diagnostic')
+      console.warn(
+        'Native Agent reported a warning. Private details were withheld; check the operator’s native-client configuration if behavior is unexpected.',
+      )
+      return
+    } else if (update.sessionUpdate === 'agent_message_chunk') {
       keys(update, ['sessionUpdate', 'content'], ['messageId'])
       const content = object(update.content)
       keys(content, ['type', 'text'])
@@ -423,8 +437,14 @@ function checkSettlement(
   if (!requestedSession) return undefined
   const session = object(output.session)
   if (session.status === 'unavailable') {
-    keys(session, ['status'])
-    return { status: 'unavailable' }
+    keys(session, ['status', 'reason'])
+    if (
+      !['not-cleanly-closed', 'missing-history', 'unsupported-history', 'capacity'].includes(
+        session.reason as string,
+      )
+    )
+      failure('Native ACP resource returned an invalid retention reason')
+    return session as unknown as AgentSessionReceipt
   }
   keys(session, ['status', 'reference'])
   if (

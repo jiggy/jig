@@ -237,6 +237,12 @@ async function fixture(options: FakeOptions = {}, selected = runtime, maxTurns =
     expect((await next())?.kind).toBe('ready')
     await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
     expect((await next())?.result).toEqual({ protocolVersion: 1, agentCapabilities: {} })
+    expect(
+      (native.writes.find((frame) => frame.method === 'initialize')!.params as JsonObject)
+        .clientCapabilities,
+    ).toMatchObject({
+      _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } },
+    })
     await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
     expect((await next())?.result).toEqual({ sessionId: 'owned' })
   }

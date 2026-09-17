@@ -40,6 +40,8 @@ retains credential, process, and dispatch authority.
   Optional public updates never supply execution evidence or authority.
   Their first loss or exhausted local relay bound discards the suffix and
   closes the writer with `error: 'LAGGED'`; no clean EOF hides incomplete output.
+  Closed native warning notices go to console diagnostics, not answer text or
+  public events; the host strips raw metadata and rejects authoritative errors.
 - Optional conversational mode owns bounded direct commands/replies and per-turn
   results in `src/conversation.ts`. Native maxTurns, serial dispatch and interruption
   settlement remain host-enforced. One-shot calls retain their simple interface.
@@ -52,8 +54,10 @@ retains credential, process, and dispatch authority.
   The Flow validates a requested final retention receipt only after independent
   native settlement and appends it to the final answer or conversation summary.
   A retained receipt requires natural zero exit with no signal; a valid answer
-  can instead carry unavailable retention after confirmed cleanup. Storage,
-  current authority, one-use claims and actual collection remain host-owned.
+  can instead carry unavailable retention after confirmed cleanup.
+  Unavailable receipts require the contract's closed reason; omission or unknown
+  reasons are invalid. Storage, current authority, one-use claims and actual
+  collection remain host-owned.
 - Prompt settlement followed by clean request EOF delegates bounded process
   closure to its owner; the adapter does not wait for optional ACP close.
 - `./transport` is bounded framing, not an alternative host authority filter.

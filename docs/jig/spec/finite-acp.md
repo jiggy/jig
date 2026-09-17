@@ -166,10 +166,21 @@ made by the editable adapter.
 Native text and plan updates outside an active prompt fail rather than contaminating
 a subsequent answer. Aggregate frame, byte, update and text ceilings never reset
 between turns. Only correlated results, a constant sanitized request error, public assistant
-text and public plan updates reach the adapter. Unneeded native fields are
+text, public plan updates and closed warning notices reach the adapter. Unneeded native fields are
 withheld. One conversation permits at most 4,096 updates, 8 MiB of assistant
 text and 256 permission requests; raw native protocol ingress remains bounded
 at 32 MiB before projection. The host accounts for ignored frames too.
+
+The host negotiates the supported typed native diagnostic extension independently
+of Flow input. Warnings are projected as `session/update` with
+`update:{sessionUpdate:"session_info_update",_meta:{notice:{code:"NATIVE_WARNING"}}}`.
+They carry no raw native title, action, path or credential. Notices preceding the
+owned session response are coalesced and delivered after that response; they
+never establish session identity. Warnings may also arrive between turns or
+after the final answer. The ordinary Agent reports a fixed console diagnostic,
+not answer text or a public Agent event. An authoritative native error on either
+a notification or result fails the resource, including during startup and after
+prompt settlement; negotiating typed diagnostics must not hide native failure.
 
 Protocol accounting is not containment. An approved native executable still
 receives the required private authentication and may require network access.
@@ -211,7 +222,7 @@ The host does not reconstruct an Agent answer in this resource result.
 
 If input requested a session, the successful final resource `output` also
 contains exactly one receipt: `session:{status:"retained",reference:uuid}` or
-`session:{status:"unavailable"}`. Otherwise it omits `session`. Receipt meaning
+`session:{status:"unavailable",reason}`. Otherwise it omits `session`. Receipt meaning
 is independent of the Agent's answer and requires the additional evidence below.
 
 ## Retained native state
@@ -238,7 +249,7 @@ have been cleaned up and the protected snapshot has committed atomically.
 Controlled or forced closure cannot yield a reference, even if a termination
 handler exits zero. A clean protocol close that needs controlled termination
 may still produce the ordinary successful resource result with
-`session:{status:"unavailable"}`. Retention failure does not invalidate a
+`session:{status:"unavailable",reason:"not-cleanly-closed"}`. Retention failure does not invalidate a
 separately valid Agent answer, but it never hides a resource execution or cleanup
 failure that already requires an invocation error.
 
@@ -267,7 +278,21 @@ A successor reference is exposed only after the full settlement and commit
 sequence above. Exhausted storage or failed validation yields unavailable
 retention rather than an invented reference. Corrupt protected state, storage
 commit uncertainty or lost coordinator authority fails the operation; it is
-not downgraded to optional retention loss.
+not downgraded to optional retention loss. Unexpected collector or I/O errors
+also remain invocation failures, rather than being labelled unsupported history.
+
+Unavailable receipts require one closed reason:
+
+| Reason | Meaning |
+| --- | --- |
+| `not-cleanly-closed` | Native exit did not qualify for retention, including controlled termination. |
+| `missing-history` | Clean native exit produced no rollout in its owned output. |
+| `unsupported-history` | Collected history failed the bounded qualified-content profile. |
+| `capacity` | The protected store already holds sixteen available snapshots. |
+
+These reasons describe this invocation's retention only. Refusal to restore a
+reference does not reveal whether it belongs to another recipient, expired or
+was consumed. Neither kind of failure authorizes automatic replay.
 
 Protocol and storage tests establish only their tested boundaries. Actual
 save, clean exit and restoration across fresh Runs through the installed

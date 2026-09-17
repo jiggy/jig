@@ -16,6 +16,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   the current coordinator and an active prepared root Run. Native collectors
   own clean-close, content and current-grant validation; a reference grants no
   authority. Storage or ownership uncertainty must not become successful retention.
+  Expected retention loss reports a closed reason. Only recognized content-profile
+  rejection is optional; unexpected collector/I/O errors remain execution failures.
 - `invocation-context.ts` owns shared admitted-parent identity and durable
   parent-owner checks, plus protected owner-root validation. Finite ACP, command
   and HTTP controllers use these checks; resource ownership must not import Agent
@@ -54,6 +56,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   protocol dialogue and answer interpretation. The resource reports actual
   termination only; `root-finite-acp-controller.ts` owns its durable lifetime,
   cancellation, fencing and recovery.
+  Negotiate typed native diagnostics without adding client authority. Project
+  warnings as closed notices, never answer chunks or raw private metadata;
+  authoritative errors remain failures even before session creation or after a turn.
 - Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or finite ACP resource endpoints. Unused incoming
   rights may move onward; each child and effect retains its own participant identity.

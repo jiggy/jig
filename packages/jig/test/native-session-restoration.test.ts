@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { settleTestCommand } from './fixtures/bounded-command.js'
 
 // Opt-in installed public CLI qualification using the operator's Codex subscription.
 // At most two one-turn model calls; only synthetic facts, no tools or automatic retries.
@@ -28,33 +29,9 @@ qualified(
       delete environment[key]
     const command = async (args: string[], cwd: string, name: string, allowedFailure = false) => {
       const child = Bun.spawn(args, { cwd, env: environment, stdout: 'pipe', stderr: 'pipe' })
-      const timer = setTimeout(() => child.kill('SIGINT'), 120_000)
-      const read = async (stream: ReadableStream<Uint8Array>, limit: number) => {
-        const chunks: Uint8Array[] = []
-        let size = 0
-        for await (const chunk of stream) {
-          size += chunk.length
-          if (size > limit) {
-            child.kill('SIGINT')
-            throw new Error('Installed output exceeded test bound')
-          }
-          chunks.push(chunk)
-        }
-        return Buffer.concat(chunks).toString()
-      }
-      try {
-        const [code, stdout, stderr] = await Promise.all([
-          child.exited,
-          read(child.stdout, 2 * 1024 * 1024),
-          read(child.stderr, 256 * 1024),
-        ])
-        await writeFile(join(root, `${name}.stdout`), stdout)
-        await writeFile(join(root, `${name}.stderr`), stderr)
-        if (!allowedFailure) expect(code, `${name}: ${stderr}`).toBe(0)
-        return { code, stdout, stderr }
-      } finally {
-        clearTimeout(timer)
-      }
+      const result = await settleTestCommand(child, { evidence: join(root, name) })
+      if (!allowedFailure) expect(result.code, `${name}: ${result.stderr}`).toBe(0)
+      return result
     }
     const names = await readdir(archives)
     for (const [name, target] of [

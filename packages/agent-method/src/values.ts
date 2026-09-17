@@ -26,7 +26,11 @@ export function validSessionReceipt(value: unknown): boolean {
   const record = ordinaryRecord(value)
   return (
     record !== undefined &&
-    ((exactKeys(record, ['status']) && record.status === 'unavailable') ||
+    ((exactKeys(record, ['status', 'reason']) &&
+      record.status === 'unavailable' &&
+      ['not-cleanly-closed', 'missing-history', 'unsupported-history', 'capacity'].includes(
+        record.reason as string,
+      )) ||
       (exactKeys(record, ['status', 'reference']) &&
         record.status === 'retained' &&
         sessionReference(record.reference)))

@@ -163,16 +163,20 @@ export async function runPrivateFiniteAcpResource(
         }, 5_000)
       }
       let native = accepted
-      if (
-        accepted.method === 'initialize' &&
-        runtime.authentication?.clientAuthCapabilities !== undefined
-      ) {
+      if (accepted.method === 'initialize') {
         native = {
           ...accepted,
           params: {
             ...(accepted.params as JsonObject),
             clientCapabilities: {
-              auth: runtime.authentication.clientAuthCapabilities as unknown as JsonValue,
+              // Request typed notices, never native warnings disguised as answer text.
+              // This metadata grants no tools, filesystem or session-control powers.
+              _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } },
+              ...(runtime.authentication?.clientAuthCapabilities === undefined
+                ? {}
+                : {
+                    auth: runtime.authentication.clientAuthCapabilities as unknown as JsonValue,
+                  }),
             },
           },
         }
@@ -244,6 +248,7 @@ export async function runPrivateFiniteAcpResource(
       }
       if (delivery.toClient !== undefined) await write(delivery.toClient)
       if (delivery.toAdapter !== undefined) await send(delivery.toAdapter)
+      if (delivery.afterResponse !== undefined) await send(delivery.afterResponse)
     }
     if (authenticationId !== undefined) invalid('Native ACP authentication did not settle')
     policy.assertSettled()

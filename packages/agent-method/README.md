@@ -87,7 +87,9 @@ does contain JSON, that value must still match the requested schema.
 `finishAgent` returns only the interpreted answer; it never manufactures a
 session receipt. A selected native Agent Flow can add `output.session` after
 its resource settles. `AgentSessionReceipt` is
-`{ status: 'retained', reference: string } | { status: 'unavailable' }`.
+`{ status: 'retained', reference: string } | { status: 'unavailable', reason }`.
+The closed reasons are `not-cleanly-closed`, `missing-history`, `unsupported-history`
+and `capacity`; they describe retention, not answer quality.
 `checkAgentResult` validates that optional receipt's closed shape and UUID
 alongside the answer, but does not access storage or establish host authority.
 

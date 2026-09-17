@@ -28,6 +28,9 @@ turn. Native retention and restoration use an explicit session request and
 separate reviewed authority, described below. Tools, retries and implicit
 filesystem context are not supplied.
 
+Native warnings are separate, sanitized console diagnostics rather than answer
+text or Agent events. Authoritative native errors remain invocation failures.
+
 For conversational use, add `conversation: true` to input and connect direct
 `commands` and `replies` channels from the complete contract bundle. Initial
 input starts turn 0. After a settled result, send a `prompt` for the next turn;
@@ -70,7 +73,8 @@ a fresh conversation. Current grants and credentials remain host-owned.
 
 Only the final invocation output contains a requested receipt:
 `session: { status: 'retained', reference }` or
-`session: { status: 'unavailable' }`. Conversational turn replies never contain
+`session: { status: 'unavailable', reason }`. Reasons are `not-cleanly-closed`,
+`missing-history`, `unsupported-history` and `capacity`. Conversational turn replies never contain
 it; follow-up prompt controls cannot change the initial session request. With
 the conversation helper, inspect `completed.settlement.output.session`.
 `retained` requires a settled final turn, actual clean native exit, bounded

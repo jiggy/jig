@@ -32,6 +32,7 @@ import {
   parsePrivateNativeSessionRequest,
   privateCodexSessionBootstrap,
   privateCodexSessionSecrets,
+  PrivateNativeHistoryUnavailable,
   validatePrivateCodexSession,
   type PrivateCodexSessionState,
   type PrivateNativeSessionRequest,
@@ -300,6 +301,7 @@ async function executeOwnedProvider(
   let execution: ProviderExecution
   let output: FileHandle | undefined
   let retained: PrivateCodexSessionState | undefined
+  let unavailableReason = 'not-cleanly-closed'
   let credentialBootstrap: Uint8Array | undefined
   const runtime = privateAcpAgentRuntime(provider)
   const scopeDigest = nativeSessionScope(input, provider)
@@ -317,8 +319,9 @@ async function executeOwnedProvider(
       if (restored === undefined) throw new NativeSessionUnavailable()
       try {
         validatePrivateCodexSession(restored)
-      } catch {
-        throw new NativeSessionUnavailable()
+      } catch (error) {
+        if (error instanceof PrivateNativeHistoryUnavailable) throw new NativeSessionUnavailable()
+        throw error
       }
     }
     if (operation.session !== undefined) credentialBootstrap = runtime.startupInput?.()
@@ -369,18 +372,19 @@ async function executeOwnedProvider(
     )
     if (
       operation.session !== undefined &&
-      output !== undefined &&
-      execution.sessionId !== undefined &&
       !execution.closed &&
       execution.fence.stopReason === 'payload_exit' &&
       execution.fence.exitCode === 0 &&
       execution.fence.signal === null &&
       !input.signal.aborted
     ) {
+      if (output === undefined || execution.sessionId === undefined)
+        throw new Error('Clean native retention lacks owned output or session identity')
       try {
         retained = collectPrivateCodexSession(output, execution.sessionId, secrets)
-      } catch {
-        /* Completed work may outlive unavailable or unrecognized native history. */
+      } catch (error) {
+        if (!(error instanceof PrivateNativeHistoryUnavailable)) throw error
+        unavailableReason = error.reason
       }
     }
     await releaseKnownAcp(input, lifecycle, execution.fence)
@@ -451,7 +455,7 @@ async function executeOwnedProvider(
     input.signal.throwIfAborted()
     sessionReceipt =
       saved === undefined
-        ? { status: 'unavailable' }
+        ? { status: 'unavailable', reason: retained === undefined ? unavailableReason : 'capacity' }
         : { status: 'retained', reference: saved.reference }
   }
   return {

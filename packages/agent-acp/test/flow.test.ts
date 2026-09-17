@@ -249,6 +249,69 @@ function fixture(options: Options = {}) {
 }
 
 describe('ordinary session retention and restoration', () => {
+  test.each(['active', 'settled'])(
+    'notice display during %s does not enter answers or selected public events',
+    async (phase) => {
+      const warning = spyOn(console, 'warn').mockImplementation(() => {})
+      const updates: JsonValue[] = []
+      const f = fixture({
+        events: {
+          direction: 'send',
+          delivery: 'direct',
+          send: async (value) => {
+            updates.push(value)
+          },
+          close: async () => {},
+        },
+        async emit(frame, send) {
+          if (frame.method === 'session/prompt') {
+            if (phase === 'settled') {
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId: 'owned-session',
+                  update: {
+                    sessionUpdate: 'agent_message_chunk',
+                    content: { type: 'text', text: 'The answer.' },
+                  },
+                },
+              })
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
+                id: frame.id!,
+                result: { stopReason: 'end_turn' },
+              })
+            }
+            await f.frameSend(send, {
+              jsonrpc: '2.0',
+              method: 'session/update',
+              params: {
+                sessionId: 'owned-session',
+                update: {
+                  sessionUpdate: 'session_info_update',
+                  _meta: { notice: { code: 'NATIVE_WARNING' } },
+                },
+              },
+            })
+            return phase === 'settled'
+          }
+          return false
+        },
+      })
+      try {
+        expect(await agentAcpFlow(f.run)).toEqual({
+          outcome: 'done',
+          output: { text: 'The answer.' },
+        })
+        expect(warning).toHaveBeenCalledTimes(1)
+        expect(JSON.stringify(updates)).not.toContain('NATIVE_WARNING')
+        expect(f.stats().settled).toBe(true)
+      } finally {
+        warning.mockRestore()
+      }
+    },
+  )
   const reference = '013579ab-cdef-4567-89ab-0123456789ab'
   const retained = { status: 'retained', reference }
   const result = (session: JsonValue, stopReason = 'exited'): RunResult => ({
@@ -259,7 +322,7 @@ describe('ordinary session retention and restoration', () => {
   test('relays requested retention after resource settlement without changing the answer', async () => {
     for (const [session, stop] of [
       [retained, 'exited'],
-      [{ status: 'unavailable' }, 'closed'],
+      [{ status: 'unavailable', reason: 'not-cleanly-closed' }, 'closed'],
     ] as const) {
       const f = fixture({
         input: { instructions: 'Answer.', session: { retain: true } },
@@ -348,6 +411,8 @@ describe('ordinary session retention and restoration', () => {
       result({ status: 'retained', reference: 'private/path' }),
       result({ status: 'retained', reference: `${reference}\n` }),
       result({ status: 'unavailable', reference }),
+      result({ status: 'unavailable' }),
+      result({ status: 'unavailable', reason: 'unknown' }),
       result(retained, 'closed'),
     ]) {
       const f = fixture({

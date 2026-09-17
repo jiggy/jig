@@ -15,7 +15,7 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:6a60e417a4f4181a938e4acc5cb1a9b1547727881336462386df8853fb3567d6
+digest   sha256:cf5c0e621c7bba9d6ef81dd8992324d40aa2c72b4766cd2fe12f96cc9c51cdc4
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
@@ -68,7 +68,8 @@ Its result is:
   output: {
     text: string;
     structured?: JsonValue;
-    session?: { status: "retained"; reference: string } | { status: "unavailable" };
+    session?: { status: "retained"; reference: string }
+      | { status: "unavailable"; reason: "not-cleanly-closed" | "missing-history" | "unsupported-history" | "capacity" };
   };
 }
 ```
@@ -177,16 +178,21 @@ Only the final invocation output carries one of these closed receipts:
 
 ```ts
 { status: "retained", reference: "opaque-UUID" }
-{ status: "unavailable" }
+{ status: "unavailable", reason: "not-cleanly-closed" | "missing-history" | "unsupported-history" | "capacity" }
 ```
 
 `retained` means that the final turn settled, the native client actually exited
 cleanly, all owned execution was fenced, and bounded validated state was
 collected, cleaned up and committed atomically. Accepted ACP close, a completed
 answer, channel EOF or controlled termination alone cannot establish retention.
-A successfully settled answer may therefore include `session:{status:"unavailable"}`;
+A successfully settled answer may therefore include an unavailable session receipt;
 the answer remains valid under its ordinary result checks. An invocation error
 does not return a usable successor reference.
+The required reason distinguishes ineligible native exit, absent rollout,
+unsupported collected history and exhausted retention capacity. It is not a
+raw native error or information about another recipient's reference. Unexpected
+collection, storage and cleanup failures remain errors; the exact host behavior
+is defined in [Finite ACP](finite-acp.md#retained-native-state).
 
 Restoration requires the current grant and the same protected project,
 admitted recipient and ancestry, native slot, and exact provider/profile

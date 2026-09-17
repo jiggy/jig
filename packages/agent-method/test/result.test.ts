@@ -12,7 +12,12 @@ const schema = {
 describe('consumer-side Agent result checking', () => {
   test('validates immutable retained and unavailable session receipts', () => {
     const reference = '013579ab-cdef-4567-89ab-0123456789ab'
-    for (const session of [{ status: 'retained', reference }, { status: 'unavailable' }]) {
+    for (const session of [
+      { status: 'retained', reference },
+      ...['not-cleanly-closed', 'missing-history', 'unsupported-history', 'capacity'].map(
+        (reason) => ({ status: 'unavailable', reason }),
+      ),
+    ]) {
       const result = checkAgentResult({ outcome: 'done', output: { text: 'answer', session } })
       expect(result.output.session).toEqual(session)
       expect(result.output.session).not.toBe(session)
@@ -26,6 +31,8 @@ describe('consumer-side Agent result checking', () => {
       { status: 'retained', reference: reference.toUpperCase() },
       { status: 'retained', reference: `${reference}\n` },
       { status: 'unavailable', reference },
+      { status: 'unavailable' },
+      { status: 'unavailable', reason: 'unknown' },
       { status: 'retained', reference, extra: true },
     ])
       expect(() => checkAgentResult({ outcome: 'done', output: { text: '', session } })).toThrow()

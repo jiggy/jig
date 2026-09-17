@@ -22,7 +22,10 @@ export type AgentSessionRequest = { readonly retain: true } | { readonly restore
 
 export type AgentSessionReceipt =
   | { readonly status: 'retained'; readonly reference: string }
-  | { readonly status: 'unavailable' }
+  | {
+      readonly status: 'unavailable'
+      readonly reason: 'not-cleanly-closed' | 'missing-history' | 'unsupported-history' | 'capacity'
+    }
 
 export interface AgentInput {
   readonly instructions: string

@@ -1,7 +1,7 @@
 import { closeSync, opendirSync } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
-import { decodeJson1, type JsonObject } from '../json.js'
-import { privateOpenAt, privateReadRegularFile } from './linux-file-input.js'
+import { decodeJson1, Json1Error, type JsonObject } from '../json.js'
+import { PrivateFileInputError, privateOpenAt, privateReadRegularFile } from './linux-file-input.js'
 import type { PrivateAcpAgentRuntime } from './acp-agent-provider.js'
 
 export const PRIVATE_CODEX_SESSION_BYTES = 8 * 1024 * 1024
@@ -14,6 +14,13 @@ export interface PrivateCodexSessionState {
   readonly nativeId: string
   readonly rolloutPath: string
   readonly bytes: Uint8Array
+}
+
+/** Expected rejection of native history, distinct from I/O or implementation failure. */
+export class PrivateNativeHistoryUnavailable extends TypeError {
+  constructor(readonly reason: 'missing-history' | 'unsupported-history' = 'unsupported-history') {
+    super('Native session history cannot be retained')
+  }
 }
 
 export function parsePrivateNativeSessionRequest(
@@ -42,7 +49,13 @@ export function validatePrivateCodexSession(
     state.bytes.byteLength > PRIVATE_CODEX_SESSION_BYTES
   )
     invalid()
-  const text = decoder.decode(state.bytes)
+  let text: string
+  try {
+    text = decoder.decode(state.bytes)
+  } catch (error) {
+    if (error instanceof TypeError) invalid()
+    throw error
+  }
   if (!text.endsWith('\n')) invalid()
   for (const secret of secrets) {
     if (
@@ -57,7 +70,14 @@ export function validatePrivateCodexSession(
   let completions = 0
   let complete = false
   for (let ordinal = 0; ordinal < lines.length; ordinal++) {
-    const record = object(decodeJson1(Buffer.from(lines[ordinal]!)))
+    let decoded: unknown
+    try {
+      decoded = decodeJson1(Buffer.from(lines[ordinal]!))
+    } catch (error) {
+      if (error instanceof Json1Error) invalid()
+      throw error
+    }
+    const record = object(decoded)
     if (
       Object.keys(record).some(
         (key) => !['timestamp', 'ordinal', 'type', 'payload'].includes(key),
@@ -192,8 +212,9 @@ export function collectPrivateCodexSession(
   let entries = 0
   const walk = (relative: string): void => {
     const fd = relative === '' ? output.fd : privateOpenAt(output.fd, relative, 0x10000)
-    const directory = opendirSync(`/proc/self/fd/${fd}`)
+    let directory: ReturnType<typeof opendirSync> | undefined
     try {
+      directory = opendirSync(`/proc/self/fd/${fd}`)
       for (;;) {
         const entry = directory.readSync()
         if (entry === null) break
@@ -208,16 +229,30 @@ export function collectPrivateCodexSession(
         }
       }
     } finally {
-      directory.closeSync()
-      if (fd !== output.fd) closeSync(fd)
+      try {
+        directory?.closeSync()
+      } finally {
+        if (fd !== output.fd) closeSync(fd)
+      }
     }
   }
   walk('')
-  if (files.length !== 1) invalid()
+  if (files.length === 0) throw new PrivateNativeHistoryUnavailable('missing-history')
+  let bytes: Uint8Array
+  try {
+    bytes = privateReadRegularFile(output.fd, files[0]!, PRIVATE_CODEX_SESSION_BYTES)
+  } catch (error) {
+    if (
+      error instanceof PrivateFileInputError &&
+      (error.reason === 'bytes' || error.reason === 'linked')
+    )
+      invalid()
+    throw error
+  }
   const state = {
     nativeId,
     rolloutPath: files[0]!,
-    bytes: privateReadRegularFile(output.fd, files[0]!, PRIVATE_CODEX_SESSION_BYTES),
+    bytes,
   }
   validatePrivateCodexSession(state, secrets)
   return state
@@ -262,5 +297,5 @@ function object(value: unknown): JsonObject {
   return value as JsonObject
 }
 function invalid(): never {
-  throw new TypeError('Native session state is unavailable or invalid')
+  throw new PrivateNativeHistoryUnavailable()
 }

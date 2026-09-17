@@ -39,11 +39,27 @@ test('finite ACP grants pin the complete public invocation and channel closure',
     { session: { retain: true, restore: reference } },
   ])
     expect(() => input.validate(value)).toThrow()
-  for (const session of [{ status: 'retained', reference }, { status: 'unavailable' }])
+  for (const session of [
+    { status: 'retained', reference },
+    ...['not-cleanly-closed', 'missing-history', 'unsupported-history', 'capacity'].map(
+      (reason) => ({ status: 'unavailable', reason }),
+    ),
+  ])
     result.validate({
       outcome: 'done',
       output: { exitCode: 0, signal: null, cleanup: 'complete', stopReason: 'exited', session },
     })
+  for (const session of [
+    { status: 'unavailable' },
+    { status: 'unavailable', reason: 'unknown' },
+    { status: 'unavailable', reason: 'capacity', reference },
+  ])
+    expect(() =>
+      result.validate({
+        outcome: 'done',
+        output: { exitCode: 0, signal: null, cleanup: 'complete', stopReason: 'exited', session },
+      }),
+    ).toThrow()
   contract.channelContracts.get('responses.json')!.itemSchema.validate({
     kind: 'ready',
     protocolVersion: 1,

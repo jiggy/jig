@@ -28,6 +28,7 @@ export interface PrivateFiniteAcpConfiguration {
 
 export interface PrivateFiniteAcpDelivery {
   readonly toAdapter?: JsonObject
+  readonly afterResponse?: JsonObject
   readonly toClient?: JsonObject
 }
 
@@ -70,6 +71,7 @@ export class PrivateFiniteAcpPolicy {
   private promptSent = false
   private promptSettled = false
   private peerFailed = false
+  private pendingNotice = false
   private cancelSent = false
   private closeSent = false
   private canClose = false
@@ -276,6 +278,7 @@ export class PrivateFiniteAcpPolicy {
         })
       }
       const result = object(frame.result)
+      if (this.notice(result._meta)) this.pendingNotice = true
       let projected: JsonObject
       switch (pending.method) {
         case INITIALIZE: {
@@ -359,7 +362,13 @@ export class PrivateFiniteAcpPolicy {
           fail('ACP response has no matching request')
       }
       this.pending = undefined
-      return freeze({ toAdapter: response(id, projected) })
+      const afterResponse =
+        this.pendingNotice && this.sessionId !== undefined ? this.noticeFrame() : undefined
+      if (afterResponse) this.pendingNotice = false
+      return freeze({
+        toAdapter: response(id, projected),
+        ...(afterResponse ? { afterResponse } : {}),
+      })
     })
   }
 
@@ -395,6 +404,8 @@ export class PrivateFiniteAcpPolicy {
     keys(frame, ['jsonrpc', 'method', 'params'])
     if (frame.method !== UPDATE) fail('ACP client operation is not permitted')
     if (++this.updates > PRIVATE_FINITE_ACP_LIMITS.updates) fail('ACP update capacity exceeded')
+    const update = object(params.update)
+    const notice = this.notice(update._meta)
     // Initial client notifications can precede session/new's response. They
     // cannot nominate our session or be exposed before its identity is known.
     if (
@@ -404,13 +415,18 @@ export class PrivateFiniteAcpPolicy {
       keys(params, ['sessionId', 'update'], ['_meta'])
       identifier(params.sessionId)
       object(params.update)
+      if (notice) this.pendingNotice = true
       return Object.freeze({})
     }
     this.ownedSession(params, ['update'], ['_meta'])
-    const update = object(params.update)
     if (typeof update.sessionUpdate !== 'string') fail('Invalid ACP update')
     let projected: JsonObject
-    if (update.sessionUpdate === 'agent_message_chunk') {
+    if (notice) {
+      projected = {
+        sessionUpdate: 'session_info_update',
+        _meta: { notice: { code: 'NATIVE_WARNING' } },
+      }
+    } else if (update.sessionUpdate === 'agent_message_chunk') {
       if (this.pending?.method !== PROMPT) fail('ACP text arrived outside an active turn')
       const content = object(update.content)
       if (content.type !== 'text') return Object.freeze({})
@@ -449,6 +465,33 @@ export class PrivateFiniteAcpPolicy {
         params: { sessionId: this.sessionId!, update: projected },
       },
     })
+  }
+
+  private noticeFrame(): JsonObject {
+    return {
+      jsonrpc: '2.0',
+      method: UPDATE,
+      params: {
+        sessionId: this.sessionId!,
+        update: {
+          sessionUpdate: 'session_info_update',
+          _meta: { notice: { code: 'NATIVE_WARNING' } },
+        },
+      },
+    }
+  }
+
+  private notice(metadata: JsonValue | undefined): boolean {
+    const air = optionalObject(optionalObject(optionalObject(metadata).jetbrains).air)
+    if (air.sessionFailure === undefined || air.sessionFailure === null) return false
+    if (air.version !== 1) fail('Unsupported native ACP diagnostic version')
+    const notice = object(air.sessionFailure)
+    // Never ignore an authoritative native error, including a late error or
+    // one carried only on the correlated result. Raw titles/actions can hold
+    // private paths or credentials and must not cross this boundary.
+    if (notice.severity === 'error') fail('Native ACP reported a session failure')
+    if (notice.severity !== 'warning') fail('Invalid native ACP diagnostic severity')
+    return true
   }
 
   private ownedSession(

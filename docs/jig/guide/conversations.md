@@ -191,11 +191,23 @@ const first = await run.call({
 
 Check the ordinary answer, then inspect the final `first.output.session`.
 `{status:'retained',reference}` provides a UUID to keep as application data.
-`{status:'unavailable'}` means no reusable state was committed; an otherwise
+`{status:'unavailable',reason}` means no reusable state was committed; an otherwise
 valid answer remains usable. Receipt availability requires actual clean native
 exit, validated collection and complete cleanup, so accepting a close command
 or receiving the answer does not predict it. Forced closure cannot retain a
 session.
+
+Use `reason` to explain what happened without rerunning completed work:
+
+| Reason | Next step |
+| --- | --- |
+| `not-cleanly-closed` | Use the answer; investigate why native shutdown needed termination. |
+| `missing-history` | Use the answer; check that the installed native client supports the qualified history profile. |
+| `unsupported-history` | Use the answer; compare the native version and history features with the [collection profile](../spec/finite-acp.md#retained-native-state). |
+| `capacity` | Keep the answer; available snapshots are bounded and expire after 24 hours. |
+
+An unavailable receipt is not a reusable reference. Storage or cleanup errors
+remain invocation failures, not optional retention loss.
 
 In a later authorized Run, pass the retained reference with the next
 instructions:

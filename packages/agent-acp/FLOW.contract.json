@@ -128,8 +128,13 @@
         },
         {
           "type": "object",
-          "properties": { "status": { "const": "unavailable" } },
-          "required": ["status"],
+          "properties": {
+            "status": { "const": "unavailable" },
+            "reason": {
+              "enum": ["not-cleanly-closed", "missing-history", "unsupported-history", "capacity"]
+            }
+          },
+          "required": ["status", "reason"],
           "additionalProperties": false
         }
       ]

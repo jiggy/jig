@@ -3,15 +3,53 @@ import { mkdtemp, mkdir, open, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { codexStartupFeatures } from '../src/internal/codex-agent-launcher.js'
+import { settleTestCommand } from './fixtures/bounded-command.js'
 import {
   collectPrivateCodexSession,
   parsePrivateNativeSessionRequest,
   privateCodexSessionBootstrap,
   privateCodexSessionSecrets,
+  PrivateNativeHistoryUnavailable,
   validatePrivateCodexSession,
 } from '../src/internal/codex-session-state.js'
 
 const nativeId = '01a0a189-e9a2-76c3-a8ca-964e885f05e6'
+test('only known collected-file profile violations become optional retention loss', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-history-error-evidence-'))
+  const child = Bun.spawn(
+    [process.execPath, new URL('./fixtures/native-history-errors.ts', import.meta.url).pathname],
+    { stdout: 'pipe', stderr: 'pipe' },
+  )
+  const result = await settleTestCommand(child, { evidence: join(root, 'classification') })
+  expect(result.code, result.stderr).toBe(0)
+  expect(result.stdout.trim()).toBe('native history error classification passed')
+})
+test('expected missing history has a reason; descriptor failures remain errors', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-history-empty-'))
+  const output = await open(root, 'r')
+  try {
+    expect(() => collectPrivateCodexSession(output, nativeId, [])).toThrow(
+      PrivateNativeHistoryUnavailable,
+    )
+    try {
+      collectPrivateCodexSession(output, nativeId, [])
+    } catch (error) {
+      expect(error).toMatchObject({ reason: 'missing-history' })
+    }
+    await output.close()
+    let failure: unknown
+    try {
+      collectPrivateCodexSession(output, nativeId, [])
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).not.toBeInstanceOf(PrivateNativeHistoryUnavailable)
+  } finally {
+    await output.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
 test('native startup receives the same inert feature flags before thread creation', () => {
   expect(
     codexStartupFeatures(
@@ -112,6 +150,10 @@ test('session input is an exact optional request, never a native path or ID', ()
 })
 test('only one identified complete qualified native history is reusable', () => {
   expect(() => validatePrivateCodexSession(state())).not.toThrow()
+  for (const bytes of [Buffer.from('not JSON\n'), Buffer.from([0xff, 0x0a])])
+    expect(() => validatePrivateCodexSession({ ...state(), bytes })).toThrow(
+      PrivateNativeHistoryUnavailable,
+    )
   for (const change of [
     (r: any[]) => {
       r[0].payload.cli_version = 'unknown'
