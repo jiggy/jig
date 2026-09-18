@@ -62,6 +62,18 @@ try {
   const jig = join(consumer, 'node_modules', '.bin', 'jig')
   // Parser checks precede acquisition and the expensive contained workload.
   checkInvalidRunTarget(await run([jig, 'run', 'hello'], consumer, [1], 60_000))
+  const malformedInput = await run(
+    [jig, 'run', 'flow:flows/hello', '--input', '{'],
+    consumer,
+    [1],
+    60_000,
+  )
+  assert.equal(malformedInput.stdout, '')
+  assert.match(malformedInput.stderr, /^Error: Run input is invalid\n/)
+  assert.match(malformedInput.stderr, /--input must be valid JSON/)
+  assert.match(malformedInput.stderr, /quote inline JSON or use --input @file\.json/)
+  assert.match(malformedInput.stderr, /No Flow was started/)
+  assert.match(malformedInput.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
   const project = join(consumer, 'hello-project')
   const initialized = await run([jig, 'init', '--bare', project], consumer)
   assert.match(initialized.stdout, /^Created bare Jig project /)
@@ -87,10 +99,9 @@ try {
 
   const approved = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
   assert.match(approved.stdout, /^Review changes before approval\n/)
-  assert.match(
-    approved.stdout,
-    /\nProject ready\n\n  The exact reviewed revision is approved\. No Flow was started\./,
-  )
+  assert.match(approved.stdout, /\nProject ready\n/)
+  assert.match(approved.stdout, /The exact reviewed revision is approved/)
+  assert.match(approved.stdout, /No Flow was started/)
   assert.equal(approved.stderr, '')
   assert.doesNotMatch(
     approved.stdout,
@@ -123,31 +134,33 @@ try {
     `prep-${(lockedPackage.digest as string).slice('sha256:'.length, 'sha256:'.length + 48)}`,
   )
   await mkdir(preparationGuard, { mode: 0o700 })
+  const unchangedFailures: unknown[] = []
   try {
     const unchanged = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
-    assert.equal(
+    assert.match(unchanged.stdout, /^Project ready\n/)
+    assert.match(unchanged.stdout, /The exact reviewed revision is approved/)
+    assert.match(unchanged.stdout, /No Flow was started/)
+    assert.match(unchanged.stdout, /Next: jig run <target>/)
+    assert.match(unchanged.stdout, /jig run --help/)
+    assert.doesNotMatch(
       unchanged.stdout,
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+      /Review changes before approval|planDigest|lockDigest|recipeDigest|observationDigest|coordinator|cgroup|bubblewrap/i,
     )
     assert.equal(unchanged.stderr, '')
     assert.equal(unchanged.exitCode, 0)
-  } finally {
-    await rm(preparationGuard, { recursive: true, force: true })
+  } catch (error) {
+    unchangedFailures.push(error)
   }
-
-  const malformedInput = await run(
-    [jig, 'run', 'flow:flows/hello', '--input', '{'],
-    project,
-    [1],
-    60_000,
-  )
-  assert.equal(malformedInput.stdout, '')
-  assert.match(malformedInput.stderr, /^Error: Run input is invalid\n/)
-  assert.match(
-    malformedInput.stderr,
-    /--input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started./,
-  )
-  assert.match(malformedInput.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
+  try {
+    await rm(preparationGuard, { recursive: true, force: true })
+  } catch (error) {
+    unchangedFailures.push(error)
+  }
+  if (unchangedFailures.length > 0)
+    throw new AggregateError(
+      unchangedFailures,
+      'unchanged review or preparation-guard removal failed',
+    )
 
   const schemaInvalid = await run(
     [jig, 'run', 'flow:flows/hello', '--input', JSON.stringify({ name: 42 })],
@@ -173,7 +186,13 @@ try {
   )
   assert.equal(inspected.state, 'environment-matches')
   assert.equal(inspected.target, 'flow:flows/hello')
-  assert.equal(requireRecord(requireRecord(inspected.schemas).input).type, 'object')
+  assert.equal(
+    requireRecord(
+      requireRecord(inspected.contract, 'inspect.contract').input,
+      'inspect.contract.input',
+    ).type,
+    'object',
+  )
   // A different installed supervisor path changes the reviewed environment.
   // Inspect must catch that without opening a project session or attempting a Run.
   const relocated = join(consumer, 'node_modules', '@jigging', 'jig-relocated')
@@ -244,7 +263,7 @@ try {
     code: 'ENOENT',
   })
 
-  await exerciseWorkspace(jig, consumer)
+  await exerciseWorkspace(jig, consumer, archive)
 
   // Exercise the public permission boundary from the installed archive, not
   // an example-specific installer or a private session option.
@@ -498,7 +517,7 @@ async function writeHelloFlow(project: string): Promise<void> {
   )
 }
 
-async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
+async function exerciseWorkspace(jig: string, consumer: string, archive: string): Promise<void> {
   const workspace = join(consumer, 'local-workspace')
   const project = join(workspace, 'app')
   await mkdir(workspace)
@@ -547,27 +566,29 @@ async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
   )
   assert.match(missing.stderr, /complete jig review/)
   assert.match(missing.stderr, /Diagnostic code: ADMISSION_MISSING/)
-  // Installed public diagnostics must identify the ancestor manifest, not
-  // misleadingly point at the selected Flow's package.json.
+  // Reproduce the consumer's archived CLI devDependency refusal. Identify
+  // the ancestor manifest, not the selected Flow's package.json; do not
+  // reveal the rejected archive's host location.
   const rootManifest = join(workspace, 'package.json')
   const originalManifest = await readFile(rootManifest, 'utf8')
   await writeFile(
     rootManifest,
     JSON.stringify({
       ...JSON.parse(originalManifest),
-      devDependencies: { '@example/tool': 'https://fixture-only.invalid/private.tgz' },
+      devDependencies: { '@jigging/jig': `file:${archive}` },
     }),
   )
   const refused = await run([jig, 'review', '--yes'], project, [1], 120_000)
   assert.equal(refused.stdout, '')
   assert.match(refused.stderr, /Location: "\.\.\/package\.json"/)
-  assert.match(refused.stderr, /Value: "\/devDependencies\/@example~1tool"/)
+  assert.match(refused.stderr, /Value: "\/devDependencies\/@jigging~1jig"/)
   assert.match(refused.stderr, /Diagnostic code: PACKAGE_BUN_MANIFEST_SOURCE/)
   assert.match(
     refused.stderr,
     /use a default npm registry version or a declared workspace: dependency/,
   )
-  assert.doesNotMatch(refused.stderr, /fixture-only|private\.tgz/)
+  assert.equal(refused.stderr.includes(archive), false)
+  assert.doesNotMatch(refused.stderr, /file:|\.tgz/)
   await writeFile(rootManifest, originalManifest)
   await run(
     ['bun', '--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts'],
@@ -749,8 +770,11 @@ function shellWord(value: string): string {
   return /^[A-Za-z0-9_./:=@+-]+$/.test(value) ? value : JSON.stringify(value)
 }
 
-function requireRecord(value: unknown): Record<string, unknown> {
-  assert.ok(typeof value === 'object' && value !== null && !Array.isArray(value))
+function requireRecord(value: unknown, label = 'baseline response'): Record<string, unknown> {
+  assert.ok(
+    typeof value === 'object' && value !== null && !Array.isArray(value),
+    `${label} must be an object`,
+  )
   return value as Record<string, unknown>
 }
 
