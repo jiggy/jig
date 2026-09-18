@@ -501,16 +501,65 @@ test('late receiver disposal failure reports incomplete monitoring, not repair f
 })
 
 test('uncertain optional delivery cannot be recovered as a successful repair', async () => {
+  const failure = new OperationError('UNCERTAIN', 'Synthetic uncertain ownership.')
+  const app = application({
+    worker: async (channels, signal) => {
+      const cancelled = new Promise<never>((_, reject) => {
+        signal.addEventListener(
+          'abort',
+          () => reject(new OperationError('CANCELLED', 'Secondary cancellation.')),
+          { once: true },
+        )
+      })
+      await (channels.progress as ChannelSender).send({ phase: 'proposal', attempt: 1 })
+      return await cancelled
+    },
+    output: {
+      direction: 'send',
+      delivery: 'direct',
+      close: async () => {},
+      send: async () => {
+        throw failure
+      },
+    },
+  })
+  await expect(monitoredRepair(app.root, input as any, async () => {})).rejects.toBe(failure)
+  expect(app.active).toBe(0)
+})
+
+test('optional owner closure does not cancel the repair result wait', async () => {
   const app = application({
     output: {
       direction: 'send',
       delivery: 'direct',
       close: async () => {},
       send: async () => {
-        throw new OperationError('UNCERTAIN', 'Synthetic uncertain ownership.')
+        throw new OperationError('OWNER_CLOSED', 'Presentation ended.')
       },
     },
   })
-  await expect(monitoredRepair(app.root, input as any, async () => {})).rejects.toThrow()
+  expect(await monitoredRepair(app.root, input as any, async () => {})).toMatchObject({
+    outcome: 'done',
+    output: { monitoring: { complete: false } },
+  })
   expect(app.active).toBe(0)
+})
+
+test('observer source closure reports incomplete progress instead of replacing execution evidence', async () => {
+  const receiver = pipe().receive
+  receiver.next = async () => {
+    throw new OperationError('OWNER_CLOSED', 'Producer stopped.')
+  }
+  expect(await recordPhases(receiver, new AbortController().signal)).toMatchObject({
+    complete: false,
+  })
+  const source = pipe().receive
+  source.next = receiver.next
+  expect(
+    await monitor({
+      channels: { phases: source, display: pipe().send },
+      settings: {},
+      signal: new AbortController().signal,
+    }),
+  ).toMatchObject({ outcome: 'blocked', output: { complete: false } })
 })

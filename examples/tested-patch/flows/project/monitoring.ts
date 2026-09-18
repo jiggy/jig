@@ -26,6 +26,7 @@ function optionalFailure(error: unknown): boolean {
     [
       'LAGGED',
       'DISCONNECTED',
+      'OWNER_CLOSED',
       'RESOURCE_EXHAUSTED',
       'INVALID_INPUT',
       'INVALID_RESULT',
@@ -99,6 +100,7 @@ export async function monitoredRepair(
     recordingFeed: ChannelReceiver | undefined,
     display: ChannelPair | undefined
   let tasks: Promise<unknown>[] = []
+  let primaryFailure: { error: unknown } | undefined
   const dispose = async (receiver: ChannelReceiver, offered = false) => {
     try {
       await receiver.close()
@@ -114,6 +116,7 @@ export async function monitoredRepair(
     try {
       return await action()
     } catch (error) {
+      primaryFailure ??= { error }
       stop()
       // A rejected repair may never have received its writer. Child cancellation
       // cannot end the root's independently owned subscription in that case.
@@ -208,6 +211,7 @@ export async function monitoredRepair(
     tasks = [execution, monitoring, presentation, recording]
     const results = await Promise.allSettled(tasks)
     run.signal.throwIfAborted()
+    if (primaryFailure) throw primaryFailure.error
     for (const result of results) if (result.status === 'rejected') throw result.reason
     const result = (results[0] as PromiseFulfilledResult<RunResult>).value
     const trace = (results[3] as PromiseFulfilledResult<Awaited<ReturnType<typeof recordPhases>>>)

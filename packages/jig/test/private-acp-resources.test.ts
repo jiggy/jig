@@ -8,6 +8,12 @@ import {
   privateAcpAgentRuntime,
   revalidatePrivateAcpAgentProvider,
 } from '../src/internal/acp-agent-provider.js'
+import {
+  ACP_SETUP_HINTS,
+  type AcpSetupStage,
+  acpSetupCode,
+  PrivateAcpSetupError,
+} from '../src/internal/acp-setup-diagnostics.js'
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
 import { planPrivateBunDirectRun } from '../src/internal/bun-direct-run.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
@@ -32,12 +38,6 @@ import type { AcpGrant } from '../src/project/grants.js'
 import type { InvocationSlots } from '../src/project/invocation-slots.js'
 import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
-import {
-  ACP_SETUP_HINTS,
-  acpSetupCode,
-  PrivateAcpSetupError,
-  type AcpSetupStage,
-} from '../src/internal/acp-setup-diagnostics.js'
 import { nativeElf } from './fixtures/native-elf.js'
 
 const temporary: string[] = []
@@ -46,6 +46,50 @@ afterEach(async () => {
 })
 
 describe('target-selected private ACP resources', () => {
+  test('rejects reserved native runtime destinations during inert selection', async () => {
+    const f = await fixture()
+    for (const destination of [
+      '/tmp/client',
+      '/work/lib.so',
+      '/proc/client',
+      '/run/client',
+      '/sys/client',
+      '/dev/client',
+      '/jig/client',
+      '/',
+    ]) {
+      for (const selected of ['executable', 'adapter', 'support']) {
+        const owner = openPrivateAcpResources(f.support, {}, f.project, async () =>
+          createPrivateAcpAgentProvider({
+            client: 'openai-codex',
+            model: 'fixture',
+            credentialMode: 'none',
+            adapterPath: f.adapter,
+            sandboxAdapterPath: selected === 'adapter' ? destination : '/agent/adapter',
+            executablePath: f.executable,
+            sandboxExecutablePath: selected === 'executable' ? destination : '/agent/client',
+            environment: {},
+            readOnlyMounts:
+              selected === 'support'
+                ? [{ source: f.executable, destination, role: 'support' }]
+                : [],
+          }),
+        )
+        // Root itself is already refused by the provider's canonical path check.
+        await expect(
+          selectPrivateAcpResources(owner, slots({ native: 'codex' }), f.support),
+        ).rejects.toMatchObject({
+          code: destination === '/' ? 'PROJECT_ACP_UNAVAILABLE' : 'PROJECT_ACP_CODEX_LOCATION',
+        })
+      }
+    }
+    const owner = openPrivateAcpResources(f.support, {}, f.project, f.open)
+    expect(
+      Object.keys(await selectPrivateAcpResources(owner, slots({ native: 'codex' }), f.support)),
+    ).toEqual(['native'])
+    expect(ACP_SETUP_HINTS.PROJECT_ACP_CODEX_LOCATION).toContain('CODEX_PATH')
+  })
+
   test('real missing executable discovery retains each selected client diagnostic', async () => {
     const f = await fixture()
     const owner = openPrivateAcpResources(f.support, { PATH: '' }, f.project)
@@ -66,6 +110,7 @@ describe('target-selected private ACP resources', () => {
       for (const stage of [
         'executable',
         'installation',
+        'location',
         'wrapper',
         'login',
         'api',
@@ -220,7 +265,8 @@ describe('target-selected private ACP resources', () => {
   })
 
   test('production lookup honors exact selected clients without probing unrelated unavailable ones', async () => {
-    const f = await fixture()
+    // Native paths retain their installation destinations, outside sandbox scratch.
+    const f = await fixture(import.meta.dir)
     const environment = {
       CODEX_PATH: '/missing/unrelated-codex',
       PI_PATH: '/missing/unrelated-pi',
@@ -369,8 +415,8 @@ describe('target-selected private ACP resources', () => {
   })
 })
 
-async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'jig-acp-resources-'))
+async function fixture(parent = tmpdir()) {
+  const root = await mkdtemp(join(parent, 'jig-acp-resources-'))
   temporary.push(root)
   const project = join(root, 'project')
   const executable = join(root, 'native-client')

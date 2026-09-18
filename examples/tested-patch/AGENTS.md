@@ -56,6 +56,9 @@ application is not an unrestricted repository worker or independent probe.
   guessed call outcome. Recover settled monitor/display failures as incomplete
   progress while independently awaiting and retaining repair. Root cancellation,
   uncertain ownership, and fatal errors abort and join owned branches.
+  An optional source's `OWNER_CLOSED` marks incomplete observation, not root
+  cancellation. Keep awaiting execution; preserve the initiating failure when
+  fatal branch failure cancels peers instead of reporting secondary cancellation.
 - The operator grants the `tests` and `cli` slots in the specialist Binding
   with ordinary `kind: "command"` policies. Call input contains candidate
   data, never another command selector.

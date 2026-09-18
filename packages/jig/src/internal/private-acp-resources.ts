@@ -3,23 +3,25 @@ import type { AcpGrant } from '../project/grants.js'
 import type { InvocationSlots } from '../project/invocation-slots.js'
 import {
   type PrivateAcpAgentProvider,
+  privateAcpAgentRuntime,
   requirePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
-import { openPrivateClaudeAgentProvider } from './claude-agent-provider.js'
-import { openPrivateCodexAgentProvider } from './codex-agent-provider.js'
-import {
-  type PrivateInstalledBunSupport,
-  requirePrivateInstalledBunSupport,
-} from './installed-bun-support.js'
-import { openPrivatePiAgentProvider } from './pi-agent-provider.js'
 import { acpSetupCode, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
-import { PrivateNativeAgentExecutableUnavailableError } from './native-agent-executable.js'
+import { openPrivateClaudeAgentProvider } from './claude-agent-provider.js'
 import {
+  openPrivateCodexAgentProvider,
   PrivateCodexExecutableUnavailableError,
   PrivateCodexLoginUnavailableError,
   PrivateCodexRuntimeUnavailableError,
   PrivateCodexSandboxUnavailableError,
 } from './codex-agent-provider.js'
+import {
+  type PrivateInstalledBunSupport,
+  requirePrivateInstalledBunSupport,
+} from './installed-bun-support.js'
+import { privateLinuxProtectedDestination } from './linux-rootless-backend.js'
+import { PrivateNativeAgentExecutableUnavailableError } from './native-agent-executable.js'
+import { openPrivatePiAgentProvider } from './pi-agent-provider.js'
 
 /** Private operator authority, not a provider registry or a Flow-visible resource. */
 export interface PrivateAcpResources {
@@ -127,6 +129,15 @@ export async function selectPrivateAcpResources(
         state.clients.set(key, pending)
       }
       provider = requirePrivateAcpAgentProvider(await pending)
+      const runtime = privateAcpAgentRuntime(provider)
+      if (
+        [
+          runtime.sandboxExecutablePath,
+          runtime.sandboxAdapterPath,
+          ...runtime.readOnlyMounts.map((mount) => mount.destination),
+        ].some(privateLinuxProtectedDestination)
+      )
+        throw new PrivateAcpSetupError('location')
     } catch (error) {
       // Native errors may include private paths or host configuration. Publish only the selection.
       throw new PrivateAcpResourceUnavailableError(name, client, error)

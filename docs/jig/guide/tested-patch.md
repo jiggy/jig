@@ -155,10 +155,6 @@ Review these changes before running. [Native restoration](conversations.md#resto
 requires qualified matching artifacts; the HTTP Agent does not support it.
 The default repair configuration remains unchanged.
 
-This optional composition has deterministic application coverage, but a successful
-installed native restored correction has not yet been qualified. Keep ordinary
-repair as the starting configuration.
-
 The first call settles and supplies its retention receipt before any candidate
 command starts. If the proposal is invalid or fails the fixed checks, one
 restored call receives that feedback. It must still propose replacements against

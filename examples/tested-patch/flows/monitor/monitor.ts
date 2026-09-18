@@ -64,6 +64,7 @@ export async function monitor(
         [
           'LAGGED',
           'DISCONNECTED',
+          'OWNER_CLOSED',
           'RESOURCE_EXHAUSTED',
           'INVALID_INPUT',
           'INVALID_RESULT',

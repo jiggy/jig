@@ -2,6 +2,7 @@ type Client = 'codex' | 'claude' | 'pi'
 export type AcpSetupStage =
   | 'executable'
   | 'installation'
+  | 'location'
   | 'wrapper'
   | 'sandbox'
   | 'login'
@@ -78,6 +79,7 @@ export const ACP_SETUP_HINTS: Readonly<Record<string, string>> = Object.freeze(
       const hints = {
         executable: `Select an executable ${profile.name} installation using ${profile.path} or operator PATH. An explicit ${profile.path} must be an absolute executable file and never falls back to PATH.`,
         installation: profile.installation,
+        location: `Select a ${profile.name} installation whose executable and runtime files are outside reserved sandbox paths (/dev, /jig, /proc, /run, /sys, /tmp and /work). Use an operator-owned installation directory and update ${profile.path}.`,
         wrapper: `The selected ${profile.name} launcher is an unsupported wrapper. Select the underlying supported native executable with ${profile.path}; Jig does not execute shell or npm wrappers to discover their dependencies.`,
         sandbox:
           'Install an unprivileged Bubblewrap helper supported by the selected Codex installation; do not bypass containment.',

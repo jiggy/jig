@@ -45,6 +45,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   loading and resolves only each target's exact granted clients. Selected
   runtime identities enter the recipe and review; launch revalidates their
   bytes and authentication. Unavailable clients do not block unrelated targets.
+  Reject native destinations under sandbox-reserved paths during selection with
+  the closed location diagnostic; share sealing's path predicate. Preflight
+  neither mounts files nor replaces launch-time validation.
   Cache selected configurations by client and granted model together; a grant
   model does not change authentication mode or mutate the operator snapshot.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and

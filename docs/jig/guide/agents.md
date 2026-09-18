@@ -108,6 +108,11 @@ with an absolute `CODEX_PATH`, `CLAUDE_PATH`, or `PI_PATH`. An invalid override
 must be corrected or unset; it does not fall back to PATH discovery. Review
 shows the resolved executable so you can check which installation you selected.
 
+Native runtime files keep their installation paths inside containment. Install
+them outside reserved sandbox paths (`/dev`, `/jig`, `/proc`, `/run`, `/sys`,
+`/tmp` and `/work`). Review reports a location error for a conflicting executable,
+adapter or supporting file; select an operator-owned installation and review again.
+
 Discovery skips relative PATH entries, the project tree, and ancestor
 `node_modules` directories, including symlink routes through them. Shell aliases
 are not visible to Jig. The adapters require supported native installations;
