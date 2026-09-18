@@ -215,6 +215,13 @@ Root cancellation, deadline, uncertain ownership, failed cleanup, unauthorized
 dispatch and broken essential transport remain invocation errors; they cannot
 be relabelled `closed`.
 
+After possible dispatch, a recognized native session failure or finite-protocol
+rejection retains a closed explanation alongside `UNCERTAIN`. The host never
+copies an exception message or native diagnostic into that explanation.
+Unclassified failures remain unspecified; a warning alone establishes no cause.
+Cancellation, deadline and cleanup failure keep their existing precedence.
+An explanation neither proves whether remote work occurred nor permits retry.
+
 Response framing must finish and its writer must close before the resource
 returns. Essential channel failure cancels/fences the resource and waits for
 owned work to settle. No uncertain operation is retried. Process settlement,

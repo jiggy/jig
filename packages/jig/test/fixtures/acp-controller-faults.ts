@@ -10,6 +10,7 @@ import * as context from '../../src/internal/invocation-context.js'
 import * as linux from '../../src/internal/linux-rootless-backend.js'
 import * as resource from '../../src/internal/finite-acp-resource.js'
 import * as history from '../../src/internal/codex-session-state.js'
+import { PrivateFiniteAcpPolicyError } from '../../src/internal/finite-acp-policy.js'
 import {
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
@@ -128,7 +129,7 @@ mock.module('../../src/internal/linux-rootless-backend.js', () => ({
   },
   releasePrivateLinuxOwnerState: async () => {
     step('release')
-    if (mode === 'cleanup') throw new Error('cleanup failed')
+    if (mode === 'cleanup' || mode === 'native-session-cleanup') throw new Error('cleanup failed')
     return { digest: digest(9) }
   },
 }))
@@ -193,6 +194,18 @@ mock.module('../../src/internal/finite-acp-resource.js', () => ({
   runPrivateFiniteAcpResource: async () => {
     step('dispatch')
     if (mode === 'native-failure') throw new Error('native failure')
+    if (mode === 'native-session-cancel') abort.abort()
+    if (
+      ['native-session-failure', 'native-session-cancel', 'native-session-cleanup'].includes(mode)
+    )
+      throw new PrivateFiniteAcpPolicyError('/private/secret-token', 'native-session')
+    if (mode === 'native-protocol-failure')
+      throw new PrivateFiniteAcpPolicyError('/private/secret-token')
+    if (mode === 'unclassified-failure')
+      throw Object.assign(new Error('/private/secret-token'), {
+        name: 'PrivateFiniteAcpPolicyError',
+        reason: 'native-session',
+      })
     if (mode === 'cancel') abort.abort()
     return {
       fence: mode === 'controlled' ? { ...fence, stopReason: 'cancelled' } : fence,
@@ -254,6 +267,25 @@ function before(a: string, b: string) {
   )
 }
 const run = async (value = input()) => await executePrivateRootFiniteAcp(value)
+for (const [failure, explanation] of [
+  ['native-session-failure', 'native client reported a session failure'],
+  ['native-protocol-failure', 'exchange violated its validated protocol'],
+  ['unclassified-failure', 'no result was proved.'],
+]) {
+  reset(failure)
+  const result: any = await run()
+  assert.equal(result.code, 'UNCERTAIN')
+  assert.ok(result.message.includes(explanation))
+  if (failure === 'unclassified-failure')
+    assert.equal(result.message, 'Finite ACP dispatch may have occurred but no result was proved.')
+  assert.ok(!JSON.stringify(result).match(/private\/|secret-token/))
+  assert.equal(row, undefined)
+  assert.ok(events.includes('owner-close'))
+}
+reset('native-session-cancel')
+assert.equal(((await run()) as any).code, 'CANCELLED')
+reset('native-session-cleanup')
+await assert.rejects(() => run())
 reset()
 assert.equal((await run()).status, 'succeeded')
 for (const [a, b] of [

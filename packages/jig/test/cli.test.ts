@@ -782,6 +782,30 @@ describe('finite Jig project commands', () => {
     },
   )
 
+  test('uncertain native failure retains its safe cause without implying retry or success', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'UNCERTAIN',
+      message:
+        'Finite ACP dispatch may have occurred but no result was proved. The native client reported a session failure; private details were withheld.',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    for (const terminalOutput of [true, false]) {
+      const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []), {
+        terminalOutput,
+      })
+      expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+      expect(invocation.error.replace(/\s+/g, ' ')).toContain(
+        'native client reported a session failure',
+      )
+      expect(invocation.error).not.toContain('No Flow was started')
+      expect(invocation.error).not.toContain('did not retain a more specific cause')
+      expect(invocation.output).toBe(
+        terminalOutput ? '' : new TextDecoder().decode(canonicalJson(terminal)) + '\n',
+      )
+    }
+  })
+
   test('escapes reported failure text instead of allowing it to forge terminal sections', async () => {
     const terminal: RootRunTerminal = {
       status: 'failed',

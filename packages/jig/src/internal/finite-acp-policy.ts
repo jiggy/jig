@@ -33,7 +33,10 @@ export interface PrivateFiniteAcpDelivery {
 }
 
 export class PrivateFiniteAcpPolicyError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly reason: 'protocol' | 'native-session' = 'protocol',
+  ) {
     super(message)
     this.name = 'PrivateFiniteAcpPolicyError'
   }
@@ -489,7 +492,11 @@ export class PrivateFiniteAcpPolicy {
     // Never ignore an authoritative native error, including a late error or
     // one carried only on the correlated result. Raw titles/actions can hold
     // private paths or credentials and must not cross this boundary.
-    if (notice.severity === 'error') fail('Native ACP reported a session failure')
+    if (notice.severity === 'error')
+      throw new PrivateFiniteAcpPolicyError(
+        'Native ACP reported a session failure',
+        'native-session',
+      )
     if (notice.severity !== 'warning') fail('Invalid native ACP diagnostic severity')
     return true
   }

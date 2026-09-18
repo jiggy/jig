@@ -11,6 +11,7 @@ import type {
 } from '../src/internal/linux-rootless-backend.js'
 import type { JsonObject, JsonValue } from '../src/json.js'
 import { ChannelBroker } from '../src/run/channels.js'
+import { PrivateFiniteAcpPolicyError } from '../src/internal/finite-acp-policy.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -271,6 +272,39 @@ async function fixture(options: FakeOptions = {}, selected = runtime, maxTurns =
 }
 
 describe('finite ACP resource transport (fake native process)', () => {
+  test('a native session failure retains its closed cause through transport disposal', async () => {
+    const f = await fixture({ hangPrompt: true })
+    await f.initialize()
+    await f.request(3, 'session/prompt', {
+      sessionId: 'owned',
+      prompt: [{ type: 'text', text: 'Wait.' }],
+    })
+    f.native.emit({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: {
+        sessionId: 'owned',
+        update: {
+          sessionUpdate: 'session_info_update',
+          _meta: {
+            jetbrains: {
+              air: {
+                version: 1,
+                sessionFailure: { severity: 'error', title: '/private/secret-token' },
+              },
+            },
+          },
+        },
+      },
+    })
+    const error = await f.resource.catch((error: unknown) => error)
+    expect(error).toBeInstanceOf(PrivateFiniteAcpPolicyError)
+    expect((error as PrivateFiniteAcpPolicyError).reason).toBe('native-session')
+    expect(String(error)).not.toContain('secret-token')
+    expect(f.native.terminated()).toBeGreaterThan(0)
+    expect(JSON.stringify(f.exposed)).not.toContain('secret-token')
+  })
+
   test('idle cancellation is consumed before a granted follow-up, never forwarded into it', async () => {
     const f = await fixture({}, runtime, 2)
     await f.initialize()

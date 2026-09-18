@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import type { FileHandle } from 'node:fs/promises'
 import { CheckError } from '../diagnostics.js'
+import { PrivateFiniteAcpPolicyError } from './finite-acp-policy.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import { nativeInvocationKind } from '../project/invocation-slots.js'
 import {
@@ -417,8 +418,17 @@ async function executeOwnedProvider(
     }
     if (error instanceof NativeSessionUnavailable)
       return failed('UNAVAILABLE', 'the retained session is unavailable for this admitted caller')
+    const explanation =
+      error instanceof PrivateFiniteAcpPolicyError
+        ? error.reason === 'native-session'
+          ? ' The native client reported a session failure; private details were withheld.'
+          : ' The finite ACP exchange violated its validated protocol.'
+        : ''
     return attemptedDispatch
-      ? failed('UNCERTAIN', 'Finite ACP dispatch may have occurred but no result was proved')
+      ? failed(
+          'UNCERTAIN',
+          `Finite ACP dispatch may have occurred but no result was proved.${explanation}`,
+        )
       : failed('EXECUTION_FAILED', 'finite ACP execution failed before dispatch')
   } finally {
     credentialBootstrap?.fill(0)
