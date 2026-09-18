@@ -137,6 +137,10 @@ bounded to 64 KiB across 32 emitting invocation paths. These are untrusted
 diagnostic bytes, not application results. The existing terminal `diagnostics`
 continues to describe root-process stderr only. Live rendering escapes control
 characters and identifies changes of emitting invocation.
+Human final results summarize diagnostic text already delivered for that invocation,
+retain any unseen suffix, and disclose capture truncation. Interleaved invocation
+paths are tracked separately. JSON records and result packets retain their complete
+bounded captures independently of this presentation.
 
 After interruption, the command waits for owned cleanup and emits its observed
 authoritative terminal when available, with `command: {status: 'interrupted'}`

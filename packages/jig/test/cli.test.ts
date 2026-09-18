@@ -1319,6 +1319,58 @@ describe('finite Jig project commands', () => {
     expect(JSON.parse(invocation.output).result.output).toBeNull()
   })
 
+  test.each([false, true])(
+    'attributed live diagnostics are retained without human replay (human: %s)',
+    async (terminalOutput) => {
+      const terminal: RootRunTerminal = {
+        status: 'succeeded',
+        outcome: 'done',
+        output: null,
+        diagnostics: { stderr: 'root text\n', stderrBytes: 10, stderrTruncated: false },
+      }
+      const invocation = commandInvocation(
+        {
+          async acquire(_path, options) {
+            const diagnostic = options!.channelOutput!.diagnostic
+            diagnostic(new TextEncoder().encode('root text\n'))
+            diagnostic(new TextEncoder().encode('child '), ['worker'])
+            diagnostic(new TextEncoder().encode('sibling text\n'), ['sibling'])
+            diagnostic(new TextEncoder().encode('text\n'), ['worker'])
+            return fakeSession([], { terminal })
+          },
+        },
+        { terminalOutput },
+      )
+      expect(await main(['run', 'binding:work'], invocation.options)).toBe(0)
+      expect(invocation.error).toContain('root text')
+      expect(invocation.error).toContain('sibling text')
+      if (terminalOutput) {
+        expect(invocation.output).not.toContain('root text')
+        expect(invocation.output).not.toContain('child text')
+        expect(invocation.output).not.toContain('sibling text')
+        expect(invocation.output).toContain('Diagnostics ("worker")')
+      } else {
+        const record = JSON.parse(invocation.output)
+        expect(record.diagnostics).toEqual(terminal.diagnostics)
+        expect(record.runDiagnostics.entries).toEqual([
+          { operations: [], ...terminal.diagnostics },
+          {
+            operations: ['worker'],
+            stderr: 'child text\n',
+            stderrBytes: 11,
+            stderrTruncated: false,
+          },
+          {
+            operations: ['sibling'],
+            stderr: 'sibling text\n',
+            stderrBytes: 13,
+            stderrTruncated: false,
+          },
+        ])
+      }
+    },
+  )
+
   test.each(
     [
       ['--receive'],

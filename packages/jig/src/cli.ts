@@ -23,7 +23,6 @@ import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
 import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
-import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
@@ -45,6 +44,7 @@ import {
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
+import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import { flowSelector, npmPackageName } from './project/package-selector.js'
@@ -529,7 +529,6 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           runtime.outputColumns,
         )
       : undefined
-  let streamedDiagnostics = ''
   const submissionId = runtime.createSubmissionId()
   let settledRoot: Extract<RootRunStatus, { state: 'terminal' }> | undefined
   const diagnostics = new PrivateRunDiagnostics()
@@ -567,8 +566,6 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           true,
         )
       }
-      if (streamedDiagnostics.length <= 64 * 1024)
-        streamedDiagnostics = (streamedDiagnostics + decoded).slice(0, 64 * 1024 + 1)
       // Diagnostics are untrusted text, not terminal-control instructions.
       writeLive(
         decoded.replace(
@@ -578,11 +575,12 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         ),
         true,
       )
+      presentation?.diagnostic(decoded, operations)
     },
   }
   const emitTerminal = async (record: JsonValue): Promise<void> => {
     if (presentation) {
-      await presentation.result(record, streamedDiagnostics)
+      await presentation.result(record)
       return
     }
     await runtime.writeRecord(

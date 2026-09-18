@@ -26,6 +26,8 @@ function isObject(value: JsonValue | undefined): value is { readonly [key: strin
 export class PrivateCliRunPresentation {
   #channel: string | undefined
   #openLine = false
+  #shownDiagnostics = new Map<string, string>()
+  #diagnosticBytes = 64 * 1024
   constructor(
     readonly write: (text: string) => Promise<void>,
     readonly color: boolean,
@@ -74,7 +76,18 @@ export class PrivateCliRunPresentation {
     }
   }
 
-  async result(record: JsonValue, streamedDiagnostics: string): Promise<void> {
+  /** Call only after the diagnostic sink accepted this text. Attribution is host-owned. */
+  diagnostic(text: string, operations: readonly string[] = []): void {
+    const key = JSON.stringify(operations)
+    if (!this.#shownDiagnostics.has(key) && this.#shownDiagnostics.size === 32) return
+    const bytes = new TextEncoder().encode(text)
+    // Streaming decode excludes an incomplete UTF-8 suffix at the capture boundary.
+    const kept = new TextDecoder().decode(bytes.slice(0, this.#diagnosticBytes), { stream: true })
+    this.#diagnosticBytes -= Math.min(bytes.length, this.#diagnosticBytes)
+    this.#shownDiagnostics.set(key, (this.#shownDiagnostics.get(key) ?? '') + kept)
+  }
+
+  async result(record: JsonValue): Promise<void> {
     let view = record
     let note = ''
     // These are host envelope facts only. Application text and field names
@@ -109,13 +122,64 @@ export class PrivateCliRunPresentation {
       if (record.status === 'succeeded') view = rest
     }
     if (isObject(record)) {
-      const diagnostics = record.diagnostics
-      if (isObject(diagnostics) && diagnostics.stderr === streamedDiagnostics) {
-        const { diagnostics: _diagnostics, ...rest } = view as Record<string, JsonValue>
-        view = rest
-        if (diagnostics.stderrBytes !== 0)
-          note = `\n  Diagnostics: ${diagnostics.stderrBytes} bytes shown live${diagnostics.stderrTruncated ? '; retained capture truncated' : ''}.\n`
+      const details = { ...(view as Record<string, JsonValue>) }
+      const remaining = (
+        value: JsonValue,
+        operations: readonly string[],
+      ): JsonValue | undefined => {
+        if (!isObject(value) || typeof value.stderr !== 'string') return value
+        const shown = this.#shownDiagnostics.get(JSON.stringify(operations)) ?? ''
+        let offset = 0
+        for (const character of value.stderr) {
+          if (!shown.startsWith(character, offset)) break
+          offset += character.length
+        }
+        const source = operations.length === 0 ? 'root' : quoted(operations.join(' / '))
+        if (offset > 0)
+          note += `\n  Diagnostics (${source}): ${new TextEncoder().encode(value.stderr.slice(0, offset)).length} bytes of text shown live.\n`
+        if (value.stderrTruncated)
+          note += `\n  Diagnostics (${source}): retained capture truncated.\n`
+        return offset === value.stderr.length
+          ? undefined
+          : { ...value, stderr: value.stderr.slice(offset) }
       }
+      const aggregate = record.runDiagnostics
+      const entries =
+        isObject(aggregate) && Array.isArray(aggregate.entries) ? aggregate.entries : []
+      const root = entries.find(
+        (entry) =>
+          isObject(entry) && Array.isArray(entry.operations) && entry.operations.length === 0,
+      )
+      const rootDiagnostics = record.diagnostics
+      // The root envelope and the attributed capture can contain the same evidence.
+      if (
+        isObject(root) &&
+        isObject(rootDiagnostics) &&
+        ['stderr', 'stderrBytes', 'stderrTruncated'].every(
+          (key) => root[key] === rootDiagnostics[key],
+        )
+      ) {
+        delete details.diagnostics
+      } else if (details.diagnostics !== undefined) {
+        const unseen = remaining(details.diagnostics, [])
+        if (unseen === undefined) delete details.diagnostics
+        else details.diagnostics = unseen
+      }
+      if (isObject(aggregate) && Array.isArray(aggregate.entries)) {
+        const unseen = entries.flatMap((entry) => {
+          if (
+            !isObject(entry) ||
+            !Array.isArray(entry.operations) ||
+            !entry.operations.every((part) => typeof part === 'string')
+          )
+            return [entry]
+          const value = remaining(entry, entry.operations as string[])
+          return value === undefined ? [] : [value]
+        })
+        if (unseen.length === 0 && !aggregate.truncated) delete details.runDiagnostics
+        else details.runDiagnostics = { ...aggregate, entries: unseen }
+      }
+      view = details
     }
     // The command's failure block owns status, code and the safe explanation.
     if (isObject(view) && (view.status === 'failed' || view.status === 'lost')) {

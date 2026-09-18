@@ -158,6 +158,8 @@ admitted FLOW packages.
   `cli-run-presentation.ts` owns human Run results and channel streaming. Join
   text fragments exactly, label channel switches and endings, escape controls,
   and preserve separate execution, application, delivery, and cleanup outcomes.
+  Summarize diagnostics already delivered by host invocation path, preserving
+  unseen suffixes and truncation; machine records retain the full bounded capture.
   A generic failure without diagnostics must state the missing evidence; do not
   imply that the Flow never started or repeat an identical raw error block.
   Generic human failure summaries must retain specific terminal failure messages;
