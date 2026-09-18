@@ -21,6 +21,21 @@ acceptance mismatch allows an Agent proposal of replacement text, never shell
 commands. An invalid proposal or failed candidate earns one correction, for a
 maximum of two Agent calls. Every proposal remains relative to the original.
 
+Optional Binding `settings: { restoreCorrections: true }` uses the first
+conversation for correction through native retention and restoration. The
+operator must separately grant `retainSessions: true` to a qualified native
+Agent (currently Codex). The first Agent call closes and settles before tests;
+only a failed candidate or invalid proposal leads to one restored call with
+the recorded feedback. No Agent stays active during command execution.
+
+Unavailable retention does not invalidate a passing first patch. If correction
+is needed, it returns `blocked` with the retention reason instead of silently
+starting over. Restoration errors remain failures without retry. Final receipts
+are recorded in `attempts[].session`; a reference used for correction is already
+consumed. Native transcripts include supplied source and feedback and remain
+subject to the host's bounded retention policy. Without this setting, calls
+stay ephemeral and compatible with ordinary one-shot Agent implementations.
+
 Jig executes immutable candidate contents in a separate, credential-free
 scope and collects output and termination outside that scope. Ordinary tests
 are useful but candidate code can interfere with their runner. This method

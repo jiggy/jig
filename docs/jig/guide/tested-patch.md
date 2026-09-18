@@ -132,6 +132,48 @@ For application development, work in the repository's authoring directory:
 use the root workspace installation and run `bun test test` there. Those checks establish application
 policy, not model quality or a market advantage.
 
+## Keep conversation context for a correction
+
+Ordinary repair sends each proposal request independently. For a qualified
+native Agent, you can instead restore the first conversation after executing
+its proposed changes. This can preserve context without keeping an Agent active
+while the separately contained commands run.
+
+Add this to the repair specialist Binding in `bindings/specialist.ts`:
+
+```ts
+settings: { restoreCorrections: true },
+```
+
+In the selected Agent Binding, explicitly grant native retention:
+
+```ts
+slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } },
+```
+
+Review these changes before running. [Native restoration](conversations.md#restore-after-a-clean-close)
+requires qualified matching artifacts; the HTTP Agent does not support it.
+The default repair configuration remains unchanged.
+
+This optional composition has deterministic application coverage, but a successful
+installed native restored correction has not yet been qualified. Keep ordinary
+repair as the starting configuration.
+
+The first call settles and supplies its retention receipt before any candidate
+command starts. If the proposal is invalid or fails the fixed checks, one
+restored call receives that feedback. It must still propose replacements against
+the original files, within the same two-proposal budget and root deadline.
+The original source is not resent in the correction prompt; native retained
+history supplies that context. This is restoration, not an overlapping live
+conversation or automatic summary handoff.
+
+Unavailable retention still allows a passing first patch. If correction is
+needed, the application returns `blocked` with the reason. Missing or malformed
+receipts and failed restoration remain errors; neither triggers a fresh-call
+fallback or replay. `attempts[].session` records final receipts, including a
+first reference already consumed by correction. Retained transcripts contain
+the supplied source and feedback; the host's retention limits and expiry apply.
+
 ## See progress and change its presentation
 
 For a single issue, a separate `monitor` Flow receives the repair specialist's

@@ -66,6 +66,16 @@ application is not an unrestricted repository worker or independent probe.
 - Reproduce an independent baseline mismatch before an Agent call. Use the
   same unchanged cases for every candidate. One invalid proposal or failed
   evaluation permits one correction, with every proposal against the original.
+- Optional specialist `settings.restoreCorrections: true` requests a retained
+  native session, then restores it for the one correction after candidate
+  checks. Each Agent call must settle before commands start; no additional
+  simultaneous child authority is needed. Require separately reviewed native
+  retention support. Unavailable retention permits testing the first proposal
+  but blocks a required correction; missing/malformed receipts or restoration
+  errors remain failures. Never fall back to a fresh conversation or retry a
+  claimed reference. Retain receipts with attempts, omit them from prompt text,
+  and keep the two-proposal and original-deadline limits. Default repair remains
+  provider-neutral one-shot calls without session requests.
 - Cancellation, deadline, uncertainty, unavailable support, and cleanup failure
   propagate without correction or replay. Available operation details retain
   prior evidence; missing terminal evidence must not be invented.

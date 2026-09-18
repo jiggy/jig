@@ -117,8 +117,10 @@ test('synthetic selected cancellation preserves the other worker and its verifie
     } as unknown as RunContext)
     expect(peak).toBe(2)
     expect(saves.map((s) => s.sequence)).toEqual([1, 2])
-    expect(saves[0].evidence.pending).toEqual(['first'])
-    expect(saves[0].files['second/review.patch']).toContain('--- a/src/report.ts')
+    expect(saves[0].evidence.pending).toHaveLength(1)
+    expect(saves[0].evidence.jobs).toHaveLength(1)
+    expect(saves[0].evidence.pending).not.toContain(saves[0].evidence.jobs[0].id)
+    expect(saves[1].files['second/review.patch']).toContain('--- a/src/report.ts')
     expect(saves[1].evidence.pending).toEqual([])
     expect(actual.outcome).toBe('blocked')
     expect((actual.output as any).jobs).toMatchObject([

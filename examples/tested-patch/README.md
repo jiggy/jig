@@ -70,5 +70,10 @@ failure, and checkpoints. [Progress integration](https://jig.md/guide/channels)
 shows the single-job monitor, independent recorder, and `--receive progress`.
 These observations never establish that a patch passed.
 
+The walkthrough also describes optional [conversation-based correction](https://jig.md/guide/tested-patch#keep-conversation-context-for-a-correction):
+settle the first Agent, execute checks, then restore its retained native state
+for one revision. It requires explicit retention authority; default one-shot
+repair needs none.
+
 Run `bun test examples/tested-patch/test` from the repository root after workspace
 setup. These are authored application checks, not a claim of general coding reliability.
