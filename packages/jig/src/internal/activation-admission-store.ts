@@ -159,7 +159,7 @@ const CREATE_ROOT_TERMINALS =
 const CREATE_COORDINATOR_LOCK =
   'CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT'
 const CREATE_NATIVE_SESSIONS =
-  'CREATE TABLE native_sessions (reference TEXT PRIMARY KEY, scope_digest TEXT NOT NULL, native_id TEXT NOT NULL, rollout_path TEXT NOT NULL, content_digest TEXT NOT NULL, content_bytes BLOB NOT NULL CHECK (length(content_bytes) BETWEEN 1 AND 8388608), created_at INTEGER NOT NULL CHECK (created_at BETWEEN 0 AND 9007199168340991), expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000)) STRICT'
+  'CREATE TABLE native_sessions (reference TEXT PRIMARY KEY, scope_digest TEXT NOT NULL, root_run_id TEXT REFERENCES root_runs(run_id), native_id TEXT NOT NULL, rollout_path TEXT NOT NULL, content_digest TEXT NOT NULL, content_bytes BLOB NOT NULL CHECK (length(content_bytes) BETWEEN 1 AND 8388608), created_at INTEGER NOT NULL CHECK (created_at BETWEEN 0 AND 9007199168340991), expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000)) STRICT'
 const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({
     type: 'table',
@@ -507,6 +507,7 @@ export interface PrivateNativeSessionReceipt {
 }
 
 export interface PrivateNativeSessionSnapshot extends PrivateNativeSessionReceipt {
+  readonly lifetime: 'run' | 'project'
   readonly nativeId: string
   readonly rolloutPath: string
   readonly bytes: Uint8Array
@@ -521,6 +522,7 @@ interface NativeSessionAccess {
 }
 
 interface NativeSessionRow {
+  readonly root_run_id: string | null
   readonly reference: string
   readonly scope_digest: string
   readonly native_id: string
@@ -1851,11 +1853,14 @@ function findFlowOwner(
 /** Retain one collector-validated native rollout; grants and clean close remain caller-owned. */
 export async function savePrivateNativeSession(
   input: NativeSessionAccess & {
+    readonly lifetime?: 'run'
     readonly nativeId: string
     readonly rolloutPath: string
     readonly bytes: Uint8Array
   },
 ): Promise<PrivateNativeSessionReceipt | undefined> {
+  if (input.lifetime !== undefined && input.lifetime !== 'run')
+    throw new TypeError('native session lifetime is invalid')
   const { nativeId, rolloutPath, scopeDigest } = input
   requireNativeSessionPath(nativeId, rolloutPath)
   const bytes = copyNativeSessionBytes(input.bytes)
@@ -1879,7 +1884,7 @@ export async function savePrivateNativeSession(
     })
     runFinalized(
       database,
-      'INSERT INTO native_sessions(reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)',
+      'INSERT INTO native_sessions(reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at, root_run_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
       [
         receipt.reference,
         scopeDigest,
@@ -1889,6 +1894,7 @@ export async function savePrivateNativeSession(
         bytes,
         now,
         receipt.expiresAtUnixMs,
+        input.lifetime === 'run' ? input.parentRunId : null,
       ],
     )
     return receipt
@@ -1905,11 +1911,11 @@ export async function claimPrivateNativeSession(
   return await accessNativeSessions(input, (database) => {
     const query = statement<NativeSessionRow>(
       database,
-      'SELECT reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2',
+      'SELECT reference, scope_digest, root_run_id, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2 AND (root_run_id IS NULL OR root_run_id = ?3)',
     )
     let row: NativeSessionRow | null
     try {
-      row = query.get(reference, scopeDigest)
+      row = query.get(reference, scopeDigest, input.parentRunId)
     } finally {
       query.finalize()
     }
@@ -1940,6 +1946,7 @@ export async function claimPrivateNativeSession(
     if (removed.changes !== 1) corrupt('native session claim did not consume its reference')
     return Object.freeze({
       reference: row.reference,
+      lifetime: row.root_run_id === null ? 'project' : 'run',
       nativeId: row.native_id,
       rolloutPath: row.rollout_path,
       bytes,
@@ -2860,6 +2867,9 @@ function persistRootTerminal(
   terminalValue: PrivateRootRunTerminal,
 ): void {
   const terminal = normalizePrivateRootTerminal(terminalValue)
+  // This shares the terminal transaction: failed state cleanup cannot publish completion.
+  // Recovery takes the same path after fencing, including cancelled and lost roots.
+  runFinalized(database, 'DELETE FROM native_sessions WHERE root_run_id = ?1', [runId])
   const bytes = privateRootTerminalBytes(terminal)
   requireStoredSize(bytes, 'root Run terminal')
   const digest = privateDomainDigest(

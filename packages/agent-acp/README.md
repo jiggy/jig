@@ -65,6 +65,11 @@ model and turn allowance. Initial Agent input can then include either
 receipt. Omission keeps the invocation ephemeral. A restore request also asks
 for a successor snapshot when the new invocation settles.
 
+Use `session: { retain: true, lifetime: 'run' }` for temporary correction state.
+It is usable only within the active root Run and is removed at confirmed root
+settlement. Restoration inherits this lifetime; it cannot promote temporary
+state to cross-Run retention. Storage or cleanup failures remain failures.
+
 The Flow passes the request to its finite resource. For restoration it requires
 the host-owned session identifier in ready and advertised ACP resume support,
 resumes that exact session, and reapplies current reviewed configuration before

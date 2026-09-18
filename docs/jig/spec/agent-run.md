@@ -15,7 +15,7 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:cf5c0e621c7bba9d6ef81dd8992324d40aa2c72b4766cd2fe12f96cc9c51cdc4
+digest   sha256:ba3c7efa91eeb2ca2c2e14a3d0ef8c1a837e9e4d29044118a227601101e21170
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
@@ -56,7 +56,7 @@ The contract has one invocation, with no method selector. Its input is:
   skills?: readonly { name: string; files: readonly { path: string; text: string }[] }[];
   guidance?: readonly { label: string; text: string }[];
   responseSchema?: JsonObject;
-  session?: { retain: true } | { restore: string }; // opaque UUID reference
+  session?: { retain: true; lifetime?: "run" } | { restore: string }; // opaque UUID reference
 }
 ```
 
@@ -159,7 +159,8 @@ or performs automatic handoff.
 
 ## Retaining a native conversation
 
-The optional `session` field is exactly one of `{retain:true}` or
+The optional `session` field is exactly one of `{retain:true}`,
+`{retain:true,lifetime:"run"}`, or
 `{restore:reference}`, where `reference` is an opaque, canonical lowercase
 36-character UUID returned by a previous
 final invocation. The request applies to one-shot and conversational native
@@ -168,8 +169,16 @@ reviewed native grant, `retainSessions:true`; a request or a reference never
 grants this authority.
 
 `retain` starts a new conversation and requests retention when it closes.
+Omitting `lifetime` permits later authorized Runs to restore it. `lifetime:"run"`
+restricts every reference in the chain to the current root Run, for temporary
+work such as one evidence-driven repair correction. This lifetime spans child
+and native-call settlement; it is not the lifetime of the individual Agent call.
 `restore` consumes previously retained native state before starting the current
 prompt, then requests a successor snapshot after this invocation settles.
+It inherits the original lifetime; supplying a lifetime on restore is invalid.
+Run-scoped state is inaccessible after the root ends and is deleted atomically
+with its authoritative terminal, including cancellation and recovered termination.
+Failed storage cleanup prevents terminal completion and must remain visible.
 The current instructions, Skills and guidance supply the new prompt. The host
 restores the native conversation; the Agent Flow relays metadata and does not
 read native storage, replay a transcript or synthesize an earlier answer.

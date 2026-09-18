@@ -18,7 +18,9 @@ export { AgentMethodError } from './errors.js'
 export type { JsonObject, JsonValue } from './json.js'
 export { assertResponseSchema, projectResponseSchema } from './schema.js'
 
-export type AgentSessionRequest = { readonly retain: true } | { readonly restore: string }
+export type AgentSessionRequest =
+  | { readonly retain: true; readonly lifetime?: 'run' }
+  | { readonly restore: string }
 
 export type AgentSessionReceipt =
   | { readonly status: 'retained'; readonly reference: string }
@@ -297,7 +299,9 @@ function validSessionRequest(value: unknown): boolean {
   const record = ordinaryRecord(value)
   return (
     record !== undefined &&
-    ((exactKeys(record, ['retain']) && record.retain === true) ||
+    (((exactKeys(record, ['retain']) ||
+      (exactKeys(record, ['retain', 'lifetime']) && record.lifetime === 'run')) &&
+      record.retain === true) ||
       (exactKeys(record, ['restore']) && sessionReference(record.restore)))
   )
 }

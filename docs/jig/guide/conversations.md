@@ -265,6 +265,12 @@ same authorized recipient and ancestry in the same protected project with the
 matching native profile. Changed accepted code or configuration may invalidate
 access. A reference identifies state and grants no permission by itself.
 
+For correction within one root Run, request `session: {retain: true, lifetime: 'run'}`.
+The reference survives the Agent call and can be restored after separate checks.
+Restoration inherits this lifetime. References cannot cross root Runs, and root
+settlement removes their stored state. Omit `lifetime` only when later Runs need
+the conversation. Both modes require the same reviewed retention grant and bounds.
+
 The project retains at most 16 available snapshots of at most 8 MiB each.
 References expire after 24 hours; physical pruning happens on the next store
 access. The profile retains only bounded validated native conversation records,

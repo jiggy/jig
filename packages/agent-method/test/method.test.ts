@@ -26,7 +26,11 @@ describe('shared Agent method', () => {
   test('validates session intent as frozen metadata without changing the model prompt', () => {
     const reference = '013579ab-cdef-4567-89ab-0123456789ab'
     const ordinary = prepareAgent({ instructions: 'Answer.' })
-    for (const session of [{ retain: true } as const, { restore: reference }]) {
+    for (const session of [
+      { retain: true } as const,
+      { retain: true, lifetime: 'run' } as const,
+      { restore: reference },
+    ]) {
       const prepared = prepareAgent({ instructions: 'Answer.', session })
       expect(prepared.request).toEqual(ordinary.request)
       expect(prepared.session).toEqual(session)
@@ -42,6 +46,8 @@ describe('shared Agent method', () => {
       null,
       {},
       { retain: false },
+      { retain: true, lifetime: 'forever' },
+      { restore: reference, lifetime: 'run' },
       { restore: '' },
       { restore: reference.toUpperCase() },
       { restore: `${reference}\n` },

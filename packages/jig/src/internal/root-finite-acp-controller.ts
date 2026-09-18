@@ -301,6 +301,10 @@ async function executeOwnedProvider(
   let execution: ProviderExecution
   let output: FileHandle | undefined
   let retained: PrivateCodexSessionState | undefined
+  let lifetime =
+    operation.session !== undefined && 'retain' in operation.session
+      ? operation.session.lifetime
+      : undefined
   let unavailableReason = 'not-cleanly-closed'
   let credentialBootstrap: Uint8Array | undefined
   const runtime = privateAcpAgentRuntime(provider)
@@ -309,13 +313,15 @@ async function executeOwnedProvider(
     await revalidateProviderSupport(recipe, provider, input)
     let restored: PrivateCodexSessionState | undefined
     if (operation.session !== undefined && 'restore' in operation.session) {
-      restored = await claimPrivateNativeSession({
+      const snapshot = await claimPrivateNativeSession({
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
         parentRunId: input.parent.run.runId,
         scopeDigest,
         reference: operation.session.restore,
       })
+      restored = snapshot
+      lifetime = snapshot?.lifetime === 'run' ? 'run' : undefined
       if (restored === undefined) throw new NativeSessionUnavailable()
       try {
         validatePrivateCodexSession(restored)
@@ -451,6 +457,7 @@ async function executeOwnedProvider(
             parentRunId: input.parent.run.runId,
             scopeDigest,
             ...retained,
+            ...(lifetime === undefined ? {} : { lifetime }),
           })
     input.signal.throwIfAborted()
     sessionReceipt =

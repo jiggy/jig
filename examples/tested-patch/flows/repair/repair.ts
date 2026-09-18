@@ -113,7 +113,7 @@ export async function repair(
       const previousSession = attempts.at(-1)?.session
       let session: AgentSessionRequest | undefined
       if (restoreCorrections) {
-        if (index === 0) session = { retain: true }
+        if (index === 0) session = { retain: true, lifetime: 'run' }
         else if (previousSession?.status === 'retained')
           session = { restore: previousSession.reference }
         else

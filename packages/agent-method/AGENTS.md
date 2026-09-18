@@ -38,6 +38,9 @@ ordinary Flow, preserving operator ownership of Agent execution.
   neither missing reasons nor arbitrary diagnostic text are accepted.
   Follow-up conversation prompts cannot change session intent; the receipt belongs
   to final invocation settlement, never an individual turn reply.
+  Optional `lifetime: 'run'` on a new retention request restricts continuation
+  to its owning root. Restore inherits lifetime; the host owns enforcement and
+  deletion, not this library or the method.
 - The HTTP Flow rejects conversational mode and any session request before resource dispatch. Its
   shared Agent contract does not imply support for native continuing sessions.
 - The ordinary Flow owns one non-streaming text-only Chat Completions or

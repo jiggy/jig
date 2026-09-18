@@ -44,7 +44,8 @@ different models. Changing this policy requires renewed authority approval;
 the ready configuration and native dispatch enforce the selected model.
 
 Input is normally `null`. A requested native session uses the closed shape
-`{session:{retain:true}}` or `{session:{restore:reference}}`, where `reference`
+`{session:{retain:true}}`, `{session:{retain:true,lifetime:"run"}}`, or
+`{session:{restore:reference}}`, where `reference`
 is an opaque, canonical lowercase 36-character UUID from a previous final
 resource result. Either request requires
 the separately reviewed grant `retainSessions:true`; omission of that grant
@@ -256,8 +257,10 @@ failure that already requires an invocation error.
 Before consuming a reference, the host checks current authorization against
 the protected project identity, root target and request digest, ordered
 target/request-digest ancestry, immediate native slot and exact provider/profile
-digest. Run and operation identifiers and ordinary prompt input do not bind
-restoration. Aliases selecting the same admitted target are equivalent; this
+digest. Operation identifiers and ordinary prompt input do not bind restoration.
+Run-scoped state additionally requires the original root Run identity and its
+active authority; ordinary retained state may cross Runs. Aliases selecting
+the same admitted target are equivalent; this
 profile does not promise isolation by incoming slot alias. Accepted code or
 configuration changes that alter these identities require a new conversation.
 
@@ -272,6 +275,14 @@ revalidated independently of retained content.
 The protected project store permits at most 16 available snapshots, each at
 most 8 MiB. Available snapshots expire logically after 24 hours and are pruned
 on the next store access; this is not an automatic secure-erasure promise.
+`lifetime:"run"` additionally binds retained state to the current root. Its
+successor inherits that restriction with no option to widen it. The reference
+survives individual Agent calls but cannot be claimed from another root, even
+with an otherwise matching recipient. Root settlement deletes its temporary
+snapshots in the same transaction that publishes its terminal; deletion failure
+prevents that terminal commit. Recovery uses the same cleanup path. Interrupted
+or uncertain cleanup must not be described as successful erasure. Persistent
+cross-Run snapshots are untouched by this cleanup.
 Consumed payloads are replaced rather than accumulating tombstones, references
 are never recycled, and active ownership remains accountable after expiry.
 A successor reference is exposed only after the full settlement and commit

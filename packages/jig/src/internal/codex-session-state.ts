@@ -9,7 +9,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\
 const PATH = /^sessions\/\d{4}\/\d{2}\/\d{2}\/rollout-[0-9T-]+-([0-9a-f-]{36})\.jsonl(?![\s\S])/
 const decoder = new TextDecoder('utf-8', { fatal: true })
 
-export type PrivateNativeSessionRequest = { readonly retain: true } | { readonly restore: string }
+export type PrivateNativeSessionRequest =
+  | { readonly retain: true; readonly lifetime?: 'run' }
+  | { readonly restore: string }
 export interface PrivateCodexSessionState {
   readonly nativeId: string
   readonly rolloutPath: string
@@ -30,6 +32,8 @@ export function parsePrivateNativeSessionRequest(
   const outer = object(input)
   if (Object.keys(outer).join() !== 'session') invalid()
   const session = object(outer.session)
+  if (session.retain === true && session.lifetime === 'run' && Object.keys(session).length === 2)
+    return { retain: true, lifetime: 'run' }
   if (Object.keys(session).length !== 1) invalid()
   if (session.retain === true) return { retain: true }
   if (typeof session.restore === 'string' && UUID.test(session.restore))

@@ -31,9 +31,11 @@ the recorded feedback. No Agent stays active during command execution.
 Unavailable retention does not invalidate a passing first patch. If correction
 is needed, it returns `blocked` with the retention reason instead of silently
 starting over. Restoration errors remain failures without retry. Final receipts
-are recorded in `attempts[].session`; a reference used for correction is already
-consumed. Native transcripts include supplied source and feedback and remain
-subject to the host's bounded retention policy. Without this setting, calls
+are recorded in `attempts[].session`. The method requests `lifetime: 'run'`:
+references are single-use within this root Run, and confirmed root settlement
+removes any remaining state. Recorded receipts are evidence, not cross-Run
+continuation handles. Native transcripts include supplied source and feedback
+and remain subject to the host's bounded retention policy. Without this setting, calls
 stay ephemeral and compatible with ordinary one-shot Agent implementations.
 
 Jig executes immutable candidate contents in a separate, credential-free

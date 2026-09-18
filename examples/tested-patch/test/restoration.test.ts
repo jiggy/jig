@@ -70,7 +70,7 @@ test('restored correction follows settled proposal and executed checks without r
   expect(agents).toBe(2)
   const requests = calls.filter((c) => c.slot === 'agent')
   expect(requests.map((c) => (c.input as Record<string, JsonValue>).session)).toEqual([
-    { retain: true },
+    { retain: true, lifetime: 'run' },
     { restore: reference },
   ])
   const correction = (requests[1]!.input as Record<string, JsonValue>).instructions as string

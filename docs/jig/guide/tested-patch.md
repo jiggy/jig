@@ -155,7 +155,7 @@ Review these changes before running. [Native restoration](conversations.md#resto
 requires qualified matching artifacts; the HTTP Agent does not support it.
 The default repair configuration remains unchanged.
 
-The first call settles and supplies its retention receipt before any candidate
+The first call requests Run-scoped retention and supplies its final receipt before any candidate
 command starts. If the proposal is invalid or fails the fixed checks, one
 restored call receives that feedback. It must still propose replacements against
 the original files, within the same two-proposal budget and root deadline.
@@ -167,8 +167,10 @@ Unavailable retention still allows a passing first patch. If correction is
 needed, the application returns `blocked` with the reason. Missing or malformed
 receipts and failed restoration remain errors; neither triggers a fresh-call
 fallback or replay. `attempts[].session` records final receipts, including a
-first reference already consumed by correction. Retained transcripts contain
-the supplied source and feedback; the host's retention limits and expiry apply.
+first reference already consumed by correction. These references are temporary:
+root settlement removes their stored state, so the packet is evidence, not a
+source of cross-Run continuation. Retained transcripts contain the supplied
+source and feedback; the host's retention limits and expiry still apply.
 
 ## See progress and change its presentation
 

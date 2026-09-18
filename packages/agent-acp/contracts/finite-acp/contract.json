@@ -50,7 +50,7 @@
       "oneOf": [
         {
           "type": "object",
-          "properties": { "retain": { "const": true } },
+          "properties": { "retain": { "const": true }, "lifetime": { "const": "run" } },
           "required": ["retain"],
           "additionalProperties": false
         },

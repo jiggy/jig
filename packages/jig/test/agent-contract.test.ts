@@ -42,12 +42,18 @@ describe('ordinary Agent Run contract', () => {
     const reference = '013579ab-cdef-4567-89ab-0123456789ab'
     const input = contract.schemas.get('/input')!
     const result = contract.schemas.get('/result')!
-    for (const session of [{ retain: true }, { restore: reference }])
+    for (const session of [
+      { retain: true },
+      { retain: true, lifetime: 'run' },
+      { restore: reference },
+    ])
       input.validate({ instructions: 'Answer.', session })
     for (const session of [
       null,
       {},
       { retain: false },
+      { retain: true, lifetime: 'forever' },
+      { restore: reference, lifetime: 'run' },
       { restore: 'path' },
       { retain: true, restore: reference },
     ])

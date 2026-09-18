@@ -60,8 +60,10 @@ The package also exports `AgentMethodError`, `AgentMethodErrorCode`, and the
 
 `AgentInput` is
 `{ instructions, guidance?: [{ label, text }], responseSchema?, session? }`.
-`AgentSessionRequest` is `{ retain: true } | { restore: string }`, with an opaque
-UUID reference for restoration. It requests native state handling from a
+`AgentSessionRequest` is `{ retain: true, lifetime?: 'run' } | { restore: string }`,
+with an opaque UUID reference for restoration. `lifetime: 'run'` bounds state to
+the active root Run; restoring inherits that lifetime. Omission permits the
+existing cross-Run retention. It requests native state handling from a
 compatible implementation under its current grant; it confers no authority.
 Selected `SkillText` values are `{ name, files: [{ path, text }] }`; every Skill
 requires `SKILL.md`. Names use lowercase letters, digits and separating hyphens,

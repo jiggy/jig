@@ -135,6 +135,10 @@ function state(change?: (records: any[]) => void) {
 test('session input is an exact optional request, never a native path or ID', () => {
   expect(parsePrivateNativeSessionRequest(null)).toBeUndefined()
   expect(parsePrivateNativeSessionRequest({ session: { retain: true } })).toEqual({ retain: true })
+  expect(parsePrivateNativeSessionRequest({ session: { retain: true, lifetime: 'run' } })).toEqual({
+    retain: true,
+    lifetime: 'run',
+  })
   expect(parsePrivateNativeSessionRequest({ session: { restore: nativeId } })).toEqual({
     restore: nativeId,
   })
@@ -142,6 +146,8 @@ test('session input is an exact optional request, never a native path or ID', ()
     {},
     { session: {} },
     { session: { retain: false } },
+    { session: { retain: true, lifetime: 'forever' } },
+    { session: { restore: nativeId, lifetime: 'run' } },
     { session: { restore: '/private' } },
     { session: { retain: true, restore: nativeId } },
     { session: { retain: true }, extra: 1 },

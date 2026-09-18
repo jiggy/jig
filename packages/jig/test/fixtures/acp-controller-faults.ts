@@ -31,7 +31,7 @@ const contract = {
 let mode = 'normal'
 let events: string[] = []
 let row: any
-let saved: { scope: string; reference: string } | undefined
+let saved: { scope: string; reference: string; lifetime?: 'run' } | undefined
 let scope: string | undefined
 let abort = new AbortController()
 let provider = { client: 'openai-codex', digest: digest(4) }
@@ -157,15 +157,20 @@ mock.module('../../src/internal/activation-admission-store.js', () => ({
   claimPrivateNativeSession: async (value: any) => {
     step('claim')
     if (saved?.scope !== value.scopeDigest || saved?.reference !== value.reference) return undefined
+    const lifetime = saved.lifetime ?? 'project'
     saved = undefined
-    return state
+    return { ...state, lifetime }
   },
   savePrivateNativeSession: async (value: any) => {
     step('save')
     if (mode === 'storage') throw new Error('storage failed')
     if (mode === 'capacity') return undefined
     scope = value.scopeDigest
-    saved = { scope: value.scopeDigest, reference: crypto.randomUUID() }
+    saved = {
+      scope: value.scopeDigest,
+      reference: crypto.randomUUID(),
+      ...(value.lifetime === undefined ? {} : { lifetime: value.lifetime }),
+    }
     if (mode === 'receipt-loss') abort.abort()
     return { reference: saved.reference }
   },
@@ -260,6 +265,14 @@ for (const [a, b] of [
 ])
   before(a!, b!)
 const originalScope = scope!
+reset()
+assert.equal((await run(input({ retain: true, lifetime: 'run' }))).status, 'succeeded')
+assert.equal(saved?.lifetime, 'run')
+const temporary = saved!.reference
+reset()
+assert.equal((await run(input({ restore: temporary }))).status, 'succeeded')
+assert.equal(saved?.lifetime, 'run', 'restoration cannot widen the retained lifetime')
+before('descriptor-close', 'save')
 for (const [failure, reason] of [
   ['controlled', 'not-cleanly-closed'],
   ['invalid-history', 'unsupported-history'],

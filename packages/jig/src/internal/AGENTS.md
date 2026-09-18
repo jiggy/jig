@@ -13,7 +13,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Admission storage retains private native-session snapshots under exact
   recipient scopes: at most sixteen 8 MiB UTF-8 rollouts, with 24-hour logical
   expiry and atomic single-use claims that delete the payload. Access requires
-  the current coordinator and an active prepared root Run. Native collectors
+  the current coordinator and an active prepared root Run. Run-scoped snapshots
+  additionally bind to that root; successors inherit their lifetime. Terminal
+  commit atomically removes temporary state, including through recovery; storage
+  failure prevents terminal completion. Cross-Run snapshots retain their separate
+  expiry policy. Native collectors
   own clean-close, content and current-grant validation; a reference grants no
   authority. Storage or ownership uncertainty must not become successful retention.
   Expected retention loss reports a closed reason. Only recognized content-profile

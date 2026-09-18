@@ -1,7 +1,7 @@
 export const AGENT_RUN_CONTRACT_ID = 'https://jig.md/contracts/agent-run'
 export const AGENT_RUN_CONTRACT_VERSION = '1.0.0'
 export const AGENT_RUN_CONTRACT_DIGEST =
-  'sha256:cf5c0e621c7bba9d6ef81dd8992324d40aa2c72b4766cd2fe12f96cc9c51cdc4'
+  'sha256:ba3c7efa91eeb2ca2c2e14a3d0ef8c1a837e9e4d29044118a227601101e21170'
 
 const channels = Object.fromEntries(
   await Promise.all(

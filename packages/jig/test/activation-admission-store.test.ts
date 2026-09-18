@@ -1,4 +1,4 @@
-import { describe, expect, setDefaultTimeout, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, spyOn, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import {
   chmod,
@@ -84,6 +84,232 @@ const TABLES = [
 setDefaultTimeout(30_000)
 
 describe.serial('direct alpha activation store', () => {
+  test('temporary state deletion failure cannot commit a root terminal', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const runId = await prepareNativeSessionParent(fixture, coordinator, 'delete-failure')
+      await savePrivateNativeSession({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: runId,
+        scopeDigest: digest('a'),
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+        lifetime: 'run',
+      })
+      const terminal = successTerminal(null)
+      await settleExecution(fixture, coordinator, runId, terminal)
+      const sqlite = createRequire(import.meta.url)('bun:sqlite')
+      const query = sqlite.Database.prototype.query
+      const fault = spyOn(sqlite.Database.prototype, 'query').mockImplementation(function (
+        this: unknown,
+        sql: unknown,
+        ...args: unknown[]
+      ) {
+        if (sql === 'DELETE FROM native_sessions WHERE root_run_id = ?1')
+          throw new Error('injected temporary retention deletion failure')
+        return query.call(this, sql, ...args)
+      })
+      try {
+        await expect(
+          closePrivateRootExecution({ coordinator, projectRoot: fixture.root, runId, terminal }),
+        ).rejects.toThrow('injected temporary retention deletion failure')
+      } finally {
+        fault.mockRestore()
+      }
+      const database = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(database.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(1)
+        expect(database.query('SELECT count(*) AS count FROM root_terminals').get().count).toBe(0)
+      } finally {
+        database.close(true)
+      }
+      await closePrivateRootExecution({ coordinator, projectRoot: fixture.root, runId, terminal })
+      const completed = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(completed.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(0)
+        expect(completed.query('SELECT count(*) AS count FROM root_terminals').get().count).toBe(1)
+      } finally {
+        completed.close(true)
+      }
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('recovery retains temporary state until confirmed fencing and cleanup', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const runId = await prepareNativeSessionParent(fixture, coordinator, 'temporary-lost')
+      await savePrivateNativeSession({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: runId,
+        scopeDigest: digest('a'),
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+        lifetime: 'run',
+      })
+      await coordinator.dispose()
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const terminal = {
+        status: 'lost',
+        code: 'COORDINATOR_LOST',
+        message: 'prior owner lost',
+      } as const
+      await checkpoint(fixture, coordinator, runId, 'provisional', terminal)
+      await expect(
+        closePrivateRootExecution({ coordinator, projectRoot: fixture.root, runId, terminal }),
+      ).rejects.toBeDefined()
+      const pending = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(pending.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(1)
+      } finally {
+        pending.close(true)
+      }
+      await checkpoint(fixture, coordinator, runId, 'fence', { populated: false })
+      await checkpoint(fixture, coordinator, runId, 'release', { released: true })
+      await checkpoint(fixture, coordinator, runId, 'admitted', terminal)
+      await closePrivateRootExecution({ coordinator, projectRoot: fixture.root, runId, terminal })
+      const completed = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(completed.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(0)
+      } finally {
+        completed.close(true)
+      }
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('Run-owned sessions restore only within that active root and do not accumulate after settlement', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const foreignRoot = await prepareNativeSessionParent(fixture, coordinator, 'other-root')
+      const persistent = await savePrivateNativeSession({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: foreignRoot,
+        scopeDigest: digest('a'),
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+      })
+      if (!persistent) throw new Error('missing persistent receipt')
+      // More roots than the global capacity; each final correction receipt must be reclaimed.
+      for (let index = 0; index < 18; index++) {
+        const parentRunId = await prepareNativeSessionParent(
+          fixture,
+          coordinator,
+          `temporary-${index}`,
+        )
+        const access = {
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId,
+          scopeDigest: digest('a'),
+        }
+        const receipt = await savePrivateNativeSession({
+          ...access,
+          ...nativeSession(),
+          bytes: Buffer.from('{}\n'),
+          lifetime: 'run',
+        })
+        if (!receipt) throw new Error('temporary receipts accumulated')
+        if (index === 0) {
+          expect(
+            await claimPrivateNativeSession({
+              ...access,
+              parentRunId: foreignRoot,
+              reference: receipt.reference,
+            }),
+          ).toBeUndefined()
+        }
+        expect(
+          await claimPrivateNativeSession({
+            ...access,
+            scopeDigest: digest('b'),
+            reference: receipt.reference,
+          }),
+        ).toBeUndefined()
+        const restored = await claimPrivateNativeSession({
+          ...access,
+          reference: receipt.reference,
+        })
+        expect(restored?.lifetime).toBe('run')
+        expect(
+          await claimPrivateNativeSession({ ...access, reference: receipt.reference }),
+        ).toBeUndefined()
+        const successor = await savePrivateNativeSession({
+          ...access,
+          ...nativeSession(),
+          bytes: Buffer.from('{}\n'),
+          lifetime: 'run',
+        })
+        if (!successor) throw new Error('missing successor')
+        const terminal =
+          index % 2 === 0
+            ? successTerminal(null)
+            : ({
+                status: 'failed',
+                code: 'CANCELLED',
+                message: 'cancelled',
+                diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+              } as const)
+        await settleExecution(fixture, coordinator, parentRunId, terminal)
+        await closePrivateRootExecution({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: parentRunId,
+          terminal,
+        })
+        await expect(
+          claimPrivateNativeSession({ ...access, reference: successor.reference }),
+        ).rejects.toMatchObject({ code: 'RUN_ALREADY_TERMINAL' })
+        const database = openSqlite(fixture.database, 'readonly')
+        try {
+          expect(
+            database
+              .query('SELECT count(*) AS count FROM native_sessions WHERE root_run_id IS NOT NULL')
+              .get().count,
+          ).toBe(0)
+          expect(database.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(
+            1,
+          )
+        } finally {
+          database.close(true)
+        }
+      }
+      const nextRoot = await prepareNativeSessionParent(
+        fixture,
+        coordinator,
+        'persistent-continuation',
+      )
+      expect(
+        await claimPrivateNativeSession({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId: nextRoot,
+          scopeDigest: digest('a'),
+          reference: persistent.reference,
+        }),
+      ).toMatchObject({ lifetime: 'project' })
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  }, 180_000)
+
   test('native sessions are immutable UTF-8 snapshots claimed once across root Runs', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
