@@ -113,7 +113,9 @@ describe('private native Codex Agent provider', () => {
   })
 
   test('opens a PATH-selected client and retains its identity across PATH changes', async () => {
-    const fixture = await files()
+    // Resource admission rejects /tmp: that destination belongs to the payload.
+    // Use a normal Linux host installation location for this successful selection.
+    const fixture = await files('/var/tmp')
     const environment = {
       PATH: dirname(fixture.executablePath),
       OPENAI_API_KEY: 'test-secret',
@@ -695,7 +697,7 @@ async function selectCodex(host: Awaited<ReturnType<typeof openPrivateInstalledB
   return provider
 }
 
-async function files(): Promise<{
+async function files(parent = tmpdir()): Promise<{
   readonly root: string
   readonly launcherPath: string
   readonly adapterPath: string
@@ -706,7 +708,7 @@ async function files(): Promise<{
   readonly certificatesPath: string
   readonly requirementsPath: string
 }> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-codex-provider-'))
+  const root = await mkdtemp(join(parent, 'jig-codex-provider-'))
   temporary.add(root)
   const launcherPath = join(root, 'codex-agent-launcher.js')
   const adapterPath = join(root, 'codex-acp.js')
