@@ -7,6 +7,7 @@ import { join } from 'node:path'
 
 import { ProjectAdministrationError } from '../src/administration/project.js'
 import { CheckError } from '../src/diagnostics.js'
+import { PrivateBunManifestError } from '../src/internal/bun-native-lock-policy.js'
 import {
   openPrivateProjectSession,
   type PrivateProjectSessionHost,
@@ -17,6 +18,49 @@ import {
 const missingPlan = `sha256:${'0'.repeat(64)}`
 
 describe('private finite project session', () => {
+  test('manifest diagnostics distinguish already-scoped workspace paths from standalone packages', () => {
+    const standalone = new PrivateBunManifestError('SOURCE', '/dependencies/x')
+    expect(scopePrivatePackagePlanningError(standalone, 'flows/demo')).toMatchObject({
+      path: 'flows/demo/package.json',
+      pointer: '/dependencies/x',
+    })
+    const root = standalone.atProjectPath('package.json')
+    expect(scopePrivatePackagePlanningError(root, 'flows/demo')).toBe(root)
+    expect(projectError(root, 'plan').diagnostic?.path).toBe('package.json')
+  })
+
+  test('ancestor manifest locations never open arbitrary diagnostic paths', () => {
+    for (const path of ['../package.json', '../../libs/tool/package.json']) {
+      expect(
+        projectError(
+          new PrivateBunManifestError('SOURCE', '/dependencies/x').atProjectPath(path),
+          'plan',
+        ).diagnostic?.path,
+      ).toBe(path)
+    }
+    for (const path of [
+      '../private-token',
+      '/private/package.json',
+      '../.jig/package.json',
+      '../libs/.jig/package.json',
+      '../libs/../../package.json',
+      '../'.repeat(33) + 'package.json',
+    ]) {
+      expect(
+        projectError(
+          new PrivateBunManifestError('SOURCE', '/dependencies/x').atProjectPath(path),
+          'plan',
+        ).diagnostic,
+      ).toBeUndefined()
+    }
+    expect(
+      projectError(
+        new CheckError('invalid', 'PROJECT_DEFAULT_MISSING', 'private detail', '../package.json'),
+        'plan',
+      ).diagnostic,
+    ).toBeUndefined()
+  })
+
   test('preserves missing default diagnostics without exposing source error text', () => {
     const failure = projectError(
       new CheckError(

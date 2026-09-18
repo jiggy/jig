@@ -34,6 +34,10 @@ operational baselines, and public-site assembly.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
   containment and binary-safe file Runs, invalid output, resource limits,
   failure suppression, publication collisions and execution-residue checks.
+- `test-operational-baseline.ts` retains failed fixtures and private command
+  transcripts, names their directory on failure, and checks live residue even
+  after an assertion fails. Only successful fixtures are removed; residue or
+  removal failures never replace the original failure or establish success.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
@@ -97,6 +101,8 @@ operational baselines, and public-site assembly.
   handling, explicit packing, and build-tool refusal before cleanup or site
   staging. Its no-package-scripts rule covers repository tasks, not imported
   skill toolchains.
+- `bun test scripts/operational-baseline-checks.test.ts` checks selector
+  diagnostics and failure-preserving teardown without a containment host.
 
 ## Child DOX Index
 

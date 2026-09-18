@@ -1,6 +1,9 @@
 import { CheckError } from '../diagnostics.js'
 import type { CapturedPackage } from '../package/capture.js'
-import { requirePrivateBunResolutionManifest } from './bun-native-lock-policy.js'
+import {
+  PrivateBunManifestError,
+  requirePrivateBunResolutionManifest,
+} from './bun-native-lock-policy.js'
 
 const MANIFEST = 'package.json'
 const LOCK = 'bun.lock'
@@ -65,7 +68,8 @@ export async function inspectPrivateBunPackageInput(
   if (!hasLock) {
     try {
       requirePrivateBunResolutionManifest(manifest)
-    } catch {
+    } catch (error) {
+      if (error instanceof PrivateBunManifestError) throw error
       throw diagnostic(
         'invalid',
         'PACKAGE_BUN_SOURCE_UNSUPPORTED',

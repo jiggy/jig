@@ -16,6 +16,7 @@ on:
       - "scripts/ci/provision-github-rootless-host.sh"
       - "scripts/test-installed-hostile-baseline.ts"
       - "scripts/test-operational-baseline.ts"
+      - "scripts/operational-baseline-checks.ts"
   push:
     branches:
       - main
@@ -177,9 +178,10 @@ jobs:
           --timeout 120000
 
       - name: Run Operational Baseline/1 against the packed archive
+        id: operational
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
+          env TMPDIR=/tmp "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" scripts/test-operational-baseline.ts
 
       - name: Attack the packed CLI inside the proved envelope
@@ -195,3 +197,12 @@ jobs:
       - name: Require zero host residue
         if: always()
         run: scripts/ci/provision-github-rootless-host.sh assert-clean
+
+      - name: Retain failed operational command transcripts
+        if: ${{ always() && (steps.operational.outcome == 'failure' || steps.operational.outcome == 'cancelled') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: operational-baseline-failure
+          path: /tmp/jig-operational-baseline-*/command-*.json
+          if-no-files-found: ignore
+          retention-days: 7

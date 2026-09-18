@@ -11,6 +11,7 @@ import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
 import { openPrivateProjectRoot, type PrivateProjectRoot } from '../project/root.js'
 import {
+  PrivateBunManifestError,
   requirePrivateBunPatches,
   requirePrivateBunResolutionManifest,
 } from './bun-native-lock-policy.js'
@@ -81,6 +82,7 @@ export async function capturePrivateBunWorkspace(input: {
                 manifestBytes,
                 input.captured,
                 input.signal,
+                input.projectRoot.requestedPath,
               )
             } catch (error) {
               if (error instanceof CheckError && !error.code.startsWith('PACKAGE_BUN_')) {
@@ -116,7 +118,11 @@ async function capture(
   targetBytes: Uint8Array,
   source: CapturedPackage,
   signal: AbortSignal,
+  projectPath: string,
 ): Promise<PrivateBunWorkspace> {
+  const manifestPath = (member = ''): string =>
+    relative(projectPath, resolve(root.requestedPath, member, 'package.json'))
+  requireManifest(parseManifest(rootBytes), manifestPath(), true)
   const paths = await discover(root.handle, patterns, signal)
   const members: Member[] = []
   const byName = new Map<string, Member>()
@@ -131,7 +137,7 @@ async function capture(
       if (metadataBytes > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes)
         fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace metadata exceeds the capture budget')
       const manifest = parseManifest(bytes)
-      requireManifest(manifest)
+      requireManifest(manifest, manifestPath(path))
       if (typeof manifest.name !== 'string' || byName.has(manifest.name))
         fail('PACKAGE_BUN_WORKSPACE_INVALID', 'workspace names must be present and unique')
       const member = { path, bytes, manifest }
@@ -194,7 +200,6 @@ async function capture(
     records.set(path, { size, ...value })
   }
   try {
-    requireManifest(parseManifest(rootBytes), true)
     const patchPaths = [
       ...new Set(
         Object.values(requirePrivateBunPatches(parseManifest(rootBytes).patchedDependencies)),
@@ -317,10 +322,11 @@ async function capture(
   }
 }
 
-function requireManifest(value: Record<string, unknown>, root = false): void {
+function requireManifest(value: Record<string, unknown>, path: string, root = false): void {
   try {
     requirePrivateBunResolutionManifest(value, root ? 'root' : 'member')
-  } catch {
+  } catch (error) {
+    if (error instanceof PrivateBunManifestError) throw error.atProjectPath(path)
     fail('PACKAGE_BUN_WORKSPACE_INVALID', 'unsupported workspace manifest source or override')
   }
 }

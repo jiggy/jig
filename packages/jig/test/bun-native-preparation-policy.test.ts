@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../src/internal/bun-execution-layout.js'
 import {
+  PrivateBunManifestError,
   requirePrivateBunLockPolicy,
   requirePrivateBunPatches,
   requirePrivateBunResolutionManifest,
@@ -19,6 +20,44 @@ const INTEGRITY =
   'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
 
 describe('private Bun preparation policy', () => {
+  test.each([
+    [null, 'SHAPE', ''],
+    [{ overrides: { x: 'sensitive-rejected-value' } }, 'FIELD', '/overrides'],
+    [{ devDependencies: 'sensitive-rejected-value' }, 'DEPENDENCIES', '/devDependencies'],
+    [{ dependencies: { 'secret\nhttps://credential@host': '*' } }, 'NAME', '/dependencies'],
+    [
+      { dependencies: { '@example/tool': 'https://credential@host/private.tgz' } },
+      'SOURCE',
+      '/dependencies/@example~1tool',
+    ],
+    [
+      { optionalDependencies: { 'a~b': 'file:/private/path' } },
+      'SOURCE',
+      '/optionalDependencies/a~0b',
+    ],
+    [{ peerDependencies: { x: 'github:private/project' } }, 'SOURCE', '/peerDependencies/x'],
+    [{ patchedDependencies: { x: '/private/path' } }, 'PATCH', '/patchedDependencies'],
+  ])(
+    'manifest refusals preserve only a closed cause and safe field: %j',
+    (manifest, reason, pointer) => {
+      let failure: unknown
+      try {
+        requirePrivateBunResolutionManifest(manifest, 'root')
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(PrivateBunManifestError)
+      expect(failure).toMatchObject({
+        code: `PACKAGE_BUN_MANIFEST_${reason}`,
+        pointer,
+        path: 'package.json',
+      })
+      expect(JSON.stringify(failure)).not.toMatch(
+        /sensitive-rejected-value|credential|private\/path|secret/,
+      )
+    },
+  )
+
   test('accepts exact workspace-root patch declarations without permitting member or standalone policy', () => {
     const patchedDependencies = { '@example/value@1.2.3': 'packages/owner/patches/value.patch' }
     expect(requirePrivateBunPatches(patchedDependencies)).toEqual(patchedDependencies)

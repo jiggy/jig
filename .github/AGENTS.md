@@ -39,6 +39,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.
 - Preserve zero-residue checks around provisioned Jig host tests.
+- Failed operational-baseline command transcripts are retained for seven days.
+  Upload only the explicit transcript files, not consumer trees, admission
+  databases, credentials, or retained native state.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
 - Host conformance includes Agent method and contract-authoring source changes.

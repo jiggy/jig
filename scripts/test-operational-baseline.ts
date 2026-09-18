@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { checkInvalidRunTarget, finishOperationalBaseline } from './operational-baseline-checks.js'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageRoot = join(repositoryRoot, 'packages', 'jig')
@@ -20,7 +21,8 @@ const systemctl = await fixedSystemctl()
 const temporary = await mkdtemp(join(tmpdir(), 'jig-operational-baseline-'))
 const runtimeTemporary = join(temporary, 'runtime-tmp')
 
-let failure: unknown
+const failures: unknown[] = []
+let commandSequence = 0
 try {
   await mkdir(runtimeTemporary)
   await eventuallyNoJigResidue()
@@ -58,6 +60,8 @@ try {
   )
 
   const jig = join(consumer, 'node_modules', '.bin', 'jig')
+  // Parser checks precede acquisition and the expensive contained workload.
+  checkInvalidRunTarget(await run([jig, 'run', 'hello'], consumer, [1], 60_000))
   const project = join(consumer, 'hello-project')
   const initialized = await run([jig, 'init', '--bare', project], consumer)
   assert.match(initialized.stdout, /^Created bare Jig project /)
@@ -130,12 +134,6 @@ try {
   } finally {
     await rm(preparationGuard, { recursive: true, force: true })
   }
-
-  const invalidTarget = await run([jig, 'run', 'hello'], project, [1], 60_000)
-  assert.equal(invalidTarget.stdout, '')
-  assert.match(invalidTarget.stderr, /^Error: Run target is invalid\n/)
-  assert.match(invalidTarget.stderr, /use flow:<path> or binding:<id>/)
-  assert.match(invalidTarget.stderr, /Diagnostic code: JIG_RUN_TARGET_INVALID/)
 
   const malformedInput = await run(
     [jig, 'run', 'flow:flows/hello', '--input', '{'],
@@ -384,23 +382,15 @@ try {
     received: { name: 'Ada' },
   })
 } catch (error) {
-  failure = error
+  failures.push(error)
 }
 
-try {
-  await eventuallyNoJigResidue()
-} catch (cleanupFailure) {
-  failure =
-    failure === undefined
-      ? cleanupFailure
-      : new AggregateError(
-          [failure, cleanupFailure],
-          'Operational Baseline/1 and its residue check both failed',
-        )
-} finally {
-  await rm(temporary, { recursive: true, force: true })
-}
-if (failure !== undefined) throw failure
+await finishOperationalBaseline({
+  failures,
+  temporary,
+  checkResidue: () => eventuallyNoJigResidue(),
+  removeFixture: () => rm(temporary, { recursive: true, force: true }),
+})
 
 process.stdout.write('Operational Baseline/1 passed\n')
 
@@ -557,6 +547,28 @@ async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
   )
   assert.match(missing.stderr, /complete jig review/)
   assert.match(missing.stderr, /Diagnostic code: ADMISSION_MISSING/)
+  // Installed public diagnostics must identify the ancestor manifest, not
+  // misleadingly point at the selected Flow's package.json.
+  const rootManifest = join(workspace, 'package.json')
+  const originalManifest = await readFile(rootManifest, 'utf8')
+  await writeFile(
+    rootManifest,
+    JSON.stringify({
+      ...JSON.parse(originalManifest),
+      devDependencies: { '@example/tool': 'https://fixture-only.invalid/private.tgz' },
+    }),
+  )
+  const refused = await run([jig, 'review', '--yes'], project, [1], 120_000)
+  assert.equal(refused.stdout, '')
+  assert.match(refused.stderr, /Location: "\.\.\/package\.json"/)
+  assert.match(refused.stderr, /Value: "\/devDependencies\/@example~1tool"/)
+  assert.match(refused.stderr, /Diagnostic code: PACKAGE_BUN_MANIFEST_SOURCE/)
+  assert.match(
+    refused.stderr,
+    /use a default npm registry version or a declared workspace: dependency/,
+  )
+  assert.doesNotMatch(refused.stderr, /fixture-only|private\.tgz/)
+  await writeFile(rootManifest, originalManifest)
   await run(
     ['bun', '--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts'],
     workspace,
@@ -722,6 +734,11 @@ async function run(
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]).finally(() => clearTimeout(timeout))
+  await writeFile(
+    join(temporary, `command-${String(++commandSequence).padStart(4, '0')}.json`),
+    JSON.stringify({ command, cwd, exitCode, stdout, stderr }),
+    { flag: 'wx', mode: 0o600 },
+  )
   if (!acceptedExitCodes.includes(exitCode)) {
     throw new Error(`${command.map(shellWord).join(' ')} exited ${exitCode}\n${stdout}${stderr}`)
   }

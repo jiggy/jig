@@ -2008,6 +2008,31 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('\u202e')
   })
 
+  test('workspace manifest failures identify the real ancestor and field without echoing rejected values', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError(
+      'INVALID_CANDIDATE',
+      'https://credential@host/private',
+      {
+        code: 'PACKAGE_BUN_MANIFEST_SOURCE',
+        path: '../package.json',
+        pointer: '/devDependencies/@example~1tool',
+      },
+    )
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('Location: "../package.json"')
+    expect(invocation.error).toContain('Value: "/devDependencies/@example~1tool"')
+    expect(invocation.error).toContain(
+      'use a default npm registry version or a declared workspace: dependency',
+    )
+    expect(invocation.error).toContain('Diagnostic code: PACKAGE_BUN_MANIFEST_SOURCE')
+    expect(invocation.error).not.toMatch(/credential|host\/private/)
+  })
+
   test('code metadata failures name their actual file without inventing a value pointer', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {

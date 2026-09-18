@@ -118,7 +118,11 @@ describe('private Bun package input', () => {
   ])('rejects known unsupported missing-lock inputs before resolution: %j', async (manifest) => {
     await withPackage({ 'package.json': JSON.stringify(manifest) }, async (captured) => {
       await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
-        code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+        code:
+          'PACKAGE_BUN_MANIFEST_' +
+          ('overrides' in manifest || 'workspaces' in manifest || 'patchedDependencies' in manifest
+            ? 'FIELD'
+            : 'SOURCE'),
         path: 'package.json',
       })
     })

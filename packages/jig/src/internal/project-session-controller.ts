@@ -33,6 +33,7 @@ import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
 } from './bun-execution-layout.js'
+import { PrivateBunManifestError } from './bun-native-lock-policy.js'
 import {
   preparePrivateBunPackage,
   recoverPrivateBunPreparationOwner,
@@ -768,6 +769,7 @@ export function projectError(
 
 /** Package-private projection of known package-local preparation failures. */
 export function scopePrivatePackagePlanningError(error: unknown, packagePath: string): unknown {
+  if (error instanceof PrivateBunManifestError && error.projectRelative) return error
   if (!(error instanceof CheckError)) {
     return error
   }

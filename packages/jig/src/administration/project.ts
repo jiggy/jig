@@ -246,13 +246,29 @@ function normalizeProjectAdministrationDiagnostic(
 
   const path = fields.path
   try {
-    validateProjectPath(path, 'project diagnostic path')
+    // A workspace may be above the project. Only these closed manifest
+    // diagnostics may name an ancestor; this is display data, not a file route.
+    const manifestCause =
+      /^PACKAGE_BUN_MANIFEST_(SHAPE|FIELD|DEPENDENCIES|NAME|SOURCE|PATCH)$/.test(code)
+    const ancestor =
+      manifestCause && typeof path === 'string' ? /^(?:\.\.\/)+/.exec(path)?.[0] : undefined
+    const local = ancestor === undefined ? path : (path as string).slice(ancestor.length)
+    validateProjectPath(local, 'project diagnostic path')
+    if (
+      ancestor !== undefined &&
+      (ancestor.length / 3 > 32 ||
+        Buffer.byteLength(path as string) > 1024 ||
+        (path as string).split('/').length > 64 ||
+        !(path as string).endsWith('/package.json'))
+    )
+      throw new TypeError('invalid workspace diagnostic path')
+    if (local.split('/').some(isProtectedProjectPath))
+      throw new TypeError('protected diagnostic path')
   } catch {
     throw new TypeError('project diagnostic path is invalid')
   }
-  if (isProtectedProjectPath(path)) {
-    throw new TypeError('project diagnostic path is invalid')
-  }
+  // The validator above has also checked the ancestor-relative display form.
+  if (typeof path !== 'string') throw new TypeError('project diagnostic path is invalid')
 
   let pointer: string | undefined
   if (actual.includes('pointer')) {

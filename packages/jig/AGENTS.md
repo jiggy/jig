@@ -94,6 +94,9 @@ admitted FLOW packages.
   establish source freshness, launch readiness or remote availability.
   Schema type diagnostics retain only closed expected/received JSON types, not
   rejected values. Human Run output leads with host facts before arbitrary results.
+- Manifest-policy diagnostics identify a closed cause and JSON field without
+  rejected dependency values. Ancestor workspace manifest display paths are
+  bounded project-relative locations, not executable or readable file routes.
 - FLOW and Jig specifications and machine schemas are authoritative. Accept
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or

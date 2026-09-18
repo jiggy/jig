@@ -3,6 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-execution-layout.js'
+import {
+  projectError,
+  scopePrivatePackagePlanningError,
+} from '../src/internal/project-session-controller.js'
 import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
 import { capturePrivateBunWorkspace } from '../src/internal/bun-workspace-capture.js'
 import { privatePackageAliasText } from '../src/internal/package-aliases.js'
@@ -11,6 +15,63 @@ import { captureFlowSource } from '../src/project/flow-source.js'
 import { openPrivateProjectRoot } from '../src/project/root.js'
 
 const target = 'apps/demo/flows/work'
+
+test.each([
+  [
+    'package.json',
+    '../../package.json',
+    {
+      workspaces: ['apps/*/flows/*', 'libs/*'],
+      devDependencies: { '@example/tool': 'file:/private/path' },
+    },
+    'SOURCE',
+    '/devDependencies/@example~1tool',
+  ],
+  [
+    'libs/unrelated/package.json',
+    '../../libs/unrelated/package.json',
+    { name: 'unrelated', overrides: { x: 'secret' } },
+    'FIELD',
+    '/overrides',
+  ],
+  [
+    'libs/helper/package.json',
+    '../../libs/helper/package.json',
+    { name: 'helper', dependencies: { leaf: 'https://credential@host/private' } },
+    'SOURCE',
+    '/dependencies/leaf',
+  ],
+] as const)(
+  'workspace refusal locates %s without rebasing it onto the Flow',
+  async (path, expectedPath, manifest, reason, pointer) => {
+    const value = await fixture()
+    try {
+      await value.put(path, manifest)
+      let failure: unknown
+      try {
+        await value.capture()
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({
+        code: `PACKAGE_BUN_MANIFEST_${reason}`,
+        path: expectedPath,
+        pointer,
+      })
+      const scoped = scopePrivatePackagePlanningError(failure, 'flows/work')
+      expect(scoped).toBe(failure)
+      const projected = projectError(scoped, 'plan').toJSON()
+      expect(projected.diagnostic).toEqual({
+        code: `PACKAGE_BUN_MANIFEST_${reason}`,
+        path: expectedPath,
+        pointer,
+      })
+      expect(JSON.stringify(projected)).not.toMatch(/secret|credential|private\/path/)
+    } finally {
+      await value.dispose()
+    }
+  },
+)
 
 async function fixture(versions = false, rootApplication = false) {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-'))
@@ -169,7 +230,9 @@ test.each(['missing', 'link', 'directory-link', 'oversized', 'escape'] as const)
         await symlink('/etc', join(value.root, 'patches'))
       }
       if (mode === 'oversized') await value.put('patches/fix.patch', 'x'.repeat(1024 * 1024 + 1))
-      await expect(value.capture()).rejects.toMatchObject({ code: 'PACKAGE_BUN_WORKSPACE_INVALID' })
+      await expect(value.capture()).rejects.toMatchObject({
+        code: mode === 'escape' ? 'PACKAGE_BUN_MANIFEST_PATCH' : 'PACKAGE_BUN_WORKSPACE_INVALID',
+      })
     } finally {
       await value.dispose()
     }

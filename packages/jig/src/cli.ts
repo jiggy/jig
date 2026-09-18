@@ -1377,6 +1377,17 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'resolved dependencies are unsupported; requests may already have occurred; use integrity-pinned default npm registry dependencies',
       PACKAGE_BUN_SOURCE_UNSUPPORTED:
         'use default npm registry dependencies or declared workspace members; patches require workspace-root declarations and captured .patch files; overrides and other dependency sources are unsupported',
+      PACKAGE_BUN_MANIFEST_SHAPE: 'package.json must contain an object',
+      PACKAGE_BUN_MANIFEST_FIELD:
+        'the indicated manifest field is unsupported here; use default npm registry dependencies or declared workspace members, with patches declared only at the workspace root',
+      PACKAGE_BUN_MANIFEST_DEPENDENCIES:
+        'the indicated dependency section must be an object mapping package names to version requests',
+      PACKAGE_BUN_MANIFEST_NAME:
+        'use valid npm package names; an invalid dependency name is not displayed',
+      PACKAGE_BUN_MANIFEST_SOURCE:
+        'the indicated dependency request is unsupported; use a default npm registry version or a declared workspace: dependency, not file, Git, URL or custom-registry sources',
+      PACKAGE_BUN_MANIFEST_PATCH:
+        'patchedDependencies must map exact registry package versions to safe relative .patch files within the documented limits',
       PACKAGE_BUN_WORKSPACE_MISSING:
         'declare the Flow and each workspace dependency in an ancestor package.json workspaces list; workspace dependencies never fall back to npm',
       PACKAGE_BUN_WORKSPACE_INVALID:

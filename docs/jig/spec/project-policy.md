@@ -570,6 +570,14 @@ native configuration for a target with an ACP grant includes
 Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED`
 and its project-relative `package.json` location. These diagnostics include
 fixed guidance, not credentials, raw provider errors, or installer output.
+Manifest-policy refusals identify the manifest and offending JSON field with
+a closed cause: unsupported field or dependency source, invalid object shape,
+dependency map, package name, or patch declaration. Rejected values are not
+displayed; invalid dependency names identify their containing map instead.
+Workspace manifest locations are relative to the Jig project and may begin
+with up to 32 `../` segments for an ancestor workspace, within the existing
+path bounds. Only these manifest diagnostics permit ancestor locations;
+they grant no filesystem access and cannot name protected `.jig` state.
 A successful review
 shows the complete added, removed, and changed package, Binding, and target
 identities. Current and proposed package entries include their full Package/1

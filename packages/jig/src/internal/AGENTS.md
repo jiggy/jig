@@ -201,6 +201,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
   which require it.
+  Manifest policy errors retain closed causes and JSON pointers, never rejected
+  source values or invalid names. Workspace manifest locations are relative to
+  the project (including bounded ancestor paths), not the selected Flow; do not
+  rebase them twice. These display locations grant no file access.
   Unreadable retained state has a distinct closed diagnostic from unsafe
   filesystem ownership. Preserve it on failed acquisition; never infer permission
   to reset admission or bypass cleanup from a decoding failure.
