@@ -37,6 +37,11 @@ import { createProject, type ProjectInitFileSystem } from '../src/project-init.j
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
 
+function withoutPresentationControls(text: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Permit only SGR styling and the progress renderer's exact line-clear prefix, not arbitrary ANSI.
+  return text.replace(/\u001b\[[0-9;]*m|\r\u001b\[2K/g, '')
+}
+
 test('real confirmation accepts a line without cursor control on a plain terminal', async () => {
   const child = Bun.spawn(
     [
@@ -638,7 +643,7 @@ describe('finite Jig project commands', () => {
     )
     expect(invocation.error).toContain('Application outcome: "blocked"')
     expect(invocation.error).toContain('Stopping remaining work and cleaning up')
-    expect(invocation.error).not.toContain('\u001b')
+    expect(withoutPresentationControls(invocation.error)).not.toContain('\u001b')
     expect(invocation.error).not.toContain('Success')
   })
 
@@ -655,7 +660,7 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work'], human.options)).toBe(0)
     expect(human.output).toContain('Run output: result')
-    expect(human.output).toContain('One answer.\n')
+    expect(withoutPresentationControls(human.output)).toContain('One answer.\n')
     expect(human.output).not.toContain('"diagnostics"')
     expect(human.error).toContain('result above')
     const machine = commandInvocation(fakeHost(fakeSession(events, { terminal }), events), {
@@ -818,7 +823,7 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('reported\\u001b[2J\\u000aReview required\\u000d\\u202e')
-    expect(invocation.error).not.toContain('\u001b')
+    expect(withoutPresentationControls(invocation.error)).not.toContain('\u001b')
     expect(invocation.error).not.toContain('\u202e')
   })
 
