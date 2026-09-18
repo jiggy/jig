@@ -2008,6 +2008,26 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('\u202e')
   })
 
+  test('code metadata failures name their actual file without inventing a value pointer', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
+      code: 'METADATA_FIELD',
+      path: 'flows/malformed/flow.meta.json',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('Location: "flows/malformed/flow.meta.json"')
+    expect(invocation.error).toContain('a metadata field has an unsupported shape')
+    expect(invocation.error).toContain('Diagnostic code: METADATA_FIELD')
+    expect(invocation.error).toContain('Category: INVALID_CANDIDATE')
+    expect(invocation.error).not.toContain('Value:')
+    expect(invocation.error).not.toContain('FLOW.md')
+    expect(invocation.error).not.toContain('private parser detail')
+  })
+
   test('channel declaration failures identify the public contract and source location', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
