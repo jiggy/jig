@@ -218,6 +218,8 @@ admitted FLOW packages.
   `finite-acp-lifecycle.test.ts` also runs the unchanged incident-brief application
   with packed dependencies and a deterministic native peer. It checks two
   branches, predecessor settlement, one successor and residue, not model quality.
+  Failed handoff fixtures retain bounded phase/dispatch timing with their results;
+  timing is diagnostic evidence, not permission to extend execution deadlines.
 - Test diagnostic usefulness as well as redaction, and human-facing output
   alongside its machine-readable contract.
 

@@ -12,6 +12,11 @@ import {
 
 export async function qualifyIncidentBrief(): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'jig-incident-contained-'))
+  const started = performance.now()
+  const trace: { elapsedMs: number; stage: string }[] = []
+  const mark = (stage: string) => {
+    if (trace.length < 64) trace.push({ elapsedMs: Math.round(performance.now() - started), stage })
+  }
   const project = join(root, 'app')
   const release = join(root, 'release')
   async function command(args: string[], cwd: string) {
@@ -75,6 +80,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
     async fetch(request) {
       expect(request.headers.get('authorization')).toBe('Bearer synthetic-handoff-only')
       events.push(await request.json())
+      mark(`native-prompt-${events.length}`)
       return new Response('recorded')
     },
   })
@@ -105,22 +111,28 @@ export async function qualifyIncidentBrief(): Promise<void> {
       },
       writeError(text: string) {
         stderr += text
+        if (text.includes('preparing one drafting handoff')) mark('handoff-requested')
+        if (text.includes('Predecessor settled')) mark('successor-requested')
       },
       host: {
         acquire: (directory, overrides) =>
           openPrivateProjectSession({ directory, host: { ...host, ...overrides } }),
       },
     }
+    mark('review-started')
     expect(
       await main(['review', '--yes', '--allow-authority-changes'], options),
       stdout + stderr,
     ).toBe(0)
+    mark('review-completed')
     stdout = ''
     stderr = ''
+    mark('run-started')
     const code = await main(
       ['run', 'binding:brief', '--input', '@input.json', '--timeout', '90s', '--json'],
       options,
     )
+    mark('run-settled')
     await writeFile(join(root, 'result.json'), stdout)
     await writeFile(join(root, 'stderr.txt'), stderr)
     expect(code, stdout + stderr).toBe(0)
@@ -157,6 +169,9 @@ export async function qualifyIncidentBrief(): Promise<void> {
   } finally {
     await server.stop(true)
     if (clean) await rm(root, { recursive: true, force: true })
-    else console.error(`Incident brief host failure; retained ${root}`)
+    else {
+      await writeFile(join(root, 'timing.json'), JSON.stringify(trace, null, 2))
+      console.error(`Incident brief host failure; retained ${root}`)
+    }
   }
 }
