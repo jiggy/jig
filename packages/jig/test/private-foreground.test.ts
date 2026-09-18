@@ -888,6 +888,7 @@ proofDescribe('private rootless project session', () => {
 
   test('executes exact child slots inside the parent deadline and leaves no child owner', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-child-slots-'))
+    let failed = false
     try {
       await writeProject(root)
       const planned = (await invoke(['plan', root])) as ApplicablePlan
@@ -1091,10 +1092,15 @@ proofDescribe('private rootless project session', () => {
         input: { scenario: 'fence-uncertain', kind: 'bug', ticket: 'withhold fence' },
       })
       await waitForChildSandbox(root, uncertainReceipt.runId)
-      await withheldBackend.waitForRecoverAttempts(2)
-      expect(await withheldSession.rootAdministration.runStatus(uncertainReceipt)).toMatchObject({
-        state: 'pending',
-      })
+      await withheldBackend.waitForRecoverAttempts(1)
+      await expect(
+        waitForTerminalStatus(withheldSession.rootAdministration, uncertainReceipt),
+      ).rejects.toMatchObject({ code: 'PROJECT_BUSY' })
+      const attempts = withheldBackend.recoverAttempts()
+      await expect(
+        withheldSession.rootAdministration.runStatus(uncertainReceipt),
+      ).rejects.toMatchObject({ code: 'PROJECT_BUSY' })
+      expect(withheldBackend.recoverAttempts()).toBe(attempts)
       expect(inspectRunOwnership(root, uncertainReceipt.runId)).toEqual({
         childOwners: 1,
         terminals: 0,
@@ -1177,8 +1183,12 @@ proofDescribe('private rootless project session', () => {
       expect(inspectPlanningState(root).rootRuns).toBe(13)
       await waitForRootlessCgroups(initialRootlessCgroups)
       await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+    } catch (error) {
+      failed = true
+      console.error(`Failed child-slot fixture retained at ${root}`)
+      throw error
     } finally {
-      await rm(root, { recursive: true, force: true })
+      if (!failed) await rm(root, { recursive: true, force: true })
     }
   }, 300_000)
 
@@ -2871,6 +2881,10 @@ class WithheldChildFenceBackend extends PrivateLinuxCgroupBackend {
 
   childAdmits(): number {
     return withheldState(this).childAdmits
+  }
+
+  recoverAttempts(): number {
+    return withheldState(this).recoverAttempts
   }
 
   async waitForRecoverAttempts(count: number): Promise<void> {
