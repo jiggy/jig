@@ -84,21 +84,35 @@ for application in tested-patch request-triage support-case incident-brief; do
     fi
   done
   bun -e '
+    import { readdir } from "node:fs/promises";
+    import { dirname, join } from "node:path";
     const path = Bun.argv[1];
-    const manifest = await Bun.file(path).json();
     const candidates = {
       "@jigging/flow": Bun.argv[2],
       "@jigging/agent-method": Bun.argv[3],
       "@jigging/agent-acp": Bun.argv[4],
     };
-    for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
-      for (const [name, version] of Object.entries(manifest[section] ?? {})) {
-        if (candidates[name]) manifest[section][name] = `file:${candidates[name]}`;
-        else if (typeof version === "string" && version.startsWith("workspace:"))
-          throw new Error(`No frozen candidate for declared workspace dependency ${name}`);
-      }
+    const manifests = [path];
+    const flows = join(dirname(path), "flows");
+    for (const entry of await readdir(flows, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const child = join(flows, entry.name, "package.json");
+      if (await Bun.file(child).exists()) manifests.push(child);
     }
-    await Bun.write(path, JSON.stringify(manifest));
+    for (const current of manifests) {
+      const manifest = await Bun.file(current).json();
+      // Preserve the application plus Flow-member relationship from the source
+      // repository workspace. Resolve each owning declaration, not ambient deps.
+      if (current === path) manifest.workspaces = ["flows/*"];
+      for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
+        for (const [name, version] of Object.entries(manifest[section] ?? {})) {
+          if (candidates[name]) manifest[section][name] = `file:${candidates[name]}`;
+          else if (typeof version === "string" && version.startsWith("workspace:"))
+            throw new Error(`No frozen candidate for declared workspace dependency ${name}`);
+        }
+      }
+      await Bun.write(current, JSON.stringify(manifest));
+    }
   ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE"
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"

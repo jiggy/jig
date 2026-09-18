@@ -25,7 +25,8 @@ operational baselines, and public-site assembly.
   `JIG_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes afterward.
   The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
   it maps applications' declared SDK/Agent dependencies to the exact frozen
-  archives in disposable copies, without lifecycle scripts or edits to source
+  archives in disposable copies, including each nested Flow package manifest
+  in the reconstructed application workspace, without lifecycle scripts or edits to source
   manifests. Generated workspace `node_modules` links are excluded from those
   copies. This permits testing an SDK before its version reaches npm;
   it does not claim live Agent quality or independent
