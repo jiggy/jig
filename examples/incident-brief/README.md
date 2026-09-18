@@ -14,8 +14,9 @@ jig review
 jig run binding:brief --input @input.json --timeout 3m
 ```
 
-This source example has deterministic method coverage; its composed native
-handoff still needs successful installed-client qualification.
+The composed handoff has been exercised through installed Jig with Codex,
+including active interruption and clean predecessor settlement. This checks
+execution, not the correctness of the generated brief or other clients.
 
 The synthetic fixture corrects 600 affected requests to 48 and keeps the cause
 uncertain. Successful output contains a proposed brief, independent questions,

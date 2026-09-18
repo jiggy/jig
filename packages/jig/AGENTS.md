@@ -43,8 +43,9 @@ admitted FLOW packages.
   `JIG_RESTORE_ARCHIVES`, `JIG_CODEX_STARTUP_PATH` and `JIG_RESTORE_MODEL` select
   that explicit test.
   It is separate from the deterministic protocol and protected-store tests.
-  Its bounded command helper retains failed output, escalates ignored interruption
-  and waits for process exit. Controller fault tests isolate module mocks in a
+  Its bounded command helper records output incrementally in exclusive evidence
+  files, escalates ignored interruption and waits for process exit. Retained
+  bytes are not proof of cleanup. Controller fault tests isolate module mocks in a
   subprocess; they prove ordering and scope construction, not kernel containment.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;

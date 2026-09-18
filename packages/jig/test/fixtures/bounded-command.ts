@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises'
+import { open } from 'node:fs/promises'
 
 interface CommandChild {
   readonly exited: Promise<number>
@@ -52,7 +52,11 @@ export async function settleTestCommand(
     const chunks: Uint8Array[] = []
     let size = 0
     let overflow = false
+    let file: Awaited<ReturnType<typeof open>> | undefined
     try {
+      // Keep already-observed evidence even if the capturing process dies.
+      // Refuse collisions rather than replacing an earlier qualification.
+      file = await open(`${options.evidence}.${name}`, 'wx')
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
@@ -61,6 +65,7 @@ export async function settleTestCommand(
           const kept = value.slice(0, remaining)
           chunks.push(kept)
           size += kept.byteLength
+          await file.writeFile(kept)
         }
         if (value.byteLength > remaining && !overflow) {
           overflow = true
@@ -71,6 +76,11 @@ export async function settleTestCommand(
       stop(error)
     } finally {
       reader.releaseLock()
+      try {
+        await file?.close()
+      } catch (error) {
+        stop(error)
+      }
     }
     return Buffer.concat(chunks).toString()
   }
@@ -98,11 +108,6 @@ export async function settleTestCommand(
   } finally {
     clearTimeout(drain)
   }
-  const saved = await Promise.allSettled([
-    writeFile(`${options.evidence}.stdout`, result.stdout),
-    writeFile(`${options.evidence}.stderr`, result.stderr),
-  ])
-  for (const item of saved) if (item.status === 'rejected') failures.push(item.reason)
   if (failures.length)
     throw new AggregateError(failures, `Installed command failed; evidence: ${options.evidence}`)
   return result

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { settleTestCommand } from './fixtures/bounded-command.js'
@@ -7,6 +7,36 @@ import { settleTestCommand } from './fixtures/bounded-command.js'
 const evidence = async () => join(await mkdtemp(join(tmpdir(), 'jig-command-test-')), 'command')
 const spawn = (script: string) =>
   Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' })
+
+test('retains observed output before the command exits', async () => {
+  const path = await evidence()
+  const child = spawn('console.log("early"); setInterval(()=>{},100)')
+  const pending = settleTestCommand(child, { evidence: path, timeoutMs: 2000 })
+  try {
+    let observed = ''
+    for (let attempt = 0; attempt < 100 && observed !== 'early\n'; attempt++) {
+      await Bun.sleep(10)
+      observed = await readFile(`${path}.stdout`, 'utf8').catch(() => '')
+    }
+    expect(observed).toBe('early\n')
+    expect(child.exitCode).toBeNull()
+  } finally {
+    child.kill('SIGINT')
+    await pending
+  }
+})
+
+test('an evidence collision stops the command without overwriting the old record', async () => {
+  const path = await evidence()
+  await writeFile(`${path}.stdout`, 'previous evidence')
+  const child = spawn('setInterval(()=>{},100)')
+  await expect(settleTestCommand(child, { evidence: path, graceMs: 30 })).rejects.toBeInstanceOf(
+    AggregateError,
+  )
+  expect(await readFile(`${path}.stdout`, 'utf8')).toBe('previous evidence')
+  expect(await child.exited).toBe(130)
+  expect(child.signalCode).toBe('SIGINT')
+})
 
 test('installed command keeps exact bounded output and waits for exit', async () => {
   const path = await evidence()

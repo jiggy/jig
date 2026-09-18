@@ -150,9 +150,10 @@ the essential replies. A failed progress display need not stop the conversation.
 ## Hand work to a fresh conversation
 
 The [incident brief example](https://github.com/jiggy/jig/tree/main/examples/incident-brief)
-uses these controls for an application-owned summary handoff. Its method has
-deterministic coverage; the composed native handoff still needs successful
-installed-client qualification. One worker drafts,
+uses these controls for an application-owned summary handoff. The composed path
+has been exercised through installed Jig with Codex, including active interruption
+and clean predecessor settlement; this does not establish model quality or
+support in other clients. One worker drafts,
 while another publishes preliminary analysis through an ordinary FLOW channel
 and continues preparing independent review questions. Receiving that update
 triggers the drafting worker's handoff: interrupt if still active, await the

@@ -127,7 +127,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
     const result = JSON.parse(stdout)
     expect(result.status).toBe('succeeded')
     expect(result.outcome).toBe('done')
-    expect(events).toHaveLength(4)
+    expect(events).toHaveLength(5)
     expect(result.output.results.map((entry: any) => entry.result.outcome)).toEqual([
       'done',
       'done',
@@ -138,7 +138,9 @@ export async function qualifyIncidentBrief(): Promise<void> {
     })
     expect(result.output.results[0].result.output.requestedTurns).toBe(3)
     expect(result.output.results[0].result.output.handoff.remainingTurns).toBe(1)
-    expect(result.output.results[1].result.output.requestedTurns).toBe(1)
+    expect(result.output.results[1].result.output.requestedTurns).toBe(2)
+    expect(result.output.results[0].result.output.revision).toBe(1)
+    expect(result.output.results[1].result.output.publication.status).toBe('submitted')
     expect(
       (await readdir(process.env.AGENT_DELEGATED_CGROUP!)).filter((name) =>
         name.startsWith('jig-run-'),
