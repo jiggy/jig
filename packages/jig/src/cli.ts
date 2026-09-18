@@ -792,15 +792,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       runtime.progress.note(
         'Retained checkpoint information is in result.json; it is not proof of successful execution.',
       )
-    if (cleanupFailed) {
-      runtime.writeError(
-        renderDiagnostic(
-          'JIG_CLEANUP_FAILED',
-          'The execution result is preserved, but cleanup could not be confirmed. Wait until existing work is settled before starting new work; see https://jig.md/guide/results.',
-        ),
-      )
-      return 2
-    }
+    if (cleanupFailed) return 2
     if (delivery !== undefined && delivery.status !== 'written') {
       runtime.writeError(
         renderDiagnostic(
@@ -1092,13 +1084,14 @@ async function withProjectSession<T>(
     closeFailed = true
     closeFailure = error
     onSettledCloseFailure?.()
-    if (onSettledCloseFailure === undefined)
-      runtime.writeError(
-        renderDiagnostic(
-          'JIG_CLEANUP_FAILED',
-          'Cleanup could not be confirmed. Do not start new work until the existing work is settled. See https://jig.md/guide/results.',
-        ),
-      )
+    // Cleanup uncertainty must survive a missing terminal or broken stdout.
+    // The callback enriches a result when available; it does not own this warning.
+    runtime.writeError(
+      renderDiagnostic(
+        'JIG_CLEANUP_FAILED',
+        'Cleanup could not be confirmed. Do not start new work until the existing work is settled. See https://jig.md/guide/results.',
+      ),
+    )
   } finally {
     runtime.signal?.removeEventListener('abort', onAbort)
   }

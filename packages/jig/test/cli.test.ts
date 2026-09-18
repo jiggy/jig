@@ -1342,47 +1342,59 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('--receive')
   })
 
-  test('a rejected live record closes owned work and never fabricates a terminal record', async () => {
-    const events: string[] = []
-    const accepted: unknown[] = []
-    const session = fakeSession(events)
-    const invocation = commandInvocation(
-      {
-        async acquire(_path, options) {
-          const output = options?.channelOutput
-          if (output === undefined) throw new Error('missing channel output')
-          return {
-            ...session,
-            rootAdministration: {
-              ...session.rootAdministration,
-              async runStatus(request) {
-                await output.record({ type: 'begin', channel: 'updates', startSequence: 1 })
-                await output.record({
-                  type: 'data',
-                  channel: 'updates',
-                  sequence: 1,
-                  value: 'work',
-                })
-                return session.rootAdministration.runStatus(request)
+  test.each([false, true])(
+    'a rejected live record closes work and reports cleanup failure: %s',
+    async (closeFails) => {
+      const events: string[] = []
+      const accepted: unknown[] = []
+      const session = fakeSession(events)
+      const invocation = commandInvocation(
+        {
+          async acquire(_path, options) {
+            const output = options?.channelOutput
+            if (output === undefined) throw new Error('missing channel output')
+            return {
+              ...session,
+              async close() {
+                await session.close()
+                if (closeFails) throw new Error('private cleanup failure')
               },
-            },
-          }
+              rootAdministration: {
+                ...session.rootAdministration,
+                async runStatus(request) {
+                  await output.record({ type: 'begin', channel: 'updates', startSequence: 1 })
+                  await output.record({
+                    type: 'data',
+                    channel: 'updates',
+                    sequence: 1,
+                    value: 'work',
+                  })
+                  return session.rootAdministration.runStatus(request)
+                },
+              },
+            }
+          },
         },
-      },
-      {
-        async writeRecord(text) {
-          const record = JSON.parse(text)
-          if (record.type === 'data') throw new Error('private writer failure')
-          accepted.push(record)
+        {
+          async writeRecord(text) {
+            const record = JSON.parse(text)
+            if (record.type === 'data') throw new Error('private writer failure')
+            accepted.push(record)
+          },
         },
-      },
-    )
-    expect(await main(['run', 'binding:work', '--receive', 'updates'], invocation.options)).toBe(2)
-    expect(accepted).toEqual([{ type: 'begin', channel: 'updates', startSequence: 1 }])
-    expect(events).toEqual(['start', 'close'])
-    expect(invocation.output).toBe('')
-    expect(invocation.error).not.toContain('private writer failure')
-  })
+      )
+      expect(await main(['run', 'binding:work', '--receive', 'updates'], invocation.options)).toBe(
+        2,
+      )
+      expect(accepted).toEqual([{ type: 'begin', channel: 'updates', startSequence: 1 }])
+      expect(events).toEqual(['start', 'close'])
+      expect(invocation.output).toBe('')
+      expect(invocation.error).not.toContain('private writer failure')
+      expect(invocation.error).not.toContain('private cleanup failure')
+      expect(invocation.error.includes('JIG_CLEANUP_FAILED')).toBe(closeFails)
+      if (closeFails) expect(invocation.error).toContain('Cleanup could not be confirmed')
+    },
+  )
 
   test('run accepts timeout units and input in either option order', async () => {
     const cases = [
@@ -1587,6 +1599,7 @@ describe('finite Jig project commands', () => {
       cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' },
     })
     expect(invocation.error).not.toContain('private close failure')
+    expect(invocation.error.match(/Diagnostic code: JIG_CLEANUP_FAILED/g)).toHaveLength(1)
   })
 
   test('file report limits do not discard an already settled large terminal', async () => {
@@ -1762,6 +1775,37 @@ describe('finite Jig project commands', () => {
       'Command interrupted\n\n  The command was interrupted. Inspect any result and completed steps before starting new work; cancellation does not undo completed effects.\n\n  Diagnostic code: JIG_COMMAND_INTERRUPTED\n',
     )
   })
+
+  test.each([false, true])(
+    'interruption without a terminal preserves cleanup uncertainty (human: %s)',
+    async (terminalOutput) => {
+      const events: string[] = []
+      const controller = new AbortController()
+      const session = fakeSession(events, { pendingObservations: Infinity })
+      const invocation = commandInvocation(
+        fakeHost(
+          {
+            ...session,
+            async close() {
+              await session.close()
+              throw new Error('private cleanup failure')
+            },
+          },
+          events,
+          async () => controller.abort(),
+        ),
+        { signal: controller.signal, terminalOutput, outputColumns: 40 },
+      )
+      expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(2)
+      expect(events.filter((event) => event === 'close')).toHaveLength(1)
+      expect(invocation.output).toBe('')
+      expect(invocation.error).toContain('JIG_COMMAND_INTERRUPTED')
+      expect(invocation.error.match(/Diagnostic code: JIG_CLEANUP_FAILED/g)).toHaveLength(1)
+      expect(invocation.error).toContain('Cleanup could not be confirmed')
+      expect(invocation.error).not.toContain('Cleanup complete')
+      expect(invocation.error).not.toContain('private cleanup failure')
+    },
+  )
 
   test.each(['failed', 'succeeded', 'cleanup-failed', 'foreign'] as const)(
     'interrupted reporting preserves authoritative settlement: %s',
