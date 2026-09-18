@@ -55,7 +55,7 @@ for (const client of ['claude', 'pi'] as const) {
       const f = await fixture(client)
       const marker = join(f.root, 'executed')
       await writeFile(f.executable, `#!/bin/sh\ntouch '${marker}'\n`)
-      await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
+      await expect(f.open()).rejects.toMatchObject({ stage: 'wrapper' })
       await expect(readFile(marker)).rejects.toThrow()
     })
 

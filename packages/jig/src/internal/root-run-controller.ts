@@ -1149,7 +1149,9 @@ function operationDispatcher(
               ...(input.channelOutput === undefined
                 ? {}
                 : {
-                    onDiagnostic: (bytes: Uint8Array) => input.channelOutput!.diagnostic(bytes),
+                    onDiagnostic: (bytes: Uint8Array, operations?: readonly string[]) =>
+                      input.channelOutput!.diagnostic(bytes, operations),
+                    diagnosticPath: [call.operationId],
                   }),
               call,
               parentDeadlineUnixMs,

@@ -23,6 +23,7 @@ import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
 import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
+import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
@@ -529,7 +530,10 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         )
       : undefined
   let streamedDiagnostics = ''
-  const diagnostics = new TextDecoder('utf-8')
+  const submissionId = runtime.createSubmissionId()
+  let settledRoot: Extract<RootRunStatus, { state: 'terminal' }> | undefined
+  const diagnostics = new PrivateRunDiagnostics()
+  let diagnosticSource = '[]'
   const writeLive = (text: string, diagnostic = false): void => {
     try {
       if (diagnostic) runtime.writeDiagnostic(text)
@@ -541,6 +545,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
+    terminal(status) {
+      if (status.submissionId === submissionId) settledRoot = status
+    },
     async record(value) {
       try {
         if (presentation) await presentation.channel(value)
@@ -550,8 +557,16 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         throw error
       }
     },
-    diagnostic(bytes) {
-      const decoded = diagnostics.decode(bytes, { stream: true })
+    diagnostic(bytes, operations = []) {
+      const decoded = diagnostics.record(bytes, operations)
+      const source = JSON.stringify(operations)
+      if (source !== diagnosticSource) {
+        diagnosticSource = source
+        writeLive(
+          `\nDiagnostics (${operations.length === 0 ? 'root' : asciiJsonString(operations.join(' / '))}):\n`,
+          true,
+        )
+      }
       if (streamedDiagnostics.length <= 64 * 1024)
         streamedDiagnostics = (streamedDiagnostics + decoded).slice(0, 64 * 1024 + 1)
       // Diagnostics are untrusted text, not terminal-control instructions.
@@ -661,39 +676,51 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     runtime.progress.complete()
     let cleanupFailed = false
-    const status = await withProjectSession(
-      runtime.currentDirectory,
-      runtime,
-      async (session) => {
-        runtime.progress.stage('Submitting the reviewed target')
-        const receipt = await session.rootAdministration.startRun({
-          submissionId: runtime.createSubmissionId(),
-          target: parsed.target,
-          input,
-        })
-        runtime.progress.complete()
-        runtime.progress.stage('Waiting for the Flow result (Ctrl-C to cancel)')
-        try {
-          return await waitForTerminal(
-            session.rootAdministration,
-            receipt.runId,
-            runtime.host.pause ?? defaultPause,
-            runtime.signal,
-          )
-        } finally {
-          await presentation?.finish()
-        }
-      },
-      {
-        runTimeoutMs: parsed.timeoutMs,
-        channelOutput,
-        ...(parsed.attachments.length === 0 && parsed.output === undefined ? {} : { files }),
-      },
-      () => {
-        cleanupFailed = true
-      },
-    )
+    let status: Extract<RootRunStatus, { state: 'terminal' }>
+    try {
+      status = await withProjectSession(
+        runtime.currentDirectory,
+        runtime,
+        async (session) => {
+          runtime.progress.stage('Submitting the reviewed target')
+          const receipt = await session.rootAdministration.startRun({
+            submissionId,
+            target: parsed.target,
+            input,
+          })
+          runtime.progress.complete()
+          runtime.progress.stage('Waiting for the Flow result (Ctrl-C to cancel)')
+          try {
+            return await waitForTerminal(
+              session.rootAdministration,
+              receipt.runId,
+              runtime.host.pause ?? defaultPause,
+              runtime.signal,
+            )
+          } finally {
+            await presentation?.finish()
+          }
+        },
+        {
+          runTimeoutMs: parsed.timeoutMs,
+          channelOutput,
+          ...(parsed.attachments.length === 0 && parsed.output === undefined ? {} : { files }),
+        },
+        () => {
+          cleanupFailed = true
+        },
+      )
+    } catch (error) {
+      if (!runtime.signal?.aborted || settledRoot === undefined || outputStop.signal.aborted)
+        throw error
+      status = settledRoot
+    }
     let record = publicTerminal(status.terminal)
+    const runDiagnostics = diagnostics.snapshot()
+    if (runDiagnostics.entries.length !== 0 || runDiagnostics.truncated)
+      record = { ...(record as Record<string, JsonValue>), runDiagnostics }
+    if (runtime.signal?.aborted)
+      record = { ...(record as Record<string, JsonValue>), command: { status: 'interrupted' } }
     if (cleanupFailed)
       record = {
         ...(record as Record<string, JsonValue>),
@@ -745,7 +772,13 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     const terminal = status.terminal
     // State the failure before expanding its validation or retained-evidence details.
-    if (terminal.status !== 'succeeded') runtime.writeError(renderRunFailure(terminal))
+    if (terminal.status !== 'succeeded')
+      runtime.writeError(
+        renderRunFailure(
+          terminal,
+          runDiagnostics.entries.some((entry) => entry.stderrBytes > 0),
+        ),
+      )
     await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded')
       runtime.progress.note(
@@ -779,6 +812,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       )
       return 2
     }
+    if (runtime.signal?.aborted) return 2
     return status.terminal.status === 'succeeded' ? 0 : status.terminal.status === 'failed' ? 1 : 2
   } finally {
     try {
@@ -1057,6 +1091,7 @@ async function withProjectSession<T>(
   } catch (error) {
     closeFailed = true
     closeFailure = error
+    onSettledCloseFailure?.()
     if (onSettledCloseFailure === undefined)
       runtime.writeError(
         renderDiagnostic(
@@ -1074,7 +1109,6 @@ async function withProjectSession<T>(
   if (!completed) throw failure
   if (closeFailed) {
     if (onSettledCloseFailure === undefined) throw closeFailure
-    onSettledCloseFailure()
   }
   return result as T
 }
@@ -1503,6 +1537,7 @@ function rootError(code: RootAdministrationError['code']): {
 
 function renderRunFailure(
   terminal: Exclude<RootRunTerminal, { readonly status: 'succeeded' }>,
+  hasRunDiagnostics = false,
 ): string {
   if (terminal.code === 'PROTOCOL_ERROR')
     return renderDiagnostic(
@@ -1551,7 +1586,7 @@ function renderRunFailure(
   )
     return renderDiagnostic(
       terminal.code,
-      'Execution failed, but the host did not retain a more specific cause.\nNo Flow diagnostic text was captured. This result does not establish whether the Flow started.\n\nInspect any effects before starting new work. See https://jig.md/guide/results.',
+      `Execution failed, but the host did not retain a more specific cause.\n${hasRunDiagnostics ? 'See attributed runDiagnostics in the result; diagnostic text is not a confirmed cause.' : 'No Flow diagnostic text was captured. This result does not establish whether the Flow started.'}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
       'Run failed',
     )
   const reasons: Record<string, string> = {

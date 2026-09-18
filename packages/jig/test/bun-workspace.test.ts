@@ -6,13 +6,13 @@ import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-executio
 import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
 import { capturePrivateBunWorkspace } from '../src/internal/bun-workspace-capture.js'
 import { privatePackageAliasText } from '../src/internal/package-aliases.js'
-import { capturePackageDirectory } from '../src/package/capture.js'
+import { capturePackageDirectory, captureOpenedPackageDirectory } from '../src/package/capture.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import { openPrivateProjectRoot } from '../src/project/root.js'
 
 const target = 'apps/demo/flows/work'
 
-async function fixture(versions = false) {
+async function fixture(versions = false, rootApplication = false) {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-'))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(root, path)), { recursive: true })
@@ -22,6 +22,7 @@ async function fixture(versions = false) {
     private: true,
     workspaces: ['apps/*/flows/*', 'libs/*'],
     ...(versions ? { dependencies: { semver: '6.3.1' } } : {}),
+    ...(rootApplication ? { name: 'root-app', dependencies: { helper: 'workspace:*' } } : {}),
   })
   await put(`${target}/package.json`, {
     name: 'work-flow',
@@ -60,12 +61,18 @@ async function fixture(versions = false) {
   await put('libs/leaf/index.js', 'export const message = "workspace bytes"\n')
   await put('libs/unrelated/package.json', { name: 'unrelated', version: '0.1.0' })
   await put('libs/unrelated/secret', 'unrelated source must not be captured')
-  const project = await openPrivateProjectRoot(join(root, 'apps/demo'))
-  const source = await capturePackageDirectory(join(root, target))
+  const project = await openPrivateProjectRoot(rootApplication ? root : join(root, 'apps/demo'))
+  const source = rootApplication
+    ? await captureOpenedPackageDirectory('root metadata', project.handle, {
+        includes: (path) => ['package.json', 'bun.lock'].includes(path),
+        maximumFiles: 2,
+        maximumBytes: 3 * 1024 * 1024,
+      })
+    : await capturePackageDirectory(join(root, target))
   const capture = () =>
     capturePrivateBunWorkspace({
       projectRoot: project,
-      packagePath: 'flows/work',
+      packagePath: rootApplication ? '' : 'flows/work',
       captured: source,
       signal: new AbortController().signal,
     })
@@ -292,11 +299,14 @@ test.each([
   'patch-stale',
   'patch-missing',
   'patch-invalid',
+  'root',
+  'root-stale',
 ] as const)(
   'Bun prepares a self-contained workspace tree: %s',
   async (mode) => {
     const patchMode = mode === 'patched' || mode.startsWith('patch-')
-    const value = await fixture(mode === 'versions' || patchMode)
+    const rootApplication = mode === 'root' || mode === 'root-stale'
+    const value = await fixture(mode === 'versions' || patchMode, rootApplication)
     let captured: Awaited<ReturnType<typeof value.capture>>
     try {
       if (patchMode) {
@@ -380,6 +390,10 @@ test.each([
           type: 'module',
           exports: './index.js',
         })
+      if (mode === 'root-stale') {
+        const lock = await readFile(join(value.root, 'bun.lock'), 'utf8')
+        await value.put('bun.lock', lock.replace('root-app', 'old-root-app'))
+      }
       if (mode === 'patch-stale') {
         const manifest = JSON.parse(await readFile(join(value.root, 'package.json'), 'utf8'))
         manifest.patchedDependencies['semver@6.3.1'] = 'patches/other.patch'
@@ -449,11 +463,21 @@ test.each([
         expect(result.code).toBe('PACKAGE_BUN_PREPARATION_FAILED')
         return
       }
-      if (mode === 'stale' || mode === 'patch-stale' || mode === 'patch-missing') {
+      if (
+        mode === 'stale' ||
+        mode === 'root-stale' ||
+        mode === 'patch-stale' ||
+        mode === 'patch-missing'
+      ) {
         expect(exit).toBe(1)
         expect(result.code).toBe(
           mode === 'patch-missing' ? 'PACKAGE_BUN_SOURCE_UNSUPPORTED' : 'PACKAGE_BUN_LOCK_STALE',
         )
+        if (mode === 'root-stale') {
+          expect(result.message).toContain('package.json: name')
+          expect(result.location).toEqual({ path: 'package.json', pointer: '/name' })
+        }
+        if (mode === 'stale') expect(result.message).toContain('libs/leaf/package.json: version')
         return
       }
       expect(exit, stdout).toBe(0)
@@ -474,7 +498,7 @@ test.each([
         await writeFile(join(prepared, file.path), Buffer.from(file.content, 'base64'))
       }
       const layout = normalizePrivateBunExecutionLayout(result.layout)
-      expect(layout.flowRoot).toBe(target)
+      expect(layout.flowRoot).toBe(rootApplication ? '' : target)
       if (mode === 'large')
         expect(
           Buffer.from(
@@ -494,7 +518,9 @@ test.each([
           '--no-env-file',
           '--no-install',
           '--config=/dev/null',
-          `${layout.flowRoot}/FLOW.ts`,
+          ...(rootApplication
+            ? ['-e', 'import { message } from "helper"; console.log(message)']
+            : [`${layout.flowRoot}/FLOW.ts`]),
         ],
         { cwd: prepared, env: {}, stdout: 'pipe', stderr: 'pipe' },
       )

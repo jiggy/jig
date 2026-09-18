@@ -1,5 +1,12 @@
 type Client = 'codex' | 'claude' | 'pi'
-export type AcpSetupStage = 'executable' | 'installation' | 'sandbox' | 'login' | 'api' | 'model'
+export type AcpSetupStage =
+  | 'executable'
+  | 'installation'
+  | 'wrapper'
+  | 'sandbox'
+  | 'login'
+  | 'api'
+  | 'model'
 
 /** Only closed stages cross the public boundary; underlying errors may contain secrets. */
 export class PrivateAcpSetupError extends Error {
@@ -71,6 +78,7 @@ export const ACP_SETUP_HINTS: Readonly<Record<string, string>> = Object.freeze(
       const hints = {
         executable: `Select an executable ${profile.name} installation using ${profile.path} or operator PATH. An explicit ${profile.path} must be an absolute executable file and never falls back to PATH.`,
         installation: profile.installation,
+        wrapper: `The selected ${profile.name} launcher is an unsupported wrapper. Select the underlying supported native executable with ${profile.path}; Jig does not execute shell or npm wrappers to discover their dependencies.`,
         sandbox:
           'Install an unprivileged Bubblewrap helper supported by the selected Codex installation; do not bypass containment.',
         login: profile.login,

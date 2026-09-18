@@ -54,13 +54,14 @@ export async function capturePrivateBunWorkspace(input: {
   const manifest = parseManifest(manifestBytes)
   const dependencies = runtimeDependencies(manifest)
   if (
+    manifest.workspaces === undefined &&
     !Object.values(dependencies).some(
       (value) => typeof value === 'string' && value.startsWith('workspace:'),
     )
   )
     return undefined
   const physical = resolve(input.projectRoot.requestedPath, input.packagePath)
-  for (let path = dirname(physical), depth = 0; depth < MAX_DEPTH; depth++, path = dirname(path)) {
+  for (let path = physical, depth = 0; depth < MAX_DEPTH; depth++, path = dirname(path)) {
     input.signal.throwIfAborted()
     const root = await openPrivateProjectRoot(path)
     try {
@@ -70,7 +71,7 @@ export async function capturePrivateBunWorkspace(input: {
         if (rootManifest.workspaces !== undefined) {
           const patterns = workspacePatterns(rootManifest.workspaces)
           const target = relative(path, physical)
-          if (matches(patterns, target)) {
+          if (target === '' || matches(patterns, target)) {
             try {
               return await capture(
                 root,
@@ -140,12 +141,15 @@ async function capture(
       await directory.close()
     }
   }
-  const entry = members.find((member) => member.path === target)
+  const entry =
+    target === ''
+      ? { path: '', bytes: rootBytes, manifest: parseManifest(rootBytes) }
+      : members.find((member) => member.path === target)
   if (entry === undefined || !Buffer.from(entry.bytes).equals(targetBytes)) changed()
   const selected = new Set<string>()
   const visit = (member: Member): void => {
     if (selected.has(member.path)) return
-    selected.add(member.path)
+    if (member.path !== '') selected.add(member.path)
     for (const [name, request] of Object.entries(runtimeDependencies(member.manifest))) {
       const local = byName.get(name)
       const explicit = typeof request === 'string' && request.startsWith('workspace:')
@@ -207,6 +211,16 @@ async function capture(
       patches.set(path, bytes)
     }
     add('package.json', rootBytes.byteLength, { bytes: rootBytes })
+    // Root dependency selection supplies metadata, not ambient repository source.
+    // Ordinary Flow packages are captured separately through project membership.
+    if (
+      target === '' &&
+      source.files.some(({ path }) => !['package.json', 'bun.lock'].includes(path))
+    )
+      fail(
+        'PACKAGE_BUN_WORKSPACE_INVALID',
+        'workspace root dependency capture requires package metadata only',
+      )
     const lock = await readOptional(root.handle, 'bun.lock', 2 * MANIFEST_BYTES)
     if (lock !== undefined) add('bun.lock', lock.byteLength, { bytes: lock })
     for (const member of members) {

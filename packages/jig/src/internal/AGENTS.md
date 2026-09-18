@@ -72,6 +72,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   named contract. ACP ingress is separately bounded and never
   blocks its protocol reader; failed progress does not manufacture failed work.
   The installed writer bounds live stdout/stderr and cancels on delivery loss.
+  Command reports retain aggregate-bounded diagnostics with host-assigned call
+  paths, independently of root-process stderr. Settled root notifications let
+  interrupted commands report known terminals without reopening closed authority.
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
@@ -133,7 +136,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   separate from Run approval, before acquisition. Never persist that grant or
   infer it from project input, `--yes`, or an earlier review. Validate the
   generated graph before frozen installation; retain its exact bytes privately.
-- Workspace capture reads declared ancestor membership and selected dependency
+- Workspace capture supports root applications and declared ancestor members,
+  reading root metadata and selected dependency
   source, never installed links. Recheck metadata, retain exact regular files,
   and recapture on review even when the Flow is unchanged. Preserve the pinned
   hoisted install's workspace-relative paths and dependency scopes. Retain only

@@ -820,6 +820,28 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('Diagnostic code: EXECUTION_FAILED')
   })
 
+  test('an unexplained root failure does not claim child diagnostics are absent', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'EXECUTION_FAILED',
+      message: 'root Run execution failed',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation({
+      async acquire(_project, options) {
+        options?.channelOutput?.diagnostic(new TextEncoder().encode('child warning'), ['worker'])
+        return fakeSession([], { terminal })
+      },
+    })
+    expect(await main(['run', 'flow:flows/work', '--json'], invocation.options)).toBe(1)
+    expect(invocation.error).not.toContain('No Flow diagnostic text was captured.')
+    expect(invocation.error).toContain('See attributed runDiagnostics')
+    expect(JSON.parse(invocation.output).runDiagnostics.entries[0]).toMatchObject({
+      operations: ['worker'],
+      stderr: 'child warning',
+    })
+  })
+
   test('protocol failures have safe recovery guidance without changing the JSON result', async () => {
     const terminal: RootRunTerminal = {
       status: 'failed',
@@ -1286,8 +1308,15 @@ describe('finite Jig project commands', () => {
       type: 'terminal',
       result: { status: 'succeeded' },
     })
-    expect(invocation.output).not.toContain('€')
-    expect(invocation.output).not.toContain('[31m')
+    expect(JSON.parse(invocation.output).result.runDiagnostics.entries).toEqual([
+      {
+        operations: [],
+        stderr: '€\u001b[31m\r\u0000\t\n',
+        stderrBytes: 12,
+        stderrTruncated: false,
+      },
+    ])
+    expect(JSON.parse(invocation.output).result.output).toBeNull()
   })
 
   test.each(
@@ -1733,6 +1762,69 @@ describe('finite Jig project commands', () => {
       'Command interrupted\n\n  The command was interrupted. Inspect any result and completed steps before starting new work; cancellation does not undo completed effects.\n\n  Diagnostic code: JIG_COMMAND_INTERRUPTED\n',
     )
   })
+
+  test.each(['failed', 'succeeded', 'cleanup-failed', 'foreign'] as const)(
+    'interrupted reporting preserves authoritative settlement: %s',
+    async (mode) => {
+      const events: string[] = []
+      const controller = new AbortController()
+      let submissionId = ''
+      const terminal: RootRunTerminal =
+        mode === 'succeeded'
+          ? {
+              status: 'succeeded',
+              outcome: 'done',
+              output: 'completed before interruption',
+              diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+            }
+          : {
+              status: 'failed',
+              code: 'CANCELLED',
+              message: 'Run cancelled',
+              diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+            }
+      const session = fakeSession(events, {
+        pendingObservations: Infinity,
+        captureRequest: (request) => {
+          submissionId = request.submissionId
+        },
+      })
+      const invocation = commandInvocation(
+        {
+          async acquire(_project, options) {
+            return {
+              ...session,
+              async close() {
+                await session.close()
+                options?.channelOutput?.terminal?.({
+                  state: 'terminal',
+                  runId: digest,
+                  submissionId: mode === 'foreign' ? 'foreign' : submissionId,
+                  target: { kind: 'flow', path: 'flows/work' },
+                  terminal,
+                })
+                if (mode === 'cleanup-failed') throw new Error('private cleanup error')
+              },
+            }
+          },
+          async pause() {
+            controller.abort()
+          },
+        },
+        { signal: controller.signal },
+      )
+      expect(await main(['run', 'flow:flows/work', '--json'], invocation.options)).toBe(2)
+      if (mode === 'foreign') expect(invocation.output).toBe('')
+      else {
+        expect(JSON.parse(invocation.output)).toMatchObject({
+          ...terminal,
+          command: { status: 'interrupted' },
+          ...(mode === 'cleanup-failed' ? { cleanup: { status: 'failed' } } : {}),
+        })
+      }
+      expect(invocation.error).not.toContain('private cleanup error')
+    },
+  )
 
   test.each([{ args: ['review'] }, { args: ['review', '--allow-resolution-network'] }])(
     'unreadable state explains recovery without exposing stored data: %j',

@@ -7,6 +7,7 @@ import {
   verifyPrivateAcpAgentFileDigests,
 } from './acp-agent-provider.js'
 import { privateFileDigest } from './identity.js'
+import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import { privateNativeAgentSupportResolver } from './native-agent-executable.js'
 
 interface Elf {
@@ -151,6 +152,7 @@ async function readElf(path: string): Promise<Elf | undefined> {
       return bytes
     }
     const magic = await read(0, Math.min(4, size))
+    if (magic.subarray(0, 2).toString() === '#!') throw new PrivateAcpSetupError('wrapper')
     if (!magic.equals(Buffer.from([127, 69, 76, 70]))) return undefined
     const header = await read(0, 64)
     if (
@@ -234,8 +236,7 @@ async function readElf(path: string): Promise<Elf | undefined> {
           )
         const wrapped = match?.[1]
         const prefix = match?.[2]
-        if (wrapped === undefined || prefix === undefined)
-          throw new Error('unsupported native Agent binary wrapper')
+        if (wrapped === undefined || prefix === undefined) throw new PrivateAcpSetupError('wrapper')
         requirePath(wrapped)
         for (const directory of prefix.split(':')) requirePath(directory)
         wrapper = { executable: wrapped, path: prefix }

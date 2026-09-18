@@ -268,6 +268,29 @@ async function interact(
         ) {
           throw protocolFailure()
         }
+        let location: { path: string; pointer: string } | undefined
+        if (message.location !== undefined) {
+          const value = ordinaryRecord(message.location, 'preparation diagnostic location')
+          if (
+            message.code !== 'PACKAGE_BUN_LOCK_STALE' ||
+            Reflect.ownKeys(value).length !== 2 ||
+            typeof value.path !== 'string' ||
+            !(value.path === 'package.json' || value.path.endsWith('/package.json')) ||
+            !input.captured.files.some((file) => file.path === value.path) ||
+            typeof value.pointer !== 'string' ||
+            ![
+              '',
+              '/name',
+              '/version',
+              '/dependencies',
+              '/devDependencies',
+              '/optionalDependencies',
+              '/peerDependencies',
+            ].includes(value.pointer)
+          )
+            throw protocolFailure()
+          location = { path: value.path, pointer: value.pointer }
+        }
         terminal = new CheckError(
           message.code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
             message.code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
@@ -279,13 +302,15 @@ async function interact(
             : 'invalid',
           message.code,
           boundedMessage(message.message),
-          message.code.startsWith('PACKAGE_BUN_RESOL') ||
+          location?.path ??
+            (message.code.startsWith('PACKAGE_BUN_RESOL') ||
             message.code === 'PACKAGE_BUN_INPUT_LIMIT' ||
             message.code === 'PACKAGE_BUN_OUTPUT_LIMIT'
-            ? 'package.json'
-            : message.code.includes('LOCK') || message.code.includes('SOURCE_UNSUPPORTED')
-              ? 'bun.lock'
-              : undefined,
+              ? 'package.json'
+              : message.code.includes('LOCK') || message.code.includes('SOURCE_UNSUPPORTED')
+                ? 'bun.lock'
+                : undefined),
+          location?.pointer,
         )
       } else {
         throw protocolFailure()

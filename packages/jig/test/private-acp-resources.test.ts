@@ -66,6 +66,7 @@ describe('target-selected private ACP resources', () => {
       for (const stage of [
         'executable',
         'installation',
+        'wrapper',
         'login',
         'api',
         'model',

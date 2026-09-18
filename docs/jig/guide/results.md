@@ -52,8 +52,17 @@ status line and use color for headings and outcomes. Set `NO_COLOR=1` or
 plain. Errors put the explanation and next action before the diagnostic code.
 The [CLI experience contract](../spec/cli-experience.md) defines these guarantees. Ctrl-C requests cancellation; wait for cleanup before starting new
 work. An interruption or uncertain result is not permission to blindly retry.
-An interrupted command may exit without a JSON result; scripts must check the
-exit status and handle an absent terminal value.
+When a settled terminal is available after interruption, Jig emits it with
+`command: {status: 'interrupted'}` and exits 2. The execution status is preserved
+even if completion won the race. An interrupted command may still exit without
+a JSON result if no terminal or output connection remains; scripts must handle
+that absence without retrying work automatically.
+
+`runDiagnostics` retains bounded root and child stderr with an `operations`
+call path identifying each emitter. Check its aggregate `truncated` flag and
+each entry's `stderrTruncated` before treating it as complete. The terminal's
+existing `diagnostics` field describes only root-process stderr. Neither field
+is an Agent answer or proof that the application achieved its objective.
 
 A `REVIEW_REQUIRED` diagnostic means the current execution environment differs
 from the approved revision. No Flow started for that Run. Run `jig review`, inspect

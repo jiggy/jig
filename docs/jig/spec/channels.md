@@ -144,8 +144,11 @@ under a channel heading; other values remain structured, and channel switches
 and closed/failed endings are visible. Transport sequence metadata stays in
 `--json` output. See the [CLI experience contract](cli-experience.md).
 Flow console diagnostics stream to stderr in both modes, independently of
-channel records; terminal control characters are escaped and the existing Run
-diagnostic bounds still apply. Diagnostics are neither channel values nor evidence
+channel records. The Run report's `runDiagnostics` retains bounded diagnostics
+with host-assigned invocation paths, as defined by the [CLI experience contract](cli-experience.md).
+These records do not change the terminal's root-only `diagnostics`. Live terminal
+control characters are escaped and the existing Run diagnostic bounds still
+apply. Diagnostics are neither channel values nor evidence
 of successful work. For each output stream, the installed writer bounds queued
 output to 256 pending writes / 20 MiB and each write to one second. Blockage or
 disconnection requests root cancellation;

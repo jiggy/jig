@@ -172,8 +172,8 @@ describe('private Bun execution layout', () => {
     ).toThrow()
   })
 
-  test('requires a selected Flow root and keeps ordinary package layout empty', () => {
-    expect(() => normalizePrivateBunExecutionLayout({ ...workspace(), flowRoot: '' })).toThrow()
+  test('accepts workspace-root preparation but rejects unselected nested roots', () => {
+    expect(normalizePrivateBunExecutionLayout({ ...workspace(), flowRoot: '' }).flowRoot).toBe('')
     expect(() =>
       normalizePrivateBunExecutionLayout({ ...workspace(), flowRoot: 'unselected' }),
     ).toThrow()

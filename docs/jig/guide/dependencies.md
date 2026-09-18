@@ -90,6 +90,15 @@ Run `bun install` at the workspace root and build libraries whose exports
 point to generated files. Then run `jig review` from the Jig application.
 No publication, copied library, or per-Flow installation is needed.
 
+The Jig application itself may live at the workspace root or in a declared
+member. Declare `npm:` Flow targets in that application's `dependencies`;
+root applications need not move into a member directory. Root dependency
+selection captures metadata and selected packages, not the whole repository.
+
+If a supplied lock is stale, review identifies the manifest and mismatched
+field. Update the authored lock with Bun and review again; Jig never repairs
+a supplied lock implicitly.
+
 Review captures the root manifest and lock, member manifests, and the selected
 local dependency sources. A library's `files` list limits its captured source;
 without one, its ordinary files are captured except `.git` and `node_modules`.

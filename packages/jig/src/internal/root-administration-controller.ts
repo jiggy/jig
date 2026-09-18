@@ -58,6 +58,7 @@ export async function openPrivateRootAdministrationController(input: {
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly onProjectIdentityLoss?: () => void
+  readonly onTerminal?: (status: Extract<RootRunStatus, { state: 'terminal' }>) => void
 }): Promise<PrivateRootAdministrationController> {
   requireRunTimeout(input.runTimeoutMs)
   if (typeof input.execute !== 'function') throw new TypeError('root Run executor is required')
@@ -99,6 +100,7 @@ export async function attachPrivateRootAdministrationController(input: {
   readonly execute: PrivateRootLaunchExecutor
   readonly files?: PrivateRootRunFiles
   readonly onProjectIdentityLoss?: () => void
+  readonly onTerminal?: (status: Extract<RootRunStatus, { state: 'terminal' }>) => void
 }): Promise<PrivateRootAdministrationController> {
   requireRunTimeout(input.runTimeoutMs)
   if (typeof input.execute !== 'function') throw new TypeError('root Run executor is required')
@@ -128,6 +130,7 @@ function createController(input: {
   readonly files?: PrivateRootRunFiles
   readonly coordinator: PrivateProjectCoordinator
   readonly onProjectIdentityLoss?: () => void
+  readonly onTerminal?: (status: Extract<RootRunStatus, { state: 'terminal' }>) => void
 }): {
   readonly controller: PrivateRootAdministrationController
   recoverOlder(): Promise<void>
@@ -257,6 +260,8 @@ function createController(input: {
     if (settled.run.runId !== runId || settled.run.state !== 'terminal') {
       throw new Error('trusted root Run executor returned no matching terminal')
     }
+    const status = projectStatus(settled.run)
+    if (status.state === 'terminal') input.onTerminal?.(status)
   }
 
   async function pumpCurrent(): Promise<void> {

@@ -27,7 +27,7 @@ test('npm targets name declared packages, not registry versions, subpaths or JS 
     expect(() => parseRunTargetSelector(target, 'target')).toThrow()
 })
 
-async function fixture() {
+async function fixture(rootApplication = false) {
   const directory = await mkdtemp(join(tmpdir(), 'jig-dependency-flows-'))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(directory, path)), { recursive: true })
@@ -36,7 +36,12 @@ async function fixture() {
       typeof value === 'string' ? value : JSON.stringify(value),
     )
   }
-  await put('package.json', { private: true, workspaces: ['apps/*', 'packages/*'] })
+  await put('package.json', {
+    private: true,
+    workspaces: ['apps/*', 'packages/*'],
+    ...(rootApplication ? { dependencies: { '@example/echo': 'workspace:*' } } : {}),
+  })
+  await put('private-note', 'unrelated root bytes must not enter dependency capture')
   await put('apps/consumer/package.json', {
     name: 'consumer',
     dependencies: { '@example/echo': 'workspace:*' },
@@ -52,7 +57,9 @@ async function fixture() {
     id,
     version: '1.0.0',
   })
-  const root = await openPrivateProjectRoot(join(directory, 'apps/consumer'))
+  const root = await openPrivateProjectRoot(
+    rootApplication ? directory : join(directory, 'apps/consumer'),
+  )
   let preparations = 0
   const retained: string[] = []
   const capture = (selectors = ['npm:@example/echo'], signal = new AbortController().signal) =>
@@ -63,7 +70,8 @@ async function fixture() {
       // Unit seam: snapshot and topology only. This is not installer or host evidence.
       prepare: async (source, workspace) => {
         preparations++
-        expect(workspace?.target).toBe('apps/consumer')
+        expect(workspace?.target).toBe(rootApplication ? '' : 'apps/consumer')
+        expect(source.files.some(({ path }) => path === 'private-note')).toBeFalse()
         const bytes = new Map<string, Uint8Array>()
         for (const file of source.files) bytes.set(file.path, await source.read(file.path))
         const captured = createCapturedPackage('prepared fixture', source.files, source.digest, {
@@ -77,8 +85,8 @@ async function fixture() {
         return {
           captured,
           layout: normalizePrivateBunExecutionLayout({
-            flowRoot: 'apps/consumer',
-            members: ['apps/consumer', 'packages/echo'],
+            flowRoot: rootApplication ? '' : 'apps/consumer',
+            members: rootApplication ? ['packages/echo'] : ['apps/consumer', 'packages/echo'],
             aliases: [{ path: 'node_modules/@example/echo', target: 'packages/echo' }],
           }),
         }
@@ -103,42 +111,45 @@ async function fixture() {
   }
 }
 
-test('workspace dependency supplies its own immutable Flow and contract without installed links', async () => {
-  const f = await fixture()
-  try {
-    await mkdir(join(f.directory, 'apps/consumer/node_modules/@example'), { recursive: true })
-    await symlink(
-      '/missing/not-authority',
-      join(f.directory, 'apps/consumer/node_modules/@example/echo'),
-    )
-    const first = await f.capture()
+test.each([false, true])(
+  'workspace dependency supplies immutable Flow bytes (root application: %s)',
+  async (rootApplication) => {
+    const f = await fixture(rootApplication)
     try {
-      const member = first.members[0]!
-      expect(member.provenance.projectPath).toBe('npm:@example/echo')
-      expect(member.inspected.contract?.descriptor.id).toBe(id)
-      expect(member.captured.files.map((file) => file.path)).toEqual([
-        'FLOW.contract.json',
-        'FLOW.ts',
-        'package.json',
-      ])
-      await f.put('packages/echo/FLOW.ts', 'export const changed = true')
-      expect(new TextDecoder().decode(await member.captured.read('FLOW.ts'))).toBe(
-        'export {}' + '\n'.repeat(4096),
+      await mkdir(join(f.directory, 'apps/consumer/node_modules/@example'), { recursive: true })
+      await symlink(
+        '/missing/not-authority',
+        join(f.directory, 'apps/consumer/node_modules/@example/echo'),
       )
-      const second = await f.capture()
+      const first = await f.capture()
       try {
-        expect(second.members[0]!.captured.digest).not.toBe(member.captured.digest)
+        const member = first.members[0]!
+        expect(member.provenance.projectPath).toBe('npm:@example/echo')
+        expect(member.inspected.contract?.descriptor.id).toBe(id)
+        expect(member.captured.files.map((file) => file.path)).toEqual([
+          'FLOW.contract.json',
+          'FLOW.ts',
+          'package.json',
+        ])
+        await f.put('packages/echo/FLOW.ts', 'export const changed = true')
+        expect(new TextDecoder().decode(await member.captured.read('FLOW.ts'))).toBe(
+          'export {}' + '\n'.repeat(4096),
+        )
+        const second = await f.capture()
+        try {
+          expect(second.members[0]!.captured.digest).not.toBe(member.captured.digest)
+        } finally {
+          await second.dispose()
+        }
       } finally {
-        await second.dispose()
+        await first.dispose()
       }
+      expect(f.retained).toHaveLength(2)
     } finally {
-      await first.dispose()
+      await f.dispose()
     }
-    expect(f.retained).toHaveLength(2)
-  } finally {
-    await f.dispose()
-  }
-})
+  },
+)
 
 test('missing declarations and symlinked source fail without acquiring package authority', async () => {
   const f = await fixture()

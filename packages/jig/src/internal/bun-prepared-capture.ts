@@ -27,6 +27,7 @@ export class WorkerFailure extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly location?: { readonly path: string; readonly pointer: string },
   ) {
     super(message)
   }

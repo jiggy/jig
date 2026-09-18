@@ -119,10 +119,12 @@ and Bun lock own dependency versions. The package must contain a valid FLOW
 entrypoint and its own declarations; JavaScript exports are not invoked to
 discover it. A library without a FLOW entrypoint is not a Flow provider.
 
-Workspace dependencies use the existing captured ancestor workspace; the Jig
-application must be a declared member. Workspace-root `patchedDependencies`
+Workspace dependencies use a captured workspace; the Jig application can be
+its root or a declared member. Root dependency selection captures package metadata
+and the selected dependency closure, not unrelated application files.
+Workspace-root `patchedDependencies`
 may select captured bounded `.patch` files, applied by contained Bun preparation.
-Workspace-root applications, member-local patches, overrides and catalogs
+Member-local patches, overrides and catalogs
 are not supported by that preparation profile. Registry
 dependencies use existing bounded, script-disabled Bun preparation. Review
 does not traverse live installation links. Missing locks require the existing

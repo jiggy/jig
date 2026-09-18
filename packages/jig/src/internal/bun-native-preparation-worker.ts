@@ -101,9 +101,12 @@ try {
           'PACKAGE_BUN_PREPARATION_FAILED',
           'locked Bun dependency preparation failed',
         )
-  await send({ type: 'failure', code: failure.code, message: failure.message }).catch(
-    () => undefined,
-  )
+  await send({
+    type: 'failure',
+    code: failure.code,
+    message: failure.message,
+    ...(failure.location === undefined ? {} : { location: failure.location }),
+  }).catch(() => undefined)
   await outputQueue.catch(() => undefined)
   process.exitCode = 1
 }
@@ -197,16 +200,21 @@ async function requireSupportedLock(
         'optionalDependencies',
         'peerDependencies',
       ]
-      if (
-        entry === undefined ||
-        ['name', 'version'].some((field) => manifest[field] !== entry[field]) ||
-        dependencyFields.some(
-          (field) => canonical(manifest[field] ?? {}) !== canonical(entry[field] ?? {}),
-        )
-      )
+      const field =
+        entry === undefined
+          ? 'workspace entry'
+          : (['name', 'version'].find((field) => manifest[field] !== entry[field]) ??
+            dependencyFields.find(
+              (field) => canonical(manifest[field] ?? {}) !== canonical(entry[field] ?? {}),
+            ))
+      if (field !== undefined)
         throw new WorkerFailure(
           'PACKAGE_BUN_LOCK_STALE',
-          'workspace manifests and bun.lock disagree; update the workspace lock explicitly',
+          `${path === '' ? 'package.json' : `${path}/package.json`}: ${field} differs from bun.lock; update the workspace lock explicitly`,
+          {
+            path: path === '' ? 'package.json' : `${path}/package.json`,
+            pointer: field === 'workspace entry' ? '' : `/${field}`,
+          },
         )
     }
   }
@@ -354,11 +362,11 @@ function requireSource(value: unknown): {
       typeof record.target !== 'string' ||
       !Array.isArray(record.members) ||
       !Array.isArray(record.selected) ||
-      record.members.length === 0 ||
+      (record.members.length === 0 && record.target !== '') ||
       record.members.length > 256 ||
       record.selected.length > record.members.length ||
-      !record.members.includes(record.target) ||
-      !record.selected.includes(record.target)
+      (record.target !== '' &&
+        (!record.members.includes(record.target) || !record.selected.includes(record.target)))
     )
       throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'workspace preparation metadata is invalid')
     for (const member of record.members) {

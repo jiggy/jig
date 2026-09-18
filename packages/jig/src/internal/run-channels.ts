@@ -5,6 +5,7 @@ import {
   requireChannelReference,
 } from '../channel-contract.js'
 import type { JsonValue } from '../json.js'
+import type { RootRunStatus } from '../administration/root.js'
 import type { CapturedPackage } from '../package/capture.js'
 import type { InspectedPackage } from '../package/inspect.js'
 import {
@@ -20,7 +21,9 @@ import {
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
   record(value: JsonValue): Promise<void>
-  diagnostic(bytes: Uint8Array): void
+  diagnostic(bytes: Uint8Array, operations?: readonly string[]): void
+  /** Command-local observation of an authoritative settled root, including during close. */
+  terminal?(status: Extract<RootRunStatus, { state: 'terminal' }>): void
 }
 
 export type PrivateChannelContractCache = Map<string, Promise<ResolvedChannelContract>>

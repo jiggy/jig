@@ -49,9 +49,11 @@ export function normalizePrivateBunExecutionLayout(value: unknown): PrivateBunEx
     if (!members.includes(alias.target) || privateBunAliasPackageName(alias.path) === undefined)
       invalid()
   }
-  if (flowRoot === '') {
-    if (members.length !== 0 || aliases.length !== 0) invalid()
-  } else if (!members.includes(flowRoot) && privateBunAliasPackageName(flowRoot) === undefined)
+  if (
+    flowRoot !== '' &&
+    !members.includes(flowRoot) &&
+    privateBunAliasPackageName(flowRoot) === undefined
+  )
     invalid()
   const layout = Object.freeze({
     flowRoot,

@@ -128,6 +128,23 @@ makes usable control an observable requirement;
     policy, and no premature success. An unfamiliar reader must be able to
     identify the outcome and next action from the transcript alone.
 
+## Diagnostic evidence and interruption
+
+Run reports retain optional `runDiagnostics`: `entries` contain the host-assigned
+`operations` call path (empty for the root), `stderr`, `stderrBytes` and
+`stderrTruncated`; `truncated` marks any lost diagnostic evidence. Retention is
+bounded to 64 KiB across 32 emitting invocation paths. These are untrusted
+diagnostic bytes, not application results. The existing terminal `diagnostics`
+continues to describe root-process stderr only. Live rendering escapes control
+characters and identifies changes of emitting invocation.
+
+After interruption, the command waits for owned cleanup and emits its observed
+authoritative terminal when available, with `command: {status: 'interrupted'}`
+and exit 2. Execution status remains unchanged if completion won the race.
+Cleanup failure is reported separately. A missing terminal, coordinator loss,
+or broken output stream cannot be replaced with a fabricated terminal; consumers
+must still handle incomplete output. No reporting path replays execution.
+
 ## Implementation and review ownership
 
 `jig init <directory> --agent codex|claude|pi` optionally authors a declared

@@ -216,7 +216,9 @@ SRI integrity.
 ### Workspace dependency capture
 
 A Flow may declare `workspace:` dependencies when both it and its libraries
-are members of an ancestor Bun workspace. Jig captures the root manifest and
+are members of an ancestor Bun workspace. The Jig application may also select
+workspace Flow dependencies directly from the workspace root. That selection
+captures root package metadata, not unrelated repository files. Jig captures the root manifest and
 text lock, declared member manifests, and the transitive local runtime dependency
 sources. Workspace names must be unique; paths and workspace patterns must stay
 relative to that root, without symlink traversal. The workspace root may be above

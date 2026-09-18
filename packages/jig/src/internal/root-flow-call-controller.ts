@@ -135,7 +135,8 @@ interface ChildInput {
     readonly broker: ChannelBroker
     readonly contracts?: PrivateChannelContractCache
   }
-  readonly onDiagnostic?: (bytes: Uint8Array) => void
+  readonly onDiagnostic?: (bytes: Uint8Array, operations?: readonly string[]) => void
+  readonly diagnosticPath?: readonly string[]
 }
 
 type ChildCallInput = ChildInput & {
@@ -460,7 +461,9 @@ function specialistDispatcher(
   let active = false
   return {
     ...(participant === undefined ? {} : { channels: participant }),
-    ...(input.onDiagnostic === undefined ? {} : { onDiagnostic: input.onDiagnostic }),
+    ...(input.onDiagnostic === undefined
+      ? {}
+      : { onDiagnostic: (bytes: Uint8Array) => input.onDiagnostic!(bytes, input.diagnosticPath) }),
     validateResult(result) {
       const admitted = admitPrivatePackageResult(inspected, {
         status: 'succeeded',
@@ -481,6 +484,7 @@ function specialistDispatcher(
         if (route.kind === 'flow') {
           return await executePrivateRootFlowCall({
             ...input,
+            diagnosticPath: [...(input.diagnosticPath ?? []), call.operationId],
             parentFlow: {
               operationId: input.call.operationId,
               target: selected.request.target,

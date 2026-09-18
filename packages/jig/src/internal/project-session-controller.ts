@@ -155,6 +155,9 @@ export async function openPrivateProjectSession(input: {
       projectRoot: owner.root.requestedPath,
       packageStoreRoot,
       runTimeoutMs: input.host.runTimeoutMs,
+      ...(input.host.channelOutput?.terminal === undefined
+        ? {}
+        : { onTerminal: input.host.channelOutput.terminal }),
       ...(input.host.files === undefined ? {} : { files: input.host.files }),
       execute: (runId, coordinator, signal) =>
         executePrivateRootRunLaunch({
