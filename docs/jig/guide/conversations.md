@@ -150,13 +150,11 @@ the essential replies. A failed progress display need not stop the conversation.
 ## Hand work to a fresh conversation
 
 The [incident brief example](https://github.com/jiggy/jig/tree/main/examples/incident-brief)
-uses these controls for an application-owned summary handoff. The composed path
-has been exercised through installed Jig with Codex, including active interruption
-and clean predecessor settlement; this does not establish model quality or
-support in other clients. One worker drafts,
+uses these controls for an application-owned summary handoff. One worker drafts,
 while another publishes preliminary analysis through an ordinary FLOW channel
-and continues preparing independent review questions. Receiving that update
-triggers the drafting worker's handoff: interrupt if still active, await the
+and continues preparing independent review questions. Ordinary commentary uses
+a follow-up in the same conversation. A validated replacement of source files
+or appended instructions triggers handoff: interrupt if still active, await the
 actual turn, request a summary in the same conversation, then settle the
 predecessor before starting one successor.
 
@@ -164,18 +162,21 @@ The parent connects the workers directly; no logging service or host scheduler
 is involved:
 
 ```ts
+const { replacement, ...context } = run.input
 const revisions = await run.channel({ contract: './contracts/revisions.json' })
 const results = await Promise.allSettled([
   run.call({ operationId: 'draft', slot: 'worker',
-    input: { role: 'draft', context: run.input },
+    input: { role: 'draft', context },
     channels: { revisions: revisions.receive } }),
   run.call({ operationId: 'review', slot: 'worker',
-    input: { role: 'independent', context: run.input },
+    input: { role: 'independent', context, ...(replacement ? { replacement } : {}) },
     channels: { updates: revisions.send } }),
 ])
 ```
 
-Both start with all supplied facts and instructions. The successor receives the
+Both start with the initial facts and instructions. The optional `replacement`
+contains separately supplied files and ordered instructions for the reviewer
+to publish; model output cannot create that authority. The successor receives the
 latest validated context separately from the model's summary and review notes;
 neither generated text can replace instructions or extend authority. The example
 also retains each branch's result when the other fails. Its finite update batch

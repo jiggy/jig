@@ -1,5 +1,5 @@
-import { OperationError, type ChannelReceiver, type RunContext } from '@jigging/flow'
-import { context, identity, type Context } from './context.ts'
+import { type ChannelReceiver, OperationError, type RunContext } from '@jigging/flow'
+import { type Context, context, identity } from './context.ts'
 
 export interface Revision {
   readonly revision: number
@@ -19,6 +19,7 @@ export function revisionFeed(run: RunContext, initial: Readonly<Context>) {
     wake = resolve
   })
   const records: Revision[] = []
+  let replacementRequired = false
   let failure: unknown
   let deliveries = 0
   const check = () => {
@@ -73,7 +74,12 @@ export function revisionFeed(run: RunContext, initial: Readonly<Context>) {
         )
           throw new Error('A revision cannot discard or rewrite accepted instructions.')
         records.push(revision)
-        wake()
+        // Commentary is not authority to replace a conversation. Accept only
+        // actual source/instruction changes as the application's handoff trigger.
+        if (identity(updated) !== identity(initial)) {
+          replacementRequired = true
+          wake()
+        }
       }
     } catch (error) {
       if (!(stop.signal.aborted && error instanceof OperationError && error.code === 'CANCELLED'))
@@ -90,6 +96,9 @@ export function revisionFeed(run: RunContext, initial: Readonly<Context>) {
   return {
     first,
     records,
+    get replacementRequired() {
+      return replacementRequired
+    },
     check,
     async complete() {
       await pump

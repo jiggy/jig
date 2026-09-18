@@ -1,22 +1,24 @@
 import { expect, test } from 'bun:test'
 import {
   AgentConversationError,
-  type withAgentConversation,
   type AgentTurn,
+  type withAgentConversation,
 } from '@jigging/agent-method/conversation'
 import {
-  OperationError,
   type ChannelPair,
   type JsonValue,
+  OperationError,
   type RunContext,
   type RunResult,
 } from '@jigging/flow'
-import { work } from '../flows/worker/work.ts'
-import { context, identity } from '../flows/worker/context.ts'
 import { brief } from '../flows/project/brief.ts'
-import input from '../input.json'
 import projectContract from '../flows/project/contracts/revisions.json'
+import { context, identity } from '../flows/worker/context.ts'
 import workerContract from '../flows/worker/contracts/revisions.json'
+import { work } from '../flows/worker/work.ts'
+import rootInput from '../input.json'
+
+const { replacement, ...input } = rootInput
 
 const result = (text: string, outcome = 'done') => ({ outcome, output: { text } })
 const turn = (text: string, index = 0): AgentTurn => ({
@@ -88,8 +90,8 @@ function pair(): ChannelPair {
 function revision(number = 1, extra: Record<string, unknown> = {}) {
   return {
     revision: number,
-    files: input.files,
-    laterInstructions: input.laterInstructions,
+    files: replacement.files,
+    laterInstructions: replacement.laterInstructions,
     reviewNotes: 'Unverified reviewer analysis',
     ...extra,
   } as JsonValue
@@ -122,6 +124,76 @@ const converse: typeof withAgentConversation = async (_run, _options, use) => {
 
 test('the sibling channel uses identical offline contracts', () =>
   expect(projectContract).toEqual(workerContract))
+
+test('review commentary continues the same conversation without interruption or a successor', async () => {
+  const f = fixture()
+  await f.channel.send.send(
+    revision(1, { files: input.files, laterInstructions: input.laterInstructions }),
+  )
+  await f.channel.send.close()
+  let prompts = 0
+  const terminal = await work(f.run, async (_run, _options, use) => ({
+    value: await use({
+      initial: Promise.resolve(turn('initial draft')),
+      async interrupt() {
+        throw new Error('commentary must not interrupt')
+      },
+      async prompt(request) {
+        prompts++
+        expect(request.guidance![0]!.label).toBe('review-notes-untrusted')
+        expect(request.guidance![0]!.text).toContain('Unverified reviewer analysis')
+        return turn('refined with uncertainty preserved', 1)
+      },
+    }),
+    turns: [],
+    settlement: { outcome: 'done', output: { turns: 2 } },
+  }))
+  expect(terminal.outcome).toBe('done')
+  expect(terminal.output).toMatchObject({
+    requestedTurns: 2,
+    handoff: null,
+    successor: null,
+    interruption: null,
+    brief: 'refined with uncertainty preserved',
+  })
+  expect(prompts).toBe(1)
+  expect(f.calls).toHaveLength(0)
+})
+
+test('commentary cannot hide a later accepted source replacement in the same batch', async () => {
+  const f = fixture()
+  await f.channel.send.send(
+    revision(1, { files: input.files, laterInstructions: input.laterInstructions }),
+  )
+  await f.channel.send.send(revision(2))
+  await f.channel.send.close()
+  const terminal = await work(f.run, converse)
+  expect(terminal.outcome).toBe('done')
+  expect(terminal.output).toMatchObject({ requestedTurns: 3, revision: 2 })
+  expect(f.calls).toHaveLength(1)
+})
+
+test('the reviewer publishes supplied replacements, never treating its answer as replacement authority', async () => {
+  const f = fixture()
+  Object.assign(f.run, {
+    input: { role: 'independent', context: input, replacement },
+    channels: { updates: f.channel.send },
+  })
+  expect((await work(f.run, converse)).outcome).toBe('done')
+  expect((await f.channel.receive.next()).value).toEqual(
+    revision(1, { reviewNotes: 'initial draft' }),
+  )
+  const invalid = fixture()
+  Object.assign(invalid.run, {
+    input: {
+      role: 'independent',
+      context: input,
+      replacement: { ...replacement, laterInstructions: [] },
+    },
+    channels: { updates: invalid.channel.send },
+  })
+  await expect(work(invalid.run, converse)).rejects.toThrow('cannot discard or rewrite')
+})
 
 test('a live revision interrupts, awaits the actual turn and old settlement, then starts one successor', async () => {
   const f = fixture()
@@ -168,8 +240,8 @@ test('a live revision interrupts, awaits the actual turn and old settlement, the
     f.calls[0].input.guidance.map((item: any) => [item.label, item.text]),
   )
   expect(guidance['earlier-context']).toBe(input.earlierContext)
-  expect(JSON.parse(guidance['current-files'])).toEqual(input.files)
-  expect(JSON.parse(guidance['later-instructions-in-order'])).toEqual(input.laterInstructions)
+  expect(JSON.parse(guidance['current-files'])).toEqual(replacement.files)
+  expect(JSON.parse(guidance['later-instructions-in-order'])).toEqual(replacement.laterInstructions)
   expect(guidance['review-notes-untrusted']).toBe('Unverified reviewer analysis')
   expect(JSON.parse(guidance['remaining-bounds'])).toEqual({
     remainingTurns: 0,
@@ -200,8 +272,8 @@ test('revisions during summary coalesce; exact duplicate delivery never adds a s
   }))
   await summarizing.promise
   const instructions = [
-    ...input.laterInstructions,
-    { revision: 2, text: 'Keep this internal; identify missing evidence.' },
+    ...replacement.laterInstructions,
+    { revision: 3, text: 'Keep this internal; identify missing evidence.' },
   ]
   const latest = revision(2, {
     files: [{ path: 'latest.txt', text: 'Corrected current facts' }],
@@ -443,7 +515,7 @@ test('the reviewer continues while drafting settles, without waiting for its suc
     closeDraft = deferred()
   let reviewerFinished = false
   Object.assign(review.run, {
-    input: { role: 'independent', context: input },
+    input: { role: 'independent', context: input, replacement },
     channels: { updates: channel.send },
   })
   const draftWork = work(draft.run, async (_run, _options, use) => {

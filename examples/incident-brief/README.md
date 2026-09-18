@@ -3,7 +3,8 @@
 Get a draft incorporating preliminary review, plus independent questions for a
 person to investigate. Two workers start with all supplied facts. The reviewer
 sends its initial analysis through a FLOW channel, then keeps preparing questions.
-That update triggers one drafting handoff to a fresh conversation.
+Commentary refines the draft in its existing conversation. A separately supplied
+replacement of files or instructions triggers one handoff to a fresh conversation.
 
 After the repository's ordinary workspace setup, configure the included
 Agent Binding and your native client as described in the
@@ -14,13 +15,10 @@ jig review
 jig run binding:brief --input @input.json --timeout 3m
 ```
 
-The composed handoff has been exercised through installed Jig with Codex,
-including active interruption and clean predecessor settlement. This checks
-execution, not the correctness of the generated brief or other clients.
-
-The synthetic fixture corrects 600 affected requests to 48 and keeps the cause
-uncertain. Successful output contains a proposed brief, independent questions,
-the predecessor's actual settlement and the exact handoff snapshot. Progress
+The synthetic fixture corrects 600 affected requests to 48, then supplies a
+reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
+Successful output contains a proposed brief, independent questions, actual
+conversation settlement and, when replaced, the exact handoff snapshot. Progress
 diagnostics show when handoff preparation and successor dispatch happen.
 Inspect each branch's `outcome`: `blocked` retains available unsuccessful work
 and the other worker's result. Model text is not independently verified evidence
@@ -30,9 +28,14 @@ or permission to publish.
 
 The root [connects the two workers](flows/project/brief.ts) with one direct
 channel. The reviewer publishes a numbered context revision containing supplied
-files and instructions plus its separately labelled analysis. The drafting
-worker requests interruption if still active, waits for the actual turn to
-settle, then asks that same conversation for a concise summary.
+files and instructions plus its separately labelled analysis. Model commentary
+alone does not trigger replacement: the drafter waits for its initial turn and
+uses one ordinary follow-up with the notes labelled as unverified model text.
+
+If the revision changes files or appends instructions, the drafting worker
+requests interruption if still active, waits for the actual turn to settle,
+then asks that same conversation for a concise summary. The reviewer carries
+the root's optional `replacement`; it cannot generate authoritative replacements.
 
 Only after the finite revision batch ends and the old invocation settles does
 one successor start. It receives the latest validated files and instructions,
@@ -46,8 +49,9 @@ a broken revision feed prevents drafting replacement.
 
 ## Adapt the context
 
-Try changing `laterInstructions` in `input.json` to correct a measurement or
-require a different audience. Instruction revisions must increase. Lowering
+Edit `replacement.files` or append to `replacement.laterInstructions` in
+`input.json` to exercise a source-context change. Removing `replacement` exercises
+ordinary commentary and continuation instead. Instruction revisions must increase. Lowering
 `turnBudget` from three to two prevents drafting from starting but still allows
 the reviewer to finish its two-turn method.
 

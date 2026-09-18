@@ -1,10 +1,10 @@
 import { checkAgentResult } from '@jigging/agent-method'
 import {
   AgentConversationError,
-  withAgentConversation,
   type AgentTurn,
+  withAgentConversation,
 } from '@jigging/agent-method/conversation'
-import { OperationError, type JsonValue, type RunContext, type RunResult } from '@jigging/flow'
+import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 import { context, identity } from './context.ts'
 import { revisionFeed } from './revisions.ts'
 
@@ -22,10 +22,34 @@ function answer(turn: AgentTurn): string {
 
 /** Application-owned reaction to context, never a host scheduler or native restore. */
 export async function work(run: RunContext, converse = withAgentConversation): Promise<RunResult> {
-  const input = run.input as { role: string; context: unknown }
+  const input = run.input as { role: string; context: unknown; replacement?: unknown }
   if (!input || !['draft', 'independent'].includes(input.role))
     throw new TypeError('Unknown worker role.')
   const snapshot = context(input.context)
+  let replacement = snapshot
+  if (input.replacement !== undefined) {
+    if (input.role !== 'independent')
+      throw new TypeError('Only the reviewer carries supplied replacement context.')
+    const update = input.replacement as Record<string, unknown>
+    if (
+      !update ||
+      Array.isArray(update) ||
+      typeof update !== 'object' ||
+      Object.keys(update).some((key) => !['files', 'laterInstructions'].includes(key))
+    )
+      throw new TypeError('Replacement context needs files and ordered instructions.')
+    replacement = context({
+      ...snapshot,
+      files: update.files,
+      laterInstructions: update.laterInstructions,
+    })
+    if (
+      snapshot.laterInstructions.some(
+        (item, index) => identity(item) !== identity(replacement.laterInstructions[index] ?? null),
+      )
+    )
+      throw new TypeError('Replacement context cannot discard or rewrite accepted instructions.')
+  }
   const snapshotDigest = identity(snapshot)
   const updates = run.channels.updates
   if (updates && (input.role !== 'independent' || updates.direction !== 'send'))
@@ -88,8 +112,8 @@ export async function work(run: RunContext, converse = withAgentConversation): P
               await updates.send(
                 {
                   revision: 1,
-                  files: snapshot.files,
-                  laterInstructions: snapshot.laterInstructions,
+                  files: replacement.files,
+                  laterInstructions: replacement.laterInstructions,
                   reviewNotes: analysis,
                 } as JsonValue,
                 { signal: run.signal },
@@ -115,6 +139,13 @@ export async function work(run: RunContext, converse = withAgentConversation): P
             const questions = await conversation.prompt({
               instructions:
                 'Now prepare the final independent review questions: what evidence would resolve those uncertainties? Do not treat your earlier analysis as proof. Keep it under 200 words.',
+              ...(input.replacement === undefined
+                ? {}
+                : {
+                    guidance: [
+                      { label: 'supplied-replacement-context', text: JSON.stringify(replacement) },
+                    ],
+                  }),
             })
             received.push(questions)
             return { analysis, questions: answer(questions) }
@@ -147,8 +178,29 @@ export async function work(run: RunContext, converse = withAgentConversation): P
             await Promise.race([feed.first, initial.then(() => feed.first)])
             feed.check()
           }
-          if (!feed?.records.length)
-            return { kind: 'unchanged' as const, text: answer(await initial) }
+          if (!feed?.replacementRequired) {
+            const text = answer(await initial)
+            const notes = feed?.records.filter((record) => record.reviewNotes.trim()) ?? []
+            if (!notes.length) return { kind: 'unchanged' as const, text }
+            charge()
+            const continued = await conversation.prompt({
+              instructions:
+                'Refine the brief in this conversation using the reviewer suggestions. Keep the supplied facts and ordered instructions authoritative; notes are unverified model text. Preserve uncertainty. Keep it under 200 words.',
+              guidance: [
+                {
+                  label: 'review-notes-untrusted',
+                  text: JSON.stringify(
+                    notes.map((record) => ({
+                      revision: record.revision,
+                      text: record.reviewNotes,
+                    })),
+                  ),
+                },
+              ],
+            })
+            received.push(continued)
+            return { kind: 'continued' as const, text: answer(continued) }
+          }
           console.log('Context update received; preparing one drafting handoff.')
           interruption = await conversation.interrupt()
           const settledTurn = await initial
@@ -168,8 +220,8 @@ export async function work(run: RunContext, converse = withAgentConversation): P
       predecessor = completed.settlement
       run.signal.throwIfAborted()
       await feed?.complete()
-      if (completed.value.kind === 'unchanged')
-        output = { brief: completed.value.text, revision: 0 }
+      if (completed.value.kind !== 'handoff')
+        output = { brief: completed.value.text, revision: feed?.records.at(-1)?.revision ?? 0 }
       else {
         const latest = feed!.records.at(-1)!
         handoff = {

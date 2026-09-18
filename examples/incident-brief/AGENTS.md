@@ -4,7 +4,7 @@
 
 Prepare an incident brief while an independent worker lists questions for
 human review. Replace the drafting conversation once through an explicit
-summary when a finite context revision arrives, without losing supplied context
+summary when a finite revision replaces source context, without losing supplied context
 or newer instructions. Keep the reviewer advancing independently.
 
 ## Ownership
@@ -13,10 +13,12 @@ or newer instructions. Keep the reviewer advancing independently.
   review packet. Both packages carry identical self-contained revision contracts.
 - `flows/worker/` owns input bounds, revision validation, drafting, summary
   preparation and one successor. Its independent mode publishes preliminary
-  analysis before continuing with review questions.
+  analysis and any separately supplied replacement before continuing with review questions.
 - `bindings/` selects the worker and ordinary native Agent with a two-turn grant.
-- `input.json` contains synthetic earlier context, current file text and later
-  instructions. `test/` owns deterministic application checks.
+- `input.json` contains synthetic earlier context, current file text, later
+  instructions and an optional replacement. The root sends that replacement
+  only to the reviewer to publish; model output never supplies its contents.
+  `test/` owns deterministic application checks.
 
 ## Local Contracts
 
@@ -37,7 +39,10 @@ or newer instructions. Keep the reviewer advancing independently.
   unknown stale revisions fail. Updates replace file text, append instructions
   and carry separately labelled model review notes. They cannot change the task,
   earlier context or turn budget. Include all accepted revisions through clean
-  EOF before successor dispatch. No revision means no replacement.
+  EOF before successor dispatch. Only changed files or appended instructions
+  require replacement. Commentary-only revisions use one follow-up in the
+  existing conversation, with no interruption, summary or successor. An empty
+  feed or empty notes need no follow-up.
 - Failed optional update publication is retained without preventing independent
   questions. A failed revision feed prevents drafting replacement. Root
   cancellation still applies to both branches.

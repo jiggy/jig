@@ -1,7 +1,8 @@
-import { OperationError, type JsonValue, type RunContext, type RunResult } from '@jigging/flow'
+import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 
 /** Two independent branches; no event race chooses a successor or grants power. */
 export async function brief(run: RunContext): Promise<RunResult> {
+  const { replacement, ...context } = run.input as Record<string, JsonValue>
   const revisions = await run.channel({ contract: './contracts/revisions.json' })
   const results = await Promise.all(
     ['draft', 'independent'].map(async (role) => {
@@ -9,7 +10,11 @@ export async function brief(run: RunContext): Promise<RunResult> {
         const result = await run.call({
           operationId: role,
           slot: 'worker',
-          input: { role, context: run.input },
+          input: {
+            role,
+            context,
+            ...(role === 'independent' && replacement !== undefined ? { replacement } : {}),
+          },
           channels:
             role === 'draft' ? { revisions: revisions.receive } : { updates: revisions.send },
         })
