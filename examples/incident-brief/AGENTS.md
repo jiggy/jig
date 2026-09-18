@@ -4,13 +4,16 @@
 
 Prepare an incident brief while an independent worker lists questions for
 human review. Replace the drafting conversation once through an explicit
-summary, without losing supplied context or newer instructions.
+summary when a finite context revision arrives, without losing supplied context
+or newer instructions. Keep the reviewer advancing independently.
 
 ## Ownership
 
-- `flows/project/` owns the two branches and the combined review packet.
-- `flows/worker/` owns input bounds, drafting, summary preparation and one
-  successor. The same worker's independent mode produces review questions.
+- `flows/project/` owns the direct revision channel, two branches and combined
+  review packet. Both packages carry identical self-contained revision contracts.
+- `flows/worker/` owns input bounds, revision validation, drafting, summary
+  preparation and one successor. Its independent mode publishes preliminary
+  analysis before continuing with review questions.
 - `bindings/` selects the worker and ordinary native Agent with a two-turn grant.
 - `input.json` contains synthetic earlier context, current file text and later
   instructions. `test/` owns deterministic application checks.
@@ -22,12 +25,22 @@ summary, without losing supplied context or newer instructions.
   overwrite them, earlier context, current files, the task, or remaining bounds.
 - Drafting uses at most three application-requested model turns: initial work,
   summary in that same conversation, then one fresh successor. The independent
-  branch uses one turn. Count attempts before dispatch; do not reset counters
-  after error or handoff. All work keeps the root deadline and host grants.
+  branch uses at most two turns. Unwired workers use one turn. Count attempts
+  before dispatch; do not reset counters after error or handoff. All work keeps
+  the root deadline and host grants.
 - Start the successor only after the helper returns actual clean predecessor
   settlement and a valid summary. Never use a cancelled local waiter, progress
   or an accepted control as cleanup evidence. No queue, replay, native tools,
   stored-session restoration or transfer of provider credentials.
+- The optional revision feed is finite: at most eight distinct increasing
+  revisions and sixteen deliveries. Exact duplicates are inert; conflicts or
+  unknown stale revisions fail. Updates replace file text, append instructions
+  and carry separately labelled model review notes. They cannot change the task,
+  earlier context or turn budget. Include all accepted revisions through clean
+  EOF before successor dispatch. No revision means no replacement.
+- Failed optional update publication is retained without preventing independent
+  questions. A failed revision feed prevents drafting replacement. Root
+  cancellation still applies to both branches.
 - Received answers, summary and uncertainty are retained as distinct fields.
   An unsuccessful branch does not discard a healthy sibling's result. Root
   cancellation and unconfirmed ownership remain fatal. This in-Run packet is
@@ -42,8 +55,9 @@ summary, without losing supplied context or newer instructions.
 
 ## Verification
 
-- `bun test examples/incident-brief/test` checks ordering, budgets, context
-  preservation, failures and sibling independence with deterministic peers.
+- `bun test examples/incident-brief/test` checks interruption and settlement
+  ordering, finite revision races, budgets, context preservation, disposal
+  failures and sibling independence with deterministic peers.
 - Record installed/native evidence separately from those method tests.
 
 ## Child DOX Index

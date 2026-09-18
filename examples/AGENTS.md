@@ -74,4 +74,4 @@ authored examples, not independent consumer evidence or promoted Starters.
 - [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
   repair with contained commands and independently checked patch evidence.
 - [incident-brief/AGENTS.md](incident-brief/AGENTS.md) — Internal drafting with
-  one bounded summary handoff and an independent review-question worker.
+  one revision-triggered summary handoff and an independent review worker.

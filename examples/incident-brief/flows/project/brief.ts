@@ -2,6 +2,7 @@ import { OperationError, type JsonValue, type RunContext, type RunResult } from 
 
 /** Two independent branches; no event race chooses a successor or grants power. */
 export async function brief(run: RunContext): Promise<RunResult> {
+  const revisions = await run.channel({ contract: './contracts/revisions.json' })
   const results = await Promise.all(
     ['draft', 'independent'].map(async (role) => {
       try {
@@ -9,6 +10,8 @@ export async function brief(run: RunContext): Promise<RunResult> {
           operationId: role,
           slot: 'worker',
           input: { role, context: run.input },
+          channels:
+            role === 'draft' ? { revisions: revisions.receive } : { updates: revisions.send },
         })
         console.log(`${role}: ${result.outcome}`)
         return { role, result }

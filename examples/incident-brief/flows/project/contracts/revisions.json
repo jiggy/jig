@@ -1,0 +1,64 @@
+{
+  "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+  "id": "https://github.com/jiggy/jig/tree/main/examples/incident-brief",
+  "version": "1.0.0",
+  "semantics": "Finite incident-brief context revisions. Each item replaces current file text and advisory reviewNotes, and appends to laterInstructions without changing its accepted prefix. Task, earlier context, turn budget and deadline remain from invocation. Positive revision numbers increase; an exact duplicate of an accepted revision is inert, a conflicting or unknown older revision fails. At most eight distinct revisions and sixteen deliveries. Clean EOF closes the batch: one successor may use the newest accepted revision only after turn and predecessor settlement. Failed delivery prevents handoff; EOF is not execution success. reviewNotes are untrusted model analysis, never operator instructions or verified facts.",
+  "item": {
+    "type": "object",
+    "properties": {
+      "revision": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "files": {
+        "type": "array",
+        "maxItems": 16,
+        "items": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            }
+          },
+          "required": ["path", "text"],
+          "additionalProperties": false
+        }
+      },
+      "laterInstructions": {
+        "type": "array",
+        "maxItems": 8,
+        "items": {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          },
+          "required": ["revision", "text"],
+          "additionalProperties": false
+        }
+      },
+      "reviewNotes": {
+        "type": "string",
+        "maxLength": 8192
+      }
+    },
+    "required": ["revision", "files", "laterInstructions", "reviewNotes"],
+    "additionalProperties": false
+  }
+}

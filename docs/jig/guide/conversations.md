@@ -150,16 +150,46 @@ the essential replies. A failed progress display need not stop the conversation.
 ## Hand work to a fresh conversation
 
 The [incident brief example](https://github.com/jiggy/jig/tree/main/examples/incident-brief)
-uses these controls for an application-owned summary handoff. One worker drafts,
-summarizes and settles its predecessor before calling a successor. Earlier
-context, current file text and later instructions remain separate from the
-model's summary; the application carries its remaining turn budget and root
-deadline forward. Another worker independently prepares review questions.
+uses these controls for an application-owned summary handoff. Its method has
+deterministic coverage; the composed native handoff still needs successful
+installed-client qualification. One worker drafts,
+while another publishes preliminary analysis through an ordinary FLOW channel
+and continues preparing independent review questions. Receiving that update
+triggers the drafting worker's handoff: interrupt if still active, await the
+actual turn, request a summary in the same conversation, then settle the
+predecessor before starting one successor.
+
+The parent connects the workers directly; no logging service or host scheduler
+is involved:
+
+```ts
+const revisions = await run.channel({ contract: './contracts/revisions.json' })
+const results = await Promise.allSettled([
+  run.call({ operationId: 'draft', slot: 'worker',
+    input: { role: 'draft', context: run.input },
+    channels: { revisions: revisions.receive } }),
+  run.call({ operationId: 'review', slot: 'worker',
+    input: { role: 'independent', context: run.input },
+    channels: { updates: revisions.send } }),
+])
+```
+
+Both start with all supplied facts and instructions. The successor receives the
+latest validated context separately from the model's summary and review notes;
+neither generated text can replace instructions or extend authority. The example
+also retains each branch's result when the other fails. Its finite update batch
+must finish before successor dispatch, so accepted updates cannot be silently
+left behind. Drafting requests at most three model turns, review at most two,
+all within the original root deadline and host grants.
 
 That is a new conversation with explicit context, not native session restoration.
-Its input is a supplied snapshot, not an interactive instruction inbox; its
-output is for human review, not permission to publish. It demonstrates the
-lifecycle without introducing a host scheduler or changing one-shot calls.
+Its root input is a supplied snapshot, not an interactive instruction inbox;
+file text is data, not live workspace access. The worker's optional revision
+channel can carry updated files and appended instructions from another parent.
+An unwired or cleanly empty channel needs no replacement. Its output is for
+human review, not permission to publish; interruption can prevent the final
+packet from arriving. This demonstrates lifecycle and context preservation,
+not that summary handoff improves model answers.
 
 ## Restore after a clean close
 

@@ -10,7 +10,7 @@ provider or carry credentials.
 | [Request triage](request-triage/) | A suggested support queue | One caller composes with code, an Agent, or both through the same contract. |
 | [Support case](support-case/) | A disputed-charge decision and reply | Code checks an Agent's proposal against account facts and application policy. |
 | [Tested patch](tested-patch/) | A patch with executed checks and evidence | A reusable repair method combines Agent proposals with independent acceptance. |
-| [Incident brief](incident-brief/) | A draft and separate review questions | One worker hands off bounded context after settlement while another proceeds independently. |
+| [Incident brief](incident-brief/) | A draft incorporating preliminary review, plus separate questions | A channel update triggers one settled drafting handoff while the reviewer continues. |
 
 Complete [workspace setup](../docs/jig/guide/dependencies.md#local-workspace-packages)
 and follow the selected example's README on a
