@@ -160,12 +160,18 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
         const terminal = records.find((record) => record.type === 'terminal')
         if (scenario === 'slow') {
           expect(code, `${stdout}\n${stderr}`).not.toBe(0)
-          expect(stderr).toContain('JIG_COMMAND_INTERRUPTED')
           expect(
             records.some((record) => record.type === 'end' && record.status === 'failed'),
           ).toBe(true)
-          // Cancellation may settle the command without a terminal report.
-          if (terminal !== undefined) expect(terminal.result.status).toBe('failed')
+          // A settled cancellation is authoritative; interruption is the
+          // fallback only when cancellation prevents terminal delivery.
+          if (terminal !== undefined) {
+            expect(terminal.result).toMatchObject({ status: 'failed', code: 'CANCELLED' })
+            expect(stderr).toContain('Diagnostic code: CANCELLED')
+            expect(stderr).not.toContain('JIG_COMMAND_INTERRUPTED')
+          } else {
+            expect(stderr).toContain('JIG_COMMAND_INTERRUPTED')
+          }
         } else if (scenario === 'success') {
           expect(terminal, `${stdout}\n${stderr}`).toBeDefined()
           expect(code, `${stdout}\n${stderr}`).toBe(0)
