@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { OperationError, type RunContext } from '@jigging/flow'
-import cases from '../flows/project/cases.json'
+import cases from '../flows/project/logs-cases.json'
 import { digest, type RepairInput, sha256 } from '../flows/repair/policy.ts'
 import { repair } from '../flows/repair/repair.ts'
 import issue from '../issue.json'

@@ -14,7 +14,7 @@ Select your native client in `bindings/agent.ts`; it shows Pi as an example,
 with Codex and Claude supported by the same interface. Follow
 [Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
 Then inspect `issue.json`,
-`bindings/specialist.ts`, and `flows/project/cases.json`.
+`bindings/specialist.ts`, and `flows/project/logs-cases.json`.
 From this directory:
 
 ```sh
@@ -51,6 +51,12 @@ checkpoints can retain completed evidence after cleanup without turning an
 interrupted Run into success. Selected source reaches the configured provider.
 
 ## Build on the method
+
+For your own project, add `flows/project/<name>-cases.json` with independent CLI
+expectations and set `"checks": "<name>"` in the issue. The default is `logs`.
+The same name works in batch jobs; adding check sets requires no orchestration
+code changes. Select your test files and CLI in `bindings/specialist.ts`, then
+review the application. These checks stay outside the source being repaired.
 
 The same repair specialist handles the included timesheet CLI as well as the
 log reporter. `batch.json` requests both, preserving separate results:

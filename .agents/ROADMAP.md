@@ -72,21 +72,26 @@ Maintain actual installed evidence for selected context, structured results,
 ordinary recovery and the application → specialist → Agent → resource chain.
 Native workspace tools and continuing sessions remain separate authority decisions.
 
-### Alongside: dependable batch repair
+### Next: independently usable project repair
 
 A user can run two repair workers and receive each patch with trustworthy
-command and acceptance evidence. Diagnose the command-uncertainty failure at
-its responsible host boundary and fix the confirmed cause. Preserve useful
-diagnostics without exposing private execution details; genuine uncertainty
-must remain unsuccessful, never become an automatic retry.
+command and acceptance evidence. Make adapting the application to a small
+user-owned Bun project a data-and-configuration task, not a rewrite of the
+orchestrator. Keep source selection explicit, acceptance policy outside proposed
+edits, and test commands separately contained from the Agent.
 
-Finish when a focused regression covers the cause and an ordinary installed
-batch run demonstrates independent worker results, retained healthy work when
-another worker fails, and complete cleanup. Keep original repositories and
-acceptance policy unchanged. Do not make the check pass by extending deadlines
-or weakening evidence and containment guarantees.
+Finish when an independent builder obtains and inspects a patch for a different
+project using public materials, understands a failed check, and can stop work.
+Preserve healthy batch output after peer failure, honest command uncertainty,
+unchanged originals and complete cleanup. Fix new observed defects at their
+responsible layer without replay or deadline extensions.
 
-### Next: continuing Agent control, restoration and handoff
+Then use continuing conversations for evidence-driven correction where they
+remove a demonstrated burden. Retain bounded proposals and unchanged acceptance
+criteria. Automatic handoff is available for a concrete context-management need,
+not a mandatory repair stage. Method benefit remains a separate claim.
+
+### Foundation: continuing Agent control, restoration and handoff
 
 Deliver these approved capabilities incrementally. Before each begins, define
 the smallest public contract and authority boundary against its consuming

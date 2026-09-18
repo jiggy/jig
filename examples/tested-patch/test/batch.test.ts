@@ -21,7 +21,7 @@ test('batch validates its paths, identity, check policy, and bounded size before
     { jobs: [job, { ...job, id: 'b' }, { ...job, id: 'c' }] },
     { jobs: [{ ...job, directory: '../outside' }] },
     { jobs: [{ ...job, directory: '/tmp' }] },
-    { jobs: [{ ...job, checks: 'invented' }] },
+    { jobs: [{ ...job, checks: '../invented' }] },
     { jobs: [{ ...job, cancelAfterMs: 0 }] },
     { jobs: [{ ...job, id: '../out' }] },
   ])
@@ -34,6 +34,33 @@ test('patch overlap is reported, never silently combined', () => {
       { job: 'b', path: 'project/src/a.ts', content: 'two' },
     ]),
   ).toEqual([{ path: 'project/src/a.ts', jobs: ['a', 'b'], conflicting: true }])
+})
+
+test('a missing second check set prevents every worker dispatch', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-batch-checks-'))
+  try {
+    await cp(join(import.meta.dir, '../fixtures/log-report'), join(root, 'first'), {
+      recursive: true,
+    })
+    let calls = 0
+    await expect(
+      repairBatch({
+        input: { jobs: [job, { ...job, id: 'second', checks: 'not-installed' }] },
+        attachments: {
+          source: { access: 'read', path: root },
+          deliverables: { access: 'read-write', path: join(root, 'unused') },
+        },
+        signal: new AbortController().signal,
+        call: async () => {
+          calls++
+          throw new Error('must not dispatch')
+        },
+      } as unknown as RunContext),
+    ).rejects.toThrow('not-installed-cases.json')
+    expect(calls).toBe(0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 test('synthetic selected cancellation preserves the other worker and its verified patch', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-batch-unit-'))

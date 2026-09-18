@@ -5,6 +5,13 @@ at most 16 UTF-8 files and 64 KiB. The root calls its exact `repair` specialist
 with text and the package-owned CLI acceptance cases. It does not execute
 candidate code or give the specialist attachments.
 
+Optional `checks` selects `<name>-cases.json` beside this entrypoint (default:
+`logs`). Names use lowercase letters, digits and hyphens, starting with a letter,
+at most 32 characters. Add your own file and review the application; no source
+registry needs editing. Each file supplies 1–8 cases, bounded to 256 KiB, with
+exact `id`, `args`, `stdin`, `stdout`, `stderr`, and `exitCode` fields. All selected
+sets are validated before any worker starts, including the second job's set.
+
 For a single issue, the exact `monitor` child receives only the specialist's
 phase records. Its selected text reaches this root through a separate channel.
 Print it as diagnostics, or forward it to a connected `progress` output. Monitor

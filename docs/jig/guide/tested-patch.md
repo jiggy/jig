@@ -17,7 +17,7 @@ The example declares the ordinary ACP Agent dependency and includes
 `bindings/agent.ts`. [Choose your client](./agents.md) there; Pi is an example
 choice, not a Jig preference. The `defaultProviders` map selects that Binding
 for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
-`flows/project/cases.json`.
+`flows/project/logs-cases.json`.
 After [workspace setup](dependencies.md#local-workspace-packages), run from the example directory:
 
 ```sh
@@ -98,7 +98,7 @@ instead of blindly starting another Run. See [working with files](./files.md).
 Change `issue.json` to name the permitted existing source paths:
 
 ```json
-{"issue":"Describe the defect and required behavior.","editPaths":["src/parse.ts","src/report.ts"]}
+{"issue":"Describe the defect and required behavior.","editPaths":["src/parse.ts","src/report.ts"],"checks":"my-project"}
 ```
 
 Select your source with `--attach source=../my-project`. For a larger tree,
@@ -109,9 +109,21 @@ during capture, take an atomic Git snapshot, or filter secrets for you.
 
 In `bindings/specialist.ts`, name your existing Bun test files under
 `slots.tests.test` and CLI entrypoint under `slots.cli.run`.
-Write independent cases in `flows/project/cases.json`: each has an ID,
-arguments, stdin, expected stdout/stderr, and exit code. Review again after
-changing either. Candidate dependencies must be source-local or supported
+Write independent cases in `flows/project/my-project-cases.json`: each has an ID,
+arguments, stdin, expected stdout/stderr, and exit code. For example:
+
+```json
+[{"id":"empty","args":[],"stdin":"","stdout":"0\n","stderr":"","exitCode":0}]
+```
+
+Use the actual behavior your CLI should produce. Supply 1–8 cases; the JSON file
+is limited to 256 KiB. Select it with `checks: "my-project"`; omitted `checks`
+uses the included `logs` set. Names are 1–32 lowercase letters, digits or hyphens,
+starting with a letter. The same selection works in batch jobs without editing
+the root or specialist code. Files live in the reviewed application, outside
+the candidate's permitted edits. Every selected set is validated before worker
+dispatch. Review again after changing commands or cases.
+Candidate dependencies must be source-local or supported
 Bun/Node built-ins; network and installation are unavailable.
 
 The repair specialist needs no attachment. Another root can reuse it through
@@ -160,7 +172,8 @@ jig run binding:repair --input @batch.json --attach source=fixtures --out batch-
 ```
 
 Each job names its relative project `directory`, an `issue`, permitted
-`editPaths`, and one application-owned check set (`logs` or `timesheet`).
+`editPaths`, and one application-owned check set (the included `logs` or
+`timesheet`, or a set you added).
 Those fixed cases live in the root Flow and require review when changed.
 Each project retains the same size and two-proposal limits; a batch can make
 up to four Agent calls. All jobs are captured and validated before work starts.

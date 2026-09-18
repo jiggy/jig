@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
-import logs from './cases.json'
+import { checkName, loadChecks } from './checks.ts'
 import {
   identity,
   inspect,
@@ -9,13 +9,10 @@ import {
   repairDeliverables,
   writeRepairDeliverables,
 } from './files.ts'
-import timesheet from './timesheet-cases.json'
-
-const checks = { logs, timesheet }
 interface Job {
   id: string
   directory: string
-  checks: keyof typeof checks
+  checks: string
   issue: string
   editPaths: string[]
   cancelAfterMs?: number
@@ -42,7 +39,7 @@ export function batchJobs(value: unknown): Job[] {
       job.directory.length > 256 ||
       !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(job.directory) ||
       job.directory.split('/').length > 16 ||
-      !Object.hasOwn(checks, job.checks) ||
+      typeof job.checks !== 'string' ||
       (job.cancelAfterMs !== undefined &&
         (!Number.isSafeInteger(job.cancelAfterMs) ||
           job.cancelAfterMs < 1 ||
@@ -51,6 +48,7 @@ export function batchJobs(value: unknown): Job[] {
       throw new TypeError(
         'Each job needs a unique id, a relative project directory, and a known check set; optional cancellation is 1–300,000 ms.',
       )
+    checkName(job.checks)
   }
   if (new Set(input.jobs.map((j) => j.id)).size !== input.jobs.length)
     throw new TypeError('Job ids must be distinct.')
@@ -83,7 +81,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
       input: await readRepairInput(
         { issue: job.issue, editPaths: job.editPaths },
         join(source.path, job.directory),
-        checks[job.checks],
+        await loadChecks(job.checks),
       ),
     })
   const changes: { job: string; path: string; content: string }[] = []

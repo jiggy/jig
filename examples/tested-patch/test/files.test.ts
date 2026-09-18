@@ -34,6 +34,19 @@ test('root captures bounded text without executing it and shares the documented 
     readRepairInput({ issue: 'Fix.', editPaths: ['src/code.ts'] }, root),
   ).rejects.toThrow()
 })
+test('single issues select reviewed acceptance data without sending the selector to the specialist', async () => {
+  const root = await directory()
+  await mkdir(join(root, 'src'))
+  await writeFile(join(root, 'src/code.ts'), 'export const value = 0')
+  const request = { issue: 'Fix.', editPaths: ['src/code.ts'], checks: 'timesheet' }
+  const actual = await readRepairInput(request, root)
+  expect(actual.cases[0]!.id).toBe('day-and-night')
+  expect(Object.hasOwn(actual, 'checks')).toBe(false)
+  await expect(readRepairInput({ ...request, checks: null }, root)).rejects.toThrow(
+    'Select a check set',
+  )
+})
+
 test('only verified successful evidence earns a review patch', async () => {
   const root = await directory(),
     { result } = await syntheticRepair()

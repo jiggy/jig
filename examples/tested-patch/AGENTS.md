@@ -78,6 +78,10 @@ application is not an unrestricted repository worker or independent probe.
   Saving does not certify the application verdict. A passed finite case set
   establishes tested behavior only, not correctness or marketing superiority.
 - Validate all batch jobs before dispatch. Use distinct operation identities
+  and resolve each `checks` name to a bounded reviewed `<name>-cases.json`
+  inside the root package, not the candidate source tree. Single jobs use the
+  same selection with `logs` as the default; adding sets requires no code registry.
+  Reject invalid or missing policy before any worker starts. Use exact calls
   through the same exact slot, with at most two siblings. Optional per-job
   cancellation preserves settled sibling results. Checkpoint after each settled
   job, serialize saves, identify pending jobs, and retain separate base/candidate
