@@ -3,7 +3,7 @@ import { open, opendir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { RunContext, RunResult } from '@jigging/flow'
-import { loadChecks, type AcceptanceCase } from './checks.ts'
+import { type AcceptanceCase, loadChecks } from './checks.ts'
 import { monitoredRepair } from './monitoring.ts'
 
 function hash(text: string) {

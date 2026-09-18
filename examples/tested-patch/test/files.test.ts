@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -40,7 +40,7 @@ test('single issues select reviewed acceptance data without sending the selector
   await writeFile(join(root, 'src/code.ts'), 'export const value = 0')
   const request = { issue: 'Fix.', editPaths: ['src/code.ts'], checks: 'timesheet' }
   const actual = await readRepairInput(request, root)
-  expect(actual.cases[0]!.id).toBe('day-and-night')
+  expect(actual.cases[0]?.id).toBe('day-and-night')
   expect(Object.hasOwn(actual, 'checks')).toBe(false)
   await expect(readRepairInput({ ...request, checks: null }, root)).rejects.toThrow(
     'Select a check set',
