@@ -150,14 +150,14 @@ function requireRegistryDependencyMaps(
   workspace = false,
   manifest = false,
 ): void {
-  const reject = (reason: keyof typeof MANIFEST_REASONS, pointer: string): never => {
+  function reject(reason: keyof typeof MANIFEST_REASONS, pointer: string): never {
     if (manifest) throw new PrivateBunManifestError(reason, pointer)
     throw new TypeError('unsupported Bun lock source')
   }
   for (const field of DEPENDENCY_MAPS) {
     if (container[field] === undefined) continue
     const dependencies = ordinaryRecord(container[field])
-    if (dependencies === undefined) return reject('DEPENDENCIES', `/${field}`)
+    if (dependencies === undefined) reject('DEPENDENCIES', `/${field}`)
     for (const [name, request] of Object.entries(dependencies)) {
       if (!isPackageName(name)) reject('NAME', `/${field}`)
       if (

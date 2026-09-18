@@ -2,7 +2,7 @@ import { types as utilTypes } from 'node:util'
 
 import { validateJson1 } from '../json.js'
 import { isProtectedProjectPath, validateProjectPath } from '../project/paths.js'
-import { schemaTypeMismatchText, type SchemaTypeMismatch } from '../schema/types.js'
+import { type SchemaTypeMismatch, schemaTypeMismatchText } from '../schema/types.js'
 import type { RootAdministration } from './root.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/

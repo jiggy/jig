@@ -13,12 +13,12 @@ import {
 import type { RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
 import { validateJson1 } from '../json.js'
-import { ACP_SETUP_HINTS } from './acp-setup-diagnostics.js'
 import {
   buildPrivateActivationRequests,
   resolveRetainedPackageProjectObservation,
 } from '../project/package-resolution.js'
 import { retainOpenedPackageProject } from '../project/retained-project.js'
+import { ACP_SETUP_HINTS } from './acp-setup-diagnostics.js'
 import { createPrivateActivationCandidateV5 } from './activation-admission.js'
 import {
   applyPrivateActivationReviewPlan,

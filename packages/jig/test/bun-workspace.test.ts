@@ -3,14 +3,14 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-execution-layout.js'
+import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
+import { capturePrivateBunWorkspace } from '../src/internal/bun-workspace-capture.js'
+import { privatePackageAliasText } from '../src/internal/package-aliases.js'
 import {
   projectError,
   scopePrivatePackagePlanningError,
 } from '../src/internal/project-session-controller.js'
-import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
-import { capturePrivateBunWorkspace } from '../src/internal/bun-workspace-capture.js'
-import { privatePackageAliasText } from '../src/internal/package-aliases.js'
-import { capturePackageDirectory, captureOpenedPackageDirectory } from '../src/package/capture.js'
+import { captureOpenedPackageDirectory, capturePackageDirectory } from '../src/package/capture.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import { openPrivateProjectRoot } from '../src/project/root.js'
 
