@@ -27,6 +27,13 @@ for cross-project work), and [design judgment](.agents/doctrine/design-judgment.
 Relate material choices to the principles they serve. Independent probe
 consumers do not make platform decisions and retain their public-only inputs.
 
+Jig's adoption and retained Bread text belong in [LICENSE.md](LICENSE.md),
+its prices in [PRICING.md](PRICING.md), and contribution rights in
+[CONTRIBUTING.md](CONTRIBUTING.md). [LICENSES.md](LICENSES.md) owns the
+multi-project scope. Bread is independently maintained; no neighboring Bread
+checkout is an input to Jig builds, releases, or required guidance. Preserve
+previously issued grants and separately licensed FLOW and third-party material.
+
 Follow the [maintainer guide](.agents/maintainer-guide.md) for repository-wide
 engineering workflow rules and use the
 [roadmap](.agents/ROADMAP.md) for outcome order. Inspect Git, relevant package

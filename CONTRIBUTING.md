@@ -1,23 +1,25 @@
 # Contributing
 
-Contributions are welcome through the public repository process. Each commit
-must carry a Developer Certificate of Origin sign-off:
+Jig contributions require the rights holder's acceptance of the
+[Jig contributor agreement](CONTRIBUTOR-AGREEMENT.md) before incorporation.
+It permits future commercial licensing and relicensing; contributors retain
+copyright. A pull request, DCO sign-off, or permission to use Jig does not
+substitute for that agreement. Until its recipient details and acceptance
+process are completed, external Jig contributions must not be merged.
+
+For separately licensed open-source material, each commit must carry the
+Developer Certificate of Origin 1.1 sign-off reproduced below:
 
 ```text
 Signed-off-by: Name <email@example.com>
 ```
 
-Use `git commit --signoff` to add it. The sign-off certifies the DCO 1.1 text
-below. Contributors retain their copyright. This project requires no
-copyright assignment or separate contributor license agreement and receives
-no broad commercial-relicensing grant.
-
-Contributions are made under the license assigned to their destination in
-[`LICENSES.md`](LICENSES.md). A contribution to a FLOW Draft Specification also
-constitutes acceptance of the Community Specification License 1.0, including
-its patent terms and exclusion procedure. Do not submit third-party material
-unless its license is compatible and its provenance and required notices are
-included.
+Use `git commit --signoff`. The destination's license in
+[LICENSES.md](LICENSES.md) applies. FLOW Draft Specification contributions
+also accept the Community Specification License 1.0, including its patent
+terms and exclusion procedure. Jig's contributor agreement does not govern
+FLOW or the Sley integration skill. Mixed contributions must satisfy each
+applicable path's terms. Include third-party provenance and required notices.
 
 ## Development shell
 
@@ -66,7 +68,7 @@ source edits even when the package version has not changed.
 
 The shell supplies Bubblewrap locally and sets `JIG_BWRAP_PATH` to its exact
 Nix-store executable. No system-wide Bubblewrap installation is needed.
-Running Jig still requires the [supported host configuration](README.md#supported-host).
+Running Jig still requires the [supported host configuration](docs/jig/guide/index.md#supported-host).
 On NixOS, enable the unmodified runtime's loader support in your host configuration:
 
 ```nix

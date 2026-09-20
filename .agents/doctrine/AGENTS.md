@@ -36,6 +36,9 @@ then guiding principles, design commitments, and their practical consequences.
   broad slogan may bypass them. Surface conflicts for resolution at their owner.
 - Give each detailed argument one owner. The compass summarizes and links;
   chapters cross-reference rather than repeat one another's reasoning.
+- Jig's source-available funding commitment belongs in `jig.md`; exact Bread
+  permissions and prices belong in the repository license and schedule. Keep
+  FLOW's independent licensing and earlier valid grants intact.
 - Doctrine constrains project decisions; it cannot silently authorize new
   features or rewrite public contracts. Keep the compass and affected chapters
   synchronized when an owner-authorized revision changes a commitment.

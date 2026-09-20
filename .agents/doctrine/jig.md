@@ -230,10 +230,18 @@ supplies useful structure and domain policy without becoming an algebra of
 policy fragments or overriding operator choices. End users should experience
 its purpose rather than manage Jig's internal lifecycle vocabulary.
 
-Jig remains useful as OSI-approved open-source local software. Commercial
-products must not turn it into a deliberately crippled community edition.
-This is an ownership commitment supporting power under control, not a claim
-that every deployment is local or every supporting service is free.
+Jig remains one complete, source-available product under the Bread License.
+Personal use, qualifying organizational use, and genuine evaluation remain
+free under the applicable grant. Commercial participation funds the same
+product; it does not unlock an otherwise impaired edition. Distributed Jig
+modifications remain source-available, while independent applications and
+outputs retain their own terms. Acquired release rights survive nonrenewal,
+and execution requires no licensing server, activation, or surveillance.
+
+These commitments support power under control. They do not describe Jig as
+OSI-approved open source, make every service free, change earlier valid grants,
+or subordinate FLOW's independent licensing to Jig. Exact permissions and
+commercial obligations belong in the repository license and pricing schedule.
 
 ### Understandable feedback and actionable errors
 

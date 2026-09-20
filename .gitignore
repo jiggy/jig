@@ -22,3 +22,6 @@ __pycache__/
 /.env.local
 *.env
 .*.env
+
+# Independent Bread checkout; never part of Jig source or release inputs.
+/bread-license/

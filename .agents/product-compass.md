@@ -90,8 +90,9 @@ cancellation, and cleanup must account for owned work; missing support and
 uncertainty remain visible.
 
 Source and policy stay inspectable and adaptable without a competing hidden
-effective source. Jig remains useful as an OSI-approved open-source local
-product, not a crippled community edition. Defaults simplify ordinary use.
+effective source. Jig remains a complete, source-available local product under Bread, with
+free personal use, qualifying organizational use, and genuine evaluation.
+Commercial permissions fund the same product without runtime licensing controls. Defaults simplify ordinary use.
 A Binding is a reusable project-local configuration for a Flow; such
 configuration and formal contracts earn their burden through meaningful
 customization or interoperability. Minimalism never removes proved safeguards.
