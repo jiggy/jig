@@ -27,12 +27,37 @@ export interface ConversationOptions {
   readonly contractDirectory: string
   /** Optional caller-created public update writer; observation stays application-owned. */
   readonly events?: ChannelSender
+  /** Synchronous filtering/presentation of public updates; no channel setup required. */
+  readonly onEvent?: (event: AgentUpdate) => void
 }
+
+export type AgentUpdate =
+  | {
+      readonly sessionUpdate: 'agent_message_chunk'
+      readonly turn?: number
+      readonly messageId?: string
+      readonly content: { readonly type: 'text'; readonly text: string }
+    }
+  | {
+      readonly sessionUpdate: 'plan'
+      readonly turn?: number
+      readonly entries: readonly {
+        readonly content: string
+        readonly priority: 'high' | 'medium' | 'low'
+        readonly status: 'pending' | 'in_progress' | 'completed'
+      }[]
+    }
+
+export type AgentObservation =
+  | { readonly status: 'complete' }
+  | { readonly status: 'incomplete'; readonly errors: readonly unknown[] }
 
 export interface ConversationResult<T> {
   readonly value: T
   readonly turns: readonly AgentTurn[]
   readonly settlement: RunResult
+  /** Present only with onEvent. Observation never stands in for execution settlement. */
+  readonly observation?: AgentObservation
 }
 
 /** Retains received answers and every primary/cleanup failure; never manufactures success. */
@@ -70,6 +95,8 @@ export async function withAgentConversation<T>(
   options: ConversationOptions,
   use: (conversation: AgentConversation) => Promise<T>,
 ): Promise<ConversationResult<T>> {
+  if (options.events && options.onEvent)
+    throw new TypeError('Choose onEvent or an external events writer, not both')
   if (!options.contractDirectory || options.contractDirectory.endsWith('/'))
     throw new TypeError(
       'contractDirectory must name the public Agent Run bundle without a trailing slash',
@@ -98,6 +125,10 @@ export async function withAgentConversation<T>(
   }
   let commands: ChannelPair | undefined
   let replies: ChannelPair | undefined
+  let events: ChannelPair | undefined
+  let observer: Promise<void> | undefined
+  const observerStop = new AbortController()
+  const observationErrors: unknown[] = []
   let offered = false
   let work: Promise<{ result: RunResult } | { error: unknown }> | undefined
   let pump: Promise<void> | undefined
@@ -124,6 +155,11 @@ export async function withAgentConversation<T>(
     replies = await run.channel({
       contract: `${options.contractDirectory}/contracts/agent-replies.json`,
     })
+    if (options.onEvent) {
+      events = await run.channel({
+        contract: `${options.contractDirectory}/contracts/acp-public-updates.json`,
+      })
+    }
     offered = true
     // Do not cancel this local waiter to stop a conversation. Its real terminal
     // is the evidence that lets a healthy parent subsequently use the capacity.
@@ -135,16 +171,44 @@ export async function withAgentConversation<T>(
         channels: {
           commands: commands.receive,
           replies: replies.send,
-          ...(options.events ? { events: options.events } : {}),
+          ...(events ? { events: events.send } : options.events ? { events: options.events } : {}),
         },
       })
       .then(
         (result) => ({ result }),
         (error) => {
           fail(error)
+          observerStop.abort(error)
           return { error }
         },
       )
+    if (events) {
+      observer = (async () => {
+        try {
+          for (;;) {
+            const item = await events!.receive.next({
+              signal: AbortSignal.any([run.signal, observerStop.signal]),
+            })
+            if (item.done) break
+            const returned: unknown = options.onEvent!(item.value as unknown as AgentUpdate)
+            if (returned && typeof (returned as PromiseLike<unknown>).then === 'function') {
+              void Promise.resolve(returned).catch(() => undefined)
+              throw new TypeError(
+                'onEvent must be synchronous; use events for asynchronous channel processing',
+              )
+            }
+          }
+        } catch (error) {
+          observationErrors.push(error)
+        } finally {
+          try {
+            await events!.receive.close()
+          } catch (error) {
+            if (!observationErrors.includes(error)) observationErrors.push(error)
+          }
+        }
+      })()
+    }
     pump = (async () => {
       try {
         for (;;) {
@@ -273,6 +337,19 @@ export async function withAgentConversation<T>(
       if ('error' in terminal) record(terminal.error)
       else settlement = terminal.result
     }
+    await observer
+    if (events && !offered) {
+      try {
+        await events.send.close({ error: 'LAGGED', signal: run.signal })
+      } catch (error) {
+        record(error)
+      }
+      try {
+        await events.receive.close()
+      } catch (error) {
+        record(error)
+      }
+    }
     if (replies) {
       try {
         await replies.receive.close()
@@ -301,5 +378,16 @@ export async function withAgentConversation<T>(
   )
     record(invalid('Agent omitted matching conversation settlement'))
   if (errors.length) throw new AgentConversationError(errors, Object.freeze(turns), settlement)
-  return { value, turns: Object.freeze(turns), settlement: settlement! }
+  return {
+    value,
+    turns: Object.freeze(turns),
+    settlement: settlement!,
+    ...(options.onEvent
+      ? {
+          observation: observationErrors.length
+            ? { status: 'incomplete' as const, errors: Object.freeze(observationErrors) }
+            : { status: 'complete' as const },
+        }
+      : {}),
+  }
 }

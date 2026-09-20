@@ -18,6 +18,20 @@ async function exercise(mode: string) {
     send({ jsonrpc: '2.0', id: request.id, error: { code: -32000, message: code, data: { code } } })
   const queues: any[] = []
   let read: any
+  let eventRead: any
+  const eventQueue = [
+    { item: { sequence: 1, value: { sessionUpdate: 'plan', entries: [], turn: 0 } } },
+    {
+      item: {
+        sequence: 2,
+        value: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'visible draft' },
+          turn: 0,
+        },
+      },
+    },
+  ]
   let call: any
   let sequence = 0
   let creates = 0
@@ -72,7 +86,7 @@ async function exercise(mode: string) {
             fail(request, 'RESOURCE_EXHAUSTED')
             continue
           }
-          const prefix = creates === 1 ? 'commands' : 'replies'
+          const prefix = creates === 1 ? 'commands' : creates === 2 ? 'replies' : 'events'
           ok(request, {
             send: { endpoint: `${prefix}:s`, direction: 'send', delivery: 'direct' },
             receive: {
@@ -84,16 +98,20 @@ async function exercise(mode: string) {
           })
         } else if (request.method === 'flow/call') {
           call = request
-          expect(p.channels).toEqual({ commands: 'commands:r', replies: 'replies:s' })
+          expect(p.channels).toEqual({
+            commands: 'commands:r',
+            replies: 'replies:s',
+            ...(mode.startsWith('observer') ? { events: 'events:s' } : {}),
+          })
           expect(p.input.session).toEqual(
             ['retained', 'missing-session', 'invalid-session'].includes(mode)
               ? { retain: true }
               : undefined,
           )
-          if (mode === 'unavailable') {
+          if (mode === 'unavailable' || mode === 'observer-unavailable') {
             nativeSettled = true
             fail(call, 'UNAVAILABLE')
-          } else if (mode === 'root-cancel') {
+          } else if (mode === 'root-cancel' || mode === 'observer-root-cancel') {
             send({ jsonrpc: '2.0', method: 'request/cancel', params: { requestId: 'root' } })
           } else if (mode === 'abandoned') {
             // No result: callback returns while a real invocation remains live.
@@ -101,6 +119,14 @@ async function exercise(mode: string) {
             item({ type: 'result', turn: 7, result: { outcome: 'done', output: null } })
           else terminal(0)
         } else if (request.method === 'channel/next') {
+          if (p.endpoint === 'events:r') {
+            if (mode === 'observer-lagged') fail(request, 'LAGGED')
+            else if (mode === 'observer-disposal') fail(request, 'CANCELLED')
+            else if (eventQueue.length) ok(request, eventQueue.shift())
+            else if (nativeSettled) ok(request, { end: { lastSequence: 2 } })
+            else eventRead = request
+            continue
+          }
           read = request
           if (queues.length) {
             ok(read, queues.shift())
@@ -123,6 +149,10 @@ async function exercise(mode: string) {
           ok(request, null)
           if (call && !nativeSettled) {
             nativeSettled = true
+            if (eventRead) {
+              ok(eventRead, { end: { lastSequence: 2 } })
+              eventRead = undefined
+            }
             if (p.error) fail(call, 'EXECUTION_FAILED')
             else
               ok(call, {
@@ -144,6 +174,15 @@ async function exercise(mode: string) {
               })
           }
         } else if (request.method === 'channel/release') {
+          if (p.endpoint === 'events:r') {
+            ok(
+              request,
+              mode === 'observer-disposal'
+                ? { status: 'failed', code: 'LAGGED' }
+                : { status: 'released' },
+            )
+            continue
+          }
           expect(['replies:r', ...(mode === 'partial-allocation' ? ['commands:r'] : [])]).toContain(
             p.endpoint,
           )
@@ -151,19 +190,32 @@ async function exercise(mode: string) {
           if (mode === 'disposal-error') ok(request, { status: 'failed', code: 'LAGGED' })
           else ok(request, { status: 'released' })
         } else if (request.method === 'request/cancel') {
-          if (read && read.id === p.requestId) {
+          if (eventRead && eventRead.id === p.requestId) {
+            fail(eventRead, 'CANCELLED')
+            eventRead = undefined
+          } else if (read && read.id === p.requestId) {
             fail(read, 'CANCELLED')
             read = undefined
-          } else if (mode === 'root-cancel' && call && call.id === p.requestId) {
+          } else if (
+            (mode === 'root-cancel' || mode === 'observer-root-cancel') &&
+            call &&
+            call.id === p.requestId
+          ) {
             nativeSettled = true
             fail(call, 'CANCELLED')
+          } else if (
+            operations.some(
+              (operation) => operation.id === p.requestId && operation.method === 'channel/next',
+            )
+          ) {
+            // Cancellation may arrive after this fixture already answered the read.
           } else
             throw Error('Helper cancelled its invocation waiter instead of awaiting settlement')
         } else throw Error(`unexpected method ${request.method}`)
       }
     }
     expect(await process.exited, await errors).toBe(0)
-    if (mode === 'root-cancel') {
+    if (mode === 'root-cancel' || mode === 'observer-root-cancel') {
       expect(final?.error?.data?.code).toBe('CANCELLED')
       return { output: null, operations }
     }
@@ -182,6 +234,21 @@ for (const mode of ['normal', 'interrupt', 'completion-race']) {
     const { output } = await exercise(mode)
     expect(output.turns).toHaveLength(2)
     expect(output.value.second.type).toBe(mode === 'interrupt' ? 'cancelled' : 'result')
+    expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
+  })
+}
+test('helper filters live public events without caller channel coordination', async () => {
+  const { output } = await exercise('observer')
+  expect(output.displayed).toEqual(['visible draft'])
+  expect(output.observation).toEqual({ status: 'complete' })
+  expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
+})
+for (const mode of ['observer-throws', 'observer-async', 'observer-lagged', 'observer-disposal']) {
+  test(`${mode} leaves successful Agent settlement intact with explicit observation loss`, async () => {
+    const { output } = await exercise(mode)
+    expect(output.observation.status).toBe('incomplete')
+    expect(output.observation.errors.length).toBeGreaterThan(0)
+    expect(output.turns).toHaveLength(2)
     expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
   })
 }
@@ -228,4 +295,10 @@ for (const mode of [
 
 test('root cancellation cannot become successful conversation recovery', async () => {
   await exercise('root-cancel')
+  await exercise('observer-root-cancel')
+})
+test('a failed observed invocation settles without waiting for events that cannot arrive', async () => {
+  const { output } = await exercise('observer-unavailable')
+  expect(output.errors.length).toBeGreaterThan(0)
+  expect(output.turns).toHaveLength(0)
 })

@@ -114,6 +114,9 @@ const completed = await withAgentConversation(run, {
   operationId: 'incident-brief', slot: 'agent',
   contractDirectory: './contracts/agent-run',
   input: { instructions: 'Draft a brief from the supplied incident facts.' },
+  onEvent(event) {
+    if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
+  },
 }, async conversation => {
   const draft = await conversation.initial
   if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
@@ -141,6 +144,15 @@ are rejected, never queued. A callback that leaves a live turn unfinished fails
 and closes its command channel; the helper still waits for the invocation's
 actual settlement. It never cancels that local waiter to manufacture cleanup.
 Root cancellation remains fatal to the Run.
+
+Optional `onEvent` handles synchronous filtering and presentation of public
+updates; the helper owns its channel and disposal. It returns
+`observation: {status: 'complete'}` or `{status: 'incomplete', errors}` separately
+from actual conversation settlement. A failed display or lagged stream does not
+turn successful work into failed execution. For asynchronous processing or
+forwarding, supply the lower-level `events` writer instead; these alternatives
+cannot be combined. An async `onEvent` is rejected as incomplete observation,
+not awaited as part of Agent execution. One-shot callers still use `run.call()`.
 
 `AgentConversationError` retains `turns`, any known `settlement`, and primary
 and cleanup `errors`. Catch it normally to retain partial work, not to infer

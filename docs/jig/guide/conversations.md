@@ -45,6 +45,9 @@ const completed = await withAgentConversation(run, {
   operationId: 'incident-brief', slot: 'agent',
   contractDirectory: './contracts/agent-run',
   input: { instructions: `Draft an incident brief from these facts: ${facts}` },
+  onEvent(event) {
+    if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
+  },
 }, async conversation => {
   const draft = await conversation.initial
   if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
@@ -66,7 +69,11 @@ turn's promise. An accepted interruption can race ordinary completion. Leaving
 a live turn unfinished at callback return fails rather than detaching it.
 `AgentConversationError` retains received `turns`, any known `settlement`, and
 both primary and cleanup `errors`; ordinary `try/catch` remains sufficient.
-Its optional `events` writer leaves filtering and presentation in the caller.
+Optional `onEvent` filters or displays public updates synchronously without
+manual channel setup. Inspect `completed.observation.status`: `incomplete`
+preserves observation errors without replacing the actual execution result.
+Asynchronous routing can instead use a caller-created `events` writer; do not
+combine it with `onEvent`. There is no privileged host echo of filtered text.
 
 ## Connect the channels directly
 

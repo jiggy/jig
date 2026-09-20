@@ -2,6 +2,7 @@ import { handle, type JsonValue } from '@jigging/flow'
 import { withAgentConversation, AgentConversationError } from '../src/conversation.js'
 
 await handle(async (run) => {
+  const displayed: string[] = []
   try {
     const result = await withAgentConversation(
       run,
@@ -9,6 +10,17 @@ await handle(async (run) => {
         operationId: 'dialogue',
         slot: 'agent',
         contractDirectory: './contracts/agent-run',
+        ...(String(run.input).startsWith('observer')
+          ? {
+              onEvent(event: import('../src/conversation.js').AgentUpdate) {
+                if (run.input === 'observer-throws') throw new Error('display failed')
+                if (run.input === 'observer-async')
+                  return Promise.reject(new Error('async display failed'))
+                if (event.sessionUpdate === 'agent_message_chunk')
+                  displayed.push(event.content.text)
+              },
+            }
+          : {}),
         input: {
           instructions: 'Draft from these facts',
           ...(['retained', 'missing-session', 'invalid-session'].includes(run.input as string)
@@ -26,7 +38,23 @@ await handle(async (run) => {
         return { first, second: await second }
       },
     )
-    return { outcome: 'done', output: result as unknown as JsonValue }
+    return {
+      outcome: 'done',
+      output: {
+        ...result,
+        displayed,
+        ...(result.observation?.status === 'incomplete'
+          ? {
+              observation: {
+                status: 'incomplete',
+                errors: result.observation.errors.map((e) =>
+                  e instanceof Error ? e.message : String(e),
+                ),
+              },
+            }
+          : {}),
+      } as unknown as JsonValue,
+    }
   } catch (error) {
     if (!(error instanceof AgentConversationError)) throw error
     return {
