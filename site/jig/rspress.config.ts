@@ -114,6 +114,6 @@ export default defineConfig({
       {"text": "GitHub", "link": "https://github.com/jiggy/jig"},
     ],
     sidebar: { '/': sidebar },
-    footer: { message: 'Expand human possibility. Jig is open-source, prerelease software.' },
+    footer: { message: 'Expand human possibility. Jig is source-available, prerelease software.' },
   },
 })
