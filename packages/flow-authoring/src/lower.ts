@@ -287,6 +287,13 @@ export function lower(program: Program) {
       fail('SOURCE_UNSUPPORTED', 'Agent outputs use a root ./name.schema.json path.', type)
     }
     const file = path.slice(2)
+    if (['input.schema.json', 'result.schema.json', 'settings.schema.json'].includes(file))
+      fail(
+        'SOURCE_INVALID',
+        'Agent projections cannot replace reserved package schema owners.',
+        type,
+        file,
+      )
     if (projections[file])
       fail('SOURCE_INVALID', 'Two projections select the same output path.', type, file)
     const expanded = expand(emit(type), definitions, origins, file)

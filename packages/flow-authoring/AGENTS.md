@@ -18,6 +18,7 @@ it returns artifacts to Jig's separately owned managed publisher.
   edits a project, admits execution, fetches imports or runs package extensions.
 - Preserve requiredness, constraints and complete outcome/output correlation.
   Reject unsupported source and Agent projections rather than weakening them.
+  Projection filenames must not replace reserved invocation or settings schema owners.
 - Generated types are editor assistance, not validation or authority.
 - Keep the complete drafter fixture and honest compilerless consumption checks.
 

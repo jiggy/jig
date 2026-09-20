@@ -141,6 +141,24 @@ test('types are optional; comments affect source but not emitted contract meanin
   assert.equal(result.artifacts['FLOW.contract.json'], full.artifacts['FLOW.contract.json'])
 })
 
+for (const file of ['input.schema.json', 'result.schema.json', 'settings.schema.json']) {
+  test(`reserved package owner ${file} cannot be an Agent projection`, async () => {
+    await assert.rejects(
+      compile(
+        simple('v: string;', `@closed @agentResponse("./${file}") model Answer { text: string; }`),
+      ),
+      (error) => {
+        assert(error instanceof AuthoringError)
+        assert.equal(error.diagnostic.code, 'SOURCE_INVALID')
+        assert.equal(error.diagnostic.output, file)
+        assert.match(error.message, /reserved package schema/)
+        assert.equal('artifacts' in error, false)
+        return true
+      },
+    )
+  })
+}
+
 for (const [name, body, code, message] of [
   ['external import', 'import "./other.tsp";\n' + drafter, 'SOURCE_UNSUPPORTED', /bundled/],
   [

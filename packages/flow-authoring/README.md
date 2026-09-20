@@ -66,6 +66,10 @@ The prototype returns:
 - Each explicitly selected `./name.schema.json`: an Agent response schema.
 - The complete pinned authored source, separately as `result.source`.
 
+Agent projection names cannot be `input.schema.json`, `result.schema.json` or
+`settings.schema.json`: invocation and implementation settings keep their own
+package declarations. Reserved names fail before any artifact packet is returned.
+
 `FLOW.contract.json` is the native package invocation descriptor. Other hosts
 consume that JSON without this compiler or Jig's local management records.
 
