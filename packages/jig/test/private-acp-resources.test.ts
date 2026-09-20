@@ -32,10 +32,12 @@ import {
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
 } from '../src/internal/private-finite-acp-contract.js'
+import { decodePrivateProjectLocalLock } from '../src/internal/project-local-lock.js'
 import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
-import type { JsonValue } from '../src/json.js'
+import { canonicalJson, type JsonValue } from '../src/json.js'
 import type { AcpGrant } from '../src/project/grants.js'
 import type { InvocationSlots } from '../src/project/invocation-slots.js'
+import type { RunTargetIdentity } from '../src/project/package-project.js'
 import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 import { nativeElf } from './fixtures/native-elf.js'
@@ -331,21 +333,58 @@ describe('target-selected private ACP resources', () => {
       (client, support, environment, project) =>
         f.open(client, support, { ...environment, MODEL: `review-${client}` }, project),
     )
+    const clients = ['codex', 'claude'] as const
     const recipes = await Promise.all(
-      (['codex', 'claude'] as const).map((client) =>
+      clients.map((client) =>
         planPrivateBunDirectRun({
-          request: activationRequest(slots({ session: client }), `flows/${client}`),
+          request: activationRequest(slots({ session: client }), `flows/${client}`, {
+            kind: 'binding',
+            id: client,
+          }),
           backend,
           installedSupport: f.support,
           acpResources,
         }),
       ),
     )
+    const lock = decodePrivateProjectLocalLock(
+      Buffer.concat([
+        canonicalJson({
+          packages: Object.fromEntries(
+            recipes.map(({ request }) => [
+              request.packagePath,
+              {
+                digest: request.package.digest,
+                directRun: false,
+                uses: {
+                  session: {
+                    id: FINITE_ACP_CONTRACT_ID,
+                    version: FINITE_ACP_CONTRACT_VERSION,
+                    digest: FINITE_ACP_CONTRACT_DIGEST,
+                  },
+                },
+              },
+            ]),
+          ),
+          bindings: Object.fromEntries(
+            clients.map((client) => [
+              client,
+              {
+                packagePath: `flows/${client}`,
+                settings: {},
+                slots: { session: { kind: 'grant', policy: { kind: 'acp', client } } },
+              },
+            ]),
+          ),
+        }),
+        Buffer.from('\n'),
+      ]),
+    )
     const review = {
       baseCandidate: null,
       plan: {
         proposed: {
-          lock: { packages: {}, bindings: {} },
+          lock,
           targets: recipes.map((recipe) => ({
             request: recipe.request,
             disposition: {
@@ -361,7 +400,7 @@ describe('target-selected private ACP resources', () => {
     const rendered = renderPrivateProjectPlanReview(review, undefined, recipes)
     const details = parseYaml(rendered.details.slice(rendered.details.indexOf('  "')))
     expect(details.proposedHostAcp).toEqual({
-      'flow:flows/codex': {
+      'binding:codex': {
         session: {
           client: 'codex',
           model: 'review-codex',
@@ -369,7 +408,7 @@ describe('target-selected private ACP resources', () => {
           executable: f.executable,
         },
       },
-      'flow:flows/claude': {
+      'binding:claude': {
         session: {
           client: 'claude',
           model: 'review-claude',
@@ -464,10 +503,14 @@ function slots(clients: Readonly<Record<string, AcpGrant['client']>>): Invocatio
   )
 }
 
-function activationRequest(slots: InvocationSlots, path = 'flows/example') {
+function activationRequest(
+  slots: InvocationSlots,
+  path = 'flows/example',
+  target: RunTargetIdentity = { kind: 'flow', path },
+) {
   const fields = {
     kind: 'activation-request/4',
-    target: { kind: 'flow', path },
+    target,
     mode: 'run',
     packagePath: path,
     package: { kind: 'flow-package/1', digest: digest('package') },
