@@ -1,8 +1,8 @@
 {
   "name": "@jigging/jig",
-  "version": "0.1.0-alpha.16",
+  "version": "0.1.0-alpha.17",
   "description": "A local, secure host for admitted FLOW packages",
-  "license": "MPL-2.0",
+  "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jiggy/jig.git",
@@ -64,7 +64,13 @@
     "libexec/agent/pi-acp.LICENSE",
     "libexec/preparation/bun-native-preparation-worker.js",
     "README.md",
-    "LICENSE",
+    "LICENSE.md",
+    "PRICING.md",
+    "LICENSES.md",
+    "LICENSES/Apache-2.0.txt",
+    "LICENSES/CC-BY-4.0.txt",
+    "LICENSES/Community-Spec-1.0.md",
+    "LICENSES/MPL-2.0.txt",
     "THIRD_PARTY_NOTICES"
   ],
   "dependencies": {

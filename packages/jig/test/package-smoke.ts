@@ -7,7 +7,13 @@ import { isAbsolute, join, resolve } from 'node:path'
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
 const expectedInstalledFiles = [
-  'LICENSE',
+  'LICENSE.md',
+  'PRICING.md',
+  'LICENSES.md',
+  'LICENSES/Apache-2.0.txt',
+  'LICENSES/CC-BY-4.0.txt',
+  'LICENSES/Community-Spec-1.0.md',
+  'LICENSES/MPL-2.0.txt',
   'README.md',
   'THIRD_PARTY_NOTICES',
   'bin/jig',
@@ -79,7 +85,9 @@ try {
   assert.equal(Object.hasOwn(installedManifest, 'private'), false)
   const sourceManifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert.equal(installedManifest.version, sourceManifest.version)
-  assert.equal(installedManifest.license, 'MPL-2.0')
+  assert.equal(installedManifest.license, 'SEE LICENSE IN LICENSE.md')
+  assert.equal(await readFile(join(installed, 'LICENSE.md'), 'utf8'),
+    await readFile(resolve(packageRoot, '../../LICENSE.md'), 'utf8'))
   assert.deepEqual(installedManifest.os, ['linux'])
   assert.deepEqual(installedManifest.cpu, ['x64'])
   assert.deepEqual(installedManifest.libc, ['glibc'])

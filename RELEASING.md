@@ -63,6 +63,40 @@ Releases page. GitHub source archives remain source, not installable packages.
 Existing entries are preserved on retries; missing entries are created even
 when the npm version and source tag already existed.
 
+## Jig licensing and source delivery
+
+Jig's npm archive retains the root license, pricing, and applicable notices.
+Source is delivered through the matching `jig-v<version>` GitHub release's
+repository source archive. The publication workflow links that archive and the
+same tag's build instructions in its release notes. No nested source archive,
+source inventory format, or separate source packager belongs in npm builds.
+The existing candidate build already builds from a Git archive without Git
+metadata; keep that proof rather than maintaining another source-build path.
+Complete the adoption notice before issuing an effective grant.
+
+### Build a source release
+
+Download and extract the matching release's **Source code (tar.gz)** or zip.
+On Linux x64/glibc, use Bun 1.3.3 (revision
+`274e01c737e85f8142070a9745b43a2ba09fce4c`) and Just 1.43.1. From the
+extracted repository root:
+
+```sh
+bun install --filter @jigging/jig --ignore-scripts --config=/dev/null
+just --justfile packages/jig/justfile build
+```
+
+Edit `packages/jig/src` and repeat the build. The launcher is
+`packages/jig/bin/jig`. To package your build:
+
+```sh
+just --justfile packages/jig/justfile pack --destination /absolute/output/directory
+```
+
+Installation needs registry access and resolves transitive dependencies;
+this does not promise offline or byte-identical reproduction. Running Jig
+also needs the supported host configuration described in its README.
+
 ## Failure recovery
 
 If candidate construction fails, fix the source in a new reviewed commit. If

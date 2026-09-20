@@ -31,14 +31,23 @@
     bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js
     cp ../../docs/jig/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json
     cp node_modules/openai/LICENSE libexec/agent/openai.LICENSE
+    cp ../../LICENSE.md ../../PRICING.md ../../LICENSES.md .
+    mkdir -p LICENSES
+    cp ../../LICENSES/Apache-2.0.txt ../../LICENSES/CC-BY-4.0.txt ../../LICENSES/Community-Spec-1.0.md ../../LICENSES/MPL-2.0.txt LICENSES/
 
 # Remove only generated package output
 clean:
     #!/usr/bin/env bun
-    import { rm } from 'node:fs/promises';
-    for (const path of ['dist', 'bin', 'libexec']) {
+    import { rm, rmdir } from 'node:fs/promises';
+    for (const path of ['dist', 'bin', 'libexec', 'LICENSE.md', 'PRICING.md', 'LICENSES.md']) {
       await rm(path, { recursive: true, force: true });
     }
+    for (const name of ['Apache-2.0.txt', 'CC-BY-4.0.txt', 'Community-Spec-1.0.md', 'MPL-2.0.txt']) {
+      await rm(`LICENSES/${name}`, { force: true });
+    }
+    await rmdir('LICENSES').catch(error => {
+      if (!['ENOENT', 'ENOTEMPTY'].includes(error.code)) throw error;
+    });
 
 # Build, then pack; release publication reuses an already tested archive
 [positional-arguments]

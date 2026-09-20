@@ -94,4 +94,13 @@ for supported installations and authentication.
 Jig is prerelease software. [FLOW](https://flow.jig.md/) remains an independent
 standard for portable methods.
 
+## License and editable source
+
+Jig's adoption notice and complete Bread text are in [LICENSE.md](LICENSE.md),
+with retained [pricing](PRICING.md) and the [license mapping](LICENSES.md).
+FLOW and third-party components keep their separate terms.
+Download the source archive from the matching `jig-v<version>` entry on
+[GitHub Releases](https://github.com/jiggy/jig/releases). Each release links
+its source and build instructions; npm contains the runnable distribution.
+
 Copyright © 2026 Victor Duarte <zvictor> and contributors.

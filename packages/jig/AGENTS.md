@@ -20,7 +20,12 @@ admitted FLOW packages.
   public example selection.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
-  `dist/`, `bin/`, and `libexec/` are generated.
+  `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
+  `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated.
+- Root licensing and pricing are canonical; the build copies their retained
+  texts. Source delivery belongs to the matching GitHub release and its tagged
+  repository archive. Never embed source archives or add source-assembly
+  machinery to the npm package. `RELEASING.md` owns source-build instructions.
 
 ## Local Contracts
 
@@ -143,6 +148,7 @@ admitted FLOW packages.
 - `bun test packages/jig`
 - `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
+- `just jig::test-package` checks the installed file inventory and retained license.
 - Trust-boundary changes require the provisioned host-conformance workflow.
 - CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-value-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,

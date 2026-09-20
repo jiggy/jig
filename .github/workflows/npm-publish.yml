@@ -382,6 +382,10 @@ jobs:
               printf 'Install this prerelease:\n\n```sh\n%s\n```\n\n' "$install"
               printf '[Documentation and prerequisites](%s).\n\n' "$documentation"
               printf 'Install the published npm package above. GitHub source archives contain the repository source.\n'
+              if [ "$kind" = jig ]; then
+                printf '\n[Download matching source](https://github.com/%s/archive/refs/tags/%s.tar.gz).\n\n' "$GITHUB_REPOSITORY" "$tag"
+                printf '[Build instructions](https://github.com/%s/blob/%s/RELEASING.md#build-a-source-release).\n' "$GITHUB_REPOSITORY" "$tag"
+              fi
             } > "$notes"
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --prerelease --latest=false \

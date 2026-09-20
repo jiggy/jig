@@ -22,6 +22,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Publish only after CI and the complete Linux Host Conformance workflow have
   both succeeded for the exact triggering source revision.
 - Keep path filters synchronized with every real workflow input.
+- Jig's Linux conformance PR filter includes root license, pricing, mapping,
+  and retained license texts. Jig GitHub release notes link the matching tagged
+  source archive and build instructions; npm remains the runnable distribution.
 - Python publication qualifies the exact retained wheel/sdist on its supported
   interpreter/OS matrix. Read-only jobs prepare and verify registry bytes; the
   isolated OIDC publisher executes no repository code. Duplicate-upload skipping
