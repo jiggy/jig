@@ -18,7 +18,7 @@ for external libraries.
 - `communication.md` owns positioning, narrative progression, vocabulary,
   and public editorial judgment, drawing on the audience and doctrine.
 - `maintainer-guide.md` introduces the engineering model, its governing
-  principles, operational invariants, and working method.
+  principles, operational invariants, holistic product/UX review, and working method.
 - `ROADMAP.md` orders outcome gates and the next concrete development steps
   without becoming a task tracker.
 - `suspended-experiments.md` points to deleted experiments only when their

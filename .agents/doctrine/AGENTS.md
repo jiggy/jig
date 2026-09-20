@@ -15,9 +15,11 @@ then guiding principles, design commitments, and their practical consequences.
   model for code and Agents, and the reasons for an independent method ecosystem.
 - `jig.md` owns agency, power under control, Agents as participants in software,
   and the authority and ownership principles that hold under misdirected behavior.
-- `design-judgment.md` owns cross-product responsibilities, the microkernel
-  architectural thesis, accepted tradeoffs, product proof, decision criteria,
+- `design-judgment.md` owns cross-product responsibilities, consumer burden and
+  progressive disclosure, accepted tradeoffs, product proof, decision criteria,
   and open design questions, subordinate to the shared purpose and both branches.
+  Its microkernel reasoning explains boundaries rather than setting priorities;
+  the communication guide owns that analogy's use in positioning.
 - `../audience.md` owns the ICP and audience hypotheses; `../communication.md`
   owns public positioning and narrative. Those strategies apply the doctrine
   without redefining purpose or exact contracts.

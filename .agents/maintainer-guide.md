@@ -459,6 +459,21 @@ belong only in [`suspended-experiments.md`](suspended-experiments.md).
 
 ### Bounded engineering decisions
 
+Begin design and delivery reviews with the whole consumer task: what useful
+work becomes possible, how the chosen boundaries serve it, and what the author
+and operator must understand or coordinate. Assess architecture, UX and product
+impact before implementation defects and release checks; passing those checks
+does not establish a usable product. Distinguish current defects from supported
+limits and future opportunities rather than making every concern a new gate.
+
+Apply the doctrine's
+[progressive-disclosure obligation](doctrine/design-judgment.md#progressive-disclosure-is-a-design-obligation)
+to the before-and-after public usage. Identify configuration, duplicated
+declarations and lifecycle code added or removed, not just API names. Prefer
+reusable coordination at its responsible layer over boilerplate in every caller.
+Check the ordinary path as well as advanced failure handling; simplification
+must preserve authority, truthful results and settlement.
+
 Before a checkpoint, identify the user-visible outcome, smallest observable
 proof, missing seam, public vocabulary, exclusions, and stop condition.
 

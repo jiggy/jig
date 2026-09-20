@@ -73,11 +73,11 @@ responsibilities make execution understandable without promising that code
 has no bugs or that an Agent's answer is true. Operational availability and
 recovery guarantees remain distinct claims requiring their own evidence.
 
-This separation is the reason for Jig's
-[microkernel-inspired design](design-judgment.md#the-microkernel-architectural-thesis):
-a small common execution core lets substantial capability live in composed
-methods. Agent techniques can develop within those methods while the host
-keeps authority and lifecycle responsibilities explicit.
+This separation lets Agent techniques develop in composed methods while the
+host keeps authority and lifecycle responsibilities explicit. The
+[microkernel analogy](design-judgment.md#the-microkernel-architectural-thesis)
+helps explain it; development priorities follow useful power and the burden of
+consuming it, not architectural purity.
 
 Practical agency includes directing more useful work without a proportional
 increase in supervision. Explicit methods and evidence can help reserve
@@ -224,6 +224,13 @@ Sane defaults therefore matter. A Binding customizes and pins a use; it is not
 mandatory plumbing for every component. A file for nearly every dependency is
 a warning that ordinary composition has become needlessly difficult. Defaults
 can simplify discovery and configuration without granting trust automatically.
+
+Essential boundaries need not become manual coordination in every caller.
+An author should concentrate on the method, and an operator on its powers;
+advanced use should reveal only the additional controls it needs. The
+[progressive-disclosure obligation](design-judgment.md#progressive-disclosure-is-a-design-obligation)
+governs how reusable machinery reduces that burden without hiding consequences
+or weakening guarantees.
 
 A Starter is one coherent application copied and owned by its user. It
 supplies useful structure and domain policy without becoming an algebra of

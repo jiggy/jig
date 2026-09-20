@@ -141,6 +141,11 @@ explaining. Pair it immediately with the concrete division: methods own work,
 applications own purpose, operators supply powers, and Jig owns the common
 execution boundaries. This is how the small core supports richer methods
 without absorbing every Agent technique or becoming a workflow language.
+Use the analogy primarily in positioning and architectural explanation: it
+signals a powerful host, not a requirement for users to understand kernel
+internals. It does not set development priorities or make extracting more
+modules a product achievement. Show what the boundaries let a builder accomplish
+with less configuration and coordination.
 
 Lead with the positive design conviction: Agents have room to reason within
 their role, code can express known procedures, and software can compose both

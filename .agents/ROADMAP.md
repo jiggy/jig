@@ -12,9 +12,11 @@ The order serves three commitments throughout development.
   example that an independent consumer can reproduce from public artifacts.
 - **Keep the promises intact.** FLOW independence, operator-held authority,
   understandable control, and honest failure apply from the first outcome.
-- **Earn the next increment.** Build on verified work; add only what the next
-  demonstrated need requires. The roadmap does not authorize every mechanism
-  that might support it.
+- **Earn the next increment.** Prefer making existing power easier to adopt
+  and compose, with less configuration and lifecycle knowledge, before adding
+  another abstraction. Build on verified work; add only what the next
+  demonstrated need requires. Architectural purity is not an outcome, and the
+  roadmap does not authorize every mechanism that might support one.
 
 ## Outcome order
 
