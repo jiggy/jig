@@ -125,7 +125,13 @@ export class PrivateFileDeliveryOwner {
       throw new Error('delivery has no available destination owner')
     this.#publishing = true
     const retainedDelivery =
-      outputFd === undefined && (checkpoint !== undefined || retainAfterCancellation)
+      outputFd === undefined &&
+      (checkpoint !== undefined ||
+        (retainAfterCancellation &&
+          record !== null &&
+          typeof record === 'object' &&
+          !Array.isArray(record) &&
+          !Object.hasOwn(record, 'cleanup')))
     const deadline = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
     let timedOut = false
     const checkTime = () => {

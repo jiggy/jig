@@ -23,7 +23,14 @@ const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'syn
 
 test('retained bytes survive execution cancellation but never an unconfirmed cleanup or output collision', async () =>
   fixture(async (root) => {
-    for (const mode of ['cancelled', 'cleanup', 'collision', 'absent', 'late-success']) {
+    for (const mode of [
+      'cancelled',
+      'cleanup',
+      'empty-cleanup',
+      'collision',
+      'absent',
+      'late-success',
+    ]) {
       const abort = new AbortController()
       const owner = new PrivateFileDeliveryOwner(abort.signal)
       const checkpoints = new PrivateRunCheckpoints({
@@ -51,14 +58,16 @@ test('retained bytes survive execution cancellation but never an unconfirmed cle
             ? { outcome: 'done', output: null }
             : { code: 'COORDINATOR_LOST' }),
           runId: retained.identity.runId,
-          ...(mode === 'cleanup' ? { cleanup: { status: 'failed' } } : {}),
-          checkpoint: mode === 'absent' ? null : retained,
+          ...(mode === 'cleanup' || mode === 'empty-cleanup'
+            ? { cleanup: { status: 'failed' } }
+            : {}),
+          checkpoint: mode === 'absent' || mode === 'empty-cleanup' ? null : retained,
         }
         const receipt = await owner.publish(
           record as any,
           process.pid,
           undefined,
-          mode === 'absent' ? undefined : retained,
+          mode === 'absent' || mode === 'empty-cleanup' ? undefined : retained,
           true,
         )
         if (mode === 'cancelled' || mode === 'late-success') {
@@ -75,7 +84,12 @@ test('retained bytes survive execution cancellation but never an unconfirmed cle
         } else {
           expect(receipt).toMatchObject({
             status: 'failed',
-            code: mode === 'cleanup' ? 'INVALID_FILES' : 'DESTINATION_CHANGED',
+            code:
+              mode === 'cleanup'
+                ? 'INVALID_FILES'
+                : mode === 'empty-cleanup'
+                  ? 'CANCELLED'
+                  : 'DESTINATION_CHANGED',
           })
           if (mode === 'collision')
             expect(await readFile(join(destination, 'keep'), 'utf8')).toBe('unrelated')
@@ -86,6 +100,52 @@ test('retained bytes survive execution cancellation but never an unconfirmed cle
         await owner.close()
         checkpoints.close()
       }
+    }
+  }))
+
+test('ordinary terminal-only reporting preserves cleanup failure without claiming retained files', async () =>
+  fixture(async (root) => {
+    const abort = new AbortController()
+    const owner = new PrivateFileDeliveryOwner(abort.signal)
+    const destination = join(root, 'result')
+    const failedCleanup = { ...record, cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } }
+    try {
+      await owner.prepare(destination, process.pid, [])
+      expect(
+        await owner.publish(failedCleanup, process.pid, undefined, undefined, true),
+      ).toMatchObject({
+        status: 'written',
+        source: 'none',
+        files: [],
+      })
+      expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))).toMatchObject({
+        cleanup: failedCleanup.cleanup,
+        delivery: { status: 'written', source: 'none', files: [] },
+      })
+      expect(await readdir(join(destination, 'files'))).toEqual([])
+    } finally {
+      await owner.close()
+    }
+  }))
+
+test('late cancellation rejects cleanup-failed terminal retention with an empty checkpoint binding', async () =>
+  fixture(async (root) => {
+    const abort = new AbortController()
+    const owner = new PrivateFileDeliveryOwner(abort.signal, async () => abort.abort())
+    try {
+      await owner.prepare(join(root, 'result'), process.pid, [])
+      expect(
+        await owner.publish(
+          { ...record, cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } },
+          process.pid,
+          undefined,
+          undefined,
+          true,
+        ),
+      ).toMatchObject({ status: 'failed', code: 'CANCELLED' })
+      expect(await readdir(root)).toEqual([])
+    } finally {
+      await owner.close()
     }
   }))
 
