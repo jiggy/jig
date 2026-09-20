@@ -17,7 +17,7 @@ import {
   type Type,
 } from '@typespec/compiler'
 import { fail } from './errors.js'
-import { closedKey, invocationKey, oneOfKey, projectionKey } from './library.js'
+import { channelKey, closedKey, invocationKey, oneOfKey, projectionKey } from './library.js'
 
 export type Schema = {
   type?: string | string[]
@@ -46,9 +46,28 @@ export interface Descriptor {
   input: Schema
   result: Schema
   outcomes?: Record<string, string>
+  id?: string
+  version?: string
+  channels?: Record<string, ChannelPort>
+}
+interface ChannelPort {
+  direction: 'send' | 'receive'
+  contract: string
+  required?: boolean
+  delivery?: 'direct' | 'broadcast'
+  start?: 'beginning' | 'suffix'
+}
+interface ChannelDescriptor {
+  $schema: string
+  id: string
+  version: string
+  semantics: string
+  item: Schema
+  $defs: Record<string, Schema>
 }
 export const schemaId = 'https://flow.jig.md/schemas/schema-1.json'
 export const contractId = 'https://flow.jig.md/schemas/invocation-contract-1.schema.json'
+const channelId = 'https://flow.jig.md/schemas/channel-contract-1.schema.json'
 const definitionName = /^[A-Za-z][A-Za-z0-9]{0,63}(?![\s\S])/
 const reservedTypes = new Set(
   'Array FlowInput FlowResult any unknown never undefined string number boolean bigint symbol object void null true false default import export class enum extends interface type break case catch const continue debugger delete do else finally for function if in instanceof new return super switch this throw try typeof var while with yield let static await implements private protected public package infer keyof readonly unique is asserts as satisfies abstract declare namespace module require global'.split(
@@ -110,13 +129,43 @@ export function lower(program: Program) {
     !opts ||
     typeof opts !== 'object' ||
     Array.isArray(opts) ||
-    Object.keys(opts).some((k) => k !== 'outcomes')
+    Object.keys(opts).some((k) => !['outcomes', 'id', 'version', 'channels'].includes(k))
   ) {
     fail(
       'SOURCE_UNSUPPORTED',
-      'Only explicit outcomes are supported invocation options in this profile.',
+      'Invocation options support outcomes, id/version and named channel ports.',
       owner,
     )
+  }
+  if (opts.id !== undefined || opts.version !== undefined) identity(opts, owner)
+  const ports: Record<string, ChannelPort> = Object.create(null)
+  if (opts.channels !== undefined) {
+    const channels = record(opts.channels, owner, 'channels')
+    if (Object.keys(channels).length > 256) fail('SOURCE_LIMIT', 'Too many channel ports.', owner)
+    for (const [name, value] of Object.entries(channels)) {
+      const port = record(value, owner, 'channel port')
+      if (
+        !localName.test(name) ||
+        name.length > 64 ||
+        Object.keys(port).some(
+          (key) => !['direction', 'contract', 'required', 'delivery', 'start'].includes(key),
+        ) ||
+        !['send', 'receive'].includes(port.direction as string) ||
+        typeof port.contract !== 'string' ||
+        !/^\.\/[a-z][a-z0-9-]*\.channel\.json(?![\s\S])/.test(port.contract) ||
+        (port.required !== undefined && typeof port.required !== 'boolean') ||
+        (port.delivery !== undefined &&
+          !['direct', 'broadcast'].includes(port.delivery as string)) ||
+        (port.start !== undefined &&
+          (port.direction !== 'receive' || !['beginning', 'suffix'].includes(port.start as string)))
+      )
+        fail(
+          'SOURCE_INVALID',
+          'Channel ports require a direction and a generated ./name.channel.json contract.',
+          owner,
+        )
+      ports[name] = port as unknown as ChannelPort
+    }
   }
   if (opts.outcomes !== undefined) {
     const outcomes = opts.outcomes
@@ -276,6 +325,47 @@ export function lower(program: Program) {
     input: emit(invocation.input),
     result: emit(invocation.result),
     ...(opts.outcomes === undefined ? {} : { outcomes: opts.outcomes as Record<string, string> }),
+    ...(opts.id === undefined ? {} : { id: opts.id as string, version: opts.version as string }),
+    ...(opts.channels === undefined ? {} : { channels: ports }),
+  }
+  const channels: Record<string, ChannelDescriptor> = Object.create(null)
+  for (const [type, value] of program.stateMap(channelKey)) {
+    const { path, options } = value as { path: string; options: unknown }
+    if (
+      !authored(type) ||
+      typeof path !== 'string' ||
+      !/^\.\/[a-z][a-z0-9-]*\.channel\.json(?![\s\S])/.test(path)
+    )
+      fail('SOURCE_INVALID', 'Channel outputs use a root ./name.channel.json path.', type)
+    const metadata = record(options, type, 'channel options')
+    identity(metadata, type)
+    if (
+      Object.keys(metadata).some((key) => !['id', 'version', 'semantics'].includes(key)) ||
+      typeof metadata.semantics !== 'string' ||
+      !metadata.semantics.length ||
+      Buffer.byteLength(metadata.semantics) > 16384
+    )
+      fail('SOURCE_INVALID', 'Channel options require id, version and bounded semantics.', type)
+    const file = path.slice(2)
+    if (Object.hasOwn(channels, file))
+      fail('SOURCE_INVALID', 'Two channels select the same output path.', type, file)
+    channels[file] = {
+      $schema: channelId,
+      id: metadata.id as string,
+      version: metadata.version as string,
+      semantics: metadata.semantics,
+      item: emit(type),
+      $defs: reachableDefinitions(emit(type), definitions),
+    }
+  }
+  for (const port of Object.values(ports)) {
+    if (!Object.hasOwn(channels, port.contract.slice(2)))
+      fail(
+        'SOURCE_INVALID',
+        'Every port must reference a channel generated from this source.',
+        owner,
+        port.contract,
+      )
   }
   const projections: Record<string, { $schema: string } & Schema> = Object.create(null)
   for (const [type, path] of program.stateMap(projectionKey)) {
@@ -300,7 +390,66 @@ export function lower(program: Program) {
     checkAgent(expanded, origins, file)
     projections[file] = { $schema: schemaId, ...expanded }
   }
-  return { descriptor, projections, declarations: declarations(descriptor) }
+  if (Object.keys(channels).length + Object.keys(projections).length > 63)
+    fail('SOURCE_LIMIT', 'At most 63 channel and Agent schema outputs are supported.', owner)
+  const identities = new Map<string, string>()
+  for (const channel of Object.values(channels)) {
+    const key = `${channel.id}\0${channel.version}`
+    const shape = JSON.stringify(channel)
+    if (identities.has(key) && identities.get(key) !== shape)
+      fail('SOURCE_INVALID', 'Channel identity has conflicting declarations.', owner)
+    identities.set(key, shape)
+  }
+  return { descriptor, projections, channels, declarations: declarations(descriptor) }
+}
+
+// A channel's identity must not change when unrelated invocation models change.
+function reachableDefinitions(schema: Schema, definitions: Record<string, Schema>) {
+  const selected: Record<string, Schema> = Object.create(null)
+  function visit(value: unknown): void {
+    if (!value || typeof value !== 'object') return
+    const ref = (value as Schema).$ref
+    if (ref) {
+      const name = ref.slice('#/$defs/'.length)
+      if (!Object.hasOwn(selected, name)) {
+        selected[name] = definitions[name]!
+        visit(selected[name])
+      }
+    }
+    for (const child of Object.values(value)) visit(child)
+  }
+  visit(schema)
+  return selected
+}
+
+function record(value: unknown, target: Type, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    fail('SOURCE_INVALID', `${label} must be an explicit record.`, target)
+  return value as Record<string, unknown>
+}
+
+function identity(value: Record<string, unknown>, target: Type): void {
+  const id = value.id
+  if (
+    typeof id !== 'string' ||
+    !/^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\/[a-z0-9._~-]+)+(?![\s\S])/.test(
+      id,
+    ) ||
+    id
+      .slice(8)
+      .split('/')
+      .slice(1)
+      .some((part) => part === '.' || part === '..') ||
+    isIpHost(id) ||
+    typeof value.version !== 'string' ||
+    !/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?![\s\S])/.test(value.version)
+  )
+    fail('SOURCE_INVALID', 'Supply an exact FLOW HTTPS contract id and version together.', target)
+}
+
+function isIpHost(id: string): boolean {
+  const labels = id.slice(8).split('/')[0]!.split('.')
+  return labels.length === 4 && labels.every((s) => /^[0-9]{1,3}$/.test(s) && Number(s) <= 255)
 }
 
 function expand(

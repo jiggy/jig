@@ -10,6 +10,7 @@ try {
   const artifacts: Record<string, string> = Object.create(null)
   artifacts['FLOW.contract.json'] = encode(result.descriptor)
   for (const [path, schema] of Object.entries(result.projections)) artifacts[path] = encode(schema)
+  for (const [path, channel] of Object.entries(result.channels)) artifacts[path] = encode(channel)
   if (types) {
     checkText(result.declarations, 262144)
     artifacts['FLOW.contract.d.ts'] = result.declarations

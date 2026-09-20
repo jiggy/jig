@@ -17,6 +17,7 @@ const allowedDecorators = new Set([
   'closed',
   'oneOf',
   'agentResponse',
+  'channelContract',
   'minLength',
   'maxLength',
   'minItems',

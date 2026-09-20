@@ -21,6 +21,9 @@ it returns artifacts to Jig's separately owned managed publisher.
   Projection filenames must not replace reserved invocation or settings schema owners.
 - Generated types are editor assistance, not validation or authority.
 - Keep the complete drafter fixture and honest compilerless consumption checks.
+- Named invocation identity and channel agreements can be authored together;
+  generated channel closures contain only reachable definitions. Keep channel
+  semantics explicit and validate complete artifact batches before publication.
 
 ## Work Guidance
 

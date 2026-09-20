@@ -8,6 +8,7 @@ import { capturePackageDirectory } from '../src/package/capture.js'
 import { openPrivateProjectRoot } from '../src/project/root.js'
 import { prepareContractGeneration } from '../src/internal/contract-generation.js'
 import { generateContract } from '../src/internal/contract-authoring-client.js'
+import { parseInvocationContract } from '../src/invocation-contract.js'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -18,7 +19,10 @@ test('real bundled compiler publishes contracts through the host manager', async
   const root = await fixture()
   await writeFile(
     join(root, 'flow/FLOW.contract.tsp'),
-    'import "@jigging/flow-authoring/typespec"; using FLOW; @invocation(Input,Result) namespace Demo; @closed model Input { name:string; } @closed model Result {outcome:"done"; output:string;}',
+    await readFile(
+      new URL('../../flow-authoring/test/fixtures/progress.tsp', import.meta.url),
+      'utf8',
+    ),
   )
   await prepare(root, true, {
     compile: (source, signal) =>
@@ -33,6 +37,13 @@ test('real bundled compiler publishes contracts through the host manager', async
   expect(
     JSON.parse(await readFile(join(root, 'flow/FLOW.contract.json'), 'utf8')).input,
   ).toBeDefined()
+  const contract = parseInvocationContract(
+    await readFile(join(root, 'flow/FLOW.contract.json')),
+    'FLOW.contract.json',
+    new Map([['progress.channel.json', await readFile(join(root, 'flow/progress.channel.json'))]]),
+  )
+  expect(contract.descriptor.id).toBe('https://example.org/methods/review')
+  expect(contract.channelContracts.size).toBe(1)
   expect(await prepare(root, false)).toBe(false)
 }, 30000)
 const descriptor = JSON.stringify({
@@ -98,6 +109,58 @@ test('source-only review is inert; authorized generation publishes and becomes f
   await expect(prepare(root, false)).rejects.toMatchObject({ code: 'AUTHORING_STALE' })
   expect(await prepare(root)).toBe(true)
 })
+
+test('publisher validates channel closure before publishing and retains complete compilerless artifacts', async () => {
+  const root = await fixture()
+  const channel = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    id: 'https://example.org/progress',
+    version: '1.0.0',
+    semantics: 'Review progress only.',
+    item: { type: 'string' },
+  })
+  const contract = JSON.stringify({
+    ...JSON.parse(descriptor),
+    id: 'https://example.org/review',
+    version: '1.0.0',
+    channels: { progress: { direction: 'send', contract: './progress.channel.json' } },
+  })
+  const artifacts = { 'FLOW.contract.json': contract, 'progress.channel.json': channel }
+  await expect(
+    prepare(root, true, {
+      compile: async (source) => ({ source, artifacts: { 'FLOW.contract.json': contract } }),
+    }),
+  ).rejects.toMatchObject({ code: 'CONTRACT_REFERENCE_MISSING' })
+  expect(await Bun.file(join(root, 'flow/FLOW.contract.json')).exists()).toBe(false)
+  await prepare(root, true, { compile: async (source) => ({ source, artifacts }) })
+  const parsed = parseInvocationContract(
+    await readFile(join(root, 'flow/FLOW.contract.json')),
+    'FLOW.contract.json',
+    new Map([['progress.channel.json', await readFile(join(root, 'flow/progress.channel.json'))]]),
+  )
+  expect(parsed.descriptor.id).toBe('https://example.org/review')
+  expect(parsed.channelContracts.size).toBe(1)
+  expect(await prepare(root, false)).toBe(false)
+  await writeFile(join(root, 'flow/FLOW.contract.tsp'), 'remove channel')
+  await prepare(root)
+  expect(await Bun.file(join(root, 'flow/progress.channel.json')).exists()).toBe(false)
+})
+
+test.each(['input.schema.json', 'result.schema.json', 'settings.schema.json'])(
+  'publisher refuses reserved projection %s even from a faulty compiler',
+  async (name) => {
+    const root = await fixture()
+    await expect(
+      prepare(root, true, {
+        compile: async (source) => ({
+          source,
+          artifacts: { 'FLOW.contract.json': descriptor, [name]: projection },
+        }),
+      }),
+    ).rejects.toMatchObject({ code: 'AUTHORING_CONFLICT' })
+    expect(await Bun.file(join(root, 'flow/FLOW.contract.json')).exists()).toBe(false)
+  },
+)
 
 test('compiler cancellation settles its process without publishing', async () => {
   const root = await fixture()

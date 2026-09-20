@@ -4,6 +4,7 @@ export const invocationKey = Symbol('invocation')
 export const closedKey = Symbol('closed')
 export const oneOfKey = Symbol('oneOf')
 export const projectionKey = Symbol('projection')
+export const channelKey = Symbol('channel')
 
 export const library = `
 import "./decorators.js";
@@ -13,6 +14,7 @@ extern dec invocation(target: Namespace, input: unknown, result: unknown, option
 extern dec closed(target: Model);
 extern dec oneOf(target: Union);
 extern dec agentResponse(target: Model, path: valueof string);
+extern dec channelContract(target: Model, path: valueof string, options: valueof unknown);
 `
 
 export const decorators = {
@@ -39,6 +41,9 @@ export const decorators = {
       },
       agentResponse(context: DecoratorContext, target: Type, path: string) {
         context.program.stateMap(projectionKey).set(target, path)
+      },
+      channelContract(context: DecoratorContext, target: Type, path: string, options: unknown) {
+        context.program.stateMap(channelKey).set(target, { path, options })
       },
     },
   },

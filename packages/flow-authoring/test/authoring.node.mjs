@@ -34,6 +34,60 @@ test('generated data preserves the full original drafter constraints and Agent s
   assert.deepEqual(JSON.parse(full.artifacts['proposal.schema.json']), agent)
 })
 const compile = async (body, types = true) => compileContract(await stampSource(body, { types }))
+const progress = await readFile(new URL('./fixtures/progress.tsp', import.meta.url), 'utf8')
+test('named invocation and channel contracts are one complete portable artifact packet', async () => {
+  const generated = await compile(progress)
+  const contract = JSON.parse(generated.artifacts['FLOW.contract.json'])
+  const channel = JSON.parse(generated.artifacts['progress.channel.json'])
+  assert.equal(contract.id, 'https://example.org/methods/review')
+  assert.equal(contract.version, '1.0.0')
+  assert.deepEqual(contract.channels.progress, {
+    direction: 'send',
+    contract: './progress.channel.json',
+    required: false,
+  })
+  assert.deepEqual(channel.item, { $ref: '#/$defs/Progress' })
+  assert.deepEqual(Object.keys(channel.$defs), ['Progress'])
+  const changed = await compile(
+    progress.replace('source: string;', 'source: string; title: string;'),
+  )
+  assert.equal(
+    changed.artifacts['progress.channel.json'],
+    generated.artifacts['progress.channel.json'],
+  )
+  assert.match(generated.artifacts['FLOW.contract.d.ts'], /export type Progress/)
+})
+
+for (const [name, body, message] of [
+  [
+    'missing channel',
+    progress.replace('contract: "./progress.channel.json"', 'contract: "./missing.channel.json"'),
+    /generated/,
+  ],
+  ['missing identity version', progress.replace('version: "1.0.0",', ''), /together/],
+  [
+    'noncanonical identity',
+    progress.replace('https://example.org/methods/review', 'https://Example.org/methods/review'),
+    /identity|contract id/,
+  ],
+  [
+    'send start position',
+    progress.replace('required: false', 'required: false, start: "suffix"'),
+    /Channel ports/,
+  ],
+  [
+    'channel path traversal',
+    progress.replaceAll('./progress.channel.json', '../progress.channel.json'),
+    /Channel ports|root/,
+  ],
+  [
+    'channel unknown option',
+    progress.replace('semantics:', 'extra: true, semantics:'),
+    /Channel options/,
+  ],
+])
+  test(name, async () => rejects(body, 'SOURCE_INVALID', message))
+
 const simple = (fields, extra = '', options = '') => `
 import "@jigging/flow-authoring/typespec";
 using FLOW;

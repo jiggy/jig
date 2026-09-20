@@ -55,10 +55,39 @@ error identifying the source location; they are never weakened for a provider.
 The supported single-file language, complete drafter example and resource bounds
 are documented in the
 [authoring package](https://github.com/jiggy/jig/tree/main/packages/flow-authoring).
-This profile supports input, complete result, custom outcomes, and explicit
-Agent projections—not every TypeSpec feature or arbitrary FLOW contract field.
-Channel/settings schemas and invocation identity/attachments are not inferred
-from models. Use native JSON where the supported profile does not fit.
+This profile supports input, complete result, custom outcomes, named invocation
+identity, channel agreements, and explicit Agent projections—not every TypeSpec
+feature or arbitrary FLOW contract field. Settings and attachments remain
+separate declarations; use native JSON where the profile does not fit.
+
+## Named methods with progress
+
+Declare identity and ports explicitly; the compiler does not infer semantics:
+
+```typespec
+@invocation(Input, Result, #{
+  id: "https://example.org/methods/review", version: "1.0.0",
+  channels: #{progress: #{
+    direction: "send", contract: "./progress.channel.json", required: false
+  }}
+})
+namespace Review;
+
+@closed model Input { source: string; }
+@closed model Result { outcome: "done"; output: string; }
+
+@channelContract("./progress.channel.json", #{
+  id: "https://example.org/channels/review-progress", version: "1.0.0",
+  semantics: "Selected review progress; messages do not establish review success."
+})
+@closed model Progress { phase: "reading" | "checking"; message: string; }
+```
+
+Include the same import and `using FLOW` as the first example. Generation owns
+the complete invocation/channel bundle; share its generated JSON with callers.
+Channel ports can also declare `delivery`, and receive ports can declare `start`.
+Every referenced channel is authored in this source. No manual JSON overlay or
+compiler on the consumer host is needed.
 
 ## Generated-file ownership
 

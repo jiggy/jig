@@ -64,6 +64,7 @@ The prototype returns:
 - `FLOW.contract.json`: the complete native Invocation Contract/1 descriptor.
 - `FLOW.contract.d.ts`: implementation declarations, when `types: true`.
 - Each explicitly selected `./name.schema.json`: an Agent response schema.
+- Each `@channelContract("./name.channel.json", options)` model: a named channel agreement.
 - The complete pinned authored source, separately as `result.source`.
 
 Agent projection names cannot be `input.schema.json`, `result.schema.json` or
@@ -90,7 +91,7 @@ and semantic checker, then lowers the checked graph directly into Schema/1.
 It does not use or sanitize the general JSON Schema emitter.
 
 One top-level namespace has one `@invocation(InputType, ResultType, options?)`.
-Its only current option is an explicitly authored `outcomes` record. All models,
+Its options are `outcomes`, an exact `id`/`version` pair, and `channels`. All models,
 scalars and unions live in that namespace. Unused declarations are checked too.
 
 | Authoring construct | Native representation |
@@ -119,9 +120,20 @@ The profile rejects imports other than its bundled library, executable
 extensions, compiler directives, unknown/duplicate decorators, templates,
 inheritance, model spreading, defaults, recursive graphs and unsupported types.
 It supports the complete drafter, not every TypeSpec program or every possible
-Schema/1 descriptor. Named operations, invocation identity/ports, settings and
-channel declarations are not compiled by this first profile. Independently
+Schema/1 descriptor. Named operations, attachments and settings are not compiled
+by this profile. Independently
 authored native descriptors retain those features and their separate ownership.
+
+The [review fixture](test/fixtures/progress.tsp) authors a named invocation and
+optional progress port together. Each port explicitly supplies `direction` and
+`contract`, optionally `required`, `delivery`, and receiver `start`. Its
+`./name.channel.json` must be generated in the same source using
+`@channelContract` on a closed model, with exact `id`, `version` and `semantics`.
+Only definitions reachable from that model enter the channel agreement; editing
+an unrelated input does not change the channel identity. Generated model names
+and structure remain part of the agreement, so independently authored peers
+must consume the same completed contract bytes, not merely similar types.
+At most 63 channel and Agent-schema outputs are supported together.
 
 The compiler never reads ancestor configuration or source-selected files.
 Its virtual filesystem supplies the source and bundled authoring definitions;

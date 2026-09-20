@@ -4,6 +4,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import { invalid, unavailable } from '../diagnostics.js'
 import { decodeJson1 } from '../json.js'
 import { parseInvocationContract } from '../invocation-contract.js'
+import { parseChannelContract } from '../channel-contract.js'
 import type { PrepareCapturedFlow } from '../project/flow-source.js'
 import type { PrivateProjectRoot } from '../project/root.js'
 import { assertResponseSchema } from '@jigging/agent-method'
@@ -107,8 +108,10 @@ function names(files: Files): void {
       name !== SOURCE &&
       name !== DESCRIPTOR &&
       name !== 'FLOW.contract.d.ts' &&
-      !/^[a-z][a-z0-9-]*\.schema\.json$(?![\s\S])/.test(name)
+      !/^[a-z][a-z0-9-]*\.(?:schema|channel)\.json$(?![\s\S])/.test(name)
     )
+      conflict(name)
+    if (['input.schema.json', 'result.schema.json', 'settings.schema.json'].includes(name))
       conflict(name)
     if (value !== null && (typeof value !== 'string' || Buffer.byteLength(value) > 262144))
       conflict(name)
@@ -248,12 +251,16 @@ export function prepareContractGeneration(options: {
         names(generated.artifacts)
         if (SOURCE in generated.artifacts || typeof generated.artifacts[DESCRIPTOR] !== 'string')
           conflict('compiler output')
-        parseInvocationContract(Buffer.from(generated.artifacts[DESCRIPTOR]!), DESCRIPTOR)
+        const channels = new Map<string, Uint8Array>()
         for (const [name, content] of Object.entries(generated.artifacts)) {
-          if (name !== DESCRIPTOR && name !== 'FLOW.contract.d.ts')
+          if (name.endsWith('.channel.json')) {
+            parseChannelContract(Buffer.from(content), name)
+            channels.set(name, Buffer.from(content))
+          } else if (name !== DESCRIPTOR && name !== 'FLOW.contract.d.ts')
             assertResponseSchema(decode(content))
           after[name] = content
         }
+        parseInvocationContract(Buffer.from(generated.artifacts[DESCRIPTOR]!), DESCRIPTOR, channels)
         after[SOURCE] = generated.source
       } else {
         // Explicit source removal relinquishes the unchanged outputs to manual JSON authoring.

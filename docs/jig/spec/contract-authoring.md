@@ -35,9 +35,13 @@ not by opening or running an existing package.
 
 Each package has local management state outside Package/1 under `.jig`.
 The project session provides one cooperating publisher. The complete descriptor
-and requested Agent projections MUST pass the existing exact readers before
+with its channel closure and requested Agent projections MUST pass the existing exact readers before
 publication. Output names are fixed to `FLOW.contract.json`, optional
-`FLOW.contract.d.ts`, and bounded root `*.schema.json` projections. The source
+`FLOW.contract.d.ts`, bounded root `*.schema.json` projections and
+`*.channel.json` agreements (at most 63 auxiliary outputs). Projection names
+MUST NOT replace `input.schema.json`, `result.schema.json`, or
+`settings.schema.json`. Missing or conflicting channel agreements fail the
+complete batch before publication. The source
 header is part of the same recorded batch.
 
 Existing managed outputs must match their recorded bytes. Unowned destinations
