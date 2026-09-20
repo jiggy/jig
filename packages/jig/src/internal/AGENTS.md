@@ -251,8 +251,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   writer fencing; publish once without replacement through the independent
   command owner. Coordinator loss must remove unpublished staging. Late failure
   preserves a known terminal or publication and never authorizes replay.
-  Cancellation and expiry escalate against the exact trusted child after a
-  bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
+  Cancellation allows at most 60 seconds of cooperative trusted-coordinator
+  settlement; absolute command expiry shortens that wait with a 250 ms kill
+  grace. Never extend either bound on later signals or change payload deadlines.
+  Confirmed interrupted settlement may publish its terminal and accepted
+  checkpoint, not final Flow files; unconfirmed cleanup cannot authorize delivery.
+  Reap the exact trusted child after escalation; independent cgroup fencing
+  still owns payload cleanup.
 - Exact child slots may select a Flow or a bounded Binding with its own admitted
   settings, ordinary invocation routes and reviewed command, HTTP or finite ACP
   grants. An effect belongs to that child

@@ -584,7 +584,16 @@ proofDescribe('private rootless project session', () => {
       let cancelledOnData = false
       const interrupted = await invokeChannelCli(
         root,
-        ['run', 'flow:flows/worker', '--input', '{"mode":"cancel"}', '--receive', 'progress'],
+        [
+          'run',
+          'flow:flows/worker',
+          '--input',
+          '{"mode":"cancel"}',
+          '--receive',
+          'progress',
+          '--out',
+          'cancelled-result',
+        ],
         {
           record(value, running, cancel) {
             if (value.type === 'data' && running) {
@@ -595,15 +604,25 @@ proofDescribe('private rootless project session', () => {
         },
       )
       expect(cancelledOnData).toBeTrue()
-      expect(interrupted.code).not.toBe(0)
-      // Interruption need not deliver a terminal, but it cannot manufacture success.
+      expect(interrupted.code, interrupted.stdout + interrupted.stderr).toBe(2)
       const terminals = interrupted.stdout
         .trimEnd()
         .split('\n')
         .filter(Boolean)
         .map((line) => JSON.parse(line))
         .filter((record) => record.type === 'terminal')
-      expect(terminals.every((record) => record.result.status !== 'succeeded')).toBeTrue()
+      expect(terminals).toHaveLength(1)
+      expect(terminals[0].result).toMatchObject({
+        status: 'failed',
+        code: 'CANCELLED',
+        command: { status: 'interrupted' },
+        delivery: { status: 'written', source: 'none', files: [] },
+      })
+      expect(terminals[0].result.cleanup).toBeUndefined()
+      expect(
+        JSON.parse(await readFile(join(root, 'cancelled-result/result.json'), 'utf8')),
+      ).toEqual(terminals[0].result)
+      expect(await readdir(join(root, 'cancelled-result/files'))).toEqual([])
       await expectNoChildResidue(root)
       expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
       await waitForRootlessCgroups(initialRootlessCgroups)

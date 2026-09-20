@@ -148,6 +148,10 @@ and exit 2. Execution status remains unchanged if completion won the race.
 Cleanup failure is reported separately. A missing terminal, coordinator loss,
 or broken output stream cannot be replaced with a fabricated terminal; consumers
 must still handle incomplete output. No reporting path replays execution.
+With `--out`, confirmed settlement after interruption may publish the terminal
+record and an already accepted checkpoint. It never exports unfinished final
+Flow files. The trusted command's bounded settlement wait does not extend the
+Run deadline; forced termination still leaves unavailable evidence unavailable.
 
 ## Implementation and review ownership
 

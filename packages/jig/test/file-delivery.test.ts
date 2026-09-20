@@ -95,6 +95,32 @@ async function fixturePid(path: string): Promise<number> {
   return pid
 }
 
+test('accepted checkpoints never make final-file capture survive cancellation', async () =>
+  fixture(async (root) => {
+    const abort = new AbortController()
+    const owner = new PrivateFileDeliveryOwner(abort.signal)
+    const checkpoints = new PrivateRunCheckpoints({
+      runId: `sha256:${'a'.repeat(64)}`,
+      method: null,
+      input: null,
+    })
+    checkpoints.accept({ sequence: 1, evidence: null, files: { 'saved.txt': 'accepted' } })
+    try {
+      await owner.prepare(join(root, 'result'), process.pid, [])
+      abort.abort()
+      // Cancellation must reject before consulting any final-file descriptor,
+      // even with a retained checkpoint and interrupted-record permission.
+      expect(await owner.publish(record, process.pid, 0, checkpoints.latest, true)).toMatchObject({
+        status: 'failed',
+        code: 'CANCELLED',
+      })
+      await expect(stat(join(root, 'result'))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await owner.close()
+      checkpoints.close()
+    }
+  }))
+
 // Diagnostic acknowledgement for our fixture only; production cleanup uses cgroup fencing.
 async function waitUntilStopped(pid: number): Promise<void> {
   const deadline = performance.now() + 1500
@@ -105,8 +131,71 @@ async function waitUntilStopped(pid: number): Promise<void> {
   throw new Error('owned fixture did not stop')
 }
 
-for (const trigger of ['deadline', 'cancel'] as const) {
+for (const mode of ['cancel', 'success', 'cleanup-failed'] as const) {
+  test(`cooperative interruption waits for settled ${mode} evidence before delivery`, async () =>
+    fixture(async (root) => {
+      const destination = join(root, 'review'),
+        pidFile = join(root, 'pid'),
+        readyFile = join(root, 'ready')
+      const abort = new AbortController()
+      let stagedAfterSettlement = false
+      const invocation = privateOwnFileCommand(
+        [
+          process.execPath,
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+        ],
+        [destination, pidFile, `settled-${mode}`, readyFile],
+        abort.signal,
+        3000,
+        async () => {
+          stagedAfterSettlement = (await readFile(readyFile, 'utf8')) === 'settled'
+        },
+      )
+      try {
+        const readinessDeadline = performance.now() + 1500
+        while ((await readFile(readyFile, 'utf8').catch(() => '')) !== 'ready') {
+          if (performance.now() >= readinessDeadline) throw new Error('fixture readiness missing')
+          await Bun.sleep(5)
+        }
+        const interrupted = performance.now()
+        abort.abort()
+        expect(await invocation).toEqual({
+          exitCode: mode === 'cleanup-failed' ? 3 : 2,
+          signal: null,
+        })
+        expect(performance.now() - interrupted).toBeGreaterThan(600)
+        if (mode === 'cleanup-failed') {
+          expect(stagedAfterSettlement).toBe(false)
+          await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+        } else {
+          expect(stagedAfterSettlement).toBe(true)
+          expect(
+            JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')),
+          ).toMatchObject({
+            status: mode === 'success' ? 'succeeded' : 'failed',
+            command: { status: 'interrupted' },
+            delivery: { status: 'written', source: 'none', files: [] },
+          })
+          expect(await readdir(join(destination, 'files'))).toEqual([])
+        }
+        const pid = await fixturePid(pidFile)
+        expect(() => process.kill(pid, 0)).toThrow()
+        expect((await readdir(root)).filter((name) => name.startsWith('.jig-delivery-'))).toEqual(
+          [],
+        )
+      } finally {
+        abort.abort()
+        await invocation
+      }
+    }))
+}
+
+for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
   for (const phase of ['before', 'during', 'after'] as const) {
+    if (trigger === 'late-cancel' && phase !== 'before') continue
     test(
       `settles a stopped coordinator on ${trigger} ${phase} publication`,
       async () =>
@@ -125,6 +214,22 @@ for (const trigger of ['deadline', 'cancel'] as const) {
             } catch {}
           }, 2500)
           const started = performance.now()
+          let expiryObserved = false
+          const timer = globalThis.setTimeout
+          const lateClock =
+            trigger === 'late-cancel'
+              ? spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...args) =>
+                  timer(() => {
+                    callback(...args)
+                    if (delay === 700) {
+                      // Observe the actual production expiry before interrupting,
+                      // not a separate clock started before socket setup/spawn.
+                      expiryObserved = true
+                      abort.abort()
+                    }
+                  }, delay),
+                )
+              : undefined
           const invocation = privateOwnFileCommand(
             [
               process.execPath,
@@ -162,6 +267,7 @@ for (const trigger of ['deadline', 'cancel'] as const) {
               abort.abort()
             }
             expect((await invocation).signal).toBe('SIGKILL')
+            if (trigger === 'late-cancel') expect(expiryObserved).toBe(true)
             expect(rescued).toBe(false)
             expect(performance.now() - started).toBeLessThan(
               700 + PRIVATE_FILE_COMMAND_STOP_GRACE_MS + 1000,
@@ -177,6 +283,7 @@ for (const trigger of ['deadline', 'cancel'] as const) {
               ).toBe('blocked')
             else await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
           } finally {
+            lateClock?.mockRestore()
             clearTimeout(watchdog)
             if (!settled && pid !== undefined) process.kill(pid, 'SIGKILL')
             await invocation
@@ -337,3 +444,20 @@ test(
     }),
   15000,
 )
+
+test('retained terminal publication still removes staging when its coordinator is lost', async () =>
+  fixture(async (root) => {
+    const abort = new AbortController(),
+      lost = new AbortController()
+    const owner = new PrivateFileDeliveryOwner(abort.signal, async () => lost.abort())
+    try {
+      await owner.prepare(join(root, 'result'), process.pid, [])
+      abort.abort()
+      expect(
+        await owner.publish(record, process.pid, undefined, undefined, true, lost.signal),
+      ).toMatchObject({ status: 'failed', code: 'CANCELLED' })
+      expect(await readdir(root)).toEqual([])
+    } finally {
+      await owner.close()
+    }
+  }))

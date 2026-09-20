@@ -920,8 +920,10 @@ explicit checkpoint record or `null`; it never exports unfinished scratch.
 unconfirmed Project Session cleanup also suppresses Flow files and returns a
 nonzero command result while preserving a known terminal.
 
-Without an accepted checkpoint, cancellation before ordinary publication leaves
-no packet. Validation, copying, or a destination collision
+After confirmed interrupted settlement, publication may retain the actual host
+terminal without Flow files, even without a checkpoint. Cancellation during
+ordinary final-file copying still removes unpublished staging. Validation,
+copying, or a destination collision
 leaves no packet and removes owned staging. If publication wins cancellation,
 the complete packet remains. Later acknowledgement, stdout, or cleanup failure
 never retracts the packet, rewrites its terminal, or authorizes reexecution.

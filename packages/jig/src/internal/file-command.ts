@@ -42,6 +42,7 @@ export function privateFileRecovery(): PrivateFileRecovery | undefined {
 }
 const MAX_BYTES = 16 * 1024 * 1024
 export const PRIVATE_FILE_COMMAND_STOP_GRACE_MS = 250
+export const PRIVATE_FILE_COMMAND_SETTLEMENT_MS = 60_000
 interface Marker {
   readonly socket: string
   readonly token: string
@@ -71,6 +72,7 @@ export async function privateOwnFileCommand(
     token: randomBytes(32).toString('hex'),
   }
   const cancellation = new AbortController()
+  const coordinatorLost = new AbortController()
   const owner = new PrivateFileDeliveryOwner(cancellation.signal, onStaged)
   let publication: Promise<void> | undefined
   let task: Promise<void> | undefined, connection: Socket | undefined
@@ -86,8 +88,12 @@ export async function privateOwnFileCommand(
       return
     }
     connection = socket
-    socket.once('close', () => cancellation.abort())
-    socket.on('error', () => cancellation.abort())
+    const lost = () => {
+      coordinatorLost.abort()
+      cancellation.abort()
+    }
+    socket.once('close', lost)
+    socket.on('error', lost)
     task = (async () => {
       for await (const value of messages(socket)) {
         const request = value as Record<string, JsonValue>
@@ -137,13 +143,24 @@ export async function privateOwnFileCommand(
           } else if (request.type === 'publish') {
             if (publication !== undefined) throw new Error('delivery already requested')
             if (request.cancelled === true) cancellation.abort()
+            const record = checkpointRecord(request.record!, checkpoints)
+            // Only the trusted coordinator publishes, after settling its Run.
+            // Cancellation may retain that record, not unfinished output files.
+            const interruptedRecord =
+              request.cancelled === true &&
+              request.outputFd === null &&
+              record !== null &&
+              typeof record === 'object' &&
+              !Array.isArray(record) &&
+              !Object.hasOwn(record, 'cleanup')
             publication = owner
               .publish(
-                checkpointRecord(request.record!, checkpoints),
+                record,
                 request.pid as number,
                 request.outputFd === null ? undefined : (request.outputFd as number),
                 checkpoints?.latest,
-                checkpoints !== undefined,
+                checkpoints !== undefined || interruptedRecord,
+                coordinatorLost.signal,
               )
               .then((receipt) => {
                 send(socket, {
@@ -183,29 +200,39 @@ export async function privateOwnFileCommand(
     stdio: 'inherit',
   })
   let escalation: ReturnType<typeof setTimeout> | undefined
+  let escalationDeadline = Infinity
   const completion = new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>(
     (resolve, reject) => {
       child.once('error', reject)
       child.once('close', (exitCode, signal) => resolve({ exitCode, signal }))
     },
   )
-  const stop = () => {
+  const stop = (graceMs: number) => {
     cancellation.abort()
-    if (escalation !== undefined || child.exitCode !== null || child.signalCode !== null) return
-    child.kill('SIGTERM')
+    if (child.exitCode !== null || child.signalCode !== null) return
+    const deadline = performance.now() + graceMs
+    if (deadline >= escalationDeadline) return
+    escalationDeadline = deadline
+    if (escalation === undefined) child.kill('SIGTERM')
+    clearTimeout(escalation)
     // This is our exact trusted child, not the payload tree. Payload fencing
     // remains the independent cgroup owner's responsibility after its loss.
     escalation = setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
-    }, PRIVATE_FILE_COMMAND_STOP_GRACE_MS)
+    }, graceMs)
   }
-  signal?.addEventListener('abort', stop, { once: true })
-  if (signal?.aborted) stop()
-  const timer = setTimeout(stop, lifetimeMs)
+  // Do not race cooperative Run cancellation, fencing and publication with
+  // the much shorter last-resort grace for an expired command. The absolute
+  // command deadline can still shorten this wait; payload deadlines never move.
+  const interrupt = () => stop(PRIVATE_FILE_COMMAND_SETTLEMENT_MS)
+  signal?.addEventListener('abort', interrupt, { once: true })
+  if (signal?.aborted) interrupt()
+  const timer = setTimeout(() => stop(PRIVATE_FILE_COMMAND_STOP_GRACE_MS), lifetimeMs)
   let exit: { exitCode: number | null; signal: NodeJS.Signals | null }
   try {
     exit = await completion
     cancellation.abort()
+    coordinatorLost.abort()
     connection?.destroy()
     await task
     if (recovery !== undefined && checkpoints !== undefined && publication === undefined) {
@@ -247,7 +274,7 @@ export async function privateOwnFileCommand(
   } finally {
     clearTimeout(timer)
     clearTimeout(escalation)
-    signal?.removeEventListener('abort', stop)
+    signal?.removeEventListener('abort', interrupt)
     connection?.destroy()
     await task
     checkpoints?.close()

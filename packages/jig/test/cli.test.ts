@@ -3,6 +3,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rm,
@@ -1948,6 +1949,86 @@ describe('finite Jig project commands', () => {
         })
       }
       expect(invocation.error).not.toContain('private cleanup error')
+    },
+  )
+
+  test.each(['settlement', 'publication'] as const)(
+    'interruption during %s preserves terminal evidence and final-file authority',
+    async (interruptAt) => {
+      const root = await mkdtemp(join(tmpdir(), 'jig-interrupted-report-'))
+      try {
+        const events: string[] = []
+        const controller = new AbortController()
+        const terminal: RootRunTerminal = {
+          status: 'succeeded',
+          outcome: 'done',
+          output: 'completion won',
+          diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+        }
+        const output = await open(root, 'r')
+        const session = fakeSession(events, { terminal })
+        let published = false
+        const invocation = commandInvocation(
+          {
+            delivery: {
+              async prepare() {},
+              async publish(record, outputFd, signal) {
+                expect(events).toContain('close')
+                expect(record).toMatchObject({ status: 'succeeded' })
+                if (interruptAt === 'settlement') {
+                  expect(record).toMatchObject({ command: { status: 'interrupted' } })
+                  expect(outputFd).toBeUndefined()
+                } else {
+                  expect(outputFd).toBe(output.fd)
+                  controller.abort()
+                }
+                expect(signal?.aborted).toBe(true)
+                published = true
+                if (interruptAt === 'publication')
+                  return { status: 'failed', destination: join(root, 'result'), code: 'CANCELLED' }
+                return {
+                  status: 'written',
+                  destination: join(root, 'result'),
+                  source: 'none',
+                  files: [],
+                }
+              },
+            },
+            async acquire(_project, options) {
+              options!.files!.retainOutput(output)
+              return {
+                ...session,
+                async close() {
+                  await session.close()
+                  if (interruptAt === 'settlement') controller.abort()
+                },
+              }
+            },
+          },
+          { signal: controller.signal },
+        )
+        try {
+          expect(
+            await main(
+              ['run', 'flow:flows/work', '--out', join(root, 'result'), '--json'],
+              invocation.options,
+            ),
+          ).toBe(2)
+          expect(published).toBe(true)
+          expect(JSON.parse(invocation.output)).toMatchObject({
+            status: 'succeeded',
+            command: { status: 'interrupted' },
+            delivery:
+              interruptAt === 'settlement'
+                ? { status: 'written', source: 'none', files: [] }
+                : { status: 'failed', code: 'CANCELLED' },
+          })
+        } finally {
+          await output.close()
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
     },
   )
 

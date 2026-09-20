@@ -736,7 +736,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         runtime.progress.stage('Publishing the result packet')
         delivery = await runtime.host.delivery!.publish(
           record,
-          !cleanupFailed && status.terminal.status === 'succeeded'
+          !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
             ? files.outputDirectory?.fd
             : undefined,
           runtime.signal,
@@ -752,6 +752,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           : { checkpoint: runtime.host.delivery!.checkpoint }),
       } as unknown as JsonValue
     }
+    // Publication can itself be interrupted after the first record snapshot.
+    if (runtime.signal?.aborted)
+      record = { ...(record as Record<string, JsonValue>), command: { status: 'interrupted' } }
     let encodedRecord: Uint8Array
     try {
       encodedRecord = canonicalJson(record)

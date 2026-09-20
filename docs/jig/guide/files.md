@@ -135,8 +135,9 @@ tree fails delivery without changing an already accepted execution outcome.
 
 Publication exposes one complete packet without replacing an existing path.
 This is atomic visibility, not a promise of persistence through power loss.
-Without retained progress, cancellation before publication removes unfinished
-staging; cancellation after publication does not retract the packet. The ordinary stdout record matches
+Cancellation removes unfinished file-copy staging. After confirmed cleanup,
+Jig can still save the interrupted Run's terminal record without Flow files.
+Cancellation after publication does not retract the packet. The ordinary stdout record matches
 the packet, but a later cleanup or acknowledgement failure can add a CLI error.
 After connection loss, delivery may be unknown even though a packet exists.
 If file metadata makes the report exceed JSON/1 limits, `JIG_REPORT_LIMIT`

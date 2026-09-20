@@ -224,14 +224,19 @@ replayed. New references follow cleanup and store commit. See
 
 The independent outer command owns output staging and removes it if its
 execution coordinator dies during copying. Flow code sees neither the host
-destination nor the delivery socket. On cancellation or command expiry, the
-owner gives its exact trusted child 250 ms after SIGTERM before SIGKILL and
-reaping. The independent cgroup owner still fences the complete payload tree;
+destination nor the delivery socket. On cancellation, the owner sends SIGTERM
+to its exact trusted child and allows at most 60 seconds for cooperative Run
+settlement and delivery before SIGKILL and reaping. The existing absolute
+command expiry can shorten that wait and retains a 250 ms escalation grace;
+later signals cannot extend either bound. This changes no payload deadline
+or cancellation authority. The independent cgroup owner still fences the complete payload tree;
 the child signal is not a substitute for that boundary. Atomic no-replace publication creates
 private files and directories; it promises complete visibility, not power-loss
 durability. A published packet survives later cancellation or acknowledgement
 loss. Killing the whole host or both trusted owners is outside the coordinator-
-loss cleanup guarantee; no automatic replay or general artifact-recovery service
+loss cleanup guarantee. After confirmed settlement, an interrupted command can
+publish its terminal record and previously accepted checkpoint, never unfinished
+final output files. No automatic replay or general artifact-recovery service
 is provided. Cleanup failures are surfaced rather than reported as zero residue.
 
 Run Checkpoint is an optional, reviewed root-only effect with a writable output
