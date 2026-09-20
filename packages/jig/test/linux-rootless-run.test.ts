@@ -90,14 +90,19 @@ delegatedDescribe('private rootless Linux Run', () => {
       bunHostLibraryPath: host.bunHostLibraryPath,
       supervisorPath: supervisor.path,
     })
-    const owner = await backend.seal(plan(host, fixture, 'descriptor-unavailable'), {
-      parent: ownerStateParent,
-      name: 'owner',
-    })
+    // This checks the descriptor refusal, not a five-second startup deadline.
+    // Give retained-state I/O time to complete on the provisioned proof host.
+    const owner = await backend.seal(
+      plan(host, fixture, 'descriptor-unavailable', { deadlineMs: 30_000 }),
+      {
+        parent: ownerStateParent,
+        name: 'owner',
+      },
+    )
     let released = false
     try {
       await expect(owner.admit()).rejects.toThrow()
-      const receipt = await waitForFence(backend, owner.identity, 5_000)
+      const receipt = await waitForFence(backend, owner.identity, 10_000)
       expect(receipt).toMatchObject({ fenced: true, stopReason: 'setup_failed', exitCode: null })
       expect(await missing(owner.identity.runCgroup)).toBe(true)
       await releasePrivateLinuxOwnerState(owner.identity, receipt)
@@ -112,7 +117,7 @@ delegatedDescribe('private rootless Linux Run', () => {
         await rm(ownerStateParent, { recursive: true, force: true })
       }
     }
-  }, 15_000)
+  }, 45_000)
 
   test('excludes unselected file and directory descriptors from the payload and visible parents', async () => {
     const host = await hostConfiguration()
