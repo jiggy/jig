@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -6,6 +6,9 @@ import Ajv2020 from 'ajv/dist/2020.js'
 import schema from '../../docs/flow/spec/machine/run-1.schema.json'
 import goldenTrace from './fixtures/golden-trace.json'
 import { ComponentPeer, type Message } from './harness/peer'
+
+// Cover process startup/cleanup without shortening the existing ten-second peer waits.
+setDefaultTimeout(30_000)
 
 const root = resolve(import.meta.dir, '../..')
 const typescriptComponent = [process.execPath, resolve(import.meta.dir, 'components/flow.ts')]

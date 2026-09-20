@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -16,6 +16,9 @@ import {
 } from '../src/internal/project-session-controller.js'
 
 const missingPlan = `sha256:${'0'.repeat(64)}`
+
+// Durable fixture initialization and cleanup are outside the session's execution limits.
+setDefaultTimeout(30_000)
 
 describe('private finite project session', () => {
   test('manifest diagnostics distinguish already-scoped workspace paths from standalone packages', () => {

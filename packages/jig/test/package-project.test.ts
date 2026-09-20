@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -33,6 +33,9 @@ const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
 )
+
+// These linker fixtures capture and durably retain real package trees before assertions.
+setDefaultTimeout(30_000)
 
 describe('private package-project linker', () => {
   test('feature requirements qualify only the selected graph and persist in the lock', async () => {

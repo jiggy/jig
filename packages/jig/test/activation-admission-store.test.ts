@@ -82,7 +82,8 @@ const TABLES = [
   'root_terminals',
 ] as const
 
-setDefaultTimeout(30_000)
+// Repeated real SQLite/fsync transitions need outer harness headroom, not longer Run limits.
+setDefaultTimeout(60_000)
 
 describe.serial('direct alpha activation store', () => {
   test('temporary state deletion failure cannot commit a root terminal', async () => {
