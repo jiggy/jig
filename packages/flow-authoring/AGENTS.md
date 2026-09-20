@@ -24,6 +24,10 @@ it returns artifacts to Jig's separately owned managed publisher.
 - Named invocation identity and channel agreements can be authored together;
   generated channel closures contain only reachable definitions. Keep channel
   semantics explicit and validate complete artifact batches before publication.
+- `@invocation` options may include the named single-form contract's `features`
+  catalog. Preserve its names/descriptions and omission versus an empty map;
+  reject anonymous catalogs and native bound violations. Catalogs affect the
+  descriptor, not generated validation types, support claims or granted powers.
 
 ## Work Guidance
 

@@ -16,6 +16,14 @@ only the public FLOW SDK and Agent method library. `./transport` separately
 exports bounded text framing for implementations of the same resource; these
 helpers authorize nothing.
 
+Its metadata declares `supports: ["events", "conversation", "sessions"]` from
+the shared Agent contract's feature catalog. A caller whose method requires a
+conversation adds `"requires": ["conversation"]` beside its `uses.agent.contract`
+reference. Jig checks these declarations before the caller starts, preserving
+ordinary calls and exact selection. The claims cover implemented mechanisms;
+they do not grant another turn, enable native retention, or promise a retained
+receipt. The selected resource's grants and runtime evidence remain separate.
+
 ## Results and limits
 
 The Flow must receive a completed ACP answer **and** settled resource evidence.

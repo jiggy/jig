@@ -48,6 +48,7 @@ export interface Descriptor {
   outcomes?: Record<string, string>
   id?: string
   version?: string
+  features?: Record<string, string>
   channels?: Record<string, ChannelPort>
 }
 interface ChannelPort {
@@ -129,15 +130,37 @@ export function lower(program: Program) {
     !opts ||
     typeof opts !== 'object' ||
     Array.isArray(opts) ||
-    Object.keys(opts).some((k) => !['outcomes', 'id', 'version', 'channels'].includes(k))
+    Object.keys(opts).some(
+      (k) => !['outcomes', 'id', 'version', 'features', 'channels'].includes(k),
+    )
   ) {
     fail(
       'SOURCE_UNSUPPORTED',
-      'Invocation options support outcomes, id/version and named channel ports.',
+      'Invocation options support outcomes, id/version, optional features and named channel ports.',
       owner,
     )
   }
-  if (opts.id !== undefined || opts.version !== undefined) identity(opts, owner)
+  if (opts.id !== undefined || opts.version !== undefined || opts.features !== undefined)
+    identity(opts, owner)
+  if (opts.features !== undefined) {
+    const features = record(opts.features, owner, 'Feature catalog')
+    if (
+      Object.keys(features).length > 256 ||
+      Object.entries(features).some(
+        ([name, description]) =>
+          !localName.test(name) ||
+          name.length > 64 ||
+          typeof description !== 'string' ||
+          [...description].length < 1 ||
+          [...description].length > 16384,
+      )
+    )
+      fail(
+        'SOURCE_INVALID',
+        'Features must map at most 256 LocalNames to descriptions of 1–16384 Unicode scalars.',
+        owner,
+      )
+  }
   const ports: Record<string, ChannelPort> = Object.create(null)
   if (opts.channels !== undefined) {
     const channels = record(opts.channels, owner, 'channels')
@@ -326,6 +349,7 @@ export function lower(program: Program) {
     result: emit(invocation.result),
     ...(opts.outcomes === undefined ? {} : { outcomes: opts.outcomes as Record<string, string> }),
     ...(opts.id === undefined ? {} : { id: opts.id as string, version: opts.version as string }),
+    ...(opts.features === undefined ? {} : { features: opts.features as Record<string, string> }),
     ...(opts.channels === undefined ? {} : { channels: ports }),
   }
   const channels: Record<string, ChannelDescriptor> = Object.create(null)

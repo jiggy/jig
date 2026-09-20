@@ -26,6 +26,13 @@ implementation. Jig matches its contract ID, exact version, and canonical
 descriptor digest against the selected Flow implementation. Copying the file does
 not provide an Agent or grant permission to use one.
 
+The descriptor also names optional `events`, `conversation`, and `sessions`
+behavior. Implementations declare what they support; callers declare what they
+require. Jig can reject mismatching declarations before a caller starts, but
+matching claims establish neither implementation honesty nor resource authority.
+The [feature definitions](../spec/agent-run.md#declare-required-agent-behavior)
+explain the separate turn, retention and execution limits.
+
 This page is an explanatory guide. Jig does not fetch it to resolve an
 invocation, and changing this page does not change the contract. Matching uses
 the package-local descriptor offline. The ID names the contract across
@@ -40,9 +47,11 @@ versions; the descriptor carries the version and exact interface.
   Do not use this contract ID as your provider's base URL.
 - **Get the interface file:** download the
   [Agent Run JSON descriptor](https://jig.md/contracts/agent-run/contract.json).
-  Keep its [referenced channel descriptor](https://jig.md/contracts/agent-run/contracts/acp-public-updates.json)
-  beside it under `contracts/acp-public-updates.json`; copy the complete bundle
-  into the Flow package and reference the invocation descriptor from
+  Keep its referenced [events](https://jig.md/contracts/agent-run/contracts/acp-public-updates.json),
+  [commands](https://jig.md/contracts/agent-run/contracts/agent-commands.json), and
+  [replies](https://jig.md/contracts/agent-run/contracts/agent-replies.json)
+  descriptors beside it under `contracts/`, preserving their filenames. Copy
+  the complete bundle into the Flow package and reference the invocation descriptor from
   `flow.meta.json` (or Markdown frontmatter), as the specification shows.
 - **See it in an application:** try the
   [support-case application](../guide/support-case.md).

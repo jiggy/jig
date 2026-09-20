@@ -406,6 +406,25 @@ descriptor grants no credentials, endpoint access, command execution or
 retention authority.
 Review shows the resolved route and expected contract for each target slot.
 
+An optional `requires` list beside a dependency's `contract` selects names from
+that contract's `features` catalog. The selected package declares its implemented
+names in metadata `supports`. Both lists are bounded, unique LocalNames; even
+empty declarations require an identified single-form contract, and every name
+must occur in that exact catalog. Inspection rejects unknown names before routing.
+
+After exact contract matching, Jig checks required names against the selected
+implementation's support declaration. A missing feature marks the consuming
+target and its selected dependents `FEATURE_UNAVAILABLE` before their execution
+is prepared. Unrelated targets remain eligible. This check never ranks alternatives,
+changes an explicit selection or falls back. The decision and evidence belong to
+the captured admission generation; visible metadata edits require a new review.
+The lock projects both requirements and package support declarations from those
+captured bytes. Review names each failing caller slot, selected provider and
+missing feature once, including the actual descendant edge for dependent refusals.
+Support claims are package-wide obligations across accepted settings, not proof
+of provider honesty, native runtime availability, grant authority or successful
+execution. No feature requirement is needed for ordinary one-shot calls.
+
 Attachment declarations participate in root eligibility and review without
 invocation paths. A direct root or configured Binding receives its declared
 attachments through the [root file profile](#root-file-runs). Child relations

@@ -46,6 +46,7 @@ export function renderPrivateProjectPlanReview(
   )
   const acp = projectAcpSelections(plan.proposed.targets, recipes)
   const grants = grantChanges(review.baseCandidate?.lock ?? null, plan.proposed.lock)
+  const featureMismatches = projectFeatureMismatches(plan.proposed.lock, plan.proposed.targets)
   const authorityChanges = requiresAuthorityApproval(
     review.baseCandidate?.lock ?? null,
     plan.proposed.lock,
@@ -54,6 +55,7 @@ export function renderPrivateProjectPlanReview(
     authorityChanges,
     grants,
     changes,
+    ...(featureMismatches.length === 0 ? {} : { featureMismatches }),
     executionChanges: Object.fromEntries(
       changes.targets.changed.map((key) => [
         key,
@@ -123,12 +125,25 @@ export function renderPrivateProjectPlanReview(
       ),
   )
   summary.write('Targets after approval:\n')
+  if (featureMismatches.length > 0) {
+    summary.write(
+      '  Required features are missing on these selected routes (their dependents are unavailable too):\n',
+    )
+    writePolicy(summary, featureMismatches, 1)
+  }
   if (proposed.targets.length === 0)
     summary.write('  None. Add a Flow under flows/ and review again.\n')
   for (const target of proposed.targets) {
     summary.write('  ')
     writeAsciiJsonString(summary, targetKey(target.target))
     summary.write(` - ${target.availability.state}\n`)
+    if (
+      target.availability.state === 'unavailable' &&
+      target.availability.code === 'FEATURE_UNAVAILABLE'
+    )
+      summary.write(
+        '    A selected dependency lacks required features. Check uses.requires and the selected implementation supports declaration.\n',
+      )
   }
   summary.write(
     '\nUnchanged policy is omitted above. Use jig review --details for complete policy.\n',
@@ -362,7 +377,15 @@ function projectCandidate(
     availability:
       disposition.state === 'ready'
         ? { state: 'ready' as const }
-        : { state: 'unavailable' as const, code: disposition.code },
+        : {
+            state: 'unavailable' as const,
+            code: disposition.code,
+            ...(disposition.code === 'FEATURE_UNAVAILABLE'
+              ? {
+                  hint: 'A selected dependency does not declare all required features. Review uses.requires and select a matching implementation; grants do not supply feature support.',
+                }
+              : {}),
+          },
   }))
   return {
     portablePolicy: {
@@ -373,6 +396,7 @@ function projectCandidate(
             digest: value.digest,
             directRun: value.directRun,
             uses: value.uses,
+            ...(value.supports === undefined ? {} : { supports: value.supports }),
           },
         ]),
       ),
@@ -380,6 +404,31 @@ function projectCandidate(
     },
     targets,
   }
+}
+
+function projectFeatureMismatches(
+  lock: PrivateActivationReviewPlan['candidate']['lock'],
+  targets: PrivateActivationReviewPlan['candidate']['candidate']['targets'],
+) {
+  const byTarget = new Map(targets.map(({ request }) => [targetKey(request.target), request]))
+  const issues: { caller: string; slot: string; selected: string; missing: readonly string[] }[] =
+    []
+  for (const { request } of targets) {
+    const requirements = lock.packages[request.packagePath]!.uses
+    for (const [slot, route] of Object.entries(request.slots)) {
+      if (route.kind !== 'flow') continue
+      const required = requirements[slot]?.requires ?? []
+      if (required.length === 0) continue
+      const selected = targetKey(route.target)
+      const provider = byTarget.get(selected)
+      if (provider === undefined) throw new Error('review feature provider is missing')
+      const supports = lock.packages[provider.packagePath]!.supports ?? []
+      const missing = required.filter((feature) => !supports.includes(feature))
+      if (missing.length > 0)
+        issues.push({ caller: targetKey(request.target), slot, selected, missing })
+    }
+  }
+  return issues
 }
 
 function projectChanges(

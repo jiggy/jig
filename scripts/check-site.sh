@@ -27,6 +27,8 @@ docs/flow/spec/machine/schema-1.json|schemas/schema-1.json'
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
 docs/jig/spec/contracts/agent-run/contract.json|contracts/agent-run/contract.json
 docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json|contracts/agent-run/contracts/acp-public-updates.json
+docs/jig/spec/contracts/agent-run/contracts/agent-commands.json|contracts/agent-run/contracts/agent-commands.json
+docs/jig/spec/contracts/agent-run/contracts/agent-replies.json|contracts/agent-run/contracts/agent-replies.json
 docs/jig/spec/contracts/finite-acp/contract.json|contracts/finite-acp/contract.json
 docs/jig/spec/contracts/finite-acp/requests.json|contracts/finite-acp/requests.json
 docs/jig/spec/contracts/finite-acp/responses.json|contracts/finite-acp/responses.json

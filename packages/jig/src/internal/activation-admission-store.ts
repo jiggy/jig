@@ -5075,6 +5075,7 @@ function requirePackageProjection(
     digest: inspected.digest,
     directRun: expected.directRun,
     uses,
+    ...(inspected.metadata.supports === undefined ? {} : { supports: inspected.metadata.supports }),
     ...(expected.slots === undefined ? {} : { slots: expected.slots }),
   } as unknown as JsonValue
   if (!sameBytes(canonicalJson(observed), canonicalJson(expected as unknown as JsonValue))) {

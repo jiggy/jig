@@ -56,7 +56,7 @@ The supported single-file language, complete drafter example and resource bounds
 are documented in the
 [authoring package](https://github.com/jiggy/jig/tree/main/packages/flow-authoring).
 This profile supports input, complete result, custom outcomes, named invocation
-identity, channel agreements, and explicit Agent projections—not every TypeSpec
+identity, optional feature catalogs, channel agreements, and explicit Agent projections—not every TypeSpec
 feature or arbitrary FLOW contract field. Settings and attachments remain
 separate declarations; use native JSON where the profile does not fit.
 
@@ -88,6 +88,32 @@ the complete invocation/channel bundle; share its generated JSON with callers.
 Channel ports can also declare `delivery`, and receive ports can declare `start`.
 Every referenced channel is authored in this source. No manual JSON overlay or
 compiler on the consumer host is needed.
+
+## Name optional behavior
+
+If implementations of a named contract can differ in optional behavior, put
+the vocabulary in that contract's invocation options:
+
+```typespec
+@invocation(Input, Result, #{
+  id: "https://example.org/methods/review", version: "1.0.0",
+  features: #{progress: "Publishes selected progress; completion remains a separate result."}
+})
+namespace Review;
+```
+
+The generated `features` map enters the exact contract digest. Refresh callers'
+copied bundles after changing it, then review normally. Feature names and their
+descriptions are bounded, and even an empty catalog needs the exact identity.
+
+An implementation that provides this behavior declares `"supports": ["progress"]`
+in its metadata. A caller that needs it adds `"requires": ["progress"]` beside
+the relevant `uses` contract reference. No additional compiler output or SDK
+call is needed. Jig checks these declarations before the caller starts;
+declarations do not establish behavioral honesty or resource authority. An
+unconditional support claim must hold across the package's accepted settings.
+The [Agent example](../spec/agent-run.md#declare-required-agent-behavior)
+shows conversation, event and session requirements with their separate limits.
 
 ## Generated-file ownership
 

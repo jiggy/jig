@@ -31,6 +31,24 @@ header's boolean `types` selection (default true for new source). Unsupported
 profiles fail. A tool upgrade is selected by the next explicit generation,
 not by opening or running an existing package.
 
+## Optional feature catalogs
+
+The single-form `@invocation(Input, Result, options)` supports `options.features`
+only with an exact `id`/`version` pair. Its value is the native invocation
+descriptor's optional `features` map: at most 256 distinct `LocalName` keys,
+each at most 64 characters, with descriptions of 1–16,384 Unicode scalars.
+An empty map is preserved and still requires identity; omission remains absent.
+The ordinary descriptor and artifact limits apply. Invalid names, values,
+bounds or identity fail the complete artifact batch.
+
+Generation preserves this catalog in `FLOW.contract.json`, where it participates
+in the ordinary exact invocation digest. It does not change input/result
+schemas or generated TypeScript types. Package `supports` and dependency
+`requires` remain separately authored metadata. Compilation supplies no
+implementation support, grant, settings predicate, feature inheritance, named
+operation, or runtime query. The native contract reader validates the completed
+catalog before managed publication.
+
 ## Publication and recovery
 
 Each package has local management state outside Package/1 under `.jig`.

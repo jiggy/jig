@@ -107,6 +107,89 @@ async function rejects(body, code, message) {
   })
 }
 
+const identified = 'id: "https://example.org/methods/review", version: "1.0.0"'
+test('feature catalogs retain exact authored meaning without changing validation or types', async () => {
+  const plain = await compile(simple('value: string;', '', `, #{${identified}}`))
+  const features = { progress: 'Selected progress; completion remains a separate result.' }
+  const generated = await compile(
+    simple(
+      'value: string;',
+      '',
+      `, #{${identified}, features: #{progress: ${JSON.stringify(features.progress)}}}`,
+    ),
+  )
+  const original = JSON.parse(plain.artifacts['FLOW.contract.json'])
+  const catalogued = JSON.parse(generated.artifacts['FLOW.contract.json'])
+  assert.deepEqual(catalogued, { ...original, features })
+  assert.equal(generated.artifacts['FLOW.contract.d.ts'], plain.artifacts['FLOW.contract.d.ts'])
+  assert.deepEqual(Object.keys(generated.artifacts), Object.keys(plain.artifacts))
+  const changed = await compile(
+    simple(
+      'value: string;',
+      '',
+      `, #{${identified}, features: #{progress: "Different obligations."}}`,
+    ),
+  )
+  assert.notEqual(
+    changed.artifacts['FLOW.contract.json'],
+    generated.artifacts['FLOW.contract.json'],
+  )
+  const empty = await compile(simple('value: string;', '', `, #{${identified}, features: #{}}`))
+  assert.deepEqual(JSON.parse(empty.artifacts['FLOW.contract.json']).features, {})
+  assert.equal(Object.hasOwn(original, 'features'), false)
+})
+
+test('feature catalogs preserve name/count boundaries and Unicode-scalar descriptions', async () => {
+  const features = Array.from({ length: 256 }, (_, index) => `feature${index}: "Supported."`).join(
+    ', ',
+  )
+  const generated = await compile(
+    simple('value: string;', '', `, #{${identified}, features: #{${features}}}`),
+  )
+  assert.equal(
+    Object.keys(JSON.parse(generated.artifacts['FLOW.contract.json']).features).length,
+    256,
+  )
+  const name = 'f'.repeat(64)
+  const description = '🌱'.repeat(8192) + 'a'.repeat(8192)
+  const boundary = await compile(
+    simple(
+      'value: string;',
+      '',
+      `, #{${identified}, features: #{${name}: ${JSON.stringify(description)}}}`,
+    ),
+  )
+  assert.equal(JSON.parse(boundary.artifacts['FLOW.contract.json']).features[name], description)
+})
+
+for (const [name, features, identityOptions = identified, message = /Features|Feature catalog/] of [
+  ['anonymous catalog', '#{progress: "Supported."}', '', /id and version/],
+  ['anonymous empty catalog', '#{}', '', /id and version/],
+  ['null catalog', 'null'],
+  ['array catalog', '#[]'],
+  ['non-string feature description', '#{progress: true}'],
+  ['empty feature description', '#{progress: ""}'],
+  ['long feature description', `#{progress: ${JSON.stringify('a'.repeat(16385))}}`],
+  ['invalid feature name', '#{`Progress`: "Supported."}'],
+  ['incomplete feature name match', '#{`progress\\n`: "Supported."}'],
+  ['long feature name', `#{${'f'.repeat(65)}: "Supported."}`],
+  [
+    'excess feature count',
+    `#{${Array.from({ length: 257 }, (_, index) => `feature${index}: "Supported."`).join(', ')}}`,
+  ],
+])
+  test(name, async () =>
+    rejects(
+      simple(
+        'value: string;',
+        '',
+        `, #{${identityOptions ? `${identityOptions}, ` : ''}features: ${features}}`,
+      ),
+      'SOURCE_INVALID',
+      message,
+    ),
+  )
+
 test('full drafter compiles deterministically, preserving authored source and meaningful types', async () => {
   assert.equal(full.source, source)
   assert.deepEqual((await compileContract(source)).artifacts, full.artifacts)

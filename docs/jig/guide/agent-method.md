@@ -32,6 +32,13 @@ the operator. The ACP method follows the configuration of its native grant. Skil
 and paths describe supplied data, not host-attested provenance. Consumers check
 structured results independently of the selected implementation.
 
+For baseline one-shot work, the ordinary Agent dependency needs no optional
+requirements. A method that needs events, conversation control or session
+requests declares the corresponding [required behavior](../spec/agent-run.md#declare-required-agent-behavior)
+in its dependency metadata. The HTTP package declares no optional support;
+the ACP package declares all three mechanisms. Matching these claims does not
+establish current native support, grant authority or a successful result.
+
 ## Invoke the ordinary Flow
 
 Its input is:

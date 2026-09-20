@@ -95,6 +95,13 @@ describe('ordinary Agent Run contract', () => {
     expect(contract.descriptor.version).toBe(AGENT_RUN_CONTRACT_VERSION)
     expect(contract.digest).toBe(AGENT_RUN_CONTRACT_DIGEST)
     expect(contract.profile).toBe('single')
+    expect(contract.descriptor.features).toEqual({
+      events: 'Implements the optional public-update protocol, including honest observation loss.',
+      conversation:
+        'Implements conversational commands, replies, turn results and final settlement; prompt allowances remain separately granted.',
+      sessions:
+        'Implements retain/restore requests and final receipts, including run-scoped state and honest unavailability; authority and successful retention are separate.',
+    })
     expect(contract.descriptor.channels).toEqual({
       events: {
         direction: 'send',
@@ -114,6 +121,20 @@ describe('ordinary Agent Run contract', () => {
         contract: './contracts/agent-replies.json',
       },
     })
+  })
+
+  test('ordinary methods declare implemented features and consumers require only their complete method', async () => {
+    const metadata = async (path: string) => Bun.file(new URL(path, import.meta.url)).json()
+    expect((await metadata('../../agent-method/flow.meta.json')).supports).toEqual([])
+    expect((await metadata('../../agent-acp/flow.meta.json')).supports).toEqual([
+      'events',
+      'conversation',
+      'sessions',
+    ])
+    const worker = await metadata('../../../examples/incident-brief/flows/worker/flow.meta.json')
+    expect(worker.uses.agent.requires).toEqual(['conversation'])
+    const repair = await metadata('../../../examples/tested-patch/flows/repair/flow.meta.json')
+    expect(repair.uses.agent.requires).toBeUndefined()
   })
 
   test('authored Agent consumers retain the complete exact optional channel contract', async () => {

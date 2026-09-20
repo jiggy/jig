@@ -56,6 +56,9 @@ or newer instructions. Keep the reviewer advancing independently.
 ## Work Guidance
 
 - Use the public Agent conversation helper and ordinary exact calls only.
+- The worker requires declared Agent `conversation` support for its complete
+  drafting/review method. The claim does not grant a second turn; its native
+  Binding independently supplies the reviewed prompt allowance.
 - Keep domain coordination in this application; do not add host workflow APIs.
 
 ## Verification

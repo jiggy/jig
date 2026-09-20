@@ -29,6 +29,7 @@ export const INVOCATION_CONTRACT_LIMITS = Object.freeze({
   preimageBytes: 1_048_576,
   channelPaths: 64,
   operations: 256,
+  features: 256,
   outcomes: 256,
   attachments: 256,
   definitions: 1_024,
@@ -53,6 +54,8 @@ export interface InvocationContractDescriptor extends InvocationOperationDescrip
   readonly id?: string
   readonly version?: string
   readonly $defs?: JsonObject
+  /** Optional behavior vocabulary, valid only on an identified single-form contract. */
+  readonly features?: Readonly<Record<string, string>>
   readonly operations?: Readonly<Record<string, InvocationOperationDescriptor>>
 }
 
@@ -156,7 +159,7 @@ function prepareInvocationContract(bytes: Uint8Array, path: string): PreparedInv
   const named = Object.hasOwn(root, 'operations')
   exact(
     root,
-    [...SHARED_FIELDS, ...(named ? ['operations'] : OPERATION_FIELDS)],
+    [...SHARED_FIELDS, ...(named ? ['operations'] : [...OPERATION_FIELDS, 'features'])],
     'descriptor',
     path,
   )
@@ -175,6 +178,25 @@ function prepareInvocationContract(bytes: Uint8Array, path: string): PreparedInv
     (typeof root.version !== 'string' || !isContractVersion(root.version))
   ) {
     invalid('CONTRACT_VERSION', 'descriptor.version must be stable SemVer core', path)
+  }
+  if (Object.hasOwn(root, 'features')) {
+    if (root.id === undefined) {
+      invalid('CONTRACT_FIELD', 'features require an identified single-form contract', path)
+    }
+    const features = object(root.features, 'descriptor.features', path)
+    if (Object.keys(features).length > INVOCATION_CONTRACT_LIMITS.features) {
+      invalid('CONTRACT_LIMIT', 'descriptor exceeds 256 features', path)
+    }
+    for (const [name, description] of Object.entries(features)) {
+      localName(name, 'feature', path)
+      if (
+        typeof description !== 'string' ||
+        Array.from(description).length < 1 ||
+        Array.from(description).length > 16_384
+      ) {
+        invalid('CONTRACT_FIELD', 'feature description must contain 1-16384 Unicode scalars', path)
+      }
+    }
   }
   const definitions =
     root.$defs === undefined ? undefined : object(root.$defs, 'descriptor.$defs', path)

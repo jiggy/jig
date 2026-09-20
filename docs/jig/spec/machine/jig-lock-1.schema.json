@@ -39,6 +39,16 @@
         "directRun": {
           "type": "boolean"
         },
+        "supports": {
+          "type": "array",
+          "maxItems": 256,
+          "description": "Unique LocalNames from the offered contract catalog; exact membership and uniqueness are enforced by Jig.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
         "uses": {
           "type": "object",
           "description": "Invocation requirements keyed by package-local slot: an empty uncontracted requirement or an exact named interface. This is not native-host qualification.",
@@ -221,6 +231,16 @@
             },
             "digest": {
               "$ref": "#/$defs/digest"
+            },
+            "requires": {
+              "type": "array",
+              "maxItems": 256,
+              "description": "Unique LocalNames from the required contract catalog; exact membership and uniqueness are enforced by Jig.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
             }
           },
           "required": ["id", "version", "digest"],

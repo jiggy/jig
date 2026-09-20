@@ -20,12 +20,14 @@ const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?![\s
 
 export interface InvocationUse {
   readonly contract?: string
+  readonly requires?: readonly string[]
 }
 
 export interface FlowMetadata {
   readonly name?: string
   readonly description?: string
   readonly uses?: Readonly<Record<string, InvocationUse>>
+  readonly supports?: readonly string[]
   readonly license?: string
   readonly compatibility?: string
   readonly metadata?: Readonly<Record<string, string>>
@@ -258,6 +260,7 @@ function validateMetadata(root: JsonObject, path: string): FlowMetadata {
     'name',
     'description',
     'uses',
+    'supports',
     'license',
     'compatibility',
     'metadata',
@@ -276,6 +279,8 @@ function validateMetadata(root: JsonObject, path: string): FlowMetadata {
       ? undefined
       : requireDescription(root.description, 'description', path)
   const uses = root.uses === undefined ? undefined : validateUses(root.uses, path)
+  const supports =
+    root.supports === undefined ? undefined : requireFeatureNames(root.supports, 'supports', path)
   const strings: Record<string, string> = Object.create(null)
   for (const key of ['license', 'compatibility', 'allowed-tools']) {
     if (root[key] === undefined) continue
@@ -296,6 +301,7 @@ function validateMetadata(root: JsonObject, path: string): FlowMetadata {
     ...(name === undefined ? {} : { name }),
     ...(description === undefined ? {} : { description }),
     ...(uses === undefined ? {} : { uses }),
+    ...(supports === undefined ? {} : { supports }),
     ...strings,
     ...(extraMetadata === undefined ? {} : { metadata: extraMetadata }),
     extensions,
@@ -314,14 +320,33 @@ function validateUses(value: JsonValue, path: string): Readonly<Record<string, I
       invalid('METADATA_USES', 'markdown-agent is reserved for Markdown interpretation', path)
     const item = requireObject(declaration, `uses.${slot}`, path)
     if (Object.keys(item).length === 0) result[slot] = {}
-    else if (Object.keys(item).length === 1 && typeof item.contract === 'string') {
+    else if (
+      Object.keys(item).every((key) => key === 'contract' || key === 'requires') &&
+      typeof item.contract === 'string'
+    ) {
       result[slot] = {
         contract: requireAuthorReference(item.contract, `uses.${slot}.contract`, path),
+        ...(item.requires === undefined
+          ? {}
+          : { requires: requireFeatureNames(item.requires, `uses.${slot}.requires`, path) }),
       }
     } else
-      invalid('METADATA_USES', `uses.${slot} must be {} or contain only a contract reference`, path)
+      invalid(
+        'METADATA_USES',
+        `uses.${slot} must be {} or contain a contract reference and optional requires`,
+        path,
+      )
   }
   return result
+}
+
+function requireFeatureNames(value: JsonValue, field: string, path: string): readonly string[] {
+  if (!Array.isArray(value) || value.length > 256)
+    invalid('METADATA_FEATURES', `${field} must contain at most 256 unique LocalNames`, path)
+  const names = value.map((item) => requireLocalName(item, field, path))
+  if (new Set(names).size !== names.length)
+    invalid('METADATA_FEATURES', `${field} contains duplicate feature names`, path)
+  return Object.freeze(names)
 }
 
 export function requireAuthorReference(value: string, field: string, owner = 'FLOW.md'): string {

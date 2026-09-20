@@ -45,7 +45,10 @@ export interface PrivateActivationRecipeObservation
   readonly digest: string
 }
 
-export type PrivateActivationUnavailableCode = 'RUNTIME_UNAVAILABLE' | 'SANDBOX_UNAVAILABLE'
+export type PrivateActivationUnavailableCode =
+  | 'RUNTIME_UNAVAILABLE'
+  | 'SANDBOX_UNAVAILABLE'
+  | 'FEATURE_UNAVAILABLE'
 
 export type PrivateActivationPlanningDisposition =
   | {
@@ -324,7 +327,9 @@ function requireDigest(value: unknown, label: string): string {
 }
 
 function isUnavailableCode(value: unknown): value is PrivateActivationUnavailableCode {
-  return ['RUNTIME_UNAVAILABLE', 'SANDBOX_UNAVAILABLE'].includes(value as string)
+  return ['RUNTIME_UNAVAILABLE', 'SANDBOX_UNAVAILABLE', 'FEATURE_UNAVAILABLE'].includes(
+    value as string,
+  )
 }
 
 function compareTarget(left: RunTargetIdentity, right: RunTargetIdentity): number {

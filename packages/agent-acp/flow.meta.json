@@ -1,5 +1,6 @@
 {
   "name": "agent-acp",
+  "supports": ["events", "conversation", "sessions"],
   "description": "Prepare one Agent task, exchange a finite ACP turn through an authorized resource, and check its result.",
   "uses": { "native": { "contract": "./contracts/finite-acp/contract.json" } }
 }

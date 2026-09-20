@@ -20,6 +20,7 @@ import {
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
+import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
@@ -142,6 +143,24 @@ export function createPrivateActivationCandidateV5(
   const resolution = requirePrivateRetainedResolutionObservation(resolutionValue)
   if (resolution.captureDigest !== retained.captureDigest) {
     throw new TypeError('resolution observation belongs to a different retained project capture')
+  }
+  const featureFailures = privateProjectFeatureFailures(retained.linked)
+  for (const target of resolution.targets) {
+    const failure = featureFailures.get(privateActivationTargetKey(target.request.target))
+    if (
+      failure !== undefined &&
+      (target.disposition.state !== 'unavailable' ||
+        target.disposition.code !== 'FEATURE_UNAVAILABLE' ||
+        target.disposition.evidenceDigests.length !== 1 ||
+        target.disposition.evidenceDigests[0] !== failure)
+    )
+      throw new TypeError('target requires unsupported implementation features')
+    if (
+      failure === undefined &&
+      target.disposition.state === 'unavailable' &&
+      target.disposition.code === 'FEATURE_UNAVAILABLE'
+    )
+      throw new TypeError('feature refusal has no retained declaration evidence')
   }
   const recipeValues = readPrivateActivationRecipeValues(recipeValue, resolution.targets.length)
   const recipes = recipeValues.map(requirePrivateActivationRecipe)
@@ -1035,7 +1054,9 @@ function copiedBytes(value: unknown, label: string): Uint8Array {
 }
 
 function isUnavailableCode(value: unknown): value is PrivateResolutionUnavailableCode {
-  return ['RUNTIME_UNAVAILABLE', 'SANDBOX_UNAVAILABLE'].includes(value as string)
+  return ['RUNTIME_UNAVAILABLE', 'SANDBOX_UNAVAILABLE', 'FEATURE_UNAVAILABLE'].includes(
+    value as string,
+  )
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {

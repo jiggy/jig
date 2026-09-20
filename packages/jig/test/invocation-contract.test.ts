@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 
+import featureCases from '../../../conformance/run-1/fixtures/invocation-features.json'
 import { CHANNEL_CONTRACT_SCHEMA } from '../src/channel-contract.js'
 import { CheckError } from '../src/diagnostics.js'
 import {
@@ -43,6 +44,98 @@ function reject(value: unknown, code?: string): void {
 }
 
 describe('Invocation Contract/1', () => {
+  test.each(featureCases.valid)('preserves exact feature identity: $name', (fixture) => {
+    const parsed = parseInvocationContract(bytes(fixture.descriptor))
+    expect(parsed.digest).toBe(fixture.digest)
+    expect(parsed.descriptor.features).toEqual(fixture.descriptor.features)
+    expect(parsed.invocation).not.toHaveProperty('features')
+    expect(Object.isFrozen(parsed.descriptor.features ?? parsed.descriptor)).toBe(true)
+    expect(
+      parseInvocationContract(
+        bytes(Object.fromEntries(Object.entries(fixture.descriptor).reverse())),
+      ).digest,
+    ).toBe(fixture.digest)
+  })
+
+  test.each(featureCases.invalidFeatures)('rejects feature catalog: $name', (fixture) => {
+    reject(named({ features: fixture.value }))
+  })
+
+  test('restricts the catalog to identified single-form contracts', () => {
+    reject(descriptor({ features: {} }), 'CONTRACT_FIELD')
+    reject(named({ operations: { review: {} }, features: {} }), 'CONTRACT_FIELD')
+    reject(named({ operations: { review: { features: {} } } }), 'CONTRACT_FIELD')
+    reject(named({ supports: ['conversation'] }), 'CONTRACT_FIELD')
+    reject(named({ requires: ['conversation'] }), 'CONTRACT_FIELD')
+    expect(parseInvocationContract(bytes(named({ features: {} }))).descriptor.features).toEqual({})
+  })
+
+  test('bounds feature names, entries and Unicode scalar descriptions', () => {
+    const features = Object.fromEntries(
+      Array.from({ length: INVOCATION_CONTRACT_LIMITS.features }, (_, index) => [
+        `f-${index}`,
+        'F.',
+      ]),
+    )
+    expect(
+      Object.keys(parseInvocationContract(bytes(named({ features }))).descriptor.features ?? {}),
+    ).toHaveLength(INVOCATION_CONTRACT_LIMITS.features)
+    reject(named({ features: { ...features, extra: 'Extra.' } }), 'CONTRACT_LIMIT')
+    expect(
+      parseInvocationContract(bytes(named({ features: { ['a'.repeat(64)]: 'Valid.' } }))).descriptor
+        .features,
+    ).toHaveProperty('a'.repeat(64))
+    reject(named({ features: { ['a'.repeat(65)]: 'Invalid.' } }), 'CONTRACT_LOCAL_NAME')
+    const description = '🔎'.repeat(16_384)
+    expect(
+      parseInvocationContract(bytes(named({ features: { inspect: description } }))).descriptor
+        .features?.inspect,
+    ).toBe(description)
+    reject(named({ features: { inspect: `${description}x` } }), 'CONTRACT_FIELD')
+    expect(() =>
+      parseInvocationContract(bytes(named({ features: { inspect: '\ud800' } }))),
+    ).toThrow(CheckError)
+  })
+
+  test('rejects duplicate catalog keys before parsing loses the evidence', () => {
+    const source = JSON.stringify(named()).slice(0, -1)
+    for (const duplicate of [
+      ',"features":{"events":"First.","events":"Second."}}',
+      ',"features":{},"features":{}}',
+    ]) {
+      expect(() => parseInvocationContract(new TextEncoder().encode(source + duplicate))).toThrow(
+        CheckError,
+      )
+    }
+  })
+
+  test('includes feature names and descriptions in the complete channel closure identity', () => {
+    const value = named({
+      features: { events: 'Public updates.' },
+      channels: { events: { direction: 'send', contract: './updates.json', required: false } },
+    })
+    const documents = new Map([['updates.json', bytes(channel())]])
+    const parsed = parseInvocationContract(bytes(value), 'FLOW.contract.json', documents)
+    expect(parsed.channelContracts.size).toBe(1)
+    expect(parsed.digest).toBe(
+      parseInvocationContract(bytes(value), 'moved/FLOW.contract.json', documents).digest,
+    )
+    expect(parsed.digest).not.toBe(
+      parseInvocationContract(
+        bytes({ ...value, features: { updates: 'Public updates.' } }),
+        'FLOW.contract.json',
+        documents,
+      ).digest,
+    )
+    expect(parsed.digest).not.toBe(
+      parseInvocationContract(
+        bytes(value),
+        'FLOW.contract.json',
+        new Map([['updates.json', bytes(channel({ semantics: 'Changed.' }))]]),
+      ).digest,
+    )
+  })
+
   test('supports an anonymous discriminator-only contract without inferred constraints', () => {
     const parsed = parseInvocationContract(bytes(descriptor()))
     expect(parsed.profile).toBe('single')

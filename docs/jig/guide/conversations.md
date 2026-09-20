@@ -30,10 +30,18 @@ and `acp-public-updates.json`. For example, with the bundle under
 ```json
 {
   "uses": {
-    "agent": { "contract": "./contracts/agent-run/contract.json" }
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json",
+      "requires": ["conversation", "events"]
+    }
   }
 }
 ```
+
+The example needs `conversation` and supplies the optional `events` port through
+`onEvent`. Without observation, require only `conversation`. Review checks the
+selected package's declarations before the caller starts; the two-turn grant
+above independently permits the follow-up. Neither check guarantees an answer.
 
 Use the optional Agent library helper to keep turn correlation and endpoint
 cleanup out of application code:
@@ -290,6 +298,12 @@ initial input. The receipt is in the final invocation output—
 `completed.settlement.output.session` when using the helper—and never in an
 individual turn reply. Later prompt controls cannot request another retention
 policy. The HTTP Agent package rejects session requests before dispatch.
+
+If session handling is required by the complete method, also add `sessions` to
+its Agent dependency's `requires` list. This checks implementation claims; it
+does not replace the native retention grant or guarantee a successor receipt.
+A settings-conditional session path can retain ordinary runtime refusal and
+authored recovery without making every one-shot call require sessions.
 
 The [Agent Run contract](../spec/agent-run.md#retaining-a-native-conversation)
 defines the request and receipt; [Finite ACP](../spec/finite-acp.md#retained-native-state)

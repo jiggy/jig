@@ -111,6 +111,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   full launch revalidation. Include selected child identities, isolate unrelated
   targets, and report failed comparisons as unchecked without private causes.
 - One resolved slot table pins exact Flow targets or qualified native invocations.
+  `project-feature-qualification.ts` qualifies the selected graph from captured
+  support/requirement metadata, without preparing execution or choosing alternatives.
+  Feature-refusal evidence pins the caller and selected provider requests, including
+  their retained package bytes; live source edits cannot alter that evidence.
+  Admission independently checks each feature-refusal disposition and its evidence;
+  unrelated targets remain usable. Empty recipe sets use inert host support identity.
   An explicit typed route must match its provider's offered contract; it cannot
   fall back or turn a claimed native descriptor into package-held authority.
   Project defaults resolve ordinary routes before admission, including direct

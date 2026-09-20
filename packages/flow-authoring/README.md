@@ -91,8 +91,9 @@ and semantic checker, then lowers the checked graph directly into Schema/1.
 It does not use or sanitize the general JSON Schema emitter.
 
 One top-level namespace has one `@invocation(InputType, ResultType, options?)`.
-Its options are `outcomes`, an exact `id`/`version` pair, and `channels`. All models,
-scalars and unions live in that namespace. Unused declarations are checked too.
+Its options are `outcomes`, an exact `id`/`version` pair, `features`, and
+`channels`. All models, scalars and unions live in that namespace. Unused
+declarations are checked too.
 
 | Authoring construct | Native representation |
 | --- | --- |
@@ -134,6 +135,26 @@ an unrelated input does not change the channel identity. Generated model names
 and structure remain part of the agreement, so independently authored peers
 must consume the same completed contract bytes, not merely similar types.
 At most 63 channel and Agent-schema outputs are supported together.
+
+An identified invocation can define its optional behavior vocabulary in the
+same decorator:
+
+```typespec
+@invocation(Input, Result, #{
+  id: "https://example.org/methods/review", version: "1.0.0",
+  features: #{progress: "Publishes selected progress; completion remains a separate result."}
+})
+namespace Review;
+```
+
+`features` maps at most 256 distinct `LocalName` keys (up to 64 lowercase ASCII
+characters with separating hyphens) to descriptions of 1–16,384 Unicode scalars.
+It requires the exact identity pair, including for an empty map. The compiler
+preserves the map in `FLOW.contract.json`; absence remains absent. Catalog
+changes affect contract identity, not input/result schemas or generated types.
+Package metadata `supports` and dependency `requires` refer to those names;
+the compiler does not create either declaration. Catalog membership proves
+neither implementation behavior nor granted powers.
 
 The compiler never reads ancestor configuration or source-selected files.
 Its virtual filesystem supplies the source and bundled authoring definitions;

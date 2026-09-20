@@ -10,8 +10,12 @@ admitted FLOW packages.
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
-- `src/project/slot-graph.ts` supplies the same two-child-level, acyclic graph
+- `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking and retained-lock decoding.
+- Package inspection validates `supports` and `uses.requires` against exact
+  named single-form catalogs. Selected-graph qualification pins requirements
+  in the lock and refuses incompatible targets before execution preparation,
+  propagating only to their dependents. It never selects substitute providers.
 - Explicit review `--generate-contracts` owns optional TypeSpec preparation and checked
   publication. Plain review checks local freshness; Run never compiles. The
   compiler is bundled, with Node 22+ selected only from fixed system locations

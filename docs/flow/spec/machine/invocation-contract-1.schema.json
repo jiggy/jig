@@ -447,6 +447,18 @@
       },
       "maxProperties": 256
     },
+    "features": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/localName"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16384
+      },
+      "maxProperties": 256
+    },
     "attachments": {
       "type": "object",
       "propertyNames": {
@@ -504,6 +516,9 @@
         "$defs": {
           "$ref": "#/$defs/definitions"
         },
+        "features": {
+          "$ref": "#/$defs/features"
+        },
         "input": {
           "$ref": "#/$defs/flowSchema"
         },
@@ -523,7 +538,8 @@
       "required": ["$schema"],
       "dependentRequired": {
         "id": ["version"],
-        "version": ["id"]
+        "version": ["id"],
+        "features": ["id", "version"]
       },
       "additionalProperties": false
     },

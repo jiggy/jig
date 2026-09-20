@@ -46,6 +46,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
   deletion, not this library or the method.
 - The HTTP Flow rejects conversational mode and any session request before resource dispatch. Its
   shared Agent contract does not imply support for native continuing sessions.
+  Its metadata declares `supports: []`; one-shot consumers need no optional
+  feature requirements. The shared descriptor catalog never grants a feature.
 - The ordinary Flow owns one non-streaming text-only Chat Completions or
   Responses exchange through its HTTP slot. Closed API/model/token settings
   are checked before dispatch. `structuredOutput: 'json-schema'` explicitly

@@ -31,7 +31,9 @@ export interface InvocationIdentity {
   readonly digest: string
 }
 
-export type InvocationRequirement = InvocationIdentity | Readonly<Record<string, never>>
+export type InvocationRequirement =
+  | (InvocationIdentity & { readonly requires?: readonly string[] })
+  | Readonly<Record<string, never>>
 export type NativeInvocation = 'http-request' | 'project-command' | 'run-checkpoint' | 'finite-acp'
 export type InvocationSlot =
   | {
@@ -139,7 +141,15 @@ export function resolveInvocationSlots(
     slots[name] = Object.freeze({
       kind: 'flow',
       target,
-      ...(requirement?.id === undefined ? {} : { contract: requirement as InvocationIdentity }),
+      ...(requirement?.id === undefined
+        ? {}
+        : {
+            contract: {
+              id: requirement.id,
+              version: requirement.version,
+              digest: requirement.digest,
+            },
+          }),
     })
   }
   for (const [name, contract] of Object.entries(uses)) {
@@ -186,6 +196,23 @@ export function normalizeInvocationIdentity(value: unknown): InvocationIdentity 
   )
     throw new TypeError('invalid invocation interface identity')
   return Object.freeze({ id: item.id, version: item.version, digest: item.digest })
+}
+
+export function normalizeInvocationRequirement(value: unknown): InvocationRequirement {
+  const item = object(value)
+  if (Object.keys(item).length === 0) return Object.freeze({})
+  exact(item, ['id', 'version', 'digest', ...(Object.hasOwn(item, 'requires') ? ['requires'] : [])])
+  const identity = normalizeInvocationIdentity({
+    id: item.id,
+    version: item.version,
+    digest: item.digest,
+  })
+  if (!Object.hasOwn(item, 'requires')) return identity
+  if (!Array.isArray(item.requires) || item.requires.length > 256)
+    throw new TypeError('required features must be a bounded LocalName list')
+  const requires = item.requires.map(localName)
+  if (new Set(requires).size !== requires.length) throw new TypeError('duplicate required feature')
+  return Object.freeze({ ...identity, requires: Object.freeze(requires) })
 }
 
 /** Decode the one persisted route map; no digest alone selects native authority. */

@@ -29,6 +29,8 @@ import {
   PRIVATE_PACKAGE_STORE_DIRECTORY as STORE_DIRECTORY,
 } from './activation-admission-store.js'
 import { createPrivateActivationPlanningObservation } from './activation-planning.js'
+import { privateActivationTargetKey } from './activation-planning.js'
+import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
@@ -301,8 +303,10 @@ function createSession(
           )
         }
         const recipes: PrivateDirectRunRecipe[] = []
+        const featureFailures = privateProjectFeatureFailures(aggregate.linked)
         for (const request of requests) {
           preparationBudget.signal.throwIfAborted()
+          if (featureFailures.has(privateActivationTargetKey(request.target))) continue
           if (request.mode !== 'run') {
             throw new ProjectAdministrationError(
               'UNAVAILABLE',
@@ -452,19 +456,35 @@ function createSession(
         }
         preparationBudget.signal.throwIfAborted()
         const mechanismDigests = new Set(recipes.map(({ mechanismDigest }) => mechanismDigest))
-        if (mechanismDigests.size !== 1) {
+        if (mechanismDigests.size > 1) {
           throw new Error('planned targets did not resolve through one exact host mechanism')
         }
         const planning = createPrivateActivationPlanningObservation({
           policyDigest: privateDomainDigest('JIG-Private-Project-Session-Policy/1', {
-            targetPolicy: 'all-exact-or-fail',
+            targetPolicy: 'exact-targets-with-feature-qualification',
           }),
-          mechanismDigest: recipes[0]!.mechanismDigest,
-          entries: recipes.map((recipe) => ({
-            target: recipe.request.target,
-            requestDigest: recipe.request.digest,
-            disposition: { state: 'planned' as const, observation: recipe.observation },
-          })),
+          mechanismDigest:
+            recipes[0]?.mechanismDigest ?? (await host.backend.inspectSupport()).digest,
+          entries: requests.map((request) => {
+            const failure = featureFailures.get(privateActivationTargetKey(request.target))
+            return {
+              target: request.target,
+              requestDigest: request.digest,
+              disposition:
+                failure === undefined
+                  ? {
+                      state: 'planned' as const,
+                      observation: recipes.find(
+                        (recipe) => recipe.request.digest === request.digest,
+                      )!.observation,
+                    }
+                  : {
+                      state: 'unavailable' as const,
+                      code: 'FEATURE_UNAVAILABLE' as const,
+                      evidenceDigests: [failure],
+                    },
+            }
+          }),
         })
         const candidate = createPrivateActivationCandidateV5(
           aggregate,

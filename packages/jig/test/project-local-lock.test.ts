@@ -24,9 +24,9 @@ import {
 import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project/retained-flow.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
-  agentChannelFiles,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
+  agentChannelFiles,
 } from './fixtures/agent-contract.js'
 
 const encoder = new TextEncoder()
@@ -37,6 +37,87 @@ const agentRunContract = await readFile(
 )
 
 describe('private package-project portable lock projection', () => {
+  test('retains implementation support claims for review without deriving authority', async () => {
+    for (const supports of [undefined, [], ['sessions', 'conversation']]) {
+      await withFlows(
+        {
+          'flows/provider': {
+            'flow.meta.json': metadata({
+              name: 'provider',
+              ...(supports === undefined ? {} : { supports }),
+            }),
+            'FLOW.contract.json': agentRunContract,
+            'FLOW.ts': 'export {};\n',
+            ...agentChannelFiles('contracts'),
+          },
+        },
+        (flows) => {
+          const lock = createPrivateProjectLocalLock(linkPackageProject({ flows, bindings: [] }))
+          const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))
+          expect(decoded).toEqual(lock)
+          expect(decoded.packages['flows/provider']?.supports).toEqual(supports)
+          expect(Object.hasOwn(decoded.packages['flows/provider'] ?? {}, 'supports')).toBe(
+            supports !== undefined,
+          )
+          expect(decoded.bindings).toEqual({})
+          expect(decoded.packages['flows/provider']?.uses).toEqual({})
+          if (supports !== undefined)
+            expect(Object.isFrozen(decoded.packages['flows/provider']?.supports)).toBeTrue()
+        },
+      )
+    }
+  })
+
+  test('distinguishes omitted and empty support projections in canonical lock identity', () => {
+    const packageValue = { digest: `sha256:${'a'.repeat(64)}`, directRun: true, uses: {} }
+    const omitted = decodePrivateProjectLocalLock(
+      lockBytes({ packages: { 'flows/provider': packageValue }, bindings: {} }),
+    )
+    const empty = decodePrivateProjectLocalLock(
+      lockBytes({
+        packages: { 'flows/provider': { ...packageValue, supports: [] } },
+        bindings: {},
+      }),
+    )
+    expect(privateProjectLocalLockDigest(omitted)).not.toBe(privateProjectLocalLockDigest(empty))
+    expect(encodePrivateProjectLocalLock(omitted)).not.toEqual(encodePrivateProjectLocalLock(empty))
+    expect(omitted.packages['flows/provider']?.supports).toBeUndefined()
+    expect(empty.packages['flows/provider']?.supports).toEqual([])
+  })
+
+  test('closes retained support projections to bounded unique LocalName arrays', () => {
+    const lockWith = (supports: unknown) =>
+      lockBytes({
+        packages: {
+          'flows/provider': {
+            digest: `sha256:${'a'.repeat(64)}`,
+            directRun: true,
+            uses: {},
+            supports,
+          },
+        },
+        bindings: {},
+      })
+    const maximum = ['a'.repeat(64), ...Array.from({ length: 255 }, (_, index) => `item-${index}`)]
+    const decoded = decodePrivateProjectLocalLock(lockWith(maximum))
+    expect(decoded.packages['flows/provider']?.supports).toEqual(maximum)
+    expect(encodePrivateProjectLocalLock(decoded)).toEqual(lockWith(maximum))
+    for (const malformed of [
+      null,
+      {},
+      'conversation',
+      [1],
+      ['conversation', 'conversation'],
+      ['Conversation'],
+      ['conversation\n'],
+      [''],
+      ['a'.repeat(65)],
+      [...maximum, 'overflow'],
+    ]) {
+      expect(() => decodePrivateProjectLocalLock(lockWith(malformed))).toThrow()
+    }
+  })
+
   test('checkpoint authority is exact, root-only, and retained in lock identity', async () => {
     const descriptor = await readFile(
       new URL('../../../docs/jig/spec/contracts/run-checkpoint/contract.json', import.meta.url),

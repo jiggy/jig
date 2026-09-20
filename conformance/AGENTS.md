@@ -15,6 +15,11 @@ protocol candidates.
   operational errors. Invocation descriptor tests cover structural acceptance;
   digest closure, graph compilation, and package/runtime qualification remain
   separate host responsibilities.
+- `run-1/fixtures/invocation-features.json` supplies shared feature catalog
+  acceptance/rejection values and exact identity vectors. `schema.test.ts`
+  validates catalog structure; Jig's parser tests validate JSON/1 and closure.
+  Python's `test_invocation_features.py` independently checks the vectors using
+  their bounded JCS-equivalent value subset, not a general package inspector.
 - Channel fixtures and `channels`/`broadcast` components exercise real exchanges
   against both host peers. SDK disposal-race evidence remains package-owned;
   scripted channel values are not host-broker isolation, native Agent, or

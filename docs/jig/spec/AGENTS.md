@@ -8,6 +8,8 @@ descriptors.
 ## Ownership
 
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
+  Interrupted delivery retains confirmed terminal/checkpoint evidence, not
+  unfinished final files; cleanup uncertainty and forced termination stay explicit.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.
@@ -15,7 +17,10 @@ descriptors.
 - FLOW specifications continue to own portable package and Run semantics.
 - `agent-run.md` owns the explicit-context Agent method interface. Ordinary
   HTTP and ACP method packages offer it and own answer interpretation. Their
-  descriptor-relative channel closures remain exact. Optional native session
+  descriptor-relative channel closures remain exact. Its feature catalog owns
+  `events`, `conversation`, and `sessions` behavior; package claims and consumer
+  requirements do not establish native support, grants or execution evidence.
+  Optional native session
   requests produce retention receipts only in final invocation output, never
   individual conversation-turn replies.
   Unavailable receipts include a closed retention reason without weakening
@@ -23,10 +28,14 @@ descriptors.
   native warnings separately from answer text and never discards typed errors.
 - `contract-authoring.md` owns explicit generation, local freshness, bounded
   compiler operation, output ownership and interrupted-publication recovery.
+  Identified single-form authoring may emit the descriptor's `features` map;
+  support claims and dependency requirements remain package metadata.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient
   identity and explicit authority approval through the existing plan.
 - `project-sdk.md` and `project-policy.md` own contract-keyed `defaultProviders`,
   sole-match review-time resolution and declared `npm:` package targets.
+  Selected feature requirements qualify package support before execution;
+  unavailable dependencies affect their consumers, not unrelated targets.
   Authoring and lock schemas mirror selected targets and retained effective
   routes, not mutable runtime lookup or new resource authority.
 - `http-request.md` owns exact endpoint policy and requests,

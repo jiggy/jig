@@ -53,6 +53,7 @@ Present known fields are validated as follows:
 | `name` | Optional `LocalName`: 1–64 lower-ASCII characters matching `[a-z0-9]+(?:-[a-z0-9]+)*` as a complete string. |
 | `description` | Optional nonempty human-readable string of 1–16,384 Unicode scalars. |
 | `uses` | Optional map of dependency-slot `LocalName` keys to the declarations below. |
+| `supports` | Optional list of at most 256 distinct `LocalName` features implemented by this package's own named single-form invocation contract. |
 | `license` | Optional string describing licensing. |
 | `compatibility` | Optional string describing environmental requirements. |
 | `metadata` | Optional string-to-string map of descriptive metadata. |
@@ -104,12 +105,13 @@ Return a concise revision. Preserve uncertainty and attribution.
 ### Dependencies
 
 Each `uses` entry is exactly an empty object or an object containing one
-`contract` reference:
+`contract` reference and optionally a `requires` list:
 
 ```yaml
 uses:
   reviewer:
     contract: ./interfaces/reviewer/contract.json
+    requires: [conversation]
   archive: {}
 ```
 
@@ -118,6 +120,28 @@ and its complete channel closure. The second declares an uncontracted slot
 available only through explicit host configuration, without an interchangeability
 claim. One namespace covers Flow and native targets. There is no method selector
 or separate local-effect marker.
+
+`requires` contains at most 256 distinct `LocalName` feature names from the
+referenced contract's root `features` catalog. It is valid only with a named
+single-form contract, including when the list is empty. Missing or empty lists
+require no optional behavior; ordinary callers need no new declaration. Null,
+non-array values, duplicate or invalid names and unknown fields reject.
+
+Root metadata `supports` declares features from the package's own named
+single-form `FLOW.contract.json` catalog, using the same list bounds and name
+rules. It rejects without that offered contract, including for an empty list.
+Unknown catalog names reject independently on both sides. An absent catalog
+contains no names, so it permits only empty lists. Missing support is undeclared;
+an explicit empty list declares none. Neither prevents a caller that requires
+no optional behavior, and neither satisfies a nonempty requirement.
+
+Support lists belong to implementation metadata; the shared invocation
+descriptor owns the vocabulary, not any implementation's supported subset.
+Requirements belong to the consuming package, not runtime input or a host's
+configuration override. The [invocation contract](invocation-contracts.md#3-matching-dependencies-and-execution)
+defines exact feature matching, the support obligation across accepted
+implementation settings, and the distinction from authority and runtime success.
+Declarations grant no powers and are not inferred from code or dependencies.
 
 An author reference starts with exact `./`, followed by one or more canonical
 downward-only logical path segments. Empty, dot, dot-dot, backslash, C0 control,

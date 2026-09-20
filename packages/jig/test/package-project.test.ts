@@ -8,6 +8,12 @@ import {
   type PackageArtifactRef,
 } from '../src/internal/package-artifact-store.js'
 import { defineJig } from '../src/project/author.js'
+import { privateProjectFeatureFailures } from '../src/internal/project-feature-qualification.js'
+import {
+  createPrivateProjectLocalLock,
+  decodePrivateProjectLocalLock,
+  encodePrivateProjectLocalLock,
+} from '../src/internal/project-local-lock.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import {
   type InjectedBindingDeclaration,
@@ -29,6 +35,88 @@ const agentRunContract = await readFile(
 )
 
 describe('private package-project linker', () => {
+  test('feature requirements qualify only the selected graph and persist in the lock', async () => {
+    const consumer = {
+      ...agentConsumer('consumer'),
+      'flow.meta.json': metadata({
+        uses: {
+          agent: { contract: './contracts/agent-run/contract.json', requires: ['conversation'] },
+        },
+      }),
+    }
+    for (const supports of [[], ['conversation']]) {
+      await withFlows(
+        {
+          'flows/consumer': consumer,
+          'flows/provider': {
+            ...agentProvider('provider'),
+            'flow.meta.json': metadata({ supports }),
+          },
+          'flows/parent': { ...run('parent'), 'flow.meta.json': metadata({ uses: { child: {} } }) },
+          'flows/unrelated': run('unrelated'),
+        },
+        (flows) => {
+          const linked = linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/parent.ts', {
+                package: 'flows/parent',
+                slots: { child: 'flow:flows/consumer' },
+              }),
+            ],
+          })
+          const failures = privateProjectFeatureFailures(linked)
+          expect([...failures.keys()].sort()).toEqual(
+            supports.length === 0 ? ['binding\0parent', 'flow\0flows/consumer'] : [],
+          )
+          const lock = createPrivateProjectLocalLock(linked)
+          const retained = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))
+          expect(retained.packages['flows/provider']?.supports).toEqual(supports)
+          expect(retained.packages['flows/consumer']!.uses.agent!.requires).toEqual([
+            'conversation',
+          ])
+          const request = buildPrivateActivationRequests(linked).find(
+            (item) => item.packagePath === 'flows/consumer',
+          )!
+          expect(request.slots.agent!.contract).toEqual({
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          })
+        },
+      )
+    }
+  })
+
+  test('features never rank alternatives or override an explicit selected provider', async () => {
+    await withFlows(
+      {
+        'flows/consumer': {
+          ...agentConsumer('consumer'),
+          'flow.meta.json': metadata({
+            uses: {
+              agent: { contract: './contracts/agent-run/contract.json', requires: ['events'] },
+            },
+          }),
+        },
+        'flows/plain': agentProvider('plain'),
+        'flows/events': {
+          ...agentProvider('events'),
+          'flow.meta.json': metadata({ supports: ['events'] }),
+        },
+      },
+      (flows) => {
+        expectCode(() => linkPackageProject({ flows, bindings: [] }), 'PROJECT_PROVIDER_AMBIGUOUS')
+        const linked = linkPackageProject({
+          flows,
+          bindings: [],
+          defaultProviders: { [AGENT_RUN_CONTRACT_ID]: 'flow:flows/plain' },
+        })
+        expect([...privateProjectFeatureFailures(linked).keys()]).toEqual(['flow\0flows/consumer'])
+      },
+    )
+  })
+
   test('sole-match selection follows the exact contract, not a slot or Flow name', async () => {
     await withFlows(
       {

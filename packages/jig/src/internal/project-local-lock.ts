@@ -8,7 +8,7 @@ import {
 import { type GrantedSlot, normalizeGrant, grantName } from '../project/grants.js'
 import {
   type InvocationRequirement,
-  normalizeInvocationIdentity,
+  normalizeInvocationRequirement,
   resolveInvocationSlots,
 } from '../project/invocation-slots.js'
 import {
@@ -34,6 +34,7 @@ export interface PrivateLockPackage {
   readonly digest: string
   readonly directRun: boolean
   readonly uses: Readonly<Record<string, InvocationRequirement>>
+  readonly supports?: readonly string[]
   readonly slots?: Readonly<Record<string, RunTargetIdentity>>
 }
 
@@ -63,6 +64,7 @@ export function createPrivateProjectLocalLock(
       digest: flow.package.digest,
       directRun: flow.directRun,
       uses: flow.uses,
+      ...(flow.metadata.supports === undefined ? {} : { supports: flow.metadata.supports }),
       ...(flow.slots === undefined ? {} : { slots: flow.slots }),
     })
   }
@@ -139,6 +141,7 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] 
         'digest',
         'directRun',
         'uses',
+        ...(Object.hasOwn(object(input[path], `package ${path}`), 'supports') ? ['supports'] : []),
         ...(Object.hasOwn(object(input[path], `package ${path}`), 'slots') ? ['slots'] : []),
       ],
       `package ${path}`,
@@ -159,12 +162,31 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] 
       digest: digest(item.digest, `package ${path}`),
       directRun: item.directRun,
       uses: normalizeUses(item.uses, `package ${path}`),
+      ...(item.supports === undefined ? {} : { supports: normalizeFeatureNames(item.supports) }),
       ...(slots === undefined
         ? {}
         : { slots: slots as Readonly<Record<string, RunTargetIdentity>> }),
     })
   }
   return Object.freeze(output)
+}
+
+function normalizeFeatureNames(value: unknown): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > 256 ||
+    value.some(
+      (name) =>
+        typeof name !== 'string' ||
+        name.length < 1 ||
+        name.length > 64 ||
+        !LOCAL_NAME.test(name) ||
+        name.includes('\n'),
+    ) ||
+    new Set(value).size !== value.length
+  )
+    throw new TypeError('support declaration must contain at most 256 unique LocalNames')
+  return Object.freeze([...value]) as readonly string[]
 }
 
 function normalizeUses(
@@ -181,7 +203,7 @@ function normalizeUses(
     output[name] =
       Object.keys(requirement).length === 0
         ? Object.freeze({})
-        : normalizeInvocationIdentity(requirement)
+        : normalizeInvocationRequirement(requirement)
   }
   return Object.freeze(output)
 }

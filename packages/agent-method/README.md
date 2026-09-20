@@ -23,6 +23,12 @@ ordinary slot. Each uses its own Binding and grants. The specialist → Agent
 branch reserves both child levels. Two such branches fit Jig's fixed aggregate
 resource budget; a third is rejected rather than queued.
 
+Its HTTP implementation declares `supports: []`: it supplies the baseline
+one-shot method without optional Agent events, conversations or sessions. A
+caller with no extra requirements needs no feature declaration. A caller that
+requires those mechanisms can reject this selection during inert review through
+the [Agent feature requirements](https://jig.md/spec/agent-run#declare-required-agent-behavior).
+
 ## Pure library
 
 ```ts
@@ -124,8 +130,24 @@ const completed = await withAgentConversation(run, {
 })
 ```
 
-The caller declares the ordinary Agent slot and includes its unchanged contract
-bundle at `contractDirectory`. The result contains the callback's `value`, all
+The caller includes the exact current Agent bundle at `contractDirectory` and
+declares its required mechanisms in `flow.meta.json`:
+
+```json
+{
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json",
+      "requires": ["conversation", "events"]
+    }
+  }
+}
+```
+
+`events` is needed here because the example supplies `onEvent`; a conversation
+without observation needs only `conversation`. Declarations check the selected
+implementation's claims before the caller starts. They do not grant a second
+prompt or promise successful work. The result contains the callback's `value`, all
 received `turns`, and the actual invocation `settlement`. The helper closes the
 settled conversation and awaits owned invocation completion before returning.
 It does not judge answer quality. `initial` and `prompt()` resolve to a

@@ -1,0 +1,62 @@
+{
+  "valid": [
+    {
+      "name": "omitted catalog",
+      "descriptor": {
+        "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+        "id": "https://example.org/contracts/reviewer",
+        "version": "1.0.0"
+      },
+      "digest": "sha256:688af12208e7f7402b61398f0f4a27b14296ddce74dfd30ba965aa499c61ab1a"
+    },
+    {
+      "name": "empty catalog",
+      "descriptor": {
+        "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+        "id": "https://example.org/contracts/reviewer",
+        "version": "1.0.0",
+        "features": {}
+      },
+      "digest": "sha256:83d57543c487010d0bdd07c579338d39ccf98728bd55cfb604c8773c412a95dc"
+    },
+    {
+      "name": "bounded optional behavior catalog",
+      "descriptor": {
+        "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+        "id": "https://example.org/contracts/reviewer",
+        "version": "1.0.0",
+        "features": {
+          "events": "Publishes bounded progress. 🔎",
+          "conversation": "Implements continuing commands and replies."
+        },
+        "input": true
+      },
+      "digest": "sha256:12ce35633cc2b83a3ba5e8443efe664f70d6b4c6d4d5cb2419529e0b62f1b193"
+    },
+    {
+      "name": "changed behavior description",
+      "descriptor": {
+        "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+        "id": "https://example.org/contracts/reviewer",
+        "version": "1.0.0",
+        "features": {
+          "events": "Publishes bounded progress with explicit loss. 🔎",
+          "conversation": "Implements continuing commands and replies."
+        },
+        "input": true
+      },
+      "digest": "sha256:d81340b86a7ce76c6186150422a17a79b7657d96e8346fcd913eb67664fc2083"
+    }
+  ],
+  "invalidFeatures": [
+    { "name": "null catalog", "value": null },
+    { "name": "array catalog", "value": [] },
+    { "name": "boolean catalog", "value": true },
+    { "name": "noncanonical name", "value": { "Conversation": "Control." } },
+    { "name": "trailing newline name", "value": { "conversation\n": "Control." } },
+    { "name": "empty name", "value": { "": "Control." } },
+    { "name": "empty description", "value": { "conversation": "" } },
+    { "name": "nontext description", "value": { "conversation": true } },
+    { "name": "object description", "value": { "conversation": { "description": "Control." } } }
+  ]
+}

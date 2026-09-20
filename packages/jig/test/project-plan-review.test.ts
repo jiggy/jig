@@ -10,6 +10,82 @@ import {
 import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 
 describe('private project Plan review', () => {
+  test('names the exact missing-feature edge and retains provider claims in details', () => {
+    const base = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
+    const digest = `sha256:${'a'.repeat(64)}`
+    const identity = {
+      id: AGENT_RUN_CONTRACT_ID,
+      version: AGENT_RUN_CONTRACT_VERSION,
+      digest: AGENT_RUN_CONTRACT_DIGEST,
+    }
+    const target = (path: string, slots: unknown, unavailable = false) => ({
+      request: {
+        target: { kind: 'flow', path },
+        mode: 'run',
+        packagePath: path,
+        package: { digest },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
+        settings: {},
+        slots,
+        attachments: {},
+      },
+      disposition: unavailable
+        ? { state: 'unavailable', code: 'FEATURE_UNAVAILABLE' }
+        : { state: 'ready' },
+    })
+    const rendered = renderPrivateProjectPlanReview({
+      baseCandidate: null,
+      plan: {
+        ...base,
+        proposed: {
+          ...base.proposed,
+          lock: {
+            packages: {
+              'flows/caller': {
+                digest,
+                directRun: true,
+                uses: { agent: { ...identity, requires: ['events', 'conversation'] } },
+              },
+              'flows/renamed-provider': { digest, directRun: true, uses: {}, supports: ['events'] },
+            },
+            bindings: {},
+          },
+          targets: [
+            target(
+              'flows/caller',
+              {
+                agent: {
+                  kind: 'flow',
+                  target: { kind: 'flow', path: 'flows/renamed-provider' },
+                  contract: identity,
+                },
+              },
+              true,
+            ),
+            target('flows/renamed-provider', {}),
+          ],
+        },
+      },
+    } as unknown as PrivateActivationReviewPlan)
+    expect(rendered.text).toContain('"caller": "flow:flows/caller"')
+    expect(rendered.text).toContain('"slot": "agent"')
+    expect(rendered.text).toContain('"selected": "flow:flows/renamed-provider"')
+    const details = parseYaml(
+      rendered.details.split('Review the project changes below before applying them.\n\n')[1]!,
+    )
+    expect(details.featureMismatches).toEqual([
+      {
+        caller: 'flow:flows/caller',
+        slot: 'agent',
+        selected: 'flow:flows/renamed-provider',
+        missing: ['conversation'],
+      },
+    ])
+    expect(details.proposed.portablePolicy.packages['flows/renamed-provider'].supports).toEqual([
+      'events',
+    ])
+  })
+
   test('change-first review omits unchanged policy but details retains it', () => {
     const plan = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
     const lock = {
@@ -506,10 +582,14 @@ describe('private project Plan review', () => {
       disposition: { state: 'ready', recipeDigest: 'private-before' },
     }
     const plan = reviewPlan('admission', 'unused')
+    const lock = {
+      packages: { 'flows/test': { digest: `sha256:${'a'.repeat(64)}`, directRun: true, uses: {} } },
+      bindings: {},
+    }
     const render = (next: unknown) =>
       renderPrivateProjectPlanReview({
-        plan: { ...plan, proposed: { ...plan.proposed, targets: [next] } },
-        baseCandidate: { lock: plan.proposed.lock, candidate: { targets: [target] } },
+        plan: { ...plan, proposed: { ...plan.proposed, lock, targets: [next] } },
+        baseCandidate: { lock, candidate: { targets: [target] } },
       } as unknown as PrivateActivationReviewPlan)
     const changed = render({
       ...target,

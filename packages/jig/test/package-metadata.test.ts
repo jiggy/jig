@@ -8,6 +8,110 @@ const flow = (frontmatter: string, body = ''): Uint8Array =>
   encoder.encode(`---\n${frontmatter}\n---\n${body}`)
 
 describe('FLOW.md Metadata/1', () => {
+  const featureParsers = [
+    ['Markdown', (value: unknown) => parseFlowDocument(flow(JSON.stringify(value))).metadata],
+    ['JSON', (value: unknown) => parseFlowMetadataSidecar(encoder.encode(JSON.stringify(value)))],
+  ] as const
+
+  for (const [owner, parse] of featureParsers) {
+    test(`${owner} preserves optional feature declarations and their explicit presence`, () => {
+      const metadata = parse({
+        supports: ['sessions', 'conversation'],
+        uses: {
+          worker: { contract: './contracts/worker.json', requires: ['conversation'] },
+          ordinary: { contract: './contracts/worker.json' },
+          uncontracted: {},
+        },
+      })
+      expect(metadata.supports).toEqual(['sessions', 'conversation'])
+      expect(metadata.uses).toEqual({
+        worker: { contract: './contracts/worker.json', requires: ['conversation'] },
+        ordinary: { contract: './contracts/worker.json' },
+        uncontracted: {},
+      })
+      expect(metadata.unknownFields).toEqual({})
+      expect(Object.isFrozen(metadata.supports)).toBe(true)
+      expect(Object.isFrozen(metadata.uses?.worker?.requires)).toBe(true)
+      expect(parse({})).not.toHaveProperty('supports')
+      expect(
+        parse({ supports: [], uses: { worker: { contract: './worker.json', requires: [] } } }),
+      ).toMatchObject({ supports: [], uses: { worker: { requires: [] } } })
+      // Catalog membership belongs to aggregate inspection, not metadata parsing.
+      expect(parse({ supports: ['not-in-a-catalog'] }).supports).toEqual(['not-in-a-catalog'])
+    })
+
+    test(`${owner} rejects malformed or duplicate feature names and misplaced requirements`, () => {
+      for (const names of [
+        null,
+        true,
+        'conversation',
+        {},
+        [true],
+        [''],
+        ['Conversation'],
+        ['conversation\n'],
+        ['a'.repeat(65)],
+        ['events', 'events'],
+      ]) {
+        expectCheckError(() => parse({ supports: names }))
+        expectCheckError(() =>
+          parse({ uses: { worker: { contract: './worker.json', requires: names } } }),
+        )
+      }
+      for (const declaration of [
+        { requires: [] },
+        { requires: ['events'] },
+        { contract: './worker.json', supports: ['events'] },
+        { contract: './worker.json', requires: [], unknown: true },
+      ])
+        expectCheckError(() => parse({ uses: { worker: declaration } }), 'METADATA_USES')
+    })
+
+    test(`${owner} uses inclusive feature list and LocalName bounds`, () => {
+      const names = Array.from({ length: 256 }, (_, index) => `feature-${index}`)
+      const metadata = parse({
+        supports: names,
+        uses: { worker: { contract: './worker.json', requires: names } },
+      })
+      expect(metadata.supports).toHaveLength(256)
+      expect(metadata.uses?.worker?.requires).toHaveLength(256)
+      expect(parse({ supports: ['a'.repeat(64)] }).supports).toEqual(['a'.repeat(64)])
+      expectCheckError(() => parse({ supports: [...names, 'extra'] }), 'METADATA_LIMIT')
+      expectCheckError(
+        () =>
+          parse({
+            uses: {
+              worker: {
+                contract: './worker.json',
+                requires: [...names, 'extra'],
+              },
+            },
+          }),
+        'METADATA_LIMIT',
+      )
+    })
+  }
+
+  test('accepts natural YAML feature lists and rejects duplicate members in either owner', () => {
+    const metadata = parseFlowDocument(
+      flow(`supports: [events, conversation]
+uses:
+  worker:
+    contract: ./worker.json
+    requires:
+      - conversation`),
+    ).metadata
+    expect(metadata.supports).toEqual(['events', 'conversation'])
+    expect(metadata.uses?.worker?.requires).toEqual(['conversation'])
+    expectCheckError(() => parseFlowDocument(flow('supports: []\nsupports: []')))
+    expectCheckError(() =>
+      parseFlowMetadataSidecar(encoder.encode('{"supports":[],"supports":[]}')),
+    )
+    const duplicate = '{"uses":{"worker":{"contract":"./worker.json","requires":[],"requires":[]}}}'
+    expectCheckError(() => parseFlowDocument(flow(duplicate)))
+    expectCheckError(() => parseFlowMetadataSidecar(encoder.encode(duplicate)))
+  })
+
   test('accepts the minimal Run form and preserves the Markdown body', () => {
     const parsed = parseFlowDocument(
       flow(

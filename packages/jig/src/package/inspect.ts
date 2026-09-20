@@ -167,6 +167,9 @@ export async function inspectCapturedPackage(captured: CapturedPackage): Promise
     ? await readContract(captured, byPath, contractCache, 'FLOW.contract.json')
     : undefined
   const invocation = contract === undefined ? Object.freeze({}) : contract.invocation
+  const metadataPath = entrypoint.suffix === 'md' ? 'FLOW.md' : 'flow.meta.json'
+  if (metadata.supports !== undefined)
+    validateFeatureSelection(metadata.supports, contract, 'supports', metadataPath)
   const schemas: { input?: CompiledSchema; settings?: CompiledSchema; result?: CompiledSchema } = {}
   const input = contract?.schemas.get('/input')
   const result = contract?.schemas.get('/result')
@@ -190,6 +193,13 @@ export async function inspectCapturedPackage(captured: CapturedPackage): Promise
         path,
       )
     }
+    if (declaration.requires !== undefined)
+      validateFeatureSelection(
+        declaration.requires,
+        usedContract,
+        `uses.${slot}.requires`,
+        metadataPath,
+      )
     usedContracts.push(
       Object.freeze({
         slot,
@@ -231,6 +241,20 @@ export async function inspectCapturedPackage(captured: CapturedPackage): Promise
     fileCount: captured.files.length,
     contentBytes: captured.files.reduce((total, file) => total + file.size, 0),
   })
+}
+
+function validateFeatureSelection(
+  names: readonly string[],
+  contract: ParsedInvocationContract | undefined,
+  field: string,
+  path: string,
+): void {
+  if (contract?.descriptor.id === undefined || contract.descriptor.operations !== undefined)
+    invalid('PACKAGE_FEATURES', `${field} requires an identified single-form contract`, path)
+  for (const name of names) {
+    if (!Object.hasOwn(contract.descriptor.features ?? {}, name))
+      invalid('PACKAGE_FEATURES', `${field} names an undeclared contract feature: ${name}`, path)
+  }
 }
 
 function rejectChannelEquivocation(contracts: readonly ParsedChannelContract[]): void {

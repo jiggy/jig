@@ -155,6 +155,12 @@ Review these changes before running. [Native restoration](conversations.md#resto
 requires qualified matching artifacts; the HTTP Agent does not support it.
 The default repair configuration remains unchanged.
 
+The specialist keeps sessions optional because its ordinary one-shot path
+does not need them. Static dependency requirements therefore do not qualify
+this settings-dependent choice. Check the selected Agent's declared `sessions`
+support and its separate native grant; actual retention still requires a final
+receipt. Do not add an unconditional session requirement to the default example.
+
 The first call requests Run-scoped retention and supplies its final receipt before any candidate
 command starts. If the proposal is invalid or fails the fixed checks, one
 restored call receives that feedback. It must still propose replacements against

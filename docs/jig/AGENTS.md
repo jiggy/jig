@@ -31,7 +31,8 @@ use-case and orchestration hypotheses.
   ordinary Agent Run artifact, honest source-candidate adoption, explicit
   caller context and independent consumer result validation.
 - `guide/contracts.md` teaches optional managed TypeSpec authoring and generated
-  file ownership; `spec/contract-authoring.md` owns its exact host boundaries.
+  file ownership, including named optional feature catalogs;
+  `spec/contract-authoring.md` owns its exact host boundaries.
 - `guide/markdown.md` teaches one-file methods, supported Skill authoring,
   exact recipes and the installed sequential interpreter's limits.
 - `guide/channels.md` teaches application-owned live progress and subprocess

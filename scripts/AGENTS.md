@@ -57,6 +57,8 @@ operational baselines, and public-site assembly.
   downloads together. The deployed-site check verifies their page titles,
   JSON content types, and canonical bytes; neither operation is runtime
   invocation resolution.
+  Agent Run publication includes its complete referenced events, commands and
+  replies channel bundle, even when a consumer uses only one-shot calls.
 
 ## Local Contracts
 

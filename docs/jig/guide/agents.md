@@ -29,12 +29,20 @@ feature. Choose the implementation and grant before starting expensive work:
 | Same-session follow-up or interruption | Not supported | Conversation channels; `maxTurns` bounds the total turns |
 | Native retention or restoration | Not supported | Separately enabled native grant and qualified client; inspect the final retention receipt |
 
-There are three separate checks: the method implements the behavior, its reviewed
-resources permit it, and this execution actually completes. `jig review` checks
-known host/resource prerequisites without calling a model; it does not prove all
-optional behavior of an arbitrary Flow. Matching the Agent contract alone is not
-automatic feature negotiation. A retained answer is not evidence of a retained
-session, and permission for two turns does not guarantee two successful answers.
+Declare behavior that the complete calling method requires, for example
+`"requires": ["conversation"]` beside its `uses.agent.contract` reference.
+The HTTP implementation declares `supports: []`; ACP declares `events`,
+`conversation`, and `sessions`. `jig review` rejects a required name missing from
+the selected implementation's claims before the caller starts. It does not
+switch the chosen implementation automatically.
+
+There are three separate facts: the method claims to implement the behavior,
+its reviewed resources permit it, and this execution actually completes. Review
+checks declarations and known host/resource prerequisites without running the
+package or calling a model; it cannot prove an arbitrary Flow's behavior or
+infer its resource use. A one-turn grant still cannot provide a follow-up, and
+a valid answer is not evidence of retained native state. See the
+[exact feature definitions](../spec/agent-run.md#declare-required-agent-behavior).
 
 ## API access
 

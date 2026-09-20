@@ -15,7 +15,7 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:ba3c7efa91eeb2ca2c2e14a3d0ef8c1a837e9e4d29044118a227601101e21170
+digest   sha256:d0c9ceb0c2b2940fa9d29daaea50e926a8060414d43c9a37f5a837641a55ef09
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
@@ -38,6 +38,59 @@ The slot name `agent` is local to this package. Like any ordinary dependency,
 it resolves through an exact Binding route or project default. Contract URIs
 are not fetched at runtime. The selected method uses its own independently
 reviewed resource grants; a matching descriptor grants no authority.
+
+## Declare required Agent behavior
+
+The descriptor's `features` catalog names optional mechanisms. Implementations
+claim the mechanisms they implement through package metadata `supports`;
+consumers require them through `uses.<slot>.requires`. These use the ordinary
+[FLOW feature qualification](https://flow.jig.md/spec/invocation-contracts)
+rules and the same exact contract identity as the call.
+
+| Feature | Implementation obligation | Separate conditions |
+| --- | --- | --- |
+| `events` | Implement the optional public-update protocol and report observation loss honestly. | Updates may be incomplete; they never establish control or execution results. |
+| `conversation` | Implement paired commands/replies, serial prompt and interruption control, turn results, and final settlement. | The resource's prompt allowance, current client support, and actual settlement remain separate. |
+| `sessions` | Implement retain/restore requests and final receipts, including Run-scoped state and honest unavailability. | Current retention authority, valid references, native history and successful collection remain separate. |
+
+The HTTP package declares `supports: []`. The ACP package declares
+`supports: ["events", "conversation", "sessions"]`. These are unconditional
+claims about the method across its accepted package settings. A setting cannot
+deliberately remove an advertised mechanism while leaving its claim true.
+Static matching checks those declarations, not implementation honesty. Separate
+resource grants, native profiles and runtime failures may still refuse work.
+Matching grants no authority and never converts package output into host evidence.
+
+A caller whose method needs continuing control declares:
+
+```json
+{
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json",
+      "requires": ["conversation"]
+    }
+  }
+}
+```
+
+Jig checks required names after exact contract matching and makes a mismatching
+target unavailable before its caller starts. An explicit selection never falls
+back automatically. A caller with no extra requirements needs no `requires`
+field; it retains ordinary input, channel and runtime refusal semantics.
+Conditional features may remain runtime decisions with authored recovery;
+review cannot infer those branches or arbitrary wrappers' resource use.
+
+Requiring `conversation` does not promise permission for a follow-up: a grant
+with `maxTurns: 1` permits only the initial prompt. Requiring `sessions` does not
+grant `retainSessions` or promise a retained successor. Inspect final receipts
+before restoring; unavailable retention and execution failure remain distinct.
+Require `events` when the complete method supplies that optional port; after
+accepted support, observer failure remains separate from essential execution.
+
+Keep every participant's complete descriptor bundle synchronized. Catalog changes
+change the exact invocation digest even for callers with no feature requirements;
+refresh their bundle and use ordinary review/admission. Call syntax is unchanged.
 
 ## Calling the Agent
 

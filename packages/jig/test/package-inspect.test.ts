@@ -37,6 +37,147 @@ const channel = (fields: Record<string, unknown> = {}): string =>
   })
 
 describe('aggregate Package/1 inspection', () => {
+  const metadataOwners = [
+    [
+      'JSON',
+      (metadata: unknown) => ({
+        'FLOW.ts': 'throw new Error("inspection must not execute package code");',
+        'flow.meta.json': JSON.stringify(metadata),
+      }),
+    ],
+    [
+      'Markdown',
+      (metadata: unknown) => ({
+        'FLOW.md': `---\n${JSON.stringify(metadata)}\n---\nDescribe the supplied text.`,
+      }),
+    ],
+  ] as const
+
+  for (const [owner, packageFiles] of metadataOwners) {
+    test(`${owner} checks support and requirements against their own exact catalogs`, async () => {
+      const shared = namedContract({
+        features: {
+          conversation: 'Continuing control.',
+          events: 'Optional observation.',
+        },
+      })
+      await withPackage(
+        {
+          ...packageFiles({
+            supports: ['events'],
+            uses: {
+              worker: { contract: './worker.json', requires: ['conversation'] },
+            },
+          }),
+          'FLOW.contract.json': shared,
+          'worker.json': shared,
+        },
+        async (root) => {
+          const checked = await checkPackageDirectory(root)
+          expect(checked.metadata.supports).toEqual(['events'])
+          expect(checked.metadata.uses?.worker?.requires).toEqual(['conversation'])
+          expect(checked.contract?.descriptor.features).toEqual({
+            conversation: 'Continuing control.',
+            events: 'Optional observation.',
+          })
+          expect(checked.usedContracts[0]?.contract.digest).toBe(checked.contract?.digest)
+          expect(packageProfileIssue(checked)).toBeUndefined()
+        },
+      )
+      // No catalog, support declaration or requirement is needed for an ordinary call.
+      await withPackage(
+        {
+          ...packageFiles({ uses: { worker: { contract: './worker.json' } } }),
+          'worker.json': namedContract(),
+        },
+        async (root) => {
+          const checked = await checkPackageDirectory(root)
+          expect(checked.metadata.supports).toBeUndefined()
+          expect(checked.metadata.uses?.worker).toEqual({ contract: './worker.json' })
+          expect(packageProfileIssue(checked)).toBeUndefined()
+        },
+      )
+    })
+
+    test(`${owner} rejects unknown support independently of any consumer requirement`, async () => {
+      for (const features of [undefined, {}, { conversation: 'Control.' }]) {
+        await withPackage(
+          {
+            ...packageFiles({ supports: ['convesation'] }),
+            'FLOW.contract.json': namedContract(features === undefined ? {} : { features }),
+          },
+          (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+        )
+      }
+      // Repeating the same typo on both sides does not create catalog membership.
+      await withPackage(
+        {
+          ...packageFiles({
+            supports: ['convesation'],
+            uses: {
+              worker: { contract: './worker.json', requires: ['convesation'] },
+            },
+          }),
+          'FLOW.contract.json': namedContract({ features: { conversation: 'Control.' } }),
+          'worker.json': namedContract({ features: { conversation: 'Control.' } }),
+        },
+        (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+      )
+    })
+
+    test(`${owner} rejects a requirement unknown to its referenced contract`, async () => {
+      await withPackage(
+        {
+          ...packageFiles({
+            uses: {
+              worker: { contract: './worker.json', requires: ['convesation'] },
+            },
+          }),
+          'worker.json': namedContract({ features: { conversation: 'Control.' } }),
+        },
+        (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+      )
+    })
+
+    test(`${owner} requires identified single-form support even for an empty list`, async () => {
+      for (const offered of [
+        undefined,
+        contract(),
+        namedContract({ operations: { review: {} } }),
+      ]) {
+        await withPackage(
+          {
+            ...packageFiles({ supports: [] }),
+            ...(offered === undefined ? {} : { 'FLOW.contract.json': offered }),
+          },
+          (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+        )
+      }
+      for (const offered of [namedContract(), namedContract({ features: {} })]) {
+        await withPackage(
+          { ...packageFiles({ supports: [] }), 'FLOW.contract.json': offered },
+          async (root) => expect((await checkPackageDirectory(root)).metadata.supports).toEqual([]),
+        )
+      }
+    })
+
+    test(`${owner} requires identified single-form expectations even for empty requirements`, async () => {
+      const metadata = { uses: { worker: { contract: './worker.json', requires: [] } } }
+      await withPackage({ ...packageFiles(metadata), 'worker.json': contract() }, (root) =>
+        expectCheckError(() => checkPackageDirectory(root), 'CONTRACT_IDENTITY'),
+      )
+      await withPackage(
+        { ...packageFiles(metadata), 'worker.json': namedContract({ operations: { review: {} } }) },
+        (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+      )
+      await withPackage(
+        { ...packageFiles(metadata), 'worker.json': namedContract() },
+        async (root) =>
+          expect((await checkPackageDirectory(root)).metadata.uses?.worker?.requires).toEqual([]),
+      )
+    })
+  }
+
   test('requires one exact-case FLOW implementation and treats nested files as resources', async () => {
     for (const files of [
       { 'flow.md': 'Prose' },

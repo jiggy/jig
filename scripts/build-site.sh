@@ -149,8 +149,10 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
     done
     for contract in agent-run; do
       mkdir -p -- "$staging/contracts/$contract/contracts"
-      cp -- "$repository/docs/jig/spec/contracts/$contract/contracts/acp-public-updates.json" "$staging/contracts/$contract/contracts/acp-public-updates.json"
-      cmp -- "$repository/docs/jig/spec/contracts/$contract/contracts/acp-public-updates.json" "$staging/contracts/$contract/contracts/acp-public-updates.json"
+      for channel in acp-public-updates agent-commands agent-replies; do
+        cp -- "$repository/docs/jig/spec/contracts/$contract/contracts/$channel.json" "$staging/contracts/$contract/contracts/$channel.json"
+        cmp -- "$repository/docs/jig/spec/contracts/$contract/contracts/$channel.json" "$staging/contracts/$contract/contracts/$channel.json"
+      done
     done
     for channel in requests responses; do
       cp -- "$repository/docs/jig/spec/contracts/finite-acp/$channel.json" "$staging/contracts/finite-acp/$channel.json"

@@ -49,6 +49,8 @@ each behaviour.
 | Caught subscriber failure with an independently completed sibling interval | `broadcast.test.ts`, both SDK components | `test_broadcast.py`, both SDK components |
 | Adaptive structured request/reply exchange over two named direct channels | `conversation.test.ts`, TS analysis/Python dataset and inverse | `test_conversation.py`, same actual process pairings |
 | Exact conversation descriptors match the public Channel Contract/1 and Schema/1 companion | `conversation.test.ts`, including unsupported-keyword rejection | Not independently repeated; the peer derives identities from those fixture descriptors |
+| Identified single-form invocation feature catalogs: shape, scope, names and bounds | `schema.test.ts`, shared `invocation-features.json` | Not independently repeated; no Python package inspector is claimed |
+| Exact feature catalog identity, including omission, empty catalog and changed descriptions | Jig `invocation-contract.test.ts`, shared `invocation-features.json` | `test_invocation_features.py`, independently derived bounded digest vectors |
 | Duplicate/unexpected reply rejection, outstanding-request EOF, close ordering and cancellation settlement | `conversation.test.ts`, both pairings | `test_conversation.py`, both pairings |
 
 The operation rows exercise small reference-peer ledgers implementing the

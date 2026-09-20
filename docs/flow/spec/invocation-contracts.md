@@ -50,6 +50,20 @@ dispatch. There is no default operation, implicit first key, synthetic `run`
 alias, or mixed default-plus-named form. A named key `run` is an ordinary name.
 No named-call SDK field or handler overload belongs to the initial profile.
 
+An identified single-form descriptor may additionally contain a root `features`
+map. Each key is a `LocalName` and each value is a nonempty description of
+1–16,384 Unicode scalars. The map has at most 256 entries. It names optional
+implementation behaviors whose exact obligations belong to the contract's
+behavioral specification; descriptions are text, not executable predicates or
+schemas. `features` requires both `id` and `version`, including when empty.
+Anonymous descriptors, named-form roots and named operation objects cannot
+contain it. There are no operation-specific feature declarations.
+
+An omitted or empty catalog defines no feature names; both forms are valid but
+have distinct identities. Null, non-object catalogs, invalid names, duplicate
+members and nontext descriptions reject. The existing descriptor byte and
+JSON/1 limits apply; catalog descriptions do not add Schema/1 graph nodes.
+
 One operation object has only:
 
 | Field | Rule |
@@ -154,7 +168,8 @@ The public digest is SHA-256 of that preimage, rendered as `sha256:` followed
 by 64 lowercase hexadecimal digits. There is no bare-descriptor digest.
 
 Identity includes the entire descriptor and channel closure: annotations,
-optional ports, unselected operations, internal paths and referenced content.
+the complete feature catalog, optional ports, unselected operations, internal
+paths and referenced content.
 Containing-directory location, source line endings and unrelated package files
 do not enter the invocation digest. Package/1 separately covers exact
 implementation bytes. A package, runtime, source or host-storage digest cannot
@@ -188,7 +203,13 @@ Different digests under one ID/version are incompatible. A source or trusted
 authority claiming both has equivocated in that authority domain. An unrelated
 untrusted claimant cannot quarantine an independently trusted exact match.
 Every offered named operation must implement its declared behavior; a partial
-implementation cannot claim the whole interface.
+implementation cannot claim the whole interface. A feature catalog names only
+optional implementation behaviors. Every implementation must fulfill the
+baseline interface and each feature it claims. Omitting a feature never waives
+required ports, input/result validation, outcomes, finite ownership or other
+mandatory obligations, and cannot select a subset of named operations. The
+contract's behavioral specification defines how an unsupported optional request
+is refused; feature metadata cannot invent a weaker baseline.
 
 Consumers name slots through [Package/1 metadata](package-format.md):
 
@@ -196,8 +217,37 @@ Consumers name slots through [Package/1 metadata](package-format.md):
 uses:
   reviewer:
     contract: ./interfaces/reviewer/contract.json
+    requires: [conversation]
   archive: {}
 ```
+
+Here the referenced reviewer contract must define `conversation` in its feature
+catalog. `requires` is optional; ordinary callers omit it. A package offering
+that exact named single-form contract may declare `supports: [conversation]`
+in its own metadata. [Package/1](package-format.md#dependencies) owns the bounded
+list grammar. Support and requirement names must belong to their own offered
+or expected catalog before route matching. Unknown names reject, even if both
+parties repeat the same unknown spelling or no selected caller uses the claim.
+
+After exact interface matching, every required feature must occur in the
+selected implementation's declared support. Missing support remains undeclared,
+not universal; it and an explicit empty support set fail nonempty requirements.
+No requirements means no optional feature check. There are no implied features,
+alternatives, negation, numeric predicates or support inheritance. Missing
+required support prevents the consuming target's qualification before its code
+or instructions run, and unavailable dependencies propagate through the selected
+graph without silently changing a selected implementation.
+
+`supports` is an implementation's unconditional mechanism claim across all
+settings accepted by its own settings contract. An accepted setting that removes
+the claimed mechanism makes the declaration nonconforming. A conditionally
+implemented feature must remain unclaimed, use narrower accepted settings, or
+belong to a separately authored implementation. Static matching validates
+declarations, not their behavioral honesty. Independently selected resources,
+granted limits, client negotiation and runtime failure remain separate facts;
+an honest refusal or unavailable result permitted by the behavior does not itself
+contradict mechanism support. Hosts cannot infer an arbitrary wrapper's support
+from its dependencies, settings values, package name or source code.
 
 The contract reference is package-relative. The consumer carries the complete
 descriptor and its channel closure offline; authors do not copy IDs, versions
@@ -224,6 +274,15 @@ may qualify, while supplying an unsupported endpoint must reject before transfer
 or dispatch. Review exposes requirements and actual limitations without secrets
 or private host paths. Interface equality grants no operation, filesystem access
 or inherited authority.
+
+Feature qualification establishes declared compatibility, not operational
+readiness or future success. Required support cannot grant a larger allowance,
+establish current authority, or guarantee retained state. Actual request and
+result validation and all authority and settlement checks remain necessary.
+Adding or editing a catalog changes the existing invocation digest; all matching
+participants must carry the same updated descriptor and closure. Changing
+implementation support or dependency requirements changes package meaning but
+does not create another invocation digest or a compatibility alias.
 
 ## 4. Calls, outcomes and finite ownership
 
@@ -270,6 +329,13 @@ Conforming implementations must establish:
    native evidence and authority cannot be manufactured by interface equality.
 8. Caller-scoped duplicates, changed optional-key presence, cancellation, late
    disposal, forgotten live work and uncertainty preserve Run/1 ownership.
+9. Feature catalogs occur only on identified single-form roots, obey name,
+   description and entry bounds, and reject unknown structure. Omission, empty
+   catalogs, names and descriptions retain their exact identity consequences.
+10. Support and requirements use their exact contract's closed catalog; unknown
+    names and missing required support reject before caller execution. Ordinary
+    callers need no feature declarations, and matching grants no authority or
+    verified behavior across implementation settings.
 
 The [session-store descriptor](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/invocation-contracts/session-store.contract.json)
 illustrates one named single operation with a normal `not-found` outcome.

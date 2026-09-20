@@ -6,12 +6,39 @@ import channelContractSchema from '../../docs/flow/spec/machine/channel-contract
 import invocationContractSchema from '../../docs/flow/spec/machine/invocation-contract-1.schema.json'
 import schema from '../../docs/flow/spec/machine/run-1.schema.json'
 import errorRegistry from '../../docs/flow/spec/machine/run-1-errors.json'
+import featureCases from './fixtures/invocation-features.json'
 import cases from './fixtures/messages.json'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/1 message schemas', () => {
+  test('validates the closed feature catalog only on identified single-form contracts', () => {
+    const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
+    const validate = descriptors.compile(invocationContractSchema)
+    for (const fixture of featureCases.valid)
+      expect(
+        validate(fixture.descriptor),
+        `${fixture.name}: ${JSON.stringify(validate.errors)}`,
+      ).toBe(true)
+    const identity = featureCases.valid[0]?.descriptor
+    if (identity === undefined) throw new Error('missing catalog identity fixture')
+    for (const fixture of featureCases.invalidFeatures)
+      expect(validate({ ...identity, features: fixture.value }), fixture.name).toBe(false)
+    expect(validate({ $schema: identity.$schema, features: {} })).toBe(false)
+    expect(validate({ ...identity, features: {}, operations: { read: {} } })).toBe(false)
+    expect(validate({ ...identity, operations: { read: { features: {} } } })).toBe(false)
+    expect(validate({ ...identity, supports: ['events'] })).toBe(false)
+    expect(validate({ ...identity, requires: ['events'] })).toBe(false)
+    const features = Object.fromEntries(Array.from({ length: 256 }, (_, i) => [`f-${i}`, 'F.']))
+    expect(validate({ ...identity, features })).toBe(true)
+    expect(validate({ ...identity, features: { ...features, extra: 'Extra.' } })).toBe(false)
+    expect(validate({ ...identity, features: { ['a'.repeat(64)]: 'Valid.' } })).toBe(true)
+    expect(validate({ ...identity, features: { ['a'.repeat(65)]: 'Invalid.' } })).toBe(false)
+    expect(validate({ ...identity, features: { events: '🔎'.repeat(16_384) } })).toBe(true)
+    expect(validate({ ...identity, features: { events: '🔎'.repeat(16_385) } })).toBe(false)
+  })
+
   test('separates broadcast subscription authority from endpoint grants', () => {
     const send = { endpoint: 'send:1', direction: 'send', delivery: 'broadcast' }
     const receive = {

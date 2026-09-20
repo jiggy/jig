@@ -13,7 +13,10 @@ companions.
 - SDKs and `conformance/` implement and test these contracts; they do not
   redefine them.
 - `invocation-contracts.md` owns the optional root `FLOW.contract.json`, exact named
-  interface/channel-closure identity, and single-operation execution profile.
+  interface/channel-closure identity, the identified single-form feature catalog,
+  and single-operation execution profile. Optional implementation claims and
+  dependency requirements use that closed catalog; exact matching proves declared
+  compatibility, never authority, behavioral honesty or runtime success.
 - `package-format.md` owns one `FLOW.<ext>` implementation and its sole metadata
   owner; `markdown-runtime.md` owns the bounded sequential Markdown profile.
   `schema-files.md` owns the common dialect, with implementation settings kept

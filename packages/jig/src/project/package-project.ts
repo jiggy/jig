@@ -366,7 +366,12 @@ export function projectInvocationRequirements(
         packagePath,
         `/uses/${pointerToken(slot)}`,
       )
-    output[slot] = Object.freeze({ id, version, digest: reference.contract.digest })
+    output[slot] = Object.freeze({
+      id,
+      version,
+      digest: reference.contract.digest,
+      ...(declaration.requires === undefined ? {} : { requires: declaration.requires }),
+    })
     if (
       id === 'https://jig.md/contracts/run-checkpoint' &&
       reference.contract.digest === RUN_CHECKPOINT_CONTRACT_DIGEST &&
