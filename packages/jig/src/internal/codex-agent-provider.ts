@@ -108,6 +108,7 @@ export async function openPrivateCodexAgentProvider(
   try {
     runtime = await inspectPrivateNativeAgentRuntime(executablePath, projectDirectory)
   } catch (error) {
+    if (error instanceof PrivateAcpSetupError) throw error
     throw new PrivateCodexRuntimeUnavailableError('the Codex installation runtime is unavailable', {
       cause: error,
     })

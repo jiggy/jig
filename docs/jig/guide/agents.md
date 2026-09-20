@@ -17,6 +17,25 @@ the Agent on their behalf.
 The current alpha reads exported environment variables for both `jig review`
 and `jig run`. Project `.env` files are not loaded automatically.
 
+## Choose for the work you need
+
+The shared Agent contract describes the interface, not support for every optional
+feature. Choose the implementation and grant before starting expensive work:
+
+| Needed behavior | HTTP Agent | Native ACP Agent |
+| --- | --- | --- |
+| One bounded answer, including a checked structured result | Supported with a compatible configured API | Supported with a qualified client |
+| Public live updates | Not supported by this implementation | Optional `events` channel |
+| Same-session follow-up or interruption | Not supported | Conversation channels; `maxTurns` bounds the total turns |
+| Native retention or restoration | Not supported | Separately enabled native grant and qualified client; inspect the final retention receipt |
+
+There are three separate checks: the method implements the behavior, its reviewed
+resources permit it, and this execution actually completes. `jig review` checks
+known host/resource prerequisites without calling a model; it does not prove all
+optional behavior of an arbitrary Flow. Matching the Agent contract alone is not
+automatic feature negotiation. A retained answer is not evidence of a retained
+session, and permission for two turns does not guarantee two successful answers.
+
 ## API access
 
 Use the [ordinary Agent package](agent-method.md). Its Binding selects the model

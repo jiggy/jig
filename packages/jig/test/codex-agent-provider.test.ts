@@ -37,6 +37,30 @@ afterEach(async () => {
 })
 
 describe('private native Codex Agent provider', () => {
+  test('an unsupported wrapper retains its actionable stage without exposing wrapper contents', async () => {
+    const fixture = await files('/var/tmp')
+    await writeFile(
+      fixture.executablePath,
+      nativeElf({
+        wrapper: `makeCWrapper '/unavailable/native' --set 'PRIVATE_TOKEN' 'secret-canary'\n\n`,
+      }),
+      { mode: 0o700 },
+    )
+    const host = await openPrivateInstalledBunHost(installedBunLocation, {
+      CODEX_PATH: fixture.executablePath,
+      OPENAI_API_KEY: 'test-secret',
+      OPENAI_MODEL: 'test-model',
+    })
+    try {
+      await selectCodex(host)
+      throw new Error('Unsupported wrapper unexpectedly qualified')
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'PROJECT_ACP_CODEX_WRAPPER' })
+      expect(String(error)).not.toContain('secret-canary')
+      expect(String(error)).not.toContain('test-secret')
+    }
+  })
+
   test('uses operator Bubblewrap without a bundled directory and rejects later replacement', async () => {
     const fixture = await files()
     const project = join(fixture.root, 'project')
