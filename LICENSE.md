@@ -2,7 +2,7 @@
 
 ## Jig adoption notice
 
-**Release preparation — seller authorization and receiving channels still to be completed.**
+**Release preparation — seller authorization and adoption still to be completed.**
 The intended first npm release under this notice is `@jigging/jig@0.1.0-alpha.17`.
 The adoption is to apply to the source commit first issuing this completed
 notice and subsequent Jig source distributed with it. This preparation copy
@@ -14,11 +14,11 @@ Earlier releases retain their existing licenses.
 | Software | Jig: original material in `packages/jig/**` and `docs/jig/spec/**`, excluding separately identified third-party material; the corresponding installed `@jigging/jig` distribution |
 | Licensor | Victor Duarte, professionally known as zvictor, personally; correspondence: c/o Pereirinhos s.r.o., Mateja Bela 8769/30, 010 15 Žilina, Slovakia |
 | Seller | Pereirinhos s.r.o., IČO 53427599, DIČ 2121379700, VAT ID SK2121379700; registered seat: Mateja Bela 8769/30, 010 15 Žilina, Slovakia. The company is the intended initial authorized seller, distinct from the owner. Authorization is not yet executed; it may not issue grants as an authorized seller until that authority exists. |
-| Licensing and notices | Planned: `licensing@jig.md`; mailbox operation remains to be confirmed; postal notices use the Licensor correspondence address above |
+| Licensing and notices | `licensing@jig.md`; postal notices use the Licensor correspondence address above |
 | Exact instrument | Bread License, review draft 0.6, retained in full below; no narrower grant or altered royalty |
 | Official release records | [Jig GitHub releases](https://github.com/jiggy/jig/releases) and [npm versions and publication times](https://registry.npmjs.org/@jigging%2fjig); a source commit is licensed source, not by itself a newly published official release for update coverage |
 | Direct prices | Jig schedule P-0.5 in [PRICING.md](PRICING.md): USD; annual and monthly Update Terms |
-| Purchases and publisher enrollment | Planned receiving channel: `licensing@jig.md`. No orders or enrollments are offered through an unconfirmed mailbox or an unauthorized seller. |
+| Purchases and publisher enrollment | Receiving channel: `licensing@jig.md`. Commercial orders and publisher enrollments open only after adoption and seller authorization are complete. |
 | Additional grants | None |
 
 The repository is a collection of separately licensed works. [LICENSES.md](LICENSES.md)
