@@ -255,12 +255,14 @@ Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
 targets from the same admitted generation. A child uses its selected target's
 settings, ordinary Agent route, and reviewed resource grants;
 parent configuration is not inherited. Selected
-child Bindings may expose further Flow slots within two child levels. At runtime, a Flow can
+child Bindings may expose further Flow slots within the fixed root resource budget.
+At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
 scheduler authority. Child and Agent scopes inherit the remaining root deadline
 and cannot extend it. A root may await two sibling specialists; each child may
-await one Flow or effect. The fixed aggregate ceiling reserves both complete
-two-level branches and their effects before dispatch.
+await one Flow or effect. The unchanged aggregate ceiling permits two two-level
+branches or one five-level branch, including their effect allowances. Complete
+branches reserve capacity before dispatch and hold it until cleanup.
 Root worker effects remain exclusive.
 Root-owned [checkpoints](../docs/jig/spec/run-checkpoint.md) use separate bounded
 control capacity to retain completed evidence while workers remain active.

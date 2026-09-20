@@ -5,6 +5,7 @@ import { flowSlotTargets } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { validateProjectPath } from '../project/paths.js'
 import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
+import { PRIVATE_MAX_CHILD_FLOW_LEVELS } from './root-operation-limits.js'
 import {
   listPrivateRootChildOwners,
   type PrivateProjectCoordinator,
@@ -112,7 +113,8 @@ export function normalizeParentFlow(
     if (value !== null) throw new TypeError('root invocation allocation has a nested parent')
     return null
   }
-  if (depth >= 2) throw new TypeError('invocation ancestry exceeds two child levels')
+  if (depth >= PRIVATE_MAX_CHILD_FLOW_LEVELS)
+    throw new TypeError('invocation ancestry exceeds the fixed root resource budget')
   const parent = exactObject(
     value,
     ['operationId', 'target', 'requestDigest', 'parent'],

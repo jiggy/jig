@@ -251,15 +251,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   settings, ordinary invocation routes and reviewed command, HTTP or finite ACP
   grants. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
-  releasing the child owner. Two child Flow levels use their own admitted slot
+  releasing the child owner. Every child Flow uses its own admitted slot
   maps; private nested Flow identifiers include their parent identity.
 - Roots admit two Flow branches or one exclusive effect. Reserve each whole
   branch's longest admitted Flow path plus one effect against the fixed aggregate
   root budget before dispatch; retain its
   reservation until confirmed fencing and cleanup. Kernel envelope limits and
   the recipe-bound reservation policy must agree. Each child admits one Flow or
-  effect; the second child level admits only an effect. The aggregate envelope
-  accommodates two complete two-level branches and their effects. There is no
+  effect. Derive maximum branch depth from the fixed aggregate envelope, reserving
+  the root and an effect too; never add resources merely to allow deeper calls.
+  The envelope accommodates two two-level branches or one five-level branch
+  with their effects. There is no
   queue, borrowing, recursive budget, or public scheduler. An ancestor fence
   prevents all further descendant dispatch; recovery drains descendants before
   releasing each Flow owner and its branch reservation.

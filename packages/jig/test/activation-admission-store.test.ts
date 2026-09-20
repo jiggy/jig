@@ -38,6 +38,7 @@ import {
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
   type PrivateProjectCoordinator,
+  type PrivateRootChildOwnerLifecycle,
   type PrivateRootRunTerminal,
   reacquirePrivateRootExecutionWork,
   readPrivateAdmittedExecutionReuse,
@@ -1334,6 +1335,72 @@ describe.serial('direct alpha activation store', () => {
       expect(await listPrivateRootChildOwners(recovery)).toEqual([cleanedFlow])
       await closePrivateRootChildOwner(closeFlow)
       expect(await listPrivateRootChildOwners(recovery)).toEqual([])
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('deep branches reserve capacity and every active ancestor fences descendant dispatch', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const submitted = await submitReadyRun(fixture, coordinator, 'deep-ancestor-fence')
+      const context = { coordinator, projectRoot: fixture.root, parentRunId: submitted.run.runId }
+      const rows: PrivateRootChildOwnerLifecycle[] = []
+      let parentOperationId: string | undefined
+      for (let depth = 5; depth >= 1; depth--) {
+        const row = await allocatePrivateRootChildOwner({
+          ...context,
+          parentOperationId,
+          operationId: `level-${depth}`,
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: depth },
+        })
+        const sealed = await recordPrivateRootChildSandbox({
+          ...context,
+          parentOperationId,
+          operationId: row.operationId,
+          allocationDigest: row.allocation.digest,
+          sandbox: { kind: 'test-flow-sandbox', depth },
+        })
+        rows.push(sealed)
+        parentOperationId = row.operationId
+      }
+      await expect(
+        allocatePrivateRootChildOwner({
+          ...context,
+          operationId: 'sibling',
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 },
+        }),
+      ).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
+      const effect = {
+        ...context,
+        parentOperationId,
+        operationId: 'effect',
+        allocation: { kind: 'private-contained-effect-owner/1' },
+      }
+      const allocated = await allocatePrivateRootChildOwner(effect)
+      await closePrivateRootChildOwner({
+        ...effect,
+        allocationDigest: allocated.allocation.digest,
+        sandboxDigest: null,
+        fenceDigest: null,
+        cleanupDigest: null,
+      })
+      const outer = rows[0]!
+      await recordPrivateRootChildFence({
+        ...context,
+        operationId: outer.operationId,
+        allocationDigest: outer.allocation.digest,
+        sandboxDigest: outer.sandbox!.digest,
+        fence: { kind: 'test-fence' },
+      })
+      await expect(allocatePrivateRootChildOwner(effect)).rejects.toMatchObject({
+        code: 'RUN_CHILD_PARENT_INACTIVE',
+      })
+      expect(await listPrivateRootChildOwners(context)).toHaveLength(5)
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()

@@ -197,8 +197,10 @@ Keep source and rebuilt runtime together; do not hand-edit generated files.
 A Jig root can call this Flow directly or through a specialist's ordinary
 slot. Each Flow uses its own admitted routes; the Agent's HTTP grant remains separate
 from the specialist's authority. Two direct Agent siblings fit the root budget.
-A specialist → Agent branch uses both child levels. Two such branches fit the
-fixed aggregate reservation; a third is rejected rather than queued. Aggregate resources and the
+A specialist → Agent branch uses two child levels. Two such branches fit the
+fixed aggregate reservation; a third sibling is rejected rather than queued.
+Deeper methods are allowed when their complete branch fits the same budget;
+they do not receive additional resources. Aggregate resources and the
 remaining root deadline apply. See [project policy](../spec/project-policy.md).
 
 For a specialist accepting a text input, the existing SDK call is sufficient:

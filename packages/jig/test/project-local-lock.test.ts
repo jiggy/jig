@@ -662,8 +662,12 @@ describe('private package-project portable lock projection', () => {
       base,
       (value) => {
         value.packages['flows/third'].slots = next('flows/fourth')
+        value.packages['flows/fourth'].slots = next('flows/fifth')
+        value.packages['flows/fifth'] = entry(next('flows/sixth'))
+        value.packages['flows/sixth'] = entry(next('flows/seventh'))
+        value.packages['flows/seventh'] = entry()
       },
-      'two child levels',
+      'fixed root resource budget',
     )
     expectInvalid(
       base,

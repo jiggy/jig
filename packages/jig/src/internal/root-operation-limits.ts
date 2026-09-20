@@ -9,17 +9,43 @@ export const PRIVATE_FLOW_RESOURCE_CEILINGS = Object.freeze({
 })
 export const PRIVATE_AGENT_PROVIDER_PIDS = 128
 
-/** Root plus two two-level branches and their largest effects; no borrowed capacity. */
-export const PRIVATE_ROOT_RESOURCE_POLICY = Object.freeze({
-  siblingFlows: 2,
-  leafEffects: 1,
-  childFlowLevels: 2,
+const ROOT_ENVELOPE = Object.freeze({
   memoryBytes: 1792 * 1024 * 1024,
   pids: 576,
   cpuQuotaMicros: 350_000,
   cpuPeriodMicros: 100_000,
+})
+
+// One root, one full effect allowance, then as many Flow levels as fit.
+// This is an admission bound, not a new allowance added to the root budget.
+export const PRIVATE_MAX_CHILD_FLOW_LEVELS = Math.floor(
+  Math.min(
+    ROOT_ENVELOPE.memoryBytes / PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes - 2,
+    (ROOT_ENVELOPE.pids - PRIVATE_AGENT_PROVIDER_PIDS) / PRIVATE_FLOW_RESOURCE_CEILINGS.pids - 1,
+    ROOT_ENVELOPE.cpuQuotaMicros /
+      ROOT_ENVELOPE.cpuPeriodMicros /
+      (PRIVATE_FLOW_RESOURCE_CEILINGS.cpuQuotaMicros /
+        PRIVATE_FLOW_RESOURCE_CEILINGS.cpuPeriodMicros) -
+      2,
+  ),
+)
+
+export const PRIVATE_ROOT_RESOURCE_POLICY = Object.freeze({
+  siblingFlows: 2,
+  leafEffects: 1,
+  childFlowLevels: PRIVATE_MAX_CHILD_FLOW_LEVELS,
+  ...ROOT_ENVELOPE,
   reservation: 'whole-branch-until-cleanup' as const,
 })
+
+export function isPrivateBranchDepth(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= PRIVATE_MAX_CHILD_FLOW_LEVELS
+  )
+}
 
 export function isPrivateChildFlowAllocation(value: JsonValue): boolean {
   return (
@@ -32,7 +58,7 @@ export function isPrivateChildFlowAllocation(value: JsonValue): boolean {
 
 /** Reserve each branch's Flow levels and largest effect before dispatch. */
 export function privateRootBranchReservation(depths: readonly number[]) {
-  if (depths.some((depth) => !Number.isSafeInteger(depth) || depth < 1 || depth > 2))
+  if (depths.some((depth) => !isPrivateBranchDepth(depth)))
     throw new TypeError('Invalid branch depth.')
   const flow = PRIVATE_FLOW_RESOURCE_CEILINGS
   const flows = depths.reduce((sum, depth) => sum + depth, 0)
@@ -59,7 +85,7 @@ export function canReservePrivateRootOperation(
   const depths = allocations.map((value) =>
     isPrivateChildFlowAllocation(value) ? (value as Record<string, JsonValue>).flowDepth : 1,
   )
-  if (depths.some((depth) => depth !== 1 && depth !== 2)) return false
+  if (depths.some((depth) => !isPrivateBranchDepth(depth))) return false
   const reserved = privateRootBranchReservation(depths as number[])
   return (
     reserved.memoryBytes <= PRIVATE_ROOT_RESOURCE_POLICY.memoryBytes &&

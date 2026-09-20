@@ -373,12 +373,12 @@ or `grant:<LocalName>` selections. Omission
 normalizes the declaration to `{}` before project defaults are resolved. A
 Flow selector must identify a direct Flow target, using empty settings and its
 own resolved routes. A Binding selector uses that Binding's own validated settings.
-Either may have further routes, within two child Flow levels. Grant slots
+Either may have further routes, within the fixed aggregate resource budget. Grant slots
 do not count as child routes. Either target may use the exact
 ordinary [Agent Run](agent-run.md) invocation, and a configured
 Binding may also use [Project Command](project-command.md) or
 [HTTP Request](http-request.md) or [Finite ACP](finite-acp.md). Slots cannot select the parent's own package, directly
-or through a Binding; unknown targets, cycles, paths exceeding two child levels,
+or through a Binding; unknown targets, cycles, paths exceeding the root resource budget,
 unqualified execution profiles, and packages requiring attachments reject the
 candidate. Plain package paths are not slot selectors. Linking captures each
 target identity, and apply admits the complete relation and target
@@ -469,7 +469,7 @@ remain unchanged.
 Jig resolves defaults for direct Flows and Bindings during review, retains
 their effective routes in the same immutable generation, and validates the
 complete graph including both target kinds. Cycles, same-package recursion,
-and paths exceeding two child Flow levels reject the candidate. Runtime calls
+and paths exceeding the root resource budget reject the candidate. Runtime calls
 use only the retained target-local routes; they do not consult current source,
 a defaults map, or a provider catalogue. Changing defaults proposes a new
 generation and cannot retarget an already admitted Run.
@@ -724,8 +724,8 @@ result; Jig creates no child Run history and exposes no child administration,
 scheduler, catalogue, or resolver.
 
 The root permits two active sibling Flow calls, or one exclusive Agent or
-command effect. A child permits one active Flow or effect; at most two child
-Flow levels may occur beneath a root. A third sibling, conflicting operation,
+command effect. A child permits one active Flow or effect; admitted branch depth
+is bounded by the root's fixed aggregate budget. A third sibling, conflicting operation,
 or branch exceeding remaining aggregate capacity receives `RESOURCE_EXHAUSTED` before dispatch;
 there is no host queue or automatic retry. Identical waiters join the same
 operation. Applications use ordinary promises to schedule and aggregate work,
@@ -739,6 +739,10 @@ cores with a 100 ms quota period. Each actual envelope is kernel-limited below
 its reservation. Two simultaneous two-level branches fit, including an effect
 in each: one root, four child Flows, and two effect envelopes. Each Flow retains
 its fixed 256 MiB, 64-task, and half-CPU ceiling; effect ceilings are unchanged.
+The same budget permits one five-level child branch with its effect, or two
+branches of depths three and one. A sixth child level cannot fit and is rejected
+at review. Two individually admissible branches may not fit simultaneously;
+their concurrent allocation fails before dispatch rather than borrowing capacity.
 Unused reservations are not borrowed; reservations remain
 until confirmed fencing and cleanup. This bounds the complete root call tree,
 not just each parent's immediate children. Trusted coordinators and supervisors

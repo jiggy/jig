@@ -18,7 +18,12 @@ test('bounded slot graphs distinguish target cycles from reuse of package code',
   expect(() => validateChildGraph(graph, new Map())).toThrow()
   graph.set('agent', node('flows/shared', 'resource-flow'))
   graph.set('resource-flow', node('flows/resource'))
-  expect(() => validateChildGraph(graph, new Map())).toThrow('two child levels')
+  expect(() => validateChildGraph(graph, new Map())).not.toThrow()
+  graph.set('resource-flow', node('flows/resource', 'four'))
+  graph.set('four', node('flows/four', 'five'))
+  graph.set('five', node('flows/five', 'six'))
+  graph.set('six', node('flows/six'))
+  expect(() => validateChildGraph(graph, new Map())).toThrow('fixed root resource budget')
 })
 
 test('shared targets are checked without an unbounded path expansion', () => {
@@ -49,7 +54,7 @@ test('direct Flow defaults participate in cycle and depth checks', () => {
   expect(() => validateChildGraph(bindings, flows)).toThrow()
   bindings.set('agent', routed('flows/agent', { kind: 'flow', path: 'flows/resource' }))
   flows.set('flows/resource', routed('flows/resource'))
-  expect(() => validateChildGraph(bindings, flows)).toThrow('two child levels')
+  expect(() => validateChildGraph(bindings, flows)).not.toThrow()
 })
 
 test('two direct Flow defaults cannot form a hidden cycle', () => {

@@ -82,6 +82,7 @@ import {
 } from './project-local-lock.js'
 import {
   canReservePrivateRootOperation,
+  isPrivateBranchDepth,
   isPrivateChildFlowAllocation,
 } from './root-operation-limits.js'
 import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
@@ -1179,7 +1180,7 @@ export async function allocatePrivateRootChildOwner(input: {
       if (isPrivateChildFlowAllocation(input.allocation)) {
         const depth = (input.allocation as Record<string, JsonValue>).flowDepth
         if (
-          (depth !== 1 && depth !== 2) ||
+          !isPrivateBranchDepth(depth) ||
           (parentDepth !== undefined && depth >= parentDepth) ||
           findFlowOwner(owner.database, input.parentRunId, input.operationId) !== null
         )
@@ -1788,7 +1789,7 @@ function countScopedRootChildOwners(
   }
 }
 
-/** An active direct child Flow may own one Agent or project command. */
+/** Every ancestor must still own active capacity before a nested allocation. */
 function requireActiveChildScope(
   database: SqliteDatabase,
   parentRunId: string,
@@ -1812,19 +1813,26 @@ function requireActiveChildScope(
     invalid('RUN_CHILD_PARENT_INACTIVE', 'only a Flow may own a nested operation')
   }
   const depth = (allocation as Record<string, JsonValue>).flowDepth
-  if (depth !== 1 && depth !== 2)
+  if (!isPrivateBranchDepth(depth))
     invalid('RUN_CHILD_PARENT_INACTIVE', 'parent has no reserved depth')
-  if (parent.scope_operation_id !== '') {
-    const ancestor = findFlowOwner(database, parentRunId, parent.scope_operation_id)
+  let descendant = parent
+  let descendantDepth = depth
+  while (descendant.scope_operation_id !== '') {
+    const ancestor = findFlowOwner(database, parentRunId, descendant.scope_operation_id)
+    const ancestorDepth =
+      ancestor === null
+        ? undefined
+        : (loadRootChildOwner(ancestor).allocation.value as Record<string, JsonValue>).flowDepth
     if (
-      depth !== 1 ||
       ancestor === null ||
-      ancestor.scope_operation_id !== '' ||
       ancestor.sandbox_digest === null ||
       ancestor.fence_digest !== null ||
-      (loadRootChildOwner(ancestor).allocation.value as Record<string, JsonValue>).flowDepth !== 2
+      !isPrivateBranchDepth(ancestorDepth) ||
+      ancestorDepth <= descendantDepth
     )
       invalid('RUN_CHILD_PARENT_INACTIVE', 'the ancestor Flow has no active reserved sandbox')
+    descendant = ancestor
+    descendantDepth = ancestorDepth
   }
   return depth
 }

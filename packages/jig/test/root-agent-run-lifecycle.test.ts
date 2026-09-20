@@ -560,6 +560,86 @@ interface DispatchEvent {
 }
 
 proofDescribe('private contained Agent Run lifecycle', () => {
+  test('executes and cleans a five-level branch within the unchanged aggregate envelope', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-deep-composition-'))
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+    try {
+      await writeProject(root)
+      await mkdir(join(root, 'bindings'))
+      await writeFile(
+        join(root, 'jig.ts'),
+        `import {defineJig, discover} from '@jigging/jig';
+        export default defineJig({flows: discover('flows'), bindings: discover('bindings')});`,
+      )
+      for (let level = 0; level <= 5; level++) {
+        const name = level === 0 ? 'router' : `level-${level}`
+        const directory = join(root, 'flows', name)
+        await mkdir(directory, { recursive: true })
+        if (level !== 0)
+          await cp(join(root, 'flows/router/flow-sdk'), join(directory, 'flow-sdk'), {
+            recursive: true,
+          })
+        await writeFile(
+          join(directory, 'flow.meta.json'),
+          JSON.stringify({ name, description: 'Finite composition lifecycle fixture.' }),
+        )
+        await writeFile(
+          join(directory, 'FLOW.ts'),
+          `import {handle} from './flow-sdk/index.ts';
+          await handle(async run => { ${
+            level < 5
+              ? `return await run.call({operationId: 'next', slot: 'next', input: run.input});`
+              : `if (run.input.scenario === 'slow') await Bun.sleep(60000);
+               if (run.input.scenario === 'malformed') throw new Error('leaf failed');
+               return {outcome: 'done', output: {depth: 5}};`
+          } });`,
+        )
+        await writeFile(
+          join(root, 'bindings', `${level === 0 ? 'parent' : name}.ts`),
+          `import {defineBinding} from '@jigging/jig'; export default defineBinding({
+            package: 'flows/${name}', slots: ${JSON.stringify(level < 5 ? { next: `binding:level-${level + 1}` } : {})}});`,
+        )
+      }
+      const host = Object.freeze({
+        ...(await openPrivateInstalledBunHost(installedBunLocation, {})),
+        runTimeoutMs: 120_000,
+      })
+      session = await openPrivateProjectSession({ directory: root, host })
+      const plan = await session.plan({ lockMode: 'update' })
+      if (plan.state !== 'applicable') throw new Error('Deep composition has no applicable Plan')
+      await session.apply({ planDigest: plan.planDigest })
+      expect(
+        await runToTerminal(session.rootAdministration, 'deep-done', 'success', 60000, true),
+      ).toMatchObject({
+        state: 'terminal',
+        terminal: { status: 'succeeded', output: { depth: 5 } },
+      })
+      await expectNoAgentOwner(root)
+      expect(
+        await runToTerminal(session.rootAdministration, 'deep-failed', 'malformed', 60000, true),
+      ).toMatchObject({ state: 'terminal', terminal: { status: 'failed' } })
+      await expectNoAgentOwner(root)
+      const pending = await session.rootAdministration.startRun(
+        runRequest('deep-cancel', 'slow', true),
+      )
+      await waitForAgentSandbox(root, pending.runId, 5, 60_000)
+      await session.close()
+      session = await openPrivateProjectSession({ directory: root, host })
+      expect(await waitForTerminal(session.rootAdministration, pending)).toMatchObject({
+        state: 'terminal',
+        terminal: { status: 'failed', code: 'CANCELLED' },
+      })
+      await expectNoAgentOwner(root)
+      await session.close()
+      session = undefined
+      await waitForCgroups(initialCgroups)
+      await waitForTemporaryState(initialTemporaryState)
+    } finally {
+      await session?.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 300000)
+
   test('runs a Bun subprocess and asynchronous I/O from root and child Flow recipes', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-flow-subprocess-'))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
@@ -2045,8 +2125,13 @@ async function waitForTerminal(
   throw new Error(`Agent fixture Run did not become terminal: ${JSON.stringify(finalStatus)}`)
 }
 
-async function waitForAgentSandbox(root: string, runId: string, expectedOwners = 1): Promise<void> {
-  const deadline = Date.now() + 20_000
+async function waitForAgentSandbox(
+  root: string,
+  runId: string,
+  expectedOwners = 1,
+  timeoutMs = 20_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
       const count = withStore(root, (database) =>

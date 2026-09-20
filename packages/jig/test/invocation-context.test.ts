@@ -19,8 +19,11 @@ test('parent identity is exact, local, and distinct from a root operation', () =
   )
   const nested = { ...parent, operationId: 'agent', parent }
   expect(normalizeParentFlow(nested, 'agent')).toEqual(nested)
-  expect(() => normalizeParentFlow({ ...parent, parent: nested }, 'worker')).toThrow(
-    'two child levels',
+  let ancestry = nested
+  for (let i = 2; i < 5; i++) ancestry = { ...parent, operationId: `level-${i}`, parent: ancestry }
+  expect(normalizeParentFlow(ancestry, ancestry.operationId)).toEqual(ancestry)
+  expect(() => normalizeParentFlow({ ...parent, parent: ancestry }, 'worker')).toThrow(
+    'fixed root resource budget',
   )
   for (const value of [parent, {}, undefined])
     expect(() => normalizeParentFlow(value, undefined)).toThrow()

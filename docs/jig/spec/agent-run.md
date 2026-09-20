@@ -377,7 +377,7 @@ The operator selects the implementation and its grants. The caller does not
 inherit the selected implementation's credentials or source files.
 
 The root allows up to two sibling Flow calls or one exclusive effect; a child allows
-one active Flow or effect, within two child Flow levels and the
+one active Flow or effect, within the branch depth allowed by the
 [aggregate reservation budget](project-policy.md). The root reserves each branch's resources before
 dispatch, including its effect capacity. Parent cancellation
 and the inherited deadline govern the child and its Agent worker; cleanup

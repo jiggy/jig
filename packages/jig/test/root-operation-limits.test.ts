@@ -11,11 +11,11 @@ const flow = { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 }
 const agent = { kind: 'private-root-agent-owner-allocation/1' }
 const command = { kind: 'private-contained-effect-owner/1' }
 
-test('two full-depth branches exactly fit the fixed root budget, including both effects', () => {
+test('two two-level branches exactly fit the fixed root budget, including both effects', () => {
   expect(PRIVATE_ROOT_RESOURCE_POLICY).toEqual({
     siblingFlows: 2,
     leafEffects: 1,
-    childFlowLevels: 2,
+    childFlowLevels: 5,
     memoryBytes: 1792 * 1024 * 1024,
     pids: 576,
     cpuQuotaMicros: 350_000,
@@ -52,13 +52,24 @@ test('both sibling branches can reserve two Flow levels without borrowing capaci
   expect(canReservePrivateRootOperation([deep], deep)).toBe(true)
   expect(canReservePrivateRootOperation([deep, deep], flow)).toBe(false)
   expect(canReservePrivateRootOperation([flow, deep], flow)).toBe(false)
-  for (const flowDepth of [0, 3, 1.5, null, '2']) {
+  for (const flowDepth of [0, 6, 1.5, null, '2']) {
     expect(canReservePrivateRootOperation([], { ...flow, flowDepth })).toBe(false)
     expect(canReservePrivateRootOperation([deep], { ...flow, flowDepth })).toBe(false)
   }
   expect(canReservePrivateRootOperation([], { kind: flow.kind })).toBe(false)
-  for (const depths of [[0], [3], [1.5], [2, 3], [Number.NaN], [Infinity]])
+  for (const depths of [[0], [6], [1.5], [2, 6], [Number.NaN], [Infinity]])
     expect(() => privateRootBranchReservation(depths)).toThrow('Invalid branch depth.')
+})
+
+test('deeper useful methods fit the same aggregate budget without borrowing or expanding it', () => {
+  expect(canReservePrivateRootOperation([], { ...flow, flowDepth: 5 })).toBe(true)
+  expect(canReservePrivateRootOperation([{ ...flow, flowDepth: 5 }], flow)).toBe(false)
+  expect(canReservePrivateRootOperation([{ ...flow, flowDepth: 3 }], flow)).toBe(true)
+  expect(
+    canReservePrivateRootOperation([{ ...flow, flowDepth: 3 }], { ...flow, flowDepth: 2 }),
+  ).toBe(false)
+  expect(canReservePrivateRootOperation([flow], { ...flow, flowDepth: 3 })).toBe(true)
+  expect(privateRootBranchReservation([3, 1])).toEqual(privateRootBranchReservation([2, 2]))
 })
 
 test('root admission permits only two siblings or one exclusive effect, with no queue', () => {

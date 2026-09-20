@@ -166,7 +166,7 @@ are slot selections, not CLI Run targets. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
 Either child may invoke an ordinary Agent Flow; a configured Binding may
 also use explicitly granted Project Command, HTTP or Finite ACP slots. A selected Flow or Binding
-may have further Flow/Binding child routes within two child levels; resource
+may have further Flow/Binding child routes within the fixed root resource budget; resource
 slots do not count as child routes. Aggregate reservations may limit concurrency
 for deeper branches; see [project policy](project-policy.md). A Binding cannot select its own package, directly or
 through another Flow or Binding. Omitting `slots` normalizes the declaration to
@@ -226,8 +226,10 @@ Bindings are optional. A discovered Run package which is valid with empty
 settings, fits the root attachment profile, and has all requirements resolved
 by reviewed ordinary defaults or qualified root Run Checkpoint support is also an
 exact direct Flow target. A package without requirements needs no defaults.
-The complete direct-Flow and Binding graph must be acyclic and fit within two
-child levels. There is no hidden generated Binding.
+The complete direct-Flow and Binding graph must be acyclic and each branch must
+fit the fixed root resource budget (currently at most five child levels with
+one effect allowance). Concurrent branches also share that budget. There is no
+hidden generated Binding.
 
 A required named invocation is declared by `uses.<slot>.contract` in package
 metadata. The selected Flow must offer exactly that ID, version and digest

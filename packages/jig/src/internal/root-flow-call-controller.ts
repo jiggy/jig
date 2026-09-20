@@ -1,6 +1,7 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
+import { isPrivateBranchDepth, PRIVATE_MAX_CHILD_FLOW_LEVELS } from './root-operation-limits.js'
 import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { flowSlotTargets } from '../project/invocation-slots.js'
@@ -440,14 +441,14 @@ function childFlowDepth(
 ): number {
   const children = Object.values(flowSlotTargets(selected.request.slots))
   if (children.length === 0) return 1
-  if (level >= 2 || input.parentFlow !== undefined)
-    throw new Error('child Flow depth exceeds admission')
+  if (level >= PRIVATE_MAX_CHILD_FLOW_LEVELS) throw new Error('child Flow depth exceeds admission')
+  let depth = 1
   for (const target of children) {
     const child = findPrivateActivationCandidateTargetV5(input.parent.candidate, target)
     if (child === undefined) throw new Error('missing admitted child')
-    childFlowDepth(input, child, level + 1)
+    depth = Math.max(depth, 1 + childFlowDepth(input, child, level + 1))
   }
-  return 2
+  return depth
 }
 
 function specialistDispatcher(
@@ -796,7 +797,7 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
   )
   if (
     value.kind !== ALLOCATION_KIND ||
-    (value.flowDepth !== 1 && value.flowDepth !== 2) ||
+    !isPrivateBranchDepth(value.flowDepth) ||
     value.parentRunId !== lifecycle.parentRunId ||
     value.operationId !== lifecycle.operationId ||
     typeof value.coordinatorEpoch !== 'number' ||

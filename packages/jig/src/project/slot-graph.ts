@@ -1,8 +1,9 @@
 import { invalid } from '../diagnostics.js'
+import { PRIVATE_MAX_CHILD_FLOW_LEVELS } from '../internal/root-operation-limits.js'
 import type { GrantedSlot } from './grants.js'
 import type { RunTargetIdentity } from './package-project.js'
 
-export const MAX_CHILD_FLOW_LEVELS = 2
+export const MAX_CHILD_FLOW_LEVELS = PRIVATE_MAX_CHILD_FLOW_LEVELS
 
 interface Node {
   readonly packagePath: string
@@ -43,7 +44,7 @@ export function validateChildGraph(
       if (path.length >= MAX_CHILD_FLOW_LEVELS)
         invalid(
           'PROJECT_BINDING_SLOT_DEPTH',
-          'Flow slots support at most two child levels',
+          'Flow slot depth exceeds the fixed root resource budget',
           binding.declarationPath,
           '/slots',
         )

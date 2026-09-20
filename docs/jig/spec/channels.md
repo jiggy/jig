@@ -25,10 +25,10 @@ receives only its declared, admitted endpoints in `run.channels`; an unused
 incoming endpoint can be forwarded to a compatible invocation. No new
 call method, attachment authority or target-discovery right is introduced.
 The root's two-sibling limit remains: a worker and a monitor occupy both
-branches. A first-level child may invoke one further child Flow through its
-own admitted routes; a second-level child may invoke granted resources but
-not another Flow. Channels do not expand this two-level execution ancestry
-or its aggregate reservations; see [project policy](project-policy.md).
+branches. Each child may invoke one further Flow or resource through its own
+admitted routes, provided its reserved branch has capacity. Channels do not
+expand execution ancestry or aggregate reservations; see
+[project policy](project-policy.md).
 
 `jig run TARGET --receive NAME` connects a declared root send channel to the
 command's output. Repeat the flag for distinct outputs, up to 16. Required root
