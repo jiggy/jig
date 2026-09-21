@@ -23,8 +23,6 @@ export interface ConversationOptions {
   readonly operationId: string
   readonly slot: string
   readonly input: AgentCallInput
-  /** Directory containing the unchanged public Agent Run contract bundle. */
-  readonly contractDirectory: string
   /** Optional caller-created public update writer; observation stays application-owned. */
   readonly events?: ChannelSender
   /** Synchronous filtering/presentation of public updates; no channel setup required. */
@@ -97,10 +95,6 @@ export async function withAgentConversation<T>(
 ): Promise<ConversationResult<T>> {
   if (options.events && options.onEvent)
     throw new TypeError('Choose onEvent or an external events writer, not both')
-  if (!options.contractDirectory || options.contractDirectory.endsWith('/'))
-    throw new TypeError(
-      'contractDirectory must name the public Agent Run bundle without a trailing slash',
-    )
   const requestedSession = options.input.session !== undefined
   const turns: AgentTurn[] = []
   const errors: unknown[] = []
@@ -150,14 +144,14 @@ export async function withAgentConversation<T>(
   }
   try {
     commands = await run.channel({
-      contract: `${options.contractDirectory}/contracts/agent-commands.json`,
+      contract: { slot: options.slot, channel: 'commands' },
     })
     replies = await run.channel({
-      contract: `${options.contractDirectory}/contracts/agent-replies.json`,
+      contract: { slot: options.slot, channel: 'replies' },
     })
     if (options.onEvent) {
       events = await run.channel({
-        contract: `${options.contractDirectory}/contracts/acp-public-updates.json`,
+        contract: { slot: options.slot, channel: 'events' },
       })
     }
     offered = true

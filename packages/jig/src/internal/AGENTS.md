@@ -8,6 +8,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 ## Ownership
 
+- `contract-import.ts` owns explicit, inert contract-bundle copying: capture
+  the descriptor and exact offline channel closure, validate before writing,
+  and publish a new directory without replacement. Source package code,
+  unrelated files, network access and Run approval stay outside this operation.
+
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
 - Admission storage retains private native-session snapshots under exact
@@ -37,6 +42,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Only exact before/after bytes may settle interrupted batches; observed edits
   conflict. Completion recaptures visible files before review. Individual renames
   are not atomic multi-file publication or protection against every editor race.
+  Borrowed channel agreements are captured inputs, not managed outputs. Validate
+  the full offline closure, retain input hashes for freshness, and recheck them
+  before/after publication and interrupted-batch recovery without rewriting them.
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
 - Installed Bun authentication, rootless acquisition, delegation,
@@ -75,6 +83,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Receiver disposal preserves an unused writer's transfer rights, not delivery;
   a disposed direct receiver makes later sends fail disconnected. Root and child
   contracts share one bounded cache.
+  Slot/channel creation references resolve the invoking package's declared
+  dependency agreement, never provider files; resolution creates no call or
+  additional rights and shares the same cache as direct package-local paths.
   Broadcast subscription authority remains with the source creator; subscribers
   have isolated buffers and failures under unchanged aggregate lifetime bounds.
   Agent updates accept direct or broadcast writers through the same admitted
@@ -207,6 +218,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
   which require it.
+  Configuration evaluator failures preserve closed support, launch, envelope,
+  settlement or protocol codes and the captured declaration location. Never
+  project raw launcher exceptions or infer a timeout cause from unavailability.
   Manifest policy errors retain closed causes and JSON pointers, never rejected
   source values or invalid names. Workspace manifest locations are relative to
   the project (including bounded ancestor paths), not the selected Flow; do not

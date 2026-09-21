@@ -7,7 +7,7 @@ import {
 import type { JsonValue } from '../json.js'
 import type { RootRunStatus } from '../administration/root.js'
 import type { CapturedPackage } from '../package/capture.js'
-import type { InspectedPackage } from '../package/inspect.js'
+import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
 import {
   ChannelBroker,
   type ChannelDeclaration,
@@ -15,6 +15,7 @@ import {
   ChannelOperationError,
   type ChannelParticipant,
   type ResolvedChannelContract,
+  type ChannelContractReference,
 } from '../run/channels.js'
 
 /** Command-local presentation. Its callbacks confer no execution authority. */
@@ -54,7 +55,7 @@ export class PrivateRunChannels {
   ): Promise<PrivateRunChannels> {
     const broker = new ChannelBroker()
     const contracts: PrivateChannelContractCache = new Map()
-    const resolveContract = channelContractResolver(captured, contracts)
+    const resolveContract = channelContractResolver(captured, contracts, inspected)
     const root = broker.participant('root', { resolveContract })
     const declarations = await resolveChannelDeclarations(
       inspected.invocation?.channels ?? {},
@@ -154,8 +155,23 @@ export class PrivateRunChannels {
 export function channelContractResolver(
   captured: CapturedPackage,
   cache: PrivateChannelContractCache = new Map(),
-): (path: string) => Promise<ResolvedChannelContract> {
-  return (reference) => {
+  inspected?: InspectedPackage,
+): (path: ChannelContractReference) => Promise<ResolvedChannelContract> {
+  let inspection: Promise<InspectedPackage> | undefined
+  return async (reference) => {
+    if (typeof reference !== 'string') {
+      const selector = reference
+      const packageInfo = inspected ?? (await (inspection ??= inspectCapturedPackage(captured)))
+      const used = packageInfo.usedContracts.find((entry) => entry.slot === selector.slot)
+      const port = used?.contract.invocation?.channels?.[selector.channel]
+      if (!used || !port?.contract)
+        throw new ChannelOperationError(
+          'INVALID_INPUT',
+          'slot channel has no declared named agreement',
+        )
+      const slash = used.path.lastIndexOf('/')
+      reference = `./${slash < 0 ? '' : used.path.slice(0, slash + 1)}${port.contract.slice(2)}`
+    }
     requireChannelReference(reference, 'channel contract')
     const key = `${captured.digest}:${reference}`
     let pending = cache.get(key)

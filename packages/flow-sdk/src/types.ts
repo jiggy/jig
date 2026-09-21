@@ -40,7 +40,7 @@ export interface ChannelContractIdentity {
 
 export type ChannelOptions = {
   readonly schema?: JsonValue
-  readonly contract?: string
+  readonly contract?: string | { readonly slot: string; readonly channel: string }
 } & ({ readonly delivery?: 'direct' } | { readonly delivery: 'broadcast' })
 
 export interface ChannelSender {

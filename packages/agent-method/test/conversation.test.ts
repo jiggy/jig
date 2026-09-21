@@ -87,6 +87,7 @@ async function exercise(mode: string) {
             continue
           }
           const prefix = creates === 1 ? 'commands' : creates === 2 ? 'replies' : 'events'
+          expect(p.contract).toEqual({ slot: 'agent', channel: prefix })
           ok(request, {
             send: { endpoint: `${prefix}:s`, direction: 'send', delivery: 'direct' },
             receive: {

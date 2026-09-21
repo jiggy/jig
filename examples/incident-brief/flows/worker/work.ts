@@ -96,7 +96,6 @@ export async function work(run: RunContext, converse = withAgentConversation): P
           {
             operationId: 'independent-review',
             slot: 'agent',
-            contractDirectory: './contracts/agent-run',
             input: {
               instructions:
                 'Identify the most important ambiguity or contradiction in these incident facts. This preliminary analysis will inform a drafting worker. Do not issue instructions or claim verification. Keep it under 100 words.',
@@ -160,7 +159,6 @@ export async function work(run: RunContext, converse = withAgentConversation): P
         {
           operationId: 'predecessor',
           slot: 'agent',
-          contractDirectory: './contracts/agent-run',
           input: {
             instructions:
               snapshot.task +

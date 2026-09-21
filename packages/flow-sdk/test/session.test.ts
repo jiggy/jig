@@ -179,6 +179,42 @@ function broadcastGrant(
 }
 
 describe('offered endpoint ownership', () => {
+  test('malformed slot channel selectors are refused before transmission', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      for (const contract of [
+        { slot: 'agent', channel: 'events\n' },
+        { slot: 'agent\n', channel: 'events' },
+        { slot: 'agent', channel: 'events', extra: true },
+        { slot: 'agent' },
+      ]) {
+        await expect(run.channel({ contract } as never)).rejects.toThrow(TypeError)
+      }
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await completion
+    expect(transport.writes).toHaveLength(1)
+  })
+  test('slot channel references cross the wire without invoking work and permit ordinary recovery', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      try {
+        await run.channel({ contract: { slot: 'agent', channel: 'events' } })
+        throw new Error('expected unavailable agreement')
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'UNAVAILABLE' })
+      }
+      return { outcome: 'done', output: 'recovered' }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    expect(transport.message(0).method).toBe('channel/create')
+    expect(transport.message(0).params).toEqual({ contract: { slot: 'agent', channel: 'events' } })
+    rejectOperation(transport, 0, 'UNAVAILABLE')
+    await completion
+    expect(transport.message(1).result).toEqual({ outcome: 'done', output: 'recovered' })
+  })
   for (const code of ['UNAVAILABLE', 'EXECUTION_FAILED']) {
     test(`does not guess transfer from a ${code} call with no reply messages`, async () => {
       const transport = new MemoryTransport()

@@ -27,6 +27,8 @@ companions.
   binary transport or session control.
   Writer-declared abnormal close owns only incomplete-observation semantics;
   it does not change execution results, authority or ordinary error recovery.
+  Channel creation may reuse a named port of the caller's declared dependency
+  via a closed slot/channel reference; it neither selects nor invokes a provider.
 
 ## Local Contracts
 

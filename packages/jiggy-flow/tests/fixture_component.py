@@ -13,6 +13,13 @@ async def run(context: RunContext) -> RunResult:
     global logged
     mode = context.input.get("mode") if isinstance(context.input, dict) else None
 
+    if mode == "slot-channel":
+        try:
+            await context.channel(contract={"slot": "agent", "channel": "events"})
+        except OperationError as error:
+            return {"outcome": "done", "output": error.code}
+        raise AssertionError("expected rejection")
+
     if mode == "channel-offered-failure":
         pair = await context.channel()
         try:

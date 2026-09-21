@@ -19,7 +19,10 @@ process.stdin.on('data', (chunk: string) => {
 async function execute() {
   try {
     if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Node 22 required')
-    const { source } = JSON.parse(input) as { source: string }
+    const { source, channelContracts } = JSON.parse(input) as {
+      source: string
+      channelContracts?: string[]
+    }
     let types = true
     if (source.startsWith('// flow-authoring: ')) {
       const header = JSON.parse(source.split('\n', 1)[0]!.slice(19))
@@ -29,6 +32,7 @@ async function execute() {
     }
     const result = await compileContract(await stampSource(source, { types }), {
       signal: stop.signal,
+      ...(channelContracts === undefined ? {} : { channelContracts }),
     })
     process.stdout.write(
       JSON.stringify({ source: result.source, artifacts: result.artifacts }) + '\n',

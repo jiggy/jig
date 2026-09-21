@@ -51,6 +51,20 @@ catalog before managed publication.
 
 ## Publication and recovery
 
+Channel ports may reference existing package-local JSON agreements instead of
+generating them. Generation supplies captured available paths to the compiler,
+then validates the complete descriptor and exact referenced bytes with the
+native readers before publication. No URL or remote import is resolved.
+The available-path inventory is bounded to 4096 names and 128 KiB; only exact
+referenced agreements become recorded inputs. Native contract closure limits
+still apply. Unrelated files are not interpreted as channel agreements.
+Borrowed agreements remain user-owned: they are neither outputs nor candidates
+for deletion. Their hashes participate in local freshness; changed bytes require
+explicit regeneration and subsequent review. Publication and interrupted-batch
+recovery check borrowed inputs before and after writing outputs. Changed inputs
+block completion; recovery never replaces them. A managed output cannot silently
+become borrowed, nor a recorded borrowed input become a generated output.
+
 Each package has local management state outside Package/1 under `.jig`.
 The project session provides one cooperating publisher. The complete descriptor
 with its channel closure and requested Agent projections MUST pass the existing exact readers before

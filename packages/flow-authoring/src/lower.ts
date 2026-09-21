@@ -18,6 +18,7 @@ import {
 } from '@typespec/compiler'
 import { fail } from './errors.js'
 import { channelKey, closedKey, invocationKey, oneOfKey, projectionKey } from './library.js'
+import { channelReference } from './values.js'
 
 export type Schema = {
   type?: string | string[]
@@ -95,7 +96,7 @@ function number(value: number | Numeric, target: Type): number {
   return n === 0 ? 0 : n!
 }
 
-export function lower(program: Program) {
+export function lower(program: Program, channelContracts: ReadonlySet<string> = new Set()) {
   const entries = [...program.stateMap(invocationKey)]
   if (entries.length !== 1)
     fail('SOURCE_INVALID', 'Declare exactly one @invocation on a namespace.')
@@ -175,7 +176,7 @@ export function lower(program: Program) {
         ) ||
         !['send', 'receive'].includes(port.direction as string) ||
         typeof port.contract !== 'string' ||
-        !/^\.\/[a-z][a-z0-9-]*\.channel\.json(?![\s\S])/.test(port.contract) ||
+        !channelReference(port.contract) ||
         (port.required !== undefined && typeof port.required !== 'boolean') ||
         (port.delivery !== undefined &&
           !['direct', 'broadcast'].includes(port.delivery as string)) ||
@@ -184,7 +185,7 @@ export function lower(program: Program) {
       )
         fail(
           'SOURCE_INVALID',
-          'Channel ports require a direction and a generated ./name.channel.json contract.',
+          'Channel ports require a direction and a package-local JSON contract.',
           owner,
         )
       ports[name] = port as unknown as ChannelPort
@@ -383,10 +384,10 @@ export function lower(program: Program) {
     }
   }
   for (const port of Object.values(ports)) {
-    if (!Object.hasOwn(channels, port.contract.slice(2)))
+    if (!Object.hasOwn(channels, port.contract.slice(2)) && !channelContracts.has(port.contract))
       fail(
         'SOURCE_INVALID',
-        'Every port must reference a channel generated from this source.',
+        'Every port must reference a generated channel or a supplied offline contract.',
         owner,
         port.contract,
       )

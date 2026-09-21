@@ -22,16 +22,23 @@ not implement continuing conversations and rejects them before dispatch.
 ## Revise a draft
 
 The caller declares an `agent` slot using the complete
-[Agent Run contract bundle](../spec/agent-run.md). Keep its relative
-`contracts/` directory, including `agent-commands.json`, `agent-replies.json`,
-and `acp-public-updates.json`. For example, with the bundle under
-`contracts/agent-run/`, its `flow.meta.json` contains:
+[Agent Run contract bundle](../spec/agent-run.md). After installing the ordinary
+`@jigging/agent-method` dependency, import its bundle into your Flow's existing
+`contracts/` directory:
+
+```sh
+jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run
+```
+
+This validates and copies the descriptor and all referenced channel agreements,
+without running the package or approving work. The new directory belongs to
+your project. In the worker's `flow.meta.json`:
 
 ```json
 {
   "uses": {
     "agent": {
-      "contract": "./contracts/agent-run/contract.json",
+      "contract": "./contracts/agent-run/FLOW.contract.json",
       "requires": ["conversation", "events"]
     }
   }
@@ -51,7 +58,6 @@ import { withAgentConversation } from '@jigging/agent-method/conversation'
 
 const completed = await withAgentConversation(run, {
   operationId: 'incident-brief', slot: 'agent',
-  contractDirectory: './contracts/agent-run',
   input: { instructions: `Draft an incident brief from these facts: ${facts}` },
   onEvent(event) {
     if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
@@ -92,10 +98,10 @@ assumes validated `facts` and `correction` strings from the application's input:
 
 ```ts
 const commands = await run.channel({
-  contract: './contracts/agent-run/contracts/agent-commands.json',
+  contract: { slot: 'agent', channel: 'commands' },
 })
 const replies = await run.channel({
-  contract: './contracts/agent-run/contracts/agent-replies.json',
+  contract: { slot: 'agent', channel: 'replies' },
 })
 const work = run.call({
   operationId: 'incident-brief', slot: 'agent',

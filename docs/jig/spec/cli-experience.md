@@ -10,6 +10,17 @@ makes usable control an observable requirement;
 
 ## Required experience
 
+`jig import-contract <descriptor.json> <new-directory>` is explicit offline
+authoring. It captures and validates one invocation descriptor and its exact
+channel closure (at most 64 agreements, 256 KiB per file, 1 MiB captured bytes),
+preserves bytes and relative paths, and publishes only to an absent destination
+whose parent already exists. It may resolve the operator-selected source root
+through an installed-package link; it rejects links within the selected closure.
+It does not evaluate package code, fetch dependencies, acquire execution
+authority or approve a Run. Cancellation before publication leaves no destination;
+completed publication is not undone. Process loss may leave an unpublished
+`.jig-contract-*` staging directory, not a successfully imported bundle.
+
 1. **Task first.** Identify the requested task and relevant project or target.
    Name stages in ordinary language. Internal lifecycle and implementation
    terms appear only when needed to understand or repair a problem.
@@ -129,6 +140,13 @@ makes usable control an observable requirement;
     identify the outcome and next action from the transcript alone.
 
 ## Diagnostic evidence and interruption
+
+Configuration-evaluator refusals retain the captured declaration location and
+a closed diagnostic distinguishing installation support, containment launch,
+envelope validation, cleanup, interruption and protocol response. Human guidance
+explains the known phase and next safe action; it MUST NOT expose launcher
+exceptions or infer a particular host or timeout cause from generic launch
+failure. These planning diagnostics establish that no Flow was started.
 
 Run reports retain optional `runDiagnostics`: `entries` contain the host-assigned
 `operations` call path (empty for the root), `stderr`, `stderrBytes` and

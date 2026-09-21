@@ -72,6 +72,12 @@ admitted FLOW packages.
 
 ## Local Contracts
 
+- `import-contract` copies a validated local invocation/channel bundle into a
+  new directory, preserving bytes and relative paths. It follows only the
+  operator-selected source root; closure descendants must be regular captured
+  files. It neither acquires an execution host nor fetches, imports package
+  code, replaces an existing destination, or grants Run authority.
+
 - `src/index.ts` is the only JavaScript package export. Other exported symbols
   are private composition or test seams.
 - Expose only the documented CLI and authoring surface; private host machinery

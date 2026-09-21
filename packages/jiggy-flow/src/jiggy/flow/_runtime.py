@@ -28,6 +28,7 @@ from ._types import (
     ChannelBroadcast,
     ChannelEndpoint,
     ChannelPair,
+    ChannelSlotContract,
     JsonValue,
     OperationError,
     OperationErrorCode,
@@ -120,18 +121,18 @@ class _RunContextImpl:
     @overload
     async def channel(
         self, *, delivery: Literal["direct"] = "direct", schema: Any = _SCHEMA_UNSET,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelPair: ...
 
     @overload
     async def channel(
         self, *, delivery: Literal["broadcast"], schema: Any = _SCHEMA_UNSET,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelBroadcast: ...
 
     async def channel(
         self, *, delivery: Literal["direct", "broadcast"] = "direct", schema: Any = _SCHEMA_UNSET,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelPair | ChannelBroadcast:
         return await self._client.channel(delivery=delivery, schema=schema, contract=contract)
 
@@ -787,16 +788,24 @@ class _Runtime:
         task.add_done_callback(settled)
         return task
 
-    async def channel(self, *, delivery: str, schema: Any, contract: str | None) -> _Pair | _Broadcast:
+    async def channel(self, *, delivery: str, schema: Any, contract: str | ChannelSlotContract | None) -> _Pair | _Broadcast:
         if delivery not in ("direct", "broadcast"):
             raise OperationError("UNAVAILABLE", "Unsupported channel delivery")
         if contract is not None and schema is not _SCHEMA_UNSET:
             raise ValueError("Channel schema and contract are mutually exclusive")
         params: dict[str, Any] = {"delivery": delivery}
         if contract is not None:
-            if not isinstance(contract, str) or not contract.startswith("./") or len(contract) > 4096:
-                raise ValueError("Channel contract must be a package-local reference")
-            params["contract"] = contract
+            if isinstance(contract, str):
+                if not contract.startswith("./") or len(contract) > 4096:
+                    raise ValueError("Channel contract must be a package-local reference")
+                params["contract"] = contract
+            elif isinstance(contract, dict) and set(contract) == {"slot", "channel"} and all(
+                isinstance(value, str) and len(value) <= 64 and _LOCAL_NAME.fullmatch(value)
+                for value in contract.values()
+            ):
+                params["contract"] = dict(contract)
+            else:
+                raise ValueError("Channel contract must be package-local or an exact slot/channel reference")
         elif schema is not _SCHEMA_UNSET:
             if not isinstance(schema, (dict, bool)):
                 raise ValueError("Channel schema must be a boolean or schema object")

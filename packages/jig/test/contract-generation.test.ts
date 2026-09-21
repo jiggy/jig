@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, expect, setDefaultTimeout, test } from 'bun:test'
 import { constants } from 'node:fs'
 import { mkdir, mkdtemp, open, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -11,6 +11,9 @@ import { generateContract } from '../src/internal/contract-authoring-client.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
 
 const roots: string[] = []
+// These tests synchronize durable publication records. Allow the outer harness
+// to wait for real storage; compiler deadlines and production limits stay fixed.
+setDefaultTimeout(30_000)
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
@@ -25,13 +28,14 @@ test('real bundled compiler publishes contracts through the host manager', async
     ),
   )
   await prepare(root, true, {
-    compile: (source, signal) =>
+    compile: (source, signal, paths) =>
       generateContract(
         source,
         signal,
         fileURLToPath(
           new URL('../libexec/authoring/contract-authoring-worker.js', import.meta.url),
         ),
+        paths,
       ),
   })
   expect(
@@ -44,6 +48,38 @@ test('real bundled compiler publishes contracts through the host manager', async
   )
   expect(contract.descriptor.id).toBe('https://example.org/methods/review')
   expect(contract.channelContracts.size).toBe(1)
+  expect(await prepare(root, false)).toBe(false)
+}, 30000)
+
+test('bundled compiler reuses a borrowed agreement without generating or owning it', async () => {
+  const root = await fixture()
+  const source = (
+    await readFile(
+      new URL('../../flow-authoring/test/fixtures/progress.tsp', import.meta.url),
+      'utf8',
+    )
+  ).replace(/@channelContract\([\s\S]*?\)\s*@closed model Progress \{[\s\S]*?\}/, '')
+  await writeFile(join(root, 'flow/FLOW.contract.tsp'), source)
+  const agreement = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    id: 'https://example.org/progress',
+    version: '1.0.0',
+    semantics: 'Shared progress.',
+    item: true,
+  })
+  await writeFile(join(root, 'flow/progress.channel.json'), agreement)
+  await prepare(root, true, {
+    compile: (source, signal, paths) =>
+      generateContract(
+        source,
+        signal,
+        fileURLToPath(
+          new URL('../libexec/authoring/contract-authoring-worker.js', import.meta.url),
+        ),
+        paths,
+      ),
+  })
+  expect(await readFile(join(root, 'flow/progress.channel.json'), 'utf8')).toBe(agreement)
   expect(await prepare(root, false)).toBe(false)
 }, 30000)
 const descriptor = JSON.stringify({
@@ -98,6 +134,76 @@ async function prepare(
     await project.dispose()
   }
 }
+
+test('borrowed agreement bytes stay user-owned and changes require explicit regeneration', async () => {
+  const root = await fixture()
+  await mkdir(join(root, 'flow/contracts'))
+  const agreement = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    id: 'https://example.org/progress',
+    version: '1.0.0',
+    semantics: 'Progress, not success.',
+    item: { type: 'string' },
+  })
+  const path = join(root, 'flow/contracts/progress.json')
+  await writeFile(path, agreement)
+  const contract = JSON.stringify({
+    ...JSON.parse(descriptor),
+    channels: {
+      progress: { direction: 'send', contract: './contracts/progress.json' },
+    },
+  })
+  const compile = async (source: string, _signal: AbortSignal, paths: readonly string[]) => {
+    expect(paths).toContain('./contracts/progress.json')
+    return { source, artifacts: { 'FLOW.contract.json': contract } }
+  }
+  expect(await prepare(root, true, { compile })).toBe(true)
+  expect(await readFile(path, 'utf8')).toBe(agreement)
+  expect(await prepare(root, false)).toBe(false)
+  const changed = agreement.replace('Progress, not success.', 'Selected progress only.')
+  await writeFile(path, changed)
+  await expect(prepare(root, false)).rejects.toMatchObject({ code: 'AUTHORING_STALE' })
+  expect(await prepare(root, true, { compile })).toBe(true)
+  expect(await prepare(root, false)).toBe(false)
+  expect(await readFile(path, 'utf8')).toBe(changed)
+  await writeFile(join(root, 'flow/FLOW.contract.tsp'), 'no channel')
+  await prepare(root)
+  expect(await readFile(path, 'utf8')).toBe(changed)
+})
+
+test('borrowed agreement mutation during publication prevents completion without overwriting it', async () => {
+  const root = await fixture()
+  const agreement = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    id: 'https://example.org/progress',
+    version: '1.0.0',
+    semantics: 'Progress.',
+    item: true,
+  })
+  await writeFile(join(root, 'flow/shared.json'), agreement)
+  const compile = async (source: string) => ({
+    source,
+    artifacts: {
+      'FLOW.contract.json': JSON.stringify({
+        ...JSON.parse(descriptor),
+        channels: { progress: { direction: 'send', contract: './shared.json' } },
+      }),
+    },
+  })
+  await expect(
+    prepare(root, true, {
+      compile,
+      afterPublish: async () => {
+        await writeFile(join(root, 'flow/shared.json'), 'changed by author')
+      },
+    }),
+  ).rejects.toMatchObject({ code: 'AUTHORING_CONFLICT' })
+  expect(await readFile(join(root, 'flow/shared.json'), 'utf8')).toBe('changed by author')
+  await expect(prepare(root, false)).rejects.toMatchObject({ code: 'AUTHORING_INTERRUPTED' })
+  await expect(prepare(root, true, { compile })).rejects.toMatchObject({
+    code: 'AUTHORING_CONFLICT',
+  })
+})
 
 test('source-only review is inert; authorized generation publishes and becomes fresh', async () => {
   const root = await fixture()

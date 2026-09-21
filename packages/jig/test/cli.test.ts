@@ -35,6 +35,9 @@ import {
 } from '../src/cli.js'
 import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
 import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
+import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
+import { CheckError } from '../src/diagnostics.js'
+import { projectError as projectFailure } from '../src/internal/project-session-controller.js'
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
 
@@ -2169,6 +2172,31 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('secret')
     expect(invocation.error).not.toContain('/private/file')
   })
+
+  test.each(Object.entries(EVALUATOR_HINTS))(
+    'evaluator %s survives safe planning and CLI projection',
+    async (code, hint) => {
+      const events: string[] = []
+      const failure = projectFailure(
+        new CheckError('unavailable', code, 'secret /private/host/path', 'bindings/worker.ts'),
+        'plan',
+      )
+      expect(failure.diagnostic).toEqual({ code, path: 'bindings/worker.ts' })
+      expect(JSON.stringify(failure.toJSON())).not.toContain('secret')
+      const invocation = commandInvocation(
+        fakeHost(fakeSession(events, { planFailure: failure }), events),
+      )
+      expect(await main(['review', '--yes'], invocation.options)).toBe(2)
+      expect(invocation.error).toContain(hint)
+      expect(invocation.error).toContain('bindings/worker.ts')
+      expect(invocation.error).not.toContain('/private/host/path')
+      const unsafe = projectFailure(
+        new CheckError('unavailable', code, 'secret', '/private/host/path'),
+        'plan',
+      )
+      expect(unsafe.diagnostic).toBeUndefined()
+    },
+  )
 
   test('evaluation limits explain bounded authoring and host pressure without relaxing execution', async () => {
     const events: string[] = []

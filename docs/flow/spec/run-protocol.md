@@ -366,8 +366,16 @@ disposal independent of whether producer admission wins or loses that race.
 | `channel/close` | `{endpoint, error?: "LAGGED"}` | `null`: clean writer seal or producer-declared abnormal end |
 | `channel/release` | `{endpoint}` | `{status: "released"}`, `{status: "ended", lastSequence}`, or `{status: "failed", code, details?}` |
 
-Creation defaults to direct delivery and generic JSON/1. Schemas use Schema/1;
-named references resolve only against the invoking package. Unsupported valid
+Creation defaults to direct delivery and generic JSON/1. Schemas use Schema/1.
+`contract` is either a package-local `./path.json` string or the closed object
+`{slot: LocalName, channel: LocalName}`. The latter selects the named agreement
+on that channel port in the invoking package's declared dependency contract.
+Both names are at most 64 characters. Resolution MUST use the caller's captured
+declaration and its offline closure, never a selected provider's files or a URL.
+Missing declarations, missing ports or ports without a named agreement fail
+before allocation. Resolution neither invokes the slot nor grants endpoint or
+execution rights; ordinary delivery and transfer checks still apply.
+Named references resolve only against the invoking package. Unsupported valid
 requests fail operationally before allocation or dispatch. Invalid RPC shapes
 retain the ordinary incompatibility rules.
 

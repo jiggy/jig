@@ -175,7 +175,7 @@ class RunContext(Protocol):
         *,
         delivery: Literal["direct", "broadcast"] = "direct",
         schema: JsonValue = ...,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelPair | ChannelBroadcast: ...
 
 
@@ -382,7 +382,7 @@ interface ChannelContractIdentity {
 }
 type ChannelOptions = {
   readonly schema?: JsonValue;
-  readonly contract?: string;
+  readonly contract?: string | { readonly slot: string; readonly channel: string };
 } & ({ readonly delivery?: 'direct' } | { readonly delivery: 'broadcast' });
 interface ChannelCloseOptions extends CallOptions {
   readonly error?: 'LAGGED';
@@ -466,7 +466,7 @@ In Python, assigning a coroutine alone does not start it. `gather` starts both
 coroutines below and retains both outcomes:
 
 ```python
-updates = await run.channel(contract="./contracts/public-updates.json")
+updates = await run.channel(contract={"slot": "agent", "channel": "events"})
 
 async def invoke():
     try:

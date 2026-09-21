@@ -3,8 +3,8 @@ import { type FileHandle, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { randomUUID, createHash } from 'node:crypto'
 import { invalid, unavailable } from '../diagnostics.js'
 import { decodeJson1 } from '../json.js'
-import { parseInvocationContract } from '../invocation-contract.js'
-import { parseChannelContract } from '../channel-contract.js'
+import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
+import { parseChannelContract, requireChannelReference } from '../channel-contract.js'
 import type { PrepareCapturedFlow } from '../project/flow-source.js'
 import type { PrivateProjectRoot } from '../project/root.js'
 import { assertResponseSchema } from '@jigging/agent-method'
@@ -17,6 +17,7 @@ type Files = Record<string, string | null>
 interface Generation {
   source: string
   outputs: Record<string, string>
+  inputs?: Record<string, string>
 }
 interface Journal {
   before: Files
@@ -31,6 +32,43 @@ const conflict = (name: string): never =>
     'Generated files or source changed. Preserve edits and resolve ownership before generation.',
     name,
   )
+
+function inputNames(inputs: Record<string, string>): void {
+  if (
+    !inputs ||
+    typeof inputs !== 'object' ||
+    Array.isArray(inputs) ||
+    Object.keys(inputs).length > 256
+  )
+    conflict('generation inputs')
+  for (const [path, digest] of Object.entries(inputs)) {
+    try {
+      requireChannelReference(`./${path}`, 'generation inputs')
+    } catch {
+      conflict('generation inputs')
+    }
+    if (!path.endsWith('.json') || typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest))
+      conflict('generation inputs')
+  }
+}
+
+/** Borrowed inputs are read through no-follow directory descriptors, never published. */
+async function readInput(root: FileHandle, path: string): Promise<string | null> {
+  const parts = path.split('/')
+  const handles: FileHandle[] = []
+  let parent = root
+  try {
+    for (const part of parts.slice(0, -1)) {
+      const child = await directory(parent, part, false)
+      if (!child) return null
+      handles.push(child)
+      parent = child
+    }
+    return await read(parent, parts.at(-1)!, 262144)
+  } finally {
+    for (const handle of handles.reverse()) await handle.close()
+  }
+}
 
 async function read(
   directory: FileHandle,
@@ -129,6 +167,7 @@ function state(text: string | null): Generation | null {
   if (typeof value.source !== 'string' || !value.outputs || Array.isArray(value.outputs))
     conflict('generation state')
   names(value.outputs)
+  if (value.inputs !== undefined) inputNames(value.inputs)
   if (Object.values(value.outputs).some((v) => typeof v !== 'string' || !/^[a-f0-9]{64}$/.test(v)))
     conflict('generation state')
   return value
@@ -141,7 +180,11 @@ export function prepareContractGeneration(options: {
   signal: AbortSignal
   verify: () => Promise<void>
   report?: (path: string, files: readonly string[]) => void
-  compile?: (source: string, signal: AbortSignal) => Promise<GeneratedContract>
+  compile?: (
+    source: string,
+    signal: AbortSignal,
+    channelContracts: readonly string[],
+  ) => Promise<GeneratedContract>
   afterPublish?: (name: string) => Promise<void>
 }): PrepareCapturedFlow {
   const refreshed = new Set<string>()
@@ -214,8 +257,17 @@ export function prepareContractGeneration(options: {
             : null
           if (retained !== content) conflict(name)
         }
+        let inputsChanged = false
+        for (const [name, digest] of Object.entries(previous.inputs ?? {})) {
+          const capturedInput = captured.files.some((f) => f.path === name)
+            ? new TextDecoder('utf-8', { fatal: true }).decode(await captured.read(name, 262144))
+            : null
+          if (capturedInput !== (await readInput(packageDirectory, name))) conflict(name)
+          if (capturedInput === null || hash(capturedInput) !== digest) inputsChanged = true
+        }
         if (
           previous.source === source &&
+          !inputsChanged &&
           (!options.generate || refreshed.has(provenance.projectPath))
         )
           return false
@@ -239,8 +291,28 @@ export function prepareContractGeneration(options: {
       if (++compilations > 32)
         unavailable('AUTHORING_LIMIT', 'A review can generate at most 32 contracts.')
       const generated =
-        source === null ? null : await (options.compile ?? generateContract)(source, options.signal)
+        source === null
+          ? null
+          : await (
+              options.compile ??
+              ((source, signal, paths) => generateContract(source, signal, undefined, paths))
+            )(
+              source,
+              options.signal,
+              captured.files
+                .filter((f) => {
+                  if (!f.path.endsWith('.json') || previous?.outputs[f.path]) return false
+                  try {
+                    requireChannelReference(`./${f.path}`, f.path)
+                    return true
+                  } catch {
+                    return false
+                  }
+                })
+                .map((f) => `./${f.path}`),
+            )
       const after: Files = Object.create(null)
+      const inputs: Record<string, string> = Object.create(null)
       if (generated) {
         if (
           typeof generated.source !== 'string' ||
@@ -253,6 +325,7 @@ export function prepareContractGeneration(options: {
           conflict('compiler output')
         const channels = new Map<string, Uint8Array>()
         for (const [name, content] of Object.entries(generated.artifacts)) {
+          if (previous?.inputs?.[name]) conflict(name)
           if (name.endsWith('.channel.json')) {
             parseChannelContract(Buffer.from(content), name)
             channels.set(name, Buffer.from(content))
@@ -260,6 +333,20 @@ export function prepareContractGeneration(options: {
             assertResponseSchema(decode(content))
           after[name] = content
         }
+        for (const path of invocationContractChannelPaths(
+          Buffer.from(generated.artifacts[DESCRIPTOR]!),
+          DESCRIPTOR,
+        )) {
+          if (channels.has(path)) continue
+          if (previous?.outputs[path]) conflict(path)
+          if (captured.files.some((f) => f.path === path)) {
+            const bytes = await captured.read(path, 262144)
+            const content = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+            inputs[path] = hash(content)
+            channels.set(path, bytes)
+          }
+        }
+        inputNames(inputs)
         parseInvocationContract(Buffer.from(generated.artifacts[DESCRIPTOR]!), DESCRIPTOR, channels)
         after[SOURCE] = generated.source
       } else {
@@ -286,6 +373,7 @@ export function prepareContractGeneration(options: {
             outputs: Object.fromEntries(
               Object.entries(generated.artifacts).map(([name, text]) => [name, hash(text)]),
             ),
+            ...(Object.keys(inputs).length ? { inputs } : {}),
           }
         : null
       const journal: Journal = { before, after, next }
@@ -307,6 +395,13 @@ export function prepareContractGeneration(options: {
       return true
 
       async function publish(journal: Journal, recovering: boolean): Promise<void> {
+        const verifyInputs = async () => {
+          for (const [path, digest] of Object.entries(journal.next?.inputs ?? {})) {
+            const content = await readInput(packageDirectory, path)
+            if (content === null || hash(content) !== digest) conflict(path)
+          }
+        }
+        await verifyInputs()
         // Validate the WHOLE batch before modifying a member. Never overwrite a third value.
         for (const name of Object.keys(journal.after)) {
           const observed = await current(name)
@@ -331,6 +426,7 @@ export function prepareContractGeneration(options: {
           await packageDirectory.sync()
           await options.afterPublish?.(name)
         }
+        await verifyInputs()
         options.signal.throwIfAborted()
         await options.verify()
         for (const [name, content] of Object.entries(journal.after))

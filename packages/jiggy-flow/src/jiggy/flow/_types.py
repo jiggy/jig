@@ -63,6 +63,11 @@ class ChannelContractIdentity(TypedDict):
     digest: str
 
 
+class ChannelSlotContract(TypedDict):
+    slot: str
+    channel: str
+
+
 class ChannelSender(Protocol):
     @property
     def direction(self) -> Literal["send"]: ...
@@ -145,7 +150,7 @@ class RunContext(Protocol):
         *,
         delivery: Literal["direct"] = "direct",
         schema: JsonValue = ...,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelPair: ...
 
     @overload
@@ -154,7 +159,7 @@ class RunContext(Protocol):
         *,
         delivery: Literal["broadcast"],
         schema: JsonValue = ...,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelBroadcast: ...
 
     async def call(

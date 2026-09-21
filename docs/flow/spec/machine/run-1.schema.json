@@ -420,9 +420,26 @@
           ]
         },
         "contract": {
-          "type": "string",
-          "pattern": "^\\./[^\\\\]+$(?![\\s\\S])",
-          "maxLength": 4096
+          "oneOf": [
+            { "type": "string", "pattern": "^\\./[^\\\\]+$(?![\\s\\S])", "maxLength": 4096 },
+            {
+              "type": "object",
+              "properties": {
+                "slot": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\\s\\S])",
+                  "maxLength": 64
+                },
+                "channel": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\\s\\S])",
+                  "maxLength": 64
+                }
+              },
+              "required": ["slot", "channel"],
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "required": [],

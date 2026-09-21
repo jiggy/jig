@@ -118,7 +118,6 @@ import { withAgentConversation } from '@jigging/agent-method/conversation'
 
 const completed = await withAgentConversation(run, {
   operationId: 'incident-brief', slot: 'agent',
-  contractDirectory: './contracts/agent-run',
   input: { instructions: 'Draft a brief from the supplied incident facts.' },
   onEvent(event) {
     if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
@@ -130,14 +129,18 @@ const completed = await withAgentConversation(run, {
 })
 ```
 
-The caller includes the exact current Agent bundle at `contractDirectory` and
-declares its required mechanisms in `flow.meta.json`:
+The caller declares the exact Agent bundle and required mechanisms once in
+`flow.meta.json`. The helper resolves channel agreements through that slot:
+
+With Jig, import the installed bundle in one step into an existing `contracts/`
+parent: `jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run`.
+This copies the validated offline closure without running code or granting authority.
 
 ```json
 {
   "uses": {
     "agent": {
-      "contract": "./contracts/agent-run/contract.json",
+      "contract": "./contracts/agent-run/FLOW.contract.json",
       "requires": ["conversation", "events"]
     }
   }

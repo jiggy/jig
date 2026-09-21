@@ -23,6 +23,8 @@ import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
 import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
+import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
+import { importContract } from './internal/contract-import.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
@@ -58,6 +60,7 @@ Usage:
   jig review [project]       Review changes and approve an exact revision
   jig run <target>           Run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
+  jig import-contract <file> <directory>  Copy a complete offline contract bundle
   jig --version             Print the installed version
 
 Start here:
@@ -70,6 +73,15 @@ Use jig <command> --help for options and examples.
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
+  'import-contract': `Usage: jig import-contract <descriptor.json> <new-directory>
+
+Copy an installed or local invocation descriptor and its referenced channel
+agreements into a new directory. Bytes and relative paths are preserved.
+The source is validated without importing code, fetching, or approving work.
+The destination parent must exist; existing destinations are never replaced.
+
+Example:
+  jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -243,6 +255,7 @@ export async function main(
   }
 
   try {
+    if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
@@ -295,6 +308,36 @@ function isHelpRequest(arguments_: readonly string[]): boolean {
     (arguments_.length === 1 ||
       (arguments_.length === 2 && Object.hasOwn(COMMAND_HELP, arguments_[0]!)))
   )
+}
+
+async function executeImportContract(
+  arguments_: readonly string[],
+  runtime: CliRuntime,
+): Promise<number> {
+  if (arguments_.length !== 3 || arguments_.slice(1).some((value) => value.startsWith('-')))
+    usage('import-contract', 'Specify one descriptor file and one new destination directory.')
+  try {
+    const result = await importContract(
+      resolve(runtime.currentDirectory, arguments_[1]!),
+      resolve(runtime.currentDirectory, arguments_[2]!),
+      runtime.signal,
+    )
+    runtime.writeOutput(
+      `Imported ${result.files} contract files into ${asciiJsonString(arguments_[2]!)}.\nUse ${asciiJsonString(basename(result.descriptor))} in the caller's slot declaration, then review the project.\n`,
+    )
+    return 0
+  } catch (error) {
+    if (error instanceof CheckError) {
+      runtime.writeError(
+        renderDiagnostic(
+          error.code,
+          `Contract import failed. ${asciiJsonString(error.message)}\nNo destination was replaced and no execution was approved.`,
+        ),
+      )
+      return error.kind === 'invalid' ? 1 : 2
+    }
+    throw error
+  }
 }
 
 async function executeInspect(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
@@ -1274,6 +1317,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
       ...ACP_SETUP_HINTS,
+      ...EVALUATOR_HINTS,
       AUTHORING_STALE:
         'run jig review --generate-contracts to refresh the authored contract before review',
       AUTHORING_INTERRUPTED:

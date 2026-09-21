@@ -33,6 +33,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
   Optional synchronous `onEvent` owns its public update channel and reports
   observation loss separately from execution settlement. It never privately
   echoes filtered data or requires a Log grant. Async routing uses `events`.
+  Resolve commands, replies and updates through the caller's declared Agent
+  slot; callers do not supply a separately synchronized contract directory.
 - Session requests are invocation metadata, separate from rendered instructions
   and transport requests. `prepareAgent` validates and snapshots them;
   `finishAgent` assembles answer facts only. `checkAgentResult` validates optional

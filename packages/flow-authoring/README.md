@@ -33,6 +33,14 @@ options, not a function to call silently when opening an unfamiliar package.
 It returns new source text; the application chooses whether to retain it.
 `compileContract` requires that pin and refuses a different installed toolchain.
 
+For borrowed agreements, pass their available package-relative names as
+`compileContract(source, { channelContracts: ['./contracts/events.json'] })`.
+The compiler reads no such files and emits only authored outputs. The caller
+must validate and distribute the referenced JSON bytes with the descriptor;
+Jig's managed workflow does this and tracks borrowed-input freshness separately
+from generated-file ownership. The inventory is bounded to 4096 distinct paths
+and 128 KiB; the native contract's smaller closure limits still apply.
+
 A minimal authored body is:
 
 ```typespec

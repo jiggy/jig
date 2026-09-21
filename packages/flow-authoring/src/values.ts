@@ -1,5 +1,27 @@
 import { fail } from './errors.js'
 
+export function channelReference(path: string): boolean {
+  return (
+    typeof path === 'string' &&
+    Buffer.byteLength(path) <= 1026 &&
+    Buffer.from(path).toString('utf8') === path &&
+    path.startsWith('./') &&
+    path.endsWith('.json') &&
+    path.slice(2).split('/').length <= 64 &&
+    path
+      .slice(2)
+      .split('/')
+      .every(
+        (part) =>
+          part.length > 0 &&
+          Buffer.byteLength(part) <= 255 &&
+          !/[\\\u0000-\u001f\u007f]/.test(part) &&
+          part !== '.' &&
+          part !== '..',
+      )
+  )
+}
+
 export function checkText(text: string, maxBytes: number): void {
   if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > maxBytes) {
     fail('VALUE_LIMIT', 'Text exceeds the authoring byte limit.')

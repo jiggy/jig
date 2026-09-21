@@ -157,6 +157,40 @@ try {
   await assert.rejects(stat(join(greeting, 'flows/hello/node_modules')), { code: 'ENOENT' })
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
 
+  // Ordinary installed authoring must work without acquiring the execution host
+  // and must not evaluate the source package or the consumer's ambient config.
+  const contractSource = join(consumer, 'contract-source')
+  await mkdir(join(contractSource, 'agreements'), { recursive: true })
+  const borrowed = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    id: 'https://example.org/import-progress',
+    version: '1.0.0',
+    semantics: 'Progress is not success.',
+    item: true,
+  })
+  const contract = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    channels: { progress: { direction: 'send', contract: './agreements/progress.json' } },
+  })
+  await writeFile(join(contractSource, 'FLOW.contract.json'), contract)
+  await writeFile(join(contractSource, 'agreements/progress.json'), borrowed)
+  await writeFile(join(contractSource, 'FLOW.ts'), 'throw new Error("must not execute")')
+  const imported = await run(
+    [command, 'import-contract', 'contract-source/FLOW.contract.json', 'imported-contract'],
+    consumer,
+  )
+  assert.match(imported.stdout, /Imported 2 contract files/)
+  assert.equal(
+    await readFile(join(consumer, 'imported-contract/FLOW.contract.json'), 'utf8'),
+    contract,
+  )
+  assert.equal(
+    await readFile(join(consumer, 'imported-contract/agreements/progress.json'), 'utf8'),
+    borrowed,
+  )
+  await assert.rejects(stat(join(consumer, 'imported-contract/FLOW.ts')), { code: 'ENOENT' })
+  await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
+
   await Promise.all([
     rm(join(consumer, '.env')),
     rm(join(consumer, 'bunfig.toml')),

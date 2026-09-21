@@ -12,6 +12,7 @@ import {
 } from '../administration/project.js'
 import type { RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
+import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
 import { validateJson1 } from '../json.js'
 import {
   buildPrivateActivationRequests,
@@ -813,6 +814,7 @@ export function scopePrivatePackagePlanningError(error: unknown, packagePath: st
 function isUnavailableDiagnosticCode(code: string): boolean {
   return (
     Object.hasOwn(ACP_SETUP_HINTS, code) ||
+    Object.hasOwn(EVALUATOR_HINTS, code) ||
     [
       'AUTHORING_NODE',
       'AUTHORING_COMPILER',

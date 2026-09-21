@@ -58,6 +58,31 @@ test('named invocation and channel contracts are one complete portable artifact 
   assert.match(generated.artifacts['FLOW.contract.d.ts'], /export type Progress/)
 })
 
+test('borrowed offline agreements are referenced, not regenerated', async () => {
+  const body = progress
+    .slice(0, progress.indexOf('@channelContract'))
+    .replace('./progress.channel.json', './contracts/shared-progress.json')
+  const stamped = await stampSource(body, { types: true })
+  await assert.rejects(compileContract(stamped), /supplied offline contract/)
+  const result = await compileContract(stamped, {
+    channelContracts: ['./contracts/shared-progress.json'],
+  })
+  assert.deepEqual(Object.keys(result.artifacts).sort(), [
+    'FLOW.contract.d.ts',
+    'FLOW.contract.json',
+  ])
+  assert.equal(
+    JSON.parse(result.artifacts['FLOW.contract.json']).channels.progress.contract,
+    './contracts/shared-progress.json',
+  )
+  for (const invalid of [
+    '../outside.json',
+    './a/../outside.json',
+    'https://example.org/channel.json',
+  ])
+    await assert.rejects(compileContract(stamped, { channelContracts: [invalid] }), /package-local/)
+})
+
 for (const [name, body, message] of [
   [
     'missing channel',

@@ -1,6 +1,16 @@
 {
   "valid": [
     {
+      "name": "channel-from-declared-slot",
+      "definition": "channelCreateRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/create",
+        "params": { "contract": { "slot": "agent", "channel": "events" } }
+      }
+    },
+    {
       "name": "root-run",
       "definition": "flowRunRequest",
       "value": {

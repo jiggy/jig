@@ -1268,9 +1268,15 @@ def validate_channel_message(definition: str, message: Any) -> None:
                 raise ProtocolError("unsupported channel profile")
             if "schema" in params and not isinstance(params["schema"], (dict, bool)):
                 raise ProtocolError("invalid channel schema")
-            if "contract" in params and (not isinstance(params["contract"], str)
-                                         or not params["contract"].startswith("./")):
-                raise ProtocolError("invalid local contract reference")
+            if "contract" in params:
+                reference = params["contract"]
+                if isinstance(reference, dict):
+                    require_exact_object(reference, {"slot", "channel"})
+                    for value in reference.values():
+                        if not isinstance(value, str) or len(value) > 64 or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", value):
+                            raise ProtocolError("invalid slot channel reference")
+                elif not isinstance(reference, str) or not reference.startswith("./"):
+                    raise ProtocolError("invalid local contract reference")
         else:
             expected = {"endpoint", "value"} if definition == "channelSendRequest" else {"endpoint"}
             if definition == "channelCloseRequest" and "error" in params:

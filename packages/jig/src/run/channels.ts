@@ -4,7 +4,7 @@ import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../
 import { compileEmbeddedSchema } from '../schema/index.js'
 import type { WireFailureCode } from './session.js'
 
-const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/
 export const CHANNEL_LIMITS = Object.freeze({
   sources: 16,
   receivers: 16,
@@ -48,12 +48,14 @@ export interface ChannelDeclaration {
 export interface ChannelCreationOptions {
   readonly delivery?: 'direct' | 'broadcast'
   readonly schema?: JsonValue
-  readonly contract?: string
+  readonly contract?: ChannelContractReference
 }
+
+export type ChannelContractReference = string | { readonly slot: string; readonly channel: string }
 
 export interface ChannelParticipantOptions {
   readonly resolveContract?: (
-    path: string,
+    path: ChannelContractReference,
   ) => ResolvedChannelContract | Promise<ResolvedChannelContract>
 }
 
@@ -395,8 +397,6 @@ export class ChannelBroker {
         object.delivery !== 'broadcast'
       )
         throw new TypeError('invalid delivery')
-      if (object.contract !== undefined && typeof object.contract !== 'string')
-        throw new TypeError('invalid contract reference')
       if (signal?.aborted) throw cancelled()
       const pair = await this.create(owner, object as unknown as ChannelCreationOptions)
       if (signal?.aborted) {
@@ -956,7 +956,26 @@ export class ChannelParticipant {
   abort(code: WireFailureCode = 'OWNER_CLOSED') {
     this.broker.abortParticipant(this, code)
   }
-  resolve(path: string): ResolvedChannelContract | Promise<ResolvedChannelContract> {
+  resolve(
+    path: ChannelContractReference,
+  ): ResolvedChannelContract | Promise<ResolvedChannelContract> {
+    if (typeof path !== 'string') {
+      const value = requireObject(path as unknown as JsonValue)
+      exactKeys(value, ['slot', 'channel'], [])
+      for (const key of ['slot', 'channel'])
+        if (
+          typeof value[key] !== 'string' ||
+          value[key].length > 64 ||
+          !LOCAL_NAME.test(value[key])
+        )
+          throw new ChannelOperationError('INVALID_INPUT', 'invalid slot channel reference')
+      if (!this.options.resolveContract)
+        throw new ChannelOperationError('UNAVAILABLE', 'named channel resolution is unavailable')
+      return this.options.resolveContract({
+        slot: value.slot as string,
+        channel: value.channel as string,
+      })
+    }
     if (
       !path.startsWith('./') ||
       path

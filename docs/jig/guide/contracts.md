@@ -86,8 +86,18 @@ namespace Review;
 Include the same import and `using FLOW` as the first example. Generation owns
 the complete invocation/channel bundle; share its generated JSON with callers.
 Channel ports can also declare `delivery`, and receive ports can declare `start`.
-Every referenced channel is authored in this source. No manual JSON overlay or
-compiler on the consumer host is needed.
+Ports can also reference an existing package-local agreement, such as
+`contract: "./contracts/shared/events.json"`, without a `@channelContract`
+declaration. Generation validates and records those borrowed bytes; it never
+overwrites or deletes them. Editing a borrowed agreement requires explicit
+regeneration before review. The generated descriptor still references that
+file, so distribute the complete bundle.
+
+To reuse a complete invocation contract from an installed package or local
+directory, use `jig import-contract <descriptor.json> <new-directory>`. The
+destination parent must exist. Jig copies only the validated descriptor and
+its referenced channel agreements, preserving bytes and relative paths. It
+does not fetch dependencies, run code, overwrite a destination or approve work.
 
 ## Name optional behavior
 

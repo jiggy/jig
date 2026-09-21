@@ -3,6 +3,7 @@ import descriptor from '../../../docs/jig/spec/contracts/agent-run/contracts/acp
   type: 'json',
 }
 import { parseChannelContract } from '../src/channel-contract.js'
+import { parseInvocationContract } from '../src/invocation-contract.js'
 import { privateFiniteAcpChannelOwnerId } from '../src/internal/root-finite-acp-controller.js'
 import {
   channelContractResolver,
@@ -24,6 +25,41 @@ const ACP_PUBLIC_UPDATES: ResolvedChannelContract = {
 }
 
 describe('ordinary command channel bridges', () => {
+  test('slot references resolve only caller-declared agreements and share the file cache', async () => {
+    const used = parseInvocationContract(
+      canonicalJson({
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        id: 'https://example.org/logger',
+        version: '1.0.0',
+        channels: { events: { direction: 'send', contract: './events.json' } },
+      }),
+      'contracts/logger/contract.json',
+      new Map([['events.json', canonicalJson(descriptor as JsonValue)]]),
+    )
+    const reads: string[] = []
+    const packageFiles = {
+      ...captured(),
+      async read(path: string) {
+        reads.push(path)
+        expect(path).toBe('contracts/logger/events.json')
+        return canonicalJson(descriptor as JsonValue)
+      },
+    }
+    const resolve = channelContractResolver(packageFiles, new Map(), {
+      ...inspected(),
+      usedContracts: [{ slot: 'agent', path: 'contracts/logger/contract.json', contract: used }],
+    })
+    const selected = await resolve({ slot: 'agent', channel: 'events' })
+    expect(await resolve('./contracts/logger/events.json')).toBe(selected)
+    expect(reads).toHaveLength(1)
+    await expect(resolve({ slot: 'other', channel: 'events' })).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    })
+    await expect(resolve({ slot: 'agent', channel: 'missing' })).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    })
+    expect(reads).toHaveLength(1)
+  })
   test('Finite resource channel scope keys cannot collide across root, siblings, or delimiters', () => {
     const scopes = [
       privateFiniteAcpChannelOwnerId(undefined, 'a:b'),
@@ -92,9 +128,9 @@ describe('ordinary command channel bridges', () => {
     expect(reads).toBe(16)
     await channelContractResolver(packageAt('package-0'), contracts)('./events.json')
     expect(reads).toBe(16)
-    expect(() =>
+    await expect(
       channelContractResolver(packageAt('package-16'), contracts)('./events.json'),
-    ).toThrow('cache limit reached')
+    ).rejects.toThrow('cache limit reached')
     expect(reads).toBe(16)
   })
 

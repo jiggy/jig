@@ -142,9 +142,22 @@ export class Channels {
       throw new TypeError('schema and contract are exclusive')
     if (
       params.contract !== undefined &&
-      (typeof params.contract !== 'string' || !params.contract.startsWith('./'))
+      !(typeof params.contract === 'string'
+        ? params.contract.startsWith('./')
+        : params.contract !== null &&
+          typeof params.contract === 'object' &&
+          !Array.isArray(params.contract) &&
+          Object.keys(params.contract).length === 2 &&
+          ['slot', 'channel'].every(
+            (key) =>
+              typeof (params.contract as JsonObject)[key] === 'string' &&
+              /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/.test(
+                (params.contract as JsonObject)[key] as string,
+              ) &&
+              ((params.contract as JsonObject)[key] as string).length <= 64,
+          ))
     )
-      throw new TypeError('contract must be package-local')
+      throw new TypeError('contract must be package-local or an exact slot/channel reference')
     let channel: ChannelPair | ChannelBroadcast | undefined
     await this.request('channel/create', params, callOptions, {
       settled: (settlement, exposed) => {

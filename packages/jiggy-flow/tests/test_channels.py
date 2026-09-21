@@ -36,6 +36,14 @@ class ChannelGrantTests(unittest.TestCase):
 
 
 class ChannelTests(unittest.TestCase):
+    def test_slot_channel_reference_is_data_not_an_invocation(self) -> None:
+        self.component.send(root_request("slot-channel"))
+        request = self.component.receive()
+        self.assertEqual(request["method"], "channel/create")
+        self.assertEqual(request["params"]["contract"], {"slot": "agent", "channel": "events"})
+        self.fail_wire(request, "UNAVAILABLE")
+        self.finish("UNAVAILABLE")
+
     def setUp(self) -> None:
         self.component = Component()
 

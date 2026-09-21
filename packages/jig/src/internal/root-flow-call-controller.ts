@@ -187,7 +187,7 @@ export async function executePrivateRootFlowCall(
       if (!(error instanceof SchemaDiagnostic)) throw error
       return failed('INVALID_INPUT', 'child Flow input does not satisfy its declared schema')
     }
-    const resolveContract = channelContractResolver(captured, input.channels?.contracts)
+    const resolveContract = channelContractResolver(captured, input.channels?.contracts, inspected)
     const declarations = await resolveChannelDeclarations(
       inspected.invocation?.channels ?? {},
       resolveContract,

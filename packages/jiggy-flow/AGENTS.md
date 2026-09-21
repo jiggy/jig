@@ -38,6 +38,8 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
   creator-only subscription authority; each `subscribe()` allocates an active
   receiver with an explicit suffix start. A source is not a transferable
   endpoint. No binary support is claimed.
+  `contract` accepts a local path or `ChannelSlotContract` (`slot`, `channel`),
+  resolving a named agreement from the caller's declaration without dispatch.
 - Receivers use one async iterator and explicit `aclose()`/async context
   management for early exit. Disposal exposes previously unexposed terminal
   errors after prior reads settle. Ordinary `try/except` requires no extra

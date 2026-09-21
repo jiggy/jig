@@ -25,6 +25,8 @@ protocol candidates.
   scripted channel values are not host-broker isolation, native Agent, or
   containment qualification. Broadcast peers check suffix identity and ordinary
   recovery when one subscribed stream fails.
+  Shared message fixtures include closed slot/channel agreement references;
+  both schema validation and the independent Python peer check their shape.
 - `channel-wiring` witnesses cover incoming grants, exact-call forwarding and
   sibling-monitor composition. Scripted admission rejection verifies SDK
   recovery, not host contract matching or transfer enforcement.

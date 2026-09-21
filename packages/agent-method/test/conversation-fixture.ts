@@ -9,7 +9,6 @@ await handle(async (run) => {
       {
         operationId: 'dialogue',
         slot: 'agent',
-        contractDirectory: './contracts/agent-run',
         ...(String(run.input).startsWith('observer')
           ? {
               onEvent(event: import('../src/conversation.js').AgentUpdate) {

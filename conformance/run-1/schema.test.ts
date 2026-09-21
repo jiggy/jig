@@ -13,6 +13,21 @@ const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/1 message schemas', () => {
+  test('channel creation accepts only closed slot channel references', () => {
+    const validate = definition('channelCreateParams')
+    expect(validate({ contract: { slot: 'agent', channel: 'events' } })).toBe(true)
+    for (const contract of [
+      null,
+      {},
+      { slot: 'agent' },
+      { slot: 'agent', channel: 'events', provider: 'other' },
+      { slot: '../agent', channel: 'events' },
+      { slot: 'agent', channel: 'events\n' },
+      { slot: 'a'.repeat(65), channel: 'events' },
+    ])
+      expect(validate({ contract })).toBe(false)
+    expect(validate({ schema: true, contract: { slot: 'agent', channel: 'events' } })).toBe(false)
+  })
   test('validates the closed feature catalog only on identified single-form contracts', () => {
     const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
     const validate = descriptors.compile(invocationContractSchema)

@@ -33,6 +33,9 @@ SDK/1 and Run/1.
   `OperationError` represents operational failure. The host-supplied `flow/run`
   entrypoint and authority ownership are unchanged.
 - Direct and broadcast channel endpoints carry only host-granted information rights.
+  Channel creation accepts a package-local agreement path or a closed
+  `{slot, channel}` reference to the caller's declared dependency contract.
+  Resolution does not invoke the slot or confer endpoint rights.
   Preserve normal catch-based recovery, retained cancellation responses,
   first-exposure disposal errors, and active-receiver completion checks.
   The host commits endpoint transfers and implicit writer sealing; never infer
