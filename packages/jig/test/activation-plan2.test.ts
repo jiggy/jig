@@ -7,6 +7,7 @@ import {
   encodePrivateActivationCandidateV5,
   encodePrivateActivationPlanV2,
   privateActivationCandidateDigestV5,
+  privateActivationCandidateFlowDepth,
   privateActivationPlanDigestV2,
 } from '../src/internal/activation-admission.js'
 import {
@@ -24,6 +25,23 @@ import { canonicalJson, type JsonValue } from '../src/json.js'
 const encoder = new TextEncoder()
 
 describe('private Candidate/5', () => {
+  test('dispatch depth uses authenticated candidate routes and rejects fabricated candidates', () => {
+    const artifact = slottedCandidateFixture({ work: { kind: 'flow', path: 'flows/bug' } })
+    const parent = artifact.candidate.targets.find(
+      ({ request }) => request.target.kind === 'binding',
+    )!
+    expect(privateActivationCandidateFlowDepth(artifact, parent.request.target)).toBe(2)
+    expect(privateActivationCandidateFlowDepth(artifact, { kind: 'flow', path: 'flows/bug' })).toBe(
+      1,
+    )
+    expect(privateActivationCandidateFlowDepth(artifact, parent.request.target)).toBe(2)
+    expect(() =>
+      privateActivationCandidateFlowDepth({ ...artifact }, parent.request.target),
+    ).toThrow('strictly decoded')
+    expect(() =>
+      privateActivationCandidateFlowDepth(artifact, { kind: 'binding', id: 'absent' }),
+    ).toThrow('missing admitted')
+  })
   test('separates observed semantics from canonical final activation meaning', () => {
     const artifact = candidateFixture()
     const encoded = encodePrivateActivationCandidateV5(artifact)

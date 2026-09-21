@@ -1,7 +1,7 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
-import { isPrivateBranchDepth, PRIVATE_MAX_CHILD_FLOW_LEVELS } from './root-operation-limits.js'
+import { isPrivateBranchDepth } from './root-operation-limits.js'
 import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { flowSlotTargets } from '../project/invocation-slots.js'
@@ -22,7 +22,10 @@ import {
   type WireFailureCode,
 } from '../run/session.js'
 import { SchemaDiagnostic } from '../schema/index.js'
-import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
+import {
+  findPrivateActivationCandidateTargetV5,
+  privateActivationCandidateFlowDepth,
+} from './activation-admission.js'
 import {
   allocatePrivateRootChildOwner,
   closePrivateRootChildOwner,
@@ -285,7 +288,7 @@ async function executePreparedChild(
     coordinatorEpoch: input.parent.run.coordinatorEpoch,
     operationId: input.call.operationId,
     parentFlow: input.parentFlow ?? null,
-    flowDepth: childFlowDepth(input, selected),
+    flowDepth: privateActivationCandidateFlowDepth(input.parent.candidate, selected.request.target),
     requestDigest: selected.request.digest,
     effectiveDeadlineUnixMs,
     packageAllocation,
@@ -432,23 +435,6 @@ function selectChild(input: ChildInput, slot: string) {
     throw new Error('admitted Flow slot does not name a child target')
   }
   return child
-}
-
-function childFlowDepth(
-  input: ChildInput,
-  selected: NonNullable<ReturnType<typeof selectChild>>,
-  level = 1,
-): number {
-  const children = Object.values(flowSlotTargets(selected.request.slots))
-  if (children.length === 0) return 1
-  if (level >= PRIVATE_MAX_CHILD_FLOW_LEVELS) throw new Error('child Flow depth exceeds admission')
-  let depth = 1
-  for (const target of children) {
-    const child = findPrivateActivationCandidateTargetV5(input.parent.candidate, target)
-    if (child === undefined) throw new Error('missing admitted child')
-    depth = Math.max(depth, 1 + childFlowDepth(input, child, level + 1))
-  }
-  return depth
 }
 
 function specialistDispatcher(
@@ -898,7 +884,8 @@ async function requireAllocationMatchesParent(
   if (
     selected === undefined ||
     selected.disposition.state !== 'ready' ||
-    allocation.flowDepth !== childFlowDepth(input, selected)
+    allocation.flowDepth !==
+      privateActivationCandidateFlowDepth(input.parent.candidate, selected.request.target)
   ) {
     throw new Error('durable child allocation differs from its admitted Flow branch')
   }

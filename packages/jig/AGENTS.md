@@ -11,7 +11,9 @@ admitted FLOW packages.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
-  validation to source linking and retained-lock decoding.
+  validation to source linking, retained-lock decoding and dispatch. Dispatch
+  caches longest paths per immutable candidate; repeated routes must not expand
+  into repeated dependency-tree traversal.
 - Package inspection validates `supports` and `uses.requires` against exact
   named single-form catalogs. Selected-graph qualification pins requirements
   in the lock and refuses incompatible targets before execution preparation,

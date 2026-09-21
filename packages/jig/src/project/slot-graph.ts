@@ -11,12 +11,12 @@ interface Node {
   readonly slots: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>
 }
 
-/** Apply the same finite graph rules to source linking and retained lock decoding. */
+/** Validate once per target and return longest descendant paths (edge counts). */
 export function validateChildGraph(
   bindings: ReadonlyMap<string, Node>,
   flows: ReadonlyMap<string, Node>,
   consume?: (units: number) => void,
-): void {
+): ReadonlyMap<string, number> {
   const nodes = new Map<string, Node>([
     ...Array.from(bindings, ([id, node]) => [`binding:${id}`, node] as const),
     ...Array.from(flows, ([path, node]) => [`flow:${path}`, node] as const),
@@ -37,7 +37,16 @@ export function validateChildGraph(
         '/slots',
       )
     const known = depths.get(id)
-    if (known !== undefined && known + path.length <= MAX_CHILD_FLOW_LEVELS) return known
+    if (known !== undefined) {
+      if (known + path.length > MAX_CHILD_FLOW_LEVELS)
+        invalid(
+          'PROJECT_BINDING_SLOT_DEPTH',
+          'Flow slot depth exceeds the fixed root resource budget',
+          binding.declarationPath,
+          '/slots',
+        )
+      return known
+    }
     let depth = 0
     for (const target of Object.values(binding.slots)) {
       if (target.kind === 'grant') continue
@@ -55,4 +64,5 @@ export function validateChildGraph(
     return depth
   }
   for (const id of nodes.keys()) visit(id, [])
+  return depths
 }

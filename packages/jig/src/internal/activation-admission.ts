@@ -1,6 +1,7 @@
 import { types as utilTypes } from 'node:util'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
+import { validateChildGraph } from '../project/slot-graph.js'
 import {
   type PrivateActivationRequest,
   type PrivateResolutionUnavailableCode,
@@ -40,6 +41,7 @@ const MAX_EVIDENCE = 64
 const createdCandidatesV5 = new WeakSet<object>()
 const inertCandidatesV5 = new WeakSet<object>()
 const inertPlansV2 = new WeakSet<object>()
+const candidateDepths = new WeakMap<object, ReadonlyMap<string, number>>()
 
 type PrivateActivationRecipe = PrivateDirectRunRecipe
 
@@ -325,6 +327,33 @@ export function findPrivateActivationCandidateTargetV5(
   return artifact.candidate.targets.find(
     (target) => privateActivationTargetKey(target.request.target) === key,
   )
+}
+
+/** One bounded analysis per immutable candidate, shared with admission's graph rules. */
+export function privateActivationCandidateFlowDepth(
+  value: PrivateActivationCandidateArtifactV5,
+  identity: RunTargetIdentity,
+): number {
+  const artifact = requirePrivateInertActivationCandidateV5(value)
+  let depths = candidateDepths.get(artifact)
+  if (depths === undefined) {
+    type Node = { packagePath: string; slots: Readonly<Record<string, RunTargetIdentity>> }
+    const bindings = new Map<string, Node>()
+    const flows = new Map<string, Node>()
+    for (const { request } of artifact.candidate.targets) {
+      const target = request.target
+      const node = { packagePath: request.packagePath, slots: flowSlotTargets(request.slots) }
+      if (target.kind === 'binding') bindings.set(target.id, node)
+      else flows.set(target.path, node)
+    }
+    depths = validateChildGraph(bindings, flows)
+    candidateDepths.set(artifact, depths)
+  }
+  const target = normalizeIdentity(identity)
+  const key = target.kind === 'binding' ? `binding:${target.id}` : `flow:${target.path}`
+  const depth = depths.get(key)
+  if (depth === undefined) throw new TypeError('missing admitted Flow target')
+  return depth + 1
 }
 
 /**
