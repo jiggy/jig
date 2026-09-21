@@ -16,6 +16,7 @@ export async function importContract(
   let parent: FileHandle | undefined
   let staged: string | undefined
   let captured: CapturedPackage | undefined
+  let phase: 'source' | 'destination' = 'source'
   try {
     signal?.throwIfAborted()
     const name = basename(source)
@@ -48,6 +49,7 @@ export async function importContract(
     const contract = parseInvocationContract(descriptor, name, documents)
     signal?.throwIfAborted()
 
+    phase = 'destination'
     const target = resolve(destination)
     const leaf = privateFilePath(basename(target))
     parent = await open(
@@ -84,7 +86,10 @@ export async function importContract(
     if (error instanceof CheckError) throw error
     return unavailable(
       'CONTRACT_IMPORT_UNAVAILABLE',
-      'The contract bundle could not be imported. Check readable regular source files and an existing writable destination parent.',
+      phase === 'source'
+        ? 'The source bundle could not be read. Choose an existing descriptor file and readable regular channel files. Workspace dependencies may be installed beneath their member directory.'
+        : 'The destination could not be written. Choose a new directory beneath an existing writable parent.',
+      phase === 'source' ? source : destination,
     )
   } finally {
     try {

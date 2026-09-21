@@ -331,7 +331,7 @@ async function executeImportContract(
       runtime.writeError(
         renderDiagnostic(
           error.code,
-          `Contract import failed. ${asciiJsonString(error.message)}\nNo destination was replaced and no execution was approved.`,
+          `Contract import failed.${error.path === undefined ? '' : `\nLocation: ${asciiJsonString(error.path)}`}\n${asciiJsonString(error.message)}\nNo destination was replaced and no execution was approved.`,
         ),
       )
       return error.kind === 'invalid' ? 1 : 2

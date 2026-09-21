@@ -105,3 +105,43 @@ test('pre-cancelled imports create nothing and the CLI needs no execution host',
   expect(code).toBe(0)
   expect(output).toContain('Imported 2 contract files')
 })
+
+test('unreadable source and destination errors identify the responsible location', async () => {
+  const root = await fixture()
+  const missing = join(root, 'missing/FLOW.contract.json')
+  await expect(importContract(missing, join(root, 'copied'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_UNAVAILABLE',
+    path: missing,
+    message: expect.stringContaining('source bundle'),
+  })
+  const destination = join(root, 'missing/copied')
+  await expect(
+    importContract(join(root, 'source/FLOW.contract.json'), destination),
+  ).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_UNAVAILABLE',
+    path: destination,
+    message: expect.stringContaining('destination'),
+  })
+  expect(await readdir(root)).toEqual(['source'])
+})
+
+test('CLI import errors show escaped locations without acquiring a host', async () => {
+  const root = await fixture()
+  let diagnostics = ''
+  const code = await main(['import-contract', 'missing\u001b/FLOW.contract.json', 'copied'], {
+    currentDirectory: root,
+    writeError: (text) => {
+      diagnostics += text
+    },
+    host: {
+      async acquire() {
+        throw new Error('must not acquire host')
+      },
+    },
+  })
+  expect(code).toBe(2)
+  expect(diagnostics).toContain('Location:')
+  expect(diagnostics).toContain('missing\\u001b/FLOW.contract.json')
+  expect(diagnostics).toContain('Choose an existing descriptor file')
+  expect(diagnostics).not.toContain('\u001b')
+})
