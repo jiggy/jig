@@ -157,4 +157,5 @@ demand-gated rather than requirements on this critical path.
 
 Use the doctrine's [decision test](doctrine/design-judgment.md#the-decision-test)
 before expanding scope. Revisit this order when evidence supports a simpler path.
-Current status, detailed tasks, and blockers belong in `.tmp/`.
+Deferred product tasks live in [`management/inbox`](../management/inbox/).
+Current execution plans, status, evidence and blockers belong in `.tmp/`.

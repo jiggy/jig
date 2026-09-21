@@ -520,8 +520,9 @@ first-release proof is sufficient.
 
 Completing a phase proves its bounded outcome; it does not select the next
 phase. The long-term ordering lives in [`ROADMAP.md`](ROADMAP.md). Current
-tasks and blockers are disposable operational state, not additions to this
-guide.
+execution tasks and blockers are disposable operational state, not additions to
+this guide. Preserve postponed product work as standalone Markdown tasks in
+[`management/inbox`](../management/inbox/).
 
 ### Proportionate claims
 
