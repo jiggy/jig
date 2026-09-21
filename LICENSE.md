@@ -2,31 +2,31 @@
 
 ## Jig adoption notice
 
-**Release preparation — seller authorization and adoption still to be completed.**
-The intended first npm release under this notice is `@jigging/jig@0.1.0-alpha.17`.
-The adoption is to apply to the source commit first issuing this completed
-notice and subsequent Jig source distributed with it. This preparation copy
-must be completed before issuing that commit or release as an effective grant.
-Earlier releases retain their existing licenses.
+**Bread License 1.0 adopted on 2026-09-21.** Victor Duarte, professionally known
+as zvictor, licenses the Jig material identified below under the retained text.
+This adoption applies from the source commit first carrying this completed
+notice and to subsequent covered Jig source distributed with it. The first
+planned npm release is `@jigging/jig@0.1.0-alpha.17`. Earlier distributions
+retain their existing licenses; this notice does not revoke those grants.
 
 | Field | Jig adoption |
 | --- | --- |
 | Software | Jig: original material in `packages/jig/**` and `docs/jig/spec/**`, excluding separately identified third-party material; the corresponding installed `@jigging/jig` distribution |
 | Licensor | Victor Duarte, professionally known as zvictor, personally; correspondence: c/o Pereirinhos s.r.o., Mateja Bela 8769/30, 010 15 Žilina, Slovakia |
-| Seller | Pereirinhos s.r.o., IČO 53427599, DIČ 2121379700, VAT ID SK2121379700; registered seat: Mateja Bela 8769/30, 010 15 Žilina, Slovakia. The company is the intended initial authorized seller, distinct from the owner. Authorization is not yet executed; it may not issue grants as an authorized seller until that authority exists. |
+| Seller | Pereirinhos s.r.o., IČO 53427599, DIČ 2121379700, VAT ID SK2121379700; registered seat: Mateja Bela 8769/30, 010 15 Žilina, Slovakia. The company is authorized to sell and administer Jig licenses and publisher enrollments on the Licensor's behalf; ownership remains with the Licensor. |
 | Licensing and notices | `licensing@jig.md`; postal notices use the Licensor correspondence address above |
-| Exact instrument | Bread License, review draft 0.6, retained in full below; no narrower grant or altered royalty |
+| Exact instrument | Bread License 1.0, retained in full below; no narrower grant or altered royalty |
 | Official release records | [Jig GitHub releases](https://github.com/jiggy/jig/releases) and [npm versions and publication times](https://registry.npmjs.org/@jigging%2fjig); a source commit is licensed source, not by itself a newly published official release for update coverage |
-| Direct prices | Jig schedule P-0.5 in [PRICING.md](PRICING.md): USD; annual and monthly Update Terms |
-| Purchases and publisher enrollment | Receiving channel: `licensing@jig.md`. Commercial orders and publisher enrollments open only after adoption and seller authorization are complete. |
+| Direct prices | Jig schedule P-1.0 in [PRICING.md](PRICING.md), effective 2026-09-21: USD; annual and monthly Update Terms |
+| Purchases and publisher enrollment | Email `licensing@jig.md` for a direct order or to submit the section 6 publisher acceptance. Email is the purchasing, enrollment, cancellation, and reporting channel; no registration platform is required. |
 | Additional grants | None |
 
 The repository is a collection of separately licensed works. [LICENSES.md](LICENSES.md)
 identifies FLOW, documentation, tooling, and third-party exceptions. Bread does
 not relicense those works, independent Flows, or application source. Installed
 packages retain their component notices. The matching GitHub release supplies
-Jig's corresponding source download and build instructions. Jig's build uses the license retained in this repository;
-no checkout of Bread is required.
+Jig's corresponding source download and build instructions. Jig's build uses
+the license retained in this repository; no checkout of Bread is required.
 
 The following reusable text is retained verbatim. Completing the identifying
 facts above does not amend its standard permissions. Commercial records must
@@ -34,9 +34,9 @@ retain the completed notice, this exact text, and the accepted price schedule.
 
 ---
 
-# Bread License — review draft 0.6
+# Bread License 1.0
 
-**DRAFT — NOT EFFECTIVE.** This reusable candidate is not an issued software license or a live commercial offer. It becomes applicable only through an actual Licensor's express adoption for identified material. The adoption notice supplies the facts below; neither an example nor editing this repository adopts it for any software.
+This license applies when a Licensor expressly adopts it for identified material. The Adoption Notice supplies the facts below. Publishing this reusable text or an adoption example does not by itself license any software.
 
 An **Adoption Notice** identifies the **Software**, its **Licensor** (the rights holder making these grants, distinct from any sales operator), notices and licensing contacts, authorized sellers, official release records, and dated direct pricing schedule. These facts do not alter this license's permissions. A seller's invoice does not transfer ownership. A shared Bread license name does not combine separate licensors, products, or payment obligations.
 

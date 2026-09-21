@@ -2,12 +2,18 @@
 
 **One license. Your whole company. From US$10 a year.**
 
-**Review draft — not a live offer.** Proposed schedule P-0.5; effective date to
-be set upon adoption. These are Jig's proposed prices, not universal Bread
-prices. The table takes effect only when adopted and identified in an accepted
-order. The [license](LICENSE.md) defines the permissions; the
+**Schedule P-1.0 — effective 2026-09-21.** These are Jig's prices, not universal
+Bread prices. Accepted orders identify this schedule and their Update Term.
+The [license](LICENSE.md) defines the permissions; the
 [Jig adoption notice](LICENSE.md#jig-adoption-notice) identifies the owner,
-covered material and purchasing status.
+covered material and authorized seller.
+
+Email **licensing@jig.md** to buy coverage or enroll a paid product under the
+standard publisher agreement. For a direct order, provide the company-group
+identity, billing details, financial band, and annual or monthly Update Term.
+The seller supplies the total with applicable taxes and an order you can keep;
+permission starts on payment or express acceptance of an invoice order under
+section 4. Publisher enrollment follows section 6 and needs no sales approval.
 
 Jig is one complete product. Personal use is free. Small companies qualify for
 free use below the threshold shown below. Genuine evaluation is free for anyone:
@@ -119,5 +125,5 @@ permission for that copy or your own applicable Jig license.
 
 No Jig royalty merely for outputs or independently authored Flows. No activation
 server, compulsory licensing telemetry, or remote licensing shutdown. FLOW and
-Sley keep their own licenses. Jig's proposed Bread license is source-available,
+Sley keep their own licenses. Jig's Bread license is source-available,
 not OSI-approved open source.
