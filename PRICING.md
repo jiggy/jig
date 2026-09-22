@@ -32,8 +32,8 @@ usage fees, product royalties, or publisher coverage charges.
 
 One purchase covers the named Group across all its Jig applications and
 installations. It includes existing official Jig releases and releases first
-published during its twelve-month Update Term, subject to specific existing
-exclusions identified before purchase. Dates are inclusive at the start and
+published during its twelve-month Update Term, excluding material outside the
+Licensor's authority identified before purchase. Dates are inclusive at the start and
 exclusive at the end, in UTC.
 
 Those release rights last for the duration of copyright, including permitted
@@ -51,7 +51,7 @@ do not change Bread's rights or minimum term.
 
 ## Purchase and distribution
 
-Provide the Group and controlling parent's legal identity, billing contact,
+Provide the Group and ultimate controlling parent's legal identity, billing contact,
 declared band, and requested start date to the official purchasing channel in
 the applicable Jig adoption notice. The seller provides the total, terms, and
 coverage record; the business purchaser must have authority to accept the order.
