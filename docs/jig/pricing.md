@@ -1,7 +1,7 @@
 ---
 pageType: custom
 title: Pricing · Jig
-description: Jig is source-available and always free for personal use, evaluation, and small businesses under $1M revenue.
+description: Jig is source-available and always free for personal use and evaluation, with no seat counting, usage metering, or locked features.
 ---
 
 <main id="main-content" className="landing pricing-page">
@@ -9,28 +9,28 @@ description: Jig is source-available and always free for personal use, evaluatio
 <header className="hero">
 <div className="hero-field" aria-hidden="true"><div className="field-line"></div><div className="field-line"></div><div className="field-line"></div><div className="field-core"></div></div>
 <p className="eyebrow"><a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">🍞 Bread License 1.0</a> · Source-Available</p>
-<h1>Always free for individuals.<br /><span className="hero-emphasis">Always free for small business.</span></h1>
-<p className="hero-description">Jig has no seat counting, no usage metering, and no locked features. The complete product is 100% free for personal projects and any company under $1M in annual revenue.</p>
+<h1>Always free for personal use.<br /><span className="hero-emphasis">Always free for small business.</span></h1>
+<p className="hero-description">Build personal projects, learn, and evaluate the complete Jig product at no cost. No seat counting, no usage metering, and no locked features, ever.</p>
 <nav className="hero-actions" aria-label="Get started">
 <a href="/guide/" className="action action--brand">Start building <span aria-hidden="true">↗</span></a>
-<a href="https://github.com/jiggy/jig/blob/main/LICENSE.md" className="action action--alt">Read Jig's license</a>
+<a href="https://github.com/jiggy/jig/blob/main/LICENSE.md" className="action action--alt">🍞 Read Jig's license</a>
 </nav>
-<p className="hero-status"><span aria-hidden="true"></span>One complete product · Permanent release rights · No license telemetry</p>
+<p className="hero-status"><span aria-hidden="true"></span>One complete product · No billing surprises · No license telemetry</p>
 </header>
 
 <div className="pricing-container">
 
-<div className="pricing-free-grid">
+<div id="free-use" className="pricing-free-grid">
 
 <div className="pricing-card pricing-card--featured">
 <p className="eyebrow">Personal</p>
 <h3>Individuals & Side Projects</h3>
 <div className="pricing-card-price">$0 <span>forever</span></div>
-<p>Build personal tools, explore ideas, experiment with Agents, or learn. No revenue threshold, no time limit, and no telemetry.</p>
+<p>Build personal tools, explore ideas, experiment with Agents, or learn. No signup, no deadline, and no license telemetry.</p>
 <ul className="pricing-check-list">
 <li>Full software with every feature</li>
-<li>Rights last for the duration of copyright</li>
-<li>Zero registration or telemetry</li>
+<li>Access to all released versions</li>
+<li>Zero registration or license telemetry</li>
 <li>No royalties on independent outputs</li>
 </ul>
 </div>
@@ -43,7 +43,6 @@ description: Jig is source-available and always free for personal use, evaluatio
 <ul className="pricing-check-list">
 <li>Deploy in production across all apps</li>
 <li>No seat, machine, or usage caps</li>
-<li>Permanent rights to releases you use</li>
 <li>No accounts upload or audit required</li>
 </ul>
 </div>
@@ -56,8 +55,8 @@ description: Jig is source-available and always free for personal use, evaluatio
 <ul className="pricing-check-list">
 <li>No artificial evaluation deadlines</li>
 <li>Keep all outputs and prototypes</li>
-<li>No sales qualification needed</li>
-<li>Evaluate without purchasing authority</li>
+<li>No sales call required</li>
+<li>No promise to buy</li>
 </ul>
 </div>
 
@@ -69,12 +68,12 @@ description: Jig is source-available and always free for personal use, evaluatio
 <p>There is no "Enterprise edition" or crippled open-core. Every capability, CLI tool, and runtime optimization is in the standard distribution.</p>
 </div>
 <div className="pricing-trust-item">
-<h4>Permanent rights</h4>
-<p>Permissions acquired under the license last for the duration of copyright. Nonrenewal or future growth does not cancel or reprice rights to releases you use.</p>
+<h4>Your independent work stays yours</h4>
+<p>Jig does not charge royalties on your independent applications, Flows, or outputs. Build and share what you create on your own terms.</p>
 </div>
 <div className="pricing-trust-item">
 <h4>Runs locally under your control</h4>
-<p>Jig operates strictly on your machines. No activation keys, network license checks, phoning home, or cloud dependencies.</p>
+<p>Run Jig locally without activation keys, license servers, or license telemetry. You choose whether to connect remote Agents.</p>
 </div>
 </div>
 
@@ -82,8 +81,8 @@ description: Jig is source-available and always free for personal use, evaluatio
 <div className="pricing-bread-icon" aria-hidden="true">🍞</div>
 <div className="pricing-bread-text">
 <h4>Licensed under Bread · Free for you. Friendly for business.</h4>
-<p>Jig adopts the <a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">Bread License</a> — a source-available model grounded in <em>reciprocity</em>: creators provide useful software and dependable freedoms, while commercial participation sustains that work and its broad availability. Put your ideas to work, build a business around them, and help software creators make a living.</p>
-<p>Individuals, evaluators, and companies under $1M consolidated revenue build for free forever, with permanent release rights, no runtime licensing checks, and zero license surveillance. The exact terms governing your use of Jig are set out in <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">Jig's LICENSE.md</a>.</p>
+<p>Jig adopts the <a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">Bread License</a>, a source-available model that gives you the complete software for personal use and genuine evaluation at no cost.</p>
+<p>There is no registration for free use, no activation server, and no license telemetry. Your independent applications and outputs remain yours. <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">Read Jig's license</a> for the exact permissions.</p>
 <a className="text-link" href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">Explore the upstream Bread License at bread.jig.md <span aria-hidden="true">↗</span></a>
 </div>
 </div>
@@ -93,15 +92,16 @@ description: Jig is source-available and always free for personal use, evaluatio
 <div className="pricing-funding-summary-text">
 <p className="eyebrow">Project sustainability</p>
 <h3>Are you a larger business? See how companies fund the project</h3>
-<p>For organizations with $1M+ consolidated revenue, simple annual licenses keep Jig independent and growing strong.</p>
+<p>For organizations with $1M+ consolidated revenue, published company prices help fund Jig.</p>
 </div>
 <span className="pricing-funding-toggle">Funding tiers ▾</span>
 </summary>
 <div className="pricing-funding-body">
 <div className="pricing-funding-intro">
-<h4>Sustaining Jig without extractive venture incentives</h4>
-<p>Jig is maintained by an independent creator, not a VC-backed corporation seeking exit multiples. Rather than gating features behind enterprise paywalls or injecting surveillance telemetry, we ask established companies earning more than $1M per year to pay a modest annual fee.</p>
-<p>This revenue directly funds full-time development, security audits, release maintenance, and protocol improvements—ensuring the foundation your business depends on stays actively maintained, stable, and completely free for the rest of the ecosystem.</p>
+<h4>Independent software, supported by companies that use it at scale</h4>
+<p>Jig is built and maintained by an independent creator. Businesses below $1M in consolidated group revenue can use Jig for free while they qualify; larger organizations buy company-wide permission at a published price. Everyone gets the same complete product, with no feature gates or license surveillance.</p>
+<p>Company purchases fund the work of building and maintaining Jig, making broad access and independent development possible.</p>
+<p>Each purchase covers twelve months of new official releases. Keep covered releases permanently; renew only when you want later releases.</p>
 </div>
 
 <div className="pricing-tiers-grid">
@@ -118,18 +118,17 @@ description: Jig is source-available and always free for personal use, evaluatio
 <div className="pricing-tier-card">
 <div className="pricing-tier-title">$100M+ revenue</div>
 <div className="pricing-tier-cost"><span className="tier-amount">$10,000</span><span className="tier-unit">/ year (capped)</span></div>
-<p className="pricing-tier-desc">Maximum price cap regardless of global revenue or employee count. One company purchase covers everything.</p>
+<p className="pricing-tier-desc">Maximum price cap regardless of global revenue or employee count. One purchase covers your group's Jig use of covered releases.</p>
 </div>
 </div>
 
 <div className="pricing-purchase-box">
-<h4>Purchase terms & guarantees</h4>
+<h4>What your purchase gives you</h4>
 <ul>
 <li><strong>One purchase covers the entire company:</strong> Covers your consolidated group across all subsidiaries, servers, and developers. No seat counts, no per-core pricing, no usage metering.</li>
-<li><strong>Permanent release ownership:</strong> Includes existing releases and all new releases first published during your twelve-month Update Term. Those rights last for the duration of copyright, even if you never renew.</li>
+<li><strong>Keep covered releases:</strong> Includes existing releases and all new releases first published during your twelve-month Update Term. Your rights to them last for the duration of copyright, even if you never renew.</li>
 <li><strong>90-day grace period on growth:</strong> If your company revenue grows past $1M, you have 90 days after your annual assessment to purchase a license. You owe nothing retroactively for earlier legitimate free use.</li>
 <li><strong>Direct and simple:</strong> Email <code>licensing@jig.md</code> with your group's legal identity, billing contact, and declared revenue band. Authorized seller Pereirinhos s.r.o. provides the order terms and official coverage record.</li>
-<li><strong>Permanent availability guarantee:</strong> If purchasing is ever unavailable through published channels for 180 days after a request, your group automatically receives permanent, paid-up rights to covered releases.</li>
 </ul>
 <p className="pricing-doc-links">The legal terms governing your use of Jig are in <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">Jig's LICENSE.md</a> and <a href="https://github.com/jiggy/jig/blob/main/PRICING.md">PRICING.md</a>. Upstream reference: <a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">Bread License 1.0 (🍞)</a>.</p>
 </div>
@@ -148,7 +147,7 @@ description: Jig is source-available and always free for personal use, evaluatio
 </details>
 <details>
 <summary>What counts as a "group"?</summary>
-<p>Your ultimate controlling parent and all entities it controls (more than 50% voting rights). A sole trader or independent business is its own group. Passive minority investments do not merge groups.</p>
+<p>Your ultimate controlling parent and all entities it controls through voting rights or equivalent management control. A sole trader or independent business is its own group. Passive minority investments do not merge groups.</p>
 </details>
 <details>
 <summary>What happens if our company revenue grows past $1M?</summary>
@@ -156,7 +155,7 @@ description: Jig is source-available and always free for personal use, evaluatio
 </details>
 <details>
 <summary>Can our supplier arrange our purchase for us?</summary>
-<p>Yes. A supplier or consultancy can arrange the purchase naming your group as the customer. The authorized seller (Pereirinhos s.r.o.) sends the coverage confirmation directly to you.</p>
+<p>Yes. A supplier or consultancy can arrange the purchase naming your group as the customer. The authorized seller (Pereirinhos s.r.o.) sends the coverage confirmation directly to you. Paying the supplier alone does not create Jig coverage.</p>
 </details>
 <details>
 <summary>What about FLOW, Sley, and independent Flows?</summary>

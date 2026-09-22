@@ -14,8 +14,8 @@ use-case and orchestration hypotheses.
   They route readers to specifications, canonical JSON downloads, and usage;
   they do not define interfaces or act as provider endpoints.
 - `pricing.md` owns the independent public pricing landing page, highlighting the
-  always-free license for individuals, evaluation, and small businesses under $1M
-  revenue, with project funding tiers under a collapsible.
+  free personal-use and evaluation grants, qualifying small businesses under
+  $1M revenue, and company prices under a collapsible.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
@@ -126,6 +126,11 @@ use-case and orchestration hypotheses.
 
 ## Work Guidance
 
+- Keep `pricing.md` persuasive and easy to scan. Place qualifications beside
+  claims that determine who pays or what rights persist. Lead with unconditional
+  free personal use and evaluation; introduce small-business eligibility,
+  financial thresholds, and purchase terms in the business section. Link to
+  the license for edge cases instead of turning the page into legal commentary.
 - Keep introductory guides focused on the first useful result. Put optional
   tuning, environment variables, cache internals, and configuration tradeoffs
   in `guide/configuration.md`, reachable through Reference navigation and links.
