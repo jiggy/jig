@@ -237,6 +237,12 @@ product; it does not unlock an otherwise impaired edition. Distributed Jig
 modifications remain source-available, while independent applications and
 outputs retain their own terms. Acquired release rights survive nonrenewal,
 and execution requires no licensing server, activation, or surveillance.
+Company coverage follows the named Group across applications using covered
+releases. Suppliers may arrange purchases, but the upstream seller issues
+customer rights. Revenue alone determines financial qualification; purchases
+cover at least twelve months of new official releases. There are no distribution
+royalties or publisher coverage tiers. Independent hosted services use their
+provider's permission; a customer's controlled deployment uses its own.
 
 These commitments support power under control. They do not describe Jig as
 OSI-approved open source, make every service free, change earlier valid grants,
