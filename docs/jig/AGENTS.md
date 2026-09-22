@@ -13,6 +13,9 @@ use-case and orchestration hypotheses.
 - `contracts/` owns explanatory pages served at invocation identity URLs.
   They route readers to specifications, canonical JSON downloads, and usage;
   they do not define interfaces or act as provider endpoints.
+- `pricing.md` owns the independent public pricing landing page, highlighting the
+  always-free license for individuals, evaluation, and small businesses under $1M
+  revenue, with project funding tiers under a collapsible.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.

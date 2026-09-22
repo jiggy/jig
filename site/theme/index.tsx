@@ -56,9 +56,13 @@ export function Layout() {
   const { site } = useSite()
   const { page } = usePage()
   const home = page.frontmatter?.pageType === 'home'
+  const isCustom = page.frontmatter?.pageType === 'custom'
   return <div className="experience" data-product={site.title.toLowerCase()}>
-    {!import.meta.env.SSG_MD && home && <a className="skip-link" href="#main-content">Skip to content</a>}
-    <DefaultLayout beforeDocContent={<DocContext />} />
+    {!import.meta.env.SSG_MD && (home || isCustom) && <a className="skip-link" href="#main-content">Skip to content</a>}
+    <DefaultLayout
+      beforeDocContent={<DocContext />}
+      bottom={isCustom ? <HomeFooter /> : undefined}
+    />
   </div>
 }
 
