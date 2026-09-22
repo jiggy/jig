@@ -7,19 +7,13 @@
       "$ref": "#/$defs/flowRunRequest"
     },
     {
-      "$ref": "#/$defs/childFlowRequest"
-    },
-    {
-      "$ref": "#/$defs/capabilityCallRequest"
+      "$ref": "#/$defs/flowCallRequest"
     },
     {
       "$ref": "#/$defs/requestCancelNotification"
     },
     {
       "$ref": "#/$defs/runSuccessResponse"
-    },
-    {
-      "$ref": "#/$defs/capabilitySuccessResponse"
     },
     {
       "$ref": "#/$defs/errorResponse"
@@ -49,7 +43,7 @@
   "$defs": {
     "wireId": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$(?![\\s\\S])",
       "maxLength": 128
     },
     "operationId": {
@@ -57,7 +51,7 @@
     },
     "localName": {
       "type": "string",
-      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\\s\\S])",
       "maxLength": 64
     },
     "attachment": {
@@ -94,36 +88,6 @@
       },
       "required": ["outcome", "output"],
       "additionalProperties": false
-    },
-    "capabilityResult": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "value": true
-          },
-          "required": ["value"],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "error": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "$ref": "#/$defs/localName"
-                },
-                "data": true
-              },
-              "required": ["name", "data"],
-              "additionalProperties": false
-            }
-          },
-          "required": ["error"],
-          "additionalProperties": false
-        }
-      ]
     },
     "flowErrorCode": {
       "enum": [
@@ -182,48 +146,6 @@
       "required": ["protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs"],
       "additionalProperties": false
     },
-    "childFlowParams": {
-      "type": "object",
-      "properties": {
-        "operationId": {
-          "$ref": "#/$defs/operationId"
-        },
-        "slot": {
-          "$ref": "#/$defs/localName"
-        },
-        "intent": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 16384
-        },
-        "input": true,
-        "channels": {
-          "$ref": "#/$defs/channelReferences"
-        }
-      },
-      "required": ["operationId", "slot", "input"],
-      "additionalProperties": false
-    },
-    "capabilityCallParams": {
-      "type": "object",
-      "properties": {
-        "operationId": {
-          "$ref": "#/$defs/operationId"
-        },
-        "slot": {
-          "$ref": "#/$defs/localName"
-        },
-        "method": {
-          "$ref": "#/$defs/localName"
-        },
-        "input": true,
-        "channels": {
-          "$ref": "#/$defs/channelReferences"
-        }
-      },
-      "required": ["operationId", "slot", "method", "input"],
-      "additionalProperties": false
-    },
     "requestCancelParams": {
       "type": "object",
       "properties": {
@@ -248,44 +170,6 @@
         },
         "params": {
           "$ref": "#/$defs/flowRunParams"
-        }
-      },
-      "required": ["jsonrpc", "id", "method", "params"],
-      "additionalProperties": false
-    },
-    "childFlowRequest": {
-      "type": "object",
-      "properties": {
-        "jsonrpc": {
-          "const": "2.0"
-        },
-        "id": {
-          "$ref": "#/$defs/wireId"
-        },
-        "method": {
-          "const": "flow/run-child"
-        },
-        "params": {
-          "$ref": "#/$defs/childFlowParams"
-        }
-      },
-      "required": ["jsonrpc", "id", "method", "params"],
-      "additionalProperties": false
-    },
-    "capabilityCallRequest": {
-      "type": "object",
-      "properties": {
-        "jsonrpc": {
-          "const": "2.0"
-        },
-        "id": {
-          "$ref": "#/$defs/wireId"
-        },
-        "method": {
-          "const": "capability/call"
-        },
-        "params": {
-          "$ref": "#/$defs/capabilityCallParams"
         }
       },
       "required": ["jsonrpc", "id", "method", "params"],
@@ -318,22 +202,6 @@
         },
         "result": {
           "$ref": "#/$defs/runResult"
-        }
-      },
-      "required": ["jsonrpc", "id", "result"],
-      "additionalProperties": false
-    },
-    "capabilitySuccessResponse": {
-      "type": "object",
-      "properties": {
-        "jsonrpc": {
-          "const": "2.0"
-        },
-        "id": {
-          "$ref": "#/$defs/wireId"
-        },
-        "result": {
-          "$ref": "#/$defs/capabilityResult"
         }
       },
       "required": ["jsonrpc", "id", "result"],
@@ -491,15 +359,15 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^https://(?!(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:/|$))[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/(?!\\.{1,2}(?:/|$))[a-z0-9._~-]+(?:/(?!\\.{1,2}(?:/|$))[a-z0-9._~-]+)*$"
+          "pattern": "^https://(?!(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:/|$))[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/(?!\\.{1,2}(?:/|$))[a-z0-9._~-]+(?:/(?!\\.{1,2}(?:/|$))[a-z0-9._~-]+)*$(?![\\s\\S])"
         },
         "version": {
           "type": "string",
-          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$(?![\\s\\S])"
         },
         "digest": {
           "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
+          "pattern": "^sha256:[0-9a-f]{64}$(?![\\s\\S])"
         }
       },
       "required": ["id", "version", "digest"],
@@ -542,12 +410,36 @@
           "enum": ["direct", "broadcast"]
         },
         "schema": {
-          "oneOf": [{ "type": "object" }, { "type": "boolean" }]
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
         },
         "contract": {
-          "type": "string",
-          "pattern": "^\\./[^\\\\]+$",
-          "maxLength": 4096
+          "oneOf": [
+            { "type": "string", "pattern": "^\\./[^\\\\]+$(?![\\s\\S])", "maxLength": 4096 },
+            {
+              "type": "object",
+              "properties": {
+                "slot": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\\s\\S])",
+                  "maxLength": 64
+                },
+                "channel": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\\s\\S])",
+                  "maxLength": 64
+                }
+              },
+              "required": ["slot", "channel"],
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "required": [],
@@ -571,9 +463,22 @@
       "required": ["endpoint"],
       "additionalProperties": false
     },
+    "channelCloseParams": {
+      "type": "object",
+      "properties": {
+        "endpoint": { "$ref": "#/$defs/wireId" },
+        "error": { "const": "LAGGED" }
+      },
+      "required": ["endpoint"],
+      "additionalProperties": false
+    },
     "channelSubscribeParams": {
       "type": "object",
-      "properties": { "source": { "$ref": "#/$defs/wireId" } },
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/wireId"
+        }
+      },
       "required": ["source"],
       "additionalProperties": false
     },
@@ -593,14 +498,32 @@
       "properties": {
         "send": {
           "allOf": [
-            { "$ref": "#/$defs/channelSenderGrant" },
-            { "type": "object", "properties": { "delivery": { "const": "direct" } } }
+            {
+              "$ref": "#/$defs/channelSenderGrant"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "delivery": {
+                  "const": "direct"
+                }
+              }
+            }
           ]
         },
         "receive": {
           "allOf": [
-            { "$ref": "#/$defs/channelReceiverGrant" },
-            { "type": "object", "properties": { "delivery": { "const": "direct" } } }
+            {
+              "$ref": "#/$defs/channelReceiverGrant"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "delivery": {
+                  "const": "direct"
+                }
+              }
+            }
           ]
         }
       },
@@ -612,19 +535,39 @@
       "properties": {
         "send": {
           "allOf": [
-            { "$ref": "#/$defs/channelSenderGrant" },
-            { "type": "object", "properties": { "delivery": { "const": "broadcast" } } }
+            {
+              "$ref": "#/$defs/channelSenderGrant"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "delivery": {
+                  "const": "broadcast"
+                }
+              }
+            }
           ]
         },
-        "source": { "$ref": "#/$defs/wireId" }
+        "source": {
+          "$ref": "#/$defs/wireId"
+        }
       },
       "required": ["send", "source"],
       "additionalProperties": false
     },
     "channelSubscription": {
       "allOf": [
-        { "$ref": "#/$defs/channelReceiverGrant" },
-        { "type": "object", "properties": { "delivery": { "const": "broadcast" } } }
+        {
+          "$ref": "#/$defs/channelReceiverGrant"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "delivery": {
+              "const": "broadcast"
+            }
+          }
+        }
       ]
     },
     "channelReadResult": {
@@ -754,10 +697,18 @@
     "channelSubscribeRequest": {
       "type": "object",
       "properties": {
-        "jsonrpc": { "const": "2.0" },
-        "id": { "$ref": "#/$defs/wireId" },
-        "method": { "const": "channel/subscribe" },
-        "params": { "$ref": "#/$defs/channelSubscribeParams" }
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "method": {
+          "const": "channel/subscribe"
+        },
+        "params": {
+          "$ref": "#/$defs/channelSubscribeParams"
+        }
       },
       "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
@@ -794,7 +745,7 @@
           "const": "channel/close"
         },
         "params": {
-          "$ref": "#/$defs/channelEndpointParams"
+          "$ref": "#/$defs/channelCloseParams"
         }
       },
       "required": ["jsonrpc", "id", "method", "params"],
@@ -896,9 +847,65 @@
       },
       "required": ["endpoint", "direction", "delivery", "startSequence"],
       "anyOf": [
-        { "properties": { "delivery": { "const": "direct" }, "startSequence": { "const": 1 } } },
-        { "properties": { "delivery": { "const": "broadcast" } } }
+        {
+          "properties": {
+            "delivery": {
+              "const": "direct"
+            },
+            "startSequence": {
+              "const": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "delivery": {
+              "const": "broadcast"
+            }
+          }
+        }
       ],
+      "additionalProperties": false
+    },
+    "flowCallParams": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/operationId"
+        },
+        "slot": {
+          "$ref": "#/$defs/localName"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        },
+        "input": true,
+        "channels": {
+          "$ref": "#/$defs/channelReferences"
+        }
+      },
+      "required": ["operationId", "slot", "input"],
+      "additionalProperties": false
+    },
+    "flowCallRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "method": {
+          "const": "flow/call"
+        },
+        "params": {
+          "$ref": "#/$defs/flowCallParams"
+        }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     }
   }

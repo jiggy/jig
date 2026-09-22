@@ -59,6 +59,16 @@ export type RunHostFailureCode =
   | 'CHANNEL_LOST'
   | 'REVIEW_REQUIRED'
 
+/** Trusted dispatcher evidence that this invocation cannot safely claim success. */
+export class RunHostFatalOperationError extends Error {
+  constructor(
+    readonly code: 'UNCERTAIN' | 'EXECUTION_FAILED',
+    options?: ErrorOptions,
+  ) {
+    super('owned operation cleanup or fencing is unconfirmed', options)
+  }
+}
+
 export interface RunAttachment {
   readonly path: string
   readonly access: 'read' | 'read-write'
@@ -79,18 +89,10 @@ export interface RunHostInvocation {
   readonly channels?: Readonly<Record<string, ChannelGrant>>
 }
 
-export interface RunHostFlowCall {
+export interface RunHostCall {
   readonly operationId: string
   readonly slot: string
   readonly intent?: string
-  readonly input: JsonValue
-  readonly channels?: Readonly<Record<string, string>>
-}
-
-export interface RunHostEffectCall {
-  readonly operationId: string
-  readonly slot: string
-  readonly method: string
   readonly input: JsonValue
   readonly channels?: Readonly<Record<string, string>>
 }
@@ -102,21 +104,10 @@ export type RunHostOperationFailure = {
   readonly details?: JsonValue
 }
 
-export type RunHostFlowOperationTerminal =
+export type RunHostOperationTerminal =
   | {
       readonly status: 'succeeded'
       readonly result: RunResult
-    }
-  | RunHostOperationFailure
-
-export type RunHostEffectResult =
-  | { readonly value: JsonValue }
-  | { readonly error: { readonly name: string; readonly data: JsonValue } }
-
-export type RunHostEffectOperationTerminal =
-  | {
-      readonly status: 'succeeded'
-      readonly result: RunHostEffectResult
     }
   | RunHostOperationFailure
 
@@ -129,11 +120,7 @@ export interface RunHostOperationDispatcher {
   onCancellation?(code: 'CANCELLED' | 'DEADLINE_EXCEEDED'): void
   /** Validate admitted package outcomes/schema before any implicit source seal. */
   validateResult?(result: RunResult): void
-  runChildFlow?(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostFlowOperationTerminal>
-  callCapability?(
-    call: RunHostEffectCall,
-    signal: AbortSignal,
-  ): Promise<RunHostEffectOperationTerminal>
+  call?(call: RunHostCall, signal: AbortSignal): Promise<RunHostOperationTerminal>
 }
 
 export interface RunHostLimits {
@@ -218,32 +205,13 @@ interface ParsedError {
 
 type ParsedEnvelope = ParsedRequest | ParsedNotification | ParsedSuccess | ParsedError
 
-type ParsedOperation =
-  | {
-      readonly method: 'flow/run-child'
-      readonly operationId: string
-      readonly signature: string
-      readonly call: RunHostFlowCall
-    }
-  | {
-      readonly method: 'capability/call'
-      readonly operationId: string
-      readonly signature: string
-      readonly call: RunHostEffectCall
-    }
+interface ParsedOperation {
+  readonly operationId: string
+  readonly signature: string
+  readonly call: RunHostCall
+}
 
-type NormalizedOperationTerminal =
-  | {
-      readonly status: 'succeeded'
-      readonly method: 'flow/run-child'
-      readonly result: RunResult
-    }
-  | {
-      readonly status: 'succeeded'
-      readonly method: 'capability/call'
-      readonly result: RunHostEffectResult
-    }
-  | RunHostOperationFailure
+type NormalizedOperationTerminal = RunHostOperationTerminal
 
 interface RootSuccess {
   readonly kind: 'success'
@@ -600,7 +568,7 @@ export class RunHostSession {
       return
     }
 
-    if (request.method !== 'flow/run-child' && request.method !== 'capability/call') {
+    if (request.method !== 'flow/call') {
       this.queueResponse(request.id, errorMessage(request.id, -32601, 'Method not found'))
       return
     }
@@ -634,17 +602,9 @@ export class RunHostSession {
       return
     }
 
-    const dispatch =
-      operation.method === 'flow/run-child'
-        ? this.dispatcher?.runChildFlow
-        : this.dispatcher?.callCapability
+    const dispatch = this.dispatcher?.call
     if (dispatch === undefined) {
-      const terminal = failedOperation(
-        'UNAVAILABLE',
-        operation.method === 'capability/call'
-          ? 'no effect dispatcher is installed'
-          : 'no child Flow dispatcher is installed',
-      )
+      const terminal = failedOperation('UNAVAILABLE', 'no invocation dispatcher is installed')
       const settled: OperationRecord = {
         signature: operation.signature,
         controller: new AbortController(),
@@ -663,23 +623,30 @@ export class RunHostSession {
     }
     this.operations.set(operation.operationId, record)
     this.attachOperationWaiter(request.id, record)
-    const task = (
-      operation.method === 'flow/run-child'
-        ? this.dispatcher!.runChildFlow!(operation.call, record.controller.signal).then(
-            (terminal) => normalizeFlowOperationTerminal(terminal),
+    const task = Promise.resolve()
+      .then(() => this.dispatcher!.call!(operation.call, record.controller.signal))
+      .then((terminal) => normalizeOperationTerminal(terminal))
+      .catch((error) => {
+        if (error instanceof RunHostFatalOperationError) {
+          this.localTerminal ??= {
+            code: error.code,
+            message: 'owned operation cleanup or fencing is unconfirmed',
+          }
+          this.rootOpen = false
+          this.abortOwnedOperations()
+          this.graceTimer ??= setTimeout(
+            () => this.startTermination(),
+            this.limits.cancellationGraceMs,
           )
-        : this.dispatcher!.callCapability!(operation.call, record.controller.signal).then(
-            (terminal) => normalizeEffectOperationTerminal(terminal),
-          )
-    )
-      .catch((error) =>
-        failedOperation(
+          return failedOperation(error.code, 'owned operation cleanup or fencing is unconfirmed')
+        }
+        return failedOperation(
           error instanceof InvalidDispatcherResult ? 'INVALID_RESULT' : 'EXECUTION_FAILED',
           error instanceof InvalidDispatcherResult
             ? 'the host dispatcher returned an invalid result'
             : 'the host operation failed',
-        ),
-      )
+        )
+      })
       .then((terminal) => this.settleOperation(record, terminal))
     this.own(task)
   }
@@ -781,7 +748,14 @@ export class RunHostSession {
   }
 
   private queueResponse(id: string, value: JsonObject): void {
-    const line = encodeFrame(value)
+    let line: Uint8Array
+    try {
+      line = encodeFrame(value)
+    } catch {
+      line = encodeFrame(
+        operationError(id, 'RESOURCE_EXHAUSTED', 'the response exceeds JSON/1 limits'),
+      )
+    }
     if (this.queuedResponseBytes + line.byteLength > MAX_QUEUED_RESPONSE_BYTES) {
       this.recordResourceFailure('component responses exceeded the host queue byte budget')
       this.startTermination()
@@ -861,7 +835,16 @@ export class RunHostSession {
   private retainOperationTerminal(
     terminal: NormalizedOperationTerminal,
   ): NormalizedOperationTerminal {
-    const bytes = canonicalJson(terminal as unknown as JsonValue).byteLength
+    let bytes: number
+    try {
+      bytes = canonicalJson(terminal as unknown as JsonValue).byteLength
+      // Retain one terminal that fits every legal waiter ID, including later
+      // joins and replays. A child root response may fit with its shorter ID.
+      canonicalJson(operationResponse('r'.repeat(128), terminal))
+    } catch {
+      terminal = failedOperation('RESOURCE_EXHAUSTED', 'the operation result exceeds JSON/1 limits')
+      bytes = canonicalJson(terminal as unknown as JsonValue).byteLength
+    }
     if (this.retainedOperationBytes + bytes > MAX_RETAINED_OPERATION_BYTES) {
       const exhausted = failedOperation(
         'RESOURCE_EXHAUSTED',
@@ -875,12 +858,7 @@ export class RunHostSession {
   }
 
   private queueOperationResponse(id: string, terminal: NormalizedOperationTerminal): void {
-    this.queueResponse(
-      id,
-      terminal.status === 'succeeded'
-        ? { jsonrpc: '2.0', id, result: terminal.result as unknown as JsonObject }
-        : operationError(id, terminal.code, terminal.message, terminal.details),
-    )
+    this.queueResponse(id, operationResponse(id, terminal))
   }
 
   private abortOwnedOperations(): void {
@@ -1306,59 +1284,28 @@ function parseRunResult(value: JsonValue): RunResult {
 }
 
 function parseOperation(request: ParsedRequest): ParsedOperation {
-  const params = requireObject(request.params, `${request.method} params`)
-  if (request.method === 'flow/run-child') {
-    const keys = Object.hasOwn(params, 'intent')
-      ? ['operationId', 'slot', 'intent', 'input']
-      : ['operationId', 'slot', 'input']
-    if (Object.hasOwn(params, 'channels')) keys.push('channels')
-    requireExactKeys(params, keys)
-    const operationId = requireWireId(params.operationId)
-    const slot = requireLocalName(params.slot)
-    let intent: string | undefined
-    if (Object.hasOwn(params, 'intent')) {
-      if (
-        typeof params.intent !== 'string' ||
-        scalarLength(params.intent) < 1 ||
-        scalarLength(params.intent) > 16_384
-      )
-        throw new Error('invalid intent')
-      intent = params.intent
-    }
-    const call = Object.freeze({
-      operationId,
-      slot,
-      ...(intent === undefined ? {} : { intent }),
-      input: params.input!,
-      ...(Object.hasOwn(params, 'channels')
-        ? { channels: parseChannelReferences(params.channels) }
-        : {}),
-    })
-    return {
-      method: 'flow/run-child',
-      operationId,
-      signature: operationSignature(request.method, params),
-      call,
-    }
-  }
-  requireExactKeys(
-    params,
-    Object.hasOwn(params, 'channels')
-      ? ['operationId', 'slot', 'method', 'input', 'channels']
-      : ['operationId', 'slot', 'method', 'input'],
-  )
+  const params = requireObject(request.params, 'flow/call params')
+  const keys = ['operationId', 'slot', 'input']
+  if (Object.hasOwn(params, 'intent')) keys.push('intent')
+  if (Object.hasOwn(params, 'channels')) keys.push('channels')
+  requireExactKeys(params, keys)
   const operationId = requireWireId(params.operationId)
   const slot = requireLocalName(params.slot)
-  const method = requireLocalName(params.method)
+  if (
+    Object.hasOwn(params, 'intent') &&
+    (typeof params.intent !== 'string' ||
+      scalarLength(params.intent) < 1 ||
+      scalarLength(params.intent) > 16_384)
+  )
+    throw new Error('invalid intent')
   return {
-    method: 'capability/call',
     operationId,
-    signature: operationSignature(request.method, params),
+    signature: operationSignature(params),
     call: Object.freeze({
       operationId,
       slot,
-      method,
       input: params.input!,
+      ...(Object.hasOwn(params, 'intent') ? { intent: params.intent as string } : {}),
       ...(Object.hasOwn(params, 'channels')
         ? { channels: parseChannelReferences(params.channels) }
         : {}),
@@ -1368,7 +1315,7 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
 
 function parseChannelReferences(value: JsonValue | undefined): Readonly<Record<string, string>> {
   const object = requireObject(value, 'channel references')
-  if (Object.keys(object).length > 32) throw new TypeError('too many channel references')
+  if (Object.keys(object).length > 256) throw new TypeError('too many channel references')
   const references: Record<string, string> = Object.create(null)
   for (const [name, reference] of Object.entries(object)) {
     requireLocalName(name)
@@ -1379,13 +1326,15 @@ function parseChannelReferences(value: JsonValue | undefined): Readonly<Record<s
   return Object.freeze(references)
 }
 
-function operationSignature(method: string, params: JsonObject): string {
+function operationSignature(params: JsonObject): string {
   const semantic: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>
   for (const [key, value] of Object.entries(params)) {
     if (key !== 'operationId') semantic[key] = value
   }
-  const bytes = canonicalJson({ method, params: semantic })
-  return createHash('sha256').update(bytes).digest('hex')
+  return createHash('sha256')
+    .update(Buffer.from('FLOW-Call/1\0', 'ascii'))
+    .update(canonicalJson(semantic))
+    .digest('hex')
 }
 
 function errorMessage(id: string | null, code: number, message: string): JsonObject {
@@ -1409,6 +1358,12 @@ function operationError(
   }
 }
 
+function operationResponse(id: string, terminal: NormalizedOperationTerminal): JsonObject {
+  return terminal.status === 'succeeded'
+    ? { jsonrpc: '2.0', id, result: terminal.result as unknown as JsonObject }
+    : operationError(id, terminal.code, terminal.message, terminal.details)
+}
+
 function failedOperation(
   code: WireFailureCode,
   message: string,
@@ -1424,37 +1379,18 @@ function failedOperation(
 
 class InvalidDispatcherResult extends TypeError {}
 
-function normalizeFlowOperationTerminal(
-  value: RunHostFlowOperationTerminal,
-): NormalizedOperationTerminal {
+function normalizeOperationTerminal(value: RunHostOperationTerminal): NormalizedOperationTerminal {
   if (value.status === 'succeeded') {
     try {
-      const result = parseRunResult(value.result as unknown as JsonValue)
+      const result = parseRunResult(
+        decodeJson1(canonicalJson(value.result as unknown as JsonValue)),
+      )
       return Object.freeze({
         status: 'succeeded' as const,
-        method: 'flow/run-child' as const,
         result,
       })
     } catch (error) {
       throw new InvalidDispatcherResult(`invalid Flow dispatcher result: ${errorText(error)}`)
-    }
-  }
-  return normalizeOperationFailure(value)
-}
-
-function normalizeEffectOperationTerminal(
-  value: RunHostEffectOperationTerminal,
-): NormalizedOperationTerminal {
-  if (value.status === 'succeeded') {
-    try {
-      const result = parseEffectResult(value.result as unknown as JsonValue)
-      return Object.freeze({
-        status: 'succeeded' as const,
-        method: 'capability/call' as const,
-        result,
-      })
-    } catch (error) {
-      throw new InvalidDispatcherResult(`invalid effect dispatcher result: ${errorText(error)}`)
     }
   }
   return normalizeOperationFailure(value)
@@ -1469,8 +1405,10 @@ function normalizeOperationFailure(value: RunHostOperationFailure): RunHostOpera
   ) {
     throw new InvalidDispatcherResult('operation dispatcher returned an invalid failure')
   }
+  let details: JsonValue | undefined
   try {
-    if (value.details !== undefined) validateJson1(value.details)
+    validateJson1(value.message)
+    if (value.details !== undefined) details = decodeJson1(canonicalJson(value.details))
   } catch (error) {
     throw new InvalidDispatcherResult(`invalid operation failure details: ${errorText(error)}`)
   }
@@ -1478,23 +1416,8 @@ function normalizeOperationFailure(value: RunHostOperationFailure): RunHostOpera
     status: 'failed' as const,
     code: value.code,
     message: value.message,
-    ...(value.details === undefined ? {} : { details: value.details }),
+    ...(details === undefined ? {} : { details }),
   })
-}
-
-function parseEffectResult(value: JsonValue): RunHostEffectResult {
-  const object = requireObject(value, 'effect result')
-  if (Object.hasOwn(object, 'value')) {
-    requireExactKeys(object, ['value'])
-    validateJson1(object.value!)
-    return Object.freeze({ value: object.value! })
-  }
-  requireExactKeys(object, ['error'])
-  const error = requireObject(object.error, 'declared effect error')
-  requireExactKeys(error, ['name', 'data'])
-  const name = requireLocalName(error.name)
-  validateJson1(error.data!)
-  return Object.freeze({ error: Object.freeze({ name, data: error.data! }) })
 }
 
 function boundedMessage(value: string): string {
@@ -1523,6 +1446,7 @@ function requireWireId(value: JsonValue | undefined): string {
     typeof value !== 'string' ||
     value.length > 128 ||
     !WIRE_ID.test(value) ||
+    value.includes('\n') ||
     encoder.encode(value).byteLength > 128
   )
     throw new Error('invalid Run/1 request ID')
@@ -1530,7 +1454,12 @@ function requireWireId(value: JsonValue | undefined): string {
 }
 
 function requireLocalName(value: JsonValue | undefined): string {
-  if (typeof value !== 'string' || value.length > 64 || !LOCAL_NAME.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    value.length > 64 ||
+    !LOCAL_NAME.test(value) ||
+    value.includes('\n')
+  ) {
     throw new Error('invalid LocalName')
   }
   return value

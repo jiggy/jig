@@ -49,8 +49,8 @@ Approve this exact revision for execution? [y/N]
 Enter `y` to authorize that revision, or decline to leave it unapproved. Only
 run the next command after approval.
 
-`init` writes ordinary editable files: `jig.ts`, `flows/hello/FLOW.md`,
-`flows/hello/package.json`, and `flows/hello/flow.ts`, plus a README and empty
+`init` writes ordinary editable files: `jig.ts`, `flows/hello/flow.meta.json`,
+`flows/hello/package.json`, and `flows/hello/FLOW.ts`, plus a README and empty
 Bindings directory. It installs nothing, makes no network requests, and
 approves nothing. Use `jig init --bare <directory>` when you want an empty
 project instead.
@@ -63,7 +63,7 @@ before approval; declining cannot undo those requests. It does not give Runs
 network access. Supplied dependency locks remain frozen. See
 [dependency review](./dependencies.md) for reusable locked packages.
 
-The generated `flow.ts` is ordinary SDK code you can edit:
+The generated `FLOW.ts` is ordinary SDK code you can edit:
 
 ```ts
 import { handle } from "@jigging/flow";
@@ -81,7 +81,7 @@ This Flow needs no Agent configuration.
 
 ## Make one change
 
-In `flows/hello/flow.ts`, change `Hello,` to `Welcome,`. Review and run again:
+In `flows/hello/FLOW.ts`, change `Hello,` to `Welcome,`. Review and run again:
 
 ```sh
 jig review --allow-resolution-network
@@ -94,7 +94,7 @@ previously accepted version. The network flag has the same dependency-resolution
 meaning described above; it does not authorize the Flow to access the network.
 
 You have now created, run, and adapted a method. Next,
-[add a support-reply Agent to this same project](./agents.md#build-your-first-agent-method), or see
+[choose an ordinary Agent for this same project](./agents.md), or see
 [one caller use code, an Agent, or both](./request-triage.md). The method boundary
 stays consistent as the implementation changes. Read [how Jig works](./understand.md)
 for the architecture behind it, or try [a tested patch](./tested-patch.md)
@@ -105,10 +105,10 @@ for a larger application.
 ![Editable source goes through jig review and approval before jig run executes the accepted revision. Jig validates the result and settles owned work before returning an outcome or failure.](./review-run.svg)
 
 `jig review` leads with added, changed, and removed packages, Bindings, and
-execution policy, then lists the targets you can run. Changed policy is shown
-in full; unchanged policy is omitted. When proposing a change, use
-`jig review --details` to inspect complete current and proposed policy. If Agent capabilities are used, the
-review also names the selected non-secret host Agent configuration.
+execution policy, then lists the targets you can run. Changed fields show their
+previous and proposed values; unchanged policy is omitted. Use
+`jig review --details` to include that unchanged context. For ACP grants, the
+review also names the selected non-secret native client configuration.
 Inspect the source with your usual tools, then approve the review. In a
 noninteractive environment, `--yes` records your explicit approval; it does not
 grant resolution-network permission.
@@ -153,19 +153,21 @@ Add a second Flow from the project directory:
 jig new summarize
 ```
 
-Edit `flows/summarize/flow.ts` and its `FLOW.md`, then use the ordinary
+Edit `flows/summarize/FLOW.ts`, then use the ordinary
 `jig review` and `jig run flow:flows/summarize` path. This creates source only:
 no installation, approval, or execution. Default discovery includes the new
 directory; if you selected explicit members in `jig.ts`, add it there first.
 Dependency resolution still requires your explicit network permission when
 needed, as described in [dependencies](./dependencies.md).
 
-- [Build your first Agent method](./agents.md#build-your-first-agent-method) in the project you just created.
+- [Add an ordinary Agent](./agents.md) in the project you just created.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
+- [Run a Markdown method](./markdown.md) without an SDK dependency.
 - [Choose an Agent](./agents.md) using an API or a supported local client.
 - [Work with files](./files.md) to capture inputs and export one result packet.
 - [Configure Jig](./configuration.md) for terminal appearance, startup verification, and operator settings.
 - [Manage dependencies](./dependencies.md) for reusable Flow packages.
+- [Author contracts once](./contracts.md) to generate validation and editor types together.
 - [Repair a project](./tested-patch.md) or [handle a disputed charge](./support-case.md).
 - [Choose a workflow structure](./workflow-design.md) for your application.
 
@@ -173,7 +175,7 @@ needed, as described in [dependencies](./dependencies.md).
 
 The alpha has independent host evidence on provisioned Ubuntu 24.04 x86_64.
 Other matching Linux hosts are not yet independently validated. Jig checks
-required capabilities and reports missing support.
+required invocation contracts and reports missing support.
 
 - Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
 - Bubblewrap 0.12 or newer and GNU `readlink -f`.

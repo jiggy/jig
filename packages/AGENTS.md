@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Contains the independently built and distributed FLOW SDKs and Jig host.
+Contains the independently built FLOW SDKs, reusable Agent methods, Jig host,
+and optional contract authoring toolchain.
 
 ## Ownership
 
@@ -48,6 +49,14 @@ Contains the independently built and distributed FLOW SDKs and Jig host.
 - Cross-package gate: `FLOW_NODE="$(command -v node)" PYTHON="$(command -v python3)" scripts/test-release.sh`
 
 ## Child DOX Index
+
+- [agent-method/AGENTS.md](agent-method/AGENTS.md) — Shared Agent procedure,
+  bounded Skill reader, and complete ordinary Flow artifact.
+- [agent-acp/AGENTS.md](agent-acp/AGENTS.md) — Ordinary finite native Agent
+  dialogue and public ACP resource framing, without credentials or launch authority.
+
+- [flow-authoring/AGENTS.md](flow-authoring/AGENTS.md) — Optional TypeSpec
+  mapping toolchain, generated contracts, Agent projections and editor types.
 
 - [flow-sdk/AGENTS.md](flow-sdk/AGENTS.md) — Public TypeScript Run SDK/1
   package.

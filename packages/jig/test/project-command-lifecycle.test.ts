@@ -1,15 +1,15 @@
+import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { Database, constants } from 'bun:sqlite'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
-import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
-import { installedBunLocation } from './fixtures/installed-bun-location.js'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
-import type { JsonValue } from '../src/json.js'
+import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { projectCommandCandidateDigest } from '../src/internal/private-project-command.js'
+import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { PRIVATE_ROOT_RESOURCE_POLICY } from '../src/internal/root-operation-limits.js'
+import type { JsonValue } from '../src/json.js'
+import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
 
@@ -25,7 +25,7 @@ proof('contained Project Command effect', () => {
       const plan = await session.plan({ lockMode: 'update' })
       expect(plan.state).toBe('applicable')
       if (plan.state !== 'applicable') throw new Error('command fixture is not reviewable')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
       const run = async (
         id: string,
         files: Record<string, string>,
@@ -124,7 +124,7 @@ proof('contained Project Command effect', () => {
       expect(JSON.stringify(ordinary)).toContain('observed failure')
       expect(JSON.stringify(ordinary)).not.toContain('unauthorized-')
       const invalid = await run('command-unknown', files, { command: 'shell' })
-      expect(invalid).toMatchObject({ terminal: { status: 'failed', code: 'INVALID_INPUT' } })
+      expect(invalid).toMatchObject({ terminal: { status: 'failed', code: 'UNAVAILABLE' } })
       const flood = await run('command-flood', {
         'src/cli.ts':
           'process.stdout.write("x".repeat(131072)); process.stderr.write("e".repeat(131072));',
@@ -178,7 +178,7 @@ proof('contained Project Command effect', () => {
       session = await openPrivateProjectSession({ directory: root, host })
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state !== 'applicable') throw new Error('loss fixture is not applicable')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
       await session.close()
       const program = `
         import { openPrivateProjectSession } from ${JSON.stringify(join(import.meta.dir, '../src/internal/project-session-controller.ts'))};
@@ -235,21 +235,35 @@ async function fixture(root: string) {
     await mkdir(join(flow, 'contracts'), { recursive: true })
     await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
     await writeFile(
-      join(flow, 'FLOW.md'),
-      `---\nname: ${name}\ndescription: Collect bounded project-command evidence.\n${name === 'command' ? 'uses:\n  command:\n    contract: ./contracts/project-command.capability.json\n' : ''}---\n`,
+      join(flow, 'flow.meta.json'),
+      JSON.stringify({
+        name,
+        description: 'Collect bounded project-command evidence.',
+        ...(name === 'command'
+          ? {
+              uses: Object.fromEntries(
+                ['cli', 'tests'].map((slot) => [
+                  slot,
+                  { contract: './contracts/project-command/contract.json' },
+                ]),
+              ),
+            }
+          : {}),
+      }),
     )
     await writeFile(
-      join(flow, 'flow.ts'),
+      join(flow, 'FLOW.ts'),
       name === 'command'
-        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await run.callCapability({operationId:"command",slot:"command",method:"run",input:run.input})}));'
+        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>{const {command,...input}=run.input;return run.call({operationId:"command",slot:command,input})});'
         : name === 'pair'
-          ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.runChildFlow({operationId,slot:"worker",input:run.input})))}));'
-          : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.runChildFlow({operationId:"worker",slot:"worker",input:run.input}));',
+          ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.call({operationId,slot:"worker",input:run.input})))}));'
+          : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.call({operationId:"worker",slot:"worker",input:run.input}));',
     )
     if (name === 'command')
       await cp(
-        join(import.meta.dir, '../../../docs/jig/spec/contracts/project-command.capability.json'),
-        join(flow, 'contracts/project-command.capability.json'),
+        join(import.meta.dir, '../../../docs/jig/spec/contracts/project-command'),
+        join(flow, 'contracts/project-command'),
+        { recursive: true },
       )
   }
   await writeFile(
@@ -258,7 +272,7 @@ async function fixture(root: string) {
   )
   await writeFile(
     join(root, 'bindings/command.ts'),
-    'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/command",commands:{cli:{run:"src/cli.ts"},tests:{test:["test/project.test.ts"]}}});',
+    'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/command",slots:{cli:{kind:"command",run:"src/cli.ts"},tests:{kind:"command",test:["test/project.test.ts"]}}});',
   )
   await writeFile(
     join(root, 'bindings/parent.ts'),
@@ -290,7 +304,7 @@ function ownerRows(root: string): number {
     return (
       database
         .query(
-          "SELECT count(*) AS count FROM root_child_owners WHERE sandbox_digest IS NOT NULL AND CAST(allocation_bytes AS TEXT) LIKE '%private-project-command-owner/1%'",
+          "SELECT count(*) AS count FROM root_child_owners WHERE sandbox_digest IS NOT NULL AND CAST(allocation_bytes AS TEXT) LIKE '%private-contained-effect-owner/1%'",
         )
         .get() as { count: number }
     ).count

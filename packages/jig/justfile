@@ -7,15 +7,22 @@
 
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun clean
-    mkdir -p bin libexec/agent libexec/evaluator libexec/preparation
+    just --justfile ../flow-sdk/justfile build
+    just --justfile ../agent-method/justfile build
+    just --justfile ../agent-acp/justfile build
+    just --justfile ../flow-authoring/justfile build
+    mkdir -p bin libexec/agent libexec/evaluator libexec/preparation libexec/authoring
     cp scripts/installed-jig.sh bin/jig
     chmod 755 bin/jig
     bun node_modules/typescript/bin/tsc -p tsconfig.json
+    cp dist/internal/contract-authoring-worker.js libexec/authoring/contract-authoring-worker.js
     bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js
     bun build src/installed-cli.ts --target=bun --format=esm --outfile=libexec/installed-cli.js
     bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js
     bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js
-    bun build src/internal/openai-agent-worker.ts --target=bun --format=esm --outfile=libexec/agent/openai-agent-worker.js
+    bun build src/internal/http-request-worker.ts --target=bun --format=esm --outfile=libexec/http-request-worker.js
+    bun build src/internal/markdown-runtime-worker.ts --target=bun --format=esm --outfile=libexec/markdown-runtime.js
+    cp ../flow-sdk/LICENSE libexec/flow.LICENSE
     bun build src/internal/codex-agent-launcher.ts --target=bun --format=esm --outfile=libexec/agent/codex-agent-launcher.js
     cp node_modules/@agentclientprotocol/codex-acp/dist/index.js libexec/agent/codex-acp.js
     cp node_modules/@agentclientprotocol/codex-acp/LICENSE libexec/agent/codex-acp.LICENSE
@@ -30,7 +37,6 @@
     bun build src/internal/bun-native-preparation-worker.ts --target=bun --format=esm --outfile=libexec/preparation/bun-native-preparation-worker.js
     bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js
     cp ../../docs/jig/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json
-    cp node_modules/openai/LICENSE libexec/agent/openai.LICENSE
     cp ../../LICENSE.md ../../PRICING.md ../../LICENSES.md .
     mkdir -p LICENSES
     cp ../../LICENSES/Apache-2.0.txt ../../LICENSES/CC-BY-4.0.txt ../../LICENSES/Community-Spec-1.0.md ../../LICENSES/MPL-2.0.txt LICENSES/
@@ -52,7 +58,7 @@ clean:
 # Build, then pack; release publication reuses an already tested archive
 [positional-arguments]
 @pack *args: build
-    bun pm pack --ignore-scripts "$@"
+    bun scripts/pack.ts "$@"
 
 # ---------------------------------------------------------------------------- #
 #                                    CHECKS                                    #
@@ -81,8 +87,12 @@ check: build test
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-delegation-hostile.test.ts --timeout 30000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/bun-native-preparation.test.ts --timeout 120000
+    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/package-provider-host.test.ts --timeout 120000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-command-lifecycle.test.ts --timeout 180000
+    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/http-request-lifecycle.test.ts --timeout 240000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/run-checkpoint-lifecycle.test.ts --timeout 90000
+    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/markdown-worker.test.ts --timeout 120000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000
+    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/finite-acp-lifecycle.test.ts --timeout 180000
     bun test test/native-agent-startup.test.ts --timeout 60000

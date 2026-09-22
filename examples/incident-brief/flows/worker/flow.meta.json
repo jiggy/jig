@@ -1,0 +1,10 @@
+{
+  "name": "incident-brief-worker",
+  "description": "React to a bounded context update with one drafting handoff, or publish preliminary analysis and prepare independent review questions.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json",
+      "requires": ["conversation"]
+    }
+  }
+}

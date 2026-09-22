@@ -41,6 +41,7 @@ export interface CapturedDeclarationSource {
   readonly observations: readonly DeclarationSourceObservation[]
   readonly members: readonly DeclarationMember[]
   verify(): Promise<void>
+  read(member: DeclarationMember, maximumBytes: number): Promise<Uint8Array>
 }
 
 interface OpenDirectory {
@@ -62,14 +63,18 @@ type PrivateObservation =
 export async function captureDeclarationSource(
   projectRoot: PrivateProjectRoot,
   source?: ProjectSource,
+  extension: 'ts' | 'json' = 'ts',
 ): Promise<CapturedDeclarationSource> {
   const project = requirePrivateProjectRoot(projectRoot)
-  const normalized = validateSource(source)
+  const normalized = validateSource(source, extension)
   if (normalized === undefined) {
     return Object.freeze({
       observations: Object.freeze([]),
       members: Object.freeze([]),
       verify: async () => {},
+      read: async () => {
+        throw new TypeError('no captured declarations')
+      },
     })
   }
 
@@ -92,11 +97,11 @@ export async function captureDeclarationSource(
         continue
       }
       try {
-        const fingerprint = await fingerprintRoot(directory, root)
+        const fingerprint = await fingerprintRoot(directory, root, extension)
         privateObservations.push({ kind: 'discover', root, fingerprint })
         const paths = fingerprint.selectedNames.map((name) => `${root}/${name}`)
         for (const projectPath of paths) {
-          members.push(member(projectPath, 'discovered', root))
+          members.push(member(projectPath, 'discovered', root, extension))
         }
         observations.push(
           Object.freeze({
@@ -112,7 +117,7 @@ export async function captureDeclarationSource(
     }
   } else {
     for (const projectPath of normalized.paths) {
-      const opened = await openProjectFile(project.handle, projectPath, false)
+      const opened = await openProjectFile(project.handle, projectPath, false, extension)
       if (opened === undefined) throw new Error('unreachable exact declaration member state')
       try {
         requireDeclarationFile(opened.information, projectPath)
@@ -121,7 +126,7 @@ export async function captureDeclarationSource(
           path: projectPath,
           fingerprint: statFingerprint(opened.information),
         })
-        members.push(member(projectPath, 'exact'))
+        members.push(member(projectPath, 'exact', undefined, extension))
       } finally {
         await opened.handle.close().catch(() => undefined)
       }
@@ -137,11 +142,52 @@ export async function captureDeclarationSource(
   return Object.freeze({
     observations: Object.freeze(observations),
     members: Object.freeze(members),
+    async read(selected: DeclarationMember, maximumBytes: number): Promise<Uint8Array> {
+      if (!members.includes(selected) || !Number.isSafeInteger(maximumBytes) || maximumBytes < 1)
+        throw new TypeError('expected a captured member and a positive byte bound')
+      const opened = await openProjectFile(project.handle, selected.projectPath, true, extension)
+      if (opened === undefined) sourceChanged('declaration disappeared', selected.projectPath)
+      try {
+        requireDeclarationFile(opened.information, selected.projectPath)
+        if (opened.information.size > BigInt(maximumBytes))
+          invalid(
+            'PROJECT_SOURCE_LIMIT',
+            'declaration exceeds its byte bound',
+            selected.projectPath,
+          )
+        const buffer = Buffer.alloc(maximumBytes + 1)
+        let length = 0
+        while (length < buffer.length) {
+          const { bytesRead } = await opened.handle.read(
+            buffer,
+            length,
+            buffer.length - length,
+            length,
+          )
+          if (bytesRead === 0) break
+          length += bytesRead
+        }
+        if (length > maximumBytes)
+          invalid(
+            'PROJECT_SOURCE_LIMIT',
+            'declaration exceeds its byte bound',
+            selected.projectPath,
+          )
+        if (
+          statFingerprint(opened.information) !==
+          statFingerprint(await opened.handle.stat({ bigint: true }))
+        )
+          sourceChanged('declaration changed while reading', selected.projectPath)
+        return buffer.subarray(0, length)
+      } finally {
+        await opened.handle.close()
+      }
+    },
     async verify(): Promise<void> {
       await project.verify()
       for (const observation of privateObservations) {
         if (observation.kind === 'member') {
-          const current = await openProjectFile(project.handle, observation.path, true)
+          const current = await openProjectFile(project.handle, observation.path, true, extension)
           if (current === undefined)
             sourceChanged('exact declaration disappeared during capture', observation.path)
           try {
@@ -165,7 +211,7 @@ export async function captureDeclarationSource(
         if (current === undefined)
           sourceChanged('declaration root disappeared during capture', observation.root)
         try {
-          const fingerprint = await fingerprintRoot(current, observation.root)
+          const fingerprint = await fingerprintRoot(current, observation.root, extension)
           if (!sameFingerprint(observation.fingerprint, fingerprint)) {
             sourceChanged('declaration root changed during capture', observation.root)
           }
@@ -177,7 +223,10 @@ export async function captureDeclarationSource(
   })
 }
 
-function validateSource(source?: ProjectSource): ProjectSource | undefined {
+function validateSource(
+  source: ProjectSource | undefined,
+  extension: 'ts' | 'json',
+): ProjectSource | undefined {
   if (source === undefined) return undefined
   if (source.kind === 'discover') {
     if (!Array.isArray(source.roots) || source.roots.length === 0)
@@ -196,7 +245,7 @@ function validateSource(source?: ProjectSource): ProjectSource | undefined {
     if (!Array.isArray(source.paths))
       invalid('PROJECT_SOURCE', 'exact declaration source requires paths')
     const paths = [...source.paths]
-    for (const path of paths) validateDeclarationPath(path)
+    for (const path of paths) validateDeclarationPath(path, extension)
     paths.sort(compareProjectPaths)
     assertPaths(paths)
     return Object.freeze({ kind: 'members', paths: Object.freeze(paths) })
@@ -204,7 +253,11 @@ function validateSource(source?: ProjectSource): ProjectSource | undefined {
   invalid('PROJECT_SOURCE', 'unknown declaration source kind')
 }
 
-async function fingerprintRoot(directory: OpenDirectory, root: string): Promise<Fingerprint> {
+async function fingerprintRoot(
+  directory: OpenDirectory,
+  root: string,
+  extension: 'ts' | 'json',
+): Promise<Fingerprint> {
   const records: string[] = []
   const selectedNames: string[] = []
   for await (const name of readDirectoryNames(directory.handle)) {
@@ -221,9 +274,9 @@ async function fingerprintRoot(directory: OpenDirectory, root: string): Promise<
         `${root}/${name}`,
       )
     }
-    if (!name.endsWith('.ts')) continue
+    if (!name.endsWith('.' + extension)) continue
     const projectPath = `${root}/${name}`
-    validateDeclarationPath(projectPath)
+    validateDeclarationPath(projectPath, extension)
     if (information.isSymbolicLink())
       invalid('PROJECT_SOURCE_SYMLINK', 'declaration members cannot be symlinks', projectPath)
     requireDeclarationFile(information, projectPath)
@@ -245,9 +298,13 @@ function member(
   projectPath: string,
   membership: 'discovered' | 'exact',
   configuredRoot?: string,
+  extension: 'ts' | 'json' = 'ts',
 ): DeclarationMember {
-  validateDeclarationPath(projectPath)
-  const name = projectPath.split('/').at(-1)!.slice(0, -3)
+  validateDeclarationPath(projectPath, extension)
+  const name = projectPath
+    .split('/')
+    .at(-1)!
+    .slice(0, -extension.length - 1)
   return Object.freeze({
     id: name,
     projectPath,
@@ -256,11 +313,15 @@ function member(
   })
 }
 
-function validateDeclarationPath(path: string): void {
+function validateDeclarationPath(path: string, extension: 'ts' | 'json'): void {
   validateSourcePath(path)
   const name = path.split('/').at(-1)!
-  if (!name.endsWith('.ts') || !LOCAL_NAME.test(name.slice(0, -3))) {
-    invalid('PROJECT_DECLARATION_NAME', 'declaration member must be named <LocalName>.ts', path)
+  if (!name.endsWith('.' + extension) || !LOCAL_NAME.test(name.slice(0, -extension.length - 1))) {
+    invalid(
+      'PROJECT_DECLARATION_NAME',
+      'declaration member must be named <LocalName>.' + extension,
+      path,
+    )
   }
 }
 
@@ -337,8 +398,9 @@ async function openProjectFile(
   project: FileHandle,
   projectPath: string,
   missingIsChange: boolean,
+  extension: 'ts' | 'json',
 ): Promise<OpenDirectory | undefined> {
-  validateDeclarationPath(projectPath)
+  validateDeclarationPath(projectPath, extension)
   const segments = projectPath.split('/')
   let parent = project
   const ancestors: FileHandle[] = []

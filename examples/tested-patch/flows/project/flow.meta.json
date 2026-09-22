@@ -1,0 +1,7 @@
+{
+  "name": "tested-project-patch",
+  "description": "Turn a small Bun project and an issue into a reviewable multi-file patch with independent acceptance evidence.",
+  "uses": {
+    "repair": {}
+  }
+}

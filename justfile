@@ -3,6 +3,9 @@
 # ---------------------------------------------------------------------------- #
 
 mod flow "packages/flow-sdk/justfile"
+mod agent "packages/agent-method/justfile"
+mod acp "packages/agent-acp/justfile"
+mod authoring "packages/flow-authoring/justfile"
 mod python "packages/jiggy-flow/justfile"
 mod jig "packages/jig/justfile"
 mod site "site/justfile"
@@ -15,8 +18,8 @@ mod site "site/justfile"
 @default:
     just --list --list-submodules
 
-# Build both TypeScript packages
-build: flow::build jig::build
+# Build the TypeScript packages
+build: flow::build jig::build authoring::build
 
 # Format only the requested paths, or the repository when omitted
 [positional-arguments]
@@ -37,10 +40,10 @@ build: flow::build jig::build
 @lint *paths:
     bun x --no-install biome lint --files-ignore-unknown=true --no-errors-on-unmatched "$@"
 
-# Run ordinary SDK, Jig, and Run/1 tests
+# Run ordinary method, SDK, Jig, and Run/1 tests
 [positional-arguments]
 @test *args:
-    bun test packages/flow-sdk packages/jig conformance/run-1 "$@"
+    bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-1 "$@"
 
 # Run the portable Run/1 corpus
 [positional-arguments]
@@ -51,10 +54,15 @@ build: flow::build jig::build
 @test-baseline:
     bun scripts/test-operational-baseline.ts
 
-# Run development-shell, worktree, and task-runner tests
+# Run development-shell, worktree, task-runner, and baseline harness tests
 @test-tooling:
-    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts
+    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/agent-candidate.test.ts scripts/operational-baseline-checks.test.ts
 
 # Run the unprivileged release gate; requires FLOW_NODE and Python
 @test-release:
     sh scripts/test-release.sh
+
+# Freeze and qualify an ordinary Agent package from clean Git source
+[positional-arguments]
+@agent-candidate kind destination:
+    bun scripts/build-agent-candidate.ts "$1" "$2"

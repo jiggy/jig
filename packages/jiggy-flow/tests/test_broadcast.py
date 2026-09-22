@@ -76,7 +76,7 @@ class BroadcastRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def source(self, name="source:1", contract=None):
         task, request = await self.request(self.runtime.channel(
             delivery="broadcast", schema=_SCHEMA_UNSET,
-            contract="./contract.json" if contract else None,
+            contract="./FLOW.contract.json" if contract else None,
         ))
         self.assertEqual(request["params"]["delivery"], "broadcast")
         await self.answer(request, {"send": grant("writer:" + name, "send", contract=contract),

@@ -24,8 +24,9 @@ or both, then using ordinary code to produce a contact preview.
 - Input is `source/contacts.csv`: UTF-8, 64 KiB, 1–100 data records, 1–16 columns.
 - `preview.json` is a proposal for review, not an import receipt. `ready` describes
   a completed preview, even when some or all rows are rejected.
-- Keep each Flow self-contained. The mixed mapper uses code and the Agent
-  capability within one leaf; current Jig child Bindings cannot have child slots.
+- Keep each Flow self-contained. The mixed mapper uses code and an ordinary
+  Agent Flow through its declared slot. `bindings/model.ts` selects the operator's
+  Agent and grants; contract-keyed defaults supply it to both intelligent mappers.
   Keep its small known-format rule aligned through shared test cases, not imports
   of a sibling Flow implementation.
 - Uncertain execution, failure, and cancellation propagate without retries.

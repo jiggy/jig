@@ -75,11 +75,12 @@ the caller uses the method's contract whether its implementation uses code,
 Agent judgment, or both. Jig supplies local authority and accountable execution
 around that boundary. This connects capability compounding to power under control.
 
-Jig's [architectural thesis](doctrine/design-judgment.md#the-microkernel-architectural-thesis)
-is that a small execution core makes room for substantial capability in
-composed methods. Agents can reason and adapt within their roles while
-authority and execution lifecycle remain outside model judgment. This is the
-positive reason for its microkernel-inspired design.
+Agents can reason and adapt within composed methods while authority and
+execution lifecycle remain outside model judgment. The
+[microkernel analogy](doctrine/design-judgment.md#the-microkernel-architectural-thesis)
+helps communicate that division; it is not a development goal. Prioritize
+useful power that ordinary consumers can adopt and compose with less
+configuration and lifecycle knowledge.
 
 ### The promises remain intact
 

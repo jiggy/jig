@@ -1,16 +1,59 @@
 import { describe, expect, test } from 'bun:test'
 import Ajv2020 from 'ajv/dist/2020.js'
-
-import cases from './fixtures/messages.json'
-import errorRegistry from '../../docs/flow/spec/machine/run-1-errors.json'
-import schema from '../../docs/flow/spec/machine/run-1.schema.json'
+import sessionContract from '../../docs/flow/spec/examples/invocation-contracts/session-store.contract.json'
+import ticketContract from '../../docs/flow/spec/examples/schema-files/FLOW.contract.json'
 import channelContractSchema from '../../docs/flow/spec/machine/channel-contract-1.schema.json'
-import capabilityContractSchema from '../../docs/flow/spec/machine/capability-contract-1.schema.json'
+import invocationContractSchema from '../../docs/flow/spec/machine/invocation-contract-1.schema.json'
+import schema from '../../docs/flow/spec/machine/run-1.schema.json'
+import errorRegistry from '../../docs/flow/spec/machine/run-1-errors.json'
+import featureCases from './fixtures/invocation-features.json'
+import cases from './fixtures/messages.json'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/1 message schemas', () => {
+  test('channel creation accepts only closed slot channel references', () => {
+    const validate = definition('channelCreateParams')
+    expect(validate({ contract: { slot: 'agent', channel: 'events' } })).toBe(true)
+    for (const contract of [
+      null,
+      {},
+      { slot: 'agent' },
+      { slot: 'agent', channel: 'events', provider: 'other' },
+      { slot: '../agent', channel: 'events' },
+      { slot: 'agent', channel: 'events\n' },
+      { slot: 'a'.repeat(65), channel: 'events' },
+    ])
+      expect(validate({ contract })).toBe(false)
+    expect(validate({ schema: true, contract: { slot: 'agent', channel: 'events' } })).toBe(false)
+  })
+  test('validates the closed feature catalog only on identified single-form contracts', () => {
+    const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
+    const validate = descriptors.compile(invocationContractSchema)
+    for (const fixture of featureCases.valid)
+      expect(
+        validate(fixture.descriptor),
+        `${fixture.name}: ${JSON.stringify(validate.errors)}`,
+      ).toBe(true)
+    const identity = featureCases.valid[0]?.descriptor
+    if (identity === undefined) throw new Error('missing catalog identity fixture')
+    for (const fixture of featureCases.invalidFeatures)
+      expect(validate({ ...identity, features: fixture.value }), fixture.name).toBe(false)
+    expect(validate({ $schema: identity.$schema, features: {} })).toBe(false)
+    expect(validate({ ...identity, features: {}, operations: { read: {} } })).toBe(false)
+    expect(validate({ ...identity, operations: { read: { features: {} } } })).toBe(false)
+    expect(validate({ ...identity, supports: ['events'] })).toBe(false)
+    expect(validate({ ...identity, requires: ['events'] })).toBe(false)
+    const features = Object.fromEntries(Array.from({ length: 256 }, (_, i) => [`f-${i}`, 'F.']))
+    expect(validate({ ...identity, features })).toBe(true)
+    expect(validate({ ...identity, features: { ...features, extra: 'Extra.' } })).toBe(false)
+    expect(validate({ ...identity, features: { ['a'.repeat(64)]: 'Valid.' } })).toBe(true)
+    expect(validate({ ...identity, features: { ['a'.repeat(65)]: 'Invalid.' } })).toBe(false)
+    expect(validate({ ...identity, features: { events: '🔎'.repeat(16_384) } })).toBe(true)
+    expect(validate({ ...identity, features: { events: '🔎'.repeat(16_385) } })).toBe(false)
+  })
+
   test('separates broadcast subscription authority from endpoint grants', () => {
     const send = { endpoint: 'send:1', direction: 'send', delivery: 'broadcast' }
     const receive = {
@@ -60,7 +103,7 @@ describe('Run/1 message schemas', () => {
     ])
       expect(validate({ ...identity, id })).toBe(false)
   })
-  test('accepts named channel meaning and capability channel requirements', () => {
+  test('accepts named channel meaning and invocation channel requirements', () => {
     const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
     const channel = descriptors.compile(channelContractSchema)
     const value = {
@@ -78,46 +121,107 @@ describe('Run/1 message schemas', () => {
     expect(channel(value), JSON.stringify(channel.errors)).toBe(true)
     expect(channel({ ...value, transport: 'websocket' })).toBe(false)
     expect(channel({ ...value, version: '01.0.0' })).toBe(false)
-    const capability = descriptors.compile(capabilityContractSchema)
-    const method = {
+    const invocation = descriptors.compile(invocationContractSchema)
+    const operation = {
       input: true,
-      output: true,
-      errors: {},
+      result: true,
       channels: {
         readings: { direction: 'send', contract: './contracts/readings.json', required: false },
       },
     }
     const contract = {
-      $schema: capabilityContractSchema.$id,
-      flowCapabilityContract: 1,
+      $schema: invocationContractSchema.$id,
       id: 'https://example.org/contracts/reader',
       version: '1.0.0',
-      methods: { run: method },
+      ...operation,
     }
-    expect(capability(contract), JSON.stringify(capability.errors)).toBe(true)
+    expect(invocation(contract), JSON.stringify(invocation.errors)).toBe(true)
     expect(
-      capability({
+      invocation({
         ...contract,
-        methods: {
-          run: {
-            ...method,
-            channels: {
-              readings: { direction: 'send', schema: true, contract: './contract.json' },
-            },
-          },
+        channels: {
+          readings: { direction: 'send', schema: true, contract: './FLOW.contract.json' },
         },
       }),
     ).toBe(false)
   })
-  test('keeps invocation context and child requests separate', () => {
+  test('keeps incoming invocation context and outgoing calls separate', () => {
     const invocation = cases.valid.find((fixture) => fixture.definition === 'flowRunRequest')!.value
-    const child = cases.valid.find((fixture) => fixture.definition === 'childFlowRequest')!.value
+    const child = cases.valid.find((fixture) => fixture.definition === 'flowCallRequest')!.value
     const run = definition('flowRunRequest')
-    const runChild = definition('childFlowRequest')
+    const runChild = definition('flowCallRequest')
     expect(run({ ...invocation, params: child.params })).toBe(false)
     expect(runChild({ ...child, params: invocation.params })).toBe(false)
     expect(run(child)).toBe(false)
     expect(runChild(invocation)).toBe(false)
+  })
+
+  test('requires paired identity and disjoint single or named invocation shapes', () => {
+    const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
+    const validate = descriptors.compile(invocationContractSchema)
+    const anonymous = { $schema: invocationContractSchema.$id, input: true, result: true }
+    const identity = { id: 'https://example.org/contracts/read', version: '1.0.0' }
+    expect(validate(anonymous)).toBe(true)
+    expect(validate({ ...anonymous, ...identity })).toBe(true)
+    expect(validate({ ...anonymous, id: identity.id })).toBe(false)
+    expect(validate({ ...anonymous, version: identity.version })).toBe(false)
+    expect(validate({ ...anonymous, unknown: true })).toBe(false)
+    // Structural recognition is not initial-profile execution support.
+    const named = {
+      $schema: invocationContractSchema.$id,
+      operations: { read: { input: true, result: true } },
+    }
+    expect(validate(named)).toBe(true)
+    expect(validate({ ...named, input: true })).toBe(false)
+    expect(validate({ ...named, operations: {} })).toBe(false)
+    for (const reserved of ['done', 'failed', 'cancelled', 'error']) {
+      expect(validate({ ...anonymous, outcomes: { [reserved]: 'Reserved.' } })).toBe(false)
+    }
+    expect(validate({ ...anonymous, outcomes: { 'not-found': 'No item exists.' } })).toBe(true)
+  })
+
+  test('keeps inline channel schemas reference-free in keyword positions', () => {
+    const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
+    const validate = descriptors.compile(invocationContractSchema)
+    const contract = (item: unknown) => ({
+      $schema: invocationContractSchema.$id,
+      channels: { events: { direction: 'send', schema: item } },
+    })
+    expect(validate(contract({ type: 'object', properties: { $ref: { type: 'string' } } }))).toBe(
+      true,
+    )
+    expect(validate(contract({ $ref: '#/$defs/Event' }))).toBe(false)
+    expect(validate(contract({ type: 'array', items: { $ref: '#/$defs/Event' } }))).toBe(false)
+    expect(validate(contract({ $defs: { Event: true } }))).toBe(false)
+    for (const reference of ['./../channel.json', './channel.json\n', './a\\b.json']) {
+      expect(
+        validate({
+          $schema: invocationContractSchema.$id,
+          channels: { events: { direction: 'send', contract: reference } },
+        }),
+      ).toBe(false)
+    }
+  })
+
+  test('accepts both public invocation descriptor examples', () => {
+    const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
+    const validate = descriptors.compile(invocationContractSchema)
+    for (const example of [sessionContract, ticketContract]) {
+      expect(validate(example), JSON.stringify(validate.errors)).toBe(true)
+    }
+  })
+
+  test('public result schemas constrain the complete correlated result', () => {
+    const descriptors = new Ajv2020({ allErrors: true, strict: true })
+    const validate = descriptors.compile({
+      ...sessionContract.result,
+      $defs: sessionContract.$defs,
+    })
+    expect(validate({ outcome: 'done', output: { sessionId: 'session:1' } })).toBe(true)
+    expect(validate({ outcome: 'not-found', output: { sessionId: 'session:1' } })).toBe(true)
+    expect(validate({ outcome: 'not-found', output: {} })).toBe(false)
+    expect(validate({ outcome: 'undeclared', output: { sessionId: 'session:1' } })).toBe(false)
+    expect(validate({ sessionId: 'session:1' })).toBe(false)
   })
 
   for (const fixture of cases.valid) {

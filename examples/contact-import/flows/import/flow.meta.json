@@ -1,0 +1,8 @@
+{
+  "name": "contact-import-import",
+  "description": "Turn one CSV file into a contact preview using configured mapping and conversion methods.",
+  "uses": {
+    "mapper": {},
+    "converter": {}
+  }
+}

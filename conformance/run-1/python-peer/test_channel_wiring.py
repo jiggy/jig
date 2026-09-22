@@ -55,11 +55,11 @@ class ChannelWiringPeerTests(unittest.TestCase):
                 peer.send(success(create["id"], {
                     "send": grant("parent:writer", "send"), "receive": grant("parent:reader", "receive"),
                 }))
-                rejected = peer.receive_request("flow/run-child")
+                rejected = peer.receive_request("flow/call")
                 self.assertEqual(rejected["params"]["channels"], {"events": "parent:writer"})
                 # Admission failure is scripted; the resolver is not under test.
                 peer.send(error(rejected, "INVALID_INPUT"))
-                calls = [peer.receive_request("flow/run-child"), peer.receive_request("flow/run-child")]
+                calls = [peer.receive_request("flow/call"), peer.receive_request("flow/call")]
                 worker = next(call for call in calls if call["params"]["slot"] == "worker")
                 monitor = next(call for call in calls if call["params"]["slot"] == "monitor")
                 self.assertEqual(worker["params"]["channels"], {"events": "parent:writer"})
@@ -75,13 +75,13 @@ class ChannelWiringPeerTests(unittest.TestCase):
                 }})
                 peer.finish()
 
-    def test_worker_forwards_incoming_named_writer_to_capability(self):
+    def test_worker_forwards_incoming_named_writer_to_bound_call(self):
         for command in self.commands():
             with self.subTest(component=command[-1]), self.peer(command) as peer:
                 self.start(peer, {"role": "worker"}, {"events": grant("worker:writer", "send")})
-                call = peer.receive_request("capability/call")
+                call = peer.receive_request("flow/call")
                 self.assertEqual(call["params"]["channels"], {"events": "worker:writer"})
-                peer.send(success(call["id"], {"value": {"answer": "Actual answer"}}))
+                peer.send(success(call["id"], {"outcome": "done", "output": {"answer": "Actual answer"}}))
                 self.assertEqual(peer.receive()["result"], {"outcome": "done", "output": {"answer": "Actual answer"}})
                 peer.finish()
 

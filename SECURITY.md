@@ -12,12 +12,15 @@ support, explicitly supplied root attachments, private scratch space, private pr
 the Run/1 channel. It does not receive the project tree, host environment,
 ambient `PATH`, host process tree, host network, writable cgroup controls,
 general host devices, inherited descriptors, or Jig's control channel.
+Trusted launchers exclude unselected descriptors before entering the sandbox
+and before launching package code, including access through visible parent
+processes. Missing enforcement refuses execution.
 
 Jig applies aggregate CPU, memory, and process limits before package code can
 execute. Every terminal path fences the complete process tree and removes its
 rootless owner state before reporting completion.
 
-Project evaluation, the fixed dependency installer, and the fixed Agent
+Project evaluation, the fixed dependency installer, HTTP request worker, and Agent
 provider worker use the same containment mechanism in separate scopes. The
 preparation worker inherits networking only during `jig review`; supplied
 locks are validated before the fixed installer's first fetch. Without an
@@ -28,28 +31,58 @@ Failed or declined review cannot undo requests already made. The permission
 lasts only for that review; `--yes` is separate Run-admission approval. Known
 unsupported root declarations are rejected first; the resolved graph must
 pass the usual source/integrity policy before frozen installation and
-admission. Bun sees only manifest and lock during installation, not other
-authored configuration or foreign lockfiles. The Agent worker
-inherits networking only for an admitted Agent `capability/call`. The host may use
-the official OpenAI JavaScript SDK against an operator-selected HTTPS endpoint
-with either the `responses` or `chat-completions` wire shape, or run native
-Codex, Claude Code, or Pi through one private ACP mechanism. Client paths,
-selected APIs, endpoints, models, and credentials are trusted host
-configuration, not FLOW values. Jig supplies no default model.
+admission. Bun sees only captured manifests, the lock, and bounded declared
+workspace-root patch files during installation, not other authored configuration
+or foreign lockfiles. Patch declarations and bytes are captured, checked against
+the lock, and retained with the prepared installation; Bun owns their application
+inside the same script-disabled scope. An ordinary API-backed Agent
+prepares its request as data and uses an exact reviewed HTTP grant; the
+separate HTTP owner holds the credential and network authority. Native Codex,
+Claude Code, or Pi clients inherit networking only inside their admitted ACP
+execution scope. Their executable, authentication and launch policy remain
+operator configuration. Jig supplies no default model.
 
-The selected Agent scope receives its bounded credential projection,
-instructions, and selected skill text through a transient private channel. A
+The selected native-client scope receives its bounded credential projection
+through a transient private channel. Instructions and selected Skill text
+arrive through the ordinary Agent Flow's admitted resource call. A
 native ACP client starts with an empty work directory. Jig provides it no
 filesystem, terminal, or MCP client capability, no MCP servers, and no
-persistent permission. Fixed profiles disable client tools, extensions,
-plugins, and native skills. The secret, instructions, and skills do not enter
-the Flow environment, launch arguments, Plans, locks, or retained Run state;
-non-secret client, selected API, endpoint, model, and exact support identities
-are reviewed as provider identity but are not exposed to the Flow. Jig exposes
+persistent permission. Claude and Pi profiles disable their tools; Codex uses
+its qualified constrained workspace mode, with managed restrictions protecting
+projected authentication. This is not a universal claim that native tools are
+disabled. Profiles also restrict extensions, plugins and native Skills as
+specified in [Finite ACP](docs/jig/spec/finite-acp.md). Secrets never enter Flow environments, launch
+arguments, Plans, locks, or retained Run state. Instructions and selected Skills
+are explicit caller data, not secret authority or host-attested provenance.
+Non-secret native client, model, and exact support identities
+are reviewed as provider identity. Jig exposes
 no public provider SPI or registry.
+
+The HTTP Request worker receives one reviewed exact URL/method grant and its
+optional bearer via private stdin. It alone has network access for that request;
+Flow code gets neither the credential nor sockets. No authored imports, redirects,
+proxies, arbitrary headers or automatic retries run in that worker. Request and
+response sizes and deadlines are bounded, and optional operator-owned Schema/1
+validates the JSON request body. Public grant policy is review-pinned; secrets
+are excluded from identities and retained records. Revocation stops new commands;
+cancel existing commands to stop their snapshotted authority. Remote effects
+already accepted cannot be recalled. HTTP status is evidence, not domain success.
+Exact HTTPS URLs use normal TLS verification and host DNS; this is not an IP
+firewall, and selected private services are permitted. Numeric-loopback HTTP is
+also supported explicitly. The selected service must be trusted with its token:
+literal echoes reject, but encoded disclosure is not generally detectable.
+See [HTTP Request](docs/jig/spec/http-request.md) for the complete boundary.
 
 Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.
+
+The bundled Markdown interpreter runs inside that same keyless Flow envelope.
+It selects only captured original recipes and calls an admitted ordinary Agent
+through the reserved `markdown-agent` route. Model decisions, resource content
+and `allowed-tools` text cannot create routes, credentials or host permissions.
+Raw resource reads are limited to captured package bytes. Reasoning requests
+carry complete bounded context; overflow fails instead of silently dropping
+instructions. Markdown resources do not trigger dependency installation.
 
 Project Command effects execute supplied immutable text using installed Bun
 and reviewed Binding invocations in their own keyless, offline scopes. Their
@@ -115,16 +148,21 @@ finish afterward. The memory, PID, and CPU ceilings in the table are fixed.
 
 A Binding child Flow or effect runs in a separate scope while its parent
 remains live. The root permits two sibling Flows or one exclusive effect;
-each leaf permits one effect. Before dispatch, durable root ownership reserves
-each entire branch, including its largest possible effect. Reservations last
+each child permits one Flow or effect, within two child Flow levels. Before
+dispatch, durable root ownership reserves the longest admitted Flow path in
+each branch, including its largest possible effect. Two simultaneous two-level
+branches fit, each with its own effect. Reservations last
 through confirmed fencing and cleanup, even after execution fails.
 
-At most five payload/provider envelopes fit the fixed root aggregate ceiling:
-1,280 MiB memory, 448 tasks, and 2.5 CPU cores (100 ms quota period). The table's
+At most seven payload/provider envelopes fit the fixed root aggregate ceiling:
+the root, four child Flows, and two effects. The budget is 1,792 MiB memory,
+576 tasks, and 3.5 CPU cores (100 ms quota period). The table's
 individual kernel ceilings stay unchanged and their reserved sum cannot exceed
 that budget. Unused reservations are not borrowed. Trusted coordinators and
 supervisors are outside this budget; this is not combined utilization accounting
 or fair-share scheduling. Every child's deadline is capped by the root deadline.
+The fixed reservation policy is part of the admitted launch identity; changing
+it requires review, not silent reuse of an earlier admission.
 
 After bounded project capture, one `jig review` dependency-planning phase uses
 one 180-second cancellation deadline, performs at most 16 distinct dependency
@@ -151,6 +189,15 @@ unselected subtrees. Linux descriptor-relative operations reject symlinks,
 multiply linked files, nested mounts and protected host-state aliases. Source
 and destination-parent filesystems must be ext4, XFS, Btrfs or tmpfs. This does
 not detect secrets in explicitly selected files or defeat a malicious host user.
+
+Bindings may select read-only project-relative resource trees for capture during
+review. Their bytes and manifests are retained under the existing Package/1
+store cap, including after declined review. They are not secret storage or live
+host mounts. Each Run revalidates and projects only its selected Binding's
+retained bytes, combined with per-run input under the same 64-file/8-MiB limit.
+Neither children nor native provider scopes inherit them. Tool code receives no
+additional execution privilege: all of its behavior is available within the
+existing sandbox, without subcommand restrictions, network or credentials.
 
 The sole writable attachment uses a 16 MiB anonymous tmpfs under the Run's
 256 MiB aggregate memory ceiling, including filesystem metadata. A trusted
@@ -182,16 +229,34 @@ retained raw prefix. The command's named input tree uses the same bounded,
 read-only projection. These invocation bytes do not become installed code
 or retained package artifacts.
 
+An explicit Codex `retainSessions: true` grant permits a separate private history
+store: at most sixteen available 8 MiB snapshots per project, with 24-hour logical
+expiry pruned on access. Only the owned, complete rollout for the qualified native
+version is collected from bounded anonymous output, after clean process exit and
+fencing. Credentials, native home directories, SQLite and logs are not copied.
+The collector rejects known credential bytes; this is not a detector for secrets
+explicitly supplied as conversation content. Retained history is sensitive local
+data protected by the admission store's filesystem/ownership checks, not encrypted
+storage or a secure-erasure promise. A current authorized caller atomically consumes
+an exact-scope reference before restoration; uncertain or interrupted work is never
+replayed. New references follow cleanup and store commit. See
+[Finite ACP](docs/jig/spec/finite-acp.md) for the exact qualification ceiling.
+
 The independent outer command owns output staging and removes it if its
 execution coordinator dies during copying. Flow code sees neither the host
-destination nor the delivery socket. On cancellation or command expiry, the
-owner gives its exact trusted child 250 ms after SIGTERM before SIGKILL and
-reaping. The independent cgroup owner still fences the complete payload tree;
+destination nor the delivery socket. On cancellation, the owner sends SIGTERM
+to its exact trusted child and allows at most 60 seconds for cooperative Run
+settlement and delivery before SIGKILL and reaping. The existing absolute
+command expiry can shorten that wait and retains a 250 ms escalation grace;
+later signals cannot extend either bound. This changes no payload deadline
+or cancellation authority. The independent cgroup owner still fences the complete payload tree;
 the child signal is not a substitute for that boundary. Atomic no-replace publication creates
 private files and directories; it promises complete visibility, not power-loss
 durability. A published packet survives later cancellation or acknowledgement
 loss. Killing the whole host or both trusted owners is outside the coordinator-
-loss cleanup guarantee; no automatic replay or general artifact-recovery service
+loss cleanup guarantee. After confirmed settlement, an interrupted command can
+publish its terminal record and previously accepted checkpoint, never unfinished
+final output files. No automatic replay or general artifact-recovery service
 is provided. Cleanup failures are surfaced rather than reported as zero residue.
 
 Run Checkpoint is an optional, reviewed root-only effect with a writable output

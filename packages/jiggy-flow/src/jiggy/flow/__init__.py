@@ -2,9 +2,9 @@ from ._runtime import handle
 from ._types import (
     Attachment,
     AttachmentAccess,
-    CapabilityError,
     ChannelBroadcast,
     ChannelContractIdentity,
+    ChannelSlotContract,
     ChannelEndpoint,
     ChannelPair,
     ChannelReceiver,
@@ -22,9 +22,9 @@ from ._types import (
 __all__ = [
     "Attachment",
     "AttachmentAccess",
-    "CapabilityError",
     "ChannelBroadcast",
     "ChannelContractIdentity",
+    "ChannelSlotContract",
     "ChannelEndpoint",
     "ChannelPair",
     "ChannelReceiver",

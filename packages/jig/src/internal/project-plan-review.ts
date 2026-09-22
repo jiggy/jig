@@ -1,9 +1,11 @@
 import { ProjectAdministrationError } from '../administration/project.js'
 import { privateCliValueFields } from '../cli-value-presentation.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
+import { flowSelector } from '../project/package-selector.js'
+import { privateAcpAgentRuntime, requirePrivateAcpAgentProvider } from './acp-agent-provider.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
+import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
+import { grantChanges, requiresAuthorityApproval } from './grant-review.js'
 
 // Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
 // and quote in the review string is escaped by the outer value encoding.
@@ -14,6 +16,7 @@ export interface PrivateProjectPlanReview {
   readonly mediaType: 'text/plain; charset=utf-8'
   readonly text: string
   readonly details: string
+  readonly authorityChanges: boolean
 }
 
 /**
@@ -24,7 +27,7 @@ export interface PrivateProjectPlanReview {
 export function renderPrivateProjectPlanReview(
   review: PrivateActivationReviewPlan,
   maximumBytes = MAX_REVIEW_BYTES,
-  agentProvider?: PrivateAgentProvider,
+  recipes: readonly PrivateDirectRunRecipe[] = [],
 ): PrivateProjectPlanReview {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > MAX_REVIEW_BYTES) {
     throw new TypeError('project plan review byte limit is invalid')
@@ -41,41 +44,35 @@ export function renderPrivateProjectPlanReview(
     review.baseCandidate?.candidate.targets ?? [],
     plan.proposed.targets,
   )
-  const agent =
-    agentProvider !== undefined &&
-    plan.proposed.targets.some((target) =>
-      Object.values(target.request.capabilities ?? {}).some(
-        (use) => use.digest === AGENT_RUN_CONTRACT_DIGEST,
-      ),
-    )
-      ? agentProvider.kind === 'private-openai-agent-provider/1'
-        ? {
-            client: 'OpenAI-compatible API',
-            api: agentProvider.api,
-            endpoint: agentProvider.baseURL,
-            model: agentProvider.model,
-          }
-        : {
-            client: agentProvider.client,
-            model: agentProvider.model,
-            authentication: agentProvider.credentialMode,
-          }
-      : undefined
+  const acp = projectAcpSelections(plan.proposed.targets, recipes)
+  const grants = grantChanges(review.baseCandidate?.lock ?? null, plan.proposed.lock)
+  const featureMismatches = projectFeatureMismatches(plan.proposed.lock, plan.proposed.targets)
+  const authorityChanges = requiresAuthorityApproval(
+    review.baseCandidate?.lock ?? null,
+    plan.proposed.lock,
+  )
   const render = (includeUnchanged: boolean): string => {
     const summary = new BoundedAsciiWriter(maximumBytes)
     summary.write('Review changes before approval\n\n')
-    summary.write('Approval permits these exact methods, settings and capabilities to run.\n')
+    summary.write('Approval permits these exact methods, settings and invocation routes to run.\n')
     summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
-    if (agent !== undefined) {
-      summary.write('Host Agent selected for methods requiring it:\n')
-      writePolicy(summary, agent, 1)
+    if (grants.length !== 0) {
+      summary.write('Resource delegation changes (recipient, exact policy):\n')
+      writePolicy(summary, grants, 1)
       summary.write(
-        '\nInstructions and selected data go to this Agent. Credentials are never part of the review.\n\n',
+        '\nNew or changed grants require explicit authority approval. Removed grants affect new Runs after admission.\n\n',
+      )
+    }
+    if (Object.keys(acp).length !== 0) {
+      summary.write('ACP runtimes selected for resource slots:\n')
+      writePolicy(summary, acp, 1)
+      summary.write(
+        '\nData supplied to these slots goes to the selected clients. Credentials remain private.\n\n',
       )
     }
     writeChanges(
       summary,
-      'Packages (source / dependency identity and capabilities)',
+      'Packages (source / dependency identity and invocation requirements)',
       changes.packages,
       current?.portablePolicy.packages ?? {},
       proposed.portablePolicy.packages,
@@ -83,7 +80,7 @@ export function renderPrivateProjectPlanReview(
     )
     writeChanges(
       summary,
-      'Bindings (settings, child slots and command policy)',
+      'Bindings (settings, invocation slots, resource grants and captured files)',
       changes.bindings,
       current?.portablePolicy.bindings ?? {},
       proposed.portablePolicy.bindings,
@@ -107,6 +104,12 @@ export function renderPrivateProjectPlanReview(
         ),
     )
     summary.write('Targets after approval:\n')
+    if (featureMismatches.length > 0) {
+      summary.write(
+        '  Required features are missing on these selected routes (their dependents are unavailable too):\n',
+      )
+      writePolicy(summary, featureMismatches, 1)
+    }
     if (proposed.targets.length === 0)
       summary.write('  None. Add a Flow under flows/ and review again.\n')
     for (const target of proposed.targets) {
@@ -128,6 +131,7 @@ export function renderPrivateProjectPlanReview(
       'project review exceeds the supported display size',
     )
   return Object.freeze({
+    authorityChanges,
     mediaType: 'text/plain; charset=utf-8' as const,
     text,
     details,
@@ -135,6 +139,48 @@ export function renderPrivateProjectPlanReview(
 }
 
 type ReviewedTarget = PrivateActivationReviewPlan['candidate']['candidate']['targets'][number]
+
+function projectAcpSelections(
+  targets: readonly ReviewedTarget[],
+  recipes: readonly PrivateDirectRunRecipe[],
+): Record<
+  string,
+  Record<string, { client: string; model: string; authentication: string; executable: string }>
+> {
+  const byTarget = new Map<string, PrivateDirectRunRecipe>()
+  for (const value of recipes) {
+    const recipe = requirePrivateDirectRunRecipe(value)
+    const key = targetKey(recipe.request.target)
+    if (byTarget.has(key)) throw new TypeError('duplicate ACP review target recipe')
+    byTarget.set(key, recipe)
+  }
+  const result: ReturnType<typeof projectAcpSelections> = Object.create(null)
+  for (const target of targets) {
+    if (target.disposition.state !== 'ready') continue
+    const selected: ReturnType<typeof projectAcpSelections>[string] = Object.create(null)
+    for (const [slot, route] of Object.entries(target.request.slots)) {
+      if (route.kind !== 'native' || route.native !== 'finite-acp') continue
+      const recipe = byTarget.get(targetKey(target.request.target))
+      if (
+        recipe === undefined ||
+        recipe.request.digest !== target.request.digest ||
+        recipe.digest !== target.disposition.recipeDigest ||
+        recipe.observation.digest !== target.disposition.observationDigest ||
+        route.grant?.kind !== 'acp'
+      )
+        throw new TypeError('ACP review selection does not match the exact proposed recipe')
+      const provider = requirePrivateAcpAgentProvider(recipe.acp[slot])
+      selected[slot] = {
+        client: route.grant.client,
+        model: provider.model,
+        authentication: provider.credentialMode,
+        executable: privateAcpAgentRuntime(provider).executablePath,
+      }
+    }
+    if (Object.keys(selected).length !== 0) result[targetKey(target.request.target)] = selected
+  }
+  return result
+}
 
 function executionChangeExplanation(
   before: ReviewedTarget | undefined,
@@ -323,8 +369,11 @@ function projectCandidate(
     packagePath: request.packagePath,
     entrypoint: request.entrypoint,
     settings: request.settings,
-    ...(request.commands === undefined ? {} : { commands: request.commands }),
+    slots: request.slots,
     attachments: request.attachments,
+    ...(request.boundAttachments === undefined
+      ? {}
+      : { capturedAttachments: Object.keys(request.boundAttachments) }),
     ...(Object.keys(request.attachments).length === 0
       ? {}
       : {
@@ -334,7 +383,15 @@ function projectCandidate(
     availability:
       disposition.state === 'ready'
         ? { state: 'ready' as const }
-        : { state: 'unavailable' as const, code: disposition.code },
+        : {
+            state: 'unavailable' as const,
+            code: disposition.code,
+            ...(disposition.code === 'FEATURE_UNAVAILABLE'
+              ? {
+                  hint: 'A selected dependency does not declare all required features. Review uses.requires and select a matching implementation; grants do not supply feature support.',
+                }
+              : {}),
+          },
   }))
   return {
     portablePolicy: {
@@ -345,6 +402,7 @@ function projectCandidate(
             digest: value.digest,
             directRun: value.directRun,
             uses: value.uses,
+            ...(value.supports === undefined ? {} : { supports: value.supports }),
           },
         ]),
       ),
@@ -352,6 +410,31 @@ function projectCandidate(
     },
     targets,
   }
+}
+
+function projectFeatureMismatches(
+  lock: PrivateActivationReviewPlan['candidate']['lock'],
+  targets: PrivateActivationReviewPlan['candidate']['candidate']['targets'],
+) {
+  const byTarget = new Map(targets.map(({ request }) => [targetKey(request.target), request]))
+  const issues: { caller: string; slot: string; selected: string; missing: readonly string[] }[] =
+    []
+  for (const { request } of targets) {
+    const requirements = lock.packages[request.packagePath]!.uses
+    for (const [slot, route] of Object.entries(request.slots)) {
+      if (route.kind !== 'flow') continue
+      const required = requirements[slot]?.requires ?? []
+      if (required.length === 0) continue
+      const selected = targetKey(route.target)
+      const provider = byTarget.get(selected)
+      if (provider === undefined) throw new Error('review feature provider is missing')
+      const supports = lock.packages[provider.packagePath]!.supports ?? []
+      const missing = required.filter((feature) => !supports.includes(feature))
+      if (missing.length > 0)
+        issues.push({ caller: targetKey(request.target), slot, selected, missing })
+    }
+  }
+  return issues
 }
 
 function projectChanges(
@@ -407,7 +490,9 @@ function changedBindingSlotDependencies(
     const prior = current.portablePolicy.bindings[id]
     if (prior === undefined) continue
     const keys = new Set(
-      [...Object.values(prior.slots), ...Object.values(binding.slots)].map(targetKey),
+      [...Object.values(prior.slots), ...Object.values(binding.slots)]
+        .filter((slot): slot is RunTargetIdentity => slot.kind !== 'grant')
+        .map(targetKey),
     )
     if (
       [...keys].some((key) => {
@@ -445,7 +530,7 @@ function recordChanges(
 }
 
 function targetKey(target: RunTargetIdentity): string {
-  return target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
+  return target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
 }
 
 /**

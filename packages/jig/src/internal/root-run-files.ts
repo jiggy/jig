@@ -104,12 +104,24 @@ export function requirePrivateRootFileMapping(
   identity: PrivateRunFileIdentity,
 ): void {
   const expected = Object.entries(request.attachments)
-    .filter(([, access]) => access === 'read')
+    .filter(
+      ([name, access]) => access === 'read' && !Object.hasOwn(request.boundAttachments ?? {}, name),
+    )
     .map(([name]) => name)
     .sort()
   const supplied = identity.attachments.map((item) => item.name)
   if (expected.join('\0') !== supplied.join('\0'))
     throw new TypeError('provide exactly the read attachments declared by the admitted root target')
+  normalizePrivateRunFileIdentity({
+    attachments: [
+      ...identity.attachments,
+      ...Object.entries(request.boundAttachments ?? {}).map(([name, item]) => ({
+        name,
+        files: item.files,
+      })),
+    ],
+    output: identity.output,
+  })
   if (Object.values(request.attachments).includes('read-write') && identity.output === null)
     throw new TypeError('the admitted root target requires --out for its writable attachment')
 }
@@ -144,6 +156,7 @@ export class PrivateRootRunFiles {
     runId: string,
     request: PrivateActivationRequest,
     identity: PrivateRunFileIdentity,
+    bound: readonly Omit<PrivateCapturedAttachment, 'rootFd'>[] = [],
   ): {
     readonly plan: Pick<PrivateLinuxLaunchPlan, 'capturedInputs' | 'inputDirectories' | 'output'>
     readonly attachments: Readonly<
@@ -159,6 +172,26 @@ export class PrivateRootRunFiles {
       throw new TypeError('file authority does not belong to this Run')
     this.#runId = runId
     requirePrivateRootFileMapping(request, identity)
+    const boundIdentity = normalizePrivateRunFileIdentity({
+      attachments: bound.map((item) => ({
+        name: item.name,
+        files: item.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+      })),
+      output: null,
+    })
+    const expectedBound = normalizePrivateRunFileIdentity({
+      attachments: Object.entries(request.boundAttachments ?? {}).map(([name, item]) => ({
+        name,
+        files: item.files,
+      })),
+      output: null,
+    })
+    if (
+      !Buffer.from(canonicalJson(boundIdentity as unknown as JsonValue)).equals(
+        canonicalJson(expectedBound as unknown as JsonValue),
+      )
+    )
+      throw new TypeError('retained attachment projection does not match admitted contents')
     this.identify(request)
     const attachments = Object.fromEntries(
       Object.entries(request.attachments).map(([name, access]) => [
@@ -168,7 +201,7 @@ export class PrivateRootRunFiles {
     )
     return {
       plan: {
-        capturedInputs: this.captured.flatMap((item) =>
+        capturedInputs: [...this.captured, ...bound].flatMap((item) =>
           item.files.map((file) => ({
             fd: file.fd,
             bytes: file.bytes,
@@ -176,7 +209,7 @@ export class PrivateRootRunFiles {
             destination: `/jig-input/${item.name}/${file.path}`,
           })),
         ),
-        inputDirectories: this.captured.map((item) => `/jig-input/${item.name}`),
+        inputDirectories: [...this.captured, ...bound].map((item) => `/jig-input/${item.name}`),
         output: Object.values(request.attachments).includes('read-write'),
       },
       attachments,
@@ -190,10 +223,11 @@ export class PrivateRootRunFiles {
         decodeJson1(
           canonicalJson({
             settings: request.settings,
-            capabilities: request.capabilities,
-            flowSlots: request.flowSlots,
-            ...(request.commands === undefined ? {} : { commands: request.commands }),
+            slots: request.slots,
             attachments: request.attachments,
+            ...(request.boundAttachments === undefined
+              ? {}
+              : { boundAttachments: request.boundAttachments }),
           } as unknown as JsonValue),
         ),
       ),
@@ -217,7 +251,9 @@ export class PrivateRootRunFiles {
     epoch: number,
   ): Promise<void> {
     if (
-      !Object.values(request.capabilities).some((c) => c.digest === RUN_CHECKPOINT_CONTRACT_DIGEST)
+      !Object.values(request.slots).some(
+        (route) => route.kind === 'native' && route.native === 'run-checkpoint',
+      )
     )
       return
     if (this.#checkpointBound) {

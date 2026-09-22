@@ -1,5 +1,4 @@
 import { types as utilTypes } from 'node:util'
-
 import {
   PRIVATE_ACTIVATION_TARGET_LIMIT,
   type PrivateActivationPlanningDisposition,
@@ -9,23 +8,20 @@ import {
   privateActivationTargetKey,
   requirePrivateActivationPlanningObservation,
 } from '../internal/activation-planning.js'
+import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { privateDomainDigest } from '../internal/identity.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
 } from '../internal/package-artifact-store.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from '../internal/private-agent-run.js'
-import { isProjectCommandContract } from '../internal/private-project-command.js'
-import { isRunCheckpointContract } from '../internal/private-run-checkpoint.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import type { PackageEntrypoint } from '../package/inspect.js'
-import { normalizeProjectCommands, type ProjectCommands } from './commands.js'
 import {
-  type LinkedCapabilityUse,
+  type InvocationSlots,
+  normalizeInvocationSlots,
+  resolveInvocationSlots,
+} from './invocation-slots.js'
+import {
   type PackageProjectValue,
   type RunTargetIdentity,
   requirePackageProjectValue,
@@ -49,10 +45,9 @@ export interface PrivateActivationRequest {
   readonly package: PackageArtifactRef
   readonly entrypoint: PackageEntrypoint
   readonly settings: JsonObject
-  readonly capabilities: Readonly<Record<string, LinkedCapabilityUse>>
-  readonly flowSlots: Readonly<Record<string, RunTargetIdentity>>
+  readonly slots: InvocationSlots
   readonly attachments: Readonly<Record<string, 'read' | 'read-write'>>
-  readonly commands?: ProjectCommands
+  readonly boundAttachments?: BoundAttachments
 }
 
 export type PrivateResolutionUnavailableCode = PrivateActivationUnavailableCode
@@ -109,9 +104,8 @@ export function buildPrivateActivationRequests(
         package: flow.package,
         entrypoint: flow.entrypoint,
         settings: emptyRecord(),
-        capabilities: flow.uses,
-        flowSlots: emptyRecord(),
-        attachments: normalizeRequestAttachments(flow.metadata.attachments ?? {}),
+        slots: resolveInvocationSlots(flow.uses, flow.slots ?? {}),
+        attachments: normalizeRequestAttachments(flow.invocation.attachments ?? {}),
       }),
     )
   }
@@ -129,10 +123,11 @@ export function buildPrivateActivationRequests(
         package: flow.package,
         entrypoint: flow.entrypoint,
         settings: binding.settings,
-        capabilities: flow.uses,
-        flowSlots: binding.slots,
-        ...(binding.commands === undefined ? {} : { commands: binding.commands }),
-        attachments: normalizeRequestAttachments(flow.metadata.attachments ?? {}),
+        slots: resolveInvocationSlots(flow.uses, binding.slots),
+        ...(binding.boundAttachments === undefined
+          ? {}
+          : { boundAttachments: binding.boundAttachments }),
+        attachments: normalizeRequestAttachments(flow.invocation.attachments ?? {}),
       }),
     )
   }
@@ -170,11 +165,10 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       'package',
       'entrypoint',
       'settings',
-      'capabilities',
-      'flowSlots',
+      'slots',
       'attachments',
-      ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'commands')
-        ? ['commands']
+      ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'boundAttachments')
+        ? ['boundAttachments']
         : []),
     ],
     'activation request',
@@ -217,10 +211,10 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
   if (
     typeof entrypointValue.path !== 'string' ||
     typeof entrypointValue.suffix !== 'string' ||
-    !/^flow\.[a-z0-9]{1,16}$/.test(entrypointValue.path) ||
-    entrypointValue.path !== `flow.${entrypointValue.suffix}`
+    !/^FLOW\.[a-z0-9]{1,16}$/.test(entrypointValue.path) ||
+    entrypointValue.path !== `FLOW.${entrypointValue.suffix}`
   ) {
-    throw new TypeError('activation entrypoint must be one canonical flow.<suffix>')
+    throw new TypeError('activation entrypoint must be one canonical FLOW.<suffix>')
   }
   if (
     entrypointValue.selector !== undefined &&
@@ -240,16 +234,11 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       ...(entrypointValue.selector === undefined ? {} : { selector: entrypointValue.selector }),
     }),
     settings: snapshotJsonObject(root.settings, 'activation settings'),
-    capabilities: normalizeRequestCapabilities(root.capabilities),
-    flowSlots: normalizeRequestFlowSlots(root.flowSlots),
+    slots: normalizeInvocationSlots(snapshotJsonObject(root.slots, 'activation slots')),
     attachments: normalizeRequestAttachments(root.attachments),
-    ...(root.commands === undefined
+    ...(root.boundAttachments === undefined
       ? {}
-      : {
-          commands: normalizeProjectCommands(
-            snapshotJsonObject(root.commands, 'activation commands'),
-          ),
-        }),
+      : { boundAttachments: normalizeBoundAttachments(root.boundAttachments) }),
   })
   if (root.digest !== request.digest) {
     throw new TypeError('activation request digest does not match its canonical content')
@@ -345,6 +334,14 @@ export function requirePrivateRetainedResolutionObservation(
 function createRequest(
   input: Omit<PrivateActivationRequest, 'kind' | 'digest'>,
 ): PrivateActivationRequest {
+  if (input.boundAttachments !== undefined) {
+    if (
+      input.target.kind !== 'binding' ||
+      Object.keys(input.boundAttachments).length === 0 ||
+      Object.keys(input.boundAttachments).some((name) => input.attachments[name] !== 'read')
+    )
+      throw new TypeError('retained attachments require declared read attachments on a Binding')
+  }
   const valueWithoutDigest = Object.freeze({
     kind: 'activation-request/4' as const,
     target: input.target,
@@ -353,10 +350,9 @@ function createRequest(
     package: input.package,
     entrypoint: input.entrypoint,
     settings: input.settings,
-    capabilities: input.capabilities,
-    flowSlots: input.flowSlots,
+    slots: input.slots,
     attachments: input.attachments,
-    ...(input.commands === undefined ? {} : { commands: input.commands }),
+    ...(input.boundAttachments === undefined ? {} : { boundAttachments: input.boundAttachments }),
   })
   const request = Object.freeze({
     ...valueWithoutDigest,
@@ -391,6 +387,7 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       entrypoint: flow.entrypoint ?? null,
       directRun: flow.directRun,
       uses: flow.uses,
+      ...(flow.slots === undefined ? {} : { slots: flow.slots }),
     })),
     bindings: project.bindings.map((binding) => ({
       kind: binding.kind,
@@ -398,7 +395,9 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       packagePath: binding.packagePath,
       settings: binding.settings,
       slots: binding.slots,
-      ...(binding.commands === undefined ? {} : { commands: binding.commands }),
+      ...(binding.boundAttachments === undefined
+        ? {}
+        : { boundAttachments: binding.boundAttachments }),
     })),
   } as unknown as JsonValue
 }
@@ -500,78 +499,6 @@ function normalizeRequestAttachments(value: unknown): PrivateActivationRequest['
     if (access !== 'read' && access !== 'read-write')
       throw new TypeError('invalid attachment access')
     output[name] = access
-  }
-  return Object.freeze(output)
-}
-
-function normalizeRequestCapabilities(value: unknown): PrivateActivationRequest['capabilities'] {
-  const input = snapshotJsonObject(value, 'activation capability uses')
-  if (Object.keys(input).length > 3) {
-    throw new TypeError('activation capability uses exceed 3 entries')
-  }
-  const output: Record<string, LinkedCapabilityUse> = Object.create(null) as Record<
-    string,
-    LinkedCapabilityUse
-  >
-  for (const name of Object.keys(input).sort()) {
-    requireLocalName(name, 'activation capability slot')
-    const item = exactObject(
-      input[name],
-      ['id', 'version', 'digest'],
-      `activation capability slot ${name}`,
-    )
-    if (
-      !isProjectCommandContract(item as { id: unknown; version: unknown; digest: unknown }) &&
-      !isRunCheckpointContract(item as { id: unknown; version: unknown; digest: unknown }) &&
-      (item.id !== AGENT_RUN_CONTRACT_ID ||
-        item.version !== AGENT_RUN_CONTRACT_VERSION ||
-        item.digest !== AGENT_RUN_CONTRACT_DIGEST)
-    ) {
-      throw new TypeError(
-        `activation capability slot ${name} must select an exact supported contract`,
-      )
-    }
-    output[name] = Object.freeze({
-      id: item.id as string,
-      version: item.version as string,
-      digest: item.digest as string,
-    })
-  }
-  if (
-    new Set(Object.values(output).map(({ digest }) => digest)).size !== Object.keys(output).length
-  )
-    throw new TypeError('activation capability contracts must be distinct')
-  return Object.freeze(output)
-}
-
-function normalizeRequestFlowSlots(value: unknown): PrivateActivationRequest['flowSlots'] {
-  const input = snapshotJsonObject(value, 'activation Flow slots')
-  if (Object.keys(input).length > 256) {
-    throw new TypeError('activation Flow slots exceed 256 entries')
-  }
-  const output: Record<string, RunTargetIdentity> = Object.create(null)
-  for (const name of Object.keys(input).sort()) {
-    requireLocalName(name, 'activation Flow slot')
-    const target = exactRecord(input[name], `activation Flow slot ${name}`)
-    if (target.kind === 'flow') {
-      output[name] = Object.freeze({
-        kind: 'flow',
-        path: normalizeProjectPath(
-          exactObject(target, ['kind', 'path'], `activation Flow slot ${name}`).path,
-          `activation Flow slot ${name}`,
-        ),
-      })
-    } else if (target.kind === 'binding') {
-      output[name] = Object.freeze({
-        kind: 'binding',
-        id: requireLocalName(
-          exactObject(target, ['kind', 'id'], `activation Binding slot ${name}`).id,
-          `activation Binding slot ${name}`,
-        ),
-      })
-    } else {
-      throw new TypeError(`activation Flow slot ${name} must select a Flow or Binding target`)
-    }
   }
   return Object.freeze(output)
 }

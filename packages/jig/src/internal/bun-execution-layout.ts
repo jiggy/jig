@@ -49,9 +49,12 @@ export function normalizePrivateBunExecutionLayout(value: unknown): PrivateBunEx
     if (!members.includes(alias.target) || privateBunAliasPackageName(alias.path) === undefined)
       invalid()
   }
-  if (flowRoot === '') {
-    if (members.length !== 0 || aliases.length !== 0) invalid()
-  } else if (!members.includes(flowRoot)) invalid()
+  if (
+    flowRoot !== '' &&
+    !members.includes(flowRoot) &&
+    privateBunAliasPackageName(flowRoot) === undefined
+  )
+    invalid()
   const layout = Object.freeze({
     flowRoot,
     members: Object.freeze(members),
@@ -67,6 +70,11 @@ export function assertPrivateBunExecutionLayoutFiles(
   layout: PrivateBunExecutionLayout,
   files: readonly { readonly path: string; readonly size?: number }[],
 ): void {
+  if (
+    layout.flowRoot !== '' &&
+    !files.some(({ path }) => path === `${layout.flowRoot}/package.json`)
+  )
+    invalid()
   for (const member of layout.members)
     if (!files.some(({ path }) => path === `${member}/package.json`)) invalid()
   assertPrivatePackageAliasFiles(layout.aliases, files)

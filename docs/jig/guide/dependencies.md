@@ -5,12 +5,19 @@ title: Flow dependencies
 # Flow dependencies
 
 A Flow can reuse libraries while keeping its reviewed execution reproducible.
-The alpha runs `flow.ts` with Jig's installed Bun runtime. Imports may reference
+The alpha runs `FLOW.ts` with Jig's installed Bun runtime. Imports may reference
 supported Bun/Node built-ins, package-local files, or prepared production dependencies.
+
+Prepared execution trees are bounded to 32 MiB and 4,096 file/alias records.
+Declare what the Flow imports at runtime as production dependencies. Tools used
+only to develop or launch the project belong in `devDependencies`; a workspace
+Flow can have its own manifest and runtime dependencies. Preparation-limit
+errors identify the manifest to inspect; review does not silently omit a
+declared runtime dependency to make the tree fit.
 
 ## Published packages
 
-Place `package.json` beside `flow.ts` and declare your dependencies there. If
+Place `package.json` beside `FLOW.ts` and declare your dependencies there. If
 the package supplies a matching Bun text `bun.lock`, review installs it frozen:
 
 ```sh
@@ -83,6 +90,15 @@ Run `bun install` at the workspace root and build libraries whose exports
 point to generated files. Then run `jig review` from the Jig application.
 No publication, copied library, or per-Flow installation is needed.
 
+The Jig application itself may live at the workspace root or in a declared
+member. Declare `npm:` Flow targets in that application's `dependencies`;
+root applications need not move into a member directory. Root dependency
+selection captures metadata and selected packages, not the whole repository.
+
+If a supplied lock is stale, review identifies the manifest and mismatched
+field. Update the authored lock with Bun and review again; Jig never repairs
+a supplied lock implicitly.
+
 Review captures the root manifest and lock, member manifests, and the selected
 local dependency sources. A library's `files` list limits its captured source;
 without one, its ordinary files are captured except `.git` and `node_modules`.
@@ -100,10 +116,16 @@ invalidates reuse, even if its Flow is unchanged. Existing admissions continue
 using their original bytes. When fresh preparation needs a missing root lock,
 it requires explicit resolution permission; stale supplied locks require updating.
 
+Root `patchedDependencies` is supported for exact package versions and bounded
+root-relative `.patch` files. Jig captures those files, applies them through
+Bun during preparation, and retains their exact bytes with the installation.
+Changing a patch requires review; existing admissions retain the previous bytes.
+
 Workspace members must have unique names and safe relative paths. Local member
-locks, filesystem links, dependency overrides, patches, and catalogs are not
-supported. Missing members or build outputs fail explicitly, without falling
-back to npm. This is review-time capture, not live workspace access during a Run.
+locks, filesystem links, dependency overrides, member-level patches, and catalogs
+are not supported. Missing members or build outputs fail explicitly, without
+falling back to npm. This is review-time capture, not live workspace access
+during a Run.
 Preparation uses Jig's pinned Bun hoisted linker; it does not import the local
 installation or provide an isolated-linker mode. Module-relative files stay
 beside their modules. A Run's working directory remains disposable scratch.
@@ -118,7 +140,9 @@ distributed Flow, use published dependency versions or distribute its workspace.
 Package-local source may also be imported relatively. A package without external
 dependencies needs neither a dependency manifest nor a lock for execution.
 
-Optional input, settings, and result schemas follow
-[FLOW Schema/1](https://flow.jig.md/spec/schema-files), including its required
-`$schema` declaration. See [execution policy](../spec/project-policy.md) for
+Optional invocation input and complete-result schemas belong in `FLOW.contract.json`;
+implementation settings use `settings.schema.json`. They follow
+[FLOW Schema/1](https://flow.jig.md/spec/schema-files). A `FLOW.md` package uses
+the bundled interpreter and needs no SDK dependency or installation. Its
+resources do not trigger dependency preparation. See [execution policy](../spec/project-policy.md) for
 the exact dependency preparation and admission rules.

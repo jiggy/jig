@@ -1,10 +1,13 @@
-import { expect, test } from 'bun:test'
+import { expect, setDefaultTimeout, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import Ajv2020 from 'ajv/dist/2020.js'
 import contractSchema from '../../docs/flow/spec/machine/channel-contract-1.schema.json'
 import fixture from './fixtures/conversation.json'
 import { ComponentPeer, type Message } from './harness/peer'
+
+// Cover process startup/cleanup without shortening the existing ten-second peer waits.
+setDefaultTimeout(30_000)
 
 type Role = 'analysis' | 'dataset'
 type Port = 'requests' | 'replies'

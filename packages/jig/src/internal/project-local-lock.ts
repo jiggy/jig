@@ -5,9 +5,13 @@ import {
   type JsonObject,
   type JsonValue,
 } from '../json.js'
-import { normalizeProjectCommands, type ProjectCommands } from '../project/commands.js'
+import { type GrantedSlot, normalizeGrant, grantName } from '../project/grants.js'
 import {
-  type LinkedCapabilityUse,
+  type InvocationRequirement,
+  normalizeInvocationRequirement,
+  resolveInvocationSlots,
+} from '../project/invocation-slots.js'
+import {
   type PackageProjectValue,
   type RunTargetIdentity,
   requirePackageProjectValue,
@@ -18,14 +22,9 @@ import {
   validateProjectPath,
 } from '../project/paths.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
+import { type BoundAttachments, normalizeBoundAttachments } from './bound-attachments.js'
 import { privateDomainDigest } from './identity.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from './private-agent-run.js'
-import { isProjectCommandContract } from './private-project-command.js'
-import { isRunCheckpointContract } from './private-run-checkpoint.js'
+import { validateChildGraph } from '../project/slot-graph.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -34,14 +33,16 @@ const validatedLocks = new WeakSet<object>()
 export interface PrivateLockPackage {
   readonly digest: string
   readonly directRun: boolean
-  readonly uses: Readonly<Record<string, LinkedCapabilityUse>>
+  readonly uses: Readonly<Record<string, InvocationRequirement>>
+  readonly supports?: readonly string[]
+  readonly slots?: Readonly<Record<string, RunTargetIdentity>>
 }
 
 export interface PrivateLockBinding {
   readonly packagePath: string
   readonly settings: JsonObject
-  readonly slots: Readonly<Record<string, RunTargetIdentity>>
-  readonly commands?: ProjectCommands
+  readonly slots: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>
+  readonly attachments?: BoundAttachments
 }
 
 export interface PrivateProjectLocalLock {
@@ -63,6 +64,8 @@ export function createPrivateProjectLocalLock(
       digest: flow.package.digest,
       directRun: flow.directRun,
       uses: flow.uses,
+      ...(flow.metadata.supports === undefined ? {} : { supports: flow.metadata.supports }),
+      ...(flow.slots === undefined ? {} : { slots: flow.slots }),
     })
   }
   const bindings: Record<string, PrivateLockBinding> = Object.create(null) as Record<
@@ -74,7 +77,7 @@ export function createPrivateProjectLocalLock(
       packagePath: binding.packagePath,
       settings: binding.settings,
       slots: binding.slots,
-      ...(binding.commands === undefined ? {} : { commands: binding.commands }),
+      ...(binding.boundAttachments === undefined ? {} : { attachments: binding.boundAttachments }),
     })
   }
   const lock = normalizeLock({ packages, bindings })
@@ -132,56 +135,76 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] 
   >
   for (const path of paths.sort()) {
     projectPath(path, `package ${JSON.stringify(path)}`)
-    const item = exactObject(input[path], ['digest', 'directRun', 'uses'], `package ${path}`)
+    const item = exactObject(
+      input[path],
+      [
+        'digest',
+        'directRun',
+        'uses',
+        ...(Object.hasOwn(object(input[path], `package ${path}`), 'supports') ? ['supports'] : []),
+        ...(Object.hasOwn(object(input[path], `package ${path}`), 'slots') ? ['slots'] : []),
+      ],
+      `package ${path}`,
+    )
     if (typeof item.directRun !== 'boolean') {
       throw new TypeError(`package ${path} directRun must be boolean`)
     }
+    const slots =
+      item.slots === undefined ? undefined : normalizeSlots(item.slots, `package ${path}`)
+    if (
+      slots !== undefined &&
+      (!item.directRun ||
+        Object.keys(slots).length === 0 ||
+        Object.values(slots).some((slot) => slot.kind === 'grant'))
+    )
+      throw new TypeError('package slots must be nonempty ordinary routes of a direct Flow')
     output[path] = Object.freeze({
       digest: digest(item.digest, `package ${path}`),
       directRun: item.directRun,
       uses: normalizeUses(item.uses, `package ${path}`),
+      ...(item.supports === undefined ? {} : { supports: normalizeFeatureNames(item.supports) }),
+      ...(slots === undefined
+        ? {}
+        : { slots: slots as Readonly<Record<string, RunTargetIdentity>> }),
     })
   }
   return Object.freeze(output)
 }
 
+function normalizeFeatureNames(value: unknown): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > 256 ||
+    value.some(
+      (name) =>
+        typeof name !== 'string' ||
+        name.length < 1 ||
+        name.length > 64 ||
+        !LOCAL_NAME.test(name) ||
+        name.includes('\n'),
+    ) ||
+    new Set(value).size !== value.length
+  )
+    throw new TypeError('support declaration must contain at most 256 unique LocalNames')
+  return Object.freeze([...value]) as readonly string[]
+}
+
 function normalizeUses(
   value: unknown,
   label: string,
-): Readonly<Record<string, LinkedCapabilityUse>> {
+): Readonly<Record<string, InvocationRequirement>> {
   const input = object(value, `${label} uses`)
   const names = Object.keys(input)
-  if (names.length > 3) throw new TypeError(`${label} uses exceed 3 entries`)
-  const output: Record<string, LinkedCapabilityUse> = Object.create(null) as Record<
-    string,
-    LinkedCapabilityUse
-  >
+  if (names.length > 256) throw new TypeError(`${label} uses exceed 256 entries`)
+  const output: Record<string, InvocationRequirement> = Object.create(null)
   for (const name of names.sort()) {
-    localName(name, `${label} capability slot`)
-    const item = exactObject(
-      input[name],
-      ['id', 'version', 'digest'],
-      `${label} capability slot ${name}`,
-    )
-    if (
-      !isProjectCommandContract(item as { id: unknown; version: unknown; digest: unknown }) &&
-      !isRunCheckpointContract(item as { id: unknown; version: unknown; digest: unknown }) &&
-      (item.id !== AGENT_RUN_CONTRACT_ID ||
-        item.version !== AGENT_RUN_CONTRACT_VERSION ||
-        item.digest !== AGENT_RUN_CONTRACT_DIGEST)
-    ) {
-      throw new TypeError(
-        `${label} capability slot ${name} must select an exact supported contract`,
-      )
-    }
-    output[name] = Object.freeze({
-      id: item.id as string,
-      version: item.version as string,
-      digest: item.digest as string,
-    })
+    localName(name, `${label} invocation slot`)
+    const requirement = object(input[name], `${label} slot ${name}`)
+    output[name] =
+      Object.keys(requirement).length === 0
+        ? Object.freeze({})
+        : normalizeInvocationRequirement(requirement)
   }
-  if (new Set(Object.values(output).map(({ digest }) => digest)).size !== names.length)
-    throw new TypeError('lock capability contracts must be distinct')
   return Object.freeze(output)
 }
 
@@ -199,7 +222,9 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
         'packagePath',
         'settings',
         'slots',
-        ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'commands') ? ['commands'] : []),
+        ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'attachments')
+          ? ['attachments']
+          : []),
       ],
       `Binding ${id}`,
     )
@@ -209,7 +234,9 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
       packagePath: projectPath(item.packagePath, `Binding ${id} packagePath`),
       settings,
       slots,
-      ...(item.commands === undefined ? {} : { commands: normalizeProjectCommands(item.commands) }),
+      ...(item.attachments === undefined
+        ? {}
+        : { attachments: normalizeBoundAttachments(item.attachments) }),
     })
   }
   return Object.freeze(output)
@@ -219,10 +246,20 @@ function validateReferences(
   packages: PrivateProjectLocalLock['packages'],
   bindings: PrivateProjectLocalLock['bindings'],
 ): void {
-  for (const [id, binding] of Object.entries(bindings)) {
+  const directFlows = new Map(
+    Object.entries(packages)
+      .filter(([, flow]) => flow.directRun)
+      .map(([path, flow]) => [path, { packagePath: path, slots: flow.slots ?? {} }]),
+  )
+  for (const [id, binding] of [
+    ...Object.entries(bindings),
+    ...Array.from(directFlows, ([path, flow]) => [`flow:${path}`, flow] as const),
+  ]) {
     const selected = packages[binding.packagePath]
     if (selected === undefined) throw new TypeError(`Binding ${id} selects an unknown package`)
+    resolveInvocationSlots(selected.uses, binding.slots)
     for (const [name, identity] of Object.entries(binding.slots)) {
+      if (identity.kind === 'grant') continue
       const childBinding = identity.kind === 'binding' ? bindings[identity.id] : undefined
       const path = identity.kind === 'flow' ? identity.path : childBinding?.packagePath
       if (path === undefined) {
@@ -240,25 +277,34 @@ function validateReferences(
           `Binding ${id} slot ${name} must select a direct Run package or configured Binding`,
         )
       }
-      if (childBinding !== undefined && Object.keys(childBinding.slots).length !== 0) {
-        throw new TypeError(`Binding ${id} slot ${name} selects a Binding with child slots`)
-      }
     }
   }
+  validateChildGraph(new Map(Object.entries(bindings)), directFlows)
 }
 
 function normalizeSlots(
   value: unknown,
   label: string,
-): Readonly<Record<string, RunTargetIdentity>> {
+): Readonly<Record<string, RunTargetIdentity | GrantedSlot>> {
   const input = object(value, `${label} slots`)
   const names = Object.keys(input)
   if (names.length > 256) throw new TypeError(`${label} slots exceed 256 entries`)
-  const output: Record<string, RunTargetIdentity> = Object.create(null)
+  const output: Record<string, RunTargetIdentity | GrantedSlot> = Object.create(null)
   for (const name of names.sort()) {
     localName(name, `${label} slot`)
     const target = object(input[name], `${label} slot ${name}`)
-    if (target.kind === 'flow') {
+    if (target.kind === 'grant') {
+      exactObject(
+        target,
+        ['kind', 'policy', ...(Object.hasOwn(target, 'name') ? ['name'] : [])],
+        label,
+      )
+      output[name] = Object.freeze({
+        kind: 'grant',
+        policy: normalizeGrant(target.policy),
+        ...(target.name === undefined ? {} : { name: grantName(target.name) }),
+      })
+    } else if (target.kind === 'flow') {
       output[name] = Object.freeze({
         kind: 'flow',
         path: projectPath(

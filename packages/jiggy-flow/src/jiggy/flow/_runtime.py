@@ -25,10 +25,10 @@ from ._json import (
 )
 from ._types import (
     Attachment,
-    CapabilityError,
     ChannelBroadcast,
     ChannelEndpoint,
     ChannelPair,
+    ChannelSlotContract,
     JsonValue,
     OperationError,
     OperationErrorCode,
@@ -101,7 +101,7 @@ class _RunContextImpl:
     channels: Mapping[str, ChannelEndpoint]
     _client: _Runtime
 
-    async def run_child_flow(
+    async def call(
         self,
         *,
         operation_id: str,
@@ -110,7 +110,7 @@ class _RunContextImpl:
         intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> RunResult:
-        return await self._client.run_child_flow(
+        return await self._client.call(
             operation_id=operation_id,
             slot=slot,
             input=input,
@@ -118,38 +118,21 @@ class _RunContextImpl:
             channels=channels,
         )
 
-    async def call_capability(
-        self,
-        *,
-        operation_id: str,
-        slot: str,
-        method: str,
-        input: JsonValue,
-        channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> JsonValue:
-        return await self._client.call_capability(
-            operation_id=operation_id,
-            slot=slot,
-            method=method,
-            input=input,
-            channels=channels,
-        )
-
     @overload
     async def channel(
         self, *, delivery: Literal["direct"] = "direct", schema: Any = _SCHEMA_UNSET,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelPair: ...
 
     @overload
     async def channel(
         self, *, delivery: Literal["broadcast"], schema: Any = _SCHEMA_UNSET,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelBroadcast: ...
 
     async def channel(
         self, *, delivery: Literal["direct", "broadcast"] = "direct", schema: Any = _SCHEMA_UNSET,
-        contract: str | None = None,
+        contract: str | ChannelSlotContract | None = None,
     ) -> ChannelPair | ChannelBroadcast:
         return await self._client.channel(delivery=delivery, schema=schema, contract=contract)
 
@@ -261,18 +244,6 @@ def _validate_run_wire_result(value: Any) -> RunResult:
         return _validate_run_result(value)
     except (Json1Error, _InvalidParams) as error:
         raise _InvalidParams("invalid Run result") from error
-
-
-def _validate_effect_wire_result(value: Any) -> tuple[str, Any]:
-    if not isinstance(value, dict) or len(value) != 1:
-        raise _InvalidParams("effect result must contain exactly value or error")
-    if "value" in value:
-        return "value", normalize_json1(value["value"])
-    if "error" not in value:
-        raise _InvalidParams("effect result must contain value or error")
-    error = _require_exact_object(value["error"], {"name", "data"}, {"name", "data"})
-    name = _require_local_name(error["name"], "effect error name")
-    return "error", (name, normalize_json1(error["data"]))
 
 
 def _flow_error_from_wire(value: Any) -> OperationError:
@@ -625,21 +596,12 @@ class _Runtime:
             if "error" in frame:
                 result: Any = _flow_error_from_wire(frame["error"])
                 is_error = True
-            elif pending.kind == "flow":
+            elif pending.kind == "flow/call":
                 result = _validate_run_wire_result(frame["result"])
                 is_error = False
-            elif pending.kind.startswith("channel/"):
+            else:
                 result = validate_channel_result(pending.kind, frame["result"])
                 is_error = False
-            else:
-                tag, payload = _validate_effect_wire_result(frame["result"])
-                if tag == "error":
-                    name, data = payload
-                    result = CapabilityError(name, data)
-                    is_error = True
-                else:
-                    result = payload
-                    is_error = False
             if pending.on_settle is not None:
                 pending.on_settle(result, is_error)
         except (Json1Error, ValueError):
@@ -656,8 +618,15 @@ class _Runtime:
             result = await returned
             if self._termination_code is not None:
                 raise OperationError(self._termination_code)
-            # Validate before granting any writer an implicit clean end.
+            # Validate the exact response envelope before success-path cleanup;
+            # its depth, node count and bytes also consume the JSON/1 limits.
             validated = _validate_run_result(result)
+            response = {
+                "jsonrpc": "2.0",
+                "id": self._root_id,
+                "result": validated,
+            }
+            encode_json1(response)
             self._root_phase = "completing"
             self._accepting_calls = False
             # A caller may deliberately cancel and await one call while its
@@ -676,14 +645,7 @@ class _Runtime:
             if self._fatal or self._termination_code is not None:
                 raise self._fatal_error or OperationError(self._termination_code or "OWNER_CLOSED")
             await self._write(
-                {
-                    "jsonrpc": "2.0",
-                    "id": self._root_id,
-                    "result": {
-                        "outcome": validated["outcome"],
-                        "output": normalize_json1(validated["output"]),
-                    },
-                },
+                response,
                 preserve_cancellation=False,
                 publishes_root=True,
             )
@@ -758,13 +720,13 @@ class _Runtime:
         except Exception:
             pass
 
-    async def run_child_flow(
+    async def call(
         self,
         *,
         operation_id: str,
         slot: str,
         input: Any,
-        intent: str | None,
+        intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> RunResult:
         _require_wire_id(operation_id, "operation_id")
@@ -782,33 +744,9 @@ class _Runtime:
         normalized = normalize_json1(params)
         assert isinstance(normalized, dict)
         encode_json1(normalized)
-        result = await self._send_request("flow", "flow/run-child", normalized)
+        result = await self._send_request("flow/call", "flow/call", normalized)
         assert isinstance(result, dict)
         return cast(RunResult, result)
-
-    async def call_capability(
-        self,
-        *,
-        operation_id: str,
-        slot: str,
-        method: str,
-        input: Any,
-        channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> JsonValue:
-        _require_wire_id(operation_id, "operation_id")
-        _require_local_name(slot, "slot")
-        _require_local_name(method, "method")
-        params = {
-            "operationId": operation_id,
-            "slot": slot,
-            "method": method,
-            "input": normalize_json1(input),
-        }
-        self._map_channels(params, channels)
-        normalized = normalize_json1(params)
-        assert isinstance(normalized, dict)
-        encode_json1(normalized)
-        return cast(JsonValue, await self._send_request("effect", "capability/call", normalized))
 
     def _map_channels(self, params: dict[str, Any], channels: Mapping[str, ChannelEndpoint] | None) -> None:
         if channels is None:
@@ -850,16 +788,24 @@ class _Runtime:
         task.add_done_callback(settled)
         return task
 
-    async def channel(self, *, delivery: str, schema: Any, contract: str | None) -> _Pair | _Broadcast:
+    async def channel(self, *, delivery: str, schema: Any, contract: str | ChannelSlotContract | None) -> _Pair | _Broadcast:
         if delivery not in ("direct", "broadcast"):
             raise OperationError("UNAVAILABLE", "Unsupported channel delivery")
         if contract is not None and schema is not _SCHEMA_UNSET:
             raise ValueError("Channel schema and contract are mutually exclusive")
         params: dict[str, Any] = {"delivery": delivery}
         if contract is not None:
-            if not isinstance(contract, str) or not contract.startswith("./") or len(contract) > 4096:
-                raise ValueError("Channel contract must be a package-local reference")
-            params["contract"] = contract
+            if isinstance(contract, str):
+                if not contract.startswith("./") or len(contract) > 4096:
+                    raise ValueError("Channel contract must be a package-local reference")
+                params["contract"] = contract
+            elif isinstance(contract, dict) and set(contract) == {"slot", "channel"} and all(
+                isinstance(value, str) and len(value) <= 64 and _LOCAL_NAME.fullmatch(value)
+                for value in contract.values()
+            ):
+                params["contract"] = dict(contract)
+            else:
+                raise ValueError("Channel contract must be package-local or an exact slot/channel reference")
         elif schema is not _SCHEMA_UNSET:
             if not isinstance(schema, (dict, bool)):
                 raise ValueError("Channel schema must be a boolean or schema object")

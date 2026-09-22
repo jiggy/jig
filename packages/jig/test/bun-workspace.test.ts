@@ -6,13 +6,74 @@ import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-executio
 import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
 import { capturePrivateBunWorkspace } from '../src/internal/bun-workspace-capture.js'
 import { privatePackageAliasText } from '../src/internal/package-aliases.js'
-import { capturePackageDirectory } from '../src/package/capture.js'
+import {
+  projectError,
+  scopePrivatePackagePlanningError,
+} from '../src/internal/project-session-controller.js'
+import { captureOpenedPackageDirectory, capturePackageDirectory } from '../src/package/capture.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import { openPrivateProjectRoot } from '../src/project/root.js'
 
 const target = 'apps/demo/flows/work'
 
-async function fixture(versions = false) {
+test.each([
+  [
+    'package.json',
+    '../../package.json',
+    {
+      workspaces: ['apps/*/flows/*', 'libs/*'],
+      devDependencies: { '@example/tool': 'file:/private/path' },
+    },
+    'SOURCE',
+    '/devDependencies/@example~1tool',
+  ],
+  [
+    'libs/unrelated/package.json',
+    '../../libs/unrelated/package.json',
+    { name: 'unrelated', overrides: { x: 'secret' } },
+    'FIELD',
+    '/overrides',
+  ],
+  [
+    'libs/helper/package.json',
+    '../../libs/helper/package.json',
+    { name: 'helper', dependencies: { leaf: 'https://credential@host/private' } },
+    'SOURCE',
+    '/dependencies/leaf',
+  ],
+] as const)(
+  'workspace refusal locates %s without rebasing it onto the Flow',
+  async (path, expectedPath, manifest, reason, pointer) => {
+    const value = await fixture()
+    try {
+      await value.put(path, manifest)
+      let failure: unknown
+      try {
+        await value.capture()
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({
+        code: `PACKAGE_BUN_MANIFEST_${reason}`,
+        path: expectedPath,
+        pointer,
+      })
+      const scoped = scopePrivatePackagePlanningError(failure, 'flows/work')
+      expect(scoped).toBe(failure)
+      const projected = projectError(scoped, 'plan').toJSON()
+      expect(projected.diagnostic).toEqual({
+        code: `PACKAGE_BUN_MANIFEST_${reason}`,
+        path: expectedPath,
+        pointer,
+      })
+      expect(JSON.stringify(projected)).not.toMatch(/secret|credential|private\/path/)
+    } finally {
+      await value.dispose()
+    }
+  },
+)
+
+async function fixture(versions = false, rootApplication = false) {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-'))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(root, path)), { recursive: true })
@@ -22,15 +83,16 @@ async function fixture(versions = false) {
     private: true,
     workspaces: ['apps/*/flows/*', 'libs/*'],
     ...(versions ? { dependencies: { semver: '6.3.1' } } : {}),
+    ...(rootApplication ? { name: 'root-app', dependencies: { helper: 'workspace:*' } } : {}),
   })
   await put(`${target}/package.json`, {
     name: 'work-flow',
     type: 'module',
     dependencies: { helper: 'workspace:*', ...(versions ? { semver: '7.7.2' } : {}) },
   })
-  await put(`${target}/FLOW.md`, '---\nname: work\ndescription: Workspace fixture.\n---\n')
+  await put(`${target}/flow.meta.json`, { name: 'work', description: 'Workspace fixture.' })
   await put(
-    `${target}/flow.ts`,
+    `${target}/FLOW.ts`,
     versions
       ? 'import { message } from "helper"; import version from "semver/package.json"; console.log(JSON.stringify([message, version.version]))\n'
       : 'import { message } from "helper"; console.log(message)\n',
@@ -60,12 +122,18 @@ async function fixture(versions = false) {
   await put('libs/leaf/index.js', 'export const message = "workspace bytes"\n')
   await put('libs/unrelated/package.json', { name: 'unrelated', version: '0.1.0' })
   await put('libs/unrelated/secret', 'unrelated source must not be captured')
-  const project = await openPrivateProjectRoot(join(root, 'apps/demo'))
-  const source = await capturePackageDirectory(join(root, target))
+  const project = await openPrivateProjectRoot(rootApplication ? root : join(root, 'apps/demo'))
+  const source = rootApplication
+    ? await captureOpenedPackageDirectory('root metadata', project.handle, {
+        includes: (path) => ['package.json', 'bun.lock'].includes(path),
+        maximumFiles: 2,
+        maximumBytes: 3 * 1024 * 1024,
+      })
+    : await capturePackageDirectory(join(root, target))
   const capture = () =>
     capturePrivateBunWorkspace({
       projectRoot: project,
-      packagePath: 'flows/work',
+      packagePath: rootApplication ? '' : 'flows/work',
       captured: source,
       signal: new AbortController().signal,
     })
@@ -114,6 +182,62 @@ test('workspace capture follows declared transitive members, not installation li
     await value.dispose()
   }
 })
+
+test('workspace patches are immutable captured inputs, including patches inside selected members', async () => {
+  const value = await fixture()
+  try {
+    const path = 'libs/leaf/fix.patch'
+    await value.put('package.json', {
+      private: true,
+      workspaces: ['apps/*/flows/*', 'libs/*'],
+      patchedDependencies: { 'value@1.0.0': path },
+    })
+    await value.put(path, 'original patch bytes')
+    const first = (await value.capture())!
+    try {
+      await value.put(path, 'changed patch bytes')
+      expect(Buffer.from(await first.captured.read(path)).toString()).toBe('original patch bytes')
+      const second = (await value.capture())!
+      try {
+        expect(first.captured.digest).not.toBe(second.captured.digest)
+      } finally {
+        await second.captured.dispose()
+      }
+    } finally {
+      await first.captured.dispose()
+    }
+  } finally {
+    await value.dispose()
+  }
+})
+
+test.each(['missing', 'link', 'directory-link', 'oversized', 'escape'] as const)(
+  'workspace patch capture rejects %s',
+  async (mode) => {
+    const value = await fixture()
+    try {
+      await value.put('package.json', {
+        private: true,
+        workspaces: ['apps/*/flows/*', 'libs/*'],
+        patchedDependencies: {
+          'value@1.0.0': mode === 'escape' ? '../outside.patch' : 'patches/fix.patch',
+        },
+      })
+      await mkdir(join(value.root, 'patches'))
+      if (mode === 'link') await symlink('/etc/passwd', join(value.root, 'patches/fix.patch'))
+      if (mode === 'directory-link') {
+        await rm(join(value.root, 'patches'), { recursive: true })
+        await symlink('/etc', join(value.root, 'patches'))
+      }
+      if (mode === 'oversized') await value.put('patches/fix.patch', 'x'.repeat(1024 * 1024 + 1))
+      await expect(value.capture()).rejects.toMatchObject({
+        code: mode === 'escape' ? 'PACKAGE_BUN_MANIFEST_PATCH' : 'PACKAGE_BUN_WORKSPACE_INVALID',
+      })
+    } finally {
+      await value.dispose()
+    }
+  },
+)
 
 test.each(['missing', 'version', 'link', 'export', 'duplicate', 'escape', 'limit'] as const)(
   'workspace capture rejects %s without registry fallback',
@@ -227,12 +351,47 @@ test('workspace lock resolution cannot introduce undeclared paths or names', () 
 
 // Real pinned Bun worker, with only /work relocated into a disposable fixture.
 // These tests prove capture/install semantics, not the containment envelope.
-test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as const)(
+test.each([
+  'unlocked',
+  'locked',
+  'stale',
+  'topology',
+  'versions',
+  'large',
+  'patched',
+  'patch-stale',
+  'patch-missing',
+  'patch-invalid',
+  'root',
+  'root-stale',
+] as const)(
   'Bun prepares a self-contained workspace tree: %s',
   async (mode) => {
-    const value = await fixture(mode === 'versions')
+    const patchMode = mode === 'patched' || mode.startsWith('patch-')
+    const rootApplication = mode === 'root' || mode === 'root-stale'
+    const value = await fixture(mode === 'versions' || patchMode, rootApplication)
     let captured: Awaited<ReturnType<typeof value.capture>>
     try {
+      if (patchMode) {
+        await value.put('package.json', {
+          private: true,
+          workspaces: ['apps/*/flows/*', 'libs/*'],
+          dependencies: { semver: '6.3.1' },
+          patchedDependencies: { 'semver@6.3.1': 'patches/semver.patch' },
+        })
+        await value.put(
+          'patches/semver.patch',
+          [
+            'diff --git a/jig-patch.js b/jig-patch.js',
+            'new file mode 100644',
+            '--- /dev/null',
+            '+++ b/jig-patch.js',
+            '@@ -0,0 +1 @@',
+            '+module.exports = "patched dependency";',
+            '',
+          ].join('\n'),
+        )
+      }
       if (mode === 'large') await value.put('libs/leaf/large.txt', 'x'.repeat(2 * 1024 * 1024))
       if (mode === 'topology') {
         await value.put('libs/helper/package.json', {
@@ -294,6 +453,32 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
           type: 'module',
           exports: './index.js',
         })
+      if (mode === 'root-stale') {
+        const lock = await readFile(join(value.root, 'bun.lock'), 'utf8')
+        await value.put('bun.lock', lock.replace('root-app', 'old-root-app'))
+      }
+      if (mode === 'patch-stale') {
+        const manifest = JSON.parse(await readFile(join(value.root, 'package.json'), 'utf8'))
+        manifest.patchedDependencies['semver@6.3.1'] = 'patches/other.patch'
+        await value.put('package.json', manifest)
+        await value.put(
+          'patches/other.patch',
+          await readFile(join(value.root, 'patches/semver.patch'), 'utf8'),
+        )
+      }
+      if (mode === 'patch-invalid')
+        await value.put(
+          'patches/semver.patch',
+          [
+            'diff --git a/does-not-exist.js b/does-not-exist.js',
+            '--- a/does-not-exist.js',
+            '+++ b/does-not-exist.js',
+            '@@ -1 +1 @@',
+            '-This source line does not exist in semver.',
+            '+replacement',
+            '',
+          ].join('\n'),
+        )
       captured = await value.capture()
       expect(captured).toBeDefined()
       const work = join(value.root, 'worker-work'),
@@ -306,10 +491,12 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
       await writeFile(worker, (await build.outputs[0]!.text()).replaceAll('/work', work))
       await mkdir(work)
       const files = await Promise.all(
-        captured!.captured.files.map(async ({ path }) => ({
-          path,
-          content: Buffer.from(await captured!.captured.read(path)).toString('base64'),
-        })),
+        captured!.captured.files
+          .filter(({ path }) => mode !== 'patch-missing' || !path.endsWith('.patch'))
+          .map(async ({ path }) => ({
+            path,
+            content: Buffer.from(await captured!.captured.read(path)).toString('base64'),
+          })),
       )
       const child = Bun.spawn(
         [
@@ -333,13 +520,40 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
       ])
       expect(stderr).toBe('')
       const result = JSON.parse(stdout)
-      if (mode === 'stale') {
+      if (mode === 'patch-invalid') {
         expect(exit).toBe(1)
-        expect(result.code).toBe('PACKAGE_BUN_LOCK_STALE')
+        expect(result.type).toBe('failure')
+        expect(result.code).toBe('PACKAGE_BUN_PREPARATION_FAILED')
+        return
+      }
+      if (
+        mode === 'stale' ||
+        mode === 'root-stale' ||
+        mode === 'patch-stale' ||
+        mode === 'patch-missing'
+      ) {
+        expect(exit).toBe(1)
+        expect(result.code).toBe(
+          mode === 'patch-missing' ? 'PACKAGE_BUN_SOURCE_UNSUPPORTED' : 'PACKAGE_BUN_LOCK_STALE',
+        )
+        if (mode === 'root-stale') {
+          expect(result.message).toContain('package.json: name')
+          expect(result.location).toEqual({ path: 'package.json', pointer: '/name' })
+        }
+        if (mode === 'stale') expect(result.message).toContain('libs/leaf/package.json: version')
         return
       }
       expect(exit, stdout).toBe(0)
       expect(result.type).toBe('prepared')
+      if (mode === 'patched') {
+        for (const suffix of ['patches/semver.patch', 'node_modules/semver/jig-patch.js']) {
+          const file = result.files.find(
+            (file: { path: string }) => file.path === suffix || file.path.endsWith(`/${suffix}`),
+          )
+          expect(file, suffix).toBeDefined()
+          expect(Buffer.from(file.content, 'base64').toString()).toContain('patched dependency')
+        }
+      }
       const prepared = join(value.root, 'prepared')
       for (const file of result.files) {
         expect(file.path).not.toContain('unrelated')
@@ -347,7 +561,7 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
         await writeFile(join(prepared, file.path), Buffer.from(file.content, 'base64'))
       }
       const layout = normalizePrivateBunExecutionLayout(result.layout)
-      expect(layout.flowRoot).toBe(target)
+      expect(layout.flowRoot).toBe(rootApplication ? '' : target)
       if (mode === 'large')
         expect(
           Buffer.from(
@@ -367,7 +581,9 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
           '--no-env-file',
           '--no-install',
           '--config=/dev/null',
-          `${layout.flowRoot}/flow.ts`,
+          ...(rootApplication
+            ? ['-e', 'import { message } from "helper"; console.log(message)']
+            : [`${layout.flowRoot}/FLOW.ts`]),
         ],
         { cwd: prepared, env: {}, stdout: 'pipe', stderr: 'pipe' },
       )
@@ -378,7 +594,7 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
       ])
       expect(runExit, error).toBe(0)
       expect(output).toBe(
-        mode === 'versions'
+        mode === 'versions' || mode === 'patched'
           ? '["6.3.1","7.7.2"]\n'
           : mode === 'topology'
             ? '{"same":true,"cyclic":true,"asset":"retained resource"}\n'

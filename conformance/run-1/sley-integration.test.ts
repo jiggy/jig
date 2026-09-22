@@ -20,14 +20,14 @@ describe('Sley behind FLOW Run/1', () => {
     })
   })
 
-  test('routes a graph node through the existing child-Flow operation', async () => {
+  test('routes a graph node through the unified call operation', async () => {
     await withPeer(async (peer, scratch) => {
       peer.send(rootRequest(scratch, { route: 'child', value: 'hello' }))
       const call = request(await peer.receive())
       expect(call).toEqual({
         jsonrpc: '2.0',
         id: call.id,
-        method: 'flow/run-child',
+        method: 'flow/call',
         params: {
           operationId: 'delegate:1',
           slot: 'delegate',

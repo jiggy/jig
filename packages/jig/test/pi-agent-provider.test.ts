@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { prepareAgent } from '@jigging/agent-method'
 
 import {
   type PrivateAcpReadOnlyMount,
@@ -17,7 +18,6 @@ import {
   createPrivatePiSubscriptionAgentProvider,
   openPrivatePiAgentProvider,
 } from '../src/internal/pi-agent-provider.js'
-import { renderPrivateAgentRunInstructions } from '../src/internal/root-agent-run-controller.js'
 
 import { nativeElf } from './fixtures/native-elf.js'
 
@@ -43,6 +43,31 @@ describe('private native Pi Agent provider', () => {
       },
     )
     expect(privateAcpAgentRuntime(provider).executablePath).toBe(support.executablePath)
+    const selected = await openPrivatePiAgentProvider(
+      join(support.launcherPath, '..', '..', '..'),
+      {
+        PI_PATH: support.executablePath,
+        PI_PROVIDER: 'openrouter',
+        PI_MODEL: 'ambient',
+        PI_API_KEY: 'test-secret',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selected).toMatchObject({
+      model: 'openrouter/binding-model',
+      credentialMode: 'pi-api-key',
+    })
+    for (const model of ['bad model', 'model\n']) {
+      await expect(
+        openPrivatePiAgentProvider(join(support.launcherPath, '..', '..', '..'), {
+          PI_PATH: support.executablePath,
+          PI_PROVIDER: 'openrouter',
+          PI_API_KEY: 'api-secret',
+          PI_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+    }
   })
 
   test('opens Pi from a native path and explicit provider selection', async () => {
@@ -346,7 +371,7 @@ describe('private native Pi Agent provider', () => {
         PI_MODEL: 'google/test-model:free',
         PI_API_KEY: 'gateway-secret',
       }),
-    ).rejects.toThrow('native Pi package manifest is invalid')
+    ).rejects.toMatchObject({ stage: 'installation' })
     await rm(support.darkThemePath)
     await expect(
       createPrivatePiApiKeyAgentProvider({
@@ -358,15 +383,12 @@ describe('private native Pi Agent provider', () => {
     ).rejects.toThrow()
   })
 
-  test("keeps hostile leading slash instructions behind Jig's fixed prefix", () => {
+  test("keeps leading slash instructions behind the shared method's fixed prefix", () => {
     for (const instructions of ['/export', '  /changelog', '/export ../../outside']) {
-      const rendered = renderPrivateAgentRunInstructions(instructions, {
-        skills: [],
-        fileCount: 0,
-        contentBytes: 0,
-      })
+      const rendered = prepareAgent({ instructions }).request.prompt
       // pi-acp dispatches built-ins only when the complete ACP message,
-      // after trimStart(), begins with '/'. Jig's prefix makes that false.
+      // after trimStart(), begins with '/'. The method frames instructions as data;
+      // the trusted Pi transport independently rejects leading slash commands.
       expect(rendered.trimStart().startsWith('/')).toBe(false)
       expect(rendered).toContain(JSON.stringify(instructions))
     }

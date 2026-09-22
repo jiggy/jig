@@ -1,27 +1,81 @@
+import { CheckError } from '../diagnostics.js'
+
+const MANIFEST_REASONS = {
+  SHAPE: 'the manifest must be an object',
+  FIELD: 'this manifest field is unsupported for dependency preparation',
+  DEPENDENCIES: 'dependency declarations must be objects',
+  NAME: 'package names must be valid npm names',
+  SOURCE:
+    'the dependency request must select the default npm registry or a declared workspace member',
+  PATCH: 'patch declarations require exact registry versions and bounded relative .patch paths',
+} as const
+
+/** Closed, value-free author diagnostics. Paths are metadata, never file authority. */
+export class PrivateBunManifestError extends CheckError {
+  constructor(
+    readonly reason: keyof typeof MANIFEST_REASONS,
+    pointer: string,
+    path = 'package.json',
+    readonly projectRelative = false,
+  ) {
+    super('invalid', `PACKAGE_BUN_MANIFEST_${reason}`, MANIFEST_REASONS[reason], path, pointer)
+  }
+
+  atProjectPath(path: string): PrivateBunManifestError {
+    return new PrivateBunManifestError(this.reason, this.pointer!, path, true)
+  }
+}
+
 /** Closed Bun 1.3.3 lock policy for the direct alpha's one preparer. */
 export function requirePrivateBunResolutionManifest(
   value: unknown,
   workspace?: 'root' | 'member',
 ): void {
   const manifest = ordinaryRecord(value)
-  if (
-    manifest === undefined ||
-    [
-      ...(workspace === 'root' ? [] : ['workspaces']),
-      'patchedDependencies',
-      'overrides',
-      'resolutions',
-      'catalog',
-      'catalogs',
-    ].some((field) => manifest[field] !== undefined)
-  )
-    throw new TypeError('unsupported Bun resolution input')
+  if (manifest === undefined) throw new PrivateBunManifestError('SHAPE', '')
+  for (const field of [
+    ...(workspace === 'root' ? [] : ['workspaces']),
+    ...(workspace === 'root' ? [] : ['patchedDependencies']),
+    'overrides',
+    'resolutions',
+    'catalog',
+    'catalogs',
+  ]) {
+    if (manifest[field] !== undefined) throw new PrivateBunManifestError('FIELD', `/${field}`)
+  }
   if (
     workspace === 'member' &&
     (typeof manifest.name !== 'string' || !isPackageName(manifest.name))
   )
-    throw new TypeError('workspace members require valid package names')
-  requireRegistryDependencyMaps(manifest, workspace !== undefined)
+    throw new PrivateBunManifestError('NAME', '/name')
+  requireRegistryDependencyMaps(manifest, workspace !== undefined, true)
+  if (workspace === 'root') {
+    try {
+      requirePrivateBunPatches(manifest.patchedDependencies)
+    } catch {
+      throw new PrivateBunManifestError('PATCH', '/patchedDependencies')
+    }
+  }
+}
+
+/** Native workspace-root inputs, never executable configuration or live install paths. */
+export function requirePrivateBunPatches(value: unknown): Readonly<Record<string, string>> {
+  if (value === undefined) return Object.freeze({})
+  const patches = ordinaryRecord(value)
+  if (patches === undefined || Object.keys(patches).length > 256)
+    throw new TypeError('unsupported Bun patch declarations')
+  for (const [target, path] of Object.entries(patches)) {
+    if (
+      !isExactRegistryResolution(target) ||
+      typeof path !== 'string' ||
+      Buffer.byteLength(path) > 1024 ||
+      !path.endsWith('.patch') ||
+      /[\\\x00-\x1f\x7f]/.test(path) ||
+      path.split('/').some((part) => ['', '.', '..', '.git', '.jig', 'node_modules'].includes(part))
+    )
+      throw new TypeError('unsupported Bun patch declarations')
+  }
+  return Object.freeze({ ...patches }) as Readonly<Record<string, string>>
 }
 
 export function requirePrivateBunLockPolicy(value: unknown, members?: ReadonlySet<string>): void {
@@ -37,10 +91,11 @@ export function requirePrivateBunLockPolicy(value: unknown, members?: ReadonlySe
     (members === undefined
       ? Object.keys(workspaces).length !== 1
       : Object.keys(workspaces).some((path) => path !== '' && !members.has(path))) ||
-    lock.patchedDependencies !== undefined
+    (members === undefined && lock.patchedDependencies !== undefined)
   ) {
     throw new TypeError('unsupported Bun lock source')
   }
+  requirePrivateBunPatches(lock.patchedDependencies)
   for (const workspace of Object.values(workspaces)) {
     const record = ordinaryRecord(workspace)
     if (record === undefined) throw new TypeError('unsupported Bun workspace lock')
@@ -93,14 +148,19 @@ const DEPENDENCY_MAPS = Object.freeze([
 function requireRegistryDependencyMaps(
   container: Record<string, unknown>,
   workspace = false,
+  manifest = false,
 ): void {
+  function reject(reason: keyof typeof MANIFEST_REASONS, pointer: string): never {
+    if (manifest) throw new PrivateBunManifestError(reason, pointer)
+    throw new TypeError('unsupported Bun lock source')
+  }
   for (const field of DEPENDENCY_MAPS) {
     if (container[field] === undefined) continue
     const dependencies = ordinaryRecord(container[field])
-    if (dependencies === undefined) throw new TypeError('unsupported Bun lock source')
+    if (dependencies === undefined) reject('DEPENDENCIES', `/${field}`)
     for (const [name, request] of Object.entries(dependencies)) {
+      if (!isPackageName(name)) reject('NAME', `/${field}`)
       if (
-        !isPackageName(name) ||
         !(
           isRegistryRequest(request) ||
           (workspace &&
@@ -109,7 +169,7 @@ function requireRegistryDependencyMaps(
             isRegistrySelector(request.slice('workspace:'.length)))
         )
       ) {
-        throw new TypeError('unsupported Bun lock source')
+        reject('SOURCE', `/${field}/${name.replaceAll('~', '~0').replaceAll('/', '~1')}`)
       }
     }
   }

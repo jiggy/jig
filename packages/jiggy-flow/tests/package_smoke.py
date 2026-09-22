@@ -76,12 +76,10 @@ from importlib.metadata import metadata
 from importlib.resources import files
 import jiggy
 import jiggy.flow
-from jiggy.flow import CapabilityError, OperationError
+from jiggy.flow import OperationError
 
 operation = OperationError("UNAVAILABLE")
-effect = CapabilityError("not-found", None)
 assert operation.code == "UNAVAILABLE"
-assert effect.error_name == "not-found"
 assert files("jiggy.flow").joinpath("py.typed").is_file()
 distribution = metadata("jiggy-flow")
 assert distribution["Version"] == sys.argv[1]
@@ -91,8 +89,7 @@ assert "../../docs/" not in distribution.get_payload()
 assert jiggy.__spec__.origin is None
 assert not files("jiggy").joinpath("__init__.py").is_file()
 assert callable(jiggy.flow.handle)
-assert "run_child_flow" in jiggy.flow.RunContext.__dict__
-assert "call_capability" in jiggy.flow.RunContext.__dict__
+assert "call" in jiggy.flow.RunContext.__dict__
 """,
                     expected_version,
                 ],

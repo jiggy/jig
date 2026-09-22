@@ -4,17 +4,20 @@ When a method takes time, its caller may need to show what stage it has reached.
 A Flow can publish selected progress through an optional output channel while
 its final result remains the source of the execution outcome.
 
-Add this declaration to that Flow's `FLOW.md`:
+Add this declaration to that Flow's `FLOW.contract.json`:
 
-```yaml
-channels:
-  progress:
-    direction: send
-    required: false
-    delivery: direct
-    schema:
-      type: string
-      maxLength: 256
+```json
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "required": false,
+      "delivery": "direct",
+      "schema": { "type": "string", "maxLength": 256 }
+    }
+  }
+}
 ```
 
 Inside the existing handler, publish a short application-owned message at the

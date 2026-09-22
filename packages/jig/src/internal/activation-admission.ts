@@ -1,6 +1,7 @@
 import { types as utilTypes } from 'node:util'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
+import { validateChildGraph } from '../project/slot-graph.js'
 import {
   type PrivateActivationRequest,
   type PrivateResolutionUnavailableCode,
@@ -20,6 +21,7 @@ import {
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
+import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
@@ -39,6 +41,7 @@ const MAX_EVIDENCE = 64
 const createdCandidatesV5 = new WeakSet<object>()
 const inertCandidatesV5 = new WeakSet<object>()
 const inertPlansV2 = new WeakSet<object>()
+const candidateDepths = new WeakMap<object, ReadonlyMap<string, number>>()
 
 type PrivateActivationRecipe = PrivateDirectRunRecipe
 
@@ -142,6 +145,24 @@ export function createPrivateActivationCandidateV5(
   const resolution = requirePrivateRetainedResolutionObservation(resolutionValue)
   if (resolution.captureDigest !== retained.captureDigest) {
     throw new TypeError('resolution observation belongs to a different retained project capture')
+  }
+  const featureFailures = privateProjectFeatureFailures(retained.linked)
+  for (const target of resolution.targets) {
+    const failure = featureFailures.get(privateActivationTargetKey(target.request.target))
+    if (
+      failure !== undefined &&
+      (target.disposition.state !== 'unavailable' ||
+        target.disposition.code !== 'FEATURE_UNAVAILABLE' ||
+        target.disposition.evidenceDigests.length !== 1 ||
+        target.disposition.evidenceDigests[0] !== failure)
+    )
+      throw new TypeError('target requires unsupported implementation features')
+    if (
+      failure === undefined &&
+      target.disposition.state === 'unavailable' &&
+      target.disposition.code === 'FEATURE_UNAVAILABLE'
+    )
+      throw new TypeError('feature refusal has no retained declaration evidence')
   }
   const recipeValues = readPrivateActivationRecipeValues(recipeValue, resolution.targets.length)
   const recipes = recipeValues.map(requirePrivateActivationRecipe)
@@ -306,6 +327,33 @@ export function findPrivateActivationCandidateTargetV5(
   return artifact.candidate.targets.find(
     (target) => privateActivationTargetKey(target.request.target) === key,
   )
+}
+
+/** One bounded analysis per immutable candidate, shared with admission's graph rules. */
+export function privateActivationCandidateFlowDepth(
+  value: PrivateActivationCandidateArtifactV5,
+  identity: RunTargetIdentity,
+): number {
+  const artifact = requirePrivateInertActivationCandidateV5(value)
+  let depths = candidateDepths.get(artifact)
+  if (depths === undefined) {
+    type Node = { packagePath: string; slots: Readonly<Record<string, RunTargetIdentity>> }
+    const bindings = new Map<string, Node>()
+    const flows = new Map<string, Node>()
+    for (const { request } of artifact.candidate.targets) {
+      const target = request.target
+      const node = { packagePath: request.packagePath, slots: flowSlotTargets(request.slots) }
+      if (target.kind === 'binding') bindings.set(target.id, node)
+      else flows.set(target.path, node)
+    }
+    depths = validateChildGraph(bindings, flows)
+    candidateDepths.set(artifact, depths)
+  }
+  const target = normalizeIdentity(identity)
+  const key = target.kind === 'binding' ? `binding:${target.id}` : `flow:${target.path}`
+  const depth = depths.get(key)
+  if (depth === undefined) throw new TypeError('missing admitted Flow target')
+  return depth + 1
 }
 
 /**
@@ -803,16 +851,19 @@ function requireRequestLockProjection(
   if (packageValue === undefined || packageValue.digest !== request.package.digest) {
     throw new TypeError('activation request package does not match its lock projection')
   }
-  if (!sameJson(packageValue.uses, request.capabilities)) {
-    throw new TypeError('activation request capability uses do not match its lock projection')
+  const selected =
+    request.target.kind === 'binding'
+      ? (lock.bindings[request.target.id]?.slots ?? {})
+      : (packageValue.slots ?? {})
+  if (!sameJson(resolveInvocationSlots(packageValue.uses, selected), request.slots)) {
+    throw new TypeError('activation request invocation routes do not match its lock projection')
   }
   if (request.target.kind === 'binding') {
     const binding = lock.bindings[request.target.id]
     if (
       binding === undefined ||
       !sameJson(binding.settings, request.settings) ||
-      !sameJson(binding.slots, request.flowSlots) ||
-      !sameJson(binding.commands ?? {}, request.commands ?? {})
+      !sameJson(binding.attachments ?? {}, request.boundAttachments ?? {})
     ) {
       throw new TypeError(
         'activation request Binding configuration does not match its lock projection',
@@ -820,11 +871,7 @@ function requireRequestLockProjection(
     }
     return
   }
-  if (
-    Object.keys(request.settings).length !== 0 ||
-    Object.keys(request.flowSlots).length !== 0 ||
-    request.commands !== undefined
-  ) {
+  if (Object.keys(request.settings).length !== 0 || request.boundAttachments !== undefined) {
     throw new TypeError('direct Flow activation request must have empty configuration')
   }
 }
@@ -1036,7 +1083,9 @@ function copiedBytes(value: unknown, label: string): Uint8Array {
 }
 
 function isUnavailableCode(value: unknown): value is PrivateResolutionUnavailableCode {
-  return ['RUNTIME_UNAVAILABLE', 'SANDBOX_UNAVAILABLE'].includes(value as string)
+  return ['RUNTIME_UNAVAILABLE', 'SANDBOX_UNAVAILABLE', 'FEATURE_UNAVAILABLE'].includes(
+    value as string,
+  )
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
@@ -1046,3 +1095,5 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   }
   return true
 }
+
+import { flowSlotTargets, resolveInvocationSlots } from '../project/invocation-slots.js'

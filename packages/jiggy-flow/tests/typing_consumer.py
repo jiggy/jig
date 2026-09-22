@@ -2,7 +2,7 @@
 import asyncio
 from typing import assert_type
 from jiggy.flow import (
-    Attachment, CapabilityError, ChannelBroadcast, ChannelPair, ChannelReceiver, ChannelSender, JsonValue, OperationError,
+    Attachment, ChannelBroadcast, ChannelPair, ChannelReceiver, ChannelSender, JsonValue, OperationError,
     RunContext, RunHandler, RunResult, handle,
 )
 
@@ -23,14 +23,16 @@ async def work(context: RunContext) -> RunResult:
     assert_type(feed, ChannelReceiver)
     assert_type(feed.start_sequence, int)
     await feed.aclose()
+    await source.send.close(error="LAGGED")
     try:
-        child = await context.run_child_flow(operation_id="child-1", slot="child", input=context.input)
+        child = await context.call(operation_id="child-1", slot="child", input=context.input)
         assert_type(child, RunResult)
-        value = await context.call_capability(operation_id="call-1", slot="service", method="read", input=None)
-        assert_type(value, JsonValue)
-        return {"outcome": "done", "output": value}
-    except CapabilityError as error:
-        return {"outcome": "blocked", "output": error.data}
+        result = await context.call(operation_id="call-1", slot="service", input=None,
+                                    intent="Read the selected record.", channels={})
+        assert_type(result, RunResult)
+        if result["outcome"] == "not-found":
+            return {"outcome": "done", "output": None}
+        return result
     except OperationError as error:
         return {"outcome": "blocked", "output": error.code}
     except asyncio.CancelledError:

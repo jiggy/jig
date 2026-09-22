@@ -1627,7 +1627,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
       typeof mount !== 'object' ||
       !canonicalAbsolute(mount.source) ||
       !canonicalAbsolute(mount.destination) ||
-      protectedDestination(mount.destination) ||
+      privateLinuxProtectedDestination(mount.destination) ||
       destinations.has(mount.destination)
     ) {
       throw new TypeError('rootless Linux read-only mount is invalid')
@@ -2650,7 +2650,8 @@ function canonicalCgroup(value: string): boolean {
   return value.startsWith('/sys/fs/cgroup/') && canonicalAbsolute(value)
 }
 
-function protectedDestination(value: string): boolean {
+/** Shared inert preflight; sealing independently enforces the same mount policy. */
+export function privateLinuxProtectedDestination(value: string): boolean {
   return (
     value === '/' ||
     ['/dev', '/jig', '/proc', '/run', '/sys', '/tmp', '/work'].some(

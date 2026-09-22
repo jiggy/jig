@@ -14,11 +14,13 @@ const schema = compileSchemaFile(
 const project = defineJig({
   flows: discover('./flows'),
   bindings: ['./bindings/review.ts'],
+  defaultProviders: { 'https://example.org/contracts/review': 'binding:review' },
 })
 const binding = defineBinding({
   package: './flows/review',
   settings: { retries: 2 },
   slots: { child: 'flow:./flows/child', reviewer: 'binding:reviewer' },
+  attachments: { reference: './resources/reference' },
 })
 
 function changed(value: unknown, mutate: (copy: Record<string, any>) => void): unknown {
@@ -28,12 +30,41 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 }
 
 describe('Project Authoring SDK/1 shape schema', () => {
+  test('retention policy is explicit and confined to the qualified native client', () => {
+    const value = changed(binding, (item) => {
+      item.slots.native = { kind: 'acp', client: 'codex', retainSessions: true }
+    })
+    expect(() => schema.validate(value, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
+    for (const patch of [{ client: 'pi' }, { client: 'claude' }, { retainSessions: false }]) {
+      const invalid = changed(value, (item) => Object.assign(item.slots.native, patch))
+      expect(() => schema.validate(invalid, 'INVALID_PROJECT_AUTHORING')).toThrow(SchemaDiagnostic)
+    }
+  })
   test('accepts the complete direct-alpha authoring surface', () => {
     expect(() => schema.validate(project, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
     expect(() => schema.validate(binding, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
   })
 
   for (const [name, value] of [
+    [
+      'object default selector',
+      changed(project, (item) => {
+        item.defaultProviders = {
+          'https://example.org/contracts/review': { kind: 'binding', id: 'review' },
+        }
+      }),
+    ],
+    [
+      'oversized default list',
+      changed(project, (item) => {
+        item.defaultProviders = Object.fromEntries(
+          Array.from({ length: 257 }, (_, i) => [
+            `https://example.org/contracts/review-${i}`,
+            'binding:review',
+          ]),
+        )
+      }),
+    ],
     [
       'unknown project field',
       changed(project, (item) => {
@@ -59,9 +90,9 @@ describe('Project Authoring SDK/1 shape schema', () => {
       }),
     ],
     [
-      'unsupported Binding attachments',
+      'non-path Binding attachments',
       changed(binding, (item) => {
-        item.attachments = {}
+        item.attachments = { source: { path: 'data' } }
       }),
     ],
     [

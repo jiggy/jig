@@ -3,7 +3,7 @@ import { open, opendir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { RunContext, RunResult } from '@jigging/flow'
-import cases from './cases.json'
+import { type AcceptanceCase, loadChecks } from './checks.ts'
 
 function hash(text: string) {
   return `sha256:${new Bun.CryptoHasher('sha256').update(text).digest('hex')}`
@@ -28,11 +28,15 @@ function validText(value: unknown, limit: number): value is string {
     !value.includes('\0')
   )
 }
-export async function readRepairInput(value: unknown, source: string, selectedCases = cases) {
-  const request = value as { issue: string; editPaths: string[] }
+export async function readRepairInput(
+  value: unknown,
+  source: string,
+  selectedCases?: AcceptanceCase[],
+) {
+  const request = value as { issue: string; editPaths: string[]; checks?: string }
   if (
     !request ||
-    Object.keys(request).sort().join(',') !== 'editPaths,issue' ||
+    Object.keys(request).some((k) => !['editPaths', 'issue', 'checks'].includes(k)) ||
     !validText(request.issue, 8000) ||
     !request.issue.trim() ||
     !Array.isArray(request.editPaths) ||
@@ -41,6 +45,8 @@ export async function readRepairInput(value: unknown, source: string, selectedCa
     new Set(request.editPaths).size !== request.editPaths.length
   )
     throw new TypeError('Supply an issue and selected editPaths.')
+  const cases =
+    selectedCases ?? (await loadChecks(request.checks === undefined ? 'logs' : request.checks))
   const files: Record<string, string> = Object.create(null)
   let remaining = 65536,
     entries = 0
@@ -99,7 +105,7 @@ export async function readRepairInput(value: unknown, source: string, selectedCa
     )
   )
     throw new TypeError('Select existing TypeScript or JavaScript source files below src/.')
-  return { ...request, files, cases: selectedCases }
+  return { issue: request.issue, editPaths: request.editPaths, files, cases }
 }
 
 /** Build applicable complete-file hunks from captured originals, never from model diff text. */
@@ -144,7 +150,6 @@ export function inspect(input: Input, result: RunResult) {
         command.candidateDigest !== identity(files) ||
         command.cleanup !== 'complete' ||
         command.stopReason !== 'exited' ||
-        command.command !== (i === 0 ? 'tests' : 'cli') ||
         command.stdinDigest !== hash(i === 0 ? '' : input.cases[i - 1]!.stdin) ||
         !Array.isArray(command.invocation) ||
         command.invocation[0] !== 'bun' ||
@@ -247,7 +252,7 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
     throw new TypeError('Supply source and deliverables attachments.')
   const input = await readRepairInput(run.input, source.path)
   run.signal.throwIfAborted()
-  const result = await run.runChildFlow({ operationId: 'repair', slot: 'repair', input })
+  const result = await run.call({ operationId: 'repair', slot: 'repair', input })
   run.signal.throwIfAborted()
   await writeRepairDeliverables(deliverables.path, input, result)
   return result

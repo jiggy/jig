@@ -1,30 +1,36 @@
-import { invalid } from '../diagnostics.js'
+import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
+import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
 import { privateDomainDigest } from '../internal/identity.js'
 import type { JsonValue } from '../json.js'
 import type { BindingDefinition, JigDefinition } from './author.js'
 import {
-  evaluateAuthorClosure,
   type EvaluatedAuthorDeclaration,
+  evaluateAuthorClosure,
   type PrivateAuthorEvaluatorOptions,
 } from './author-evaluator.js'
-import { captureOpenedAuthorClosure, type CapturedAuthorClosure } from './author-module.js'
+import { type CapturedAuthorClosure, captureOpenedAuthorClosure } from './author-module.js'
 import {
   captureDeclarationSource,
   type DeclarationSourceObservation,
 } from './declaration-source.js'
 import {
+  type CapturedFlowSource,
   captureOpenedFlowSource,
   type FlowDiscoveryObservation,
   type FlowExactObservation,
+  type PrepareCapturedFlow,
 } from './flow-source.js'
+import { captureGrantSource } from './grant-source.js'
+import type { GrantPolicy } from './grants.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
-import { retainAuthorClosure, type RetainedAuthorClosure } from './retained-author-closure.js'
-import { retainFlowSourcePackages, type RetainedFlowInput } from './retained-flow.js'
+import { npmPackageName } from './package-selector.js'
+import { type RetainedAuthorClosure, retainAuthorClosure } from './retained-author-closure.js'
+import { type RetainedFlowInput, retainFlowSourcePackages } from './retained-flow.js'
 import {
   openPrivateProjectRoot,
-  requirePrivateProjectRoot,
   type PrivateProjectRoot,
+  requirePrivateProjectRoot,
 } from './root.js'
 
 const authenticProjects = new WeakSet<object>()
@@ -39,12 +45,15 @@ export interface PrivateRetainedOpenedProjectOptions {
   readonly projectRoot: PrivateProjectRoot
   readonly storeRoot: string
   readonly evaluator: PrivateAuthorEvaluatorOptions
+  readonly prepareFlow?: PrepareCapturedFlow
+  readonly dependencyFlows?: (selectors: readonly string[]) => Promise<CapturedFlowSource>
 }
 
 export interface RetainedBindingDeclaration {
   readonly id: string
   readonly sourcePath: string
   readonly evaluation: EvaluatedAuthorDeclaration<BindingDefinition>
+  readonly attachments?: BoundAttachments
 }
 
 export interface PrivateRetainedPackageProject {
@@ -57,6 +66,8 @@ export interface PrivateRetainedPackageProject {
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[]
   readonly bindingSource: readonly DeclarationSourceObservation[]
+  readonly grantSource: readonly DeclarationSourceObservation[]
+  readonly grants: Readonly<Record<string, GrantPolicy>>
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly RetainedBindingDeclaration[]
   readonly linked: PackageProjectValue
@@ -81,6 +92,7 @@ export async function retainPackageProject(
     try {
       await root.dispose()
     } catch (error) {
+      // biome-ignore lint/correctness/noUnsafeFinally: Failed cleanup must prevent success; preserve any operation failure too.
       throw new AggregateError(
         operationFailure === undefined ? [error] : [operationFailure, error],
         'retained project operation and root cleanup did not both complete',
@@ -102,6 +114,7 @@ export async function retainOpenedPackageProject(
   let bootstrap: CapturedAuthorClosure | undefined
   let closure: CapturedAuthorClosure | undefined
   let flowSource: Awaited<ReturnType<typeof captureOpenedFlowSource>> | undefined
+  let dependencies: CapturedFlowSource | undefined
   let operationFailure: unknown
   try {
     bootstrap = await captureOpenedAuthorClosure(root, [entry])
@@ -134,6 +147,7 @@ export async function retainOpenedPackageProject(
       )
     }
 
+    const grantSource = await captureGrantSource(root, project.value.grants)
     const bindings: RetainedBindingDeclaration[] = []
     for (const member of bindingSource.members) {
       const evaluation = (await evaluateAuthorClosure(
@@ -143,22 +157,86 @@ export async function retainOpenedPackageProject(
         'binding',
         signal,
       )) as EvaluatedAuthorDeclaration<BindingDefinition>
-      bindings.push(Object.freeze({ id: member.id, sourcePath: member.projectPath, evaluation }))
+      let attachments: BoundAttachments | undefined
+      try {
+        if (evaluation.value.attachments !== undefined)
+          attachments = await captureBoundAttachments(
+            root,
+            evaluation.value.attachments,
+            options.storeRoot,
+          )
+      } catch (error) {
+        if (error instanceof CheckError)
+          throw new CheckError(
+            error.kind,
+            error.code,
+            error.message,
+            member.projectPath,
+            '/attachments',
+          )
+        throw error
+      }
+      bindings.push(
+        Object.freeze({
+          id: member.id,
+          sourcePath: member.projectPath,
+          evaluation,
+          ...(attachments === undefined ? {} : { attachments }),
+        }),
+      )
     }
     await bindingSource.verify()
+    await grantSource.verify()
 
-    flowSource = await captureOpenedFlowSource(root, project.value.flows)
-    const retainedFlows = await retainFlowSourcePackages(options.storeRoot, flowSource)
+    const selected = new Set<string>()
+    const select = (value: string): void => {
+      if (value.startsWith('npm:')) {
+        npmPackageName(value)
+        selected.add(value)
+      }
+    }
+    for (const value of Object.values(project.value.defaultProviders ?? {})) select(value)
+    for (const binding of bindings) {
+      select(binding.evaluation.value.package)
+      for (const value of Object.values(binding.evaluation.value.slots))
+        if (typeof value === 'string') select(value)
+    }
+    const configured = project.value.flows
+    if (configured?.kind === 'members') for (const path of configured.paths) select(path)
+    if (selected.size > 256)
+      invalid('PROJECT_DEPENDENCY_LIMIT', 'too many selected package dependencies')
+    flowSource = await captureOpenedFlowSource(
+      root,
+      configured?.kind === 'members'
+        ? { kind: 'members', paths: configured.paths.filter((path) => !path.startsWith('npm:')) }
+        : configured,
+      options.prepareFlow,
+    )
+    if (selected.size > 0) {
+      if (!options.dependencyFlows)
+        invalid('PROJECT_DEPENDENCY_UNAVAILABLE', 'this host cannot capture npm Flow targets')
+      dependencies = await options.dependencyFlows([...selected].sort())
+    }
+    const retainedFlows = [
+      ...(await retainFlowSourcePackages(options.storeRoot, flowSource)),
+      ...(dependencies ? await retainFlowSourcePackages(options.storeRoot, dependencies) : []),
+    ]
     const declarationArtifact = await retainAuthorClosure(options.storeRoot, closure)
     await bindingSource.verify()
+    await grantSource.verify()
     await root.verify()
 
     const linked = linkPackageProject(
       {
         flows: retainedFlows,
-        bindings: bindings.map(({ sourcePath, evaluation }) => ({
+        grants: grantSource.grants,
+        ...(project.value.defaultProviders === undefined
+          ? {}
+          : { defaultProviders: project.value.defaultProviders }),
+        bindings: bindings.map(({ sourcePath, evaluation, attachments }) => ({
           sourcePath,
           definition: evaluation.value,
+          ...(attachments === undefined ? {} : { capturedAttachments: attachments }),
         })),
       },
       PRIVATE_ACTIVATION_TARGET_LIMIT,
@@ -171,8 +249,10 @@ export async function retainOpenedPackageProject(
       root: rootIdentity,
       declarationArtifact,
       project,
-      flowSource: flowSource.observations,
+      flowSource: [...flowSource.observations, ...(dependencies?.observations ?? [])],
       bindingSource: bindingSource.observations,
+      grantSource: grantSource.observations,
+      grants: grantSource.grants,
       flows: retainedFlows,
       bindings,
     })
@@ -181,8 +261,10 @@ export async function retainOpenedPackageProject(
       root: rootIdentity,
       declarationArtifact,
       project,
-      flowSource: flowSource.observations,
+      flowSource: [...flowSource.observations, ...(dependencies?.observations ?? [])],
       bindingSource: bindingSource.observations,
+      grantSource: grantSource.observations,
+      grants: grantSource.grants,
       flows: retainedFlows,
       bindings: Object.freeze(bindings),
       linked,
@@ -200,6 +282,11 @@ export async function retainOpenedPackageProject(
       cleanupFailures.push(error)
     }
     try {
+      await dependencies?.dispose()
+    } catch (error) {
+      cleanupFailures.push(error)
+    }
+    try {
       closure?.dispose()
     } catch (error) {
       cleanupFailures.push(error)
@@ -210,6 +297,7 @@ export async function retainOpenedPackageProject(
       cleanupFailures.push(error)
     }
     if (cleanupFailures.length > 0) {
+      // biome-ignore lint/correctness/noUnsafeFinally: Failure to release captured resources disqualifies this candidate.
       throw new AggregateError(
         operationFailure === undefined ? cleanupFailures : [operationFailure, ...cleanupFailures],
         'retained project operation and cleanup did not both complete',
@@ -260,6 +348,8 @@ function digestCapture(input: {
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[]
   readonly bindingSource: readonly DeclarationSourceObservation[]
+  readonly grantSource: readonly DeclarationSourceObservation[]
+  readonly grants: Readonly<Record<string, GrantPolicy>>
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly RetainedBindingDeclaration[]
 }): string {
@@ -269,11 +359,14 @@ function digestCapture(input: {
     project: evaluationIdentity(input.project),
     flowSource: input.flowSource,
     bindingSource: input.bindingSource,
+    grantSource: input.grantSource,
+    grants: input.grants,
     flows: input.flows.map((flow) => ({ provenance: flow.provenance, package: flow.package })),
     bindings: input.bindings.map((binding) => ({
       id: binding.id,
       sourcePath: binding.sourcePath,
       evaluation: evaluationIdentity(binding.evaluation),
+      ...(binding.attachments === undefined ? {} : { attachments: binding.attachments }),
     })),
   }
   return privateDomainDigest('JIG-Package-Project-Capture/3', value as unknown as JsonValue)

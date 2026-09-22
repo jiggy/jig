@@ -23,7 +23,7 @@ showcase:
   packageName: greet
   packageLabel: One Flow package
   requiredLabel: Required
-  implementationLabel: Optional implementation
+  implementationLabel: Alternative entrypoint (choose one)
   source:
     file: FLOW.md
     lang: markdown
@@ -36,7 +36,7 @@ showcase:
       Greet the supplied name.
       Return a short greeting message.
   implementations:
-    - file: flow.ts
+    - file: FLOW.ts
       lang: typescript
       code: |-
         import { handle } from "@jigging/flow";
@@ -49,7 +49,7 @@ showcase:
             output: { message: `Hello, ${name}!` },
           };
         });
-    - file: flow.py
+    - file: FLOW.py
       lang: python
       code: |-
         from jiggy.flow import RunContext, RunResult, handle
@@ -66,7 +66,7 @@ showcase:
     file: Inside another Flow · TypeScript
     lang: typescript
     code: |-
-      return run.runChildFlow({
+      return run.call({
         operationId: "say-hello",
         slot: "greeter",
         input: "Ada",
@@ -74,10 +74,10 @@ showcase:
   stages:
     - name: Describe
       title: Start with one readable file.
-      description: FLOW.md holds the method’s description and instructions. Guidance and resources can live beside it. With no implementation, it is an instructions-only Flow.
+      description: FLOW.md is the Markdown implementation. A compatible interpreter carries out the procedure under host-authorized powers. Guidance and resources can live beside it.
     - name: Run
-      title: Give the method an executable form.
-      description: Add one flow.<ext> entrypoint. A compatible host can invoke it directly, without an Agent first interpreting the Markdown. Switch languages to see the same greeting.
+      title: Choose another execution format.
+      description: Use FLOW.ts or FLOW.py instead of FLOW.md when code should express the procedure. A package has exactly one FLOW.<ext> entrypoint. Switch languages to see the same greeting.
     - name: Compose
       title: Call the capability. Choose its implementation.
       description: Another Flow calls the configured greeter slot with an input and receives its result. The same calling boundary works whether the method uses code, Agent work, or both.
@@ -87,26 +87,23 @@ showcase:
   result: 'done → { "message": "Hello, Ada!" }'
   runtimeNote: FLOW does not prescribe a language or runtime. The host must support the implementation and its FLOW protocol. TypeScript and Python SDKs exist; their availability does not imply that Jig supports both.
   internalsTitle: Where do Agents fit?
-  internals: These greeting implementations use code. An executable method can also request Agent work through capabilities supplied by its host, using Skills and prompts inside the method. The caller still uses the method’s interface; required powers and result quality can differ.
+  internals: These greeting implementations use code. An executable method can also call an ordinary Agent Flow through an authorized slot, using Skills and prompts inside the method. The caller still uses the method’s interface; required powers and result quality can differ.
   precisionTitle: Add precision when you need it
   precision:
-    - file: input.schema.json
-      description: Optionally define which inputs the method accepts.
-      link: /spec/package-format#4-conventional-schemas
-    - file: result.schema.json
-      description: Optionally define the shape of outcomes and outputs.
-      link: /spec/package-format#4-conventional-schemas
-    - file: Capability contracts
-      description: Add an explicit interface for a capability dependency when interoperability needs one. Ordinary child Flow calls need no capability contract.
-      link: /spec/capability-contracts
+    - file: FLOW.contract.json
+      description: Optionally declare input, results, outcomes and channels in one invocation contract.
+      link: /spec/invocation-contracts
+    - file: flow.meta.json
+      description: Add optional metadata and declare the method's dependencies without executing its code.
+      link: /spec/package-format
   note: Package walkthrough and SDK excerpts, not a live run. A host supplies the runtime and configures the child slot. Follow the authoring guide for complete setup.
   link: /guide/start
   linkText: Choose an SDK or host
 ---
 
 <section className="story-section">
-<div className="story-copy"><p className="eyebrow">From guidance to execution</p><h2>The familiarity of a Skill.<br />The composition of code.</h2><p><code>SKILL.md</code> captures instructions and resources for an Agent. <code>FLOW.md</code> gives a method readable meaning; an optional <code>flow.&lt;ext&gt;</code> gives it a defined execution boundary.</p><p>Use code for known steps, Agent judgment for interpretation, or combine both. Your application calls the method through the same interface, without taking on its internal orchestration.</p><a className="text-link" href="https://jig.md/guide/request-triage">See one caller use code, an Agent, or both ↗</a></div>
-<div className="package-reveal"><p className="visual-caption">Progressive disclosure, built into the package</p><dl><div><dt>Describe the method</dt><dd>Start with the required FLOW.md. Keep its purpose and instructions readable.</dd></div><div><dt>Make it executable</dt><dd>Add one flow.&lt;ext&gt; using a runtime supported by the host.</dd></div><div><dt>Add the precision you need</dt><dd>Schemas and capability contracts stay optional until the work calls for them.</dd></div></dl></div>
+<div className="story-copy"><p className="eyebrow">From guidance to execution</p><h2>The familiarity of a Skill.<br />The composition of code.</h2><p><code>SKILL.md</code> captures instructions and resources for an Agent. <code>FLOW.md</code> is a Markdown implementation with a defined execution boundary. Choose <code>FLOW.ts</code> or another supported format instead when code should express the procedure.</p><p>Use code for known steps, Agent judgment for interpretation, or combine both. Your application calls the method through the same interface, without taking on its internal orchestration.</p><a className="text-link" href="https://jig.md/guide/request-triage">See one caller use code, an Agent, or both ↗</a></div>
+<div className="package-reveal"><p className="visual-caption">Progressive disclosure, built into the package</p><dl><div><dt>Describe the method</dt><dd>Start with one FLOW.&lt;ext&gt; entrypoint. Markdown keeps the procedure readable.</dd></div><div><dt>Make it executable</dt><dd>Choose Markdown or code using a runtime supported by the host; do not combine entrypoints.</dd></div><div><dt>Add the precision you need</dt><dd>Optional metadata and one invocation contract add precise declarations when needed.</dd></div></dl></div>
 </section>
 
 <section className="story-section story-section--reverse">
@@ -115,5 +112,5 @@ showcase:
 </section>
 
 <section className="closing-cta"><h2>Start small.<br />Build something more capable.</h2><p>Choose an SDK or a compatible host and build your first executable Flow.</p><a className="action action--brand" href="/guide/start">Build your first Flow <span aria-hidden="true">↗</span></a><p className="start-note">The standard and SDKs are prerelease.</p></section>
-<details className="honest-details"><summary>What to know before building</summary><p>Skills can also bundle executable scripts. FLOW adds its own package and invocation contract; a Markdown rename does not establish universal format compatibility or executable behavior. Hosts support specific implementations and supply their own powers and policy. Progressive disclosure here describes the package’s optional layers, not a guarantee about how an Agent loads context.</p></details>
+<details className="honest-details"><summary>What to know before building</summary><p>Skills can also bundle executable scripts. FLOW adds its own package and invocation contract. Markdown needs a compatible interpreter and admitted resources; Skill-compatible authoring does not promise identical behavior across runtimes. Hosts support specific implementations and supply their own powers and policy. Progressive disclosure here describes the package’s optional layers, not a guarantee about how an Agent loads context.</p></details>
 <nav className="landing-routes" aria-label="More FLOW resources"><a href="/guide/overview">Documentation</a><a href="/guide/">Specifications</a><a href="/guide/for-agents">For Agents</a><a href="https://github.com/jiggy/jig/blob/main/Governance.md">Stewardship</a></nav>

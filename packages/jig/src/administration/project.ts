@@ -2,7 +2,7 @@ import { types as utilTypes } from 'node:util'
 
 import { validateJson1 } from '../json.js'
 import { isProtectedProjectPath, validateProjectPath } from '../project/paths.js'
-import { schemaTypeMismatchText, type SchemaTypeMismatch } from '../schema/types.js'
+import { type SchemaTypeMismatch, schemaTypeMismatchText } from '../schema/types.js'
 import type { RootAdministration } from './root.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -11,6 +11,7 @@ const MAX_MESSAGE_SCALARS = 1_024
 const MAX_POINTER_SCALARS = 1_024
 
 export type ProjectAdministrationErrorCode =
+  | 'AUTHORITY_APPROVAL_REQUIRED'
   | 'INVALID_REQUEST'
   | 'PROJECT_NOT_FOUND'
   | 'PROJECT_UNSAFE'
@@ -51,11 +52,13 @@ export type ProjectPlanResult =
         readonly mediaType: 'text/plain; charset=utf-8'
         readonly text: string
         readonly details: string
+        readonly authorityChanges: boolean
       }
     }
 
 export interface ProjectApplyRequest {
   readonly planDigest: string
+  readonly allowAuthorityChanges?: boolean
 }
 
 export interface ProjectApplyReceipt {
@@ -120,11 +123,29 @@ export function normalizeProjectPlanRequest(value: unknown): ProjectPlanRequest 
 
 /** Package-private request normalization for the trusted project controller. */
 export function normalizeProjectApplyRequest(value: unknown): ProjectApplyRequest {
-  const input = exactRecord(value, ['planDigest'], 'apply request')
+  const input = exactRecord(
+    value,
+    [
+      'planDigest',
+      ...(value !== null &&
+      typeof value === 'object' &&
+      Object.hasOwn(value, 'allowAuthorityChanges')
+        ? ['allowAuthorityChanges']
+        : []),
+    ],
+    'apply request',
+  )
   if (typeof input.planDigest !== 'string' || !DIGEST.test(input.planDigest)) {
     invalidRequest('apply planDigest is invalid')
   }
-  return Object.freeze({ planDigest: input.planDigest })
+  if (input.allowAuthorityChanges !== undefined && typeof input.allowAuthorityChanges !== 'boolean')
+    invalidRequest('allowAuthorityChanges must be boolean')
+  return Object.freeze({
+    planDigest: input.planDigest,
+    ...(input.allowAuthorityChanges === undefined
+      ? {}
+      : { allowAuthorityChanges: input.allowAuthorityChanges as boolean }),
+  })
 }
 
 function exactRecord(
@@ -162,6 +183,7 @@ function exactRecord(
 
 function requireErrorCode(value: unknown): asserts value is ProjectAdministrationErrorCode {
   if (
+    value !== 'AUTHORITY_APPROVAL_REQUIRED' &&
     value !== 'INVALID_REQUEST' &&
     value !== 'PROJECT_NOT_FOUND' &&
     value !== 'PROJECT_UNSAFE' &&
@@ -224,13 +246,29 @@ function normalizeProjectAdministrationDiagnostic(
 
   const path = fields.path
   try {
-    validateProjectPath(path, 'project diagnostic path')
+    // A workspace may be above the project. Only these closed manifest
+    // diagnostics may name an ancestor; this is display data, not a file route.
+    const manifestCause =
+      /^PACKAGE_BUN_MANIFEST_(SHAPE|FIELD|DEPENDENCIES|NAME|SOURCE|PATCH)$/.test(code)
+    const ancestor =
+      manifestCause && typeof path === 'string' ? /^(?:\.\.\/)+/.exec(path)?.[0] : undefined
+    const local = ancestor === undefined ? path : (path as string).slice(ancestor.length)
+    validateProjectPath(local, 'project diagnostic path')
+    if (
+      ancestor !== undefined &&
+      (ancestor.length / 3 > 32 ||
+        Buffer.byteLength(path as string) > 1024 ||
+        (path as string).split('/').length > 64 ||
+        !(path as string).endsWith('/package.json'))
+    )
+      throw new TypeError('invalid workspace diagnostic path')
+    if (local.split('/').some(isProtectedProjectPath))
+      throw new TypeError('protected diagnostic path')
   } catch {
     throw new TypeError('project diagnostic path is invalid')
   }
-  if (isProtectedProjectPath(path)) {
-    throw new TypeError('project diagnostic path is invalid')
-  }
+  // The validator above has also checked the ancestor-relative display form.
+  if (typeof path !== 'string') throw new TypeError('project diagnostic path is invalid')
 
   let pointer: string | undefined
   if (actual.includes('pointer')) {

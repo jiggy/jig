@@ -19,6 +19,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   publication or Git-write authority.
 - Build, test, publish, and tag the exact triggering source and retained
   candidate bytes. Never rebuild a release during publication.
+- npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
+  dependency order; all retain the same-revision CI/host gates and isolated
+  trusted publisher. First publication requires each package's npm setup.
 - Publish only after CI and the complete Linux Host Conformance workflow have
   both succeeded for the exact triggering source revision.
 - Keep path filters synchronized with every real workflow input.
@@ -39,8 +42,18 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.
 - Preserve zero-residue checks around provisioned Jig host tests.
+- Failed operational-baseline command transcripts are retained for seven days.
+  Upload only the explicit transcript files, not consumer trees, admission
+  databases, credentials, or retained native state.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
+- Host conformance includes Agent method and contract-authoring source changes.
+  Freeze the built SDK, HTTP Agent, ACP Agent and Jig archives once through their owning
+  packers. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
+  archives to installed Markdown tests across the provisioned host boundary;
+  verify the same archive hashes afterward. Jig's packer supplies the complete
+  private authoring closure. Agent source rebuilds use ordinary declared
+  dependencies; frozen archives are test inputs, never embedded dependencies.
 
 ## Verification
 

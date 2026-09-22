@@ -1,0 +1,20 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "channels": {
+    "revisions": {
+      "direction": "receive",
+      "required": false,
+      "delivery": "direct",
+      "contract": "./contracts/revisions.json"
+    },
+    "updates": {
+      "direction": "send",
+      "required": false,
+      "delivery": "direct",
+      "contract": "./contracts/revisions.json"
+    }
+  },
+  "outcomes": {
+    "blocked": "The worker did not obtain a complete checked response or a safe handoff."
+  }
+}

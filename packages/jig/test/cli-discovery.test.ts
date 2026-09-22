@@ -9,6 +9,7 @@ import {
   completionScript,
   invocationGuide,
 } from '../src/cli-discovery.js'
+import { checkPackageDirectory } from '../src/package/inspect.js'
 import { createFlow, createProject } from '../src/project-init.js'
 
 test('usage mistakes show one correction, not the entire manual', async () => {
@@ -66,15 +67,15 @@ test('inspection gives honest templates, required files and channels, not guesse
   const guide = invocationGuide({
     target: 'binding:repair',
     description: 'Fix supplied source.',
-    schemas: {
+    contract: {
       input: {
         type: 'object',
         required: ['issue'],
         properties: { issue: { type: 'string' }, attempts: { type: 'integer' } },
       },
+      channels: { progress: { direction: 'send', required: false } },
     },
     attachments: { source: 'read', files: 'read-write' },
-    channels: { progress: { direction: 'send', required: false } },
   })
   expect(guide).toContain('"issue" (required): "string"')
   expect(guide).toContain('"attempts" (optional): "integer"')
@@ -89,12 +90,12 @@ test('inspection gives honest templates, required files and channels, not guesse
   expect(
     invocationGuide({
       target: 'binding:work',
-      channels: { progress: { direction: 'send', required: true } },
+      contract: { channels: { progress: { direction: 'send', required: true } } },
     }),
   ).toContain("--receive 'progress'")
   const incoming = invocationGuide({
     target: 'binding:work',
-    channels: { commands: { direction: 'receive', required: true } },
+    contract: { channels: { commands: { direction: 'receive', required: true } } },
   })
   expect(incoming).toContain('CLI cannot supply it')
   expect(incoming).not.toContain("jig run 'binding:work'")
@@ -158,10 +159,13 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
         .dependencies,
     ).toEqual({ '@jigging/flow': 'workspace:*' })
     expect((await readdir(join(project, 'flows/summarize'))).sort()).toEqual([
-      'FLOW.md',
-      'flow.ts',
+      'FLOW.ts',
+      'flow.meta.json',
       'package.json',
     ])
+    expect((await checkPackageDirectory(join(project, 'flows/summarize'))).entrypoint.path).toBe(
+      'FLOW.ts',
+    )
     expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(before)
     await expect(createFlow(project, 'summarize')).rejects.toMatchObject({ code: 'JIG_NEW_EXISTS' })
     await expect(createFlow(project, '../escape')).rejects.toMatchObject({

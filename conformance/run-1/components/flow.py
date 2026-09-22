@@ -1,11 +1,11 @@
-from jiggy.flow import CapabilityError, handle
+from jiggy.flow import handle
 
 
 async def run(context):
     import asyncio
 
     research_task = asyncio.create_task(
-        context.run_child_flow(
+        context.call(
             operation_id="research:1",
             slot="research",
             intent="Find a useful comparison target.",
@@ -13,26 +13,19 @@ async def run(context):
         )
     )
     stored_task = asyncio.create_task(
-        context.call_capability(
+        context.call(
             operation_id="store:1",
-            slot="artifacts",
-            method="write",
+            slot="artifact-write",
             input={"source": "research"},
         )
     )
 
     research, stored = await asyncio.gather(research_task, stored_task)
-    missing = None
-
-    try:
-        await context.call_capability(
-            operation_id="missing:1",
-            slot="artifacts",
-            method="read",
-            input={"uri": "artifact://missing"},
-        )
-    except CapabilityError as error:
-        missing = error.error_name
+    missing = await context.call(
+        operation_id="missing:1",
+        slot="artifact-read",
+        input={"uri": "artifact://missing"},
+    )
 
     return {
         "outcome": "done",

@@ -179,6 +179,23 @@ describe('CLI experience contract', () => {
     expect(privateCliHumanText(prose, true)).toBe(prose)
   })
 
+  test('ACP runtime approvals retain their section boundary and exact selected values in every theme', () => {
+    const input =
+      'ACP runtimes selected for resource slots:\n  "client": "codex"\n  "model": "operator-model"\n  "executable": "/opt/client/bin/codex"\n'
+    for (const columns of [40, 80]) {
+      for (const JIG_THEME of ['one-dark', 'one-light', 'macchiato']) {
+        const plain = privateCliHumanText(input, false, columns, { JIG_THEME })
+        const color = privateCliHumanText(input, true, columns, { JIG_THEME })
+        expect(strip(color)).toBe(plain)
+        expect(plain).toContain('-'.repeat(Math.min(60, columns - 1)))
+        expect(plain).toContain('"client": "codex"')
+        expect(plain).toContain('"model": "operator-model"')
+        expect(plain).toContain('"executable": "/opt/client/bin/codex"')
+        expect(plain).not.toContain('\u001b')
+      }
+    }
+  })
+
   test('diff markers retain direction and syntax colors without changing values', () => {
     const input = '-   "mode": "old"\n+   "mode": "new"\n+   "digest": "sha256:123"'
     const colored = privateCliHumanText(input, true, 40, { COLORTERM: 'truecolor' })
@@ -406,7 +423,7 @@ describe('CLI experience contract', () => {
     expect(error).toContain('JIG_CLEANUP_FAILED')
     expect(error).toContain('METADATA_DESCRIPTION')
     expect(error).toContain('Location: "flows/chat/FLOW.md"')
-    expect(error).toContain('provide a nonempty text description')
+    expect(error).toContain('when present, description must be nonempty text')
     expect(error).not.toContain('secret')
     expect(error).not.toContain('\u001b')
   })

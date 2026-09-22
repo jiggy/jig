@@ -1,6 +1,5 @@
 import { type BigIntStats, constants } from 'node:fs'
 import { lstat, mkdir, open } from 'node:fs/promises'
-
 import {
   normalizeProjectApplyRequest,
   normalizeProjectPlanRequest,
@@ -13,12 +12,14 @@ import {
 } from '../administration/project.js'
 import type { RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
+import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
 import { validateJson1 } from '../json.js'
 import {
   buildPrivateActivationRequests,
   resolveRetainedPackageProjectObservation,
 } from '../project/package-resolution.js'
 import { retainOpenedPackageProject } from '../project/retained-project.js'
+import { ACP_SETUP_HINTS } from './acp-setup-diagnostics.js'
 import { createPrivateActivationCandidateV5 } from './activation-admission.js'
 import {
   applyPrivateActivationReviewPlan,
@@ -29,11 +30,13 @@ import {
   PRIVATE_PACKAGE_STORE_DIRECTORY as STORE_DIRECTORY,
 } from './activation-admission-store.js'
 import { createPrivateActivationPlanningObservation } from './activation-planning.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
+import { privateActivationTargetKey } from './activation-planning.js'
+import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
 } from './bun-execution-layout.js'
+import { PrivateBunManifestError } from './bun-native-lock-policy.js'
 import {
   preparePrivateBunPackage,
   recoverPrivateBunPreparationOwner,
@@ -47,8 +50,11 @@ import {
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
+import { prepareContractGeneration } from './contract-generation.js'
+import { captureDependencyFlows } from './dependency-flows.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import type { PrivateFileRecovery } from './file-command.js'
+import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
 import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
@@ -57,7 +63,7 @@ import {
   type PackageArtifactRef,
   publishCapturedPackage,
 } from './package-artifact-store.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
 import { renderPrivateProjectPlanReview } from './project-plan-review.js'
 import {
@@ -77,13 +83,15 @@ export interface PrivateProjectSessionHost {
   readonly backend: PrivateLinuxCgroupBackend
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
-  readonly agentProvider?: PrivateAgentProvider | undefined
-  readonly prepareAgent?: (signal: AbortSignal) => Promise<PrivateAgentProvider | undefined>
+  readonly httpGrants?: PrivateHttpGrants | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
   readonly onStage?: (stage: string) => void
   readonly onResolution?: (packagePath: string) => void
+  readonly generateContracts?: boolean
+  readonly onGeneration?: (packagePath: string, files: readonly string[]) => void
 }
 
 /** Recover only the already-bound Run. This entrypoint has no submission or planning surface. */
@@ -152,6 +160,9 @@ export async function openPrivateProjectSession(input: {
       projectRoot: owner.root.requestedPath,
       packageStoreRoot,
       runTimeoutMs: input.host.runTimeoutMs,
+      ...(input.host.channelOutput?.terminal === undefined
+        ? {}
+        : { onTerminal: input.host.channelOutput.terminal }),
       ...(input.host.files === undefined ? {} : { files: input.host.files }),
       execute: (runId, coordinator, signal) =>
         executePrivateRootRunLaunch({
@@ -161,7 +172,8 @@ export async function openPrivateProjectSession(input: {
           coordinator,
           installedSupport: input.host.installedBunSupport,
           backend: input.host.backend,
-          agentProvider: input.host.agentProvider,
+          httpGrants: input.host.httpGrants,
+          acpResources: input.host.acpResources,
           ...(input.host.files === undefined ? {} : { files: input.host.files }),
           ...(input.host.channelOutput === undefined
             ? {}
@@ -229,10 +241,55 @@ function createSession(
         })
         planningCancellation.signal.throwIfAborted()
         host.onStage?.('Capturing project source and declarations')
+        preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
+        const executions = new Map<string, PrivateBunExecutionArtifact>()
+        const budget = preparationBudget
         const aggregate = await retainOpenedPackageProject(
           {
             projectRoot: owner.root,
             storeRoot: packageStoreRoot,
+            dependencyFlows: (selectors) =>
+              captureDependencyFlows({
+                root: owner.root,
+                selectors,
+                signal: budget.signal,
+                prepare: async (captured, workspace) => {
+                  budget.reserve(captured.digest, 'package.json')
+                  const unlocked = !captured.files.some((file) => file.path === 'bun.lock')
+                  if (unlocked && host.allowResolutionNetwork === true)
+                    host.onResolution?.('package.json')
+                  return preparePrivateBunPackage({
+                    captured,
+                    ...(workspace === undefined ? {} : { workspace }),
+                    installedSupport: host.installedBunSupport,
+                    backend: host.backend,
+                    projectRoot: owner.root.requestedPath,
+                    coordinator: owner.coordinator,
+                    deadlineUnixMs: budget.deadlineUnixMs,
+                    signal: budget.signal,
+                    allowResolutionNetwork: host.allowResolutionNetwork === true,
+                  })
+                },
+                retain: async (selector, source, prepared) => {
+                  budget.retain(
+                    prepared.captured.files,
+                    selector,
+                    Buffer.byteLength(JSON.stringify(prepared.layout)),
+                  )
+                  const artifact = await publishCapturedPackage(packageStoreRoot, prepared.captured)
+                  executions.set(
+                    `${selector}:${source.digest}`,
+                    privateBunExecutionArtifact(artifact, prepared.layout),
+                  )
+                },
+              }),
+            prepareFlow: prepareContractGeneration({
+              project: owner.root,
+              generate: host.generateContracts === true,
+              signal: planningCancellation.signal,
+              verify: () => owner.verify(),
+              ...(host.onGeneration ? { report: host.onGeneration } : {}),
+            }),
             evaluator: {
               backend: host.backend,
               installedSupport: host.installedBunSupport,
@@ -248,33 +305,15 @@ function createSession(
             'project has no exact Run target',
           )
         }
-        const agentRequest = requests.find((request) =>
-          Object.values(request.capabilities).some(
-            (use) => use.digest === AGENT_RUN_CONTRACT_DIGEST,
-          ),
-        )
-        host.onStage?.('Checking Agent requirements')
-        const agentProvider =
-          agentRequest !== undefined && host.prepareAgent !== undefined
-            ? await host.prepareAgent(planningCancellation.signal)
-            : host.agentProvider
-        planningCancellation.signal.throwIfAborted()
-        if (agentRequest !== undefined && agentProvider === undefined)
-          throw new CheckError(
-            'unavailable',
-            'PROJECT_AGENT_UNAVAILABLE',
-            'Agent support is unavailable',
-            `${agentRequest.packagePath}/FLOW.md`,
-          )
-        preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
         const recipes: PrivateDirectRunRecipe[] = []
-        const executions = new Map<string, PrivateBunExecutionArtifact>()
+        const featureFailures = privateProjectFeatureFailures(aggregate.linked)
         for (const request of requests) {
           const packageLabel = JSON.stringify(request.packagePath).replace(
             /[\u007f-\uffff]/g,
             (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
           )
           preparationBudget.signal.throwIfAborted()
+          if (featureFailures.has(privateActivationTargetKey(request.target))) continue
           if (request.mode !== 'run') {
             throw new ProjectAdministrationError(
               'UNAVAILABLE',
@@ -284,6 +323,12 @@ function createSession(
           try {
             const executionKey = `${request.packagePath}:${request.package.digest}`
             let execution = executions.get(executionKey)
+            // Markdown is an interpreter input, not a Bun dependency project. A
+            // package.json resource cannot trigger installation or workspace capture.
+            if (execution === undefined && request.entrypoint.suffix === 'md') {
+              execution = privateBunExecutionArtifact(request.package)
+              executions.set(executionKey, execution)
+            }
             if (execution === undefined) {
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
@@ -306,7 +351,8 @@ function createSession(
                         execution: admitted.execution,
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
-                        agentProvider,
+                        httpGrants: host.httpGrants,
+                        acpResources: host.acpResources,
                       })
                       if (
                         current.digest === admitted.recipeDigest &&
@@ -370,7 +416,8 @@ function createSession(
                         execution: admitted.execution,
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
-                        agentProvider,
+                        httpGrants: host.httpGrants,
+                        acpResources: host.acpResources,
                       })
                       if (
                         current.digest === admitted.recipeDigest &&
@@ -425,7 +472,8 @@ function createSession(
                 execution,
                 installedSupport: host.installedBunSupport,
                 backend: host.backend,
-                agentProvider,
+                httpGrants: host.httpGrants,
+                acpResources: host.acpResources,
               }),
             )
           } catch (error) {
@@ -443,19 +491,35 @@ function createSession(
         preparationBudget.signal.throwIfAborted()
         host.onStage?.('Checking execution recipes and retaining the review')
         const mechanismDigests = new Set(recipes.map(({ mechanismDigest }) => mechanismDigest))
-        if (mechanismDigests.size !== 1) {
+        if (mechanismDigests.size > 1) {
           throw new Error('planned targets did not resolve through one exact host mechanism')
         }
         const planning = createPrivateActivationPlanningObservation({
           policyDigest: privateDomainDigest('JIG-Private-Project-Session-Policy/1', {
-            targetPolicy: 'all-exact-or-fail',
+            targetPolicy: 'exact-targets-with-feature-qualification',
           }),
-          mechanismDigest: recipes[0]!.mechanismDigest,
-          entries: recipes.map((recipe) => ({
-            target: recipe.request.target,
-            requestDigest: recipe.request.digest,
-            disposition: { state: 'planned' as const, observation: recipe.observation },
-          })),
+          mechanismDigest:
+            recipes[0]?.mechanismDigest ?? (await host.backend.inspectSupport()).digest,
+          entries: requests.map((request) => {
+            const failure = featureFailures.get(privateActivationTargetKey(request.target))
+            return {
+              target: request.target,
+              requestDigest: request.digest,
+              disposition:
+                failure === undefined
+                  ? {
+                      state: 'planned' as const,
+                      observation: recipes.find(
+                        (recipe) => recipe.request.digest === request.digest,
+                      )!.observation,
+                    }
+                  : {
+                      state: 'unavailable' as const,
+                      code: 'FEATURE_UNAVAILABLE' as const,
+                      evidenceDigests: [failure],
+                    },
+            }
+          }),
         })
         const candidate = createPrivateActivationCandidateV5(
           aggregate,
@@ -471,7 +535,7 @@ function createSession(
           candidate,
           lockMode: request.lockMode,
           beforePersistApplicable(applicable): void {
-            review = renderPrivateProjectPlanReview(applicable, undefined, agentProvider)
+            review = renderPrivateProjectPlanReview(applicable, undefined, recipes)
           },
         })
         preparationBudget.signal.throwIfAborted()
@@ -504,6 +568,7 @@ function createSession(
           projectRoot: owner.root,
           packageStoreRoot,
           planDigest: request.planDigest,
+          allowAuthorityChanges: request.allowAuthorityChanges === true,
         })
         await owner.verify()
         return Object.freeze(
@@ -721,12 +786,16 @@ export function projectError(
       isCandidateDiagnosticCode(error.code)
     ) {
       try {
-        return new ProjectAdministrationError('INVALID_CANDIDATE', 'project candidate is invalid', {
-          code: error.code,
-          path: error.path,
-          ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
-          ...(error.typeMismatch === undefined ? {} : { typeMismatch: error.typeMismatch }),
-        })
+        return new ProjectAdministrationError(
+          'INVALID_CANDIDATE',
+          error.code === 'AUTHORING_COMPILE' ? error.message : 'project candidate is invalid',
+          {
+            code: error.code,
+            path: error.path,
+            ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
+            ...(error.typeMismatch === undefined ? {} : { typeMismatch: error.typeMismatch }),
+          },
+        )
       } catch {
         return new ProjectAdministrationError('INVALID_CANDIDATE', 'project candidate is invalid')
       }
@@ -755,6 +824,7 @@ export function projectError(
 
 /** Package-private projection of known package-local preparation failures. */
 export function scopePrivatePackagePlanningError(error: unknown, packagePath: string): unknown {
+  if (error instanceof PrivateBunManifestError && error.projectRelative) return error
   if (!(error instanceof CheckError)) {
     return error
   }
@@ -777,24 +847,45 @@ export function scopePrivatePackagePlanningError(error: unknown, packagePath: st
 
 function isUnavailableDiagnosticCode(code: string): boolean {
   return (
+    Object.hasOwn(ACP_SETUP_HINTS, code) ||
+    Object.hasOwn(EVALUATOR_HINTS, code) ||
+    [
+      'AUTHORING_NODE',
+      'AUTHORING_COMPILER',
+      'AUTHORING_STALE',
+      'AUTHORING_INTERRUPTED',
+      'AUTHORING_LIMIT',
+      'AUTHORING_STATE',
+    ].includes(code) ||
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' ||
     code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
     code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
     code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
-    code === 'PROJECT_AGENT_UNAVAILABLE' ||
-    code === 'PROJECT_COMMAND_UNCONFIGURED'
+    code === 'PROJECT_ACP_UNAVAILABLE' ||
+    code === 'PROJECT_HTTP_UNAVAILABLE' ||
+    code === 'PACKAGE_PROFILE_UNSUPPORTED' ||
+    code === 'PACKAGE_METADATA_UNSUPPORTED' ||
+    code === 'PACKAGE_TOOLS_UNSUPPORTED' ||
+    code === 'PROJECT_INTERFACE_ANONYMOUS' ||
+    code === 'PROJECT_ATTACHMENTS_UNSUPPORTED'
   )
 }
 
 function isCandidateDiagnosticCode(code: string): boolean {
   return (
-    code.startsWith('CAPABILITY_') ||
+    ['AUTHORING_COMPILE', 'AUTHORING_CONFLICT'].includes(code) ||
+    code.startsWith('CONTRACT_') ||
+    code.startsWith('MARKDOWN_') ||
     code.startsWith('METADATA_') ||
     code.startsWith('SCHEMA_') ||
     code.startsWith('PACKAGE_BUN_') ||
     code.startsWith('PROJECT_BINDING_') ||
+    code.startsWith('PROJECT_DEFAULT_') ||
+    code.startsWith('PROJECT_PROVIDER_') ||
+    code.startsWith('PROJECT_DEPENDENCY_') ||
+    code.startsWith('PROJECT_GRANT') ||
     code.startsWith('PROJECT_DECLARATION_') ||
     code.startsWith('PROJECT_EVALUATION_') ||
     code.startsWith('PROJECT_EVALUATOR_') ||
@@ -804,9 +895,12 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'CHANNEL_FIELD',
       'CHANNEL_LIMIT',
       'CHANNEL_REFERENCE',
+      'CHANNEL_EQUIVOCATION',
       'PACKAGE_ENTRYPOINT_AMBIGUOUS',
+      'PACKAGE_ENTRYPOINT_MISSING',
+      'PACKAGE_METADATA_OWNER',
+      'PACKAGE_SCHEMA_OWNER',
       'PACKAGE_FILE_LIMIT',
-      'PACKAGE_FLOW_MISSING',
       'PACKAGE_HARDLINK',
       'PACKAGE_LIMIT',
       'PACKAGE_PATH',
@@ -819,7 +913,6 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PACKAGE_SELECTOR',
       'PACKAGE_SPECIAL_FILE',
       'PACKAGE_SYMLINK',
-      'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
     ].includes(code)

@@ -10,13 +10,25 @@ makes usable control an observable requirement;
 
 ## Required experience
 
+`jig import-contract <descriptor.json> <new-directory>` is explicit offline
+authoring. It captures and validates one invocation descriptor and its exact
+channel closure (at most 64 agreements, 256 KiB per file, 1 MiB captured bytes),
+preserves bytes and relative paths, and publishes only to an absent destination
+whose parent already exists. It may resolve the operator-selected source root
+through an installed-package link; it rejects links within the selected closure.
+It does not evaluate package code, fetch dependencies, acquire execution
+authority or approve a Run. Cancellation before publication leaves no destination;
+completed publication is not undone. Process loss may leave an unpublished
+`.jig-contract-*` staging directory, not a successfully imported bundle.
+
 1. **Task first.** Identify the requested task and relevant project or target.
    Name stages in ordinary language. Internal lifecycle and implementation
    terms appear only when needed to understand or repair a problem.
 2. **Stable progress.** Acquisition distinguishes Jig runtime verification,
-   Agent configuration/runtime verification, and opening project state with
-   recovery checks. These labels describe actual work, not a generic prerequisites
-   wait.
+   preparing operator resource configuration, and opening project state with
+   recovery checks. Native runtime verification occurs only when a target selects
+   an ACP resource; capturing configuration must not imply that a client was
+   verified. These labels describe actual work, not a generic prerequisites wait.
    Review reports project-source capture, per-package dependency-input capture,
    dependency preparation or approved reuse, and final recipe/review retention
    separately. Active elapsed time belongs to the current stage. In animated
@@ -101,16 +113,10 @@ makes usable control an observable requirement;
    A known mismatch between the current execution environment and the approved
    recipe must request `jig review`, not become a generic execution failure.
    Say no Flow started only when the host established a pre-execution refusal.
-   Agent selection follows [Agent Run](agent-run.md#alpha-host-implementations):
-   prompt only for Agent-using projects without explicit or remembered selection.
-   Number only available choices and distinguish final results from live updates.
-   When an API client is selectable, state that the menu cannot detect whether
-   the Flow needs native live updates. When usable clients exist,
-   summarize unavailable names in one secondary line; `--details` expands setup
-   explanations. If none are usable, show the actionable explanations immediately.
-   Keep selectable options adjacent to the prompt, after secondary context.
-   Suspend progress before input. Empty input, EOF and interruption choose nothing;
-   `--yes` never selects a client. Remembering a client does not approve execution.
+   Agent selection uses ordinary Flow targets and explicit resource grants;
+   see [Agent Run](agent-run.md). Missing selections identify the unresolved
+   target or resource. Review does not install an Agent, invent a Binding,
+   or choose a client on the operator's behalf.
 7. **Honest completion.** Command success follows required cleanup. Execution
    completion, application outcome, delivery, and cleanup remain separate.
    Cancellation requested is not cancellation complete. Lost work and unknown
@@ -185,12 +191,54 @@ an existing path. It does not evaluate `jig.ts`, install dependencies, modify
 membership, or approve the new Flow. The SDK dependency follows the project's
 explicit package manifest declaration when present, otherwise the tested SDK.
 Explicit membership arrays must be edited by the author before review.
+## Diagnostic evidence and interruption
+
+Configuration-evaluator refusals retain the captured declaration location and
+a closed diagnostic distinguishing installation support, containment launch,
+envelope validation, cleanup, interruption and protocol response. Human guidance
+explains the known phase and next safe action; it MUST NOT expose launcher
+exceptions or infer a particular host or timeout cause from generic launch
+failure. These planning diagnostics establish that no Flow was started.
+
+Run reports retain optional `runDiagnostics`: `entries` contain the host-assigned
+`operations` call path (empty for the root), `stderr`, `stderrBytes` and
+`stderrTruncated`; `truncated` marks any lost diagnostic evidence. Retention is
+bounded to 64 KiB across 32 emitting invocation paths. These are untrusted
+diagnostic bytes, not application results. The existing terminal `diagnostics`
+continues to describe root-process stderr only. Live rendering escapes control
+characters and identifies changes of emitting invocation.
+Human final results summarize diagnostic text already delivered for that invocation,
+retain any unseen suffix, and disclose capture truncation. Interleaved invocation
+paths are tracked separately. JSON records and result packets retain their complete
+bounded captures independently of this presentation.
+
+After interruption, the command waits for owned cleanup and emits its observed
+authoritative terminal when available, with `command: {status: 'interrupted'}`
+and exit 2. Execution status remains unchanged if completion won the race.
+Cleanup failure is reported separately. A missing terminal, coordinator loss,
+or broken output stream cannot be replaced with a fabricated terminal; consumers
+must still handle incomplete output. No reporting path replays execution.
+With `--out`, confirmed settlement after interruption may publish the terminal
+record and an already accepted checkpoint. It never exports unfinished final
+Flow files. The trusted command's bounded settlement wait does not extend the
+Run deadline; forced termination still leaves unavailable evidence unavailable.
+
+### Agent project initialization
+
+`jig init <directory> --agent codex|claude|pi` optionally authors a declared
+Agent dependency, `bindings/agent.ts` with its native grant, and a contract-keyed
+default in `jig.ts`. Bare `--agent` asks for an explicit choice on a terminal;
+empty input cancels. Noninteractive use requires the client argument. Selection
+does not inspect or install a client, copy authentication, resolve dependencies,
+or approve authority. `--bare` omits the greeting, not the explicitly requested
+Agent configuration. Existing destinations are never overwritten.
 
 `jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
 current project's last locally approved snapshot. Without a target it lists
 exact approved selectors; with one it projects retained package descriptions,
-schemas, settings, capability identities, child slots, attachments, channels and
-commands. It compares each selected target's retained recipe and observation
+invocation contract, settings schema, configured settings, resolved slots and
+resource grants, and attachments. Channels belong to the invocation contract.
+It compares each selected target's retained recipe and observation
 identities with the current installed runtime, local Agent configuration/support,
 and sandbox support, using the same identity calculation and operator-selected
 installation verification policy as Run. Fast mode compares cached installation

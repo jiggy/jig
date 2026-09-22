@@ -13,13 +13,14 @@ the linked specifications define exact requirements.
 | --- | --- | --- |
 | FLOW | Independent package and invocation standard | [Why FLOW exists](./understand.md) |
 | Flow | Package containing one reusable method | [Package/1](../spec/package-format.md) |
-| `FLOW.md` | Required readable package description and metadata | [Package/1](../spec/package-format.md) |
+| `FLOW.<ext>` | The package's single implementation; `FLOW.md` selects Markdown | [Package/1](../spec/package-format.md) |
+| `flow.meta.json` | Optional readable metadata and dependency declarations | [Package/1](../spec/package-format.md) |
 | Host | Consumer that supplies invocation and local execution policy | [Run/1](../spec/run-protocol.md) |
 | Runtime | Program or library advancing a method's internal execution | [The boundary](./understand.md#a-small-boundary-room-for-the-method) |
 | Run/1 | Protocol for one finite process exchange | [Run/1](../spec/run-protocol.md) |
 | Outcome | Method-declared result meaning, paired with output data | [Run/1](../spec/run-protocol.md) |
 | Schema | A declared shape used to validate a portable value | [Schema/1](../spec/schema-files.md) |
-| Capability contract | Exact interface for independently maintained collaborators | [Capability Contract/1](../spec/capability-contracts.md) |
+| Invocation contract | Optional input/result contract, optionally named for independently maintained collaborators | [Invocation Contract/1](../spec/invocation-contracts.md) |
 | Channel contract | Exact declared meaning for live messages | [Channel Contract/1](../spec/channel-contracts.md) |
 
 ## Is FLOW tied to Jig?
@@ -30,8 +31,9 @@ and choose its own local policy.
 
 ## Is every Flow executable?
 
-No. A description-only package can share guidance and resources. It needs an
-implementation before it can perform a Run/1 invocation.
+Every package contains an implementation, but it needs a compatible host to
+execute. A Markdown implementation requires an interpreter; other languages
+likewise require runtime support.
 
 ## Does portability mean every host runs every package?
 
@@ -44,7 +46,7 @@ visible rather than silently substituting a different method.
 No. Ordinary code can implement a Flow. Agents, Skills, tools, libraries, and
 graphs are choices inside the method, not mandatory categories in the standard.
 
-## Must I define a capability contract?
+## Must I define an invocation contract?
 
 No. Formal contracts earn their place when independently maintained consumers
 need an exact interface. A sophisticated procedure does not automatically need

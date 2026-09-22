@@ -99,9 +99,10 @@ claim. A Skill's bundled script can also be run directly by code; the comparison
 concerns the method's defined invocation boundary, not a ban on running files.
 
 Skills can bundle executable scripts and load resources progressively. FLOW
-also permits instructions-only packages. Explain the executable entrypoint
-when promising invocation or composition; a Markdown rename alone does not
-create executable behavior. Claims about exact file compatibility must follow
+also supports Markdown implementations through a compatible interpreter.
+Explain the entrypoint and required host support when promising invocation or
+composition; a Markdown rename alone does not establish that support or grant
+execution authority. Claims about exact file compatibility must follow
 [Package/1](../docs/flow/spec/package-format.md) and the
 [Agent Skills specification](https://agentskills.io/specification).
 “Evolution” does not establish universal rename compatibility or deprecation
@@ -153,6 +154,11 @@ explaining. Pair it immediately with the concrete division: methods own work,
 applications own purpose, operators supply powers, and Jig owns the common
 execution boundaries. This is how the small core supports richer methods
 without absorbing every Agent technique or becoming a workflow language.
+Use the analogy primarily in positioning and architectural explanation: it
+signals a powerful host, not a requirement for users to understand kernel
+internals. It does not set development priorities or make extracting more
+modules a product achievement. Show what the boundaries let a builder accomplish
+with less configuration and coordination.
 
 Lead with the positive design conviction: Agents have room to reason within
 their role, code can express known procedures, and software can compose both

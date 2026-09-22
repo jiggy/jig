@@ -38,9 +38,10 @@ each behaviour.
 | Malformed child result and standard child JSON-RPC error | Yes | Yes |
 | Trailing output and nonzero exit | Yes | Yes |
 | Legal stderr diagnostics | Yes | Yes |
-| Direct create, capability endpoint mapping, structured items and clean end | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
-| Failed observation with a separately successful capability result | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
-| Incoming named grants, child mapping, onward capability forwarding, and caught pre-transfer rejection | `channel-wiring.test.ts`, both SDKs | `test_channel_wiring.py`, both SDKs |
+| Direct create, call endpoint mapping, structured items and clean end | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
+| Failed observation with a separately successful call result | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
+| Producer-declared `LAGGED` close, receiver recovery and separate successful Run | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
+| Incoming named grants, child mapping, onward call forwarding, and caught pre-transfer rejection | `channel-wiring.test.ts`, both SDKs | `test_channel_wiring.py`, both SDKs |
 | Parent/worker/opposite-language monitor exchange with optional output forwarding | `channel-wiring.test.ts`, three real SDK processes | Individual role exchanges in `test_channel_wiring.py`; not a three-process bridge |
 | Monitor filtering, deliberate receiver disposal, and incomplete observation without lost work results | `channel-wiring.test.ts` | `test_channel_wiring.py` |
 | Direct-channel positive and hostile message shapes | Shared `messages.json` | Same shared fixtures, independent validator |
@@ -48,10 +49,14 @@ each behaviour.
 | Caught subscriber failure with an independently completed sibling interval | `broadcast.test.ts`, both SDK components | `test_broadcast.py`, both SDK components |
 | Adaptive structured request/reply exchange over two named direct channels | `conversation.test.ts`, TS analysis/Python dataset and inverse | `test_conversation.py`, same actual process pairings |
 | Exact conversation descriptors match the public Channel Contract/1 and Schema/1 companion | `conversation.test.ts`, including unsupported-keyword rejection | Not independently repeated; the peer derives identities from those fixture descriptors |
+| Identified single-form invocation feature catalogs: shape, scope, names and bounds | `schema.test.ts`, shared `invocation-features.json` | Not independently repeated; no Python package inspector is claimed |
+| Exact feature catalog identity, including omission, empty catalog and changed descriptions | Jig `invocation-contract.test.ts`, shared `invocation-features.json` | `test_invocation_features.py`, independently derived bounded digest vectors |
 | Duplicate/unexpected reply rejection, outstanding-request EOF, close ordering and cancellation settlement | `conversation.test.ts`, both pairings | `test_conversation.py`, both pairings |
 
 The operation rows exercise small reference-peer ledgers implementing the
-frozen Run/1 rules. They are not evidence that a durable production operation
+Run/1 rules within one caller invocation per ledger. Separate ledgers admit the
+same operation ID independently; explicit empty channels and omitted channels
+remain different identities. They are not evidence that a durable production operation
 store exists. In particular, persistence across a host crash remains a Jig
 implementation responsibility rather than part of this component-facing
 corpus.
@@ -86,7 +91,7 @@ resolution; it is not claimed to be an offline or hermetic build proof.
 | Shared concern | Executable evidence for both languages |
 | --- | --- |
 | Invocation, settings, attachments, scratch, deadline and result | `components.test.ts`, Python peer golden conversation; both SDK runtime suites |
-| Child Flow and capability calls, application versus operational errors | Golden conversation, component matrix, installed Python runtime tests |
+| Unified calls and complete results, domain outcomes versus operational errors | Golden conversation, component matrix, installed Python runtime tests |
 | Strict JSON/1, frames, invalid results and error envelopes | Shared fixtures, both peer matrices and both SDK JSON/runtime suites |
 | Cancellation, pending calls, channel loss and terminal ordering | Both peer matrices plus language-specific runtime race tests |
 | Outstanding/lifetime ceilings and correlation | Both peer matrices |

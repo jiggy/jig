@@ -9,6 +9,7 @@ import {
 } from './acp-agent-provider.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const CODEX_CLIENT = 'openai-codex'
 const SANDBOX_LAUNCHER_PATH = '/agent/codex-agent-launcher.js'
@@ -90,6 +91,7 @@ export async function openPrivateCodexAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
+  selectedModel?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   let executablePath: string
@@ -106,6 +108,7 @@ export async function openPrivateCodexAgentProvider(
   try {
     runtime = await inspectPrivateNativeAgentRuntime(executablePath, projectDirectory)
   } catch (error) {
+    if (error instanceof PrivateAcpSetupError) throw error
     throw new PrivateCodexRuntimeUnavailableError('the Codex installation runtime is unavailable', {
       cause: error,
     })
@@ -158,18 +161,20 @@ export async function openPrivateCodexAgentProvider(
     apiBaseURL !== undefined ||
     api !== undefined
   ) {
-    if (apiKey === undefined || apiModel === undefined) {
-      throw new Error('the OpenAI Responses API configuration is unavailable')
-    }
+    const model = configuredAcpModel(selectedModel ?? apiModel)
+    if (model === undefined) throw new PrivateAcpSetupError('model')
+    if (apiKey === undefined) throw new PrivateAcpSetupError('api')
     if (api !== undefined && api !== 'responses') {
-      throw new Error('native Codex requires the OpenAI Responses API')
+      throw new PrivateAcpSetupError('api')
     }
-    const provider = await createPrivateCodexOpenAIApiAgentProvider({
-      ...support,
-      apiKey,
-      model: apiModel,
-      ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
-    })
+    const provider = await checkAcpSetup('api', () =>
+      createPrivateCodexOpenAIApiAgentProvider({
+        ...support,
+        apiKey,
+        model,
+        ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
+      }),
+    )
     runtime.verifyProvider(provider)
     bubblewrapRuntime.verifyProvider(provider)
     return provider
@@ -181,10 +186,11 @@ export async function openPrivateCodexAgentProvider(
   } catch {
     throw new PrivateCodexLoginUnavailableError('Codex file-backed login is unavailable')
   }
+  const model = configuredAcpModel(selectedModel ?? environment.CODEX_MODEL)
   const provider = await createPrivateCodexSubscriptionAgentProvider({
     ...support,
     credential,
-    ...(environment.CODEX_MODEL === undefined ? {} : { model: environment.CODEX_MODEL }),
+    ...(model === undefined ? {} : { model }),
   })
   runtime.verifyProvider(provider)
   bubblewrapRuntime.verifyProvider(provider)
@@ -382,6 +388,8 @@ function codexEnvironment(
       check_for_update_on_startup: false,
       features: {
         apps: false,
+        code_mode: false,
+        code_mode_host: false,
         plugins: false,
         remote_plugin: false,
         tool_suggest: false,

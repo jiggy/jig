@@ -91,8 +91,8 @@ actual=$(
     sed "s|^$repository/||" |
     LC_ALL=C sort
 )
-expected='docs/flow/spec/machine/capability-contract-1.schema.json
-docs/flow/spec/machine/channel-contract-1.schema.json
+expected='docs/flow/spec/machine/channel-contract-1.schema.json
+docs/flow/spec/machine/invocation-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json
 docs/flow/spec/machine/run-1.schema.json
 docs/flow/spec/machine/schema-1.json
@@ -120,7 +120,7 @@ case $site_name in
       echo "the Python SDK guide is missing" >&2
       exit 1
     fi
-    schema_map='docs/flow/spec/machine/capability-contract-1.schema.json|capability-contract-1.schema.json|https://flow.jig.md/schemas/capability-contract-1.schema.json
+    schema_map='docs/flow/spec/machine/invocation-contract-1.schema.json|invocation-contract-1.schema.json|https://flow.jig.md/schemas/invocation-contract-1.schema.json
 docs/flow/spec/machine/channel-contract-1.schema.json|channel-contract-1.schema.json|https://flow.jig.md/schemas/channel-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json|run-1-errors.json|-
 docs/flow/spec/machine/run-1.schema.json|run-1.json|https://flow.jig.md/schemas/run-1.json
@@ -136,16 +136,32 @@ docs/flow/spec/machine/schema-1.json|schema-1.json|https://flow.jig.md/schemas/s
 docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json|-'
     forbidden_page='spec/package-format.html'
     mkdir -p -- "$staging/contracts"
-    for contract in agent-run project-command run-checkpoint; do
+    for contract in agent-run project-command http-request run-checkpoint finite-acp; do
       if [ ! -s "$staging/contracts/$contract.html" ]; then
         echo "the $contract identity landing page is missing" >&2
         exit 1
       fi
-      source="$repository/docs/jig/spec/contracts/$contract.capability.json"
-      destination="$staging/contracts/$contract.capability.json"
+      source="$repository/docs/jig/spec/contracts/$contract/contract.json"
+      destination="$staging/contracts/$contract/contract.json"
+      mkdir -p -- "$staging/contracts/$contract"
       cp -- "$source" "$destination"
       cmp -- "$source" "$destination"
     done
+    for contract in agent-run; do
+      mkdir -p -- "$staging/contracts/$contract/contracts"
+      for channel in acp-public-updates agent-commands agent-replies; do
+        cp -- "$repository/docs/jig/spec/contracts/$contract/contracts/$channel.json" "$staging/contracts/$contract/contracts/$channel.json"
+        cmp -- "$repository/docs/jig/spec/contracts/$contract/contracts/$channel.json" "$staging/contracts/$contract/contracts/$channel.json"
+      done
+    done
+    for channel in requests responses; do
+      cp -- "$repository/docs/jig/spec/contracts/finite-acp/$channel.json" "$staging/contracts/finite-acp/$channel.json"
+      cmp -- "$repository/docs/jig/spec/contracts/finite-acp/$channel.json" "$staging/contracts/finite-acp/$channel.json"
+    done
+    test -s "$staging/spec/finite-acp.html"
+    test -s "$staging/spec/http-request.html"
+    test -s "$staging/guide/http.html"
+    test -s "$staging/guide/agent-method.html"
     test -s "$staging/contracts/acp-public-updates.html"
     cp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
     cmp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"

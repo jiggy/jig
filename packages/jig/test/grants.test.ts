@@ -1,0 +1,279 @@
+import { expect, test } from 'bun:test'
+
+import {
+  FINITE_ACP_CONTRACT_ID,
+  FINITE_ACP_CONTRACT_VERSION,
+  FINITE_ACP_CONTRACT_DIGEST,
+} from '../src/internal/private-finite-acp-contract.js'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { defineBinding, defineJig, discover } from '../src/index.js'
+import { captureGrantSource } from '../src/project/grant-source.js'
+import { normalizeGrant } from '../src/project/grants.js'
+import { openPrivateProjectRoot } from '../src/project/root.js'
+import { resolveInvocationSlots } from '../src/project/invocation-slots.js'
+import { linkPackageProject } from '../src/project/package-project.js'
+import { HTTP_REQUEST_CONTRACT_DIGEST } from '../src/internal/private-http-request.js'
+import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../src/internal/private-project-command.js'
+import { requiresAuthorityApproval, grantChanges } from '../src/internal/grant-review.js'
+import { compileSchemaFile } from '../src/schema/index.js'
+
+const http = {
+  id: 'https://jig.md/contracts/http-request',
+  version: '1.0.0',
+  digest: HTTP_REQUEST_CONTRACT_DIGEST,
+}
+
+test('session retention is separately reviewed and restricted to qualified Codex', () => {
+  expect(normalizeGrant({ kind: 'acp', client: 'codex', retainSessions: true })).toEqual({
+    kind: 'acp',
+    client: 'codex',
+    retainSessions: true,
+  })
+  for (const retainSessions of [false, 1, 'true', null])
+    expect(() => normalizeGrant({ kind: 'acp', client: 'codex', retainSessions })).toThrow()
+  for (const client of ['claude', 'pi'])
+    expect(() => normalizeGrant({ kind: 'acp', client, retainSessions: true })).toThrow()
+})
+const command = {
+  id: 'https://jig.md/contracts/project-command',
+  version: '1.0.0',
+  digest: PROJECT_COMMAND_CONTRACT_DIGEST,
+}
+const policy = normalizeGrant({ kind: 'http', url: 'https://example.org/', method: 'GET' })
+const finiteAcp = {
+  id: FINITE_ACP_CONTRACT_ID,
+  version: FINITE_ACP_CONTRACT_VERSION,
+  digest: FINITE_ACP_CONTRACT_DIGEST,
+}
+
+test('ACP additional turns are an explicit bounded reviewed grant', () => {
+  expect(normalizeGrant({ kind: 'acp', client: 'codex', maxTurns: 3 })).toEqual({
+    kind: 'acp',
+    client: 'codex',
+    maxTurns: 3,
+  })
+  for (const maxTurns of [0, 9, -1, 1.5, '2', null])
+    expect(() => normalizeGrant({ kind: 'acp', client: 'codex', maxTurns })).toThrow()
+  const lock = (maxTurns: number) => ({
+    packages: { 'flows/agent': { digest: 'code', directRun: false, uses: { native: finiteAcp } } },
+    bindings: {
+      agent: {
+        packagePath: 'flows/agent',
+        settings: {},
+        slots: {
+          native: {
+            kind: 'grant' as const,
+            policy: normalizeGrant({ kind: 'acp', client: 'codex', maxTurns }),
+          },
+        },
+      },
+    },
+  })
+  expect(requiresAuthorityApproval(lock(1), lock(2))).toBeTrue()
+  expect(requiresAuthorityApproval(lock(2), lock(2))).toBeFalse()
+})
+
+test('finite ACP is an exact resource grant, never an implicit Agent permission', () => {
+  const grant = normalizeGrant({ kind: 'acp', client: 'codex' })
+  const binding = defineBinding({ package: 'flows/agent', slots: { native: grant } })
+  expect(binding.slots.native).toEqual(grant)
+  const selected = { kind: 'grant' as const, policy: grant }
+  expect(resolveInvocationSlots({ native: finiteAcp }, { native: selected }).native).toEqual({
+    kind: 'native',
+    native: 'finite-acp',
+    grant,
+    contract: finiteAcp,
+  })
+  expect(() => resolveInvocationSlots({ native: finiteAcp }, {})).toThrow('explicit')
+  expect(() => resolveInvocationSlots({ native: http }, { native: selected })).toThrow('exact')
+  expect(() => resolveInvocationSlots({}, { native: selected })).toThrow('exact')
+  for (const policy of [
+    { kind: 'acp' },
+    { kind: 'acp', client: 'unknown' },
+    { kind: 'acp', client: 'codex', executable: '/bin/sh' },
+    { kind: 'acp', client: 'codex', permissions: ['*'] },
+    { kind: 'acp', client: 'codex', environment: { SECRET: 'value' } },
+  ])
+    expect(() => normalizeGrant(policy)).toThrow()
+})
+
+test('one slot grammar supports inline policies and optional named reuse', () => {
+  expect(defineJig({})).toEqual({})
+  expect(defineJig({ grants: discover('./grants') }).grants).toEqual({
+    kind: 'discover',
+    roots: ['grants'],
+  })
+  const binding = defineBinding({
+    package: 'flows/use',
+    slots: { api: policy, tests: { kind: 'command', test: ['a.test.ts'] }, reused: 'grant:docs' },
+  })
+  expect(binding.slots.api).toEqual(policy)
+  expect(binding.slots.reused).toBe('grant:docs')
+  for (const value of [
+    { kind: 'shell', run: 'sh' },
+    { kind: 'command', run: 'x.ts', network: true },
+    'grant:../secret',
+    'grant:Bad',
+  ])
+    expect(() => defineBinding({ package: 'flows/use', slots: { api: value as never } })).toThrow()
+})
+
+test('ACP model is bounded reviewed policy, not an environment or prompt override', async () => {
+  for (const model of ['', null, 42, ' model', 'model\n', '../model', 'a'.repeat(257)])
+    expect(() => normalizeGrant({ kind: 'acp', client: 'codex', model })).toThrow()
+  const grant = normalizeGrant({ kind: 'acp', client: 'pi', model: 'provider/model:free' })
+  for (const name of ['project-authoring', 'jig-lock']) {
+    const bytes = await Bun.file(
+      new URL(`../../../docs/jig/spec/machine/${name}-1.schema.json`, import.meta.url),
+    ).arrayBuffer()
+    compileSchemaFile(new Uint8Array(bytes))
+  }
+  const authoringSchema = compileSchemaFile(
+    new Uint8Array(
+      await Bun.file(
+        new URL('../../../docs/jig/spec/machine/project-authoring-1.schema.json', import.meta.url),
+      ).arrayBuffer(),
+    ),
+  )
+  authoringSchema.validate(defineBinding({ package: 'flows/agent', slots: { native: grant } }))
+  expect(defineBinding({ package: 'flows/agent', slots: { native: grant } }).slots.native).toEqual(
+    grant,
+  )
+  const lock = (model: string) => ({
+    packages: { 'flows/agent': { digest: 'code', directRun: false, uses: { native: finiteAcp } } },
+    bindings: {
+      agent: {
+        packagePath: 'flows/agent',
+        settings: {},
+        slots: {
+          native: {
+            kind: 'grant' as const,
+            policy: normalizeGrant({ kind: 'acp', client: 'codex', model }),
+          },
+        },
+      },
+    },
+  })
+  expect(requiresAuthorityApproval(lock('one'), lock('one'))).toBeFalse()
+  expect(requiresAuthorityApproval(lock('one'), lock('two'))).toBeTrue()
+})
+
+test('grants require exact declared contracts and do not add native defaults or capacity', () => {
+  const selected = { kind: 'grant' as const, policy }
+  expect(resolveInvocationSlots({ api: http }, { api: selected }).api).toMatchObject({
+    kind: 'native',
+    native: 'http-request',
+    grant: policy,
+  })
+  expect(() => resolveInvocationSlots({ api: http }, {})).toThrow()
+  expect(() => resolveInvocationSlots({ api: command }, { api: selected })).toThrow()
+  expect(() => resolveInvocationSlots({}, { api: selected })).toThrow()
+  const uses = Object.fromEntries(Array.from({ length: 9 }, (_, i) => ['api' + i, http]))
+  const slots = Object.fromEntries(Object.keys(uses).map((name) => [name, selected]))
+  expect(() => resolveInvocationSlots(uses, slots)).toThrow('eight')
+  delete uses.api8
+  delete slots.api8
+  expect(Object.keys(resolveInvocationSlots(uses, slots))).toHaveLength(8)
+})
+
+test('trusted linking rejects invalid URLs and schemas after inert authoring', () => {
+  for (const declaration of [
+    { kind: 'http', url: 'file:///etc/passwd', method: 'GET' },
+    { kind: 'http', url: 'https://example.org/#fragment', method: 'GET' },
+    { kind: 'http', url: 'https://example.org/', method: 'POST', bodySchema: { type: 'invalid' } },
+  ]) {
+    const binding = defineBinding({ package: 'flows/use', slots: { api: declaration as never } })
+    expect(() =>
+      resolveInvocationSlots(
+        { api: http },
+        {
+          api: { kind: 'grant', policy: binding.slots.api as typeof policy },
+        },
+      ),
+    ).toThrow()
+  }
+})
+
+test('grant catalogs cannot execute accessors at the linker boundary', () => {
+  let invoked = false
+  const accessor = {
+    enumerable: true,
+    get() {
+      invoked = true
+      return {}
+    },
+  }
+  expect(() =>
+    linkPackageProject(Object.defineProperty({ flows: [], bindings: [] }, 'grants', accessor)),
+  ).toThrow()
+  expect(() =>
+    linkPackageProject({
+      flows: [],
+      bindings: [],
+      grants: Object.defineProperty({}, 'docs', accessor),
+    }),
+  ).toThrow()
+  expect(invoked).toBe(false)
+})
+
+test('authority approval tracks the recipient and policy, not a filename pointer or source digest', () => {
+  const lock = (value = policy, packagePath = 'flows/use', name = 'docs', source = 'first') => ({
+    packages: { [packagePath]: { digest: source, directRun: false, uses: { api: http } } },
+    bindings: {
+      client: {
+        packagePath,
+        settings: {},
+        slots: { api: { kind: 'grant' as const, name, policy: value } },
+      },
+    },
+  })
+  const first = lock()
+  expect(requiresAuthorityApproval(null, first)).toBe(true)
+  expect(requiresAuthorityApproval(first, lock(policy, 'flows/use', 'renamed', 'new code'))).toBe(
+    false,
+  )
+  expect(requiresAuthorityApproval(first, lock(policy, 'flows/replaced'))).toBe(true)
+  expect(
+    requiresAuthorityApproval(
+      first,
+      lock(normalizeGrant({ kind: 'http', url: 'https://elsewhere.org/', method: 'GET' })),
+    ),
+  ).toBe(true)
+  const cloned = { ...first, bindings: { ...first.bindings, attacker: first.bindings.client } }
+  expect(requiresAuthorityApproval(first, cloned)).toBe(true)
+  expect(grantChanges(first, cloned).map((c) => c.recipient)).toEqual(['binding:attacker/api'])
+  expect(requiresAuthorityApproval(first, { ...first, bindings: {} })).toBe(false)
+})
+
+test('catalog capture is shallow, bounded, immutable, and rejects unsafe or ambiguous sources', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-grants-'))
+  const root = await openPrivateProjectRoot(directory)
+  try {
+    await mkdir(join(directory, 'grants'))
+    const file = join(directory, 'grants/docs.json')
+    await writeFile(file, JSON.stringify(policy))
+    const captured = await captureGrantSource(root, discover('grants'))
+    expect(captured.grants.docs).toEqual(policy)
+    await writeFile(file, JSON.stringify({ kind: 'command', run: 'other.ts' }))
+    expect(captured.grants.docs).toEqual(policy)
+    await expect(captured.verify()).rejects.toThrow()
+    await mkdir(join(directory, 'other'))
+    await writeFile(join(directory, 'other/docs.json'), JSON.stringify(policy))
+    await expect(captureGrantSource(root, discover(['grants', 'other']))).rejects.toThrow(
+      'declaration ID',
+    )
+    await symlink(file, join(directory, 'grants/linked.json'))
+    await expect(captureGrantSource(root, discover('grants'))).rejects.toThrow('symlink')
+    await rm(join(directory, 'grants/linked.json'))
+    await writeFile(file, ' '.repeat(32769))
+    await expect(captureGrantSource(root, discover('grants'))).rejects.toThrow('byte bound')
+    await expect(
+      captureGrantSource(root, { kind: 'members', paths: ['grants/missing.json'] }),
+    ).rejects.toThrow('missing')
+  } finally {
+    await root.dispose()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

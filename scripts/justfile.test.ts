@@ -9,6 +9,9 @@ if (!just) throw new Error('Install Just 1.43.1 or newer to test repository task
 const justfiles = [
   'justfile',
   'packages/flow-sdk/justfile',
+  'packages/agent-method/justfile',
+  'packages/agent-acp/justfile',
+  'packages/flow-authoring/justfile',
   'packages/jiggy-flow/justfile',
   'packages/jig/justfile',
   'site/justfile',
@@ -64,6 +67,26 @@ test('module and root tasks preserve arguments and select their own working dire
         args: [...prefix, ...args],
       })
     }
+  })
+})
+
+test('Agent candidate task preserves explicit package and destination arguments', async () => {
+  await withFixture(async (directory, environment) => {
+    const result = await run(
+      [
+        '--justfile',
+        join(directory, 'justfile'),
+        'agent-candidate',
+        'agent-acp',
+        'output with spaces',
+      ],
+      environment,
+    )
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({
+      cwd: directory,
+      args: ['scripts/build-agent-candidate.ts', 'agent-acp', 'output with spaces'],
+    })
   })
 })
 
@@ -126,9 +149,9 @@ test('packing explicitly builds first and preserves the destination argument', a
   expect(result.stderr).not.toContain('--compile')
   expect(result.stderr.indexOf('Bun.version')).toBeLessThan(result.stderr.indexOf('await rm'))
   expect(result.stderr.indexOf('--outfile=libexec/installed-cli.js')).toBeLessThan(
-    result.stderr.indexOf('bun pm pack'),
+    result.stderr.indexOf('bun scripts/pack.ts'),
   )
-  expect(result.stderr).toContain('bun pm pack --ignore-scripts "$@"')
+  expect(result.stderr).toContain('bun scripts/pack.ts "$@"')
   await withFixture(async (directory, environment) => {
     const destination = join(directory, 'package archives')
     const packed = await run(
@@ -149,6 +172,25 @@ test('packing explicitly builds first and preserves the destination argument', a
   })
 })
 
+test('ordinary Agent packing uses Bun after building, without a custom packer', async () => {
+  for (const recipe of ['agent::pack', 'acp::pack']) {
+    const result = await run([
+      '--justfile',
+      join(repository, 'justfile'),
+      '--dry-run',
+      recipe,
+      '--destination',
+      '/tmp/agent artifacts',
+    ])
+    expect(result.code).toBe(0)
+    expect(result.stderr).toContain('bun pm pack --ignore-scripts "$@"')
+    expect(result.stderr.indexOf('--outfile=dist/flow.js')).toBeLessThan(
+      result.stderr.indexOf('bun pm pack'),
+    )
+    expect(result.stderr).not.toContain('scripts/pack.ts')
+  }
+})
+
 test('hostile files remain separate ordered invocations', async () => {
   const result = await run([
     '--justfile',
@@ -167,10 +209,14 @@ test('hostile files remain separate ordered invocations', async () => {
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-delegation-hostile.test.ts --timeout 30000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/bun-native-preparation.test.ts --timeout 120000',
+    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/package-provider-host.test.ts --timeout 120000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-command-lifecycle.test.ts --timeout 180000',
+    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/http-request-lifecycle.test.ts --timeout 240000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/run-checkpoint-lifecycle.test.ts --timeout 90000',
+    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/markdown-worker.test.ts --timeout 120000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000',
+    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/finite-acp-lifecycle.test.ts --timeout 180000',
   ])
 })
 

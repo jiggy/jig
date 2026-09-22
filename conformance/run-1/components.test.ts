@@ -1,12 +1,14 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import Ajv2020 from 'ajv/dist/2020.js'
-
+import schema from '../../docs/flow/spec/machine/run-1.schema.json'
 import goldenTrace from './fixtures/golden-trace.json'
 import { ComponentPeer, type Message } from './harness/peer'
-import schema from '../../docs/flow/spec/machine/run-1.schema.json'
+
+// Cover process startup/cleanup without shortening the existing ten-second peer waits.
+setDefaultTimeout(30_000)
 
 const root = resolve(import.meta.dir, '../..')
 const typescriptComponent = [process.execPath, resolve(import.meta.dir, 'components/flow.ts')]
@@ -60,11 +62,8 @@ async function runGoldenConversation(command: readonly string[]) {
     const second = await peer.receive()
     const outbound = [request(first), request(second)]
 
-    for (const item of [...outbound].sort(byConcurrentMethod)) {
-      assertSchema(
-        item.method === 'flow/run-child' ? 'childFlowRequest' : 'capabilityCallRequest',
-        item,
-      )
+    for (const item of [...outbound].sort(byConcurrentCall)) {
+      assertSchema('flowCallRequest', item)
       trace.push({
         direction: 'component->host',
         kind: 'request',
@@ -73,8 +72,8 @@ async function runGoldenConversation(command: readonly string[]) {
       })
     }
 
-    const flowCall = outbound.find((item) => item.method === 'flow/run-child')
-    const effectCall = outbound.find((item) => item.method === 'capability/call')
+    const flowCall = outbound.find((item) => params(item).slot === 'research')
+    const effectCall = outbound.find((item) => params(item).slot === 'artifact-write')
     expect(flowCall).toBeDefined()
     expect(effectCall).toBeDefined()
     expect(flowCall!.params).toEqual({
@@ -85,17 +84,16 @@ async function runGoldenConversation(command: readonly string[]) {
     })
     expect(effectCall!.params).toEqual({
       operationId: 'store:1',
-      slot: 'artifacts',
-      method: 'write',
+      slot: 'artifact-write',
       input: { source: 'research' },
     })
 
     peer.send({
       jsonrpc: '2.0',
       id: effectCall!.id,
-      result: { value: { uri: 'artifact://1' } },
+      result: { outcome: 'done', output: { uri: 'artifact://1' } },
     })
-    trace.push({ direction: 'host->component', kind: 'result', for: 'capability/call' })
+    trace.push({ direction: 'host->component', kind: 'result', for: 'flow/call' })
 
     peer.send({
       jsonrpc: '2.0',
@@ -105,15 +103,14 @@ async function runGoldenConversation(command: readonly string[]) {
         output: { answer: 'Fifa 99' },
       },
     })
-    trace.push({ direction: 'host->component', kind: 'result', for: 'flow/run-child' })
+    trace.push({ direction: 'host->component', kind: 'result', for: 'flow/call' })
 
     const missing = request(await peer.receive())
-    expect(missing.method).toBe('capability/call')
-    assertSchema('capabilityCallRequest', missing)
+    expect(missing.method).toBe('flow/call')
+    assertSchema('flowCallRequest', missing)
     expect(missing.params).toEqual({
       operationId: 'missing:1',
-      slot: 'artifacts',
-      method: 'read',
+      slot: 'artifact-read',
       input: { uri: 'artifact://missing' },
     })
     trace.push({
@@ -127,17 +124,15 @@ async function runGoldenConversation(command: readonly string[]) {
       jsonrpc: '2.0',
       id: missing.id,
       result: {
-        error: {
-          name: 'not-found',
-          data: { uri: 'artifact://missing' },
-        },
+        outcome: 'not-found',
+        output: { uri: 'artifact://missing' },
       },
     })
     trace.push({
       direction: 'host->component',
       kind: 'result',
-      for: 'capability/call',
-      declaredError: 'not-found',
+      for: 'flow/call',
+      outcome: 'not-found',
     })
 
     const rootResponse = await peer.receive()
@@ -152,8 +147,8 @@ async function runGoldenConversation(command: readonly string[]) {
             outcome: 'done',
             output: { answer: 'Fifa 99' },
           },
-          stored: { uri: 'artifact://1' },
-          missing: 'not-found',
+          stored: { outcome: 'done', output: { uri: 'artifact://1' } },
+          missing: { outcome: 'not-found', output: { uri: 'artifact://missing' } },
         },
       },
     })
@@ -167,10 +162,11 @@ async function runGoldenConversation(command: readonly string[]) {
   }
 }
 
-function byConcurrentMethod(left: Request, right: Request): number {
-  const rank = { 'flow/run-child': 0, 'capability/call': 1 } as const
+function byConcurrentCall(left: Request, right: Request): number {
+  const rank = { research: 0, 'artifact-write': 1 } as const
   return (
-    (rank[left.method as keyof typeof rank] ?? 2) - (rank[right.method as keyof typeof rank] ?? 2)
+    (rank[left.params.slot as keyof typeof rank] ?? 2) -
+    (rank[right.params.slot as keyof typeof rank] ?? 2)
   )
 }
 

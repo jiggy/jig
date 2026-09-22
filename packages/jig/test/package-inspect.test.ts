@@ -3,132 +3,331 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+import { CHANNEL_CONTRACT_SCHEMA } from '../src/channel-contract.js'
 import { CheckError } from '../src/diagnostics.js'
+import { INVOCATION_CONTRACT_SCHEMA } from '../src/invocation-contract.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
-import { checkPackageDirectory, inspectCapturedPackage } from '../src/package/inspect.js'
+import {
+  checkPackageDirectory,
+  inspectCapturedPackage,
+  packageProfileIssue,
+  requireSupportedPackageProfile,
+} from '../src/package/inspect.js'
 import { SchemaDiagnostic } from '../src/schema/index.js'
 
-const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
-const runMetadata = flowMetadata('name: exact\ndescription: Exact.')
+const contract = (fields: Record<string, unknown> = {}): string =>
+  JSON.stringify({
+    $schema: INVOCATION_CONTRACT_SCHEMA,
+    ...fields,
+  })
+const namedContract = (fields: Record<string, unknown> = {}): string =>
+  contract({
+    id: 'https://example.org/contracts/reviewer',
+    version: '1.0.0',
+    ...fields,
+  })
+const channel = (fields: Record<string, unknown> = {}): string =>
+  JSON.stringify({
+    $schema: CHANNEL_CONTRACT_SCHEMA,
+    id: 'https://example.org/contracts/updates',
+    version: '1.0.0',
+    semantics: 'Progress.',
+    item: true,
+    ...fields,
+  })
 
 describe('aggregate Package/1 inspection', () => {
-  test('requires exact-case root FLOW.md', async () => {
-    await withPackage({ 'flow.md': runMetadata }, async (root) => {
-      await expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FLOW_MISSING')
-    })
-  })
+  const metadataOwners = [
+    [
+      'JSON',
+      (metadata: unknown) => ({
+        'FLOW.ts': 'throw new Error("inspection must not execute package code");',
+        'flow.meta.json': JSON.stringify(metadata),
+      }),
+    ],
+    [
+      'Markdown',
+      (metadata: unknown) => ({
+        'FLOW.md': `---\n${JSON.stringify(metadata)}\n---\nDescribe the supplied text.`,
+      }),
+    ],
+  ] as const
 
-  test('classifies invalid frontmatter UTF-8 as invalid during aggregate inspection', async () => {
-    const prefix = new TextEncoder().encode('---\nname: exact\ndescription: ')
-    const suffix = new TextEncoder().encode('\n---\n')
+  for (const [owner, packageFiles] of metadataOwners) {
+    test(`${owner} checks support and requirements against their own exact catalogs`, async () => {
+      const shared = namedContract({
+        features: {
+          conversation: 'Continuing control.',
+          events: 'Optional observation.',
+        },
+      })
+      await withPackage(
+        {
+          ...packageFiles({
+            supports: ['events'],
+            uses: {
+              worker: { contract: './worker.json', requires: ['conversation'] },
+            },
+          }),
+          'FLOW.contract.json': shared,
+          'worker.json': shared,
+        },
+        async (root) => {
+          const checked = await checkPackageDirectory(root)
+          expect(checked.metadata.supports).toEqual(['events'])
+          expect(checked.metadata.uses?.worker?.requires).toEqual(['conversation'])
+          expect(checked.contract?.descriptor.features).toEqual({
+            conversation: 'Continuing control.',
+            events: 'Optional observation.',
+          })
+          expect(checked.usedContracts[0]?.contract.digest).toBe(checked.contract?.digest)
+          expect(packageProfileIssue(checked)).toBeUndefined()
+        },
+      )
+      // No catalog, support declaration or requirement is needed for an ordinary call.
+      await withPackage(
+        {
+          ...packageFiles({ uses: { worker: { contract: './worker.json' } } }),
+          'worker.json': namedContract(),
+        },
+        async (root) => {
+          const checked = await checkPackageDirectory(root)
+          expect(checked.metadata.supports).toBeUndefined()
+          expect(checked.metadata.uses?.worker).toEqual({ contract: './worker.json' })
+          expect(packageProfileIssue(checked)).toBeUndefined()
+        },
+      )
+    })
+
+    test(`${owner} rejects unknown support independently of any consumer requirement`, async () => {
+      for (const features of [undefined, {}, { conversation: 'Control.' }]) {
+        await withPackage(
+          {
+            ...packageFiles({ supports: ['convesation'] }),
+            'FLOW.contract.json': namedContract(features === undefined ? {} : { features }),
+          },
+          (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+        )
+      }
+      // Repeating the same typo on both sides does not create catalog membership.
+      await withPackage(
+        {
+          ...packageFiles({
+            supports: ['convesation'],
+            uses: {
+              worker: { contract: './worker.json', requires: ['convesation'] },
+            },
+          }),
+          'FLOW.contract.json': namedContract({ features: { conversation: 'Control.' } }),
+          'worker.json': namedContract({ features: { conversation: 'Control.' } }),
+        },
+        (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+      )
+    })
+
+    test(`${owner} rejects a requirement unknown to its referenced contract`, async () => {
+      await withPackage(
+        {
+          ...packageFiles({
+            uses: {
+              worker: { contract: './worker.json', requires: ['convesation'] },
+            },
+          }),
+          'worker.json': namedContract({ features: { conversation: 'Control.' } }),
+        },
+        (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+      )
+    })
+
+    test(`${owner} requires identified single-form support even for an empty list`, async () => {
+      for (const offered of [
+        undefined,
+        contract(),
+        namedContract({ operations: { review: {} } }),
+      ]) {
+        await withPackage(
+          {
+            ...packageFiles({ supports: [] }),
+            ...(offered === undefined ? {} : { 'FLOW.contract.json': offered }),
+          },
+          (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+        )
+      }
+      for (const offered of [namedContract(), namedContract({ features: {} })]) {
+        await withPackage(
+          { ...packageFiles({ supports: [] }), 'FLOW.contract.json': offered },
+          async (root) => expect((await checkPackageDirectory(root)).metadata.supports).toEqual([]),
+        )
+      }
+    })
+
+    test(`${owner} requires identified single-form expectations even for empty requirements`, async () => {
+      const metadata = { uses: { worker: { contract: './worker.json', requires: [] } } }
+      await withPackage({ ...packageFiles(metadata), 'worker.json': contract() }, (root) =>
+        expectCheckError(() => checkPackageDirectory(root), 'CONTRACT_IDENTITY'),
+      )
+      await withPackage(
+        { ...packageFiles(metadata), 'worker.json': namedContract({ operations: { review: {} } }) },
+        (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_FEATURES'),
+      )
+      await withPackage(
+        { ...packageFiles(metadata), 'worker.json': namedContract() },
+        async (root) =>
+          expect((await checkPackageDirectory(root)).metadata.uses?.worker?.requires).toEqual([]),
+      )
+    })
+  }
+
+  test('requires one exact-case FLOW implementation and treats nested files as resources', async () => {
+    for (const files of [
+      { 'flow.md': 'Prose' },
+      { 'FLOW.MD': 'Prose' },
+      { 'nested/FLOW.md': 'Prose' },
+    ]) {
+      await withPackage(files, (root) =>
+        expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_ENTRYPOINT_MISSING'),
+      )
+    }
     await withPackage(
       {
-        'FLOW.md': Uint8Array.from([...prefix, 0xff, ...suffix]),
+        'FLOW.md': '# Revise the input.',
+        'nested/FLOW.ts': 'export {}',
+        'metadata.json': 'ordinary content',
       },
       async (root) => {
-        await expectCheckError(() => checkPackageDirectory(root), 'METADATA_INVALID_UTF8')
+        const checked = await checkPackageDirectory(root)
+        expect(checked.entrypoint).toEqual({ path: 'FLOW.md', suffix: 'md' })
+        expect(checked.metadata.name).toBeUndefined()
+        expect(checked.invocation).toEqual({})
+        expect(checked.contract).toBeUndefined()
       },
+    )
+    await withPackage({ 'FLOW.md': 'Prose', 'FLOW.ts': 'export {}' }, (root) =>
+      expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_ENTRYPOINT_AMBIGUOUS'),
     )
   })
 
-  test('admits zero or one root implementation and rejects several', async () => {
-    await withPackage({ 'FLOW.md': runMetadata }, async (root) => {
+  test('code needs no companion and has exactly one optional JSON metadata owner', async () => {
+    await withPackage({ 'FLOW.ts': 'export {};\n' }, async (root) => {
+      const captured = await capturePackageDirectory(root)
+      try {
+        const checked = await inspectCapturedPackage(captured)
+        expect(checked.digest).toBe(captured.digest)
+        expect(checked.entrypoint).toEqual({ path: 'FLOW.ts', suffix: 'ts' })
+        expect(checked.metadata).toEqual({ extensions: {}, unknownFields: {} })
+      } finally {
+        await captured.dispose()
+      }
+    })
+    await withPackage(
+      {
+        'FLOW.py': 'pass\n',
+        'flow.meta.json': JSON.stringify({
+          name: 'exact',
+          description: 'Exact.',
+          'allowed-tools': 'Read',
+        }),
+      },
+      async (root) => {
+        const checked = await checkPackageDirectory(root)
+        expect(checked.metadata['allowed-tools']).toBe('Read')
+        expect(packageProfileIssue(checked)?.code).toBe('PACKAGE_TOOLS_UNSUPPORTED')
+      },
+    )
+    await withPackage({ 'FLOW.md': 'Prose', 'flow.meta.json': '{}' }, (root) =>
+      expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_METADATA_OWNER'),
+    )
+  })
+
+  test('keeps unknown metadata inspectable for execution qualification', async () => {
+    await withPackage({ 'FLOW.md': '---\ncustom-requirement: true\n---\nProse' }, async (root) => {
       const checked = await checkPackageDirectory(root)
-      expect(checked.mode).toBe('run')
-      expect(checked.entrypoint).toBeUndefined()
+      expect(checked.metadata.unknownFields).toEqual({ 'custom-requirement': true })
+      expect(packageProfileIssue(checked)?.pointer).toBe('/custom-requirement')
+      try {
+        requireSupportedPackageProfile(checked, 'flows/reviewer')
+        throw new Error('expected unsupported profile')
+      } catch (error) {
+        expect(error).toMatchObject({
+          kind: 'unavailable',
+          code: 'PACKAGE_METADATA_UNSUPPORTED',
+          path: 'flows/reviewer/FLOW.md',
+        })
+      }
     })
+  })
 
-    await withPackage(
-      {
-        'FLOW.md': runMetadata,
-        'flow.ts': 'export {};\n',
-        'nested/flow.py': '# ordinary nested resource\n',
-        'flow.d.ts': '// ordinary multi-suffix resource\n',
-      },
-      async (root) => {
-        const captured = await capturePackageDirectory(root)
-        try {
-          const checked = await inspectCapturedPackage(captured)
-          expect(checked.digest).toBe(captured.digest)
-          expect(checked.entrypoint).toEqual({ path: 'flow.ts', suffix: 'ts' })
-        } finally {
-          await captured.dispose()
-        }
-      },
-    )
-
-    await withPackage(
-      {
-        'FLOW.md': runMetadata,
-        'flow.ts': 'export {};\n',
-        'flow.py': 'pass\n',
-      },
-      async (root) => {
-        await expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_ENTRYPOINT_AMBIGUOUS')
-      },
+  test('validates UTF-8 even outside the bounded frontmatter prefix', async () => {
+    const prefix = new TextEncoder().encode(`---\nname: exact\n---\n${'a'.repeat(270_000)}`)
+    await withPackage({ 'FLOW.md': Uint8Array.from([...prefix, 0xff]) }, (root) =>
+      expectCheckError(() => checkPackageDirectory(root), 'METADATA_INVALID_UTF8'),
     )
   })
 
-  test('parses only the exact optional Adapter selector grammar', async () => {
-    await withPackage(
-      {
-        'FLOW.md': runMetadata,
-        'flow.ts': '#!/usr/bin/env bun\r\nexport {};\n',
-      },
-      async (root) => {
-        expect((await checkPackageDirectory(root)).entrypoint).toEqual({
-          path: 'flow.ts',
-          suffix: 'ts',
-          selector: 'bun',
-        })
-      },
-    )
-
+  test('interprets an Adapter selector only on code implementations', async () => {
+    await withPackage({ 'FLOW.ts': '#!/usr/bin/env bun\r\nexport {};\n' }, async (root) => {
+      expect((await checkPackageDirectory(root)).entrypoint).toEqual({
+        path: 'FLOW.ts',
+        suffix: 'ts',
+        selector: 'bun',
+      })
+    })
+    await withPackage({ 'FLOW.md': '#!/bin/bash\nThis is authored prose.' }, async (root) => {
+      expect((await checkPackageDirectory(root)).entrypoint.selector).toBeUndefined()
+    })
     for (const selector of [
       '#!/usr/bin/env -S bun\n',
       '#!/usr/bin/env bun --flag\n',
       '#!/bin/bun\n',
       `#!/usr/bin/env ${'a'.repeat(65)}\n`,
     ]) {
-      await withPackage({ 'FLOW.md': runMetadata, 'flow.ts': selector }, async (root) => {
-        await expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_SELECTOR')
-      })
+      await withPackage({ 'FLOW.ts': selector }, (root) =>
+        expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_SELECTOR'),
+      )
     }
   })
 
-  test('compiles every conventional Run schema during inspection', async () => {
+  test('compiles optional invocation input/result and independent implementation settings', async () => {
     await withPackage(
       {
-        'FLOW.md': runMetadata,
-        'input.schema.json': schemaDocument({
-          type: 'object',
-          properties: { value: { type: 'string', minLength: 1 } },
-          required: ['value'],
-          additionalProperties: false,
+        'FLOW.ts': 'export {};\n',
+        'FLOW.contract.json': contract({
+          input: { type: 'string', minLength: 1 },
+          result: {
+            type: 'object',
+            properties: { outcome: { const: 'done' }, output: true },
+            required: ['outcome', 'output'],
+            additionalProperties: false,
+          },
         }),
-        'settings.schema.json': schemaDocument({ type: 'object', maxProperties: 0 }),
-        'result.schema.json': schemaDocument({
+        'settings.schema.json': JSON.stringify({
+          $schema: 'https://flow.jig.md/schemas/schema-1.json',
           type: 'object',
-          properties: { outcome: { const: 'done' }, output: true },
-          required: ['outcome', 'output'],
-          additionalProperties: false,
+          maxProperties: 0,
         }),
       },
       async (root) => {
-        const schemas = (await checkPackageDirectory(root)).schemas
-        schemas.input!.validate({ value: 'ok' }, 'INVALID_INPUT')
-        schemas.settings!.validate({}, 'INVALID_SETTINGS')
-        schemas.result!.validate({ outcome: 'done', output: null }, 'INVALID_RESULT')
-        expect(() => schemas.input!.validate({}, 'INVALID_INPUT')).toThrow(SchemaDiagnostic)
+        const checked = await checkPackageDirectory(root)
+        checked.schemas.input!.validate('input', 'INVALID_INPUT')
+        checked.schemas.settings!.validate({}, 'INVALID_SETTINGS')
+        checked.schemas.result!.validate({ outcome: 'done', output: null }, 'INVALID_RESULT')
+        expect(checked.schemas.input!.path).toBe('FLOW.contract.json')
+        expect(checked.schemas.input!.schemaPointer).toBe('/input')
+        expect(() => checked.schemas.input!.validate('', 'INVALID_INPUT')).toThrow(SchemaDiagnostic)
       },
     )
   })
 
-  test('rejects an invalid conventional schema while the package is inert', async () => {
+  test('requires invocation declarations to use their sole owner', async () => {
+    for (const path of ['input.schema.json', 'result.schema.json']) {
+      await withPackage({ 'FLOW.md': 'Prose', [path]: '{}' }, (root) =>
+        expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_SCHEMA_OWNER'),
+      )
+    }
     await withPackage(
       {
-        'FLOW.md': runMetadata,
-        'input.schema.json': schemaDocument({ type: 'string', pattern: '.*' }),
+        'FLOW.md': 'Prose',
+        'FLOW.contract.json': contract({ input: { type: 'string', pattern: '.*' } }),
       },
       async (root) => {
         await expect(checkPackageDirectory(root)).rejects.toBeInstanceOf(SchemaDiagnostic)
@@ -136,103 +335,79 @@ describe('aggregate Package/1 inspection', () => {
     )
   })
 
-  test('loads exact referenced consumed capability contracts', async () => {
-    const consumer = capability('https://example.org/contracts/consumer')
-    const peer = capability('https://example.org/contracts/peer')
-    const metadata = flowMetadata(`name: consumer
-description: Consumer.
-uses:
-  dependency:
-    contract: ./contracts/consumer.capability.json
-  peer:
-    contract: ./contracts/peer.capability.json`)
+  test('retains named-profile validity without selecting a runnable invocation', async () => {
+    await withPackage(
+      { 'FLOW.ts': 'export {}', 'FLOW.contract.json': contract({ operations: { run: {} } }) },
+      async (root) => {
+        const checked = await checkPackageDirectory(root)
+        expect(checked.contract!.profile).toBe('named')
+        expect(checked.invocation).toBeUndefined()
+        expect(packageProfileIssue(checked)?.code).toBe('PACKAGE_PROFILE_UNSUPPORTED')
+      },
+    )
+  })
+
+  test('resolves consumed contract bundles relative to each descriptor directory', async () => {
     await withPackage(
       {
-        'FLOW.md': metadata,
-        'flow.ts': 'export {};\n',
-        'contracts/consumer.capability.json': consumer,
-        'contracts/peer.capability.json': peer,
+        'FLOW.md':
+          '---\nuses:\n  reviewer: {contract: ./interfaces/reviewer.json}\n  scratch: {}\n---\nProse',
+        'interfaces/reviewer.json': namedContract({
+          channels: { updates: { direction: 'send', contract: './contracts/updates.json' } },
+        }),
+        'interfaces/contracts/updates.json': channel(),
+        'contracts/updates.json': 'Unrelated; must not be parsed.',
       },
       async (root) => {
         const checked = await checkPackageDirectory(root)
-        expect(
-          checked.usedContracts.map(({ slot, path, contract }) => ({
-            slot,
-            path,
-            id: contract.descriptor.id,
-          })),
-        ).toEqual([
-          {
-            slot: 'dependency',
-            path: 'contracts/consumer.capability.json',
-            id: 'https://example.org/contracts/consumer',
-          },
-          {
-            slot: 'peer',
-            path: 'contracts/peer.capability.json',
-            id: 'https://example.org/contracts/peer',
-          },
-        ])
+        expect(checked.usedContracts).toHaveLength(1)
+        const used = checked.usedContracts[0]!
+        expect(used.path).toBe('interfaces/reviewer.json')
+        expect(used.contract.descriptor.id).toBe('https://example.org/contracts/reviewer')
+        expect(used.contract.channelContracts.get('contracts/updates.json')!.itemSchema.path).toBe(
+          'interfaces/contracts/updates.json',
+        )
       },
     )
   })
 
-  test('rejects one package carrying different bytes for the same contract version', async () => {
-    const id = 'https://example.org/contracts/equivocal'
+  test('does not satisfy a dependency expectation with an anonymous descriptor', async () => {
     await withPackage(
       {
-        'FLOW.md': flowMetadata(`name: consumer
-description: Consumer.
-uses:
-  first:
-    contract: ./contracts/first.capability.json
-  second:
-    contract: ./contracts/second.capability.json`),
-        'flow.ts': 'export {};\n',
-        'contracts/first.capability.json': capability(id),
-        'contracts/second.capability.json': capability(id, false),
+        'FLOW.md': '---\nuses: {reviewer: {contract: ./reviewer.json}}\n---\nProse',
+        'reviewer.json': contract(),
       },
-      async (root) => {
-        await expectCheckError(() => checkPackageDirectory(root), 'CAPABILITY_EQUIVOCATION')
-      },
+      (root) => expectCheckError(() => checkPackageDirectory(root), 'CONTRACT_IDENTITY'),
     )
   })
 
-  test('rejects a capability reference absent from the captured package', async () => {
+  test('rejects missing invocation and channel references from the captured source', async () => {
+    await withPackage(
+      { 'FLOW.md': '---\nuses: {reviewer: {contract: ./missing.json}}\n---\nProse' },
+      (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_REFERENCE_MISSING'),
+    )
     await withPackage(
       {
-        'FLOW.md': flowMetadata(`name: exact
-description: Exact.
-uses:
-  agent:
-    contract: ./contracts/missing.capability.json`),
+        'FLOW.md': 'Prose',
+        'FLOW.contract.json': contract({
+          channels: { updates: { direction: 'send', contract: './missing.json', required: false } },
+        }),
       },
-      async (root) => {
-        await expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_REFERENCE_MISSING')
+      (root) => expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_REFERENCE_MISSING'),
+    )
+  })
+
+  test('rejects equivocation among a package offer and its expectations', async () => {
+    await withPackage(
+      {
+        'FLOW.md': '---\nuses: {reviewer: {contract: ./reviewer.json}}\n---\nProse',
+        'FLOW.contract.json': namedContract({ input: true }),
+        'reviewer.json': namedContract({ input: false }),
       },
+      (root) => expectCheckError(() => checkPackageDirectory(root), 'CONTRACT_EQUIVOCATION'),
     )
   })
 })
-
-function flowMetadata(frontmatter: string): string {
-  return `---\n${frontmatter}\n---\n`
-}
-
-function schemaDocument(schema: Record<string, unknown>): string {
-  return JSON.stringify({ $schema: schemaUri, ...schema })
-}
-
-function capability(id: string, input: boolean = true): string {
-  return JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/capability-contract-1.schema.json',
-    flowCapabilityContract: 1,
-    id,
-    version: '1.0.0',
-    methods: {
-      call: { input, output: true, errors: {} },
-    },
-  })
-}
 
 async function withPackage(
   files: Readonly<Record<string, string | Uint8Array>>,

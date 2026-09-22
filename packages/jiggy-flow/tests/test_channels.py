@@ -36,6 +36,14 @@ class ChannelGrantTests(unittest.TestCase):
 
 
 class ChannelTests(unittest.TestCase):
+    def test_slot_channel_reference_is_data_not_an_invocation(self) -> None:
+        self.component.send(root_request("slot-channel"))
+        request = self.component.receive()
+        self.assertEqual(request["method"], "channel/create")
+        self.assertEqual(request["params"]["contract"], {"slot": "agent", "channel": "events"})
+        self.fail_wire(request, "UNAVAILABLE")
+        self.finish("UNAVAILABLE")
+
     def setUp(self) -> None:
         self.component = Component()
 
@@ -64,7 +72,7 @@ class ChannelTests(unittest.TestCase):
         self.create("channels")
         first, second = self.component.receive(), self.component.receive()
         calls = {first["method"]: first, second["method"]: second}
-        work, read = calls["capability/call"], calls["channel/next"]
+        work, read = calls["flow/call"], calls["channel/next"]
         self.assertEqual(work["params"]["channels"], {"events": "writer:1"})
         self.answer(read, {"item": {"sequence": 1, "value": {"public": False, "text": "hidden"}}})
         read = self.component.receive()
@@ -72,21 +80,34 @@ class ChannelTests(unittest.TestCase):
         read = self.component.receive()
         self.answer(read, {"end": {"lastSequence": 2}})
         self.assertFalse(self.component.has_output())
-        self.answer(work, {"value": {"outcome": "completed"}})
-        self.finish({"complete": True, "agent": {"outcome": "completed"}})
+        self.answer(work, {"outcome": "done", "output": {"text": "completed"}})
+        self.finish({"complete": True, "agent": {"outcome": "done", "output": {"text": "completed"}}})
         self.assertEqual(self.component.remaining_stderr().decode().strip(), "visible")
+
+    def test_offered_receiver_cleanup_does_not_guess_transfer_from_call_failure(self) -> None:
+        for code in ("UNAVAILABLE", "EXECUTION_FAILED"):
+            with self.subTest(code=code):
+                self.create("channel-offered-failure")
+                work = self.component.receive()
+                self.assertEqual(work["method"], "flow/call")
+                self.assertEqual(work["params"]["channels"], {"input": "reader:1"})
+                self.fail_wire(work, code)
+                # No speculative channel/release for an offered endpoint.
+                self.finish(code)
+                self.component.close()
+                self.component = Component()
 
     def test_channel_failure_is_recoverable_without_acknowledgement(self) -> None:
         self.create("channels")
         calls = [self.component.receive(), self.component.receive()]
-        work = next(call for call in calls if call["method"] == "capability/call")
+        work = next(call for call in calls if call["method"] == "flow/call")
         read = next(call for call in calls if call["method"] == "channel/next")
         self.fail_wire(read, "LAGGED")
         release = self.component.receive()
         self.assertEqual(release["method"], "channel/release")
         self.answer(release, {"status": "failed", "code": "LAGGED"})
-        self.answer(work, {"value": "completed"})
-        self.finish({"complete": False, "agent": "completed"})
+        self.answer(work, {"outcome": "done", "output": "completed"})
+        self.finish({"complete": False, "agent": {"outcome": "done", "output": "completed"}})
 
     def test_late_read_failure_is_exposed_by_disposal_once(self) -> None:
         self.create("channel-cancel-read")
@@ -161,6 +182,12 @@ class ChannelTests(unittest.TestCase):
         self.assertEqual(self.component.receive()["error"]["data"]["code"], "INVALID_RESULT")
         self.component.wait()
 
+    def test_invalid_root_envelope_precedes_success_path_channel_disposal(self) -> None:
+        self.create("channel-deep-result")
+        self.assertEqual(self.component.receive()["error"]["data"]["code"], "INVALID_RESULT")
+        self.component.wait()
+        self.assertEqual(self.component.remaining_stdout(), b"")
+
     def test_inherited_grant_can_be_consumed(self) -> None:
         request = root_request("channel-inherited")
         request["params"]["channels"] = {"input": grant("input:1", "receive")}
@@ -191,6 +218,53 @@ class ChannelTests(unittest.TestCase):
 
 
 class ChannelCapacityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_producer_failure_close_settles_while_send_is_pending(self) -> None:
+        runtime, output = self.runtime()
+        sender = runtime._register_endpoint(grant("writer:1", "send"))
+        sending = asyncio.create_task(sender.send("pending"))
+        await self.until(lambda: len(output.payloads) == 1)
+        request = json.loads(output.payloads[0])
+        closing = asyncio.create_task(sender.close(error="LAGGED"))
+        await self.until(lambda: len(output.payloads) == 2)
+        closed = json.loads(output.payloads[1])
+        self.assertEqual(closed["params"], {"endpoint": "writer:1", "error": "LAGGED"})
+        await self.answer(runtime, closed)
+        await closing
+        await self.answer(runtime, request, code="LAGGED")
+        with self.assertRaises(OperationError) as caught:
+            await sending
+        self.assertEqual(caught.exception.code, "LAGGED")
+        await sender.close(error="LAGGED")
+        self.assertEqual(len(output.payloads), 2)
+
+    async def test_producer_close_cancellation_retains_its_settlement(self) -> None:
+        runtime, output = self.runtime()
+        sender = runtime._register_endpoint(grant("writer:1", "send"))
+        closing = asyncio.create_task(sender.close(error="LAGGED"))
+        await self.until(lambda: len(output.payloads) == 1)
+        closing.cancel()
+        await asyncio.gather(closing, return_exceptions=True)
+        self.assertFalse(sender._sealed)
+        await self.answer(runtime, json.loads(output.payloads[0]))
+        await sender.close(error="LAGGED")
+        self.assertEqual(len(output.payloads), 1)
+
+    async def test_clean_close_cannot_become_failure_and_invalid_causes_are_local(self) -> None:
+        runtime, output = self.runtime()
+        sender = runtime._register_endpoint(grant("writer:1", "send"))
+        for error in ("UNCERTAIN", False, {}, 1):
+            with self.assertRaises(ValueError):
+                await sender.close(error=error)
+        self.assertEqual(output.payloads, [])
+        closing = asyncio.create_task(sender.close())
+        await self.until(lambda: len(output.payloads) == 1)
+        with self.assertRaises(OperationError):
+            await sender.close(error="LAGGED")
+        await self.answer(runtime, json.loads(output.payloads[0]))
+        await closing
+        with self.assertRaises(OperationError):
+            await sender.close(error="LAGGED")
+
     async def test_cancelled_send_remains_unsettled_until_wire_response(self) -> None:
         runtime, output = self.runtime()
         sender = runtime._register_endpoint(grant("writer:1", "send"))
@@ -236,8 +310,8 @@ class ChannelCapacityTests(unittest.IsolatedAsyncioTestCase):
     async def test_saturated_ordinary_requests_leave_a_disposal_slot(self) -> None:
         runtime, output = self.runtime()
         receiver = runtime._register_endpoint(grant("reader:1", "receive"))
-        calls = [asyncio.create_task(runtime.call_capability(
-            operation_id=f"call:{index}", slot="service", method="run", input=None,
+        calls = [asyncio.create_task(runtime.call(
+            operation_id=f"call:{index}", slot="service", input=None,
         )) for index in range(63)]
         await self.until(lambda: len(output.payloads) == 63)
         closing = asyncio.create_task(receiver.aclose())
@@ -289,7 +363,7 @@ class ChannelCapacityTests(unittest.IsolatedAsyncioTestCase):
     async def test_schema_and_contract_are_exclusive_even_for_true(self) -> None:
         runtime, output = self.runtime()
         with self.assertRaises(ValueError):
-            await runtime.channel(delivery="direct", schema=True, contract="./contract.json")
+            await runtime.channel(delivery="direct", schema=True, contract="./FLOW.contract.json")
         self.assertEqual(output.payloads, [])
 
     async def test_local_read_admission_failure_does_not_end_receiver(self) -> None:

@@ -18,7 +18,7 @@ for external libraries.
 - `communication.md` owns positioning, narrative progression, vocabulary,
   and public editorial judgment, drawing on the audience and doctrine.
 - `maintainer-guide.md` introduces the engineering model, its governing
-  principles, operational invariants, and working method.
+  principles, operational invariants, holistic product/UX review, and working method.
 - `ROADMAP.md` orders outcome gates and the next concrete development steps
   without becoming a task tracker.
 - `suspended-experiments.md` points to deleted experiments only when their
@@ -75,8 +75,9 @@ for external libraries.
   acquires a distinct durable owner or verification contract.
 - Keep the roadmap tied to the doctrine, with user outcomes followed by a
   short development sequence. Each step names the work and its completion
-  condition. Keep release status, detailed tasks, and blockers in `.tmp/`;
-  do not turn the roadmap into a subsystem inventory.
+  condition. Deferred product tasks belong in `management/inbox/*.md`;
+  release status, active execution plans and blockers remain in `.tmp/`.
+  Do not turn the roadmap into a subsystem inventory.
 
 ## Verification
 

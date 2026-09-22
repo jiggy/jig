@@ -1,0 +1,9 @@
+{
+  "name": "contact-import-map-agent",
+  "description": "Propose column indices from headings using one bounded Agent call.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

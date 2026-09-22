@@ -1,43 +1,96 @@
-# Jig Agent Run capability
+# Jig Agent Run invocation
 
 **Status:** experimental alpha candidate.
 
-Agent Run is one exact FLOW Capability Contract consumed through Run/1
-`capability/call`. It does not add an Agent API to `@jigging/flow`, a provider
-configuration field to Bindings, or a semantic router to Jig.
+Agent Run is one exact FLOW Invocation Contract consumed through Run/1
+`flow/call`. A caller supplies explicit instructions, Skill contents and optional
+guidance. The shared [Agent method](../guide/agent-method.md) prepares the prompt
+and interprets the response in an ordinary Flow. Jig provides the granted
+HTTP or finite native transport, not the Agent's method. This adds no special
+Agent invocation API to `@jigging/flow`.
 
 The canonical descriptor is
-[`agent-run.capability.json`](https://jig.md/contracts/agent-run.capability.json):
+[`agent-run/contract.json`](https://jig.md/contracts/agent-run/contract.json):
 
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56
-method   run
+digest   sha256:d0c9ceb0c2b2940fa9d29daaea50e926a8060414d43c9a37f5a837641a55ef09
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
 bytes and the referenced `contracts/acp-public-updates.json` descriptor. The
-latter defines the method's optional named output channel. Refer to Agent Run
-from `FLOW.md`:
+latter defines optional public updates. The bundle also includes direct
+`agent-commands.json` and `agent-replies.json` channel contracts for conversational
+use. Copy the complete
+`agent-run/` bundle, preserving its descriptor-relative `contracts/` directory.
+Declare the slot in a code Flow's optional `flow.meta.json`:
 
-```yaml
----
-name: ticket-router
-description: Select and run one exact ticket handler.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json
----
+```json
+{
+  "name": "ticket-router",
+  "description": "Select and run one exact ticket handler.",
+  "uses": { "agent": { "contract": "./contracts/agent-run/contract.json" } }
+}
 ```
 
-The slot name `agent` is local to this package. A package may declare one slot
-for each supported capability: Agent Run, [Project Command](project-command.md),
-and [Run Checkpoint](run-checkpoint.md). Each requires its exact descriptor and
-its own eligibility conditions: Project Command needs reviewed Binding command
-policy, and Run Checkpoint requires a root writable attachment and output owner.
-Jig resolves and admits these identities offline; contract URIs are not fetched
-at runtime. Declarations do not grant additional concurrent worker capacity.
+The slot name `agent` is local to this package. Like any ordinary dependency,
+it resolves through an exact Binding route or project default. Contract URIs
+are not fetched at runtime. The selected method uses its own independently
+reviewed resource grants; a matching descriptor grants no authority.
+
+## Declare required Agent behavior
+
+The descriptor's `features` catalog names optional mechanisms. Implementations
+claim the mechanisms they implement through package metadata `supports`;
+consumers require them through `uses.<slot>.requires`. These use the ordinary
+[FLOW feature qualification](https://flow.jig.md/spec/invocation-contracts)
+rules and the same exact contract identity as the call.
+
+| Feature | Implementation obligation | Separate conditions |
+| --- | --- | --- |
+| `events` | Implement the optional public-update protocol and report observation loss honestly. | Updates may be incomplete; they never establish control or execution results. |
+| `conversation` | Implement paired commands/replies, serial prompt and interruption control, turn results, and final settlement. | The resource's prompt allowance, current client support, and actual settlement remain separate. |
+| `sessions` | Implement retain/restore requests and final receipts, including Run-scoped state and honest unavailability. | Current retention authority, valid references, native history and successful collection remain separate. |
+
+The HTTP package declares `supports: []`. The ACP package declares
+`supports: ["events", "conversation", "sessions"]`. These are unconditional
+claims about the method across its accepted package settings. A setting cannot
+deliberately remove an advertised mechanism while leaving its claim true.
+Static matching checks those declarations, not implementation honesty. Separate
+resource grants, native profiles and runtime failures may still refuse work.
+Matching grants no authority and never converts package output into host evidence.
+
+A caller whose method needs continuing control declares:
+
+```json
+{
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json",
+      "requires": ["conversation"]
+    }
+  }
+}
+```
+
+Jig checks required names after exact contract matching and makes a mismatching
+target unavailable before its caller starts. An explicit selection never falls
+back automatically. A caller with no extra requirements needs no `requires`
+field; it retains ordinary input, channel and runtime refusal semantics.
+Conditional features may remain runtime decisions with authored recovery;
+review cannot infer those branches or arbitrary wrappers' resource use.
+
+Requiring `conversation` does not promise permission for a follow-up: a grant
+with `maxTurns: 1` permits only the initial prompt. Requiring `sessions` does not
+grant `retainSessions` or promise a retained successor. Inspect final receipts
+before restoring; unavailable retention and execution failure remain distinct.
+Require `events` when the complete method supplies that optional port; after
+accepted support, observer failure remains separate from essential execution.
+
+Keep every participant's complete descriptor bundle synchronized. Catalog changes
+change the exact invocation digest even for callers with no feature requirements;
+refresh their bundle and use ordinary review/admission. Call syntax is unchanged.
 
 ## Calling the Agent
 
@@ -48,13 +101,15 @@ control and does not replace the final result. API clients remain one-shot;
 requested unsupported channels reject before dispatch. See [channels](channels.md)
 for ownership, buffering and installed output.
 
-The contract has one method, `run`. Its input is:
+The contract has one invocation, with no method selector. Its input is:
 
 ```ts
 {
   instructions: string;
-  skills?: readonly string[];
+  skills?: readonly { name: string; files: readonly { path: string; text: string }[] }[];
+  guidance?: readonly { label: string; text: string }[];
   responseSchema?: JsonObject;
+  session?: { retain: true; lifetime?: "run" } | { restore: string }; // opaque UUID reference
 }
 ```
 
@@ -62,17 +117,165 @@ Its result is:
 
 ```ts
 {
-  outcome: "completed" | "blocked" | "limit";
-  text: string;
-  structured?: JsonValue;
+  outcome: "done" | "blocked" | "limit";
+  output: {
+    text: string;
+    structured?: JsonValue;
+    session?: { status: "retained"; reference: string }
+      | { status: "unavailable"; reason: "not-cleanly-closed" | "missing-history" | "unsupported-history" | "capacity" };
+  };
 }
 ```
 
-On the Run/1 wire, a successful effect response is
-`{ "value": <Agent result> }`. `@jigging/flow` unwraps that envelope, so
-`run.callCapability()` resolves directly to the Agent result. A completed call
-which requested `responseSchema` includes `structured`, and Jig validates that
-value against the supplied FLOW Schema/1 schema before returning it.
+On the Run/1 wire and in the SDK, `run.call()` returns that complete result.
+An Agent `blocked` or `limit` outcome is ordinary domain data, not an execution
+error. A `done` call requesting `responseSchema` includes `output.structured`;
+The consumer must check it against the requested schema before using it. The pure
+`checkAgentResult(result, responseSchema)` helper supplies this check without
+dispatch or authority. Jig validates the static invocation contract for every
+implementation. The supplied ordinary methods also check the dynamic schema;
+a consumer still checks independently when accepting a replacement.
+An ordinary Flow offering the exact descriptor can replace the Agent through
+a project default or explicit Binding route. Its own grants supply its powers; matching a
+descriptor grants neither credentials nor network access. Supported optional
+channels still require qualification by the selected implementation.
+The optional `session` input requests native retention or restoration under a
+separately reviewed grant. Its receipt appears only in the final invocation
+output, after resource settlement; calls without a request omit it. The supplied
+HTTP method rejects a session request before dispatch. See
+[retaining a native conversation](#retaining-a-native-conversation).
+
+## Continuing conversations
+
+One-shot calls keep the input and result above. A conversational call adds
+`conversation: true` and supplies both direct channels: `commands` (the Agent
+receives) and `replies` (the Agent sends). Other pairings reject before native
+dispatch. The supplied HTTP method does not support this mode and rejects it
+before HTTP dispatch. A conversational native Binding grants `maxTurns` from
+1 through 8; omission permits only one turn. One finite Agent invocation owns
+the complete conversation, with unchanged root lifetime and aggregate limits.
+
+Initial input starts turn 0. Later controls are ordinary channel values:
+
+```json
+{"type":"prompt","turn":1,"input":{"instructions":"Explain your recommendation."}}
+{"type":"interrupt","turn":1}
+{"type":"close","turn":1}
+```
+
+`prompt` requires the next sequential turn and no running turn. Its input is
+the ordinary instructions, optional guidance and responseSchema; initial Skills
+remain in the native conversation, not newly selected by a follow-up. `interrupt`
+names the running turn. `close` requires the last settled turn. Controls are
+not queued or replayed: busy, stale, duplicate interruption, exhausted allowance
+and invalid prompt input receive a correlated `rejected` reply with a closed
+code. A malformed channel value is an operation failure.
+An invocation accepts at most 64 controls, including rejected controls; exceeding
+that bound fails it. The prompt allowance is separately enforced by the host.
+
+An `accepted` reply names `command` and `turn`; it acknowledges the control,
+not native completion. Each turn separately produces one of:
+
+- `{type:"result", turn, result}` with a complete ordinary Agent Run result;
+- `{type:"cancelled", turn}` after native cancellation settlement; or
+- `{type:"error", turn, code:"INVALID_RESULT", message}` when a settled answer
+  cannot satisfy the requested structured result. A caller may issue another
+  turn after that error; malformed ACP or uncertain native work is fatal instead.
+
+Per-turn results contain the answer's `text` and optional `structured` value,
+never a `session` receipt. Only the initial invocation input may request
+retention or restoration; follow-up prompt inputs cannot change that request.
+
+Replies are essential and fit the ordinary 64 KiB channel item bound. Oversized
+results fail visibly rather than truncate. A reply blocked for five seconds
+fails the conversation and settles its resource. Command EOF without an accepted
+close fails; closing the command stream does not imply successful execution.
+After sending `close`, the caller seals its command writer before awaiting the
+invocation. The Agent waits at most five seconds for that clean EOF before
+releasing its receiver; further controls after accepted close are invalid.
+On accepted close, the invocation returns `{outcome:"done",output:{turns:N}}`
+only after native cleanup. `N` counts all settled turns, including cancelled or
+invalid answers; conversation completion does not imply every turn succeeded.
+When the initial input requests a session, this final `output` also contains
+the retention receipt defined below.
+
+Optional public events add `turn` in conversational mode. They remain lossy
+observation, never the source of turn-result or interruption acknowledgement.
+Late native text/plan updates outside an active turn fail. Within a turn, native
+ordering depends on the qualified client's ACP compliance; local turn labels
+are not independent proof of native causality. All turn text and frame limits
+remain cumulative across the invocation.
+
+The live conversation stays within one invocation. Cross-Run restoration uses
+the explicit session request below; neither path grants native workspace tools
+or performs automatic handoff.
+
+## Retaining a native conversation
+
+The optional `session` field is exactly one of `{retain:true}`,
+`{retain:true,lifetime:"run"}`, or
+`{restore:reference}`, where `reference` is an opaque, canonical lowercase
+36-character UUID returned by a previous
+final invocation. The request applies to one-shot and conversational native
+calls. Omission keeps the invocation ephemeral. Retention is a separately
+reviewed native grant, `retainSessions:true`; a request or a reference never
+grants this authority.
+
+`retain` starts a new conversation and requests retention when it closes.
+Omitting `lifetime` permits later authorized Runs to restore it. `lifetime:"run"`
+restricts every reference in the chain to the current root Run, for temporary
+work such as one evidence-driven repair correction. This lifetime spans child
+and native-call settlement; it is not the lifetime of the individual Agent call.
+`restore` consumes previously retained native state before starting the current
+prompt, then requests a successor snapshot after this invocation settles.
+It inherits the original lifetime; supplying a lifetime on restore is invalid.
+Run-scoped state is inaccessible after the root ends and is deleted atomically
+with its authoritative terminal, including cancellation and recovered termination.
+Failed storage cleanup prevents terminal completion and must remain visible.
+The current instructions, Skills and guidance supply the new prompt. The host
+restores the native conversation; the Agent Flow relays metadata and does not
+read native storage, replay a transcript or synthesize an earlier answer.
+
+Only the final invocation output carries one of these closed receipts:
+
+```ts
+{ status: "retained", reference: "opaque-UUID" }
+{ status: "unavailable", reason: "not-cleanly-closed" | "missing-history" | "unsupported-history" | "capacity" }
+```
+
+`retained` means that the final turn settled, the native client actually exited
+cleanly, all owned execution was fenced, and bounded validated state was
+collected, cleaned up and committed atomically. Accepted ACP close, a completed
+answer, channel EOF or controlled termination alone cannot establish retention.
+A successfully settled answer may therefore include an unavailable session receipt;
+the answer remains valid under its ordinary result checks. An invocation error
+does not return a usable successor reference.
+The required reason distinguishes ineligible native exit, absent rollout,
+unsupported collected history and exhausted retention capacity. It is not a
+raw native error or information about another recipient's reference. Unexpected
+collection, storage and cleanup failures remain errors; the exact host behavior
+is defined in [Finite ACP](finite-acp.md#retained-native-state).
+
+Restoration requires the current grant and the same protected project,
+admitted recipient and ancestry, native slot, and exact provider/profile
+identity. Changing the accepted package or configuration can invalidate access
+to an earlier snapshot; a reference is identity, never permission. The host
+claims a reference once before native startup. A used, expired, foreign or
+unsupported reference fails visibly, with no fresh-conversation fallback or
+automatic retry. Failure after a claim does not make the old reference reusable.
+
+The initial host profile permits at most 16 available snapshots per project,
+each at most 8 MiB. References expire logically after 24 hours; expired state is
+pruned on the next store access, without promising automatic secure erasure.
+Active execution ownership outlives snapshot expiry. Credentials, native tools
+and arbitrary workspaces are outside retained state. Exact collection and
+restore requirements belong to [Finite ACP](finite-acp.md#retained-native-state).
+
+This is the synchronized source candidate contract. Installed-client
+save-and-restore qualification and publication of matching artifacts are
+separate requirements; the descriptor alone establishes neither.
+
+## Structured-output profile
 
 The alpha accepts one bounded recursive structured-output profile. Its root is
 a nonempty closed object with the FLOW Schema/1 `$schema` identifier. Every
@@ -98,7 +301,7 @@ Values may be:
 A nullable string enum includes `null` and at least one string in `enum`;
 otherwise its `type` declaration and allowed values would disagree.
 
-The complete schema is limited to eight schema levels including the root, 128
+The canonical JSON/1 schema is limited to 256 KiB, eight schema levels including the root, 128
 properties across all objects, and 256 enum members across all string enums.
 Property names and enum strings together may contain at most 120,000 Unicode
 characters; an enum with more than 250 members has a 15,000-character limit.
@@ -109,7 +312,7 @@ profile. Use an unstructured call for other result shapes. Unsupported schemas
 fail before provider dispatch rather than being translated approximately.
 
 `operationId` has the ordinary Run/1 meaning: use one stable identity for one
-logical call. Reusing it with changed slot, method, or input conflicts. Work
+logical call. Reusing it with changed slot, input, intent, or channel mappings conflicts. Work
 which may have been dispatched is fenced and reported honestly; Jig does not
 silently send it again. Cancellation fences Jig's local provider worker, but
 cannot retract a request which the remote provider has already accepted.
@@ -123,13 +326,19 @@ skills/<name>/SKILL.md
 skills/<name>/...optional supporting files...
 ```
 
-`skills` contains unique LocalNames in ascending byte order. Jig projects only
-the selected subtrees as fresh read-only guidance for that one Agent call. All
-projected files must be UTF-8 text. Selection is limited to 64 skills, 1,024
-files, and 1 MiB of file content; the complete rendered provider input also
-has a 1 MiB bound. Omitting `skills`, or passing `[]`, selects none. A skill
-grants no Flow, filesystem, network, tool, or host authority, and unselected
-package files are not projected.
+The caller reads the selected files and passes their complete contents in
+`skills`; names are not requests for the host to open files. The optional
+`readPackageSkills(packageRoot, names)` library reader performs bounded reads
+of explicit trees from the caller's package. Under Jig these are the caller's
+captured source files. A caller may also supply constructed text: names and
+paths describe that data, not independently host-attested provenance.
+
+Skill names and file paths must be unique; every Skill contains `SKILL.md`.
+The shared method sorts them by UTF-8 bytes. Skill files must be UTF-8 text.
+Skills and guidance share 64 groups, 1,024 files/text items, and 1 MiB of
+content including instructions. The rendered provider input has its own
+1 MiB bound. Omission or `[]` supplies no Skills. Content grants no Flow,
+filesystem, network, tool, or host authority.
 
 `SKILL.md` and its supporting files are plain UTF-8 guidance. Jig does not
 require frontmatter or define another skill metadata grammar.
@@ -141,11 +350,12 @@ matching exact Binding-local child slot:
 
 ```ts
 import { handle, type JsonValue } from "@jigging/flow";
+import { checkAgentResult } from "@jigging/agent-method";
+import { readPackageSkills } from "@jigging/agent-method/skills";
 
 type AgentResult = {
-  readonly outcome: "completed" | "blocked" | "limit";
-  readonly text: string;
-  readonly structured?: { readonly route: "billing" | "technical" };
+  readonly outcome: "done" | "blocked" | "limit";
+  readonly output: { readonly text: string; readonly structured?: { readonly route: "billing" | "technical" } };
 };
 
 const routeSchema = {
@@ -159,28 +369,27 @@ const routeSchema = {
 } as const;
 
 await handle(async (run) => {
-  const agent = await run.callCapability({
+  const agent = checkAgentResult(await run.call({
     operationId: "choose-route",
     slot: "agent",
-    method: "run",
     input: {
       instructions:
         `Choose billing or technical for this ticket: ${JSON.stringify(run.input)}`,
-      skills: ["ticket-routing"],
+      skills: await readPackageSkills(new URL('./', import.meta.url), ['ticket-routing']),
       responseSchema: routeSchema,
     },
-  }) as AgentResult;
+  }), routeSchema) as AgentResult;
 
-  if (agent.outcome !== "completed" || agent.structured === undefined) {
+  if (agent.outcome !== "done" || agent.output.structured === undefined) {
     return {
       outcome: "done",
       output: { routed: false, agent } as JsonValue,
     };
   }
 
-  const child = await run.runChildFlow({
+  const child = await run.call({
     operationId: "dispatch-route",
-    slot: agent.structured.route,
+    slot: agent.output.structured.route,
     input: run.input,
   });
 
@@ -209,17 +418,20 @@ The model returns data, not authority. The response schema limits its answer
 to `billing` or `technical`, and Jig resolves that name only through the
 Binding's exact same-generation slots. Either child may use Agent Run itself.
 A slot may instead name `binding:<id>` to invoke a specialist with that
-Binding's own admitted settings. Selected child Bindings must have no child
-slots; parent settings, slots, and capabilities are never inherited implicitly.
+Binding's own admitted settings and slots, within the bounded call tree below.
+Parent settings, slots, and native authority are never inherited implicitly.
 
 Each specialist selects Skills from its own admitted package for each Agent
 call. A fresh call does not include the parent's or another specialist's
 conversation unless the application explicitly passes that content as input.
-Provider selection and credentials remain host-owned; no new Skill or provider
-configuration field is added to Bindings.
+Native restoration can access only the current recipient's authorized snapshot;
+it does not inherit another specialist's conversation.
+The operator selects the implementation and its grants. The caller does not
+inherit the selected implementation's credentials or source files.
 
-The root allows two sibling Flow calls or one exclusive effect; a leaf allows
-one Agent or command effect. The root reserves each branch's resources before
+The root allows up to two sibling Flow calls or one exclusive effect; a child allows
+one active Flow or effect, within the branch depth allowed by the
+[aggregate reservation budget](project-policy.md). The root reserves each branch's resources before
 dispatch, including its effect capacity. Parent cancellation
 and the inherited deadline govern the child and its Agent worker; cleanup
 must settle both before the parent result becomes terminal. As with root Agent
@@ -229,191 +441,27 @@ Exactly one child is a property of this example's completed path, not a new
 host rule. A blocked or limited Agent result reaches no child, and another
 Flow may make sequential calls or two parallel sibling calls within its admitted slots.
 
-## Alpha host implementations
+## Replaceable implementations
 
-Every implementation below serves the same Agent Run contract. A Flow cannot
-select a client, endpoint, model, executable, or credential. Those are trusted
-host configuration used by both `jig review` and `jig run`.
+Two ordinary packages offer the same Agent Run contract:
 
-The installed CLI selects the Agent in this order: an explicit
-`JIG_AGENT_CLIENT` (`codex`, `claude`, `pi`, or `api`), then the operator's
-remembered choice for the canonical project directory. Credentials alone
-never select a client. With neither selection, interactive `jig review`
-prompts only when a captured target uses Agent Run, before dependency
-preparation. Unavailable clients are explained but cannot be selected.
-An empty answer, end of input, or interruption does not select a default.
-Noninteractive review requires an explicit or remembered choice; `--yes`
-authorizes approval, not client selection. Run and recovery never prompt.
+- `@jigging/agent-method` prepares nonstreaming Chat Completions or Responses
+  requests through an exact [HTTP grant](http-request.md).
+- `@jigging/agent-acp` drives the finite ACP dialogue through an exact
+  [native resource grant](finite-acp.md), including optional public updates.
 
-The chooser checks local configuration and runtime support without issuing
-model requests. It distinguishes native live updates from API final results;
-it does not claim remote readiness. Existing Agent Run declarations make
-updates optional and do not establish whether Flow code will request them.
-Do not infer that requirement from code text or an application output channel.
-No additional Flow metadata or authoring interface is required for selection.
+A [default provider](project-sdk.md#default-providers-by-contract) or explicit Binding route
+selects the package. Both execute as ordinary keyless, network-isolated Flows;
+their granted resources hold credentials and enforce dispatch and lifetime.
+Jig does not implement a hidden Agent method or fall back to another provider.
 
-A prompted choice is remembered immediately as operator preference, separately
-from approval. The installed CLI stores only the client name under
-`$XDG_STATE_HOME/jig/agent-choices` (default `~/.local/state/jig/agent-choices`),
-keyed by canonical project directory. State must be operator-owned and outside
-the project; credentials, model configuration and consent are not stored there.
-A failed or declined review can leave this preference, but cannot grant Run
-authority. Explicit selection overrides the preference without rewriting it.
-A missing or invalid selected client never silently falls back to another.
-Changing provider identity still requires ordinary review.
+The HTTP package's settings choose its model, token cap, API format and strict
+schema preference. The native package follows the resource's reviewed client
+configuration. Settings guide method behavior; authority comes from the grant.
+An operator requiring HTTP body restrictions against modified method code
+uses the grant's `bodySchema`.
 
-Selecting `api` uses the official OpenAI JavaScript SDK for one direct API
-call. For any compatible endpoint, the operator may supply:
-
-| Variable | Meaning |
-| --- | --- |
-| `OPENAI_API_KEY` | Required secret presented to the selected endpoint |
-| `OPENAI_MODEL` | Required endpoint-specific model identifier |
-| `OPENAI_BASE_URL` | Optional HTTPS API root; defaults to `https://api.openai.com/v1` |
-| `OPENAI_API` | Optional wire API: `responses` (default) or `chat-completions` |
-
-The base URL cannot contain credentials, a query, or a fragment. Jig supplies
-no default model. The API, endpoint, and model are reviewed provider identity;
-the key is not. `responses` uses the SDK's non-streaming Responses call.
-`chat-completions` uses its non-streaming Chat Completions call. When the Agent
-asks for structured data, the endpoint must accept the strict JSON Schema
-request shape used by the selected API. Compatibility here means that the
-endpoint implements this bounded request and response subset; it is not a
-claim of complete OpenAI API compatibility. Jig disables SDK retries and
-normalizes only one bounded final response.
-
-An OpenRouter endpoint can be selected with the same variables when it
-implements the selected subset. A direct Mistral endpoint uses those same
-variables with `OPENAI_API=chat-completions`. Compatible endpoints do not create
-a separate provider object or default model.
-
-As a convenience for OpenRouter's fixed endpoint, Jig also accepts the natural
-`OPENROUTER_API_KEY` and `OPENROUTER_MODEL` pair after selecting `api`. It selects
-`https://openrouter.ai/api/v1` using Chat Completions. Combining that pair with
-`OPENAI_*` is ambiguous and unavailable. The natural names and the equivalent
-generic endpoint configuration produce the same reviewed provider identity.
-
-Native Agent clients use one private Agent Client Protocol (ACP) mechanism.
-Each client contributes only the configuration needed to launch its own ACP
-adapter:
-
-| Client | Host selection | Subscription configuration | API configuration |
-| --- | --- | --- | --- |
-| Codex | `JIG_AGENT_CLIENT=codex`; optional absolute `CODEX_PATH` | Operator-owned, file-backed `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), created by `codex login`; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
-| Claude Code | `JIG_AGENT_CLIENT=claude`; optional absolute `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
-| Pi | `JIG_AGENT_CLIENT=pi`; optional absolute `PI_PATH` | `PI_PROVIDER` and `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
-
-The current Pi profile accepts the official self-contained Linux x64 Pi
-0.84.4 release layout. It does not interpret the multi-file npm installation
-or make Node part of Jig's runtime closure.
-
-Jig snapshots the operator environment before loading project code. An explicit
-`CODEX_PATH`, `CLAUDE_PATH`, or `PI_PATH` selects that client's executable and
-must be an absolute path; an invalid override fails without fallback. Otherwise,
-Jig searches the operator's `PATH` in order for `codex`, `claude`, or `pi`.
-Empty and relative entries are ignored. Implicit discovery excludes the project
-tree and ancestor `node_modules` directories, including symlink routes through
-those locations. Operator-managed symlinks are supported. Shell aliases are not
-executables, and discovery does not make shell wrappers or JavaScript launchers
-supported native clients.
-
-The selected regular executable and client-specific support files receive the
-same validation and identity checks with either selection method. Invalid client
-support fails without trying another installation. Review shows
-the native client and its resolved operator executable path. Launch uses the
-resolved executable checked against admitted provider identity, without repeating
-host PATH discovery. Installed-byte change detection follows the operator's
-[installation verification policy](project-policy.md#installation-verification-policy).
-Default cached verification detects ordinary file changes; fast mode can reuse
-an older identity for changed bytes at the same selected path.
-
-All three native adapters inspect Linux x86-64 ELF executables. Codex and
-Claude Code also accept the declarative `makeBinaryWrapper` form which preserves
-arguments and prefixes PATH; Pi requires its unwrapped standalone executable.
-Arbitrary shell/JavaScript wrappers, wrapper flags or environment changes, and nested
-wrappers are unsupported. Jig reads installation metadata without executing the
-client during review. It retains the wrapped executable, ELF interpreter, and
-transitive shared libraries as individual regular files at their installation
-paths. Library resolution uses ELF RUNPATH/RPATH, `$ORIGIN`, the selected
-interpreter’s directory (including its canonical location), and supported Linux
-loader locations; it does not import ambient loader variables or whole runtime
-directories. Missing, malformed, project-selected, or unsupported dependencies
-fail closed. Each executable's runtime dependency walk is bounded to 128 file
-destinations. Pi's matching manifest and themes remain beside its native
-executable and cannot be selected through the project tree. Bun's private loader
-settings are removed before each native client starts, so its libraries use
-the reviewed installation's ABI.
-
-For Codex's nested sandbox, Jig selects the first eligible unprivileged `bwrap`
-from the wrapper's declared PATH prefix followed by operator PATH, with the
-same project and dependency-directory exclusions as client discovery. With no
-eligible helper, it selects the installation's matching `codex-resources/bwrap`
-beside the executable directory or its parent. A PATH-selected helper is never
-substituted at the vendor bundle path. `JIG_BWRAP_PATH` selects only Jig's outer
-containment tool. Executable, wrapper, helper, shared-library bytes, and their
-contained paths enter provider identity and are revalidated before launch under
-that installation verification policy.
-A bundled fallback stays off PATH so Codex applies its vendor integrity check.
-For a PATH-selected helper, only its directory enters the initial contained
-PATH; other operator PATH entries do not become filesystem authority.
-
-Subscription mode requires Codex's `cli_auth_credentials_store = "file"`
-setting. Jig reads the current operator's file during review and Run, validates
-it, discards its refresh token, and gives the contained client only a
-short-lived non-refreshable bearer. It never embeds a development credential
-or mounts the operator's `CODEX_HOME`. A keyring-backed login is unavailable
-because the Agent process receives no host credential-store authority.
-
-Native Codex's API-key path is Responses-compatible only; selecting
-`chat-completions` fails closed. Claude Code uses its Anthropic-compatible API
-path. `ANTHROPIC_API_KEY` selects API-key authentication;
-`ANTHROPIC_AUTH_TOKEN` selects bearer-token authentication, with the API-key
-channel explicitly blanked inside the client process. Supplying both nonempty
-credentials is ambiguous and fails closed. Pi delegates an API-key selection
-to the exact built-in provider named by `PI_PROVIDER`; Jig does not add an
-endpoint or provider registry. Pi
-subscription support is currently bounded to its `anthropic` and
-`openai-codex` providers. No native profile hard-codes a production model.
-
-Jig reads native credentials in trusted host code and gives the contained
-client only the bounded credential projection needed for one provider
-lifetime. Credential sources are not mounted. The selected non-secret client,
-API, endpoint, model, and exact executable/support identities enter provider
-identity and the reviewed Plan; secrets do not. Changing non-secret behavior
-requires another `jig review` and approval, while rotating only the selected
-credential does not.
-
-The Flow remains in its ordinary network-isolated, keyless sandbox. Direct API
-work and native ACP clients run in separate bounded scopes with inherited
-network access. Each native client starts in an empty work directory. Jig's ACP
-peer advertises no filesystem, terminal, or MCP client capability, supplies no
-MCP servers, and rejects permission requests. The fixed client profiles also
-disable their tool, extension, plugin, and native-skill surfaces. Selected
-FLOW skills are rendered into the call instructions as bounded read-only text;
-they are not exposed as a client filesystem or native skill installation.
-
-These workers have ordinary inherited network access rather than
-endpoint-filtered egress; their exact trusted bytes and configuration, not a
-network-policy framework, limit what they do. A direct Responses call asks for
-`store: false`; the Chat Completions path makes no equivalent retention claim,
-and neither setting is a promise about an endpoint's retention or training
-policy.
-
-If the selected client, executable support, credential, or model is missing or
-invalid, reviewing an Agent-bearing target reports it unavailable. A
-capability-free target in an already admitted generation remains runnable
-because its recipe does not depend on the Agent implementation.
-
-`jig review` authenticates and admits the selected local configuration. It does
-not send a remote health-check request, so `ready` does not assert that a model
-endpoint is currently reachable or accepting requests.
-
-Root `jig run --timeout DURATION` bounds the complete sequence, including the
-Agent call and any selected child. The default is 30 seconds and the maximum
-is 24 hours; neither an API worker, native client, nor child can extend the
-root's absolute deadline. Cancellation fences Jig's complete local Agent
-scope, though it cannot retract a remote request already accepted.
-
-There is no public provider registry or SPI, package-selected provider profile,
-model selector, semantic catalogue, `SemanticChoice`, Agent session,
-Agent-authored Flow identity, or general routing framework.
+See [Choose an Agent](../guide/agents.md) for configuration and
+[Finite ACP](finite-acp.md#native-client-profiles) for native installation,
+authentication and containment limits. Review does not perform a remote
+health check. A ready local plan does not assert model availability or quality.

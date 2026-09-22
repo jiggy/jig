@@ -1,0 +1,46 @@
+# FLOW contract authoring
+
+## Purpose
+
+Make reusable contracts practical to edit without requiring a source compiler
+in FLOW consumers. This package owns the bounded TypeSpec mapping prototype;
+it returns artifacts to Jig's separately owned managed publisher.
+
+## Ownership
+
+- Source, tests and fixtures qualify optional TypeSpec-to-Schema/1 compilation.
+- The package README owns its supported authoring profile and limitations.
+- FLOW specifications continue to own native descriptor semantics.
+
+## Local Contracts
+
+- Compilation consumes explicit source and returns artifacts as data. It never
+  edits a project, admits execution, fetches imports or runs package extensions.
+- Preserve requiredness, constraints and complete outcome/output correlation.
+  Reject unsupported source and Agent projections rather than weakening them.
+  Projection filenames must not replace reserved invocation or settings schema owners.
+- Generated types are editor assistance, not validation or authority.
+- Keep the complete drafter fixture and honest compilerless consumption checks.
+- Named invocation identity and channel agreements can be authored together;
+  generated channel closures contain only reachable definitions. Keep channel
+  semantics explicit and validate complete artifact batches before publication.
+  `compileContract` accepts optional `channelContracts` paths supplied from an
+  offline package. It emits only authored outputs; the consumer must supply and
+  validate the referenced agreements before publishing the package. The compiler
+  never reads those paths or regenerates borrowed agreements.
+- `@invocation` options may include the named single-form contract's `features`
+  catalog. Preserve its names/descriptions and omission versus an empty map;
+  reject anonymous catalogs and native bound violations. Catalogs affect the
+  descriptor, not generated validation types, support claims or granted powers.
+
+## Work Guidance
+
+- Keep publication and project ownership in Jig; this library remains standalone.
+- Use only the pinned compiler and bundled authoring definitions.
+
+## Verification
+
+- `just authoring::test` builds the package and runs its Node mapping/lifecycle
+  tests and generated-type fixtures.
+
+## Child DOX Index

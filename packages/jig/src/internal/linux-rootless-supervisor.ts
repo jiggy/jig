@@ -1,7 +1,8 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync, readFileSync, readSync, statSync, writeSync } from 'node:fs'
 import {
+  type FileHandle,
   link,
   mkdir,
   open,
@@ -10,8 +11,8 @@ import {
   stat,
   unlink,
   writeFile,
-  type FileHandle,
 } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { connect, type Socket } from 'node:net'
 import { posix } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
@@ -214,6 +215,10 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     if (stopReason !== undefined)
       throw new Error(`rootless launch stopped before spawn: ${stopReason}`)
 
+    restrictInheritedDescriptors(
+      configuration.bunHostLibraryPath,
+      configuration.capturedInputs.map((file) => file.fd),
+    )
     const launched = spawn(
       configuration.bunPath,
       [
@@ -356,6 +361,10 @@ async function enterMain(arguments_: readonly string[]): Promise<void> {
   )
   if (inputDescriptors.some((fd, index) => fd !== 6 + index))
     throw new Error('invalid captured input descriptor order')
+  restrictInheritedDescriptors(process.env.LD_LIBRARY_PATH, [
+    ...(output ? [4, 5] : []),
+    ...inputDescriptors,
+  ])
   const child = spawn(bubblewrap!, bubblewrapArguments_, {
     cwd: '/',
     env: {},
@@ -400,6 +409,7 @@ async function innerMain(command: readonly string[], output = false): Promise<vo
     }
     closeSync(4)
   }
+  restrictInheritedDescriptors(SANDBOX_LIBRARY_PATH, [])
   const child = spawn(command[0]!, command.slice(1), {
     cwd: '/work',
     env: process.env,
@@ -408,6 +418,48 @@ async function innerMain(command: readonly string[], output = false): Promise<vo
   const exit = await childClose(child)
   if (exit.signal !== null) process.kill(process.pid, exit.signal as NodeJS.Signals)
   process.exitCode = exit.code ?? 1
+}
+
+/** Restrict the next exec without closing this trusted Bun process's live descriptors. */
+function restrictInheritedDescriptors(
+  libraryDirectory: string | undefined,
+  allowed: readonly number[],
+): void {
+  if (
+    libraryDirectory === undefined ||
+    !absolute(libraryDirectory) ||
+    libraryDirectory.includes(':') ||
+    allowed.some((fd) => !Number.isSafeInteger(fd) || fd < 3) ||
+    new Set(allowed).size !== allowed.length
+  )
+    throw new Error('invalid inherited descriptor policy')
+  const ffi = createRequire(import.meta.url)('bun:ffi') as {
+    dlopen(
+      path: string,
+      symbols: Record<string, { args: string[]; returns: string }>,
+    ): {
+      symbols: Record<string, (...args: number[]) => number>
+      close(): void
+    }
+  }
+  const controls = ffi.dlopen(posix.join(libraryDirectory, 'libc.so.6'), {
+    close_range: { args: ['u32', 'u32', 'u32'], returns: 'i32' },
+    fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
+  })
+  try {
+    // CLOEXEC operates on the shared descriptor table; UNSHARE would leave other
+    // Bun threads able to spawn with the old table. Never mutate the coordinator.
+    if (controls.symbols.close_range!(3, 0xffffffff, 4) !== 0)
+      throw new Error('inherited descriptor restriction is unavailable')
+    for (const fd of allowed) {
+      const flags = controls.symbols.fcntl!(fd, 1, 0)
+      if (flags < 0 || controls.symbols.fcntl!(fd, 2, flags & ~1) !== 0)
+        throw new Error('required descriptor handoff is unavailable')
+    }
+  } finally {
+    controls.close()
+  }
+  // Callers spawn synchronously next, with exactly the allowed setup/input slots.
 }
 
 function bubblewrapArguments(configuration: Configuration): string[] {

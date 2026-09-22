@@ -1,0 +1,12 @@
+{
+  "name": "incident-brief-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/agent-acp": "workspace:*"
+  },
+  "devDependencies": {
+    "@jigging/flow": "workspace:*",
+    "@jigging/agent-method": "workspace:*"
+  }
+}

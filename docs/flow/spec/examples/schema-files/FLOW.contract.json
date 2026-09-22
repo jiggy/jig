@@ -1,0 +1,95 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "input": {
+    "title": "Ticket input",
+    "type": "object",
+    "properties": {
+      "ticketId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "request": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 65536
+      },
+      "qualityReferences": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "maxItems": 32
+      }
+    },
+    "required": ["ticketId", "request"],
+    "additionalProperties": false
+  },
+  "result": {
+    "title": "Gauntlet result",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "done"
+          },
+          "output": {
+            "$ref": "#/$defs/doneOutput"
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "blocked"
+          },
+          "output": {
+            "$ref": "#/$defs/blockedOutput"
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "outcomes": {
+    "blocked": "The requested work needs additional evidence or direction."
+  },
+  "$defs": {
+    "doneOutput": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": ["artifact", "score"],
+      "additionalProperties": false
+    },
+    "blockedOutput": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": ["reason"],
+      "additionalProperties": false
+    }
+  }
+}

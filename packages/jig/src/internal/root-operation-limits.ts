@@ -9,16 +9,43 @@ export const PRIVATE_FLOW_RESOURCE_CEILINGS = Object.freeze({
 })
 export const PRIVATE_AGENT_PROVIDER_PIDS = 128
 
-/** Fixed aggregate payload budget; trusted supervisors remain outside it. */
+const ROOT_ENVELOPE = Object.freeze({
+  memoryBytes: 1792 * 1024 * 1024,
+  pids: 576,
+  cpuQuotaMicros: 350_000,
+  cpuPeriodMicros: 100_000,
+})
+
+// One root, one full effect allowance, then as many Flow levels as fit.
+// This is an admission bound, not a new allowance added to the root budget.
+export const PRIVATE_MAX_CHILD_FLOW_LEVELS = Math.floor(
+  Math.min(
+    ROOT_ENVELOPE.memoryBytes / PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes - 2,
+    (ROOT_ENVELOPE.pids - PRIVATE_AGENT_PROVIDER_PIDS) / PRIVATE_FLOW_RESOURCE_CEILINGS.pids - 1,
+    ROOT_ENVELOPE.cpuQuotaMicros /
+      ROOT_ENVELOPE.cpuPeriodMicros /
+      (PRIVATE_FLOW_RESOURCE_CEILINGS.cpuQuotaMicros /
+        PRIVATE_FLOW_RESOURCE_CEILINGS.cpuPeriodMicros) -
+      2,
+  ),
+)
+
 export const PRIVATE_ROOT_RESOURCE_POLICY = Object.freeze({
   siblingFlows: 2,
   leafEffects: 1,
-  memoryBytes: 1280 * 1024 * 1024,
-  pids: 448,
-  cpuQuotaMicros: 250_000,
-  cpuPeriodMicros: 100_000,
+  childFlowLevels: PRIVATE_MAX_CHILD_FLOW_LEVELS,
+  ...ROOT_ENVELOPE,
   reservation: 'whole-branch-until-cleanup' as const,
 })
+
+export function isPrivateBranchDepth(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= PRIVATE_MAX_CHILD_FLOW_LEVELS
+  )
+}
 
 export function isPrivateChildFlowAllocation(value: JsonValue): boolean {
   return (
@@ -29,14 +56,16 @@ export function isPrivateChildFlowAllocation(value: JsonValue): boolean {
   )
 }
 
-/** Reserve a Flow plus its largest possible effect before either can start. */
-export function privateRootBranchReservation(branches: number) {
-  if (!Number.isSafeInteger(branches) || branches < 0) throw new TypeError('Invalid branch count.')
+/** Reserve each branch's Flow levels and largest effect before dispatch. */
+export function privateRootBranchReservation(depths: readonly number[]) {
+  if (depths.some((depth) => !isPrivateBranchDepth(depth)))
+    throw new TypeError('Invalid branch depth.')
   const flow = PRIVATE_FLOW_RESOURCE_CEILINGS
+  const flows = depths.reduce((sum, depth) => sum + depth, 0)
   return Object.freeze({
-    memoryBytes: flow.memoryBytes * (1 + branches * 2),
-    pids: flow.pids + branches * (flow.pids + PRIVATE_AGENT_PROVIDER_PIDS),
-    cpuQuotaMicros: flow.cpuQuotaMicros * (1 + branches * 2),
+    memoryBytes: flow.memoryBytes * (1 + flows + depths.length),
+    pids: flow.pids * (1 + flows) + depths.length * PRIVATE_AGENT_PROVIDER_PIDS,
+    cpuQuotaMicros: flow.cpuQuotaMicros * (1 + flows + depths.length),
     cpuPeriodMicros: flow.cpuPeriodMicros,
   })
 }
@@ -53,7 +82,11 @@ export function canReservePrivateRootOperation(
   // An exclusive effect (or other private ownership record) conservatively
   // reserves one whole branch too. Nested effects consume their parent's
   // already reserved capacity, never a fresh independent root budget.
-  const reserved = privateRootBranchReservation(allocations.length)
+  const depths = allocations.map((value) =>
+    isPrivateChildFlowAllocation(value) ? (value as Record<string, JsonValue>).flowDepth : 1,
+  )
+  if (depths.some((depth) => !isPrivateBranchDepth(depth))) return false
+  const reserved = privateRootBranchReservation(depths as number[])
   return (
     reserved.memoryBytes <= PRIVATE_ROOT_RESOURCE_POLICY.memoryBytes &&
     reserved.pids <= PRIVATE_ROOT_RESOURCE_POLICY.pids &&

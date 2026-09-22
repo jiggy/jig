@@ -108,8 +108,8 @@ headings. This motivates interpretation without inventing a model failure.
 ### 5:00–8:00 — Put an Agent behind the same boundary
 
 Build or explain `flows/map-agent/method.ts`. It requests a mapping from headings
-only, using the declared Agent capability. It returns column indices, not generated
-transformation code. Show its `FLOW.md` capability declaration briefly.
+only, using the declared ordinary Agent Flow. It returns column indices, not generated
+transformation code. Show its `flow.meta.json` Agent slot declaration briefly.
 
 Compare `bindings/code.ts` and `bindings/agent.ts`. Highlight the mapper target;
 keep the importer source visible and unchanged. These prepared Bindings are already
@@ -131,7 +131,7 @@ Suggested line:
 ### 8:00–10:00 — Combine code and interpretation
 
 Open `flows/map-mixed/method.ts`. Walk through the known-format code followed
-by an Agent capability call only for unfamiliar headings. Both live inside one
+by an ordinary Agent Flow call only for unfamiliar headings. Both live inside one
 leaf Flow. Agent `blocked`, `limit`, and execution failure propagate without retry.
 
 ```sh
@@ -203,7 +203,7 @@ separate examples with their own teaching purpose.
 Use a readable editor and terminal, with source and output side by side. A small
 conceptual diagram can show `import → mapper → converter → preview`. Reveal
 code, Agent, and mixed implementations inside the mapper box; indicate that the
-mixed implementation conditionally calls an Agent capability. This diagram illustrates
+mixed implementation conditionally calls an ordinary Agent Flow. This diagram illustrates
 authored call order, not a live graph UI or an autonomous router supplied by Jig.
 
 No frontend, upload widget, dashboard, database, Excel, OCR, live progress channel,

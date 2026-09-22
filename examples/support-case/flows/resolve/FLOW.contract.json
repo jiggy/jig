@@ -1,0 +1,157 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "outcomes": {
+    "blocked": "The assessment method cannot complete its work.",
+    "limit": "The assessment method reaches its limit."
+  },
+  "input": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "charges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "invoiceId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "amountCents": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "status": {
+                  "enum": ["settled", "refunded"]
+                }
+              },
+              "required": ["id", "invoiceId", "amountCents", "status"],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 32
+          }
+        },
+        "required": ["id", "charges"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["message", "account"],
+    "additionalProperties": false
+  },
+  "result": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "done"
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "disposition": {
+                "enum": ["credit_eligible", "no_credit", "manual_review"]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "reply": {
+                "type": "string"
+              },
+              "credit": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "chargeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "amountCents": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5000
+                      }
+                    },
+                    "required": ["chargeId", "amountCents"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "proposal": {
+                "type": "object",
+                "properties": {
+                  "chargeId": {
+                    "type": ["string", "null"],
+                    "maxLength": 80,
+                    "minLength": 1
+                  },
+                  "requestedCreditCents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                },
+                "required": ["chargeId", "requestedCreditCents"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["accountId", "disposition", "reason", "reply", "credit", "proposal"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "enum": ["blocked", "limit"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      }
+    ]
+  }
+}

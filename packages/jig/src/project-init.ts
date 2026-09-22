@@ -17,7 +17,9 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 }
 
 // Pair the generated source with its tested SDK, not a moving registry tag.
-const GREETING_SDK_VERSION = '0.1.0-alpha.10'
+const GREETING_SDK_VERSION = '0.1.0-alpha.11'
+const AGENT_ACP_VERSION = '0.1.0-alpha.1'
+export type ProjectInitAgent = 'codex' | 'claude' | 'pi'
 
 export type ProjectInitErrorCode =
   | 'JIG_NEW_INVALID'
@@ -105,9 +107,9 @@ export async function createFlow(project: string, name: string): Promise<string>
       .replace(/[^a-z0-9-]/g, '-')
       .slice(0, 64)
     const files: Record<string, string> = {
-      'FLOW.md': `---\nname: ${name}\ndescription: Describe what this method does.\n---\n\n# ${name}\n\nEdit this description and flow.ts to implement your method.\n`,
+      'flow.meta.json': `${JSON.stringify({ name, description: 'Describe what this method does.' }, null, 2)}\n`,
       'package.json': `${JSON.stringify({ name: `${projectName || 'jig'}-${name}-flow`, private: true, type: 'module', dependencies: { '@jigging/flow': sdk } }, null, 2)}\n`,
-      'flow.ts':
+      'FLOW.ts':
         'import { handle } from "@jigging/flow";\n\nawait handle(async (run) => {\n  return { outcome: "done", output: run.input };\n});\n',
     }
     for (const [file, content] of Object.entries(files)) {
@@ -142,6 +144,7 @@ export async function createProject(
   destination: string,
   fileSystem: ProjectInitFileSystem = DEFAULT_FILE_SYSTEM,
   bare = false,
+  agent?: ProjectInitAgent,
 ): Promise<void> {
   const target = resolve(destination)
   const created: Array<{ readonly kind: 'directory' | 'file'; readonly path: string }> = []
@@ -173,8 +176,11 @@ export async function createProject(
     }
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
-      ['jig.ts', renderJigModule()],
-      ...(!bare ? greetingFiles() : []),
+      ['jig.ts', renderJigModule(agent)],
+      ...(!bare
+        ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
+        : []),
+      ...(agent === undefined ? [] : agentFiles(agent)),
     ]
     for (const [name, contents] of files) {
       const path = join(target, name)
@@ -215,30 +221,82 @@ function errorCode(error: unknown): string | undefined {
   return typeof error.code === 'string' ? error.code : undefined
 }
 
-function renderJigModule(): string {
+function renderJigModule(agent?: ProjectInitAgent): string {
   return [
     'import { defineJig, discover } from "@jigging/jig";',
     '',
     'export default defineJig({',
     '  flows: discover("./flows"),',
     '  bindings: discover("./bindings"),',
+    ...(agent === undefined
+      ? []
+      : ['  defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" },']),
     '});',
     '',
   ].join('\n')
 }
 
+function agentFiles(client: ProjectInitAgent): readonly (readonly [string, string])[] {
+  return [
+    [
+      'package.json',
+      `${JSON.stringify({ private: true, dependencies: { '@jigging/agent-acp': AGENT_ACP_VERSION } }, null, 2)}\n`,
+    ],
+    [
+      'bindings/agent.ts',
+      [
+        'import { defineBinding } from "@jigging/jig";',
+        '',
+        'export default defineBinding({',
+        '  package: "npm:@jigging/agent-acp",',
+        `  slots: { native: { kind: "acp", client: "${client}" } },`,
+        '});',
+        '',
+      ].join('\n'),
+    ],
+    [
+      'README.md',
+      [
+        '# Your Jig project',
+        '',
+        `The ordinary Agent Flow uses your selected ${client} client. Its dependency is`,
+        'in `package.json`, its resource grant in `bindings/agent.ts`, and its project',
+        'selection in `jig.ts`. Change these ordinary files to adapt the selection.',
+        '',
+        'Configure the native installation and operator authentication described in',
+        'https://jig.md/guide/agents, then run:',
+        '',
+        '```sh',
+        'jig review --allow-resolution-network',
+        'jig run binding:agent --input \'{"instructions":"Explain one useful check."}\' --receive events',
+        '```',
+        '',
+        'Review prepares the declared dependency, shows its requested authority and',
+        'asks for approval. Resolution may contact dependency-selected network',
+        'destinations before approval; declining cannot undo those requests.',
+        'Keep an authored Bun lock when sharing reproducible dependencies.',
+        '',
+        'Initialization installs nothing, copies no credentials and approves no work.',
+        'Local readiness does not establish remote model availability. The result',
+        'and selected live updates are separate; cancellation does not undo remote work.',
+        '',
+      ].join('\n'),
+    ],
+  ]
+}
+
 function greetingFiles(): readonly (readonly [string, string])[] {
   return [
     [
-      'flows/hello/FLOW.md',
-      '---\nname: hello\ndescription: Greet the supplied string, or world for other input values.\n---\n\n# Hello\n\nAn editable first Flow. It needs no Agent or file access.\n',
+      'flows/hello/flow.meta.json',
+      '{"name":"hello","description":"Greet the supplied string, or world for other input values."}\n',
     ],
     [
       'flows/hello/package.json',
       `${JSON.stringify({ private: true, dependencies: { '@jigging/flow': GREETING_SDK_VERSION } }, null, 2)}\n`,
     ],
     [
-      'flows/hello/flow.ts',
+      'flows/hello/FLOW.ts',
       [
         'import { handle } from "@jigging/flow";',
         '',
@@ -266,7 +324,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'declining cannot undo those requests. It does not grant network access to Runs.',
         'Initialization itself makes no network requests and approves nothing.',
         '',
-        'Edit `flows/hello/flow.ts`, repeat `jig review --allow-resolution-network`,',
+        'Edit `flows/hello/FLOW.ts`, repeat `jig review --allow-resolution-network`,',
         'then run the accepted revision. Code edits can require fresh dependency',
         'resolution until you add an authored lock; unchanged reviews reuse admitted bytes.',
         'This ordinary package names the exact SDK revision tested with this Jig build.',

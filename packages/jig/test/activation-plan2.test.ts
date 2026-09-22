@@ -7,6 +7,7 @@ import {
   encodePrivateActivationCandidateV5,
   encodePrivateActivationPlanV2,
   privateActivationCandidateDigestV5,
+  privateActivationCandidateFlowDepth,
   privateActivationPlanDigestV2,
 } from '../src/internal/activation-admission.js'
 import {
@@ -24,6 +25,23 @@ import { canonicalJson, type JsonValue } from '../src/json.js'
 const encoder = new TextEncoder()
 
 describe('private Candidate/5', () => {
+  test('dispatch depth uses authenticated candidate routes and rejects fabricated candidates', () => {
+    const artifact = slottedCandidateFixture({ work: { kind: 'flow', path: 'flows/bug' } })
+    const parent = artifact.candidate.targets.find(
+      ({ request }) => request.target.kind === 'binding',
+    )!
+    expect(privateActivationCandidateFlowDepth(artifact, parent.request.target)).toBe(2)
+    expect(privateActivationCandidateFlowDepth(artifact, { kind: 'flow', path: 'flows/bug' })).toBe(
+      1,
+    )
+    expect(privateActivationCandidateFlowDepth(artifact, parent.request.target)).toBe(2)
+    expect(() =>
+      privateActivationCandidateFlowDepth({ ...artifact }, parent.request.target),
+    ).toThrow('strictly decoded')
+    expect(() =>
+      privateActivationCandidateFlowDepth(artifact, { kind: 'binding', id: 'absent' }),
+    ).toThrow('missing admitted')
+  })
   test('separates observed semantics from canonical final activation meaning', () => {
     const artifact = candidateFixture()
     const encoded = encodePrivateActivationCandidateV5(artifact)
@@ -134,8 +152,10 @@ describe('private Candidate/5', () => {
       ({ request }) => request.target.kind === 'binding',
     )!.request
 
-    expect(bugRequest.flowSlots).toEqual({ work: { kind: 'flow', path: 'flows/bug' } })
-    expect(Object.isFrozen(bugRequest.flowSlots)).toBeTrue()
+    expect(bugRequest.slots).toEqual({
+      work: { kind: 'flow', target: { kind: 'flow', path: 'flows/bug' } },
+    })
+    expect(Object.isFrozen(bugRequest.slots)).toBeTrue()
     expect(questionRequest.digest).not.toBe(bugRequest.digest)
     expect(question.candidate.activationMeaningDigest).not.toBe(
       bug.candidate.activationMeaningDigest,
@@ -147,7 +167,9 @@ describe('private Candidate/5', () => {
     const encoded = encodePrivateActivationCandidateV5(bug)
     const mismatched = json(encoded.candidate)
     const binding = mismatched.targets.find(({ request }: any) => request.target.kind === 'binding')
-    binding.request.flowSlots = { work: { kind: 'flow', path: 'flows/question' } }
+    binding.request.slots = {
+      work: { kind: 'flow', target: { kind: 'flow', path: 'flows/question' } },
+    }
     binding.request.digest = requestDigest(binding.request)
     mismatched.activationMeaningDigest = activationMeaningDigest(
       mismatched.observedSemanticDigest,
@@ -156,7 +178,7 @@ describe('private Candidate/5', () => {
     expectInvalidCandidate(
       encoded,
       mismatched,
-      'Binding configuration does not match its lock projection',
+      'activation request invocation routes do not match its lock projection',
     )
 
     const direct = json(encoded.candidate)
@@ -164,7 +186,9 @@ describe('private Candidate/5', () => {
       ({ request }: any) =>
         request.target.kind === 'flow' && request.packagePath === 'flows/router',
     )
-    directTarget.request.flowSlots = { work: { kind: 'flow', path: 'flows/bug' } }
+    directTarget.request.slots = {
+      work: { kind: 'flow', target: { kind: 'flow', path: 'flows/bug' } },
+    }
     directTarget.request.digest = requestDigest(directTarget.request)
     direct.activationMeaningDigest = activationMeaningDigest(
       direct.observedSemanticDigest,
@@ -173,7 +197,7 @@ describe('private Candidate/5', () => {
     expectInvalidCandidate(
       encoded,
       direct,
-      'direct Flow activation request must have empty configuration',
+      'activation request invocation routes do not match its lock projection',
     )
   })
 
@@ -428,12 +452,15 @@ describe('private Plan/2', () => {
       ({ request }) => request.target.kind === 'binding',
     )!.request
 
-    expect(request.flowSlots).toEqual({
+    expect(request.slots).toEqual({
+      bug: { kind: 'flow', target: { kind: 'flow', path: 'flows/bug' } },
+      question: { kind: 'flow', target: { kind: 'flow', path: 'flows/question' } },
+    })
+    expect(Object.isFrozen(request.slots)).toBeTrue()
+    expect(reopenedPlan.proposed.lock.bindings.router!.slots).toEqual({
       bug: { kind: 'flow', path: 'flows/bug' },
       question: { kind: 'flow', path: 'flows/question' },
     })
-    expect(Object.isFrozen(request.flowSlots)).toBeTrue()
-    expect(reopenedPlan.proposed.lock.bindings.router!.slots).toEqual(request.flowSlots)
   })
 
   test('rejects mismatched embedded evidence and alternate encodings', () => {
@@ -624,7 +651,7 @@ function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPa
       mode: 'run',
       packagePath: path,
       package: { kind: 'flow-package/1', digest: digest(`package:${path}`) },
-      entrypoint: { path: 'flow.py', suffix: 'py' },
+      entrypoint: { path: 'FLOW.py', suffix: 'py' },
       settings: {},
       attachments: {},
     }),
@@ -731,7 +758,7 @@ function slottedCandidateFixture(
       mode: 'run',
       packagePath: path,
       package: { kind: 'flow-package/1', digest: packages[path].digest },
-      entrypoint: { path: 'flow.ts', suffix: 'ts' },
+      entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
       settings: {},
       attachments: {},
     }),
@@ -748,9 +775,11 @@ function slottedCandidateFixture(
         mode: 'run',
         packagePath: 'flows/router',
         package: { kind: 'flow-package/1', digest: packages['flows/router'].digest },
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: { style: 'brief' },
-        flowSlots: slots,
+        slots: Object.fromEntries(
+          Object.entries(slots).map(([name, target]) => [name, { kind: 'flow', target }]),
+        ),
         attachments: {},
       }),
       disposition: {
@@ -832,7 +861,7 @@ function expectInvalidPlan(plan: unknown, message: string): void {
 }
 
 function activationRequest(value: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: 'activation-request/4', capabilities: {}, flowSlots: {}, ...value }
+  const request = { kind: 'activation-request/4', slots: {}, ...value }
   return {
     ...request,
     digest: privateDomainDigest('JIG-Activation-Request/4', request as unknown as JsonValue),

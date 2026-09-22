@@ -13,8 +13,8 @@ describe('private Bun package input', () => {
   test('accepts a package-local implementation without native dependencies', async () => {
     await withPackage(
       {
-        'FLOW.md': metadata(),
-        'flow.ts':
+        'flow.meta.json': metadata(),
+        'FLOW.ts':
           'import { readFile } from "node:fs/promises"; import "./helper.ts"; void readFile;\n',
         'helper.ts': 'export const value = 1;\n',
       },
@@ -27,8 +27,8 @@ describe('private Bun package input', () => {
   test('accepts the ordinary package.json plus bun.lock shape', async () => {
     await withPackage(
       {
-        'FLOW.md': metadata(),
-        'flow.ts': 'import { z } from "zod"; void z;\n',
+        'flow.meta.json': metadata(),
+        'FLOW.ts': 'import { z } from "zod"; void z;\n',
         'package.json': '{"private":true,"dependencies":{"zod":"4.1.5"}}\n',
         'bun.lock':
           '{"lockfileVersion":1,"workspaces":{"":{"dependencies":{"zod":"4.1.5"}}},"packages":{}}\n',
@@ -46,8 +46,8 @@ describe('private Bun package input', () => {
   test('does not require a lock for an inert package.json', async () => {
     await withPackage(
       {
-        'FLOW.md': metadata(),
-        'flow.ts': 'export {};\n',
+        'flow.meta.json': metadata(),
+        'FLOW.ts': 'export {};\n',
         'package.json': '{"private":true,"type":"module"}\n',
       },
       async (captured) => {
@@ -80,8 +80,8 @@ describe('private Bun package input', () => {
   ])('rejects incomplete or generated dependency input: $code', async ({ files, code, path }) => {
     await withPackage(
       {
-        'FLOW.md': metadata(),
-        'flow.ts': 'export {};\n',
+        'flow.meta.json': metadata(),
+        'FLOW.ts': 'export {};\n',
         ...files,
       },
       async (captured) => {
@@ -118,7 +118,11 @@ describe('private Bun package input', () => {
   ])('rejects known unsupported missing-lock inputs before resolution: %j', async (manifest) => {
     await withPackage({ 'package.json': JSON.stringify(manifest) }, async (captured) => {
       await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
-        code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+        code:
+          'PACKAGE_BUN_MANIFEST_' +
+          ('overrides' in manifest || 'workspaces' in manifest || 'patchedDependencies' in manifest
+            ? 'FIELD'
+            : 'SOURCE'),
         path: 'package.json',
       })
     })
@@ -141,8 +145,8 @@ describe('private Bun package input', () => {
   test('rejects malformed package.json', async () => {
     await withPackage(
       {
-        'FLOW.md': metadata(),
-        'flow.ts': 'export {};\n',
+        'flow.meta.json': metadata(),
+        'FLOW.ts': 'export {};\n',
         'package.json': 'not json\n',
         'bun.lock': '{}\n',
       },
@@ -157,7 +161,10 @@ describe('private Bun package input', () => {
 })
 
 function metadata(): string {
-  return '---\nname: dependency-fixture\ndescription: Exercises private Bun input policy.\n---\n'
+  return JSON.stringify({
+    name: 'dependency-fixture',
+    description: 'Exercises private Bun input policy.',
+  })
 }
 
 async function withPackage(

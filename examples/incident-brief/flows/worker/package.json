@@ -1,0 +1,9 @@
+{
+  "name": "incident-brief-worker-flow",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "workspace:*",
+    "@jigging/agent-method": "workspace:*"
+  }
+}

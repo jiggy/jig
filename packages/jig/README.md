@@ -39,21 +39,35 @@ repository stays unchanged.
 Project commands:
 
 ```text
-jig init [--bare] <directory>
+jig init [--bare] <directory> [--agent [codex|claude|pi]]
 jig new <name>
-jig review [project] [--allow-resolution-network] [--yes] [--details]
-jig run [flow:path|binding:id] [options]
-jig inspect [flow:path|binding:id] [--json]
+jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
+jig run [flow:path|npm:package|binding:id] [options]
+jig inspect [flow:path|npm:package|binding:id] [--json]
+jig import-contract <source> <destination>
 jig completion <bash|zsh|fish>
 ```
 
-`review` shows changed policy; `--details` includes complete current and proposed
-policy. `--yes` approves without a prompt but does not grant resolution network
+`review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
 
 `new` adds ordinary editable source under `flows/<name>` without installation or
 approval. Interactive `jig run` can offer an explicit choice of approved targets;
 scripts must name a target. Shell completion also reads only approved targets.
+A Binding can pin a declared read attachment with
+`attachments: { reference: './resources/reference' }`. Review captures and
+identifies its files; Runs use those approved bytes without repeating `--attach`
+or exposing the live source directory. See [working with files](https://jig.md/guide/files).
+
+For service access, `slots: { reference: 'grant:documents' }` selects an independently
+configured operator grant. Jig enforces its exact endpoint, method, credential
+reference and limits outside the Flow. The same ordinary call can retrieve a
+document or support an editable API client without handing it a secret or a
+network socket. See [delegated HTTP access](https://jig.md/guide/http).
+
+`--generate-contracts` compiles authored TypeSpec contracts and publishes their
+managed JSON and types before the separate execution-approval question. Plain
+review does not compile; already-generated contracts need no compiler runtime.
 
 `inspect` lists approved targets or shows a target's retained interface without
 evaluating source, contacting providers, preparing dependencies or changing state.
@@ -69,13 +83,15 @@ as `blocked` is not task success even when execution completed correctly.
 Use `jig <command> --help` for focused help and `jig --version` for the installed
 version.
 
-For projects that use an Agent, interactive `jig review` asks you to choose a
-locally available client and remembers the choice for this project. Credentials
-alone do not select a provider. Scripts can set `JIG_AGENT_CLIENT` to `codex`,
-`claude`, `pi`, or `api`; `--yes` approves changes without choosing a client.
-The menu distinguishes native live updates from API final results.
+Agents are ordinary Flow packages. Select an admitted implementation with
+`defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' }`
+in `jig.ts`, or through an explicit consumer slot. With one eligible provider,
+review can select it without a map. The Binding can select a declared dependency
+with `package: 'npm:@jigging/agent-acp'`.
+Its Binding grants the underlying HTTP endpoint or finite ACP resource;
+replacing the method does not require a host plugin.
 
-Native Codex, Claude Code, and Pi clients are discovered on the operator's
+Native Codex, Claude Code, and Pi clients selected by ACP grants are discovered on the operator's
 `PATH`. Absolute `CODEX_PATH`, `CLAUDE_PATH`, and `PI_PATH` overrides select a
 specific installation. Review shows the resolved executable; project-local
 binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/guide/agents)
@@ -83,9 +99,12 @@ for supported installations and authentication.
 
 ## Guides
 
+- [Markdown methods](https://jig.md/guide/markdown)
 - [Choose an Agent](https://jig.md/guide/agents)
 - [Working with files](https://jig.md/guide/files)
+- [Delegated HTTP access](https://jig.md/guide/http)
 - [Dependencies](https://jig.md/guide/dependencies)
+- [Author contracts once](https://jig.md/guide/contracts)
 - [Workflow design](https://jig.md/guide/workflow-design)
 - [Project authoring](https://jig.md/spec/project-sdk)
 - [Execution policy](https://jig.md/spec/project-policy)

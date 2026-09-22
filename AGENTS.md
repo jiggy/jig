@@ -199,6 +199,8 @@ Default section order:
   guidance, and research catalogues.
 - [examples/AGENTS.md](examples/AGENTS.md) — Authored applications exercising
   documented composition, with their own fixtures and checks.
+- [management/AGENTS.md](management/AGENTS.md) — Deferred product tasks in
+  `management/inbox`, with scope and completion criteria.
 - [packages/AGENTS.md](packages/AGENTS.md) — Publishable SDK and Jig host
   implementations, with their package-local tests and artifacts.
 - [scripts/AGENTS.md](scripts/AGENTS.md) — Build, verification,

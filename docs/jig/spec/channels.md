@@ -10,21 +10,25 @@ publish and how to display it.
 ## Supported connections
 
 A Flow can create direct or broadcast channels. Either delivery can connect a
-send endpoint to the optional `events` channel of an [Agent Run](agent-run.md).
-The native ACP adapters
-implement the exact [ACP public updates](../contracts/acp-public-updates.md)
+send endpoint to the optional `events` channel of an ordinary [Agent Run](agent-run.md).
+The ordinary ACP Agent package
+implements the exact [ACP public updates](../contracts/acp-public-updates.md)
 profile. API clients retain ordinary one-shot support; requesting this profile
-from an unsupported client fails before provider dispatch.
+from an unsupported method fails before provider dispatch. The ordinary method
+Flow may already have started.
 An Agent can publish once to independently bounded subscribers; applications
 need no relay merely to fan out the same named updates.
 
 Existing exact child calls also accept channel maps. A root may hand a sender
 to one child and its receiver to another, or keep one end itself. Each child
 receives only its declared, admitted endpoints in `run.channels`; an unused
-incoming endpoint can be forwarded to a compatible capability method. No new
+incoming endpoint can be forwarded to a compatible invocation. No new
 call method, attachment authority or target-discovery right is introduced.
-The existing two-sibling limit remains: a worker and a monitor occupy both
-branches. A child cannot invoke further child Flows.
+The root's two-sibling limit remains: a worker and a monitor occupy both
+branches. Each child may invoke one further Flow or resource through its own
+admitted routes, provided its reserved branch has capacity. Channels do not
+expand execution ancestry or aggregate reservations; see
+[project policy](project-policy.md).
 
 `jig run TARGET --receive NAME` connects a declared root send channel to the
 command's output. Repeat the flag for distinct outputs, up to 16. Required root
@@ -42,14 +46,14 @@ the sender does not transfer subscription authority. Late subscriptions start
 at the next accepted source sequence and require a `suffix`-accepting port when
 mapped after sequence one. There is no replay, reconnect, or registry of sources.
 
-Local channel creation needs no capability declaration. Endpoint operations use
+Local channel creation needs no native requirement declaration. Endpoint operations use
 separate bounded protocol capacity, not an Agent/command worker reservation.
 They do not increase concurrent execution authority.
 
 ## Admission and lifetime
 
 Contracts resolve only from the admitted package, including references in
-capability-method declarations. No URL fetch, inferred compatibility or adapter
+invocation declarations. No URL fetch, inferred compatibility or adapter
 conversion occurs. Jig checks local names, direction, exact named meaning,
 schema agreement, delivery and start position before atomically moving rights.
 Failed admission moves nothing. The sender of a call loses its offered rights
@@ -95,20 +99,26 @@ Cancelled allocation waits retain late grants and their cleanup settlement.
 | --- | --- |
 | Sources / receivers allocated over the Run | 16 / 16 |
 | One encoded value | 64 KiB |
-| Accepted bytes per source | 8 MiB |
+| Accepted bytes per source | 64 MiB |
 | Receiver buffer, including committed unread response | 16 items / 256 KiB |
 | Pending sends across the root | 16 / 256 KiB |
 | Resolved package-local channel descriptors | 16, each at most 256 KiB |
+
+The source allowance counts cumulative traffic, not resident buffering. It
+permits bounded fragmented protocol exchanges without increasing message size,
+receiver buffers, or pending-send capacity. These bounds participate in the
+reviewed launch identity; changed policy requires renewed admission.
 
 Existing Run/1 wire limits remain 64 live and 65,536 lifetime requests, with
 settlement capacity reserved inside those bounds. They are not new per-local-
 attempt quotas. Contract compilation retains Schema/1 limits.
 
-The native ACP reader never waits for subscriber capacity. A separate ingress
-retains at most 16 items / 256 KiB, including its pending send. Overflow fails
-the update channel with `LAGGED`; the adapter continues draining ACP and
-settling the actual Agent result. Invalid projected values fail the channel,
-not an otherwise valid Agent result. No raw ACP stream is echoed privately.
+The ordinary ACP Agent separates optional updates from its essential protocol
+dialogue. Its relay retains at most 16 items / 256 KiB, including its pending
+send, with a 500 ms wait per send. Overflow, timeout, or rejected optional
+delivery discards the suffix and closes the update writer with `LAGGED` while
+the method continues draining ACP and settling its actual result. Invalid
+essential protocol data still fails execution. No raw ACP stream is echoed privately.
 
 ## Installed subprocess output
 
@@ -134,8 +144,11 @@ under a channel heading; other values remain structured, and channel switches
 and closed/failed endings are visible. Transport sequence metadata stays in
 `--json` output. See the [CLI experience contract](cli-experience.md).
 Flow console diagnostics stream to stderr in both modes, independently of
-channel records; terminal control characters are escaped and the existing Run
-diagnostic bounds still apply. Diagnostics are neither channel values nor evidence
+channel records. The Run report's `runDiagnostics` retains bounded diagnostics
+with host-assigned invocation paths, as defined by the [CLI experience contract](cli-experience.md).
+These records do not change the terminal's root-only `diagnostics`. Live terminal
+control characters are escaped and the existing Run diagnostic bounds still
+apply. Diagnostics are neither channel values nor evidence
 of successful work. For each output stream, the installed writer bounds queued
 output to 256 pending writes / 20 MiB and each write to one second. Blockage or
 disconnection requests root cancellation;

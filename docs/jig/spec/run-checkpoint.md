@@ -1,6 +1,6 @@
 # Run Checkpoint
 
-*Status: prerelease Jig capability contract.*
+*Status: prerelease Jig native invocation contract.*
 
 Retain completed work without treating interruption as success. A root Flow
 saves a complete, bounded aggregate of evidence and deliverable bytes. Jig's
@@ -9,26 +9,31 @@ Later failure cannot turn unfinished scratch files into accepted progress.
 
 ## Declare and call
 
-Copy the [descriptor](https://jig.md/contracts/run-checkpoint.capability.json)
-into the Flow package and declare its local slot:
+Copy the [descriptor](https://jig.md/contracts/run-checkpoint/contract.json)
+into the Flow package and declare its local slot in `flow.meta.json`
+(or optional Markdown frontmatter):
 
-```yaml
-uses:
-  progress:
-    contract: ./contracts/run-checkpoint.capability.json
-attachments:
-  deliverables: read-write
+```json
+{"uses":{"progress":{"contract":"./contracts/run-checkpoint/contract.json"}}}
+```
+
+Declare the attachment in the package’s `FLOW.contract.json`:
+
+```json
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "attachments": {"deliverables":"read-write"}
+}
 ```
 
 The operator reviews this exact package and invokes it with `--out`. This
 profile is root-only; an attachment-less or child invocation cannot acquire
-the capability. The Flow selects neither a host path nor another Run.
+the native invocation. The Flow selects neither a host path nor another Run.
 
 ```ts
-const receipt = await run.callCapability({
+const receipt = await run.call({
   operationId: 'progress:1',
   slot: 'progress',
-  method: 'save',
   input: {
     sequence: 1,
     evidence: { completed: ['review'], pending: ['repair'] },
@@ -37,11 +42,11 @@ const receipt = await run.callCapability({
 })
 ```
 
-`save` returns `{sequence, digest}` after the independent owner holds an
+The call returns `{outcome:'done', output:{sequence, digest}}` after the independent owner holds an
 immutable copy. The contract ID is `https://jig.md/contracts/run-checkpoint`,
 version `1.0.0`, with canonical descriptor digest
-`sha256:e7961d96842dc07bf2932f2979b2145301e4071093435e0e4e842a057896c201`.
-It uses ordinary Run/1 `capability/call`; FLOW does not require this Jig policy.
+`sha256:dfeacf83289c3a1d5f0cad012d64b8f59dfbb32e9c39d2469019330215e979a7`.
+It uses ordinary Run/1 `flow/call`; FLOW does not require this Jig policy.
 
 ## Bounds and identity
 
@@ -69,7 +74,7 @@ uncertain acknowledgement does not authorize automatic replay.
 ## Delivery and interruption
 
 The existing single output packet includes `checkpoint`: the retained record
-with its digest and identity, or `null` when this capability was bound but no
+with its digest and identity, or `null` when this native invocation was bound but no
 save was accepted. On normal success, `files/` contains the final writable
 attachment; the checkpoint remains separately identified in `result.json`.
 `delivery.source` names the exported file source: `final`, `checkpoint`, or

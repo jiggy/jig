@@ -54,12 +54,12 @@ proofDescribe('private contained Bun dependency preparation', () => {
           type: 'module',
           dependencies: { helper: 'workspace:*' },
         })
+        await put(`apps/${project}/flows/work/flow.meta.json`, {
+          name: 'work',
+          description: 'Workspace reuse proof.',
+        })
         await put(
-          `apps/${project}/flows/work/FLOW.md`,
-          '---\nname: work\ndescription: Workspace reuse proof.\n---\n',
-        )
-        await put(
-          `apps/${project}/flows/work/flow.ts`,
+          `apps/${project}/flows/work/FLOW.ts`,
           "import { value } from 'helper'; void value",
         )
       }
@@ -190,7 +190,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
                 first.captured.files.some(({ path }) => path === 'postinstall-ran'),
               ).toBeFalse()
               expect(first.captured.files.some(({ path }) => path.includes('/.bin/'))).toBeFalse()
-              expect(new TextDecoder().decode(await first.captured.read('flow.ts'))).toContain(
+              expect(new TextDecoder().decode(await first.captured.read('FLOW.ts'))).toContain(
                 'from "is-odd"',
               )
               expect(first.captured.files.some(({ path }) => path === 'bun.lock')).toBeTrue()
@@ -368,17 +368,14 @@ proofDescribe('private contained Bun dependency preparation', () => {
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-'))
   await writeFile(
-    join(root, 'FLOW.md'),
-    [
-      '---',
-      'name: native-dependency-fixture',
-      'description: Exercises contained Bun dependency preparation.',
-      '---',
-      '',
-    ].join('\n'),
+    join(root, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'native-dependency-fixture',
+      description: 'Exercises contained Bun dependency preparation.',
+    }),
   )
   await writeFile(
-    join(root, 'flow.ts'),
+    join(root, 'FLOW.ts'),
     [
       'import isOdd from "is-odd";',
       'import { z } from "zod";',

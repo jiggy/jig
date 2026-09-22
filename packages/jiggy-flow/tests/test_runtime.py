@@ -206,6 +206,26 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.component.receive()["error"]["data"]["code"], "INVALID_RESULT")
         self.component.wait()
 
+    def test_root_result_depth_includes_the_complete_wire_envelope(self) -> None:
+        for depth in (125, 126):
+            with self.subTest(depth=depth):
+                self.component.close()
+                self.component = Component()
+                request = root_request("deep-result")
+                request["params"]["input"]["depth"] = depth
+                self.component.send(request)
+                response = self.component.receive()
+                if depth == 126:
+                    self.assertEqual(response["error"]["data"]["code"], "INVALID_RESULT")
+                else:
+                    output = response["result"]["output"]
+                    for _ in range(depth):
+                        self.assertEqual(len(output), 1)
+                        output = output[0]
+                    self.assertIsNone(output)
+                self.component.wait()
+                self.assertEqual(self.component.remaining_stdout(), b"")
+
     def test_admitted_outbound_input_is_a_snapshot(self) -> None:
         self.component.send(root_request("snapshot"))
         call = self.component.receive()
@@ -253,11 +273,15 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(response["result"]["outcome"], "done")
         self.component.wait()
 
-    def test_full_duplex_flow_and_effect_calls(self) -> None:
+    def test_full_duplex_calls_return_complete_results_including_domain_refusal(self) -> None:
         self.component.send(root_request("calls"))
 
         child = self.component.receive()
-        self.assertEqual(child["method"], "flow/run-child")
+        self.assertEqual(child["method"], "flow/call")
+        self.assertEqual(child["params"], {
+            "operationId": "child:1", "slot": "child", "input": {"value": 1},
+            "intent": "Exercise a child Flow call.",
+        })
         self.component.send(
             {
                 "jsonrpc": "2.0",
@@ -267,13 +291,16 @@ class RuntimeTests(unittest.TestCase):
         )
 
         effect = self.component.receive()
-        self.assertEqual(effect["method"], "capability/call")
+        self.assertEqual(effect["method"], "flow/call")
+        self.assertEqual(effect["params"], {
+            "operationId": "effect:1", "slot": "store", "input": {"key": "missing"},
+        })
         self.component.send(
             {
                 "jsonrpc": "2.0",
                 "id": effect["id"],
                 "result": {
-                    "error": {"name": "not-found", "data": {"key": "missing"}}
+                    "outcome": "not-found", "output": {"key": "missing"}
                 },
             }
         )
@@ -285,7 +312,7 @@ class RuntimeTests(unittest.TestCase):
                 "outcome": "done",
                 "output": {
                     "child": {"outcome": "done", "output": {"answer": 42}},
-                    "effect": {"name": "not-found", "data": {"key": "missing"}},
+                    "effect": {"outcome": "not-found", "output": {"key": "missing"}},
                 },
             },
         )
@@ -368,14 +395,16 @@ class RuntimeTests(unittest.TestCase):
         self.component.send(root_request("parallel"))
         first = self.component.receive()
         second = self.component.receive()
-        requests = {first["method"]: first, second["method"]: second}
-        self.assertEqual(set(requests), {"flow/run-child", "capability/call"})
+        self.assertEqual([first["method"], second["method"]], ["flow/call", "flow/call"])
+        requests = {first["params"]["slot"]: first, second["params"]["slot"]: second}
+        self.assertEqual(set(requests), {"child", "store"})
 
-        effect = requests["capability/call"]
+        effect = requests["store"]
         self.component.send(
-            {"jsonrpc": "2.0", "id": effect["id"], "result": {"value": "stored"}}
+            {"jsonrpc": "2.0", "id": effect["id"],
+             "result": {"outcome": "done", "output": "stored"}}
         )
-        child = requests["flow/run-child"]
+        child = requests["child"]
         self.component.send(
             {
                 "jsonrpc": "2.0",
@@ -387,14 +416,17 @@ class RuntimeTests(unittest.TestCase):
         response = self.component.receive()
         self.assertEqual(
             response["result"],
-            {"outcome": "done", "output": {"child": "child", "effect": "stored"}},
+            {"outcome": "done", "output": {
+                "child": {"outcome": "done", "output": "child"},
+                "effect": {"outcome": "done", "output": "stored"},
+            }},
         )
         self.component.wait()
 
     def test_native_task_cancellation_emits_protocol_cancellation(self) -> None:
         self.component.send(root_request("cancel-call"))
         child = self.component.receive()
-        self.assertEqual(child["method"], "flow/run-child")
+        self.assertEqual(child["method"], "flow/call")
         cancellation = self.component.receive()
         self.assertEqual(cancellation["method"], "request/cancel")
         self.assertEqual(cancellation["params"], {"requestId": child["id"]})
@@ -548,6 +580,33 @@ class RuntimeTests(unittest.TestCase):
         self.component.wait(expected=1)
         self.assertEqual(self.component.remaining_stdout(), b"")
 
+    def test_malformed_call_result_fatally_closes_without_root_success(self) -> None:
+        malformed = (
+            None,
+            {},
+            {"outcome": "done"},
+            {"outcome": "done", "output": None, "extra": False},
+            {"outcome": "Done", "output": None},
+        )
+        for index, result in enumerate(malformed):
+            with self.subTest(result=result):
+                if index:
+                    self.component.close()
+                    self.component = Component()
+                self.component.send(root_request("calls"))
+                call = self.component.receive()
+                self.component.send({"jsonrpc": "2.0", "id": call["id"], "result": result})
+                self.component.wait(expected=1)
+                self.assertEqual(self.component.remaining_stdout(), b"")
+
+    def test_named_invocation_rejects_before_handler_dispatch(self) -> None:
+        request = root_request("calls")
+        request["params"]["operation"] = "review"
+        self.component.send(request)
+        self.assertEqual(self.component.receive()["error"]["code"], -32602)
+        self.component.wait()
+        self.assertEqual(self.component.remaining_stdout(), b"")
+
     def test_diagnostic_encoding_cannot_override_execution_failure(self) -> None:
         for index, mode in enumerate(("bad-diagnostic", "large-diagnostic")):
             if index:
@@ -631,6 +690,57 @@ class RuntimeTests(unittest.TestCase):
         )
         self.component.wait(expected=1)
         self.assertEqual(self.component.remaining_stdout(), b"")
+
+
+class RuntimeCallTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        async def handler(_: RunContext):
+            return {"outcome": "done", "output": None}
+
+        self.output = _CapturedBuffer()
+        self.runtime = _Runtime(handler, self.output)
+        self.runtime._root_id = "host:1"
+        self.runtime._accepting_calls = True
+
+    async def test_call_preserves_optional_keys_and_does_not_rewrite_input(self) -> None:
+        calls = [asyncio.create_task(self.runtime.call(
+            operation_id="review:1", slot="reviewer", input={"text": "original"}, **options,
+        )) for options in ({}, {"channels": {}}, {"intent": "Advisory only."})]
+        async with asyncio.timeout(3):
+            while len(self.output.payloads) < len(calls):
+                await asyncio.sleep(0.001)
+        requests = [json.loads(payload) for payload in self.output.payloads]
+        base = {"operationId": "review:1", "slot": "reviewer", "input": {"text": "original"}}
+        self.assertEqual([request["params"] for request in requests], [
+            base, {**base, "channels": {}}, {**base, "intent": "Advisory only."},
+        ])
+        self.assertEqual({request["method"] for request in requests}, {"flow/call"})
+        self.assertEqual(len({request["id"] for request in requests}), len(calls))
+        result = {"outcome": "blocked", "output": {"reason": "More evidence needed."}}
+        for request in reversed(requests):
+            await self.runtime._handle_response({"jsonrpc": "2.0", "id": request["id"], "result": result})
+        self.assertEqual(await asyncio.gather(*calls), [result] * len(calls))
+        self.assertFalse(self.runtime._pending)
+
+    async def test_invalid_call_values_reject_without_dispatch(self) -> None:
+        invalid = (
+            {"operation_id": "review:1\n"},
+            {"operation_id": "r" * 129},
+            {"slot": "Reviewer"},
+            {"slot": "reviewer\n"},
+            {"input": float("nan")},
+            {"intent": ""},
+            {"intent": "x" * 16_385},
+            {"intent": "\ud800"},
+            {"channels": {"events": "not-an-endpoint"}},
+        )
+        for changed in invalid:
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                await self.runtime.call(**{
+                    "operation_id": "review:1", "slot": "reviewer", "input": None, **changed,
+                })
+        self.assertEqual(self.output.payloads, [])
+        self.assertFalse(self.runtime._pending)
 
 
 class RuntimeOrderingTests(unittest.TestCase):
@@ -728,7 +838,7 @@ class RuntimeOrderingTests(unittest.TestCase):
                         {
                             "jsonrpc": "2.0",
                             "id": "component:1",
-                            "method": "flow/run-child",
+                            "method": "flow/call",
                             "params": {},
                         }
                     )

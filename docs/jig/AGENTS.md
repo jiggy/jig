@@ -10,16 +10,20 @@ use-case and orchestration hypotheses.
 - `spec/cli-experience.md` owns the mandatory experience contract for all public CLI output.
 
 - `spec/` owns current Jig host requirements and machine companions.
-- `contracts/` owns explanatory pages served at capability identity URLs.
+- `contracts/` owns explanatory pages served at invocation identity URLs.
   They route readers to specifications, canonical JSON downloads, and usage;
   they do not define interfaces or act as provider endpoints.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
-- `guide/agents.md` owns guided Agent selection, operator-local preferences,
-  explicit automation setup, and current adapter limitations;
-  Its first-method walkthrough extends the ordinary greeting project with a
-  bounded support-reply draft, not an example-only installation path.
+- `guide/agents.md` owns ordinary Agent Flow selection, explicit operator
+  resource configuration, and current adapter limitations.
+  `guide/conversations.md` owns bounded same-session follow-up and interruption,
+  including the distinction between control replies and final settlement, and
+  explicit native retention and restoration under a separately reviewed grant.
+  It distinguishes final retention receipts from turn answers and installed
+  qualification from the source candidate, and routes to the application-owned
+  summary handoff example.
   `guide/dependencies.md` owns package dependency preparation guidance.
 - `guide/configuration.md` owns the settings reference, including terminal
   appearance, operator configuration, and links to authored project settings.
@@ -27,7 +31,17 @@ use-case and orchestration hypotheses.
   strict and fast installation verification. Keep defaults and tradeoffs aligned
   with execution policy and `SECURITY.md`; never imply fast skips Flow approval
   or sandbox enforcement.
-- `guide/channels.md` teaches optional Flow progress and subprocess
+- `guide/files.md` explains per-run files and review-pinned Binding resources,
+  their shared read attachment interface, retention and root-only limits.
+- `guide/agent-method.md` explains the reusable method's pure library and
+  ordinary Agent Run artifact, honest source-candidate adoption, explicit
+  caller context and independent consumer result validation.
+- `guide/contracts.md` teaches optional managed TypeSpec authoring and generated
+  file ownership, including named optional feature catalogs;
+  `spec/contract-authoring.md` owns its exact host boundaries.
+- `guide/markdown.md` teaches one-file methods, supported Skill authoring,
+  exact recipes and the installed sequential interpreter's limits.
+- `guide/channels.md` teaches application-owned live progress and subprocess
   consumption; `contracts/` also explains named channel agreements.
   Root and package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
@@ -115,6 +129,8 @@ use-case and orchestration hypotheses.
 
 - Use `sh` fences for shell commands; reserve `console` for transcripts with
   prompts and output, so command examples receive syntax highlighting.
+- Present supported Agent clients as operator choices, not a product ranking.
+  A preferred client in the development environment is not a user default.
 - Keep the first greeting input simple: a JSON string with one type check
   and a fallback. Keep the generated starter, commands, and before/after
   results aligned throughout the tutorial.
@@ -132,4 +148,4 @@ use-case and orchestration hypotheses.
 ## Child DOX Index
 
 - [spec/AGENTS.md](spec/AGENTS.md) — Current Jig specifications, machine
-  schemas, and exact capability contracts.
+  schemas, and exact native invocation contracts.

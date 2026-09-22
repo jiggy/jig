@@ -11,6 +11,8 @@ shared reading experience.
   context, and a direct Markdown resource link beside Rspress's copy action.
 - `package-showcase.tsx` renders the FLOW package explorer from frontmatter,
   preserving every stage, language, and optional layer in generated Markdown.
+  Show only one selected entrypoint; implementation alternatives replace rather
+  than accompany the Markdown entrypoint.
   It uses native Rspress code rendering and the shared One Light/One Dark Pro
   palettes; snippets demonstrate the protocol and do not execute in the browser.
 - `showcase.tsx` renders Jig’s illustrative implementations from homepage frontmatter,

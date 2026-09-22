@@ -3,8 +3,6 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-
-import { canonicalJson, type JsonValue } from '../src/json.js'
 import {
   createPrivateActivationPlanningObservation,
   createPrivateActivationRecipeObservation,
@@ -12,36 +10,34 @@ import {
   type PrivateActivationRecipeObservationInput,
 } from '../src/internal/activation-planning.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from '../src/internal/private-agent-run.js'
+import { canonicalJson, type JsonValue } from '../src/json.js'
 import { defineBinding, defineJig } from '../src/project/author.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import {
-  linkPackageProject,
-  requirePackageProjectValue,
   type InjectedBindingDeclaration,
+  linkPackageProject,
   type PackageProjectValue,
   type RunTargetIdentity,
+  requirePackageProjectValue,
 } from '../src/project/package-project.js'
 import {
   buildPrivateActivationRequests,
+  type PrivateActivationRequest,
   requirePrivateActivationRequest,
   requirePrivateRetainedResolutionObservation,
   resolveLinkedPackageProjectObservation,
   restorePrivateActivationRequest,
-  type PrivateActivationRequest,
 } from '../src/project/package-resolution.js'
 import { retainFlowSourcePackages } from '../src/project/retained-flow.js'
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  agentChannelFiles,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from './fixtures/agent-contract.js'
 
-const acpPublicUpdates = await readFile(
-  new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
-  'utf8',
-)
 const agentRunContract = await readFile(
-  new URL('../../../docs/jig/spec/contracts/agent-run.capability.json', import.meta.url),
+  new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
 )
 
@@ -77,34 +73,34 @@ describe('private package resolution', () => {
           }),
         ).toThrow('activation target kind must be flow or binding')
         const withoutSlots = structuredClone(requests[0]!) as any
-        delete withoutSlots.flowSlots
+        delete withoutSlots.slots
         expect(() => restorePrivateActivationRequest(withoutSlots)).toThrow(
           'activation request must contain exactly',
         )
         expect(() =>
           restorePrivateActivationRequest({
             ...structuredClone(requests[0]!),
-            flowSlots: [],
+            slots: [],
           }),
-        ).toThrow('activation Flow slots must be an object')
+        ).toThrow('activation slots must be an object')
         expect(() =>
           restorePrivateActivationRequest({
             ...structuredClone(requests[0]!),
-            flowSlots: { Bad: 'flows/a' },
+            slots: { Bad: 'flows/a' },
           }),
-        ).toThrow('activation Flow slot must be a LocalName')
+        ).toThrow('invalid invocation LocalName')
         expect(() =>
           restorePrivateActivationRequest({
             ...structuredClone(requests[0]!),
-            flowSlots: Object.fromEntries(
+            slots: Object.fromEntries(
               Array.from({ length: 257 }, (_, index) => [`slot-${index}`, 'flows/a']),
             ),
           }),
-        ).toThrow('activation Flow slots exceed 256 entries')
+        ).toThrow('invocation slots exceed 256 entries')
         expect(() =>
           restorePrivateActivationRequest({
             ...structuredClone(requests[0]!),
-            flowSlots: { child: { kind: 'flow', path: 'flows/a' } },
+            slots: { child: { kind: 'flow', target: { kind: 'flow', path: 'flows/a' } } },
           }),
         ).toThrow('activation request digest does not match its canonical content')
         expect(requests.map(({ target }) => target)).toEqual([
@@ -171,15 +167,15 @@ describe('private package resolution', () => {
       async (project) => {
         const requests = buildPrivateActivationRequests(project)
         const configured = requests.find(({ target }) => target.kind === 'binding')!
-        expect(configured.flowSlots).toEqual({
-          bug: { kind: 'flow', path: 'flows/bug' },
-          question: { kind: 'flow', path: 'flows/question' },
+        expect(configured.slots).toEqual({
+          bug: { kind: 'flow', target: { kind: 'flow', path: 'flows/bug' } },
+          question: { kind: 'flow', target: { kind: 'flow', path: 'flows/question' } },
         })
-        expect(Object.keys(configured.flowSlots)).toEqual(['bug', 'question'])
-        expect(Object.isFrozen(configured.flowSlots)).toBeTrue()
+        expect(Object.keys(configured.slots)).toEqual(['bug', 'question'])
+        expect(Object.isFrozen(configured.slots)).toBeTrue()
         for (const request of requests.filter(({ target }) => target.kind === 'flow')) {
-          expect(request.flowSlots).toEqual({})
-          expect(Object.isFrozen(request.flowSlots)).toBeTrue()
+          expect(request.slots).toEqual({})
+          expect(Object.isFrozen(request.slots)).toBeTrue()
         }
         firstRequestDigest = configured.digest
         firstSemanticDigest = resolveLinkedPackageProjectObservation(
@@ -213,17 +209,84 @@ describe('private package resolution', () => {
     )
   })
 
+  test('pins typed Flow substitution separately from its exact shared interface identity', async () => {
+    const contract = JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      id: 'https://example.org/contracts/review',
+      version: '1.0.0',
+      input: { type: 'string' },
+      result: {
+        type: 'object',
+        properties: { outcome: { const: 'done' }, output: { type: 'string' } },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
+      },
+    })
+    const trees = {
+      'flows/consumer': {
+        ...run('consumer'),
+        'flow.meta.json': metadata({
+          name: 'consumer',
+          uses: { review: { contract: './contracts/review.json' } },
+        }),
+        'contracts/review.json': contract,
+      },
+      'flows/first': { ...run('first'), 'FLOW.contract.json': contract },
+      'flows/second': { ...run('second'), 'FLOW.contract.json': contract },
+    }
+    const requests: PrivateActivationRequest[] = []
+    const semanticDigests: string[] = []
+    for (const path of ['flows/first', 'flows/second']) {
+      await withProject(
+        trees,
+        [
+          binding('bindings/consumer.ts', {
+            package: 'flows/consumer',
+            slots: { review: `flow:${path}` },
+          }),
+        ],
+        (project) => {
+          const all = buildPrivateActivationRequests(project)
+          const request = all.find(({ target }) => target.kind === 'binding')!
+          expect(request.slots.review).toEqual({
+            kind: 'flow',
+            target: { kind: 'flow', path },
+            contract: project.flows.find(
+              ({ provenance }) => provenance.projectPath === 'flows/consumer',
+            )!.uses.review,
+          })
+          expect(restorePrivateActivationRequest(structuredClone(request))).toEqual(request)
+          expect(Object.isFrozen(request.slots.review!.contract)).toBeTrue()
+          requests.push(request)
+          semanticDigests.push(
+            resolveLinkedPackageProjectObservation(
+              project,
+              digest('typed-capture'),
+              planning(all, () => 'planned'),
+            ).semanticDigest,
+          )
+        },
+      )
+    }
+    expect(requests[0]!.slots.review!.contract).toEqual(requests[1]!.slots.review!.contract)
+    expect(requests[0]!.digest).not.toBe(requests[1]!.digest)
+    expect(semanticDigests[0]).not.toBe(semanticDigests[1])
+  })
+
   test("restores exact Binding child selectors and the child's own Agent settings", async () => {
     await withProject(
       {
         'flows/router': run('router'),
+        'flows/agent': agentFlow(),
         'flows/reviewer': {
-          'FLOW.md': metadata(
-            `name: reviewer\ndescription: Reviewer.\nuses:\n  agent:\n    contract: ./contracts/agent-run.capability.json`,
-          ),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'reviewer',
+            description: 'Reviewer.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
           'settings.schema.json': JSON.stringify({
             $schema: 'https://flow.jig.md/schemas/schema-1.json',
             type: 'object',
@@ -240,6 +303,7 @@ describe('private package resolution', () => {
         binding('bindings/reviewer.ts', {
           package: 'flows/reviewer',
           settings: { style: 'critical' },
+          slots: { agent: 'flow:flows/agent' },
         }),
       ],
       async (project) => {
@@ -250,13 +314,22 @@ describe('private package resolution', () => {
         const child = requests.find(
           ({ target }) => target.kind === 'binding' && target.id === 'reviewer',
         )!
-        expect(parent.flowSlots).toEqual({ review: { kind: 'binding', id: 'reviewer' } })
+        expect(parent.slots).toEqual({
+          review: { kind: 'flow', target: { kind: 'binding', id: 'reviewer' } },
+        })
         expect(child.settings).toEqual({ style: 'critical' })
-        expect(child.capabilities.agent!.digest).toBe(AGENT_RUN_CONTRACT_DIGEST)
-        expect(child.flowSlots).toEqual({})
+        expect(child.slots.agent).toEqual({
+          kind: 'flow',
+          target: { kind: 'flow', path: 'flows/agent' },
+          contract: {
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          },
+        })
         const restored = restorePrivateActivationRequest(structuredClone(parent))
         expect(restored).toEqual(parent)
-        expect(Object.isFrozen(restored.flowSlots.review)).toBeTrue()
+        expect(Object.isFrozen(restored.slots.review)).toBeTrue()
         for (const target of [
           'flows/reviewer',
           { kind: 'binding', id: 'Bad' },
@@ -266,7 +339,7 @@ describe('private package resolution', () => {
           expect(() =>
             restorePrivateActivationRequest({
               ...structuredClone(parent),
-              flowSlots: { review: target },
+              slots: { review: { kind: 'flow', target } },
             }),
           ).toThrow()
         }
@@ -274,43 +347,52 @@ describe('private package resolution', () => {
     )
   })
 
-  test('pins exact Agent capability identity into Flow and Binding requests', async () => {
+  test('pins an exact ordinary Agent default into Flow and Binding requests', async () => {
     await withProject(
       {
+        'flows/agent': agentFlow(),
         'flows/router': {
-          'FLOW.md': metadata(`name: router
-description: Router.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'router',
+            description: 'Router.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
         },
       },
       [binding('bindings/router.ts', { package: 'flows/router' })],
       async (project) => {
-        const requests = buildPrivateActivationRequests(project)
+        const requests = buildPrivateActivationRequests(project).filter(
+          ({ packagePath }) => packagePath === 'flows/router',
+        )
         expect(requests).toHaveLength(2)
         for (const request of requests) {
-          expect(request.capabilities).toEqual({
+          expect(request.slots).toEqual({
             agent: {
-              id: AGENT_RUN_CONTRACT_ID,
-              version: AGENT_RUN_CONTRACT_VERSION,
-              digest: AGENT_RUN_CONTRACT_DIGEST,
+              kind: 'flow',
+              target: { kind: 'flow', path: 'flows/agent' },
+              contract: {
+                id: AGENT_RUN_CONTRACT_ID,
+                version: AGENT_RUN_CONTRACT_VERSION,
+                digest: AGENT_RUN_CONTRACT_DIGEST,
+              },
             },
           })
-          expect(Object.isFrozen(request.capabilities)).toBeTrue()
-          expect(Object.isFrozen(request.capabilities.agent)).toBeTrue()
+          expect(Object.isFrozen(request.slots)).toBeTrue()
+          expect(Object.isFrozen(request.slots.agent)).toBeTrue()
+          expect(Object.isFrozen(request.slots.agent!.contract)).toBeTrue()
           expect(restorePrivateActivationRequest(structuredClone(request))).toEqual(request)
           expect(() =>
             restorePrivateActivationRequest({
               ...structuredClone(request),
-              capabilities: {},
+              slots: {},
             }),
           ).toThrow('activation request digest does not match its canonical content')
         }
       },
+      { 'https://jig.md/contracts/agent-run': 'flow:flows/agent' },
     )
   })
 
@@ -628,8 +710,8 @@ function targetKey(target: RunTargetIdentity): string {
 
 function run(name: string): Record<string, string> {
   return {
-    'FLOW.md': metadata(`name: ${name}\ndescription: ${name}.`),
-    'flow.ts': 'export {};\n',
+    'flow.meta.json': metadata({ name, description: `${name}.` }),
+    'FLOW.ts': 'export {};\n',
   }
 }
 
@@ -640,18 +722,28 @@ function binding(
   return { sourcePath, definition: defineBinding(definition) }
 }
 
-function metadata(frontmatter: string): string {
-  return `---\n${frontmatter}\n---\n`
+function metadata(value: Record<string, unknown>): string {
+  return JSON.stringify(value)
 }
 
 function digest(label: string): string {
   return `sha256:${createHash('sha256').update(label).digest('hex')}`
 }
 
+function agentFlow(): Readonly<Record<string, string>> {
+  return {
+    'flow.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
+    'FLOW.ts': 'export {};\n',
+    'FLOW.contract.json': agentRunContract,
+    ...agentChannelFiles('contracts'),
+  }
+}
+
 async function withProject(
   trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
   bindings: readonly InjectedBindingDeclaration[],
   action: (project: PackageProjectValue) => Promise<void> | void,
+  defaultProviders: Readonly<Record<string, string>> = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'jig-project-resolution-'))
   const store = join(root, 'store')
@@ -667,7 +759,13 @@ async function withProject(
     }
     source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows)
     const flows = await retainFlowSourcePackages(store, source)
-    await action(linkPackageProject({ flows, bindings }))
+    await action(
+      linkPackageProject({
+        flows,
+        bindings,
+        defaultProviders,
+      }),
+    )
   } finally {
     await source?.dispose()
     await rm(root, { recursive: true, force: true })

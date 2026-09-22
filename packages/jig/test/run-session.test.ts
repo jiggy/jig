@@ -1,22 +1,65 @@
 import { describe, expect, test } from 'bun:test'
 
-import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../src/json.js'
+import {
+  canonicalJson,
+  decodeJson1,
+  JSON_1_LIMITS,
+  type JsonObject,
+  type JsonValue,
+} from '../src/json.js'
 import { ChannelBroker, type ChannelGrant, ChannelOperationError } from '../src/run/channels.js'
 import {
   type ExactComponentExit,
   type ExactComponentProcess,
-  type RunHostEffectCall,
-  type RunHostEffectOperationTerminal,
-  type RunHostFlowCall,
-  type RunHostFlowOperationTerminal,
+  type RunHostCall,
+  RunHostFatalOperationError,
   type RunHostInvocation,
   type RunHostOperationDispatcher,
+  type RunHostOperationTerminal,
   RunHostSession,
 } from '../src/run/session.js'
 
 const encoder = new TextEncoder()
 
 describe('private RunHostSession', () => {
+  test('a caught reply cannot conceal trusted unfinished cleanup or seal a clean interval', async () => {
+    const process = new FakeProcess()
+    const broker = new ChannelBroker()
+    const command = broker.participant('command')
+    const root = broker.participant('root')
+    const pair = await command.create()
+    const grants = command.transfer(
+      root,
+      { output: pair.send.endpoint },
+      { output: { direction: 'send' } },
+    )
+    const running = new RunHostSession(
+      process,
+      { ...invocation(), channels: grants },
+      {},
+      {
+        channels: root,
+        call: async () => {
+          throw new RunHostFatalOperationError('UNCERTAIN')
+        },
+      },
+    ).run()
+    await process.nextHost()
+    process.emit(
+      request('component:failure', 'flow/call', {
+        operationId: 'broken',
+        slot: 'child',
+        input: null,
+      }),
+    )
+    expect(operationCode(await process.nextHost())).toBe('UNCERTAIN')
+    process.emit(result({ claimed: 'recovered' }))
+    process.finish(0)
+    expect(await running).toMatchObject({ status: 'failed', code: 'UNCERTAIN' })
+    await expect(command.next(pair.receive.endpoint)).rejects.toMatchObject({
+      code: 'UNCERTAIN',
+    })
+  })
   test('admitted package result validation happens before implicit writer sealing', async () => {
     const process = new FakeProcess()
     const broker = new ChannelBroker()
@@ -94,7 +137,7 @@ describe('private RunHostSession', () => {
         {},
         {
           channels: root,
-          callCapability: async (call) => {
+          call: async (call) => {
             dispatches++
             const grants = root.transfer(provider, call.channels!, {
               events: { direction: 'send' },
@@ -102,7 +145,7 @@ describe('private RunHostSession', () => {
             await provider.send(grants.events!.endpoint, { text: 'live' })
             await finishAgent.promise
             provider.finalize(true)
-            return { status: 'succeeded', result: { value: 'actual result' } }
+            return { status: 'succeeded', result: { outcome: 'done', output: 'actual result' } }
           },
         },
       ).run()
@@ -124,12 +167,11 @@ describe('private RunHostSession', () => {
       const call = {
         operationId: 'agent:1',
         slot: 'agent',
-        method: 'run',
         input: {},
         channels: { events: created.send.endpoint },
       }
-      process.emit(request('component:agent', 'capability/call', call))
-      process.emit(request('component:join', 'capability/call', call))
+      process.emit(request('component:agent', 'flow/call', call))
+      process.emit(request('component:join', 'flow/call', call))
       process.emit(
         request('component:next', 'channel/next', { endpoint: created.receive.endpoint }),
       )
@@ -142,8 +184,14 @@ describe('private RunHostSession', () => {
       const terminals = [await process.nextHost(), await process.nextHost()]
       expect(terminals).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ id: 'component:agent', result: { value: 'actual result' } }),
-          expect.objectContaining({ id: 'component:join', result: { value: 'actual result' } }),
+          expect.objectContaining({
+            id: 'component:agent',
+            result: { outcome: 'done', output: 'actual result' },
+          }),
+          expect.objectContaining({
+            id: 'component:join',
+            result: { outcome: 'done', output: 'actual result' },
+          }),
         ]),
       )
       process.emit(request('component:end', 'channel/next', { endpoint: created.receive.endpoint }))
@@ -167,21 +215,20 @@ describe('private RunHostSession', () => {
       {},
       {
         channels: root,
-        callCapability: async (_call, signal) => {
+        call: async (_call, signal) => {
           signal.addEventListener('abort', () => {
             agentCancelled = true
           })
           await finishAgent.promise
-          return { status: 'succeeded', result: { value: null } }
+          return { status: 'succeeded', result: { outcome: 'done', output: null } }
         },
       },
     ).run()
     await process.nextHost()
     process.emit(
-      request('component:agent', 'capability/call', {
+      request('component:agent', 'flow/call', {
         operationId: 'agent',
         slot: 'agent',
-        method: 'run',
         input: null,
       }),
     )
@@ -274,7 +321,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        runChildFlow: async () => {
+        call: async () => {
           dispatched = true
           return {
             status: 'succeeded',
@@ -291,7 +338,7 @@ describe('private RunHostSession', () => {
     })
     expect(dispatched).toBe(false)
     process.emit(
-      request('component:child', 'flow/run-child', {
+      request('component:child', 'flow/call', {
         operationId: 'child:1',
         slot: 'reviewer',
         input: null,
@@ -328,7 +375,7 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emit(
-      request('component:1', 'flow/run-child', {
+      request('component:1', 'flow/call', {
         operationId: 'research:1',
         slot: 'research',
         intent: 'Research this',
@@ -336,10 +383,9 @@ describe('private RunHostSession', () => {
       }),
     )
     process.emit(
-      request('component:2', 'capability/call', {
+      request('component:2', 'flow/call', {
         operationId: 'write:1',
         slot: 'artifacts',
-        method: 'write',
         input: {},
       }),
     )
@@ -381,10 +427,9 @@ describe('private RunHostSession', () => {
     await process.nextHost()
     process.failNextWrite(new Error('child response write failed'))
     process.emit(
-      request('component:1', 'capability/call', {
+      request('component:1', 'flow/call', {
         operationId: 'write-failure:1',
         slot: 'artifacts',
-        method: 'write',
         input: null,
       }),
     )
@@ -419,10 +464,9 @@ describe('private RunHostSession', () => {
     fast.releaseWrites()
     await tick()
     fast.emit(
-      request('component:1', 'capability/call', {
+      request('component:1', 'flow/call', {
         operationId: 'too-late:1',
         slot: 'artifacts',
-        method: 'write',
         input: null,
       }),
     )
@@ -436,10 +480,9 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emitTogether(
-      request('component:1', 'capability/call', {
+      request('component:1', 'flow/call', {
         operationId: 'same-batch:1',
         slot: 'artifacts',
-        method: 'write',
         input: null,
       }),
       result('premature'),
@@ -454,10 +497,9 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emit(
-      request('component:1', 'capability/call', {
+      request('component:1', 'flow/call', {
         operationId: 'fast-response:1',
         slot: 'artifacts',
-        method: 'write',
         input: null,
       }),
     )
@@ -480,14 +522,13 @@ describe('private RunHostSession', () => {
     const first = {
       operationId: 'same:1',
       slot: 'artifacts',
-      method: 'write',
       input: { value: 1 },
     }
-    process.emit(request('component:1', 'capability/call', first))
+    process.emit(request('component:1', 'flow/call', first))
     expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(request('component:2', 'capability/call', first))
+    process.emit(request('component:2', 'flow/call', first))
     expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(request('component:3', 'capability/call', { ...first, input: { value: 2 } }))
+    process.emit(request('component:3', 'flow/call', { ...first, input: { value: 2 } }))
     expect(operationCode(await process.nextHost())).toBe('OPERATION_CONFLICT')
     process.emit(result(null))
     process.finish(0)
@@ -496,10 +537,10 @@ describe('private RunHostSession', () => {
 
   test('dispatches one flow operation and joins identical waiters', async () => {
     const process = new FakeProcess()
-    const decision = deferred<RunHostFlowOperationTerminal>()
-    const calls: RunHostFlowCall[] = []
+    const decision = deferred<RunHostOperationTerminal>()
+    const calls: RunHostCall[] = []
     const dispatcher: RunHostOperationDispatcher = {
-      async runChildFlow(call) {
+      async call(call) {
         calls.push(call)
         return await decision.promise
       },
@@ -512,8 +553,8 @@ describe('private RunHostSession', () => {
       intent: 'Research this',
       input: { subject: 'FLOW' },
     }
-    process.emit(request('component:1', 'flow/run-child', params))
-    process.emit(request('component:2', 'flow/run-child', params))
+    process.emit(request('component:1', 'flow/call', params))
+    process.emit(request('component:2', 'flow/call', params))
     await tick()
     expect(calls).toEqual([params])
 
@@ -528,6 +569,146 @@ describe('private RunHostSession', () => {
     expect(await running).toMatchObject({ status: 'succeeded' })
   })
 
+  test.each(['undefined-member', 'nonfinite-number', 'cycle'] as const)(
+    'settles and replays INVALID_RESULT for a dispatcher output containing %s',
+    async (kind) => {
+      const process = new FakeProcess()
+      const output: Record<string, unknown> = {
+        value: kind === 'nonfinite-number' ? Number.POSITIVE_INFINITY : undefined,
+      }
+      if (kind === 'cycle') output.value = output
+      let calls = 0
+      const running = new RunHostSession(
+        process,
+        invocation(),
+        {},
+        {
+          async call() {
+            calls += 1
+            return { status: 'succeeded', result: { outcome: 'done', output: output as JsonValue } }
+          },
+        },
+      ).run()
+      await process.nextHost()
+      const params = { operationId: 'invalid:1', slot: 'child', input: null }
+      for (const id of ['component:1', 'component:2']) {
+        process.emit(request(id, 'flow/call', params))
+        expect(operationCode(await process.nextHost())).toBe('INVALID_RESULT')
+      }
+      expect(calls).toBe(1)
+      process.emit(result('recovered'))
+      process.finish(0)
+      expect(await running).toMatchObject({ status: 'succeeded' })
+    },
+  )
+
+  test('retains a bounded failure when a legal child result cannot fit every response ID', async () => {
+    const process = new FakeProcess()
+    const overhead = canonicalJson(result(['', ''])).byteLength
+    const length = Math.floor((JSON_1_LIMITS.bytes - overhead - 10) / 2)
+    const output = ['a'.repeat(length), 'b'.repeat(length)]
+    expect(canonicalJson(result(output)).byteLength).toBeLessThanOrEqual(JSON_1_LIMITS.bytes)
+    expect(() => canonicalJson({ ...result(output), id: 'c'.repeat(128) })).toThrow()
+    let calls = 0
+    const running = new RunHostSession(
+      process,
+      invocation(),
+      {},
+      {
+        async call() {
+          calls += 1
+          return { status: 'succeeded', result: { outcome: 'done', output } }
+        },
+      },
+    ).run()
+    await process.nextHost()
+    const params = { operationId: 'large:1', slot: 'child', input: null }
+    for (const id of ['c', 'c'.repeat(128), 'component:replay']) {
+      process.emit(request(id, 'flow/call', params))
+      expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
+    }
+    expect(calls).toBe(1)
+    process.emit(result('recovered'))
+    process.finish(0)
+    expect(await running).toMatchObject({ status: 'succeeded' })
+  })
+
+  test.each(['succeeded', 'failed'] as const)(
+    'snapshots %s dispatcher values before replay',
+    async (status) => {
+      const process = new FakeProcess()
+      const value = { original: true }
+      let calls = 0
+      const running = new RunHostSession(
+        process,
+        invocation(),
+        {},
+        {
+          async call() {
+            calls += 1
+            return status === 'succeeded'
+              ? { status, result: { outcome: 'done', output: value } }
+              : { status, code: 'INVALID_INPUT', message: 'rejected', details: value }
+          },
+        },
+      ).run()
+      await process.nextHost()
+      const params = { operationId: 'snapshot:1', slot: 'child', input: null }
+      process.emit(request('component:1', 'flow/call', params))
+      const first = (await process.nextHost()) as JsonObject
+      value.original = false
+      process.emit(request('component:2', 'flow/call', params))
+      expect(await process.nextHost()).toEqual({ ...first, id: 'component:2' })
+      expect(calls).toBe(1)
+      process.emit(result(null))
+      process.finish(0)
+      expect(await running).toMatchObject({ status: 'succeeded' })
+    },
+  )
+
+  test('accepts 256 call channel references and rejects the 257th as invalid params', async () => {
+    const process = new FakeProcess()
+    const calls: RunHostCall[] = []
+    const running = new RunHostSession(
+      process,
+      invocation(),
+      {},
+      {
+        async call(call) {
+          calls.push(call)
+          return { status: 'succeeded', result: { outcome: 'done', output: null } }
+        },
+      },
+    ).run()
+    await process.nextHost()
+    const channels = Object.fromEntries(
+      Array.from({ length: 256 }, (_, index) => [`port-${index}`, `endpoint:${index}`]),
+    )
+    process.emit(
+      request('component:1', 'flow/call', {
+        operationId: 'channels:1',
+        slot: 'child',
+        input: null,
+        channels,
+      }),
+    )
+    expect(await process.nextHost()).toMatchObject({ result: { outcome: 'done', output: null } })
+    expect(calls[0]!.channels).toEqual(channels)
+    process.emit(
+      request('component:2', 'flow/call', {
+        operationId: 'channels:2',
+        slot: 'child',
+        input: null,
+        channels: { ...channels, extra: 'endpoint:extra' },
+      }),
+    )
+    expect(rpcCode(await process.nextHost())).toBe(-32602)
+    expect(calls).toHaveLength(1)
+    process.emit(result(null))
+    process.finish(0)
+    expect(await running).toMatchObject({ status: 'succeeded' })
+  })
+
   test('bounds retained operation results and replays the bounded failure', async () => {
     const process = new FakeProcess()
     let calls = 0
@@ -536,7 +717,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async runChildFlow() {
+        async call() {
           calls += 1
           return { status: 'succeeded', result: { outcome: 'done', output: { answer: 42 } } }
         },
@@ -547,9 +728,9 @@ describe('private RunHostSession', () => {
     const running = session.run()
     await process.nextHost()
     const params = { operationId: 'bounded:1', slot: 'child', input: null }
-    process.emit(request('component:1', 'flow/run-child', params))
+    process.emit(request('component:1', 'flow/call', params))
     expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
-    process.emit(request('component:2', 'flow/run-child', params))
+    process.emit(request('component:2', 'flow/call', params))
     expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
     expect(calls).toBe(1)
     process.emit(result(null))
@@ -557,14 +738,14 @@ describe('private RunHostSession', () => {
     expect(await running).toMatchObject({ status: 'succeeded' })
   })
 
-  test('dispatches effect values and declared errors with the complete snapshotted call', async () => {
+  test('dispatches complete results and domain outcomes with the complete snapshotted call', async () => {
     const process = new FakeProcess()
-    const calls: RunHostEffectCall[] = []
-    const terminals: RunHostEffectOperationTerminal[] = [
-      { status: 'succeeded', result: { value: { recordId: 'record-1' } } },
+    const calls: RunHostCall[] = []
+    const terminals: RunHostOperationTerminal[] = [
+      { status: 'succeeded', result: { outcome: 'done', output: { recordId: 'record-1' } } },
       {
         status: 'succeeded',
-        result: { error: { name: 'type-denied', data: { type: 'private' } } },
+        result: { outcome: 'type-denied', output: { type: 'private' } },
       },
     ]
     const running = new RunHostSession(
@@ -572,7 +753,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callCapability(call) {
+        async call(call) {
           calls.push(call)
           return terminals.shift()!
         },
@@ -581,42 +762,38 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emit(
-      request('component:1', 'capability/call', {
+      request('component:1', 'flow/call', {
         operationId: 'put:1',
         slot: 'records',
-        method: 'put',
         input: { type: 'document-created', data: { id: 1 } },
       }),
     )
     expect(await process.nextHost()).toEqual({
       jsonrpc: '2.0',
       id: 'component:1',
-      result: { value: { recordId: 'record-1' } },
+      result: { outcome: 'done', output: { recordId: 'record-1' } },
     })
     process.emit(
-      request('component:2', 'capability/call', {
+      request('component:2', 'flow/call', {
         operationId: 'put:2',
         slot: 'records',
-        method: 'put',
         input: { type: 'private', data: null },
       }),
     )
     expect(await process.nextHost()).toEqual({
       jsonrpc: '2.0',
       id: 'component:2',
-      result: { error: { name: 'type-denied', data: { type: 'private' } } },
+      result: { outcome: 'type-denied', output: { type: 'private' } },
     })
     expect(calls).toEqual([
       {
         operationId: 'put:1',
         slot: 'records',
-        method: 'put',
         input: { type: 'document-created', data: { id: 1 } },
       },
       {
         operationId: 'put:2',
         slot: 'records',
-        method: 'put',
         input: { type: 'private', data: null },
       },
     ])
@@ -625,27 +802,26 @@ describe('private RunHostSession', () => {
     expect(await running).toMatchObject({ status: 'succeeded' })
   })
 
-  test('rejects malformed effect dispatcher results and cross-method operation reuse', async () => {
+  test('rejects malformed invocation results and cross-slot operation reuse', async () => {
     const invalid = new FakeProcess()
     const invalidRun = new RunHostSession(
       invalid,
       invocation(),
       {},
       {
-        async callCapability() {
+        async call() {
           return {
             status: 'succeeded',
             result: { value: null, extra: true },
-          } as unknown as RunHostEffectOperationTerminal
+          } as unknown as RunHostOperationTerminal
         },
       },
     ).run()
     await invalid.nextHost()
     invalid.emit(
-      request('component:1', 'capability/call', {
+      request('component:1', 'flow/call', {
         operationId: 'put:1',
         slot: 'records',
-        method: 'put',
         input: null,
       }),
     )
@@ -660,17 +836,15 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async runChildFlow() {
+        async call(call) {
+          if (call.slot !== 'child') throw new Error('must not dispatch')
           return { status: 'succeeded', result: { outcome: 'done', output: null } }
-        },
-        async callCapability() {
-          throw new Error('must not dispatch')
         },
       },
     ).run()
     await conflict.nextHost()
     conflict.emit(
-      request('component:1', 'flow/run-child', {
+      request('component:1', 'flow/call', {
         operationId: 'shared:1',
         slot: 'child',
         input: null,
@@ -678,10 +852,9 @@ describe('private RunHostSession', () => {
     )
     expect(await conflict.nextHost()).toMatchObject({ result: { outcome: 'done' } })
     conflict.emit(
-      request('component:2', 'capability/call', {
+      request('component:2', 'flow/call', {
         operationId: 'shared:1',
         slot: 'records',
-        method: 'put',
         input: null,
       }),
     )
@@ -698,14 +871,14 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async runChildFlow() {
+        async call() {
           throw new Error('private /host/path and coordinator detail')
         },
       },
     ).run()
     await process.nextHost()
     process.emit(
-      request('component:1', 'flow/run-child', {
+      request('component:1', 'flow/call', {
         operationId: 'private:1',
         slot: 'child',
         input: null,
@@ -724,14 +897,14 @@ describe('private RunHostSession', () => {
 
   test('rejects a conflicting operation while the first dispatch is pending', async () => {
     const process = new FakeProcess()
-    const decision = deferred<RunHostFlowOperationTerminal>()
+    const decision = deferred<RunHostOperationTerminal>()
     let calls = 0
     const running = new RunHostSession(
       process,
       invocation(),
       {},
       {
-        async runChildFlow() {
+        async call() {
           calls += 1
           return await decision.promise
         },
@@ -739,14 +912,14 @@ describe('private RunHostSession', () => {
     ).run()
     await process.nextHost()
     process.emit(
-      request('component:1', 'flow/run-child', {
+      request('component:1', 'flow/call', {
         operationId: 'same:1',
         slot: 'research',
         input: { value: 1 },
       }),
     )
     process.emit(
-      request('component:2', 'flow/run-child', {
+      request('component:2', 'flow/call', {
         operationId: 'same:1',
         slot: 'research',
         input: { value: 2 },
@@ -769,7 +942,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async runChildFlow(_call, signal) {
+        async call(_call, signal) {
           await new Promise<void>((resolve) => {
             signal.addEventListener(
               'abort',
@@ -786,8 +959,8 @@ describe('private RunHostSession', () => {
     ).run()
     await process.nextHost()
     const params = { operationId: 'shared:1', slot: 'research', input: null }
-    process.emit(request('component:1', 'flow/run-child', params))
-    process.emit(request('component:2', 'flow/run-child', params))
+    process.emit(request('component:1', 'flow/call', params))
+    process.emit(request('component:2', 'flow/call', params))
     process.emit({
       jsonrpc: '2.0',
       method: 'request/cancel',
@@ -817,10 +990,9 @@ describe('private RunHostSession', () => {
     const process = new FakeProcess()
     const running = new RunHostSession(process, invocation()).run()
     await process.nextHost()
-    const call = request('component:1', 'capability/call', {
+    const call = request('component:1', 'flow/call', {
       operationId: 'one:1',
       slot: 'artifacts',
-      method: 'write',
       input: null,
     })
     process.emit(call)
@@ -837,16 +1009,15 @@ describe('private RunHostSession', () => {
 
     const running = session.run()
     await process.nextHost()
-    process.emit(request('component:65536', 'capability/call', {}))
+    process.emit(request('component:65536', 'flow/call', {}))
     expect(await process.nextHost()).toMatchObject({
       id: 'component:65536',
       error: { code: -32602 },
     })
     process.emit(
-      request('component:65537', 'capability/call', {
+      request('component:65537', 'flow/call', {
         operationId: 'overflow:1',
         slot: 'sink',
-        method: 'write',
         input: null,
       }),
     )
@@ -863,11 +1034,10 @@ describe('private RunHostSession', () => {
       ...Array.from({ length: 63 }, (_, index) =>
         request(`component:${index + 1}`, 'unknown/request', {}),
       ),
-      request('component:64', 'capability/call', {}),
-      request('component:65', 'capability/call', {
+      request('component:64', 'flow/call', {}),
+      request('component:65', 'flow/call', {
         operationId: 'overflow:1',
         slot: 'artifacts',
-        method: 'write',
         input: null,
       }),
     )

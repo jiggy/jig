@@ -1,6 +1,8 @@
-import type { JsonObject, JsonValue } from '../json.js'
+import type { JsonObject } from '../json.js'
 import { JSON_1_LIMITS, validateJson1 } from '../json.js'
-import { normalizeProjectCommands, type ProjectCommands } from './commands.js'
+import { expectJsonObject, snapshotJson, snapshotJsonObject } from './author-value.js'
+import { type GrantInput, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
+import { flowSelector, normalizeFlowPackage, npmPackageName } from './package-selector.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -26,11 +28,15 @@ export type ProjectSourceInput = DiscoverySource | readonly string[]
 export interface JigDefinition {
   readonly flows?: ProjectSource
   readonly bindings?: ProjectSource
+  readonly grants?: ProjectSource
+  readonly defaultProviders?: Readonly<Record<string, string>>
 }
 
 export interface JigDefinitionInput {
   readonly flows?: ProjectSourceInput
   readonly bindings?: ProjectSourceInput
+  readonly grants?: ProjectSourceInput
+  readonly defaultProviders?: Readonly<Record<string, string>>
 }
 
 export interface FlowRef {
@@ -49,15 +55,15 @@ export interface PackageBindingDefinition {
   readonly kind: 'package'
   readonly package: string
   readonly settings: JsonObject
-  readonly slots: Readonly<Record<string, string>>
-  readonly commands?: ProjectCommands
+  readonly slots: Readonly<Record<string, string | GrantPolicy>>
+  readonly attachments?: Readonly<Record<string, string>>
 }
 
 export interface PackageBindingInput {
   readonly package: string
   readonly settings?: JsonObject
-  readonly slots?: Readonly<Record<string, string>>
-  readonly commands?: ProjectCommands
+  readonly slots?: Readonly<Record<string, string | GrantInput>>
+  readonly attachments?: Readonly<Record<string, string>>
 }
 
 export type BindingDefinition = PackageBindingDefinition
@@ -82,8 +88,17 @@ export function normalizeJigDefinition(input: unknown): JigDefinition {
 
 function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinition {
   const captured = snapshotJsonObject(input, 'Jig definition')
-  assertClosedObject(captured, ['flows', 'bindings'], 'Jig definition')
-  const output: { flows?: ProjectSource; bindings?: ProjectSource } = {}
+  assertClosedObject(
+    captured,
+    ['flows', 'bindings', 'grants', 'defaultProviders'],
+    'Jig definition',
+  )
+  const output: {
+    flows?: ProjectSource
+    bindings?: ProjectSource
+    grants?: ProjectSource
+    defaultProviders?: Readonly<Record<string, string>>
+  } = {}
   if (Object.hasOwn(captured, 'flows')) {
     output.flows = normalizeSource(
       captured.flows as unknown as ProjectSourceInput,
@@ -98,7 +113,32 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
       canonical,
     )
   }
+  if (Object.hasOwn(captured, 'grants')) {
+    output.grants = normalizeSource(
+      captured.grants as unknown as ProjectSourceInput,
+      'grants',
+      canonical,
+    )
+  }
+  if (Object.hasOwn(captured, 'defaultProviders')) {
+    output.defaultProviders = normalizeDefaultProviders(captured.defaultProviders)
+  }
   return record(output) as unknown as JigDefinition
+}
+
+function normalizeDefaultProviders(value: unknown): Readonly<Record<string, string>> {
+  const selections = snapshotJsonObject(value, 'defaultProviders')
+  if (Object.keys(selections).length > 256)
+    throw new TypeError('defaultProviders exceeds 256 entries')
+  const targets: Record<string, string> = Object.create(null)
+  for (const id of Object.keys(selections).sort(compareUtf8)) {
+    // The trusted linker validates canonical contract identity and compatibility.
+    if (id.length === 0 || id.length > 2048)
+      throw new TypeError('defaultProviders requires bounded contract IDs')
+    const target = parseRunTargetSelector(selections[id], 'default provider')
+    targets[id] = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
+  }
+  return Object.freeze(targets)
 }
 
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {
@@ -132,43 +172,67 @@ function normalizeBinding(
   assertClosedObject(
     captured,
     canonical
-      ? ['kind', 'package', 'settings', 'slots', 'commands']
-      : ['package', 'settings', 'slots', 'commands'],
+      ? ['kind', 'package', 'settings', 'slots', 'attachments']
+      : ['package', 'settings', 'slots', 'attachments'],
     'Binding definition',
   )
   if (canonical && captured.kind !== 'package') {
     throw new TypeError('Binding kind must be package')
   }
   if (!Object.hasOwn(captured, 'package')) throw new TypeError('Binding package is required')
-  const packagePath = normalizeProjectPath(captured.package, 'package')
+  const packagePath = normalizeFlowPackage(captured.package)
   const settings = Object.hasOwn(captured, 'settings')
     ? expectJsonObject(captured.settings, 'settings')
     : emptyRecord()
   const slots = Object.hasOwn(captured, 'slots')
     ? normalizeFlowSlots(captured.slots)
     : emptyRecord<string>()
-  const commands = normalizeProjectCommands(
-    Object.hasOwn(captured, 'commands') ? captured.commands : {},
+  const attachments = normalizeBindingAttachments(
+    Object.hasOwn(captured, 'attachments') ? captured.attachments : {},
   )
   return record({
     kind: 'package',
     package: packagePath,
     settings,
     slots,
-    ...(Object.keys(commands).length === 0 ? {} : { commands }),
+    ...(Object.keys(attachments).length === 0 ? {} : { attachments }),
   }) as unknown as PackageBindingDefinition
 }
 
-function normalizeFlowSlots(value: unknown): Readonly<Record<string, string>> {
+/** Inert project-relative selections, never authority to reopen live files at Run time. */
+export function normalizeBindingAttachments(value: unknown): Readonly<Record<string, string>> {
+  const input = snapshotJsonObject(value, 'attachments')
+  if (Object.keys(input).length > 8) throw new TypeError('attachments exceed eight entries')
+  const output: Record<string, string> = Object.create(null)
+  for (const name of Object.keys(input).sort(compareUtf8)) {
+    validateLocalName(name, 'attachment name')
+    const path = normalizeProjectPath(input[name], `attachment ${name}`)
+    if (path.split('/').some((part) => part.toLowerCase() === '.jig'))
+      throw new TypeError('attachments cannot select protected Jig state')
+    output[name] = path
+  }
+  return Object.freeze(output)
+}
+
+function normalizeFlowSlots(value: unknown): Readonly<Record<string, string | GrantPolicy>> {
   const input = snapshotJsonObject(value, 'slots')
   if (Object.keys(input).length > 256) {
     throw new TypeError('slots exceed 256 entries')
   }
-  const output: Record<string, string> = Object.create(null) as Record<string, string>
+  const output: Record<string, string | GrantPolicy> = Object.create(null)
   for (const name of Object.keys(input).sort(compareUtf8)) {
     validateLocalName(name, 'slot name')
-    const target = parseRunTargetSelector(input[name], `slot ${name}`)
-    output[name] = target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`
+    const value = input[name]
+    if (typeof value !== 'string') {
+      output[name] = normalizeGrant(value)
+      continue
+    }
+    if (value.startsWith('grant:')) {
+      output[name] = 'grant:' + grantName(value.slice(6))
+      continue
+    }
+    const target = parseRunTargetSelector(value, `slot ${name}`)
+    output[name] = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
   }
   return Object.freeze(output)
 }
@@ -176,9 +240,14 @@ function normalizeFlowSlots(value: unknown): Readonly<Record<string, string>> {
 /** Internal selector parsing shared by authoring and exact project linking. */
 export function parseRunTargetSelector(value: unknown, label: string): RunTargetRef {
   if (typeof value !== 'string') throw new TypeError(`${label} must be a target selector`)
+  if (value.startsWith('npm:')) {
+    npmPackageName(value)
+    return flowRef(value)
+  }
+  if (value.startsWith('flow:npm:')) throw new TypeError('use npm:<package> for dependency targets')
   if (value.startsWith('flow:')) return flowRef(normalizeProjectPath(value.slice(5), label))
   if (value.startsWith('binding:')) return bindingRef(validateLocalName(value.slice(8), label))
-  throw new TypeError(`${label} must select flow:<path> or binding:<id>`)
+  throw new TypeError(`${label} must select flow:<path>, npm:<package> or binding:<id>`)
 }
 
 function normalizeSource(
@@ -242,84 +311,6 @@ function validateLocalName(value: unknown, label: string): string {
     throw new TypeError(`${label} must be a LocalName`)
   }
   return value
-}
-
-function snapshotJsonObject(value: unknown, label: string): JsonObject {
-  const snapshot = snapshotJson(value, label)
-  validateJson1(snapshot)
-  return expectJsonObject(snapshot, label)
-}
-
-function expectJsonObject(value: unknown, label: string): JsonObject {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TypeError(`${label} must be an object`)
-  }
-  return value as JsonObject
-}
-
-function snapshotJson(
-  value: unknown,
-  label: string,
-  active: WeakSet<object> = new WeakSet<object>(),
-): JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) {
-      throw new TypeError(`${label} contains an invalid JSON/1 number`)
-    }
-    return value
-  }
-  if (typeof value !== 'object') throw new TypeError(`${label} contains a non-JSON value`)
-  if (active.has(value)) throw new TypeError(`${label} contains a cycle`)
-  active.add(value)
-  try {
-    const keys = Reflect.ownKeys(value)
-    if (keys.some((key) => typeof key === 'symbol')) {
-      throw new TypeError(`${label} contains a symbol property`)
-    }
-    if (Array.isArray(value)) {
-      if (Object.getPrototypeOf(value) !== Array.prototype) {
-        throw new TypeError(`${label} contains an array subclass`)
-      }
-      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
-      if (lengthDescriptor === undefined || !('value' in lengthDescriptor)) {
-        throw new TypeError(`${label} has an invalid array length`)
-      }
-      const length = lengthDescriptor.value as number
-      if (keys.length !== length + 1) {
-        throw new TypeError(`${label} contains a sparse or extended array`)
-      }
-      const output: JsonValue[] = []
-      for (let index = 0; index < length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
-        if (descriptor === undefined || !('value' in descriptor) || !descriptor.enumerable) {
-          throw new TypeError(`${label} contains a sparse or accessor-backed array`)
-        }
-        output.push(snapshotJson(descriptor.value, label, active))
-      }
-      return Object.freeze(output)
-    }
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError(`${label} contains a non-plain object`)
-    }
-    const output: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>
-    for (const key of keys as string[]) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key)
-      if (descriptor === undefined || !('value' in descriptor) || !descriptor.enumerable) {
-        throw new TypeError(`${label} contains an accessor or hidden property`)
-      }
-      Object.defineProperty(output, key, {
-        value: snapshotJson(descriptor.value, label, active),
-        enumerable: true,
-        writable: false,
-        configurable: false,
-      })
-    }
-    return Object.freeze(output)
-  } finally {
-    active.delete(value)
-  }
 }
 
 function assertRecord<T extends object>(value: T | undefined, label: string): T {

@@ -42,6 +42,52 @@ and 512 UTF-8 bytes per relative path.
 The captured bytes are immutable during the Run; they are not a live mount
 of your directory or a claim of an atomic repository revision.
 
+## Keep a resource with a Binding
+
+Use `--attach` for files chosen for each job. For a shared reference dataset or
+self-contained tool bundle that should change only after review, select it in
+the Binding instead:
+
+```ts
+import { defineBinding } from '@jigging/jig';
+
+export default defineBinding({
+  package: './flows/analyze',
+  attachments: { reference: './resources/reference' },
+});
+```
+
+The Flow declares `reference: "read"` in its contract and reads
+`run.attachments.reference.path` as usual. Its code does not need to know whether
+those files came from a Binding or a per-run selection.
+
+```sh
+jig review
+jig run binding:analyze --input @question.json
+```
+
+Here the declaration is `bindings/analyze.ts`; paths resolve from the project
+root. Review shows the selected tree's digest and complete file manifest.
+Approval pins its bytes: later edits or deletion of the original directory do
+not change an already reviewed Run. Review again to propose new contents. Each
+Binding can select a different resource for the same unchanged Flow.
+
+A bound name cannot be overridden with `--attach`. Other read attachments still
+need per-run mappings. Combined inputs share the same 64-file/8-MiB limit.
+Only the selected root Binding receives its resources; direct `flow:` calls and
+children do not inherit them.
+
+Select small, intentional directories. Their complete regular-file trees are
+captured, without links or implicit exclusions, and retained in protected
+storage even if you decline execution approval. This is not secret storage.
+
+Tool bundles are ordinary code, not a new permission class. A bundled script
+can run using Jig's installed Bun within the Flow's existing sandbox. Jig does
+not discover or copy a native installation's libraries, preserve executable
+permissions, or grant paths embedded in a binary. Direct access also cannot
+restrict a tool to particular arguments. See the
+[exact resource boundary](../spec/project-policy.md#reviewed-binding-attachments).
+
 ## Receive one packet
 
 A root Flow may declare one writable attachment. It begins empty and is
@@ -56,7 +102,8 @@ requirements or demonstrated optimums. The output ceiling is enforced while
 the Flow writes, not just checked afterward.
 
 The output destination must not exist, must have an existing supported parent,
-and must be outside every input root. For example, use a sibling destination
+and must be outside every per-run input root. Reviewed Binding source directories
+are not reopened at execution. For example, use a sibling destination
 with `--attach source=.`; `--out ./review` would be inside that root.
 
 ```text
@@ -88,8 +135,9 @@ tree fails delivery without changing an already accepted execution outcome.
 
 Publication exposes one complete packet without replacing an existing path.
 This is atomic visibility, not a promise of persistence through power loss.
-Without retained progress, cancellation before publication removes unfinished
-staging; cancellation after publication does not retract the packet. The ordinary stdout record matches
+Cancellation removes unfinished file-copy staging. After confirmed cleanup,
+Jig can still save the interrupted Run's terminal record without Flow files.
+Cancellation after publication does not retract the packet. The ordinary stdout record matches
 the packet, but a later cleanup or acknowledgement failure can add a CLI error.
 After connection loss, delivery may be unknown even though a packet exists.
 If file metadata makes the report exceed JSON/1 limits, `JIG_REPORT_LIMIT`
@@ -114,13 +162,14 @@ host overhead; cleanup is not skipped when either budget expires.
 
 ## Author a file Flow
 
-Declare portable attachments in `FLOW.md`, then use the paths in
+Declare portable attachments in `FLOW.contract.json`, then use the paths in
 `run.attachments` through the ordinary FLOW SDK:
 
-```yaml
-attachments:
-  source: read
-  deliverables: read-write
+```json
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "attachments": { "source": "read", "deliverables": "read-write" }
+}
 ```
 
 Your method reads `run.attachments.source.path` and writes under

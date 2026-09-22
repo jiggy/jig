@@ -3,7 +3,7 @@
 ## Purpose
 
 Owns FLOW's independently implementable package, value, process-protocol, SDK,
-and capability-contract semantics.
+and invocation-contract semantics.
 
 ## Ownership
 
@@ -17,8 +17,9 @@ and capability-contract semantics.
   and routing belong to a host such as Jig, not FLOW.
 
 - `index.md` introduces the shared code/Agent composition promise through a
-  package explorer: required `FLOW.md`, optional `flow.<suffix>`, host-supported
-  runtimes, child invocation, and optional schemas and capability contracts.
+  package explorer: exactly one `FLOW.<suffix>` entrypoint, alternative Markdown
+  or code implementations, host-supported runtimes, ordinary invocation, and
+  optional metadata and an invocation contract.
   Its progressive disclosure describes package layers, not automatic Agent
   context loading. `guide/understand.md` develops the same boundary through
   request triage on Jig. Keep host examples distinct from portable requirements.

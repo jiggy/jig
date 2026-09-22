@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,37 +8,290 @@ import {
   type PackageArtifactRef,
 } from '../src/internal/package-artifact-store.js'
 import { defineJig } from '../src/project/author.js'
+import { privateProjectFeatureFailures } from '../src/internal/project-feature-qualification.js'
+import {
+  createPrivateProjectLocalLock,
+  decodePrivateProjectLocalLock,
+  encodePrivateProjectLocalLock,
+} from '../src/internal/project-local-lock.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import {
-  linkPackageProject,
   type InjectedBindingDeclaration,
+  linkPackageProject,
 } from '../src/project/package-project.js'
-import { retainFlowSourcePackages, type RetainedFlowInput } from '../src/project/retained-flow.js'
+import { buildPrivateActivationRequests } from '../src/project/package-resolution.js'
+import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project/retained-flow.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
+  agentChannelFiles,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
-} from '../src/internal/private-agent-run.js'
+} from './fixtures/agent-contract.js'
 
 const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
-const acpPublicUpdates = await readFile(
-  new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
-  'utf8',
-)
 const agentRunContract = await readFile(
-  new URL('../../../docs/jig/spec/contracts/agent-run.capability.json', import.meta.url),
+  new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
 )
 
+// These linker fixtures capture and durably retain real package trees before assertions.
+setDefaultTimeout(30_000)
+
 describe('private package-project linker', () => {
+  test('feature requirements qualify only the selected graph and persist in the lock', async () => {
+    const consumer = {
+      ...agentConsumer('consumer'),
+      'flow.meta.json': metadata({
+        uses: {
+          agent: { contract: './contracts/agent-run/contract.json', requires: ['conversation'] },
+        },
+      }),
+    }
+    for (const supports of [[], ['conversation']]) {
+      await withFlows(
+        {
+          'flows/consumer': consumer,
+          'flows/provider': {
+            ...agentProvider('provider'),
+            'flow.meta.json': metadata({ supports }),
+          },
+          'flows/parent': { ...run('parent'), 'flow.meta.json': metadata({ uses: { child: {} } }) },
+          'flows/unrelated': run('unrelated'),
+        },
+        (flows) => {
+          const linked = linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/parent.ts', {
+                package: 'flows/parent',
+                slots: { child: 'flow:flows/consumer' },
+              }),
+            ],
+          })
+          const failures = privateProjectFeatureFailures(linked)
+          expect([...failures.keys()].sort()).toEqual(
+            supports.length === 0 ? ['binding\0parent', 'flow\0flows/consumer'] : [],
+          )
+          const lock = createPrivateProjectLocalLock(linked)
+          const retained = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))
+          expect(retained.packages['flows/provider']?.supports).toEqual(supports)
+          expect(retained.packages['flows/consumer']!.uses.agent!.requires).toEqual([
+            'conversation',
+          ])
+          const request = buildPrivateActivationRequests(linked).find(
+            (item) => item.packagePath === 'flows/consumer',
+          )!
+          expect(request.slots.agent!.contract).toEqual({
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          })
+        },
+      )
+    }
+  })
+
+  test('features never rank alternatives or override an explicit selected provider', async () => {
+    await withFlows(
+      {
+        'flows/consumer': {
+          ...agentConsumer('consumer'),
+          'flow.meta.json': metadata({
+            uses: {
+              agent: { contract: './contracts/agent-run/contract.json', requires: ['events'] },
+            },
+          }),
+        },
+        'flows/plain': agentProvider('plain'),
+        'flows/events': {
+          ...agentProvider('events'),
+          'flow.meta.json': metadata({ supports: ['events'] }),
+        },
+      },
+      (flows) => {
+        expectCode(() => linkPackageProject({ flows, bindings: [] }), 'PROJECT_PROVIDER_AMBIGUOUS')
+        const linked = linkPackageProject({
+          flows,
+          bindings: [],
+          defaultProviders: { [AGENT_RUN_CONTRACT_ID]: 'flow:flows/plain' },
+        })
+        expect([...privateProjectFeatureFailures(linked).keys()]).toEqual(['flow\0flows/consumer'])
+      },
+    )
+  })
+
+  test('sole-match selection follows the exact contract, not a slot or Flow name', async () => {
+    await withFlows(
+      {
+        'flows/consumer': agentConsumer('consumer'),
+        'flows/unrelated-name': agentProvider('unrelated-name'),
+      },
+      (flows) => {
+        const linked = linkPackageProject({ flows, bindings: [] })
+        expect(
+          linked.flows.find((f) => f.provenance.projectPath === 'flows/consumer')!.slots,
+        ).toEqual({ agent: { kind: 'flow', path: 'flows/unrelated-name' } })
+        expectCode(
+          () =>
+            linkPackageProject({
+              flows,
+              bindings: [],
+              defaultProviders: {
+                'https://example.org/wrong-contract': 'flow:flows/unrelated-name',
+              },
+            }),
+          'PROJECT_DEFAULT_CONTRACT',
+        )
+      },
+    )
+  })
+
+  test('a configured sole provider does not compete with its unconfigured raw Flow', async () => {
+    await withFlows(
+      {
+        'flows/consumer': agentConsumer('consumer'),
+        'flows/provider': {
+          ...agentProvider('provider'),
+          'settings.schema.json': schema({
+            type: 'object',
+            properties: { model: { type: 'string' } },
+            required: ['model'],
+          }),
+        },
+      },
+      (flows) => {
+        const linked = linkPackageProject({
+          flows,
+          bindings: [
+            binding('bindings/provider.ts', {
+              package: 'flows/provider',
+              settings: { model: 'configured' },
+            }),
+          ],
+        })
+        expect(
+          linked.flows.find((f) => f.provenance.projectPath === 'flows/consumer')!.slots,
+        ).toEqual({ agent: { kind: 'binding', id: 'provider' } })
+      },
+    )
+  })
+
+  test('multiple exact targets require an explicit choice, including Flow plus empty Binding', async () => {
+    await withFlows(
+      {
+        'flows/consumer': agentConsumer('consumer'),
+        'flows/provider': agentProvider('provider'),
+      },
+      (flows) => {
+        const bindings = [binding('bindings/provider.ts', { package: 'flows/provider' })]
+        expectCode(() => linkPackageProject({ flows, bindings }), 'PROJECT_PROVIDER_AMBIGUOUS')
+        const linked = linkPackageProject({
+          flows,
+          bindings,
+          defaultProviders: {
+            [AGENT_RUN_CONTRACT_ID]: 'binding:provider',
+          },
+        })
+        expect(
+          linked.flows.find((f) => f.provenance.projectPath === 'flows/consumer')!.slots,
+        ).toEqual({ agent: { kind: 'binding', id: 'provider' } })
+      },
+    )
+  })
+
+  test('sole-match inference does not prune a self-cycle to manufacture another choice', async () => {
+    await withFlows(
+      {
+        'flows/wrapper': { ...agentProvider('wrapper'), ...agentConsumer('wrapper') },
+      },
+      (flows) => {
+        expect(linkPackageProject({ flows, bindings: [] }).flows[0]!.directRun).toBeFalse()
+      },
+    )
+  })
+
+  test('an invalid recursive alternative still makes inference ambiguous', async () => {
+    await withFlows(
+      {
+        'flows/wrapper': { ...agentProvider('wrapper'), ...agentConsumer('wrapper') },
+        'flows/backend': agentProvider('backend'),
+      },
+      (flows) => {
+        expectCode(() => linkPackageProject({ flows, bindings: [] }), 'PROJECT_PROVIDER_AMBIGUOUS')
+      },
+    )
+  })
+
+  test('derives the same typed Agent requirement for Markdown and permits a matching replacement', async () => {
+    const recipe = '```flow\nreturn {"outcome":"done","output":null}\n```\n'
+    await withFlows(
+      {
+        'flows/recipes': { 'FLOW.md': recipe },
+        'flows/prose': { 'FLOW.md': 'Return a complete result.\n' + recipe },
+        'flows/code': run('code'),
+        'flows/agent': {
+          ...run('agent'),
+          'FLOW.contract.json': agentRunContract,
+          ...agentChannelFiles('contracts'),
+        },
+      },
+      (flows) => {
+        const linked = linkPackageProject({ flows, bindings: [] })
+        const recipes = linked.flows.find(
+          (flow) => flow.provenance.projectPath === 'flows/recipes',
+        )!
+        const prose = linked.flows.find((flow) => flow.provenance.projectPath === 'flows/prose')!
+        expect(Object.keys(recipes.uses)).toEqual(['markdown-agent'])
+        expect(recipes.uses).toEqual(prose.uses)
+        expect(recipes.uses['markdown-agent']).toMatchObject({
+          id: 'https://jig.md/contracts/agent-run',
+          version: '1.0.0',
+        })
+        expect(
+          linked.flows.find((flow) => flow.provenance.projectPath === 'flows/code')!.uses,
+        ).toEqual({})
+        for (const packagePath of ['flows/recipes', 'flows/prose']) {
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                bindings: [
+                  binding('bindings/replaced.ts', {
+                    package: packagePath,
+                    slots: { 'markdown-agent': 'flow:flows/code' },
+                  }),
+                ],
+              }),
+            'PROJECT_BINDING_INTERFACE_MISMATCH',
+            '/slots/markdown-agent',
+          )
+          expect(() =>
+            linkPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/replaced.ts', {
+                  package: packagePath,
+                  slots: { 'markdown-agent': 'flow:flows/agent' },
+                }),
+              ],
+            }),
+          ).not.toThrow()
+        }
+      },
+    )
+  })
+
   test('retains captured Flow members without taking source ownership', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-retained-source-'))
     const store = join(root, 'store')
     const packageRoot = join(root, 'flows', 'run')
     await mkdir(store, { mode: 0o700 })
     await mkdir(packageRoot, { recursive: true })
-    await writeFile(join(packageRoot, 'FLOW.md'), metadata('name: run\ndescription: Run.'))
-    await writeFile(join(packageRoot, 'flow.ts'), 'export {};\n')
+    await writeFile(
+      join(packageRoot, 'flow.meta.json'),
+      metadata({ name: 'run', description: 'Run.' }),
+    )
+    await writeFile(join(packageRoot, 'FLOW.ts'), 'export {};\n')
     const source = await captureFlowSource(root, defineJig({ flows: ['flows/run'] }).flows)
     try {
       const retained = await retainFlowSourcePackages(store, source)
@@ -46,7 +299,7 @@ describe('private package-project linker', () => {
       await source.dispose()
       const reopened = await captureStoredPackage(store, retained[0]!.package)
       try {
-        expect(new TextDecoder().decode(await reopened.read('flow.ts'))).toBe('export {};\n')
+        expect(new TextDecoder().decode(await reopened.read('FLOW.ts'))).toBe('export {};\n')
       } finally {
         await reopened.dispose()
       }
@@ -116,8 +369,8 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/configurable': {
-          'FLOW.md': metadata('name: configurable\ndescription: Configurable.'),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'configurable', description: 'Configurable.' }),
+          'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({ type: 'object' }),
         },
       },
@@ -141,9 +394,8 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/review': {
-          'FLOW.md': metadata(`name: review
-description: Review.`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'review', description: 'Review.' }),
+          'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({
             type: 'object',
             properties: { maxRetries: { type: 'integer', minimum: 1 } },
@@ -197,8 +449,8 @@ description: Review.`),
         'flows/router': run('router'),
         'flows/bug': run('bug'),
         'flows/configured': {
-          'FLOW.md': metadata('name: configured\ndescription: Configured.'),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+          'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({
             type: 'object',
             required: ['value'],
@@ -263,45 +515,181 @@ description: Review.`),
     )
   })
 
-  test('rejects capabilities other than exact Agent Run at the alpha linker boundary', async () => {
+  test('requires an explicit matching target for an ordinary named interface', async () => {
     await withFlows(
       {
         'flows/consumer': {
-          'FLOW.md': metadata(`name: consumer
-description: Consumer.
-uses:
-  index:
-    contract: ./contracts/index.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/index.capability.json': capability('https://example.org/contracts/index'),
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            description: 'Consumer.',
+            uses: { index: { contract: './contracts/index.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/index.json': invocation({
+            id: 'https://example.org/contracts/index',
+            version: '1.0.0',
+          }),
         },
       },
       async (flows) => {
+        const linked = linkPackageProject({ flows, bindings: [] })
+        expect(linked.flows[0]!.directRun).toBeFalse()
+        expect(linked.flows[0]!.uses.index).toMatchObject({
+          id: 'https://example.org/contracts/index',
+          version: '1.0.0',
+        })
         expectCode(
-          () => linkPackageProject({ flows, bindings: [] }),
-          'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
+          () =>
+            linkPackageProject({
+              flows,
+              bindings: [binding('bindings/consumer.ts', { package: 'flows/consumer' })],
+            }),
+          'PROJECT_BINDING_INTERFACE_UNRESOLVED',
+          '/slots',
         )
       },
     )
   })
 
-  test('admits exactly one Agent Run capability slot and freezes its exact identity', async () => {
+  test('accepts exact ordinary Flow and Binding substitutes and rejects missing or changed offers', async () => {
+    const contract = invocation({
+      id: 'https://example.org/contracts/review',
+      version: '1.0.0',
+      input: { type: 'string' },
+      result: {
+        type: 'object',
+        properties: { outcome: { const: 'done' }, output: { type: 'string' } },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
+      },
+    })
+    await withFlows(
+      {
+        'flows/consumer': {
+          ...run('consumer'),
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            uses: { review: { contract: './contracts/review.json' } },
+          }),
+          'contracts/review.json': contract,
+        },
+        'flows/first': { ...run('first'), 'FLOW.contract.json': contract },
+        'flows/second': { ...run('second'), 'FLOW.contract.json': contract },
+        'flows/plain': run('plain'),
+        'flows/changed': {
+          ...run('changed'),
+          'FLOW.contract.json': invocation({
+            ...JSON.parse(contract),
+            result: {
+              type: 'object',
+              properties: { outcome: { const: 'done' }, output: { type: 'integer' } },
+              required: ['outcome', 'output'],
+              additionalProperties: false,
+            },
+          }),
+        },
+      },
+      (flows) => {
+        for (const target of ['flow:flows/first', 'flow:flows/second', 'binding:configured']) {
+          const linked = linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/configured.ts', { package: 'flows/second' }),
+              binding('bindings/consumer.ts', {
+                package: 'flows/consumer',
+                slots: { review: target },
+              }),
+            ],
+          })
+          expect(linked.bindings.find(({ id }) => id === 'consumer')!.slots.review).toEqual(
+            target === 'binding:configured'
+              ? { kind: 'binding', id: 'configured' }
+              : { kind: 'flow', path: target.slice(5) },
+          )
+          expect(
+            linked.flows.find(({ provenance }) => provenance.projectPath === 'flows/consumer')!
+              .directRun,
+          ).toBeFalse()
+        }
+        for (const target of ['flow:flows/plain', 'flow:flows/changed']) {
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                bindings: [
+                  binding('bindings/consumer.ts', {
+                    package: 'flows/consumer',
+                    slots: { review: target },
+                  }),
+                ],
+              }),
+            'PROJECT_BINDING_INTERFACE_MISMATCH',
+            '/slots/review',
+          )
+        }
+      },
+    )
+  })
+
+  test('accepts ordinary Flow and Binding implementations of the exact Agent interface', async () => {
+    await withFlows(
+      {
+        'flows/consumer': {
+          ...run('consumer'),
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
+        },
+        'flows/impostor': {
+          ...run('impostor'),
+          'FLOW.contract.json': agentRunContract,
+          ...agentChannelFiles('contracts'),
+        },
+      },
+      (flows) => {
+        expect(
+          linkPackageProject({ flows, bindings: [] }).flows.find(
+            ({ provenance }) => provenance.projectPath === 'flows/consumer',
+          )!.directRun,
+        ).toBeTrue()
+        for (const target of ['flow:flows/impostor', 'binding:impostor']) {
+          expect(() =>
+            linkPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/impostor.ts', { package: 'flows/impostor' }),
+                binding('bindings/consumer.ts', {
+                  package: 'flows/consumer',
+                  slots: { agent: target },
+                }),
+              ],
+            }),
+          ).not.toThrow()
+        }
+      },
+    )
+  })
+
+  test('retains an unresolved Agent requirement without manufacturing native authority', async () => {
     await withFlows(
       {
         'flows/agent-consumer': {
-          'FLOW.md': metadata(`name: agent-consumer
-description: Agent consumer.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'agent-consumer',
+            description: 'Agent consumer.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
         },
       },
       async ([flow]) => {
         const linked = linkPackageProject({ flows: [flow!], bindings: [] })
-        expect(linked.flows[0]!.directRun).toBeTrue()
+        expect(linked.flows[0]!.directRun).toBeFalse()
         expect(linked.flows[0]!.uses).toEqual({
           agent: {
             id: AGENT_RUN_CONTRACT_ID,
@@ -315,39 +703,55 @@ uses:
     )
   })
 
-  test('rejects local and multiple capability uses', async () => {
+  test('requires routes for uncontracted and repeated Agent requirements', async () => {
     await withFlows(
       {
         'flows/local': {
-          'FLOW.md': metadata(`name: local
-description: Local.
-uses:
-  agent:
-    local: true`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({
+            name: 'local',
+            description: 'Local.',
+            uses: { child: {} },
+          }),
+          'FLOW.ts': 'export {};\n',
         },
         'flows/multiple': {
-          'FLOW.md': metadata(`name: multiple
-description: Multiple.
-uses:
-  primary:
-    contract: ./contracts/agent-run.capability.json
-  secondary:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'multiple',
+            description: 'Multiple.',
+            uses: {
+              primary: { contract: './contracts/agent-run/contract.json' },
+              secondary: { contract: './contracts/agent-run/contract.json' },
+            },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
         },
       },
       async ([local, multiple]) => {
+        expect(
+          linkPackageProject({ flows: [local!], bindings: [] }).flows[0]!.directRun,
+        ).toBeFalse()
+        expect(
+          linkPackageProject({ flows: [multiple!], bindings: [] }).flows[0]!.directRun,
+        ).toBeFalse()
         expectCode(
-          () => linkPackageProject({ flows: [local!], bindings: [] }),
-          'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-          '/uses/agent',
+          () =>
+            linkPackageProject({
+              flows: [local!],
+              bindings: [binding('bindings/local.ts', { package: 'flows/local' })],
+            }),
+          'PROJECT_BINDING_INTERFACE_UNRESOLVED',
+          '/slots',
         )
         expectCode(
-          () => linkPackageProject({ flows: [multiple!], bindings: [] }),
-          'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
+          () =>
+            linkPackageProject({
+              flows: [multiple!],
+              bindings: [binding('bindings/multiple.ts', { package: 'flows/multiple' })],
+            }),
+          'PROJECT_BINDING_INTERFACE_UNRESOLVED',
+          '/slots',
         )
       },
     )
@@ -357,15 +761,16 @@ uses:
     await withFlows(
       {
         'flows/router': run('router'),
+        'flows/agent': agentProvider('agent'),
         'flows/agent-child': {
-          'FLOW.md': metadata(`name: agent-child
-description: Agent child.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'agent-child',
+            description: 'Agent child.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
           'settings.schema.json': schema({
             type: 'object',
             properties: { style: { type: 'string' } },
@@ -375,6 +780,7 @@ uses:
       async (flows) => {
         const linked = linkPackageProject({
           flows,
+          defaultProviders: { 'https://jig.md/contracts/agent-run': 'flow:flows/agent' },
           bindings: [
             binding('bindings/router.ts', {
               package: 'flows/router',
@@ -399,7 +805,7 @@ uses:
     )
   })
 
-  test('rejects unknown, self, cyclic, and nonleaf Binding slot targets', async () => {
+  test('accepts two child levels while rejecting unknown, self and cyclic slot targets', async () => {
     await withFlows(
       {
         'flows/router': run('router'),
@@ -422,7 +828,19 @@ uses:
           'PROJECT_BINDING_SLOT_RECURSIVE',
           '/slots/child',
         )
-        for (const target of ['flow:flows/leaf', 'binding:router']) {
+        expect(
+          linkPackageProject({
+            flows,
+            bindings: [
+              router('binding:reviewer'),
+              binding('bindings/reviewer.ts', {
+                package: 'flows/reviewer',
+                slots: { child: 'flow:flows/leaf' },
+              }),
+            ],
+          }).bindings,
+        ).toHaveLength(2)
+        for (const target of ['binding:router']) {
           expectCode(
             () =>
               linkPackageProject({
@@ -435,8 +853,8 @@ uses:
                   }),
                 ],
               }),
-            'PROJECT_BINDING_SLOT_NOT_LEAF',
-            '/slots/child',
+            'PROJECT_BINDING_SLOT_RECURSIVE',
+            '/slots',
           )
         }
         expectCode(
@@ -493,11 +911,9 @@ uses:
       {
         'flows/plain': run('plain'),
         'flows/configured': {
-          'FLOW.md': metadata(`name: configured
-description: Configured.
-attachments:
-  source: read`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+          'FLOW.contract.json': invocation({ attachments: { source: 'read' } }),
+          'FLOW.ts': 'export {};\n',
         },
       },
       async (flows) => {
@@ -546,10 +962,11 @@ attachments:
     await withFlows(
       {
         'flows/files': {
-          'FLOW.md': metadata(
-            'name: files\ndescription: Files.\nattachments:\n  first: read-write\n  second: read-write',
-          ),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'files', description: 'Files.' }),
+          'FLOW.contract.json': invocation({
+            attachments: { first: 'read-write', second: 'read-write' },
+          }),
+          'FLOW.ts': 'export {};\n',
         },
       },
       (flows) => {
@@ -565,12 +982,12 @@ attachments:
     await withFlows(
       {
         'flows/immutable': {
-          'FLOW.md': metadata(`name: immutable
-description: Immutable.
-x-state:
-  nested:
-    - safe`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({
+            name: 'immutable',
+            description: 'Immutable.',
+            'x-state': { nested: ['safe'] },
+          }),
+          'FLOW.ts': 'export {};\n',
         },
       },
       async (flows) => {
@@ -595,12 +1012,323 @@ x-state:
       },
     )
   })
+
+  test('one configured Agent default resolves code, Binding and Markdown requirements', async () => {
+    await withFlows(
+      {
+        'flows/consumer': agentConsumer('consumer'),
+        'flows/markdown': { 'FLOW.md': 'Answer the supplied question.\n' },
+        'flows/agent': {
+          ...agentProvider('agent'),
+          'settings.schema.json': schema({
+            type: 'object',
+            properties: { model: { type: 'string' } },
+            required: ['model'],
+            additionalProperties: false,
+          }),
+        },
+      },
+      (flows) => {
+        const linked = linkPackageProject({
+          flows,
+          defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' },
+          bindings: [
+            binding('bindings/agent.ts', { package: 'flows/agent', settings: { model: 'chosen' } }),
+            binding('bindings/consumer.ts', { package: 'flows/consumer' }),
+          ],
+        })
+        const consumer = linked.flows.find(
+          (flow) => flow.provenance.projectPath === 'flows/consumer',
+        )!
+        const markdown = linked.flows.find(
+          (flow) => flow.provenance.projectPath === 'flows/markdown',
+        )!
+        expect(consumer.directRun).toBeTrue()
+        expect(consumer.slots).toEqual({ agent: { kind: 'binding', id: 'agent' } })
+        expect(markdown.directRun).toBeTrue()
+        expect(markdown.slots).toEqual({ 'markdown-agent': { kind: 'binding', id: 'agent' } })
+        expect(linked.bindings.find(({ id }) => id === 'consumer')!.slots).toEqual(consumer.slots)
+        expect(linked.bindings.find(({ id }) => id === 'agent')!.settings).toEqual({
+          model: 'chosen',
+        })
+        expect(Object.isFrozen(consumer.slots)).toBeTrue()
+        expect(Object.isFrozen(consumer.slots!.agent)).toBeTrue()
+      },
+    )
+  })
+
+  test('explicit slots override a default or fail without falling back to it', async () => {
+    await withFlows(
+      {
+        'flows/consumer': agentConsumer('consumer'),
+        'flows/default-agent': agentProvider('default-agent'),
+        'flows/alternate-agent': agentProvider('alternate-agent'),
+        'flows/untyped': run('untyped'),
+      },
+      (flows) => {
+        const project = (target: string) =>
+          linkPackageProject({
+            flows,
+            defaultProviders: { 'https://jig.md/contracts/agent-run': 'flow:flows/default-agent' },
+            bindings: [
+              binding('bindings/consumer.ts', {
+                package: 'flows/consumer',
+                slots: { agent: target },
+              }),
+            ],
+          })
+        expect(project('flow:flows/alternate-agent').bindings[0]!.slots.agent).toEqual({
+          kind: 'flow',
+          path: 'flows/alternate-agent',
+        })
+        expectCode(() => project('flow:flows/untyped'), 'PROJECT_BINDING_INTERFACE_MISMATCH')
+        expectCode(() => project('binding:missing'), 'PROJECT_BINDING_SLOT_MISSING')
+      },
+    )
+  })
+
+  test('a mismatched default disables direct invocation without vetoing an explicit matching Binding', async () => {
+    for (const change of [
+      (contract: any) => {
+        contract.version = '2.0.0'
+      },
+      (contract: any) => {
+        contract.$defs.RunInput.properties.instructions.minLength = 2
+      },
+    ]) {
+      const changed = JSON.parse(agentRunContract)
+      change(changed)
+      await withFlows(
+        {
+          'flows/consumer': agentConsumer('consumer'),
+          'flows/agent': {
+            ...agentProvider('agent'),
+            'FLOW.contract.json': JSON.stringify(changed),
+          },
+          'flows/matching-agent': agentProvider('matching-agent'),
+        },
+        (flows) => {
+          const defaultProviders = { 'https://jig.md/contracts/agent-run': 'flow:flows/agent' }
+          const linked = linkPackageProject({ flows, bindings: [], defaultProviders })
+          const consumer = linked.flows.find(
+            (flow) => flow.provenance.projectPath === 'flows/consumer',
+          )!
+          expect(consumer.directRun).toBeFalse()
+          expect(consumer.slots).toBeUndefined()
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                defaultProviders,
+                bindings: [binding('bindings/consumer.ts', { package: 'flows/consumer' })],
+              }),
+            'PROJECT_DEFAULT_INTERFACE_MISMATCH',
+            '/uses/agent',
+          )
+          const configured = linkPackageProject({
+            flows,
+            defaultProviders,
+            bindings: [
+              binding('bindings/consumer.ts', {
+                package: 'flows/consumer',
+                slots: { agent: 'flow:flows/matching-agent' },
+              }),
+            ],
+          })
+          expect(configured.bindings[0]!.slots.agent).toEqual({
+            kind: 'flow',
+            path: 'flows/matching-agent',
+          })
+        },
+      )
+    }
+  })
+
+  test('a configured default wrapper does not acquire an unused self-recursive direct target', async () => {
+    await withFlows(
+      {
+        'flows/consumer': agentConsumer('consumer'),
+        'flows/wrapper': { ...agentProvider('wrapper'), ...agentConsumer('wrapper') },
+        'flows/backend': agentProvider('backend'),
+      },
+      (flows) => {
+        const bindings = [
+          binding('bindings/wrapper.ts', {
+            package: 'flows/wrapper',
+            slots: { agent: 'flow:flows/backend' },
+          }),
+        ]
+        const linked = linkPackageProject({
+          flows,
+          bindings,
+          defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:wrapper' },
+        })
+        const wrapper = linked.flows.find(
+          (flow) => flow.provenance.projectPath === 'flows/wrapper',
+        )!
+        expect(wrapper.directRun).toBeFalse()
+        expect(wrapper.slots).toBeUndefined()
+        expect(linked.bindings[0]!.slots.agent).toEqual({ kind: 'flow', path: 'flows/backend' })
+        const requests = buildPrivateActivationRequests(linked)
+        expect(
+          requests.some(({ target }) => target.kind === 'flow' && target.path === 'flows/wrapper'),
+        ).toBeFalse()
+        expect(
+          requests.find(({ target }) => target.kind === 'flow' && target.path === 'flows/consumer')!
+            .slots.agent,
+        ).toMatchObject({ kind: 'flow', target: { kind: 'binding', id: 'wrapper' } })
+        expect(
+          requests.find(({ target }) => target.kind === 'binding' && target.id === 'wrapper')!.slots
+            .agent,
+        ).toMatchObject({ kind: 'flow', target: { kind: 'flow', path: 'flows/backend' } })
+        expect(
+          requests
+            .flatMap(({ slots }) => Object.values(slots))
+            .some(({ kind }) => kind === 'native'),
+        ).toBeFalse()
+        expectCode(
+          () =>
+            linkPackageProject({
+              flows,
+              bindings,
+              defaultProviders: { 'https://jig.md/contracts/agent-run': 'flow:flows/wrapper' },
+            }),
+          'PROJECT_DEFAULT_UNAVAILABLE',
+        )
+        for (const slots of [undefined, { agent: 'binding:wrapper' }]) {
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:wrapper' },
+                bindings: [
+                  binding('bindings/wrapper.ts', {
+                    package: 'flows/wrapper',
+                    ...(slots === undefined ? {} : { slots }),
+                  }),
+                ],
+              }),
+            'PROJECT_BINDING_SLOT_RECURSIVE',
+          )
+        }
+      },
+    )
+  })
+
+  test('default selection rejects ambiguity, missing targets, anonymous and host-only providers', async () => {
+    const command = await readFile(
+      new URL('../../../docs/jig/spec/contracts/project-command/contract.json', import.meta.url),
+      'utf8',
+    )
+    await withFlows(
+      {
+        'flows/agent': agentProvider('agent'),
+        'flows/second': agentProvider('second'),
+        'flows/versioned': {
+          ...agentProvider('versioned'),
+          'FLOW.contract.json': JSON.stringify({
+            ...JSON.parse(agentRunContract),
+            version: '2.0.0',
+          }),
+        },
+        'flows/plain': run('plain'),
+        'flows/command': { ...run('command'), 'FLOW.contract.json': command },
+      },
+      (flows) => {
+        for (const [defaultProviders, code] of [
+          [{ 'https://example.org/wrong': 'flow:flows/agent' }, 'PROJECT_DEFAULT_CONTRACT'],
+          [{ 'https://jig.md/contracts/agent-run': 'binding:missing' }, 'PROJECT_DEFAULT_MISSING'],
+          [
+            { 'https://jig.md/contracts/agent-run': 'flow:flows/plain' },
+            'PROJECT_DEFAULT_CONTRACT',
+          ],
+          [
+            { 'https://jig.md/contracts/agent-run': 'flow:flows/command' },
+            'PROJECT_DEFAULT_CONTRACT',
+          ],
+        ] as const)
+          expectCode(() => linkPackageProject({ flows, bindings: [], defaultProviders }), code)
+      },
+    )
+  })
+
+  test('defaults do not fill anonymous requirements or make attachment providers callable', async () => {
+    await withFlows(
+      {
+        'flows/consumer': {
+          ...run('consumer'),
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            uses: { work: {} },
+          }),
+        },
+        'flows/agent': agentProvider('agent'),
+        'flows/files': {
+          ...run('files'),
+          'FLOW.contract.json': invocation({
+            id: 'https://example.org/contracts/files',
+            version: '1.0.0',
+            attachments: { source: 'read' },
+          }),
+        },
+      },
+      (flows) => {
+        const linked = linkPackageProject({
+          flows,
+          bindings: [],
+          defaultProviders: { 'https://jig.md/contracts/agent-run': 'flow:flows/agent' },
+        })
+        expect(
+          linked.flows.find((flow) => flow.provenance.projectPath === 'flows/consumer')!.directRun,
+        ).toBeFalse()
+        expectCode(
+          () =>
+            linkPackageProject({
+              flows,
+              defaultProviders: { 'https://jig.md/contracts/agent-run': 'flow:flows/agent' },
+              bindings: [binding('bindings/consumer.ts', { package: 'flows/consumer' })],
+            }),
+          'PROJECT_BINDING_INTERFACE_UNRESOLVED',
+        )
+        for (const target of ['flow:flows/files', 'binding:files'])
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                defaultProviders: { 'https://example.org/contracts/files': target },
+                bindings: [binding('bindings/files.ts', { package: 'flows/files' })],
+              }),
+            'PROJECT_DEFAULT_UNAVAILABLE',
+          )
+      },
+    )
+  })
 })
+
+function agentProvider(name: string): Record<string, string> {
+  return {
+    ...run(name),
+    'FLOW.contract.json': agentRunContract,
+    ...agentChannelFiles('contracts'),
+  }
+}
+
+function agentConsumer(name: string): Record<string, string> {
+  return {
+    ...run(name),
+    'flow.meta.json': metadata({
+      name,
+      uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+    }),
+    'contracts/agent-run/contract.json': agentRunContract,
+    ...agentChannelFiles('contracts/agent-run/contracts'),
+  }
+}
 
 function run(name: string): Record<string, string> {
   return {
-    'FLOW.md': metadata(`name: ${name}\ndescription: ${name}.`),
-    'flow.ts': 'export {};\n',
+    'flow.meta.json': metadata({ name, description: `${name}.` }),
+    'FLOW.ts': 'export {};\n',
   }
 }
 
@@ -608,21 +1336,18 @@ function binding(sourcePath: string, definition: unknown): InjectedBindingDeclar
   return { sourcePath, definition }
 }
 
-function metadata(frontmatter: string): string {
-  return `---\n${frontmatter}\n---\n`
+function metadata(value: Record<string, unknown>): string {
+  return JSON.stringify(value)
 }
 
 function schema(value: Record<string, unknown>): string {
   return JSON.stringify({ $schema: schemaUri, ...value })
 }
 
-function capability(id: string): string {
+function invocation(value: Record<string, unknown> = {}): string {
   return JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/capability-contract-1.schema.json',
-    flowCapabilityContract: 1,
-    id,
-    version: '1.0.0',
-    methods: { call: { input: true, output: true, errors: {} } },
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    ...value,
   })
 }
 

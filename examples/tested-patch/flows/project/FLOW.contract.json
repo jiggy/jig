@@ -1,0 +1,11 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "outcomes": {
+    "blocked": "The defect was not reproduced or no acceptable patch was produced.",
+    "limit": "The Agent stopped at its limit."
+  },
+  "attachments": {
+    "source": "read",
+    "deliverables": "read-write"
+  }
+}

@@ -40,6 +40,35 @@ describe('Jig project authoring SDK/1', () => {
     expect(() => defineBinding(binding as never)).toThrow()
   })
 
+  test('captures canonical default target selections without resolving their contracts', () => {
+    const defaultProviders = {
+      'https://example.org/review': 'flow:./flows/reviewer',
+      'https://jig.md/contracts/agent-run': 'binding:agent',
+    }
+    const project = defineJig({ defaultProviders })
+    defaultProviders['https://example.org/review'] = 'binding:changed'
+    expect(project).toEqual({
+      defaultProviders: {
+        'https://example.org/review': 'flow:flows/reviewer',
+        'https://jig.md/contracts/agent-run': 'binding:agent',
+      },
+    })
+    expect(Object.isFrozen(project.defaultProviders)).toBeTrue()
+    expect(normalizeJigDefinition(project)).toEqual(project)
+    expect(defineJig({ defaultProviders: {} })).toEqual({ defaultProviders: {} })
+    expect(defineJig({})).toEqual({})
+  })
+
+  test('accepts the bounded default-selection limit', () => {
+    const defaultProviders = Object.fromEntries(
+      Array.from({ length: 256 }, (_, index) => [
+        `https://example.org/worker-${index}`,
+        `binding:worker-${index}`,
+      ]),
+    )
+    expect(Object.keys(defineJig({ defaultProviders }).defaultProviders!)).toHaveLength(256)
+  })
+
   test('captures exact child Flow and Binding selectors', () => {
     const slots = { question: 'flow:./flows/answer-question', bug: 'binding:handle-bug' }
     const binding = defineBinding({ package: './flows/router', slots })
@@ -56,13 +85,44 @@ describe('Jig project authoring SDK/1', () => {
   for (const [name, action] of [
     ['unknown project field', () => defineJig({ extra: true } as never)],
     ['undefined optional', () => defineJig({ flows: undefined } as never)],
+    ['undefined providers', () => defineJig({ defaultProviders: undefined } as never)],
+    ['non-map providers', () => defineJig({ defaultProviders: ['binding:agent'] } as never)],
+    ['non-string provider', () => defineJig({ defaultProviders: { contract: 3 } } as never)],
+    ['plain provider path', () => defineJig({ defaultProviders: { contract: 'flows/agent' } })],
+    ['provider grant', () => defineJig({ defaultProviders: { contract: 'grant:agent' } })],
+    ['native provider', () => defineJig({ defaultProviders: { contract: 'agent:worker' } })],
+    [
+      'invalid provider Binding',
+      () => defineJig({ defaultProviders: { contract: 'binding:Bad' } }),
+    ],
+    [
+      'escaping provider path',
+      () => defineJig({ defaultProviders: { contract: 'flow:../agent' } }),
+    ],
+    [
+      'spoofed default target',
+      () =>
+        defineJig({ defaultProviders: { contract: { kind: 'binding', id: 'agent' } } } as never),
+    ],
+    [
+      'oversized defaults',
+      () =>
+        defineJig({
+          defaultProviders: Object.fromEntries(
+            Array.from({ length: 257 }, (_, index) => [
+              `https://example.org/worker-${index}`,
+              `binding:worker-${index}`,
+            ]),
+          ),
+        }),
+    ],
     ['empty discovery', () => discover([])],
     ['glob root', () => discover('./flows/*')],
     ['escaping package', () => defineBinding({ package: '../flow' })],
     ['unknown Binding field', () => defineBinding({ package: 'flows/a', grants: {} } as never)],
     [
-      'unsupported attachments',
-      () => defineBinding({ package: 'flows/a', attachments: {} } as never),
+      'non-path attachments',
+      () => defineBinding({ package: 'flows/a', attachments: { source: 3 } } as never),
     ],
     [
       'invalid slot name',
@@ -111,6 +171,26 @@ describe('Jig project authoring SDK/1', () => {
     settings.nested.enabled = false
     expect(binding.settings).toEqual({ nested: { enabled: true } })
     expect(Object.isFrozen(binding.settings.nested)).toBeTrue()
+  })
+
+  test('rejects accessor-backed and nonordinary default selections without invoking them', () => {
+    let invoked = false
+    const accessor = Object.defineProperty({}, 'contract', {
+      get() {
+        invoked = true
+        return 'binding:changed'
+      },
+      enumerable: true,
+    })
+    const extended = { contract: 'binding:agent', extra: true }
+    class Providers {
+      contract = 'binding:agent'
+    }
+    for (const defaultProviders of [accessor, new Array(1), extended, new Providers()]) {
+      expect(() => defineJig({ defaultProviders } as never)).toThrow()
+      expect(() => normalizeJigDefinition({ defaultProviders })).toThrow()
+    }
+    expect(invoked).toBeFalse()
   })
 
   test('preserves prototype-sensitive JSON member names', () => {

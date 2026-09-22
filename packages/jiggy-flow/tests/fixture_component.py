@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from jiggy.flow import CapabilityError, OperationError, RunContext, RunResult, handle
+from jiggy.flow import JsonValue, OperationError, RunContext, RunResult, handle
 
 
 logged = False
@@ -12,6 +12,22 @@ logged = False
 async def run(context: RunContext) -> RunResult:
     global logged
     mode = context.input.get("mode") if isinstance(context.input, dict) else None
+
+    if mode == "slot-channel":
+        try:
+            await context.channel(contract={"slot": "agent", "channel": "events"})
+        except OperationError as error:
+            return {"outcome": "done", "output": error.code}
+        raise AssertionError("expected rejection")
+
+    if mode == "channel-offered-failure":
+        pair = await context.channel()
+        try:
+            await context.call(operation_id="work", slot="worker", input=None,
+                               channels={"input": pair.receive})
+        except OperationError as error:
+            return {"outcome": "done", "output": error.code}
+        raise AssertionError("expected call failure")
 
     if mode == "broadcast-abandoned":
         source = await context.channel(delivery="broadcast")
@@ -31,8 +47,8 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "channels":
         pair = await context.channel(contract="./contracts/public-updates.json")
-        work = asyncio.create_task(context.call_capability(
-            operation_id="agent:1", slot="agent", method="run", input={},
+        work = asyncio.create_task(context.call(
+            operation_id="agent:1", slot="agent", input={},
             channels={"events": pair.send},
         ))
         complete = True
@@ -104,7 +120,7 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "channel-caught-child":
         try:
-            await context.run_child_flow(operation_id="child:1", slot="child", input={})
+            await context.call(operation_id="child:1", slot="child", input={})
         except OperationError:
             return {"outcome": "done", "output": "recovered"}
 
@@ -117,9 +133,18 @@ async def run(context: RunContext) -> RunResult:
     if mode == "invalid-result":
         return {"outcome": "done", "output": float("nan")}
 
+    if mode in ("deep-result", "channel-deep-result"):
+        if mode == "channel-deep-result":
+            await context.channel()
+        output: JsonValue = None
+        depth = context.input.get("depth", 126)
+        for _ in range(depth):
+            output = [output]
+        return {"outcome": "done", "output": output}
+
     if mode == "snapshot":
         value = {"nested": ["before"]}
-        task = asyncio.create_task(context.run_child_flow(
+        task = asyncio.create_task(context.call(
             operation_id="snapshot-1", slot="child", input=value,
         ))
         await asyncio.sleep(0)  # Admit and snapshot the call before mutation.
@@ -136,25 +161,19 @@ async def run(context: RunContext) -> RunResult:
         return {"outcome": "done", "output": "logged"}
 
     if mode == "calls":
-        child = await context.run_child_flow(
+        child = await context.call(
             operation_id="child:1",
             slot="child",
             intent="Exercise a child Flow call.",
             input={"value": 1},
         )
-        try:
-            await context.call_capability(
-                operation_id="effect:1",
-                slot="store",
-                method="read",
-                input={"key": "missing"},
-            )
-        except CapabilityError as error:
-            effect = {"name": error.error_name, "data": error.data}
-        else:
-            raise AssertionError("fixture expected a declared CapabilityError")
-        # A child result is itself ordinary JSON and may be embedded directly
-        # in another result.
+        effect = await context.call(
+            operation_id="effect:1",
+            slot="store",
+            input={"key": "missing"},
+        )
+        # Every complete call result, including domain refusal, is ordinary
+        # JSON and may be embedded directly in another result.
         return {"outcome": "done", "output": {"child": child, "effect": effect}}
 
     if mode == "cancel":
@@ -166,10 +185,9 @@ async def run(context: RunContext) -> RunResult:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
             try:
-                await context.call_capability(
+                await context.call(
                     operation_id="after-cancel:1",
                     slot="store",
-                    method="read",
                     input={},
                 )
             except OperationError as error:
@@ -185,29 +203,28 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "parallel":
         child = asyncio.create_task(
-            context.run_child_flow(
+            context.call(
                 operation_id="child:parallel",
                 slot="child",
                 input={"value": 1},
             )
         )
         effect = asyncio.create_task(
-            context.call_capability(
+            context.call(
                 operation_id="effect:parallel",
                 slot="store",
-                method="read",
                 input={"key": "present"},
             )
         )
         child_result, effect_result = await asyncio.gather(child, effect)
         return {
             "outcome": "done",
-            "output": {"child": child_result["output"], "effect": effect_result},
+            "output": {"child": child_result, "effect": effect_result},
         }
 
     if mode == "cancel-call":
         call = asyncio.create_task(
-            context.run_child_flow(
+            context.call(
                 operation_id="child:cancelled",
                 slot="child",
                 input={},
@@ -222,7 +239,7 @@ async def run(context: RunContext) -> RunResult:
         return {"outcome": "done", "output": "cancelled-locally"}
 
     if mode == "cancel-pending":
-        await context.run_child_flow(
+        await context.call(
             operation_id="child:root-cancelled",
             slot="child",
             input={},
@@ -231,7 +248,7 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "detached":
         asyncio.create_task(
-            context.run_child_flow(
+            context.call(
                 operation_id="child:detached",
                 slot="child",
                 input={},
@@ -242,7 +259,7 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "error-with-detached":
         asyncio.create_task(
-            context.run_child_flow(
+            context.call(
                 operation_id="child:error-detached",
                 slot="child",
                 input={},

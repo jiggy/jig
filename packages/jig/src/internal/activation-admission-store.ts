@@ -1,19 +1,23 @@
+import { createHash, randomUUID } from 'node:crypto'
 import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { ProjectAdministrationError } from '../administration/project.js'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { isDirectRunEligible } from '../project/flow-source.js'
+import { resolveInvocationSlots } from '../project/invocation-slots.js'
 import {
-  projectSupportedCapabilityUses,
+  projectInvocationRequirements,
   type RunTargetIdentity,
 } from '../project/package-project.js'
 import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
+import { flowSelector } from '../project/package-selector.js'
 import {
   openPrivateProjectRoot,
   type PrivateProjectRoot,
@@ -40,7 +44,9 @@ import {
   requirePrivateCreatedActivationCandidateV5,
 } from './activation-admission.js'
 import { privateActivationTargetKey } from './activation-planning.js'
+import { verifyBoundAttachment } from './bound-attachments.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
@@ -74,7 +80,11 @@ import {
   type PrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from './project-local-lock.js'
-import { canReservePrivateRootOperation } from './root-operation-limits.js'
+import {
+  canReservePrivateRootOperation,
+  isPrivateBranchDepth,
+  isPrivateChildFlowAllocation,
+} from './root-operation-limits.js'
 import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
 import {
   createPrivateExternalSubmissionOrigin,
@@ -119,6 +129,10 @@ const MAX_STORED_BYTES = 16_777_216
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER)
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/
+const NATIVE_SESSION_BYTES = 8 * 1024 * 1024
+const NATIVE_SESSION_COUNT = 16
+const NATIVE_SESSION_RETENTION_MS = 24 * 60 * 60 * 1_000
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])/
 const stateTurns = new Map<string, Promise<void>>()
 
 const CREATE_CANDIDATES =
@@ -145,6 +159,8 @@ const CREATE_ROOT_TERMINALS =
   'CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT'
 const CREATE_COORDINATOR_LOCK =
   'CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT'
+const CREATE_NATIVE_SESSIONS =
+  'CREATE TABLE native_sessions (reference TEXT PRIMARY KEY, scope_digest TEXT NOT NULL, root_run_id TEXT REFERENCES root_runs(run_id), native_id TEXT NOT NULL, rollout_path TEXT NOT NULL, content_digest TEXT NOT NULL, content_bytes BLOB NOT NULL CHECK (length(content_bytes) BETWEEN 1 AND 8388608), created_at INTEGER NOT NULL CHECK (created_at BETWEEN 0 AND 9007199168340991), expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000)) STRICT'
 const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({
     type: 'table',
@@ -165,6 +181,12 @@ const EXPECTED_SCHEMA = Object.freeze([
     name: 'coordinator_head',
     table: 'coordinator_head',
     sql: CREATE_COORDINATOR_HEAD,
+  }),
+  Object.freeze({
+    type: 'table',
+    name: 'native_sessions',
+    table: 'native_sessions',
+    sql: CREATE_NATIVE_SESSIONS,
   }),
   Object.freeze({
     type: 'table',
@@ -478,6 +500,38 @@ export interface PrivateRootChildOwnerLifecycle {
   readonly sandbox?: PrivateRootChildOwnerFact
   readonly fence?: PrivateRootChildOwnerFact
   readonly cleanup?: PrivateRootChildOwnerFact
+}
+
+export interface PrivateNativeSessionReceipt {
+  readonly reference: string
+  readonly expiresAtUnixMs: number
+}
+
+export interface PrivateNativeSessionSnapshot extends PrivateNativeSessionReceipt {
+  readonly lifetime: 'run' | 'project'
+  readonly nativeId: string
+  readonly rolloutPath: string
+  readonly bytes: Uint8Array
+  readonly digest: string
+}
+
+interface NativeSessionAccess {
+  readonly coordinator: PrivateProjectCoordinator
+  readonly projectRoot: string
+  readonly parentRunId: string
+  readonly scopeDigest: string
+}
+
+interface NativeSessionRow {
+  readonly root_run_id: string | null
+  readonly reference: string
+  readonly scope_digest: string
+  readonly native_id: string
+  readonly rollout_path: string
+  readonly content_digest: string
+  readonly content_bytes: Uint8Array
+  readonly created_at: bigint
+  readonly expires_at: bigint
 }
 
 export interface PrivateRootExecutionWork {
@@ -885,7 +939,7 @@ export async function submitPrivateRootRun(input: {
       } catch {
         invalid(
           'RUN_ATTACHMENTS_INVALID',
-          'provide the admitted root read attachments and its required output destination',
+          'provide the unbound root read attachments and required output destination; captured Binding attachments cannot be overridden, and combined input must fit the file limits',
         )
       }
     }
@@ -1118,19 +1172,34 @@ export async function allocatePrivateRootChildOwner(input: {
         }
         return loaded
       }
-      requireActiveChildScope(owner.database, input.parentRunId, input.parentOperationId)
+      const parentDepth = requireActiveChildScope(
+        owner.database,
+        input.parentRunId,
+        input.parentOperationId,
+      )
+      if (isPrivateChildFlowAllocation(input.allocation)) {
+        const depth = (input.allocation as Record<string, JsonValue>).flowDepth
+        if (
+          !isPrivateBranchDepth(depth) ||
+          (parentDepth !== undefined && depth >= parentDepth) ||
+          findFlowOwner(owner.database, input.parentRunId, input.operationId) !== null
+        )
+          invalid('RUN_CHILD_OWNER_CONFLICT', 'Flow owner identity or reserved depth is invalid')
+      }
       if (
         input.parentOperationId !== undefined &&
         (input.allocation === null ||
           typeof input.allocation !== 'object' ||
           Array.isArray(input.allocation) ||
-          !['private-root-agent-owner-allocation/1', 'private-project-command-owner/1'].includes(
-            String((input.allocation as Record<string, JsonValue>).kind),
-          ))
+          ![
+            'private-root-child-owner-allocation/1',
+            'private-root-agent-owner-allocation/1',
+            'private-contained-effect-owner/1',
+          ].includes(String((input.allocation as Record<string, JsonValue>).kind)))
       ) {
         invalid(
           'RUN_CHILD_OWNER_CONFLICT',
-          'a child Flow may own only an Agent or project-command operation',
+          'a child Flow may own only a bounded Flow or contained effect',
         )
       }
       if (input.parentOperationId === undefined) {
@@ -1154,7 +1223,7 @@ export async function allocatePrivateRootChildOwner(input: {
         countScopedRootChildOwners(owner.database, input.parentRunId, input.parentOperationId) !==
         0n
       ) {
-        invalid('RUN_CHILD_CAPACITY', 'the child Flow already has an active effect')
+        invalid('RUN_CHILD_CAPACITY', 'the child Flow already has an active operation')
       }
       runFinalized(
         owner.database,
@@ -1471,7 +1540,8 @@ export async function closePrivateRootChildOwner(input: {
         input.parentOperationId,
       )
       if (
-        input.parentOperationId === undefined &&
+        row !== null &&
+        isPrivateChildFlowAllocation(loadRootChildOwner(row).allocation.value) &&
         countScopedRootChildOwners(owner.database, input.parentRunId, input.operationId) !== 0n
       ) {
         invalid('RUN_EXECUTION_INCOMPLETE', 'child Flow still has an active operation owner')
@@ -1719,17 +1789,17 @@ function countScopedRootChildOwners(
   }
 }
 
-/** An active direct child Flow may own one Agent or project command. */
+/** Every ancestor must still own active capacity before a nested allocation. */
 function requireActiveChildScope(
   database: SqliteDatabase,
   parentRunId: string,
   parentOperationId?: string,
-): void {
+): number | undefined {
   if (requireRootExecutionLifecycle(database, parentRunId).fence_digest !== null) {
     invalid('RUN_CHILD_PARENT_INACTIVE', 'the parent root Run is fenced')
   }
   if (parentOperationId === undefined) return
-  const parent = findRootChildOwner(database, parentRunId, parentOperationId)
+  const parent = findFlowOwner(database, parentRunId, parentOperationId)
   if (parent === null || parent.sandbox_digest === null || parent.fence_digest !== null) {
     invalid('RUN_CHILD_PARENT_INACTIVE', 'the parent child Flow has no active sandbox')
   }
@@ -1740,8 +1810,242 @@ function requireActiveChildScope(
     Array.isArray(allocation) ||
     (allocation as Record<string, JsonValue>).kind !== 'private-root-child-owner-allocation/1'
   ) {
-    invalid('RUN_CHILD_PARENT_INACTIVE', 'only a direct child Flow may own a nested operation')
+    invalid('RUN_CHILD_PARENT_INACTIVE', 'only a Flow may own a nested operation')
   }
+  const depth = (allocation as Record<string, JsonValue>).flowDepth
+  if (!isPrivateBranchDepth(depth))
+    invalid('RUN_CHILD_PARENT_INACTIVE', 'parent has no reserved depth')
+  let descendant = parent
+  let descendantDepth = depth
+  while (descendant.scope_operation_id !== '') {
+    const ancestor = findFlowOwner(database, parentRunId, descendant.scope_operation_id)
+    const ancestorDepth =
+      ancestor === null
+        ? undefined
+        : (loadRootChildOwner(ancestor).allocation.value as Record<string, JsonValue>).flowDepth
+    if (
+      ancestor === null ||
+      ancestor.sandbox_digest === null ||
+      ancestor.fence_digest !== null ||
+      !isPrivateBranchDepth(ancestorDepth) ||
+      ancestorDepth <= descendantDepth
+    )
+      invalid('RUN_CHILD_PARENT_INACTIVE', 'the ancestor Flow has no active reserved sandbox')
+    descendant = ancestor
+    descendantDepth = ancestorDepth
+  }
+  return depth
+}
+
+/** Flow owner identifiers are unique within a root, even across sibling scopes. */
+function findFlowOwner(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootChildOwnerRow | null {
+  const query = statement<RootChildOwnerRow>(
+    database,
+    'SELECT * FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2',
+  )
+  try {
+    const rows = query
+      .all(parentRunId, operationId)
+      .filter((row) => isPrivateChildFlowAllocation(loadRootChildOwner(row).allocation.value))
+    if (rows.length > 1) corrupt('ambiguous Flow owner identity')
+    return rows[0] === undefined ? null : copiedRootChildOwnerRow(rows[0])
+  } finally {
+    query.finalize()
+  }
+}
+
+/** Retain one collector-validated native rollout; grants and clean close remain caller-owned. */
+export async function savePrivateNativeSession(
+  input: NativeSessionAccess & {
+    readonly lifetime?: 'run'
+    readonly nativeId: string
+    readonly rolloutPath: string
+    readonly bytes: Uint8Array
+  },
+): Promise<PrivateNativeSessionReceipt | undefined> {
+  if (input.lifetime !== undefined && input.lifetime !== 'run')
+    throw new TypeError('native session lifetime is invalid')
+  const { nativeId, rolloutPath, scopeDigest } = input
+  requireNativeSessionPath(nativeId, rolloutPath)
+  const bytes = copyNativeSessionBytes(input.bytes)
+  const digest = nativeSessionContentDigest(bytes)
+  return await accessNativeSessions(input, (database, now) => {
+    const query = statement<{ readonly count: bigint }>(
+      database,
+      'SELECT count(*) AS count FROM native_sessions',
+    )
+    let count: bigint
+    try {
+      count = query.get()!.count
+    } finally {
+      query.finalize()
+    }
+    if (count > BigInt(NATIVE_SESSION_COUNT)) corrupt('native session count exceeds its bound')
+    if (count === BigInt(NATIVE_SESSION_COUNT)) return undefined
+    const receipt = Object.freeze({
+      reference: randomUUID(),
+      expiresAtUnixMs: now + NATIVE_SESSION_RETENTION_MS,
+    })
+    runFinalized(
+      database,
+      'INSERT INTO native_sessions(reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at, root_run_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
+      [
+        receipt.reference,
+        scopeDigest,
+        nativeId,
+        rolloutPath,
+        digest,
+        bytes,
+        now,
+        receipt.expiresAtUnixMs,
+        input.lifetime === 'run' ? input.parentRunId : null,
+      ],
+    )
+    return receipt
+  })
+}
+
+/** Atomically consumes the reference. Missing receipts never authorize a replay or release. */
+export async function claimPrivateNativeSession(
+  input: NativeSessionAccess & { readonly reference: string },
+): Promise<PrivateNativeSessionSnapshot | undefined> {
+  const { reference, scopeDigest } = input
+  if (typeof reference !== 'string' || !UUID.test(reference))
+    throw new TypeError('native session reference must be a lowercase UUID')
+  return await accessNativeSessions(input, (database) => {
+    const query = statement<NativeSessionRow>(
+      database,
+      'SELECT reference, scope_digest, root_run_id, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2 AND (root_run_id IS NULL OR root_run_id = ?3)',
+    )
+    let row: NativeSessionRow | null
+    try {
+      row = query.get(reference, scopeDigest, input.parentRunId)
+    } finally {
+      query.finalize()
+    }
+    if (row === null) return undefined
+    let bytes: Uint8Array
+    try {
+      requireNativeSessionPath(row.native_id, row.rollout_path)
+      bytes = copyNativeSessionBytes(row.content_bytes)
+      if (
+        row.reference !== reference ||
+        row.scope_digest !== scopeDigest ||
+        nativeSessionContentDigest(bytes) !== row.content_digest ||
+        typeof row.created_at !== 'bigint' ||
+        typeof row.expires_at !== 'bigint' ||
+        row.created_at < 0n ||
+        row.expires_at > MAX_SAFE_REVISION ||
+        row.expires_at - row.created_at !== BigInt(NATIVE_SESSION_RETENTION_MS)
+      )
+        throw new TypeError('native session record is inconsistent')
+    } catch {
+      corrupt('stored native session differs from its bounded identity')
+    }
+    const removed = runFinalized(
+      database,
+      'DELETE FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2',
+      [reference, scopeDigest],
+    )
+    if (removed.changes !== 1) corrupt('native session claim did not consume its reference')
+    return Object.freeze({
+      reference: row.reference,
+      lifetime: row.root_run_id === null ? 'project' : 'run',
+      nativeId: row.native_id,
+      rolloutPath: row.rollout_path,
+      bytes,
+      digest: row.content_digest,
+      expiresAtUnixMs: Number(row.expires_at),
+    })
+  })
+}
+
+async function accessNativeSessions<T>(
+  input: NativeSessionAccess,
+  operation: (database: SqliteDatabase, now: number) => T,
+): Promise<T> {
+  const { projectRoot, parentRunId, scopeDigest } = input
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator)
+  await coordinator.verify()
+  requireDigest(parentRunId, 'native session parent root Run')
+  requireDigest(scopeDigest, 'native session recipient scope')
+  const owner = await openStateOwner(projectRoot, false)
+  let failure: unknown
+  try {
+    requireCoordinatorRoot(coordinator, owner.root)
+    const result = await immediate(owner, async () => {
+      await coordinator.verify()
+      const now = Date.now()
+      if (
+        !Number.isSafeInteger(now) ||
+        now < 0 ||
+        now > Number.MAX_SAFE_INTEGER - NATIVE_SESSION_RETENTION_MS
+      )
+        throw new TypeError('native session retention time is invalid')
+      const runRow = requireRootRunRow(owner.database, parentRunId)
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root)
+      if (run.state === 'terminal')
+        invalid('RUN_ALREADY_TERMINAL', 'native session parent root Run is already terminal')
+      if (run.coordinatorEpoch !== coordinator.epoch)
+        invalid('RUN_OWNER_CHANGED', 'native sessions require the active parent coordinator')
+      const lifecycle = loadRootExecutionLifecycle(
+        owner.database,
+        requireRootExecutionLifecycle(owner.database, parentRunId),
+        runRow,
+      )
+      if (lifecycle.prepared === undefined || lifecycle.fence !== undefined)
+        invalid('RUN_CHILD_PARENT_INACTIVE', 'native sessions require an active prepared root Run')
+      if (now >= run.deadlineUnixMs)
+        invalid('RUN_CHILD_PARENT_INACTIVE', 'native session parent deadline has elapsed')
+      runFinalized(
+        owner.database,
+        'DELETE FROM native_sessions WHERE expires_at <= ?1 OR created_at > ?1',
+        [now],
+      )
+      return operation(owner.database, now)
+    })
+    await coordinator.verify()
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+function requireNativeSessionPath(nativeId: unknown, path: unknown): void {
+  if (
+    typeof nativeId !== 'string' ||
+    !UUID.test(nativeId) ||
+    typeof path !== 'string' ||
+    !/^sessions\/[0-9]{4}\/[0-9]{2}\/[0-9]{2}\/rollout-[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9a-f-]{36}\.jsonl$/.test(
+      path,
+    ) ||
+    !path.endsWith(`-${nativeId}.jsonl`)
+  )
+    throw new TypeError('native session rollout path differs from its owned UUID')
+}
+
+function copyNativeSessionBytes(value: unknown): Uint8Array {
+  if (
+    !(value instanceof Uint8Array) ||
+    value.byteLength === 0 ||
+    value.byteLength > NATIVE_SESSION_BYTES
+  )
+    throw new TypeError('native session bytes exceed the 8 MiB retention bound')
+  const bytes = Uint8Array.from(value)
+  new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
+  return bytes
+}
+
+function nativeSessionContentDigest(bytes: Uint8Array): string {
+  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
 }
 
 /** Reopen one durable root Run while proving affinity to a live coordinator. */
@@ -1798,6 +2102,7 @@ function requireCoordinatorRoot(
  * generation. The returned canonical record is the idempotent receipt.
  */
 export async function applyPrivateActivationReviewPlan(input: {
+  readonly allowAuthorityChanges?: boolean
   readonly projectRoot: string | PrivateProjectRoot
   readonly packageStoreRoot: string
   readonly planDigest: string
@@ -1824,6 +2129,17 @@ export async function applyPrivateActivationReviewPlan(input: {
     requirePlanBase(owner.database, plan, owner.root)
     requireCandidateRoot(candidate, owner.root)
     requireDerivedPlanOperation(owner.database, plan, candidate, owner.root)
+    if (
+      !input.allowAuthorityChanges &&
+      requiresAuthorityApproval(
+        loadPlanBaseCandidate(owner.database, plan, owner.root)?.lock ?? null,
+        candidate.lock,
+      )
+    )
+      throw new ProjectAdministrationError(
+        'AUTHORITY_APPROVAL_REQUIRED',
+        'new or changed resource grants require explicit authority approval for this plan',
+      )
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate)
 
     const receipt = await immediate(owner, async () => {
@@ -1972,7 +2288,7 @@ function rootPreflightTerminal(
           .slice(0, 16)
           .map(({ request }) =>
             request.target.kind === 'flow'
-              ? `flow:${request.target.path}`
+              ? flowSelector(request.target.path)
               : `binding:${request.target.id}`,
           ),
         remainingTargets: Math.max(0, candidate.candidate.targets.length - 16),
@@ -2559,6 +2875,9 @@ function persistRootTerminal(
   terminalValue: PrivateRootRunTerminal,
 ): void {
   const terminal = normalizePrivateRootTerminal(terminalValue)
+  // This shares the terminal transaction: failed state cleanup cannot publish completion.
+  // Recovery takes the same path after fencing, including cancelled and lost roots.
+  runFinalized(database, 'DELETE FROM native_sessions WHERE root_run_id = ?1', [runId])
   const bytes = privateRootTerminalBytes(terminal)
   requireStoredSize(bytes, 'root Run terminal')
   const digest = privateDomainDigest(
@@ -3130,7 +3449,7 @@ export async function inspectPrivateApprovedProject(
     const targets = candidate.candidate.targets.map(({ request }) => ({
       target:
         request.target.kind === 'flow'
-          ? `flow:${request.target.path}`
+          ? flowSelector(request.target.path)
           : `binding:${request.target.id}`,
       package: request.packagePath,
     }))
@@ -3155,10 +3474,13 @@ export async function inspectPrivateApprovedProject(
     }
     const checkWithChildren = async (index: number): Promise<PrivateInspectionState> => {
       const states = [await check(index)]
-      for (const child of Object.values(candidate.candidate.targets[index]!.request.flowSlots)) {
-        const childSelector = child.kind === 'flow' ? `flow:${child.path}` : `binding:${child.id}`
+      for (const route of Object.values(candidate.candidate.targets[index]!.request.slots)) {
+        if (route.kind !== 'flow') continue
+        const child = route.target
+        const childSelector =
+          child.kind === 'flow' ? flowSelector(child.path) : `binding:${child.id}`
         const childIndex = targetIndexes.get(childSelector)
-        states.push(childIndex === undefined ? 'unchecked' : await check(childIndex))
+        states.push(childIndex === undefined ? 'unchecked' : await checkWithChildren(childIndex))
       }
       return inspectionState(states)
     }
@@ -3181,7 +3503,7 @@ export async function inspectPrivateApprovedProject(
             candidate.lock.packages[request.packagePath]!,
             inspected,
           )
-          descriptions.set(request.packagePath, inspected.metadata.description)
+          descriptions.set(request.packagePath, inspected.metadata.description ?? '')
         } finally {
           await captured.dispose()
         }
@@ -3208,32 +3530,25 @@ export async function inspectPrivateApprovedProject(
           candidate.lock.packages[request.packagePath]!,
           inspected,
         )
-        const schemas: Record<string, JsonValue> = {}
-        for (const name of ['input', 'settings', 'result'] as const) {
-          if (inspected.schemas[name] !== undefined) {
-            schemas[name] = decodeJson1(await captured.read(`${name}.schema.json`, 262_144))
-          }
-        }
         result = {
           state,
           revision: candidate.candidate.lockDigest,
           target: selector,
           package: request.packagePath,
           digest: request.package.digest,
-          name: inspected.metadata.name,
-          description: inspected.metadata.description,
-          schemas,
+          ...(inspected.metadata.name === undefined ? {} : { name: inspected.metadata.name }),
+          ...(inspected.metadata.description === undefined
+            ? {}
+            : { description: inspected.metadata.description }),
+          contract: (inspected.contract?.descriptor ?? null) as JsonValue,
+          ...(inspected.schemas.settings === undefined
+            ? {}
+            : {
+                settingsSchema: decodeJson1(await captured.read('settings.schema.json', 262_144)),
+              }),
           settings: request.settings,
-          capabilities: request.capabilities as unknown as JsonValue,
-          children: Object.fromEntries(
-            Object.entries(request.flowSlots).map(([slot, target]) => [
-              slot,
-              target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`,
-            ]),
-          ),
+          slots: request.slots as unknown as JsonValue,
           attachments: request.attachments,
-          channels: (inspected.metadata.channels ?? {}) as unknown as JsonValue,
-          commands: (request.commands ?? {}) as unknown as JsonValue,
         }
       } finally {
         await captured.dispose()
@@ -3630,6 +3945,7 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_EXECUTION_LIFECYCLES)
       database.exec(CREATE_ROOT_CHILD_OWNERS)
       database.exec(CREATE_ROOT_TERMINALS)
+      database.exec(CREATE_NATIVE_SESSIONS)
       database.exec('INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)')
       database.exec('INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)')
       database.exec('INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)')
@@ -4604,6 +4920,7 @@ async function publishVisibleLock(
     }
     if (cleanup.length > 0) {
       if (failure !== undefined) cleanup.unshift(failure)
+      // biome-ignore lint/correctness/noUnsafeFinally: Failed cleanup prevents success; include the original failure above.
       throw new AggregateError(cleanup, 'lock publication and stage cleanup did not both complete')
     }
   }
@@ -4702,6 +5019,9 @@ async function reacquireCandidateArtifacts(
     const digests = new Set<string>([
       candidate.candidate.declarationArtifact.package.digest,
       ...Object.values(candidate.lock.packages).map((entry) => entry.digest),
+      ...Object.values(candidate.lock.bindings).flatMap((entry) =>
+        Object.values(entry.attachments ?? {}).map((item) => item.digest),
+      ),
       ...candidate.candidate.targets.flatMap((target) =>
         target.disposition.state === 'ready' ? [target.disposition.execution.package.digest] : [],
       ),
@@ -4719,6 +5039,10 @@ async function reacquireCandidateArtifacts(
         inspections.set(expected.digest, inspected)
       }
       requirePackageProjection(path, expected, inspected)
+    }
+    for (const binding of Object.values(candidate.lock.bindings)) {
+      for (const expected of Object.values(binding.attachments ?? {}))
+        await verifyBoundAttachment(captures.get(expected.digest)!, expected)
     }
   } catch (error) {
     failure = error
@@ -4752,7 +5076,19 @@ function requirePackageProjection(
 ): void {
   let uses: PrivateLockPackage['uses']
   try {
-    uses = projectSupportedCapabilityUses(inspected, path)
+    uses = projectInvocationRequirements(inspected, path)
+    // Routing is retained project policy, not a fact derivable from package
+    // bytes alone. Revalidate admitted eligibility against those exact routes;
+    // an ineligible automatic target may remain inert and be configured by a
+    // separate Binding. Never reread project defaults during reacquisition.
+    if (
+      expected.directRun &&
+      !isDirectRunEligible(
+        inspected,
+        expected.slots === undefined ? undefined : resolveInvocationSlots(uses, expected.slots),
+      )
+    )
+      throw new TypeError('retained direct target no longer qualifies')
   } catch {
     invalid(
       'ADMISSION_ARTIFACT_MISMATCH',
@@ -4761,8 +5097,10 @@ function requirePackageProjection(
   }
   const observed = {
     digest: inspected.digest,
-    directRun: isDirectRunEligible(inspected),
+    directRun: expected.directRun,
     uses,
+    ...(inspected.metadata.supports === undefined ? {} : { supports: inspected.metadata.supports }),
+    ...(expected.slots === undefined ? {} : { slots: expected.slots }),
   } as unknown as JsonValue
   if (!sameBytes(canonicalJson(observed), canonicalJson(expected as unknown as JsonValue))) {
     invalid(

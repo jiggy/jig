@@ -1,0 +1,9 @@
+{
+  "name": "support-case-assessment",
+  "description": "Interpret a customer's disputed charge in one bounded Agent call.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

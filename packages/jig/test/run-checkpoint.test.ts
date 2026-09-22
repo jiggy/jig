@@ -1,12 +1,12 @@
 import { expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
-import { parseCapabilityContract } from '../src/capability/index.js'
 import {
   assertRunCheckpointContract,
   PrivateRunCheckpoints,
   parseRunCheckpointInput,
   RUN_CHECKPOINT_CONTRACT_DIGEST,
 } from '../src/internal/private-run-checkpoint.js'
+import { parseInvocationContract } from '../src/invocation-contract.js'
 
 const identity = {
   runId: `sha256:${'a'.repeat(64)}`,
@@ -14,9 +14,9 @@ const identity = {
   input: { digest: `sha256:${'b'.repeat(64)}` },
 }
 test('checkpoint descriptor and private contract have one exact identity', async () => {
-  const contract = parseCapabilityContract(
+  const contract = parseInvocationContract(
     await readFile(
-      new URL('../../../docs/jig/spec/contracts/run-checkpoint.capability.json', import.meta.url),
+      new URL('../../../docs/jig/spec/contracts/run-checkpoint/contract.json', import.meta.url),
     ),
   )
   expect(contract.digest).toBe(RUN_CHECKPOINT_CONTRACT_DIGEST)

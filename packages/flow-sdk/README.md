@@ -2,7 +2,7 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is the prerelease `0.1.0-alpha.10` package. Its authoritative documents
+This is the prerelease `0.1.0-alpha.11` package. Its authoritative documents
 are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
 [Run/1](https://flow.jig.md/spec/run-protocol) specifications.
 
@@ -12,7 +12,7 @@ Declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.10"
+    "@jigging/flow": "0.1.0-alpha.11"
   }
 }
 ```
@@ -23,7 +23,7 @@ Generate only the text lock with Bun 1.3.3:
 bun install --lockfile-only
 ```
 
-Keep `package.json` and `bun.lock` beside `flow.ts`; do not add `node_modules`
+Keep `package.json` and `bun.lock` beside `FLOW.ts`; do not add `node_modules`
 to the FLOW package. Jig's direct-run alpha prepares that locked dependency
 during `jig review`; the admitted Run then reuses the prepared package without
 installing or fetching.
@@ -63,9 +63,26 @@ await handle(async (run) => {
 This also protects console methods cached by that later module graph. It does
 not make raw stdout or inherited child stdout valid protocol output.
 
-Run/1 also defines `run.runChildFlow()` and `run.callCapability()` as portable
-operations. The host determines which slots are available. For Jig's admitted
-child targets and Agent capability, see its
+Use `run.call({ operationId, slot, input, intent?, channels? }, options?)` for
+finite work through a local slot. `FlowCall` describes this request; the host
+selects its admitted implementation and determines which slots are available.
+Every normal reply is the complete `RunResult`, including declared domain
+refusals. Branch on `outcome` and use `output` explicitly:
+
+```ts
+const result = await run.call({
+  operationId: "review:1", slot: "reviewer", input: run.input,
+});
+if (result.outcome === "declined") return result;
+console.log(result.output);
+```
+
+Optional `intent` is advisory metadata, separate from application `input` and
+authority. Jig leaves it inert. Omitted fields remain omitted; an explicit empty
+`channels` map stays present in request identity. The request has no operation
+selector. Request and channel-map fields must be own enumerable data properties;
+accessors, hidden properties, and symbols are rejected, and inherited fields are
+ignored. For Jig's admitted targets and Agent implementation, see its
 [project policy](https://jig.md/spec/project-policy) and
 [Agent Run documentation](https://jig.md/spec/agent-run).
 An unavailable operation rejects with `OperationError` code
@@ -86,15 +103,15 @@ pair has one sender and one receiver. The host checks declared channel
 requirements when an unused endpoint is passed through a call's `channels` map.
 Incoming endpoints are available by local name in `run.channels`.
 
-For a capability whose `run` method declares an `events` sender matching the
+For a slot whose interface declares an `events` sender matching the
 package-local channel contract:
 
 ```ts
 import { OperationError } from "@jigging/flow";
 
 const events = await run.channel({ contract: "./contracts/updates.json" });
-const work = run.callCapability({
-  operationId: "worker", slot: "worker", method: "run", input: run.input,
+const work = run.call({
+  operationId: "worker", slot: "worker", input: run.input,
   channels: { events: events.send },
 }).catch(async (error) => {
   // Rejected admission may leave the source without a connected producer.
@@ -123,7 +140,10 @@ const result = execution.value; // Channel completion is not execution success.
 `run.channel()` accepts generic JSON values; `schema` optionally constrains
 their shape, or `contract` selects exact named meaning. The sender's
 `send(value, options?)` acknowledges host
-acceptance, and `close(options?)` seals the source. Neither promises processing
+acceptance, and `close(options?)` seals the source. A producer that cannot deliver
+complete observations can use `close({ error: 'LAGGED' })`; active receivers
+then receive that stream failure while execution remains separate. A previous
+clean end cannot be changed retroactively. Neither operation promises processing
 by the consumer. Closing with unaccepted sends rejects.
 
 A receiver supports one async iterator and one outstanding `next(options?)`.

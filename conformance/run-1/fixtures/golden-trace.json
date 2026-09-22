@@ -7,36 +7,36 @@
   {
     "direction": "component->host",
     "kind": "request",
-    "method": "flow/run-child",
+    "method": "flow/call",
     "operationId": "research:1"
   },
   {
     "direction": "component->host",
     "kind": "request",
-    "method": "capability/call",
+    "method": "flow/call",
     "operationId": "store:1"
   },
   {
     "direction": "host->component",
     "kind": "result",
-    "for": "capability/call"
+    "for": "flow/call"
   },
   {
     "direction": "host->component",
     "kind": "result",
-    "for": "flow/run-child"
+    "for": "flow/call"
   },
   {
     "direction": "component->host",
     "kind": "request",
-    "method": "capability/call",
+    "method": "flow/call",
     "operationId": "missing:1"
   },
   {
     "direction": "host->component",
     "kind": "result",
-    "for": "capability/call",
-    "declaredError": "not-found"
+    "for": "flow/call",
+    "outcome": "not-found"
   },
   {
     "direction": "component->host",

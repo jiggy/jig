@@ -12,14 +12,18 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 - Each application owns its domain method, fixtures, local tests, and exact
   Flow and Binding declarations.
-- Public instructions belong in `docs/jig/`; portable procedure descriptions
-  remain in each package's `FLOW.md`.
+- Public instructions belong in `docs/jig/`; each code package's `README.md`
+  explains its procedure, `FLOW.ts` implements it, `flow.meta.json` owns optional
+  metadata and slot declarations, and `FLOW.contract.json` owns invocation constraints.
 - Platform contracts remain owned by `docs/`, `packages/`, and `conformance/`.
 
 ## Local Contracts
 
 - Keep each Flow self-contained and invoke collaborators only through the
   public FLOW SDK. Do not import sibling package source or host internals.
+- Use `run.call()` for every declared slot and inspect the complete `RunResult`.
+  Copy named native contract bundles with their descriptor-relative channel
+  paths intact; declarations never substitute for native host authority.
 - Examples track the current Jig and FLOW source together. Build and test them
   against the current SDK without waiting for npm publication; do not preserve
   superseded APIs, release-order warnings, or compatibility branches.
@@ -31,6 +35,10 @@ authored examples, not independent consumer evidence or promoted Starters.
   application archives or per-Flow setup loops. Test unpublished SDK candidates
   separately from claims about registry availability.
 - Agents, models, credentials, and execution policy remain operator choices.
+  Agent-using applications choose an ordinary provider by contract or exact slot;
+  the operator declares its dependency and configures its resource grants.
+  `tested-patch` includes its `npm:` ACP dependency and editable Agent Binding.
+  Do not add a source wrapper or repository-only route around that package.
 - Label synthetic evidence and keep it distinct from claims about real users.
 
 ## Work Guidance
@@ -60,7 +68,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Verification
 
-- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test`
+- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/incident-brief/test`
   after workspace setup. The release gate repeats these application checks
   against the freshly packed SDK.
 - Exercise package boundaries through an admitted Jig Run before claiming
@@ -77,3 +85,5 @@ authored examples, not independent consumer evidence or promoted Starters.
   repair with contained commands and independently checked patch evidence.
 - [contact-import/AGENTS.md](contact-import/AGENTS.md) — A CSV preview with
   interchangeable code, Agent, and mixed column-mapping methods.
+- [incident-brief/AGENTS.md](incident-brief/AGENTS.md) — Internal drafting with
+  one revision-triggered summary handoff and an independent review worker.

@@ -81,7 +81,7 @@ implementation convenience.
 Project authoring values are inert. They describe membership and configuration
 but do not read, install, approve, or execute anything. FLOW metadata remains
 small and portable; host runtimes, commands, credentials, dependency locks,
-and sandbox policy do not belong in `FLOW.md`.
+and sandbox policy do not belong in portable package metadata.
 
 ### Responsibility boundaries
 
@@ -94,7 +94,7 @@ around untrusted work, and selects the providers that supply local powers.
 
 | Layer | Owns | Must not own |
 | --- | --- | --- |
-| FLOW | Portable packages, JSON and schema rules, the Run process protocol, SDK ergonomics, capability descriptors | Jig admission, providers, sandboxes, persistence, project configuration, or graph policy |
+| FLOW | Portable packages, JSON and schema rules, the Run process protocol, SDK ergonomics, invocation and channel contracts | Jig admission, providers, sandboxes, persistence, project configuration, or graph policy |
 | Jig | Capture, review, admission, exact resolution, host authority, durable lifecycle, containment, and credentials | General workflow semantics, an application ontology, or universal provider/runtime/backend frameworks |
 | Flow package | Application logic, validation, Agent instructions, package-local skills, and optional internal libraries or graphs | Host credentials, open-ended target authority, or containment policy |
 | Component runtime | Live graph or control-flow advancement inside one component process | FLOW/Jig meaning, durable orchestration, admission, or provider policy |
@@ -119,8 +119,10 @@ execute those choices on this host.
 
 - **Planning is Run-admission-neutral, not read-only.** Review may capture,
   evaluate, prepare, and retain evidence. Before confirmation it must not
-  modify visible project meaning, grant execution authority, or run package
-  code.
+  modify visible project meaning without separate authoring consent, grant
+  execution authority, or run package code. Explicit `--generate-contracts` authorizes
+  bounded contract publication before the separate Run approval. It is not a
+  general build hook; ordinary review remains compiler-free.
 - **Capture precedes authority.** Mutable visible source is neither evaluated
   nor executed directly.
 - **Parsed and hashed does not mean authorized.** Validation, a digest, or a
@@ -165,6 +167,18 @@ It recaptures workspace dependencies on each review; unchanged Flow source does
 not authorize reuse of an older local library. Builds remain the author's
 toolchain responsibility. File, Git, or symlink dependencies are not runtime
 escape hatches. Jig owns capture and admission, not a new package manager.
+
+Keep workspace development connected to current source through declared
+workspace dependencies and ordinary explicit builds. Do not pack and unpack
+sibling archives, vendor dependency copies, or rewrite consumer manifests to
+wire local packages together. Do not embed dependency archives inside another
+package as a substitute for normal dependency declarations. Fix a preparation
+or packaging gap at its responsible layer instead of adding example-only
+delivery machinery.
+
+Package archives belong at distribution and isolated installed-artifact test
+boundaries. Retained test archives are evidence for those exact bytes, not live
+workspace dependencies; rebuild the candidate before testing changed source.
 
 ### Ordinary invocation and private implementation
 
@@ -239,12 +253,17 @@ Backend boundary. One mechanism alone has not earned it.
 A Binding gives one Flow package a reusable project-local configuration.
 Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
 targets from the same admitted generation. A child uses its selected target's
-settings, Agent capability, and reviewed command policy; parent configuration is not inherited. Selected
-child Bindings are leaves with no further Flow slots. At runtime, a Flow can
+settings, ordinary Agent route, and reviewed resource grants;
+parent configuration is not inherited. Selected
+child Bindings may expose further Flow slots within the fixed root resource budget.
+At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
 scheduler authority. Child and Agent scopes inherit the remaining root deadline
-and cannot extend it. A root may await two sibling specialists; each leaf may
-await one Agent or project command. Root worker effects remain exclusive.
+and cannot extend it. A root may await two sibling specialists; each child may
+await one Flow or effect. The unchanged aggregate ceiling permits two two-level
+branches or one five-level branch, including their effect allowances. Complete
+branches reserve capacity before dispatch and hold it until cleanup.
+Root worker effects remain exclusive.
 Root-owned [checkpoints](../docs/jig/spec/run-checkpoint.md) use separate bounded
 control capacity to retain completed evidence while workers remain active.
 Durable whole-branch reservations bound aggregate resources before dispatch and stay
@@ -267,17 +286,43 @@ is not an independent verdict; applications check captured behavior under
 their own unchanged assertions. The exact contract belongs in
 [`project-command.md`](../docs/jig/spec/project-command.md).
 
+HTTP Request supplies delegated endpoint access through ordinary invocation.
+An operator grant fixes the exact request destination, method, optional bearer
+reference, body constraints and limits; its Binding slot selects inline policy
+or a named captured JSON grant. Source proposes; the existing admission path
+requires explicit approval for new/changed resource authority. An admitted
+generation does not change when a grant source file changes. The trusted
+worker holds the credential and network while authored methods remain keyless
+and offline. The [HTTP contract](../docs/jig/spec/http-request.md) owns exact
+behavior, including remote uncertainty and endpoint trust. This does not make
+authored code part of the host's trusted implementation or introduce raw-secret
+or arbitrary-process delegation.
+
 ### Agent calls
 
-A **Capability Contract** describes an exact interface for independently
-maintained consumers and implementations. **Agent Run** is the Jig-owned
-contract for bounded Agent work, consumed through ordinary Run/1 `capability/call`.
+A named **Invocation Contract** describes an exact interface for independently
+maintained consumers and implementations. It is offered by a Flow's optional
+`FLOW.contract.json` and required through a package-local `uses` reference. **Agent
+Run** is such an interface, implemented by an ordinary Flow and consumed through
+the same Run/1 `flow/call` as an exact Flow dependency.
 It is not a new FLOW method, model authority, or public provider framework.
 The public value contract belongs in
 [`agent-run.md`](../docs/jig/spec/agent-run.md).
 
-The Flow supplies bounded instructions, an optional exact package-local skill
-selection, and an optional bounded result schema. It cannot select the Agent
+`@jigging/agent-method` owns the reusable preparation and interpretation code,
+with a complete ordinary Flow entrypoint. Its keyless method owns one text-only
+Chat Completions or Responses request through an HTTP grant, with reviewed
+model/token settings. The ordinary `@jigging/agent-acp` package uses the same
+pure code and drives a granted finite native conversation. Both accept explicit Skill contents and
+guidance, not host-attested caller provenance. Consumers check replacement
+results with the pure library or application validation. A specialist calls
+either method through its own exact slot or a reviewed project default.
+The ACP package projects optional updates through ordinary channels. The host
+neither prepares Agent prompts nor reconstructs answers.
+Endpoint permissions, credentials and cleanup remain host-owned.
+
+The Flow supplies bounded instructions, optional explicit Skill contents and
+guidance, and an optional bounded result schema. Native calls cannot select the Agent
 client, endpoint, model, executable, credential, or network policy. Those are
 trusted host choices. Skills are immutable guidance for one call, not tools,
 filesystem authority, or provider configuration.
@@ -296,8 +341,9 @@ meaning.
 
 Native clients share one bounded Agent Client Protocol (ACP) lifecycle while
 retaining thin, client-specific launch and authentication adapters. They begin
-without filesystem, terminal, MCP, or arbitrary tool authority unless a future
-admitted capability explicitly grants it. Product code never fixes a model for
+without host filesystem, terminal or MCP client authority. Exact native tool
+restrictions are client-specific and remain part of the reviewed trusted
+profile, not authority of the editable Agent Flow. Product code never fixes a model for
 the sake of a development test; omission uses the selected client's own
 operator configuration or default. Test credentials, endpoints, and low-cost
 models remain test inputs.
@@ -415,6 +461,21 @@ belong only in [`suspended-experiments.md`](suspended-experiments.md).
 
 ### Bounded engineering decisions
 
+Begin design and delivery reviews with the whole consumer task: what useful
+work becomes possible, how the chosen boundaries serve it, and what the author
+and operator must understand or coordinate. Assess architecture, UX and product
+impact before implementation defects and release checks; passing those checks
+does not establish a usable product. Distinguish current defects from supported
+limits and future opportunities rather than making every concern a new gate.
+
+Apply the doctrine's
+[progressive-disclosure obligation](doctrine/design-judgment.md#progressive-disclosure-is-a-design-obligation)
+to the before-and-after public usage. Identify configuration, duplicated
+declarations and lifecycle code added or removed, not just API names. Prefer
+reusable coordination at its responsible layer over boilerplate in every caller.
+Check the ordinary path as well as advanced failure handling; simplification
+must preserve authority, truthful results and settlement.
+
 Before a checkpoint, identify the user-visible outcome, smallest observable
 proof, missing seam, public vocabulary, exclusions, and stop condition.
 
@@ -459,8 +520,9 @@ first-release proof is sufficient.
 
 Completing a phase proves its bounded outcome; it does not select the next
 phase. The long-term ordering lives in [`ROADMAP.md`](ROADMAP.md). Current
-tasks and blockers are disposable operational state, not additions to this
-guide.
+execution tasks and blockers are disposable operational state, not additions to
+this guide. Preserve postponed product work as standalone Markdown tasks in
+[`management/inbox`](../management/inbox/).
 
 ### Proportionate claims
 

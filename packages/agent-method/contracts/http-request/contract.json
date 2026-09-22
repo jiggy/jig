@@ -1,0 +1,37 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "id": "https://jig.md/contracts/http-request",
+  "version": "1.0.0",
+  "input": {
+    "type": "object",
+    "properties": {
+      "body": {},
+      "response": { "const": "json" }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "const": "done"
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 599
+          },
+          "body": {}
+        },
+        "required": ["status", "body"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  }
+}

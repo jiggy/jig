@@ -4,7 +4,7 @@ import { isContractId, isContractVersion } from './contract-identity.js'
 import { invalid } from './diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from './json.js'
 import { isNfc15_1 } from './package/paths.js'
-import { compileEmbeddedSchema, type CompiledSchema } from './schema/index.js'
+import { type CompiledSchema, compileEmbeddedSchema } from './schema/index.js'
 
 export const CHANNEL_CONTRACT_SCHEMA = 'https://flow.jig.md/schemas/channel-contract-1.schema.json'
 export const CHANNEL_CONTRACT_BYTES = 262_144
@@ -36,12 +36,13 @@ export interface ParsedChannelContract {
 export function parseChannelDeclarations(
   value: JsonValue,
   path: string,
+  options: { readonly compileSchemas?: boolean } = {},
 ): Readonly<Record<string, ChannelDeclaration>> {
   const entries = Object.entries(object(value, path))
   if (entries.length > 256) invalid('CHANNEL_LIMIT', 'too many channel declarations', path)
   const result: Record<string, ChannelDeclaration> = Object.create(null)
   for (const [name, value] of entries) {
-    if (name.length > 64 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))
+    if (name.length > 64 || !/^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/.test(name))
       invalid('CHANNEL_FIELD', 'invalid channel local name', path)
     const entry = object(value, path)
     exact(entry, ['direction', 'required', 'schema', 'contract', 'delivery', 'start'], path)
@@ -51,7 +52,8 @@ export function parseChannelDeclarations(
       invalid('CHANNEL_FIELD', `${name}.required must be boolean`, path)
     if (entry.schema !== undefined && entry.contract !== undefined)
       invalid('CHANNEL_FIELD', `${name} cannot declare both schema and contract`, path)
-    if (entry.schema !== undefined) compileEmbeddedSchema(entry.schema, { path })
+    if (entry.schema !== undefined && options.compileSchemas !== false)
+      compileEmbeddedSchema(entry.schema, { path })
     if (entry.contract !== undefined) requireChannelReference(entry.contract, path)
     if (
       entry.delivery !== undefined &&

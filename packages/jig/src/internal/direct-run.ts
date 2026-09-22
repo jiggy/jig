@@ -2,18 +2,19 @@ import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
 import {
   type PrivateBunDirectRecipe,
   planPrivateBunDirectRun,
   requirePrivateBunDirectRecipe,
 } from './bun-direct-run.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import type { PrivateHttpGrants } from './http-grants.js'
 import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
 import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 
 export type PrivateDirectRunRecipe = PrivateBunDirectRecipe
 export type PrivateDirectRunInstalledSupport = PrivateInstalledBunSupport
@@ -24,10 +25,11 @@ export async function planPrivateDirectRun(input: {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly execution?: PrivateBunExecutionArtifact
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly httpGrants?: PrivateHttpGrants | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request)
-  if (request.entrypoint.path !== 'flow.ts') {
+  if (request.entrypoint.path !== 'FLOW.ts' && request.entrypoint.path !== 'FLOW.md') {
     throw new TypeError(`no exact Bun direct recipe for ${request.entrypoint.path}`)
   }
   return await planPrivateBunDirectRun({

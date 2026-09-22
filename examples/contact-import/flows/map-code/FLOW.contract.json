@@ -1,0 +1,87 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "outcomes": {
+    "blocked": "The selected method cannot complete its work.",
+    "limit": "The Agent reaches its limit."
+  },
+  "input": {
+    "type": "object",
+    "properties": {
+      "headers": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "maxItems": 16,
+        "minItems": 1
+      }
+    },
+    "required": ["headers"],
+    "additionalProperties": false
+  },
+  "result": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "done"
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "mapping": {
+                "type": ["object", "null"],
+                "properties": {
+                  "name": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 15
+                  },
+                  "email": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 15
+                  },
+                  "organization": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 15
+                  }
+                },
+                "required": ["name", "email", "organization"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["mapping"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "enum": ["blocked", "limit"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      }
+    ]
+  }
+}

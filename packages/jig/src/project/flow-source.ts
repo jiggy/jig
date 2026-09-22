@@ -2,16 +2,16 @@ import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, open, opendir } from 'node:fs/promises'
 
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from '../internal/private-agent-run.js'
-import { isRunCheckpointContract } from '../internal/private-run-checkpoint.js'
 import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
-import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
+import {
+  type InspectedPackage,
+  inspectCapturedPackage,
+  packageEntrypointSuffix,
+  packageProfileIssue,
+} from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import type { ProjectSource } from './author.js'
+import { nativeInvocationKind, type InvocationSlots } from './invocation-slots.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -42,6 +42,12 @@ export interface CapturedFlowMember {
   readonly captured: CapturedPackage
   readonly inspected: InspectedPackage
 }
+
+export type PrepareCapturedFlow = (
+  directory: FileHandle,
+  provenance: FlowMemberProvenance,
+  captured: CapturedPackage,
+) => Promise<boolean>
 
 export interface FlowDiscoveryObservation {
   readonly kind: 'discover'
@@ -110,6 +116,7 @@ export async function captureFlowSource(
 export async function captureOpenedFlowSource(
   projectRoot: PrivateProjectRoot,
   source?: ProjectSource,
+  prepare?: PrepareCapturedFlow,
 ): Promise<CapturedFlowSource> {
   const project = requirePrivateProjectRoot(projectRoot)
   const normalized = validateSource(source)
@@ -119,8 +126,8 @@ export async function captureOpenedFlowSource(
     try {
       const observations =
         normalized.kind === 'discover'
-          ? await captureDiscovered(project, normalized.roots, captured)
-          : await captureExact(project, normalized.paths, captured)
+          ? await captureDiscovered(project, normalized.roots, captured, prepare)
+          : await captureExact(project, normalized.paths, captured, prepare)
       await project.verify()
       captured.sort((left, right) =>
         compareProjectPaths(left.provenance.projectPath, right.provenance.projectPath),
@@ -164,6 +171,7 @@ async function captureDiscovered(
   project: OpenDirectory & { readonly requestedPath: string },
   roots: readonly string[],
   captured: CapturedFlowMember[],
+  prepare?: PrepareCapturedFlow,
 ): Promise<readonly FlowDiscoveryObservation[]> {
   const observations: DiscoveryObservation[] = []
   const physicalRoots = new Map<string, string>()
@@ -206,11 +214,15 @@ async function captureDiscovered(
           }
           physicalMembers.set(identity, projectPath)
           captured.push(
-            await captureMember(member.handle, {
-              membership: 'discovered',
-              configuredRoot: root,
-              projectPath,
-            }),
+            await captureMember(
+              member.handle,
+              {
+                membership: 'discovered',
+                configuredRoot: root,
+                projectPath,
+              },
+              prepare,
+            ),
           )
         } finally {
           await member.handle.close().catch(() => undefined)
@@ -245,6 +257,7 @@ async function captureExact(
   project: OpenDirectory & { readonly requestedPath: string },
   paths: readonly string[],
   captured: CapturedFlowMember[],
+  prepare?: PrepareCapturedFlow,
 ): Promise<readonly FlowExactObservation[]> {
   const physicalMembers = new Map<string, string>()
   const observations: ExactObservation[] = []
@@ -264,10 +277,14 @@ async function captureExact(
       physicalMembers.set(identity, projectPath)
       observations.push({ path: projectPath, identity })
       captured.push(
-        await captureMember(member.handle, {
-          membership: 'exact',
-          projectPath,
-        }),
+        await captureMember(
+          member.handle,
+          {
+            membership: 'exact',
+            projectPath,
+          },
+          prepare,
+        ),
       )
     } finally {
       await member.handle.close().catch(() => undefined)
@@ -292,6 +309,7 @@ async function captureExact(
 async function captureMember(
   handle: FileHandle,
   provenance: FlowMemberProvenance,
+  prepare?: PrepareCapturedFlow,
 ): Promise<CapturedFlowMember> {
   let captured: CapturedPackage | undefined
   try {
@@ -300,6 +318,17 @@ async function captureMember(
       maximumFiles: 65_536,
       maximumBytes: 4_294_967_296,
     })
+    if (await prepare?.(handle, provenance, captured)) {
+      await captured.dispose()
+      captured = await captureOpenedPackageDirectory(provenance.projectPath, handle, {
+        includes: (path) => !path.split('/').includes('node_modules'),
+        maximumFiles: 65_536,
+        maximumBytes: 4_294_967_296,
+      })
+      // Recheck freshness after publication and recapture, without executing a compiler twice.
+      if (await prepare!(handle, provenance, captured))
+        sourceChanged('generated source changed again during capture', provenance.projectPath)
+    }
     const inspected = await inspectCapturedPackage(captured)
     return Object.freeze({ provenance: Object.freeze(provenance), captured, inspected })
   } catch (error) {
@@ -490,23 +519,27 @@ async function flowMarker(
   directory: FileHandle,
   logicalPath: string,
 ): Promise<{ readonly selected: boolean; readonly fingerprint: string }> {
-  const path = `/proc/self/fd/${directory.fd}/FLOW.md`
-  let information: BigIntStats
-  try {
-    information = await lstat(path, { bigint: true })
-  } catch (error) {
-    if (isMissing(error)) return { selected: false, fingerprint: 'missing' }
-    if (isEntryRace(error))
-      sourceChanged('FLOW.md changed during discovery', `${logicalPath}/FLOW.md`)
-    unavailable(
-      'PROJECT_SOURCE_IO',
-      `cannot inspect FLOW.md: ${errorText(error)}`,
-      `${logicalPath}/FLOW.md`,
-    )
+  const records: string[] = []
+  let selected = false
+  for await (const name of readDirectoryNames(directory)) {
+    if (packageEntrypointSuffix(name) === undefined) continue
+    let information: BigIntStats
+    try {
+      information = await lstat(`/proc/self/fd/${directory.fd}/${name}`, { bigint: true })
+    } catch (error) {
+      if (isEntryRace(error))
+        sourceChanged('Flow implementation changed during discovery', `${logicalPath}/${name}`)
+      unavailable(
+        'PROJECT_SOURCE_IO',
+        `cannot inspect Flow implementation: ${errorText(error)}`,
+        `${logicalPath}/${name}`,
+      )
+    }
+    records.push(`${name}:${statFingerprint(information)}`)
+    if (information.isFile()) selected = true
   }
-  if (information.isSymbolicLink()) return { selected: false, fingerprint: 'symlink' }
-  if (!information.isFile()) return { selected: false, fingerprint: 'non-file' }
-  return { selected: true, fingerprint: statFingerprint(information) }
+  records.sort(compareProjectPaths)
+  return { selected, fingerprint: JSON.stringify(records) }
 }
 
 async function verifyDiscoveryObservation(
@@ -652,26 +685,36 @@ function assertProjectPathCollisions(paths: readonly string[]): void {
   }
 }
 
-export function isDirectRunEligible(inspected: InspectedPackage): boolean {
-  if (inspected.mode !== 'run' || inspected.entrypoint === undefined) return false
+export function isDirectRunEligible(
+  inspected: InspectedPackage,
+  resolved?: InvocationSlots,
+): boolean {
+  if (
+    inspected.mode !== 'run' ||
+    inspected.invocation === undefined ||
+    packageProfileIssue(inspected) !== undefined
+  )
+    return false
   const uses = Object.entries(inspected.metadata.uses ?? {})
-  if (uses.length > 2) return false
+  if (resolved === undefined && uses.length > 2) return false
   const seen = new Set<string>()
   for (const [slot, declaration] of uses) {
     if (declaration.contract === undefined) return false
     const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot)
     if (
       reference === undefined ||
-      seen.has(reference.contract.digest) ||
+      reference.contract.profile !== 'single' ||
+      (resolved === undefined && seen.has(reference.contract.digest))
+    )
+      return false
+    const { id, version } = reference.contract.descriptor
+    if (id === undefined || version === undefined) return false
+    if (resolved?.[slot]?.kind === 'flow') continue
+    const native = nativeInvocationKind({ id, version, digest: reference.contract.digest })
+    if (
       !(
-        (isRunCheckpointContract({
-          ...reference.contract.descriptor,
-          digest: reference.contract.digest,
-        }) &&
-          Object.values(inspected.metadata.attachments ?? {}).includes('read-write')) ||
-        (reference.contract.descriptor.id === AGENT_RUN_CONTRACT_ID &&
-          reference.contract.descriptor.version === AGENT_RUN_CONTRACT_VERSION &&
-          reference.contract.digest === AGENT_RUN_CONTRACT_DIGEST)
+        native === 'run-checkpoint' &&
+        Object.values(inspected.invocation.attachments ?? {}).includes('read-write')
       )
     )
       return false

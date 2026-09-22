@@ -1,4 +1,4 @@
-import { type ParsedCapabilityContract, parseCapabilityContract } from '../capability/index.js'
+import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonValue } from '../json.js'
 import { privateFilePath, sha256 } from './linux-file-input.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
@@ -6,7 +6,7 @@ import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 export const RUN_CHECKPOINT_CONTRACT_ID = 'https://jig.md/contracts/run-checkpoint'
 export const RUN_CHECKPOINT_CONTRACT_VERSION = '1.0.0'
 export const RUN_CHECKPOINT_CONTRACT_DIGEST =
-  'sha256:e7961d96842dc07bf2932f2979b2145301e4071093435e0e4e842a057896c201'
+  'sha256:dfeacf83289c3a1d5f0cad012d64b8f59dfbb32e9c39d2469019330215e979a7'
 export const RUN_CHECKPOINT_LIMITS = Object.freeze({
   bytes: 2 * 1024 * 1024,
   fileBytes: 1024 * 1024,
@@ -25,10 +25,14 @@ export function isRunCheckpointContract(value: {
     value.digest === RUN_CHECKPOINT_CONTRACT_DIGEST
   )
 }
-export function assertRunCheckpointContract(contract: ParsedCapabilityContract): void {
-  const parsed = parseCapabilityContract(canonicalJson(contract.descriptor as unknown as JsonValue))
+export function assertRunCheckpointContract(contract: ParsedInvocationContract): void {
+  const parsed = parseInvocationContract(canonicalJson(contract.descriptor as unknown as JsonValue))
   if (
-    !isRunCheckpointContract({ ...parsed.descriptor, digest: parsed.digest }) ||
+    !isRunCheckpointContract({
+      id: parsed.descriptor.id,
+      version: parsed.descriptor.version,
+      digest: parsed.digest,
+    }) ||
     contract.digest !== parsed.digest
   )
     throw new TypeError('expected the exact supported Run Checkpoint contract')

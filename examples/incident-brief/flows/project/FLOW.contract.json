@@ -1,0 +1,6 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "outcomes": {
+    "blocked": "At least one worker could not complete; other results remain available."
+  }
+}

@@ -32,7 +32,7 @@ export function parseContacts(bytes: Uint8Array): { headers: string[]; rows: str
 }
 
 export async function runMethod(
-  run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'runChildFlow'>,
+  run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
 ): Promise<RunResult> {
   const { source, preview } = run.attachments
   if (source?.access !== 'read' || preview?.access !== 'read-write')
@@ -53,7 +53,7 @@ export async function runMethod(
   }
   const { headers, rows } = parseContacts(bytes)
   run.signal.throwIfAborted()
-  const proposal = await run.runChildFlow({
+  const proposal = await run.call({
     operationId: 'map-columns',
     slot: 'mapper',
     input: { headers },
@@ -64,7 +64,7 @@ export async function runMethod(
   const { mapping } = proposal.output as {
     mapping: null | { name: number; email: number; organization: number }
   }
-  const result = await run.runChildFlow({
+  const result = await run.call({
     operationId: 'convert-rows',
     slot: 'converter',
     input: { headers, rows, mapping },

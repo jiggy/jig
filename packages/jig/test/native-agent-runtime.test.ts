@@ -163,9 +163,13 @@ describe('native Agent runtime metadata', () => {
         '--add-flags dangerous',
       ),
     })
-    await expect(inspect(executable, project)).rejects.toThrow(
-      'unsupported native Agent binary wrapper',
-    )
+    await expect(inspect(executable, project)).rejects.toMatchObject({ stage: 'wrapper' })
+  })
+
+  test('identifies a shell launcher without executing it or exposing its contents', async () => {
+    const { project, executable } = await fixture()
+    await writeFile(executable, '#!/bin/sh\nprintf secret-token\n', { mode: 0o755 })
+    await expect(inspect(executable, project)).rejects.toMatchObject({ stage: 'wrapper' })
   })
 
   test('rejects libraries reached through the project even when their final target is outside it', async () => {
@@ -220,7 +224,7 @@ describe('native Agent runtime metadata', () => {
   test('rejects malformed, non-ELF, missing, and privileged support', async () => {
     const { root, project, executable } = await fixture()
     await writeFile(executable, '#!/bin/sh\nexit 0\n', { mode: 0o700 })
-    await expect(inspect(executable, project)).rejects.toThrow('not ELF')
+    await expect(inspect(executable, project)).rejects.toMatchObject({ stage: 'wrapper' })
     const bytes = nativeElf()
     bytes.writeBigUInt64LE(2n ** 63n, 32)
     await writeFile(executable, bytes)

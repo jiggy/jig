@@ -70,6 +70,10 @@ just --justfile "$package/justfile" verify-build-bun
 bun install \
   --cwd "$temporary/source" \
   --filter @jigging/jig \
+  --filter @jigging/agent-method \
+  --filter @jigging/agent-acp \
+  --filter @jigging/flow-authoring \
+  --filter @jigging/flow \
   --ignore-scripts \
   --config=/dev/null \
   --cache-dir "$temporary/cache" \
@@ -77,7 +81,7 @@ bun install \
   --no-progress \
   --no-summary
 just --justfile "$package/justfile" build
-bun pm pack --cwd "$package" --ignore-scripts --destination "$temporary/artifacts"
+bun "$package/scripts/pack.ts" --destination "$temporary/artifacts"
 
 set -- "$temporary"/artifacts/*.tgz
 if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then

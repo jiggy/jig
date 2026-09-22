@@ -1,0 +1,104 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "id": "https://jig.md/contracts/finite-acp",
+  "version": "1.0.0",
+  "input": {
+    "oneOf": [
+      { "type": "null" },
+      {
+        "type": "object",
+        "properties": { "session": { "$ref": "#/$defs/SessionRequest" } },
+        "required": ["session"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "const": "done"
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "exitCode": {
+            "type": ["integer", "null"]
+          },
+          "signal": {
+            "type": ["string", "null"]
+          },
+          "cleanup": {
+            "const": "complete"
+          },
+          "stopReason": {
+            "enum": ["exited", "closed"]
+          },
+          "session": {
+            "$ref": "#/$defs/SessionReceipt"
+          }
+        },
+        "required": ["exitCode", "signal", "cleanup", "stopReason"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "$defs": {
+    "SessionRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "retain": { "const": true }, "lifetime": { "const": "run" } },
+          "required": ["retain"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "restore": { "type": "string", "minLength": 36, "maxLength": 36 }
+          },
+          "required": ["restore"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SessionReceipt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": { "const": "retained" },
+            "reference": { "type": "string", "minLength": 36, "maxLength": 36 }
+          },
+          "required": ["status", "reference"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": { "const": "unavailable" },
+            "reason": {
+              "enum": ["not-cleanly-closed", "missing-history", "unsupported-history", "capacity"]
+            }
+          },
+          "required": ["status", "reason"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "channels": {
+    "requests": {
+      "direction": "receive",
+      "required": true,
+      "contract": "./requests.json"
+    },
+    "responses": {
+      "direction": "send",
+      "required": true,
+      "contract": "./responses.json"
+    }
+  }
+}

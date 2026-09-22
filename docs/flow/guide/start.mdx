@@ -17,12 +17,13 @@ For a first method, use an echo or greeting to verify the exchange. Then replace
 its body with a useful operation, such as validating a supplied record or
 summarizing supplied text. Keep the operation's own checks in ordinary code.
 
-The package contains `FLOW.md` and, for executable work, its implementation.
-Add resources and schemas when the method needs them. See
+The package contains one `FLOW.<ext>` implementation, such as `FLOW.ts`,
+`FLOW.py`, or `FLOW.md`. Add optional metadata, resources and contracts when
+the method needs them. See
 [Package/1](../spec/package-format.md) for the exact metadata and layout.
 
-A description-only package can share readable guidance and resources. Without
-an implementation, it cannot itself execute a Run/1 invocation.
+A Markdown implementation needs a compatible interpreter. Code implementations
+likewise need support from the chosen host.
 
 ## Pick your authoring path
 
@@ -44,7 +45,7 @@ your language to see the same method:
 <Tabs groupId="flow-language">
 <Tab label="TypeScript">
 
-```ts title="flow.ts"
+```ts title="FLOW.ts"
 import { handle } from "@jigging/flow";
 
 await handle(async (run) => {
@@ -55,7 +56,7 @@ await handle(async (run) => {
 </Tab>
 <Tab label="Python">
 
-```python title="flow.py"
+```python title="FLOW.py"
 from jiggy.flow import RunContext, RunResult, handle
 
 
@@ -94,5 +95,5 @@ check. A malformed input should have a deliberate, documented response.
 - [See one caller with three implementations](https://jig.md/guide/request-triage) in a Jig example.
 - [Understand the design](./understand.md) before choosing a host boundary.
 - [Add schemas](../spec/schema-files.md) when consumers need exact value validation.
-- [Use the Run SDK](../spec/run-sdk.md) for host-supplied children and capabilities.
+- [Use the Run SDK](../spec/run-sdk.md) for calls through host-bound slots.
 - [Explore the specifications](./index.md) when implementing a host or SDK.

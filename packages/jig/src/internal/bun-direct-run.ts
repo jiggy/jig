@@ -1,19 +1,22 @@
 import { unavailable } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
+import { nativeSlotRoutes } from '../project/invocation-slots.js'
 import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
+import { CHANNEL_LIMITS } from '../run/channels.js'
+import type { PrivateAcpAgentProvider } from './acp-agent-provider.js'
 import {
   createPrivateActivationRecipeObservation,
   type PrivateActivationRecipeObservation,
 } from './activation-planning.js'
-import { type PrivateAgentProvider, requirePrivateAgentProvider } from './agent-provider.js'
 import {
   normalizePrivateBunExecutionArtifact,
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
 } from './bun-execution-layout.js'
+import { type HttpGrant, type PrivateHttpGrants, selectHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import {
   type PrivateInstalledBunSupport,
@@ -24,12 +27,13 @@ import {
   type PrivateLinuxCgroupBackend,
   requirePrivateLinuxCgroupBackend,
 } from './linux-rootless-backend.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import {
-  PROJECT_COMMAND_CONTRACT_DIGEST,
-  PROJECT_COMMAND_LIMITS,
-} from './private-project-command.js'
-import { RUN_CHECKPOINT_CONTRACT_DIGEST, RUN_CHECKPOINT_LIMITS } from './private-run-checkpoint.js'
+  type PrivateAcpResources,
+  PrivateAcpResourceUnavailableError,
+  selectPrivateAcpResources,
+} from './private-acp-resources.js'
+import { PROJECT_COMMAND_LIMITS } from './private-project-command.js'
+import { RUN_CHECKPOINT_LIMITS } from './private-run-checkpoint.js'
 import {
   PRIVATE_ROOT_RESOURCE_POLICY,
   PRIVATE_FLOW_RESOURCE_CEILINGS as RESOURCE_CEILINGS,
@@ -53,6 +57,7 @@ export interface PrivateBunDirectRecipe {
   readonly request: PrivateActivationRequest
   readonly execution: PrivateBunExecutionArtifact
   readonly command: readonly [string, ...string[]]
+  readonly runtimeMounts: PrivateInstalledBunSupport['runtimeMounts']
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly mechanismDigest: string
@@ -65,17 +70,19 @@ export interface PrivateBunDirectRecipe {
   readonly bunPolicy: typeof BUN_POLICY
   readonly privateProcessFilesystem: true
   readonly privateRuntimeDevices: true
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly http: Readonly<Record<string, HttpGrant>>
+  readonly acp: Readonly<Record<string, PrivateAcpAgentProvider>>
 }
 
-/** Plan one exact, dependency-closed Bun flow.ts Run. */
+/** Plan one exact, dependency-closed Bun FLOW.ts Run. */
 export async function planPrivateBunDirectRun(input: {
   readonly request: PrivateActivationRequest
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly execution?: PrivateBunExecutionArtifact
   readonly selector?: string
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly httpGrants?: PrivateHttpGrants | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
 }): Promise<PrivateBunDirectRecipe> {
   const backend = requirePrivateLinuxCgroupBackend(input.backend)
   const fields = await describePrivateBunDirectRun(
@@ -108,58 +115,57 @@ async function describePrivateBunDirectRun(
   const selector = input.selector ?? DEFAULT_SELECTOR
   if (
     request.mode !== 'run' ||
-    request.entrypoint.path !== 'flow.ts' ||
-    request.entrypoint.suffix !== 'ts' ||
+    !['FLOW.ts', 'FLOW.md'].includes(request.entrypoint.path) ||
+    !['ts', 'md'].includes(request.entrypoint.suffix) ||
     (request.entrypoint.selector !== undefined && request.entrypoint.selector !== selector)
   ) {
-    throw new TypeError('private Bun recipe requires one matching flow.ts activation')
+    throw new TypeError('private Bun recipe requires one matching FLOW.ts or FLOW.md activation')
   }
+  if (
+    request.entrypoint.suffix === 'md' &&
+    (execution.package.digest !== request.package.digest ||
+      execution.layout.flowRoot !== '' ||
+      execution.layout.aliases.length !== 0)
+  )
+    throw new TypeError(
+      'Markdown runs use only their captured package, without dependency preparation',
+    )
   if (request.target.kind === 'flow') {
     if (Object.keys(request.settings).length !== 0) {
       throw new TypeError('private Bun direct Flow recipe requires zero configuration')
     }
   }
-  const capabilityUses = Object.values(request.capabilities)
+  const nativeRoutes = nativeSlotRoutes(request.slots)
   if (
-    capabilityUses.some(({ digest }) => digest === RUN_CHECKPOINT_CONTRACT_DIGEST) &&
+    nativeRoutes.some(({ native }) => native === 'run-checkpoint') &&
     !Object.values(request.attachments).includes('read-write')
   )
     throw new TypeError('Run Checkpoint requires a root writable attachment')
-  const usesAgent = capabilityUses.some(({ digest }) => digest === AGENT_RUN_CONTRACT_DIGEST)
-  const usesCommand = capabilityUses.some(
-    ({ digest }) => digest === PROJECT_COMMAND_CONTRACT_DIGEST,
-  )
-  if (usesAgent && input.agentProvider === undefined) {
+  let acp: Readonly<Record<string, PrivateAcpAgentProvider>>
+  try {
+    acp = await selectPrivateAcpResources(input.acpResources, request.slots, installedSupport)
+  } catch (error) {
     unavailable(
-      'PROJECT_AGENT_UNAVAILABLE',
-      'the target requires a configured host Agent',
-      `${request.packagePath}/FLOW.md`,
+      error instanceof PrivateAcpResourceUnavailableError ? error.code : 'PROJECT_ACP_UNAVAILABLE',
+      error instanceof PrivateAcpResourceUnavailableError
+        ? error.message
+        : 'the target requires private operator resources for its selected ACP grants',
+      `${request.packagePath}/${request.entrypoint.path}`,
     )
   }
-  const agentProvider = !usesAgent ? undefined : requirePrivateAgentProvider(input.agentProvider)
-  if (
-    capabilityUses.some(
-      ({ digest }) =>
-        ![
-          AGENT_RUN_CONTRACT_DIGEST,
-          PROJECT_COMMAND_CONTRACT_DIGEST,
-          RUN_CHECKPOINT_CONTRACT_DIGEST,
-        ].includes(digest),
-    ) ||
-    capabilityUses.length > 3 ||
-    (agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST)
-  ) {
-    throw new TypeError('private Bun recipe requires exact supported capabilities')
-  }
-  if (usesCommand && Object.keys(request.commands ?? {}).length === 0)
+  let http: Readonly<Record<string, HttpGrant>>
+  const usesHttp = nativeRoutes.some(({ native }) => native === 'http-request')
+  try {
+    http = selectHttpGrants(input.httpGrants, request.slots)
+    if (usesHttp && Object.keys(http).length === 0) throw new Error('missing resource')
+    if (!usesHttp && Object.keys(http).length !== 0) throw new Error('undeclared resource')
+  } catch {
     unavailable(
-      'PROJECT_COMMAND_UNCONFIGURED',
-      'configure commands in a Binding for this Project Command Flow',
-      `${request.packagePath}/FLOW.md`,
+      'PROJECT_HTTP_UNAVAILABLE',
+      'configure matching slot grants and selected bearer environment variables before review',
+      `${request.packagePath}/${request.entrypoint.path}`,
     )
-  if (!usesCommand && request.commands !== undefined)
-    throw new TypeError('command policy requires the Project Command capability')
-
+  }
   const adapterDigest = privateDomainDigest('JIG-Private-Bun-Direct-Adapter/1', {
     revision: ADAPTER_REVISION,
     installedSupportDigest: installedSupport.digest,
@@ -178,15 +184,19 @@ async function describePrivateBunDirectRun(
   } as unknown as JsonValue)
   const authorityDigest = privateDomainDigest('JIG-Private-Bun-Authority/1', {
     attachments: request.attachments,
-    capabilities: request.capabilities,
-    ...(request.commands === undefined ? {} : { commands: request.commands }),
+    ...(request.boundAttachments === undefined
+      ? {}
+      : { boundAttachments: request.boundAttachments }),
+    slots: request.slots,
+    http,
   } as unknown as JsonValue)
   const launchEnvelopeDigest = logicalLaunchDigest(
     request,
     execution,
     installedSupport,
     support,
-    agentProvider,
+    http,
+    acp,
   )
   const observation = createPrivateActivationRecipeObservation({
     requestDigest: request.digest,
@@ -208,7 +218,6 @@ async function describePrivateBunDirectRun(
     installedSupportDigest: installedSupport.digest,
     mechanismDigest: support.digest,
     observationDigest: observation.digest,
-    ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   })
   const recipe = Object.freeze({
     kind: identity.kind,
@@ -218,7 +227,20 @@ async function describePrivateBunDirectRun(
     ),
     request,
     execution,
+    http,
+    acp,
     installedSupport,
+    runtimeMounts: Object.freeze([
+      ...installedSupport.runtimeMounts,
+      ...(request.entrypoint.suffix === 'md'
+        ? [
+            {
+              source: installedSupport.markdownRuntimePath,
+              destination: installedSupport.sandboxMarkdownRuntimePath,
+            },
+          ]
+        : []),
+    ]),
     mechanismDigest: support.digest,
     observation,
     sandboxExecutablePath: installedSupport.sandboxExecutablePath,
@@ -226,6 +248,7 @@ async function describePrivateBunDirectRun(
     command: Object.freeze([
       installedSupport.sandboxExecutablePath,
       ...BUN_POLICY,
+      ...(request.entrypoint.suffix === 'md' ? [installedSupport.sandboxMarkdownRuntimePath] : []),
       `${PACKAGE_DESTINATION}/${execution.layout.flowRoot ? `${execution.layout.flowRoot}/` : ''}${request.entrypoint.path}`,
     ]) as readonly [string, ...string[]],
     scratch: SCRATCH,
@@ -234,7 +257,6 @@ async function describePrivateBunDirectRun(
     bunPolicy: BUN_POLICY,
     privateProcessFilesystem: true,
     privateRuntimeDevices: true,
-    ...(agentProvider === undefined ? {} : { agentProvider }),
   })
   return recipe
 }
@@ -251,7 +273,8 @@ function logicalLaunchDigest(
   execution: PrivateBunExecutionArtifact,
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismSupport,
-  agentProvider: PrivateAgentProvider | undefined,
+  http: Readonly<Record<string, HttpGrant>>,
+  acp: Readonly<Record<string, PrivateAcpAgentProvider>>,
 ): string {
   return privateDomainDigest('JIG-Private-Bun-Logical-Launch/1', {
     requestDigest: request.digest,
@@ -266,6 +289,9 @@ function logicalLaunchDigest(
     resourceCeilings: RESOURCE_CEILINGS,
     wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
     rootResourcePolicy: PRIVATE_ROOT_RESOURCE_POLICY,
+    channelLimits: CHANNEL_LIMITS,
+    http,
+    acp: Object.fromEntries(Object.entries(acp).map(([slot, provider]) => [slot, provider.digest])),
     environment: Object.freeze({
       LD_LIBRARY_PATH: '/jig-runtime/lib',
     }),
@@ -277,13 +303,12 @@ function logicalLaunchDigest(
       outputBytes: 16 * 1024 * 1024,
       rootOnly: true,
     },
-    capabilities: request.capabilities,
-    ...(request.commands === undefined
-      ? {}
-      : { commands: request.commands, commandLimits: PROJECT_COMMAND_LIMITS }),
-    ...(Object.values(request.capabilities).some((c) => c.digest === RUN_CHECKPOINT_CONTRACT_DIGEST)
+    slots: request.slots,
+    ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'project-command')
+      ? { commandLimits: PROJECT_COMMAND_LIMITS }
+      : {}),
+    ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'run-checkpoint')
       ? { checkpointLimits: RUN_CHECKPOINT_LIMITS }
       : {}),
-    ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   } as unknown as JsonValue)
 }

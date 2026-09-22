@@ -16,7 +16,7 @@ export type RunResult = {
   readonly output: JsonValue
 }
 
-export interface ChildFlowRequest {
+export interface FlowCall {
   readonly operationId: string
   readonly slot: string
   readonly intent?: string
@@ -24,16 +24,12 @@ export interface ChildFlowRequest {
   readonly channels?: Readonly<Record<string, ChannelEndpoint>>
 }
 
-export interface CapabilityCall {
-  readonly operationId: string
-  readonly slot: string
-  readonly method: string
-  readonly input: JsonValue
-  readonly channels?: Readonly<Record<string, ChannelEndpoint>>
-}
-
 export interface CallOptions {
   readonly signal?: AbortSignal
+}
+
+export interface ChannelCloseOptions extends CallOptions {
+  readonly error?: 'LAGGED'
 }
 
 export interface ChannelContractIdentity {
@@ -44,7 +40,7 @@ export interface ChannelContractIdentity {
 
 export type ChannelOptions = {
   readonly schema?: JsonValue
-  readonly contract?: string
+  readonly contract?: string | { readonly slot: string; readonly channel: string }
 } & ({ readonly delivery?: 'direct' } | { readonly delivery: 'broadcast' })
 
 export interface ChannelSender {
@@ -52,7 +48,7 @@ export interface ChannelSender {
   readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelContractIdentity
   send(value: JsonValue, options?: CallOptions): Promise<void>
-  close(options?: CallOptions): Promise<void>
+  close(options?: ChannelCloseOptions): Promise<void>
 }
 
 export interface ChannelReceiver extends AsyncIterableIterator<JsonValue> {
@@ -85,8 +81,7 @@ export interface RunContext {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
 
-  runChildFlow(call: ChildFlowRequest, options?: CallOptions): Promise<RunResult>
-  callCapability(call: CapabilityCall, options?: CallOptions): Promise<JsonValue>
+  call(call: FlowCall, options?: CallOptions): Promise<RunResult>
   channel(
     options: ChannelOptions & { readonly delivery: 'broadcast' },
     callOptions?: CallOptions,
@@ -132,17 +127,5 @@ export class OperationError extends Error {
     this.name = 'OperationError'
     this.code = code
     if (details !== undefined) this.details = details
-  }
-}
-
-export class CapabilityError extends Error {
-  readonly errorName: string
-  readonly data: JsonValue
-
-  constructor(errorName: string, data: JsonValue) {
-    super(`Capability failed with ${errorName}`)
-    this.name = 'CapabilityError'
-    this.errorName = errorName
-    this.data = data
   }
 }

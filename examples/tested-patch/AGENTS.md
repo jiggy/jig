@@ -22,8 +22,19 @@ only after executed checks and independent acceptance.
   this example. A separate example must justify its own lesson before adding them.
 - The root alone receives read-only source and writable deliverables. Accept
   16 UTF-8 files totaling 64 KiB and at most eight existing editable JS/TS source paths.
-- The leaf takes JSON files and fixed cases. It uses Agent and Project Command
-  capabilities with no attachments, child slots, or progress channels.
+- The leaf takes JSON files and fixed cases. Its `agent` slot calls an ordinary
+  Agent Flow; `tests` and `cli` use independently reviewed command grants.
+  Operator selection belongs in `bindings/agent.ts`; `jig.ts` supplies that
+  contract-matched default. It receives no attachments.
+- Optional `restoreCorrections` requests Run-scoped native retention for one
+  correction after checks, never overlapping Agent and command execution.
+  Retention needs a separate grant; unavailability blocks a needed correction,
+  never triggers replay or a fresh-call fallback. Evidence receipts are not
+  cross-Run continuation handles.
+- The reusable leaf can publish optional phase records for other consumers.
+  This introductory root connects no monitoring channels. Batch and observation
+  checks live in Jig's private repair fixture; they reuse this leaf and evidence
+  helpers without making the public walkthrough a batch application.
 - Reproduce an independent baseline mismatch before an Agent call. Permit at most
   one correction; every proposal and evaluation uses the original files and cases.
 - Repository tests can be interfered with by candidate code. Independent assertions

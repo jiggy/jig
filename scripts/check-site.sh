@@ -13,7 +13,7 @@ case $site_name in
     default_base=https://flow.jig.md
     home_title='<title>FLOW</title>'
     guide_title='<title>FLOW specifications - FLOW</title>'
-    json_map='docs/flow/spec/machine/capability-contract-1.schema.json|schemas/capability-contract-1.schema.json
+    json_map='docs/flow/spec/machine/invocation-contract-1.schema.json|schemas/invocation-contract-1.schema.json
 docs/flow/spec/machine/channel-contract-1.schema.json|schemas/channel-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json|schemas/run-1-errors.json
 docs/flow/spec/machine/run-1.schema.json|schemas/run-1.json
@@ -25,10 +25,17 @@ docs/flow/spec/machine/schema-1.json|schemas/schema-1.json'
     guide_title='<title>Get started with Jig - Jig</title>'
     json_map='docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
-docs/jig/spec/contracts/agent-run.capability.json|contracts/agent-run.capability.json
+docs/jig/spec/contracts/agent-run/contract.json|contracts/agent-run/contract.json
+docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json|contracts/agent-run/contracts/acp-public-updates.json
+docs/jig/spec/contracts/agent-run/contracts/agent-commands.json|contracts/agent-run/contracts/agent-commands.json
+docs/jig/spec/contracts/agent-run/contracts/agent-replies.json|contracts/agent-run/contracts/agent-replies.json
+docs/jig/spec/contracts/finite-acp/contract.json|contracts/finite-acp/contract.json
+docs/jig/spec/contracts/finite-acp/requests.json|contracts/finite-acp/requests.json
+docs/jig/spec/contracts/finite-acp/responses.json|contracts/finite-acp/responses.json
 docs/jig/spec/contracts/acp-public-updates.json|contracts/acp-public-updates.json
-docs/jig/spec/contracts/project-command.capability.json|contracts/project-command.capability.json
-docs/jig/spec/contracts/run-checkpoint.capability.json|contracts/run-checkpoint.capability.json'
+docs/jig/spec/contracts/http-request/contract.json|contracts/http-request/contract.json
+docs/jig/spec/contracts/project-command/contract.json|contracts/project-command/contract.json
+docs/jig/spec/contracts/run-checkpoint/contract.json|contracts/run-checkpoint/contract.json'
     ;;
   *)
     echo "the site must be flow or jig" >&2
@@ -64,12 +71,14 @@ grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 
 if [ "$site_name" = jig ]; then
-  for contract in agent-run project-command run-checkpoint acp-public-updates; do
+  for contract in agent-run project-command http-request run-checkpoint acp-public-updates finite-acp; do
     case $contract in
       agent-run) title='<title>Agent Run contract - Jig</title>' ;;
+      http-request) title='<title>HTTP Request contract - Jig</title>' ;;
       project-command) title='<title>Project Command contract - Jig</title>' ;;
       run-checkpoint) title='<title>Run Checkpoint contract - Jig</title>' ;;
       acp-public-updates) title='<title>ACP public updates contract - Jig</title>' ;;
+      finite-acp) title='<title>Finite ACP contract - Jig</title>' ;;
     esac
     curl --fail --location --silent --show-error \
       "$base/contracts/$contract" > "$temporary/contract.html"

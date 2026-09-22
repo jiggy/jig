@@ -33,7 +33,7 @@ before they appear. Unsupported or unreadable approval produces no suggestions.
 | --- | --- |
 | Startup verification | `--verification` on `run`, `review`, or `inspect`; `JIG_VERIFICATION` for a shell default |
 | Terminal appearance | `JIG_THEME`, `NO_COLOR`, and your terminal environment |
-| Agent client, model, and credentials | The review chooser or exported operator environment; see [Agent settings](#agent-settings) |
+| Agent client, model, and credentials | An ordinary Agent Binding and operator credentials; see [Agent settings](#agent-settings) |
 | Flows, Bindings, and application settings | `jig.ts`; see [Project settings](#project-settings) |
 | Input, deadline, and output for one Run | Command arguments; see [Per-command options](#per-command-options) |
 | Bubblewrap executable | Absolute `JIG_BWRAP_PATH`; see [Host configuration](#host-configuration) |
@@ -109,32 +109,25 @@ terminal. See the [CLI experience contract](../spec/cli-experience.md).
 
 ## Agent settings
 
-`jig review` can remember an available client for the current project. For
-explicit selection or automation, use the exported settings below.
+Choose an ordinary Agent Flow through a reviewed Binding and contract-keyed
+defaults. The Binding's grants define its permitted native client or HTTP
+endpoint; credentials remain in the operator environment, outside Flow input
+and package source. Review shows the exact selected routes and powers.
 
-| Setting | Purpose |
-| --- | --- |
-| `JIG_AGENT_CLIENT` | `codex`, `claude`, `pi`, or `api`; overrides the remembered client choice |
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | OpenRouter credentials and model, using its Chat Completions endpoint |
-| `OPENAI_API_KEY`, `OPENAI_MODEL` | Direct OpenAI or compatible API credentials and model |
-| `OPENAI_BASE_URL`, `OPENAI_API` | Compatible HTTPS endpoint and wire format: `responses` (default) or `chat-completions` |
-| `CODEX_PATH`, `CLAUDE_PATH`, `PI_PATH` | Absolute native-client executable override; otherwise Jig searches the operator’s eligible `PATH` entries |
-| `CODEX_HOME` | Codex’s file-backed login directory; defaults to `~/.codex` |
+Native client paths and authentication are operator configuration. HTTP method
+settings select API/model behavior within the grant's endpoint and body policy.
+Rotating a credential alone does not change admitted meaning. Changes to client,
+endpoint, model policy or installation require review.
 
-Jig supplies no default API model. Select one API variable family at a time;
-supplying both OpenRouter and OpenAI configuration is ambiguous. Credentials
-alone do not select a client. Keep credentials outside `jig.ts`, Flow input,
-and reviewed application settings.
-
-Client, endpoint, model, or executable changes require a new review; rotating
-only a credential does not. The [Agent guide](./agents.md) owns setup examples,
-client requirements, login support, and switching instructions.
+See [Choose an Agent](./agents.md) for the current supported clients, grant
+examples and credential settings. Jig does not infer a provider from credentials
+or remember an implicit project-wide Agent choice.
 
 ## Project settings
 
 `jig.ts` declares the project’s Flows and Bindings. A Binding configures an
-invocation with application `settings`, selected child `slots`, and any
-supported command policy. These values are reviewed before they can execute.
+invocation with application `settings`, selected invocation `slots`, and any
+supported resource grants. These values are reviewed before they can execute.
 They do not select the operator’s credentials, terminal theme, or startup
 verification preference.
 
@@ -150,7 +143,9 @@ examples, and [execution policy](../spec/project-policy.md) for enforced limits.
 | `--receive CHANNEL` | `run` | Receive a declared output channel; see [live progress](./channels.md) |
 | `--json` | `run` | Emit machine-readable JSON or NDJSON even in a terminal; redirected stdout already uses this format |
 | `--details` | `review` | Include unchanged policy as context in the review diff |
-| `--yes` | `review` | Approve the displayed revision without an interactive prompt; does not select an Agent or grant resolution-network permission |
+| `--yes` | `review` | Approve the displayed revision without an interactive prompt; does not grant resource-authority changes or resolution-network permission |
+| `--allow-authority-changes` | `review` | Explicitly approve changed resource delegation alongside the revision |
+| `--generate-contracts` | `review` | Compile managed TypeSpec contracts before separate execution approval |
 | `--allow-resolution-network` | `review` | Permit dependency-selected network requests before graph validation for this review only; grants no Run network access |
 
 Run `jig <command> --help` for the complete arguments for a command. See
@@ -166,6 +161,4 @@ selection fails rather than falling back. This setting selects Jig’s outer
 containment tool, not a native Agent’s nested sandbox.
 
 `XDG_CACHE_HOME` relocates the installation verification cache described above.
-`XDG_STATE_HOME` relocates remembered Agent choices, normally stored at
-`~/.local/state/jig/agent-choices`, separately for each canonical project
-directory. Neither location transfers project approval.
+The cache contains no project approval or credentials.

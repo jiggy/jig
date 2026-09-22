@@ -3,6 +3,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rm,
@@ -35,8 +36,16 @@ import {
 } from '../src/cli.js'
 import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
 import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
+import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
+import { CheckError } from '../src/diagnostics.js'
+import { projectError as projectFailure } from '../src/internal/project-session-controller.js'
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
+
+function withoutPresentationControls(text: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Permit only SGR styling and the progress renderer's exact line-clear prefix, not arbitrary ANSI.
+  return text.replace(/\u001b\[[0-9;]*m|\r\u001b\[2K/g, '')
+}
 
 test('real confirmation accepts a line without cursor control on a plain terminal', async () => {
   const child = Bun.spawn(
@@ -323,7 +332,7 @@ test('default init writes an ordinary editable SDK Flow without installing or ap
       ).toBe(0)
       expect(help).toContain(`jig run flow:flows/hello --input '"Ada"'`)
     }
-    expect(await readFile(join(directory, 'flows/hello/flow.ts'), 'utf8')).toContain(
+    expect(await readFile(join(directory, 'flows/hello/FLOW.ts'), 'utf8')).toContain(
       'import { handle } from "@jigging/flow"',
     )
     const sdkManifest = JSON.parse(
@@ -338,6 +347,147 @@ test('default init writes an ordinary editable SDK Flow without installing or ap
     await expect(createProject(directory)).rejects.toMatchObject({
       code: 'JIG_INIT_DESTINATION_EXISTS',
     })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test.each(['codex', 'claude', 'pi'] as const)(
+  'init selects %s through ordinary visible files only',
+  async (client) => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-'))
+    const destination = join(root, 'project')
+    let output = ''
+    try {
+      const args = ['init', 'project', '--agent', client]
+      expect(privateCliRequiresHost(args)).toBeFalse()
+      expect(
+        await main(args, {
+          currentDirectory: root,
+          host: {
+            acquire: async () => {
+              throw new Error('initialization must not acquire authority')
+            },
+          },
+          writeOutput: (text) => {
+            output += text
+          },
+        }),
+      ).toBe(0)
+      const manifest = await Bun.file(
+        new URL('../../agent-acp/package.json', import.meta.url),
+      ).json()
+      expect(await Bun.file(join(destination, 'package.json')).json()).toEqual({
+        private: true,
+        dependencies: { '@jigging/agent-acp': manifest.version },
+      })
+      expect(await Bun.file(join(destination, 'bindings/agent.ts')).text()).toContain(
+        `slots: { native: { kind: "acp", client: "${client}" } }`,
+      )
+      expect(await Bun.file(join(destination, 'jig.ts')).text()).toContain(
+        'defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }',
+      )
+      expect(await Bun.file(join(destination, 'flows/hello/FLOW.ts')).exists()).toBeTrue()
+      expect(await Bun.file(join(destination, 'README.md')).text()).toContain('--receive events')
+      for (const path of ['node_modules', 'bun.lock', '.jig', 'jig.lock'])
+        await expect(lstat(join(destination, path))).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(output).toContain(`with ${client} selected`)
+      expect(output).toContain('bindings/agent.ts')
+      expect(output).not.toContain('\u001b')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+)
+
+test('interactive Agent selection is explicit and cancellation creates nothing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-choice-'))
+  try {
+    for (const answer of ['', 'unknown', 'pi']) {
+      let output = ''
+      let error = ''
+      let prompt = ''
+      const code = await main(['init', '--bare', 'project', '--agent'], {
+        currentDirectory: root,
+        interactive: true,
+        answer: async (text) => {
+          prompt = text
+          return answer
+        },
+        writeOutput: (text) => {
+          output += text
+        },
+        writeError: (text) => {
+          error += text
+        },
+      })
+      expect(prompt).toContain('empty cancels')
+      if (answer === 'pi') {
+        expect(code).toBe(0)
+        expect(await readdir(join(root, 'project/flows'))).toEqual([])
+        expect(await Bun.file(join(root, 'project/bindings/agent.ts')).text()).toContain(
+          'client: "pi"',
+        )
+      } else {
+        expect(code).toBe(answer === '' ? 0 : 2)
+        expect(await readdir(root)).toEqual([])
+        expect(output + error).toContain(answer === '' ? 'cancelled' : 'Choose codex, claude or pi')
+      }
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('noninteractive Agent selection requires a client and aborting selection leaves no files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-abort-'))
+  try {
+    let error = ''
+    expect(
+      await main(['init', 'project', '--agent'], {
+        currentDirectory: root,
+        interactive: false,
+        writeError: (text) => {
+          error += text
+        },
+      }),
+    ).toBe(2)
+    expect(error).toContain('Choose explicitly')
+    const controller = new AbortController()
+    const code = await main(['init', 'project', '--agent'], {
+      currentDirectory: root,
+      interactive: true,
+      signal: controller.signal,
+      answer: async () => {
+        controller.abort()
+        return 'codex'
+      },
+      writeError: () => {},
+      writeOutput: () => {},
+    })
+    expect(code).not.toBe(0)
+    expect(await readdir(root)).toEqual([])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Agent initialization rolls back a failed Binding write without leaving partial selection', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-init-agent-rollback-'))
+  try {
+    const fileSystem: ProjectInitFileSystem = {
+      mkdir,
+      rmdir,
+      unlink,
+      writeFile: (async (path, data, options) => {
+        if (String(path).endsWith('/bindings/agent.ts')) throw new Error('injected')
+        return writeFile(path, data, options)
+      }) as typeof writeFile,
+    }
+    await expect(
+      createProject(join(root, 'project'), fileSystem, false, 'codex'),
+    ).rejects.toMatchObject({ code: 'JIG_INIT_UNAVAILABLE' })
+    expect(await readdir(root)).toEqual([])
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -407,7 +557,7 @@ describe('finite Jig project commands', () => {
         expect(invocation.output).not.toContain('Usage: jig review')
       } else if (arguments_[0] === 'review') {
         expect(invocation.output).toContain('--details')
-        expect(invocation.output).toContain('--yes does not grant resolution networking')
+        expect(invocation.output).toContain('--yes alone does not approve new resource authority')
       } else if (arguments_[0] === 'init') {
         expect(invocation.output).toContain('--bare')
       } else if (arguments_[0] !== 'inspect') expect(invocation.output).toContain('jig --version')
@@ -511,6 +661,7 @@ describe('finite Jig project commands', () => {
             planDigest: digest,
             review: {
               mediaType: 'text/plain; charset=utf-8',
+              authorityChanges: false,
               text: 'summary\n',
               details: 'complete policy\n',
             },
@@ -544,7 +695,7 @@ describe('finite Jig project commands', () => {
     )
     expect(invocation.error).toContain('Application outcome: "blocked"')
     expect(invocation.error).toContain('Stopping remaining work and cleaning up')
-    expect(invocation.error).not.toContain('\u001b')
+    expect(withoutPresentationControls(invocation.error)).not.toContain('\u001b')
     expect(invocation.error).not.toContain('Success')
   })
 
@@ -561,7 +712,7 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work'], human.options)).toBe(0)
     expect(human.output).toContain('Run output: result')
-    expect(human.output).toContain('One answer.\n')
+    expect(withoutPresentationControls(human.output)).toContain('One answer.\n')
     expect(human.output).not.toContain('"diagnostics"')
     expect(human.error).toContain('result above')
     const machine = commandInvocation(fakeHost(fakeSession(events, { terminal }), events), {
@@ -579,7 +730,7 @@ describe('finite Jig project commands', () => {
       details: {
         instancePointer: '',
         schemaPointer: '/type',
-        path: 'input.schema.json',
+        path: 'FLOW.contract.json',
         typeMismatch: { expected: ['string'], received: 'object' },
       },
       diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
@@ -688,6 +839,30 @@ describe('finite Jig project commands', () => {
     },
   )
 
+  test('uncertain native failure retains its safe cause without implying retry or success', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'UNCERTAIN',
+      message:
+        'Finite ACP dispatch may have occurred but no result was proved. The native client reported a session failure; private details were withheld.',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    for (const terminalOutput of [true, false]) {
+      const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []), {
+        terminalOutput,
+      })
+      expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+      expect(invocation.error.replace(/\s+/g, ' ')).toContain(
+        'native client reported a session failure',
+      )
+      expect(invocation.error).not.toContain('No Flow was started')
+      expect(invocation.error).not.toContain('did not retain a more specific cause')
+      expect(invocation.output).toBe(
+        terminalOutput ? '' : new TextDecoder().decode(canonicalJson(terminal)) + '\n',
+      )
+    }
+  })
+
   test('escapes reported failure text instead of allowing it to forge terminal sections', async () => {
     const terminal: RootRunTerminal = {
       status: 'failed',
@@ -700,7 +875,7 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('reported\\u001b[2J\\u000aReview required\\u000d\\u202e')
-    expect(invocation.error).not.toContain('\u001b')
+    expect(withoutPresentationControls(invocation.error)).not.toContain('\u001b')
     expect(invocation.error).not.toContain('\u202e')
   })
 
@@ -724,6 +899,28 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('Inspect the result and diagnostics')
     expect(invocation.error).not.toContain('root Run execution failed')
     expect(invocation.error).toContain('Diagnostic code: EXECUTION_FAILED')
+  })
+
+  test('an unexplained root failure does not claim child diagnostics are absent', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'EXECUTION_FAILED',
+      message: 'root Run execution failed',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation({
+      async acquire(_project, options) {
+        options?.channelOutput?.diagnostic(new TextEncoder().encode('child warning'), ['worker'])
+        return fakeSession([], { terminal })
+      },
+    })
+    expect(await main(['run', 'flow:flows/work', '--json'], invocation.options)).toBe(1)
+    expect(invocation.error).not.toContain('No Flow diagnostic text was captured.')
+    expect(invocation.error).toContain('See attributed runDiagnostics')
+    expect(JSON.parse(invocation.output).runDiagnostics.entries[0]).toMatchObject({
+      operations: ['worker'],
+      stderr: 'child warning',
+    })
   })
 
   test('protocol failures have safe recovery guidance without changing the JSON result', async () => {
@@ -807,6 +1004,7 @@ describe('finite Jig project commands', () => {
       planDigest: digest,
       review: {
         mediaType: 'text/plain; charset=utf-8',
+        authorityChanges: false,
         text: 'review project changes\n',
         details: 'complete review\n',
       },
@@ -824,12 +1022,60 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toBe('')
   })
 
+  test('new grants require explicit authority approval without complicating ordinary review', async () => {
+    for (const args of [
+      ['review', '--yes'],
+      ['review', '--yes', '--allow-authority-changes'],
+      ['review'],
+    ]) {
+      const events: string[] = []
+      const plan: ProjectPlanResult = {
+        state: 'applicable',
+        operation: 'admission',
+        planDigest: digest,
+        review: {
+          mediaType: 'text/plain; charset=utf-8',
+          text: 'Exact endpoint and recipient\n',
+          details: 'details\n',
+          authorityChanges: true,
+        },
+      }
+      const base = fakeSession(events, { plan })
+      let authority: boolean | undefined
+      const session = {
+        ...base,
+        async apply(request: any) {
+          authority = request.allowAuthorityChanges
+          return base.apply(request)
+        },
+      }
+      const invocation = commandInvocation(fakeHost(session, events), {
+        interactive: true,
+        confirm: async () => true,
+      })
+      const code = await main(args, invocation.options)
+      if (args.length === 2) {
+        expect(code).toBe(2)
+        expect(events.some((event) => event.startsWith('apply:'))).toBe(false)
+        expect(invocation.error).toContain('--allow-authority-changes')
+      } else {
+        expect(code).toBe(0)
+        expect(authority).toBe(true)
+      }
+    }
+  })
+
   test('review requires TTY confirmation unless --yes is explicit', async () => {
     const plan: ProjectPlanResult = {
       state: 'applicable',
       operation: 'lock-repair',
       planDigest: digest,
-      review: { mediaType: 'text/plain; charset=utf-8', text: 'review\n', details: 'details\n' },
+      review: {
+        authorityChanges: false,
+        mediaType: 'text/plain; charset=utf-8',
+        text: 'review\n',
+        details: 'details\n',
+      },
     }
     const nonInteractiveEvents: string[] = []
     const nonInteractive = commandInvocation(
@@ -870,7 +1116,12 @@ describe('finite Jig project commands', () => {
         state: 'applicable',
         operation: 'admission',
         planDigest: digest,
-        review: { mediaType: 'text/plain; charset=utf-8', text: 'review\n', details: 'details\n' },
+        review: {
+          authorityChanges: false,
+          mediaType: 'text/plain; charset=utf-8',
+          text: 'review\n',
+          details: 'details\n',
+        },
       }
       let received: Parameters<PrivateCliCommandHost['acquire']>[1]
       const host: PrivateCliCommandHost = {
@@ -942,6 +1193,50 @@ describe('finite Jig project commands', () => {
     const invocation = commandInvocation(fakeHost(fakeSession([]), []))
     expect(await main(args, invocation.options)).toBe(2)
     expect(invocation.error).toContain('Help: jig')
+  })
+
+  test('contract generation is explicit and does not grant resolution or execution approval', async () => {
+    const received: Parameters<PrivateCliCommandHost['acquire']>[1][] = []
+    const events: string[] = []
+    const host: PrivateCliCommandHost = {
+      acquire: async (_path, options) => {
+        received.push(options)
+        options?.onGeneration?.('flows/hello\u001b', ['FLOW.contract.json'])
+        return fakeSession(events, {
+          plan: {
+            state: 'applicable',
+            operation: 'admission',
+            planDigest: digest,
+            review: {
+              mediaType: 'text/plain; charset=utf-8',
+              authorityChanges: false,
+              text: 'review\n',
+              details: 'details\n',
+            },
+          },
+        })
+      },
+    }
+    const invocation = commandInvocation(host)
+    expect(await main(['review', '--generate-contracts'], invocation.options)).toBe(2)
+    expect(received[0]?.generateContracts).toBeTrue()
+    expect(received[0]?.allowResolutionNetwork).toBeUndefined()
+    expect(invocation.error).toContain('These writes do not approve execution')
+    expect(invocation.error).not.toContain('\u001b')
+    expect(events.some((event) => event.startsWith('apply:'))).toBeFalse()
+    await main(['review', '--yes'], commandInvocation(host).options)
+    expect(received[1]?.generateContracts).toBeUndefined()
+  })
+
+  test.each([
+    ['review', '--generate'],
+    ['review', '--generate-contracts', '--generate-contracts'],
+    ['run', 'flow:flows/a', '--generate-contracts'],
+  ])('rejects vague, duplicate or misplaced contract generation: %j', async (args) => {
+    const events: string[] = []
+    const invocation = commandInvocation(fakeHost(fakeSession(events), events))
+    expect(await main(args, invocation.options)).toBe(2)
+    expect(events).toEqual([])
   })
 
   test('run uses the current project, explicit Flow target, default input, and no planning', async () => {
@@ -1094,9 +1389,68 @@ describe('finite Jig project commands', () => {
       type: 'terminal',
       result: { status: 'succeeded' },
     })
-    expect(invocation.output).not.toContain('€')
-    expect(invocation.output).not.toContain('[31m')
+    expect(JSON.parse(invocation.output).result.runDiagnostics.entries).toEqual([
+      {
+        operations: [],
+        stderr: '€\u001b[31m\r\u0000\t\n',
+        stderrBytes: 12,
+        stderrTruncated: false,
+      },
+    ])
+    expect(JSON.parse(invocation.output).result.output).toBeNull()
   })
+
+  test.each([false, true])(
+    'attributed live diagnostics are retained without human replay (human: %s)',
+    async (terminalOutput) => {
+      const terminal: RootRunTerminal = {
+        status: 'succeeded',
+        outcome: 'done',
+        output: null,
+        diagnostics: { stderr: 'root text\n', stderrBytes: 10, stderrTruncated: false },
+      }
+      const invocation = commandInvocation(
+        {
+          async acquire(_path, options) {
+            const diagnostic = options!.channelOutput!.diagnostic
+            diagnostic(new TextEncoder().encode('root text\n'))
+            diagnostic(new TextEncoder().encode('child '), ['worker'])
+            diagnostic(new TextEncoder().encode('sibling text\n'), ['sibling'])
+            diagnostic(new TextEncoder().encode('text\n'), ['worker'])
+            return fakeSession([], { terminal })
+          },
+        },
+        { terminalOutput },
+      )
+      expect(await main(['run', 'binding:work'], invocation.options)).toBe(0)
+      expect(invocation.error).toContain('root text')
+      expect(invocation.error).toContain('sibling text')
+      if (terminalOutput) {
+        expect(invocation.output).not.toContain('root text')
+        expect(invocation.output).not.toContain('child text')
+        expect(invocation.output).not.toContain('sibling text')
+        expect(invocation.output).toContain('Diagnostics ("worker")')
+      } else {
+        const record = JSON.parse(invocation.output)
+        expect(record.diagnostics).toEqual(terminal.diagnostics)
+        expect(record.runDiagnostics.entries).toEqual([
+          { operations: [], ...terminal.diagnostics },
+          {
+            operations: ['worker'],
+            stderr: 'child text\n',
+            stderrBytes: 11,
+            stderrTruncated: false,
+          },
+          {
+            operations: ['sibling'],
+            stderr: 'sibling text\n',
+            stderrBytes: 13,
+            stderrTruncated: false,
+          },
+        ])
+      }
+    },
+  )
 
   test.each(
     [
@@ -1121,47 +1475,59 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('--receive')
   })
 
-  test('a rejected live record closes owned work and never fabricates a terminal record', async () => {
-    const events: string[] = []
-    const accepted: unknown[] = []
-    const session = fakeSession(events)
-    const invocation = commandInvocation(
-      {
-        async acquire(_path, options) {
-          const output = options?.channelOutput
-          if (output === undefined) throw new Error('missing channel output')
-          return {
-            ...session,
-            rootAdministration: {
-              ...session.rootAdministration,
-              async runStatus(request) {
-                await output.record({ type: 'begin', channel: 'updates', startSequence: 1 })
-                await output.record({
-                  type: 'data',
-                  channel: 'updates',
-                  sequence: 1,
-                  value: 'work',
-                })
-                return session.rootAdministration.runStatus(request)
+  test.each([false, true])(
+    'a rejected live record closes work and reports cleanup failure: %s',
+    async (closeFails) => {
+      const events: string[] = []
+      const accepted: unknown[] = []
+      const session = fakeSession(events)
+      const invocation = commandInvocation(
+        {
+          async acquire(_path, options) {
+            const output = options?.channelOutput
+            if (output === undefined) throw new Error('missing channel output')
+            return {
+              ...session,
+              async close() {
+                await session.close()
+                if (closeFails) throw new Error('private cleanup failure')
               },
-            },
-          }
+              rootAdministration: {
+                ...session.rootAdministration,
+                async runStatus(request) {
+                  await output.record({ type: 'begin', channel: 'updates', startSequence: 1 })
+                  await output.record({
+                    type: 'data',
+                    channel: 'updates',
+                    sequence: 1,
+                    value: 'work',
+                  })
+                  return session.rootAdministration.runStatus(request)
+                },
+              },
+            }
+          },
         },
-      },
-      {
-        async writeRecord(text) {
-          const record = JSON.parse(text)
-          if (record.type === 'data') throw new Error('private writer failure')
-          accepted.push(record)
+        {
+          async writeRecord(text) {
+            const record = JSON.parse(text)
+            if (record.type === 'data') throw new Error('private writer failure')
+            accepted.push(record)
+          },
         },
-      },
-    )
-    expect(await main(['run', 'binding:work', '--receive', 'updates'], invocation.options)).toBe(2)
-    expect(accepted).toEqual([{ type: 'begin', channel: 'updates', startSequence: 1 }])
-    expect(events).toEqual(['start', 'close'])
-    expect(invocation.output).toBe('')
-    expect(invocation.error).not.toContain('private writer failure')
-  })
+      )
+      expect(await main(['run', 'binding:work', '--receive', 'updates'], invocation.options)).toBe(
+        2,
+      )
+      expect(accepted).toEqual([{ type: 'begin', channel: 'updates', startSequence: 1 }])
+      expect(events).toEqual(['start', 'close'])
+      expect(invocation.output).toBe('')
+      expect(invocation.error).not.toContain('private writer failure')
+      expect(invocation.error).not.toContain('private cleanup failure')
+      expect(invocation.error.includes('JIG_CLEANUP_FAILED')).toBe(closeFails)
+      if (closeFails) expect(invocation.error).toContain('Cleanup could not be confirmed')
+    },
+  )
 
   test('run accepts timeout units and input in either option order', async () => {
     const cases = [
@@ -1366,6 +1732,7 @@ describe('finite Jig project commands', () => {
       cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' },
     })
     expect(invocation.error).not.toContain('private close failure')
+    expect(invocation.error.match(/Diagnostic code: JIG_CLEANUP_FAILED/g)).toHaveLength(1)
   })
 
   test('file report limits do not discard an already settled large terminal', async () => {
@@ -1502,7 +1869,7 @@ describe('finite Jig project commands', () => {
     const target = commandInvocation(unusedHost())
     expect(await main(['run', 'work'], target.options)).toBe(1)
     expect(target.error).toBe(
-      'Error: Run target is invalid\n\n  use flow:<path> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.\n\n  Diagnostic code: JIG_RUN_TARGET_INVALID\n',
+      'Error: Run target is invalid\n\n  use flow:<path>, npm:<package> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.\n\n  Diagnostic code: JIG_RUN_TARGET_INVALID\n',
     )
 
     const input = commandInvocation(unusedHost())
@@ -1541,6 +1908,180 @@ describe('finite Jig project commands', () => {
       'Command interrupted\n\n  The command was interrupted. Inspect any result and completed steps before starting new work; cancellation does not undo completed effects.\n\n  Diagnostic code: JIG_COMMAND_INTERRUPTED\n',
     )
   })
+
+  test.each([false, true])(
+    'interruption without a terminal preserves cleanup uncertainty (human: %s)',
+    async (terminalOutput) => {
+      const events: string[] = []
+      const controller = new AbortController()
+      const session = fakeSession(events, { pendingObservations: Infinity })
+      const invocation = commandInvocation(
+        fakeHost(
+          {
+            ...session,
+            async close() {
+              await session.close()
+              throw new Error('private cleanup failure')
+            },
+          },
+          events,
+          async () => controller.abort(),
+        ),
+        { signal: controller.signal, terminalOutput, outputColumns: 40 },
+      )
+      expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(2)
+      expect(events.filter((event) => event === 'close')).toHaveLength(1)
+      expect(invocation.output).toBe('')
+      expect(invocation.error).toContain('JIG_COMMAND_INTERRUPTED')
+      expect(invocation.error.match(/Diagnostic code: JIG_CLEANUP_FAILED/g)).toHaveLength(1)
+      expect(invocation.error).toContain('Cleanup could not be confirmed')
+      expect(invocation.error).not.toContain('Cleanup complete')
+      expect(invocation.error).not.toContain('private cleanup failure')
+    },
+  )
+
+  test.each(['failed', 'succeeded', 'cleanup-failed', 'foreign'] as const)(
+    'interrupted reporting preserves authoritative settlement: %s',
+    async (mode) => {
+      const events: string[] = []
+      const controller = new AbortController()
+      let submissionId = ''
+      const terminal: RootRunTerminal =
+        mode === 'succeeded'
+          ? {
+              status: 'succeeded',
+              outcome: 'done',
+              output: 'completed before interruption',
+              diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+            }
+          : {
+              status: 'failed',
+              code: 'CANCELLED',
+              message: 'Run cancelled',
+              diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+            }
+      const session = fakeSession(events, {
+        pendingObservations: Infinity,
+        captureRequest: (request) => {
+          submissionId = request.submissionId
+        },
+      })
+      const invocation = commandInvocation(
+        {
+          async acquire(_project, options) {
+            return {
+              ...session,
+              async close() {
+                await session.close()
+                options?.channelOutput?.terminal?.({
+                  state: 'terminal',
+                  runId: digest,
+                  submissionId: mode === 'foreign' ? 'foreign' : submissionId,
+                  target: { kind: 'flow', path: 'flows/work' },
+                  terminal,
+                })
+                if (mode === 'cleanup-failed') throw new Error('private cleanup error')
+              },
+            }
+          },
+          async pause() {
+            controller.abort()
+          },
+        },
+        { signal: controller.signal },
+      )
+      expect(await main(['run', 'flow:flows/work', '--json'], invocation.options)).toBe(2)
+      if (mode === 'foreign') expect(invocation.output).toBe('')
+      else {
+        expect(JSON.parse(invocation.output)).toMatchObject({
+          ...terminal,
+          command: { status: 'interrupted' },
+          ...(mode === 'cleanup-failed' ? { cleanup: { status: 'failed' } } : {}),
+        })
+      }
+      expect(invocation.error).not.toContain('private cleanup error')
+    },
+  )
+
+  test.each(['settlement', 'publication'] as const)(
+    'interruption during %s preserves terminal evidence and final-file authority',
+    async (interruptAt) => {
+      const root = await mkdtemp(join(tmpdir(), 'jig-interrupted-report-'))
+      try {
+        const events: string[] = []
+        const controller = new AbortController()
+        const terminal: RootRunTerminal = {
+          status: 'succeeded',
+          outcome: 'done',
+          output: 'completion won',
+          diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+        }
+        const output = await open(root, 'r')
+        const session = fakeSession(events, { terminal })
+        let published = false
+        const invocation = commandInvocation(
+          {
+            delivery: {
+              async prepare() {},
+              async publish(record, outputFd, signal) {
+                expect(events).toContain('close')
+                expect(record).toMatchObject({ status: 'succeeded' })
+                if (interruptAt === 'settlement') {
+                  expect(record).toMatchObject({ command: { status: 'interrupted' } })
+                  expect(outputFd).toBeUndefined()
+                } else {
+                  expect(outputFd).toBe(output.fd)
+                  controller.abort()
+                }
+                expect(signal?.aborted).toBe(true)
+                published = true
+                if (interruptAt === 'publication')
+                  return { status: 'failed', destination: join(root, 'result'), code: 'CANCELLED' }
+                return {
+                  status: 'written',
+                  destination: join(root, 'result'),
+                  source: 'none',
+                  files: [],
+                }
+              },
+            },
+            async acquire(_project, options) {
+              options!.files!.retainOutput(output)
+              return {
+                ...session,
+                async close() {
+                  await session.close()
+                  if (interruptAt === 'settlement') controller.abort()
+                },
+              }
+            },
+          },
+          { signal: controller.signal },
+        )
+        try {
+          expect(
+            await main(
+              ['run', 'flow:flows/work', '--out', join(root, 'result'), '--json'],
+              invocation.options,
+            ),
+          ).toBe(2)
+          expect(published).toBe(true)
+          expect(JSON.parse(invocation.output)).toMatchObject({
+            status: 'succeeded',
+            command: { status: 'interrupted' },
+            delivery:
+              interruptAt === 'settlement'
+                ? { status: 'written', source: 'none', files: [] }
+                : { status: 'failed', code: 'CANCELLED' },
+          })
+        } finally {
+          await output.close()
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
 
   test.each([{ args: ['review'] }, { args: ['review', '--allow-resolution-network'] }])(
     'unreadable state explains recovery without exposing stored data: %j',
@@ -1599,18 +2140,63 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('\u202e')
   })
 
+  test('workspace manifest failures identify the real ancestor and field without echoing rejected values', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError(
+      'INVALID_CANDIDATE',
+      'https://credential@host/private',
+      {
+        code: 'PACKAGE_BUN_MANIFEST_SOURCE',
+        path: '../package.json',
+        pointer: '/devDependencies/@example~1tool',
+      },
+    )
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('Location: "../package.json"')
+    expect(invocation.error).toContain('Value: "/devDependencies/@example~1tool"')
+    expect(invocation.error).toContain(
+      'use a default npm registry version or a declared workspace: dependency',
+    )
+    expect(invocation.error).toContain('Diagnostic code: PACKAGE_BUN_MANIFEST_SOURCE')
+    expect(invocation.error).not.toMatch(/credential|host\/private/)
+  })
+
+  test('code metadata failures name their actual file without inventing a value pointer', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
+      code: 'METADATA_FIELD',
+      path: 'flows/malformed/flow.meta.json',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('Location: "flows/malformed/flow.meta.json"')
+    expect(invocation.error).toContain('a metadata field has an unsupported shape')
+    expect(invocation.error).toContain('Diagnostic code: METADATA_FIELD')
+    expect(invocation.error).toContain('Category: INVALID_CANDIDATE')
+    expect(invocation.error).not.toContain('Value:')
+    expect(invocation.error).not.toContain('FLOW.md')
+    expect(invocation.error).not.toContain('private parser detail')
+  })
+
   test('channel declaration failures identify the public contract and source location', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
       code: 'CHANNEL_FIELD',
-      path: 'flows/worker/FLOW.md',
+      path: 'flows/worker/FLOW.contract.json',
     })
     const invocation = commandInvocation(
       fakeHost(fakeSession(events, { planFailure: failure }), events),
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toBe(
-      'Review could not finish\n\n  Location: "flows/worker/FLOW.md"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/1\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
+      'Review could not finish\n\n  Location: "flows/worker/FLOW.contract.json"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/1\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
     )
     expect(invocation.error).not.toContain('private parser detail')
   })
@@ -1626,12 +2212,39 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('unknown fields, invalid values')
-    expect(invocation.error).toContain('defineJig accepts only flows and bindings')
+    expect(invocation.error).toContain(
+      'defineJig accepts only flows, bindings, grants and defaultProviders',
+    )
     expect(invocation.error).toContain('Location: "jig.ts"')
     expect(invocation.error).toContain('Diagnostic code: PROJECT_EVALUATION_FAILED')
     expect(invocation.error).not.toContain('secret')
     expect(invocation.error).not.toContain('/private/file')
   })
+
+  test.each(Object.entries(EVALUATOR_HINTS))(
+    'evaluator %s survives safe planning and CLI projection',
+    async (code, hint) => {
+      const events: string[] = []
+      const failure = projectFailure(
+        new CheckError('unavailable', code, 'secret /private/host/path', 'bindings/worker.ts'),
+        'plan',
+      )
+      expect(failure.diagnostic).toEqual({ code, path: 'bindings/worker.ts' })
+      expect(JSON.stringify(failure.toJSON())).not.toContain('secret')
+      const invocation = commandInvocation(
+        fakeHost(fakeSession(events, { planFailure: failure }), events),
+      )
+      expect(await main(['review', '--yes'], invocation.options)).toBe(2)
+      expect(invocation.error).toContain(hint)
+      expect(invocation.error).toContain('bindings/worker.ts')
+      expect(invocation.error).not.toContain('/private/host/path')
+      const unsafe = projectFailure(
+        new CheckError('unavailable', code, 'secret', '/private/host/path'),
+        'plan',
+      )
+      expect(unsafe.diagnostic).toBeUndefined()
+    },
+  )
 
   test('evaluation limits explain bounded authoring and host pressure without relaxing execution', async () => {
     const events: string[] = []
@@ -1672,18 +2285,13 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(invocation.output).toBe('')
     expect(invocation.error).toBe(
-      'Review could not finish\n\n  Location: "flows/dependent/bun.lock"\n\n  Next step\n    use default npm registry dependencies or declared workspace members; patches, overrides, and other dependency sources are unsupported\n\n  Diagnostic code: PACKAGE_BUN_SOURCE_UNSUPPORTED\n  Category: UNAVAILABLE\n',
+      'Review could not finish\n\n  Location: "flows/dependent/bun.lock"\n\n  Next step\n    use default npm registry dependencies or declared workspace members; patches require workspace-root declarations and captured .patch files; overrides and other dependency sources are unsupported\n\n  Diagnostic code: PACKAGE_BUN_SOURCE_UNSUPPORTED\n  Category: UNAVAILABLE\n',
     )
     expect(invocation.error).not.toContain('private preparation message')
     expect(invocation.error).not.toContain('/private/path')
   })
 
   test.each([
-    [
-      'PROJECT_AGENT_UNAVAILABLE',
-      'flows/drafter/FLOW.md',
-      'configure the host Agent before review; check exported credentials, model, and selected client',
-    ],
     [
       'PACKAGE_BUN_NODE_MODULES',
       'flows/drafter/node_modules',
@@ -1693,6 +2301,11 @@ describe('finite Jig project commands', () => {
       'PACKAGE_BUN_PREPARATION_FAILED',
       'flows/drafter/package.json',
       'locked dependencies could not be prepared; check registry access and package availability',
+    ],
+    [
+      'PACKAGE_BUN_OUTPUT_LIMIT',
+      'flows/incident/package.json',
+      'prepared runtime dependencies exceed the 32 MiB or 4096-file limit; check production dependencies in package.json, keep development tools separate, and see https://jig.md/guide/dependencies',
     ],
     [
       'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
@@ -1717,135 +2330,73 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
-  test("reports the installed host's closed Agent configuration hint", async () => {
+  test.each([
+    ['PROJECT_ACP_CODEX_EXECUTABLE', 'CODEX_PATH'],
+    ['PROJECT_ACP_CLAUDE_LOGIN', 'CLAUDE_CODE_OAUTH_TOKEN'],
+    ['PROJECT_ACP_PI_MODEL', 'model in the ACP grant or PI_MODEL'],
+    ['PROJECT_ACP_PI_INSTALLATION', 'standalone Linux x86-64 Pi 0.84.4'],
+    ['PROJECT_ACP_CODEX_API', 'OPENAI_API_KEY and a model in the ACP grant'],
+  ])(
+    'ACP setup code %s identifies a specific correction without private errors',
+    async (code, hint) => {
+      const events: string[] = []
+      const failure = new ProjectAdministrationError(
+        'UNAVAILABLE',
+        'secret-token /private/runtime',
+        { code, path: 'flows/agent/FLOW.ts' },
+      )
+      const invocation = commandInvocation(
+        fakeHost(fakeSession(events, { planFailure: failure }), events),
+      )
+      expect(await main(['review'], invocation.options)).toBe(2)
+      expect(invocation.error).toContain(hint)
+      expect(invocation.error).toContain(code)
+      expect(invocation.error).toContain('retry jig review')
+      expect(invocation.error).not.toContain('secret-token')
+      expect(invocation.error).not.toContain('/private/runtime')
+      expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
+    },
+  )
+
+  test('ACP grant failure explains its selected runtime', async () => {
     const events: string[] = []
-    const failure = new ProjectAdministrationError('UNAVAILABLE', 'private-secret', {
-      code: 'PROJECT_AGENT_UNAVAILABLE',
-      path: 'flows/reviewer/FLOW.md',
+    const failure = new ProjectAdministrationError('UNAVAILABLE', 'secret-token /private/runtime', {
+      code: 'PROJECT_ACP_UNAVAILABLE',
+      path: 'flows/agent/FLOW.ts',
     })
-    const invocation = commandInvocation({
-      ...fakeHost(fakeSession(events, { planFailure: failure }), events),
-      agentUnavailableHint: 'export OPENAI_MODEL before jig review',
-    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
     expect(await main(['review'], invocation.options)).toBe(2)
-    expect(invocation.error).toContain('export OPENAI_MODEL before jig review')
-    expect(invocation.error).not.toContain('private-secret')
+    expect(invocation.error).toContain('native client named in the affected ACP grant')
+    expect(invocation.error).toContain('operator executable, model and authentication')
+    expect(invocation.error).toContain('retry jig review')
+    expect(invocation.error).toContain('PROJECT_ACP_UNAVAILABLE')
+    expect(invocation.error).not.toContain('secret-token')
+    expect(invocation.error).not.toContain('/private/runtime')
+    expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
-  test.each([true, false])(
-    'Agent chooser preserves approval and filters unavailable options (interactive=%s)',
-    async (interactive) => {
-      const events: string[] = []
-      const answers = ['99', '1']
-      let chosen: string | undefined
-      const session = fakeSession(events, {
-        plan: {
-          state: 'applicable',
-          operation: 'admission',
-          planDigest: digest,
-          review: {
-            mediaType: 'text/plain; charset=utf-8',
-            text: 'review\n',
-            details: 'details\n',
-          },
-        },
-      })
-      const invocation = commandInvocation({
-        async acquire(_project, options) {
-          return {
-            ...session,
-            async plan(request) {
-              if (interactive) {
-                expect(options?.chooseAgent).toBeDefined()
-                chosen = await options!.chooseAgent!(
-                  [
-                    { id: 'codex', label: 'Codex — final result and live updates' },
-                    {
-                      id: 'api',
-                      label: 'API endpoint — final result only',
-                      unavailable: 'Configure API credentials first',
-                    },
-                  ],
-                  new AbortController().signal,
-                )
-              } else expect(options?.chooseAgent).toBeUndefined()
-              return session.plan(request)
-            },
-          }
-        },
-      })
-      expect(
-        await main(['review', '--yes'], {
-          ...invocation.options,
-          interactive,
-          answer: async () => answers.shift()!,
-        }),
-      ).toBe(0)
-      if (interactive) {
-        expect(chosen).toBe('codex')
-        expect(invocation.output).toContain('1. Codex')
-        expect(invocation.output).not.toContain('2. API')
-        expect(invocation.output).toContain('Unavailable: API')
-        expect(invocation.output).not.toContain('Configure API credentials first')
-        expect(invocation.output).not.toContain('this menu cannot detect that need')
-        expect(invocation.output).toContain('Setup: jig review --details')
-        expect(invocation.output.indexOf('1. Codex')).toBeGreaterThan(
-          invocation.output.indexOf('Unavailable: API'),
-        )
-        expect(invocation.output).toContain('Enter a number from 1 to 1')
-        expect(invocation.output).toContain('Approval remains a separate step')
-      } else expect(invocation.output).not.toContain('Choose an Agent')
-      expect(events).toContain(`apply:${digest}`)
-      expect(events.at(-1)).toBe('close')
-    },
-  )
-
-  test.each([false, true])(
-    'Agent setup instructions remain accessible (details=%s)',
-    async (details) => {
-      for (const usable of [false, true]) {
-        let prompts = 0
-        const session = fakeSession([], { plan: { state: 'unchanged' } })
-        const invocation = commandInvocation({
-          async acquire(_project, options) {
-            return {
-              ...session,
-              async plan(request) {
-                await options!.chooseAgent!(
-                  [
-                    ...(usable
-                      ? [{ id: 'codex' as const, label: 'Codex — final result and live updates' }]
-                      : []),
-                    {
-                      id: 'api',
-                      label: 'API endpoint — final result only',
-                      unavailable: 'Export OPENAI_API_KEY and OPENAI_MODEL before jig review.',
-                    },
-                  ],
-                  new AbortController().signal,
-                )
-                return session.plan(request)
-              },
-            }
-          },
-        })
-        await main(['review', ...(details ? ['--details'] : [])], {
-          ...invocation.options,
-          interactive: true,
-          answer: async () => {
-            prompts++
-            return ''
-          },
-        })
-        expect(prompts).toBe(usable ? 1 : 0)
-        if (details || !usable)
-          expect(invocation.output).toContain('Export OPENAI_API_KEY and OPENAI_MODEL')
-        else expect(invocation.output).not.toContain('Export OPENAI_API_KEY and OPENAI_MODEL')
-        if (!usable)
-          expect(invocation.output).toContain('No clients available. Configure a client above')
-      }
-    },
-  )
+  test('a missing selected Binding has an actionable configuration error', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError(
+      'INVALID_CANDIDATE',
+      'project candidate is invalid',
+      {
+        code: 'PROJECT_DEFAULT_MISSING',
+        path: 'jig.ts',
+        pointer: '/defaultProviders',
+      },
+    )
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('PROJECT_DEFAULT_MISSING')
+    expect(invocation.error).toContain('missing Flow or Binding')
+    expect(invocation.error).toContain('Provider selection does not create Bindings')
+    expect(invocation.error).not.toContain('INTERNAL')
+  })
 
   interface FakeSessionOptions {
     readonly plan?: ProjectPlanResult

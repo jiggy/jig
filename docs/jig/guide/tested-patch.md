@@ -14,8 +14,11 @@ See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-[Configure an Agent](./agents.md) and inspect
-`issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
+The example declares the ordinary ACP Agent dependency and includes
+`bindings/agent.ts`. [Choose your client](./agents.md) there; Pi is an example
+choice, not a Jig preference. The `defaultProviders` map selects that Binding
+for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
+`flows/project/logs-cases.json`.
 After [workspace setup](dependencies.md#local-workspace-packages), run from the example directory:
 
 ```sh
@@ -91,7 +94,7 @@ instead of blindly starting another Run. See [working with files](./files.md).
 Change `issue.json` to name the permitted existing source paths:
 
 ```json
-{"issue":"Describe the defect and required behavior.","editPaths":["src/parse.ts","src/report.ts"]}
+{"issue":"Describe the defect and required behavior.","editPaths":["src/parse.ts","src/report.ts"],"checks":"my-project"}
 ```
 
 Select your source with `--attach source=../my-project`. For a larger tree,
@@ -101,14 +104,72 @@ The application accepts 16 UTF-8 files totaling 64 KiB and up to eight editable
 during capture, take an atomic Git snapshot, or filter secrets for you.
 
 In `bindings/specialist.ts`, name your existing Bun test files under
-`commands.tests.test` and CLI entrypoint under `commands.cli.run`.
-Write independent cases in `flows/project/cases.json`: each has an ID,
-arguments, stdin, expected stdout/stderr, and exit code. Review again after
-changing either. Candidate dependencies must be source-local or supported
+`slots.tests.test` and CLI entrypoint under `slots.cli.run`.
+Write independent cases in `flows/project/my-project-cases.json`: each has an ID,
+arguments, stdin, expected stdout/stderr, and exit code. For example:
+
+```json
+[{"id":"empty","args":[],"stdin":"","stdout":"0\n","stderr":"","exitCode":0}]
+```
+
+Use the actual behavior your CLI should produce. Supply 1–8 cases; the JSON file
+is limited to 256 KiB. Select it with `checks: "my-project"`; omitted `checks`
+uses the included `logs` set. Names are 1–32 lowercase letters, digits or hyphens,
+starting with a letter. The same selection works in batch jobs without editing
+the root or specialist code. Files live in the reviewed application, outside
+the candidate's permitted edits. Every selected set is validated before worker
+dispatch. Review again after changing commands or cases.
+Candidate dependencies must be source-local or supported
 Bun/Node built-ins; network and installation are unavailable.
 
-The repair leaf itself needs no attachment or child Flow. Another root can
-reuse it through an exact Binding with its own command policy and JSON cases.
+The repair specialist needs no attachment. Another root can reuse it through
+an exact Binding with its own Agent selection, command grants, and JSON cases.
 For application development, work in the repository's authoring directory:
 use the root workspace installation and run `bun test test` there. Those checks establish application
 policy, not model quality or a market advantage.
+
+## Keep conversation context for a correction
+
+Ordinary repair sends each proposal request independently. For a qualified
+native Agent, you can instead restore the first conversation after executing
+its proposed changes. This can preserve context without keeping an Agent active
+while the separately contained commands run.
+
+Add this to the repair specialist Binding in `bindings/specialist.ts`:
+
+```ts
+settings: { restoreCorrections: true },
+```
+
+In the selected Agent Binding, explicitly grant native retention:
+
+```ts
+slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } },
+```
+
+Review these changes before running. [Native restoration](conversations.md#restore-after-a-clean-close)
+requires qualified matching artifacts; the HTTP Agent does not support it.
+The default repair configuration remains unchanged.
+
+The specialist keeps sessions optional because its ordinary one-shot path
+does not need them. Static dependency requirements therefore do not qualify
+this settings-dependent choice. Check the selected Agent's declared `sessions`
+support and its separate native grant; actual retention still requires a final
+receipt. Do not add an unconditional session requirement to the default example.
+
+The first call requests Run-scoped retention and supplies its final receipt before any candidate
+command starts. If the proposal is invalid or fails the fixed checks, one
+restored call receives that feedback. It must still propose replacements against
+the original files, within the same two-proposal budget and root deadline.
+The original source is not resent in the correction prompt; native retained
+history supplies that context. This is restoration, not an overlapping live
+conversation or automatic summary handoff.
+
+Unavailable retention still allows a passing first patch. If correction is
+needed, the application returns `blocked` with the reason. Missing or malformed
+receipts and failed restoration remain errors; neither triggers a fresh-call
+fallback or replay. `attempts[].session` records final receipts, including a
+first reference already consumed by correction. These references are temporary:
+root settlement removes their stored state, so the packet is evidence, not a
+source of cross-Run continuation. Retained transcripts contain the supplied
+source and feedback; the host's retention limits and expiry still apply.

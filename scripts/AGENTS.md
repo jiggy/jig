@@ -18,8 +18,15 @@ operational baselines, and public-site assembly.
   package scripts. Python Just tasks expose the packaging orchestrator, which
   calls the standard Python build frontend directly.
 - `test-release.sh` includes the authored examples' deterministic application
-  tests. It installs the freshly packed SDK as a development dependency of
-  disposable application copies, without lifecycle scripts or edits to source
+  tests and the optional contract author's Node mapping/type/lifecycle checks.
+  It also checks the shared Agent method and ordinary ACP package.
+  It freezes complete SDK, HTTP Agent, ACP Agent and Jig archives through their package-owned
+  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE` and
+  `JIG_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes afterward.
+  The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
+  it maps applications' declared SDK/Agent dependencies to the exact frozen
+  archives in disposable copies, including each nested Flow package manifest
+  in the reconstructed application workspace, without lifecycle scripts or edits to source
   manifests. Generated workspace `node_modules` links are excluded from those
   copies. This permits testing an SDK before its version reaches npm;
   it does not claim live Agent quality or independent
@@ -27,10 +34,17 @@ operational baselines, and public-site assembly.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
   containment and binary-safe file Runs, invalid output, resource limits,
   failure suppression, publication collisions and execution-residue checks.
+- `test-operational-baseline.ts` retains failed fixtures and private command
+  transcripts, names their directory on failure, and checks live residue even
+  after an assertion fails. Only successful fixtures are removed; residue or
+  removal failures never replace the original failure or establish success.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
   requires clean Git source and records exact revision and artifact hashes.
+- `build-agent-candidate.ts` builds ordinary HTTP/ACP Agent packages from clean
+  archived source with normal Bun packing, then checks exact installed bytes
+  and records inventory, revision and hashes. It grants no native or model work.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
 - `ci/` owns disposable CI-host provisioning.
@@ -42,7 +56,9 @@ operational baselines, and public-site assembly.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles,
   JSON content types, and canonical bytes; neither operation is runtime
-  capability resolution.
+  invocation resolution.
+  Agent Run publication includes its complete referenced events, commands and
+  replies channel bundle, even when a consumer uses only one-shot calls.
 
 ## Local Contracts
 
@@ -63,6 +79,9 @@ operational baselines, and public-site assembly.
 - Prefer POSIX shell for orchestration and TypeScript for non-trivial data or
   protocol logic.
 - Keep destructive cleanup limited to paths created by the current script.
+- Baseline fixtures use one `FLOW.<ext>`, code metadata in `flow.meta.json`,
+  and invocation declarations in `FLOW.contract.json`. Preserve file-publication,
+  diagnostic, authority, and residue assertions when updating their format.
 - Validate worktree arguments and shared-link collisions before creating a
   checkout. A later link failure leaves the checkout with an explicit diagnostic;
   never force-remove potentially edited work as failure cleanup.
@@ -84,6 +103,8 @@ operational baselines, and public-site assembly.
   handling, explicit packing, and build-tool refusal before cleanup or site
   staging. Its no-package-scripts rule covers repository tasks, not imported
   skill toolchains.
+- `bun test scripts/operational-baseline-checks.test.ts` checks selector
+  diagnostics and failure-preserving teardown without a containment host.
 
 ## Child DOX Index
 

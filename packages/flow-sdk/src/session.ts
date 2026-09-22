@@ -1,31 +1,27 @@
+import { type ChannelMethod, Channels, type RequestHooks, type Settlement } from './channels.js'
 import { decodeJson, encodeJson, JsonViolation } from './json.js'
-import { Channels, type ChannelMethod, type RequestHooks, type Settlement } from './channels.js'
 import {
   cancelMessage,
   errorMessage,
   operationErrorMessage,
-  parseEffectResult,
+  type ParsedMessage,
   parseEnvelope,
   parseOperationError,
   parseRunParams,
   parseRunResult,
+  type RunParams,
   requestMessage,
   resultMessage,
-  validateCapabilityCall,
-  validateChildFlowRequest,
-  type ParsedMessage,
-  type RunParams,
+  validateFlowCall,
 } from './protocol.js'
 import { FramingViolation, readFrames, type Transport } from './transport.js'
 import {
-  CapabilityError,
-  OperationError,
-  OPERATION_ERROR_CODES,
   type CallOptions,
-  type CapabilityCall,
-  type ChildFlowRequest,
+  type FlowCall,
   type JsonObject,
   type JsonValue,
+  OPERATION_ERROR_CODES,
+  OperationError,
   type OperationErrorCode,
   type RunContext,
   type RunHandler,
@@ -53,9 +49,9 @@ interface Deferred<T> {
 }
 
 interface Outbound {
-  readonly method: 'flow/run-child' | 'capability/call' | ChannelMethod
+  readonly method: 'flow/call' | ChannelMethod
   readonly params: JsonObject
-  readonly kind: 'flow' | 'effect' | 'channel'
+  readonly kind: 'flow' | 'channel'
   readonly hooks: RequestHooks
   readonly user: Deferred<JsonValue>
   readonly wire: Deferred<void>
@@ -246,15 +242,6 @@ export class RunSession {
       if (pending.kind === 'flow') {
         const parsed = parseRunResult(result)
         this.settleOutbound(pending, { result: parsed })
-      } else if (pending.kind === 'effect') {
-        const parsed = parseEffectResult(result)
-        if (parsed.kind === 'value') {
-          this.settleOutbound(pending, { result: parsed.value })
-        } else {
-          this.settleOutbound(pending, {
-            error: new CapabilityError(parsed.name, parsed.data),
-          })
-        }
       } else {
         this.settleOutbound(pending, { result })
       }
@@ -293,6 +280,7 @@ export class RunSession {
   private async handleRoot(root: Root): Promise<void> {
     const context = this.createContext(root)
     let result: RunResult | undefined
+    let success: JsonObject | undefined
     let failure: WireOperationErrorCode | undefined
     let failureMessage: string | undefined
     let failureDetails: JsonValue | undefined
@@ -330,7 +318,9 @@ export class RunSession {
     if (failure === undefined) {
       try {
         result = parseRunResult(result as unknown as JsonValue)
-        encodeJson(result)
+        // Validate the actual reply, including its envelope overhead, and
+        // retain a passive snapshot while owned work and cleanup settle.
+        success = decodeJson(encodeJson(resultMessage(root.id, result))) as JsonObject
       } catch (error) {
         failure = 'INVALID_RESULT'
         this.diagnose(error)
@@ -370,8 +360,8 @@ export class RunSession {
     if (root.controller.signal.aborted) failure = 'CANCELLED'
 
     try {
-      if (failure === undefined && result !== undefined) {
-        await this.sendTerminal(resultMessage(root.id, result))
+      if (failure === undefined && success !== undefined) {
+        await this.sendTerminal(success)
       } else {
         await this.sendTerminal(
           operationErrorMessage(
@@ -399,39 +389,28 @@ export class RunSession {
       scratch: root.params.scratch,
       deadlineUnixMs: root.params.deadlineUnixMs,
       signal: root.controller.signal,
-      runChildFlow(call: ChildFlowRequest, options?: CallOptions) {
+      call(call: FlowCall, options?: CallOptions) {
         let params: JsonObject
         try {
-          params = validateChildFlowRequest(call)
-          params = decodeJson(encodeJson(params)) as JsonObject
-          const channels = session.channels.mappings(call.channels)
+          const { channels: suppliedChannels, ...parameters } = validateFlowCall(call)
+          params = decodeJson(encodeJson(parameters)) as JsonObject
+          const channels = session.channels.mappings(suppliedChannels)
           if (channels !== undefined) params = { ...params, channels }
         } catch (error) {
           return Promise.reject(new TypeError(errorMessageText(error)))
         }
-        return session
-          .call('flow/run-child', 'flow', params, options)
-          .then((value) => parseRunResult(value))
-      },
-      callCapability(call: CapabilityCall, options?: CallOptions) {
-        let params: JsonObject
-        try {
-          params = validateCapabilityCall(call)
-          params = decodeJson(encodeJson(params)) as JsonObject
-          const channels = session.channels.mappings(call.channels)
-          if (channels !== undefined) params = { ...params, channels }
-        } catch (error) {
-          return Promise.reject(new TypeError(errorMessageText(error)))
-        }
-        return session.call('capability/call', 'effect', params, options)
+        // Successful call replies have already passed parseRunResult in
+        // receiveSuccess. Keep the same promise so detached cancellation does
+        // not create an extra unhandled rejection during owned settlement.
+        return session.call('flow/call', 'flow', params, options) as Promise<RunResult>
       },
       channel: session.channels.create.bind(session.channels),
     })
   }
 
   private call(
-    method: 'flow/run-child' | 'capability/call' | ChannelMethod,
-    kind: 'flow' | 'effect' | 'channel',
+    method: 'flow/call' | ChannelMethod,
+    kind: 'flow' | 'channel',
     params: JsonObject,
     options?: CallOptions,
     hooks: RequestHooks = {},

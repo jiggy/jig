@@ -25,9 +25,11 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
   output after entry is redirected to standard error.
 - Python names may be idiomatic, but wire keys, JSON/1 limits, errors,
   cancellation, and terminal behavior remain Run/1-exact.
-- `run_child_flow()` emits `flow/run-child`; `call_capability()` emits
-  `capability/call`. `CapabilityError` represents declared capability errors;
-  `OperationError` retains operational failure semantics.
+- `call()` emits `flow/call` with operation identity, slot and input, plus optional
+  advisory intent and channel mappings. It returns the complete `RunResult`;
+  declared domain outcomes remain normal data and `OperationError` represents
+  operational failures. The initial single-operation profile has no selector.
+  Preserve optional-key presence and ordinary task cancellation semantics.
 - Direct and broadcast channels exchange JSON/1 values through `run.channel()`, declared
   `run.channels`, and ordinary call `channels=` maps. `_channels.py` owns typed
   endpoint behavior; `_runtime.py` owns correlated wire requests and retained
@@ -36,6 +38,8 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
   creator-only subscription authority; each `subscribe()` allocates an active
   receiver with an explicit suffix start. A source is not a transferable
   endpoint. No binary support is claimed.
+  `contract` accepts a local path or `ChannelSlotContract` (`slot`, `channel`),
+  resolving a named agreement from the caller's declaration without dispatch.
 - Receivers use one async iterator and explicit `aclose()`/async context
   management for early exit. Disposal exposes previously unexposed terminal
   errors after prior reads settle. Ordinary `try/except` requires no extra
@@ -43,6 +47,10 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
   prevent success. Reserve settlement inside existing wire ceilings.
   Cancelled allocations retain late grants until their cleanup settles;
   allocating an unread broadcast subscription still creates a cleanup duty.
+- Writer `close(error="LAGGED")` declares incomplete output through ordinary
+  channel close, even with pending sends. Retain its settlement on waiter
+  cancellation and reject attempts to rewrite a prior clean end. The stream
+  failure does not cancel execution or change ordinary `try/except` recovery.
 - The runtime supports Python 3.11 or newer without third-party runtime
   dependencies.
 

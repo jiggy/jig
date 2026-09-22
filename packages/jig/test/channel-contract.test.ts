@@ -3,8 +3,6 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-
-import { CAPABILITY_CONTRACT_SCHEMA, parseCapabilityContract } from '../src/capability/index.js'
 import {
   CHANNEL_CONTRACT_BYTES,
   CHANNEL_CONTRACT_SCHEMA,
@@ -13,9 +11,9 @@ import {
   requireChannelReference,
 } from '../src/channel-contract.js'
 import { CheckError } from '../src/diagnostics.js'
+import { INVOCATION_CONTRACT_SCHEMA, parseInvocationContract } from '../src/invocation-contract.js'
 import { canonicalJson, type JsonObject, type JsonValue } from '../src/json.js'
 import { checkPackageDirectory } from '../src/package/inspect.js'
-import { parseFlowDocument } from '../src/package/metadata.js'
 import { SchemaDiagnostic } from '../src/schema/index.js'
 
 const encoder = new TextEncoder()
@@ -36,18 +34,17 @@ function bytes(value: JsonValue): Uint8Array {
   return encoder.encode(JSON.stringify(value))
 }
 
-function capability(channels: JsonObject): JsonObject {
+function invocation(channels: JsonObject): JsonObject {
   return {
-    $schema: CAPABILITY_CONTRACT_SCHEMA,
-    flowCapabilityContract: 1,
+    $schema: INVOCATION_CONTRACT_SCHEMA,
     id: 'https://example.org/contracts/worker',
     version: '1.0.0',
-    methods: { run: { input: true, output: true, errors: {}, channels } },
+    channels,
   }
 }
 
 function metadata(fields: JsonObject): string {
-  return `---\n${JSON.stringify({ name: 'reader', description: 'Read public events.', ...fields })}\n---\n`
+  return `---\n${JSON.stringify({ name: 'reader', description: 'Read public events.', ...fields })}\n---\nObserve supplied values.\n`
 }
 
 describe('Channel Contract/1', () => {
@@ -155,12 +152,13 @@ describe('channel declarations', () => {
     expect(Object.isFrozen(parsed)).toBe(true)
     expect(Object.isFrozen(parsed.progress)).toBe(true)
     expect(Object.isFrozen(parsed.progress!.schema)).toBe(true)
-    const flow = parseFlowDocument(encoder.encode(metadata({ channels }))).metadata
-    expect(flow.channels).toEqual(channels)
-    expect(Object.isFrozen(flow.channels!.progress!.schema)).toBe(true)
-    const method = parseCapabilityContract(bytes(capability(channels))).descriptor.methods.run!
-    expect(method.channels).toEqual(channels)
-    expect(Object.isFrozen(method.channels!.progress!.schema)).toBe(true)
+    const operation = parseInvocationContract(
+      bytes(invocation(channels)),
+      'FLOW.contract.json',
+      new Map([['contracts/public-events.json', bytes(descriptor())]]),
+    ).invocation!
+    expect(operation.channels).toEqual(channels)
+    expect(Object.isFrozen(operation.channels!.progress!.schema)).toBe(true)
   })
 
   test('rejects unsupported delivery and ambiguous or invalid declarations', () => {
@@ -220,49 +218,56 @@ describe('package channel closure', () => {
       events: { direction: 'send', delivery: 'broadcast' },
       input: { direction: 'receive', delivery: 'broadcast', start: 'suffix' },
     }
-    await withPackage({ 'FLOW.md': metadata({ channels }) }, async (root) => {
-      expect((await checkPackageDirectory(root)).metadata.channels).toEqual(channels)
-    })
+    await withPackage(
+      { 'FLOW.md': metadata({}), 'FLOW.contract.json': JSON.stringify(invocation(channels)) },
+      async (root) => {
+        expect((await checkPackageDirectory(root)).invocation!.channels).toEqual(channels)
+      },
+    )
   })
 
-  test('loads channel profiles referenced by FLOW.md and capability methods', async () => {
+  test('loads channel profiles referenced by offered and consumed invocation contracts', async () => {
     const channels = { events: { direction: 'send', required: false, contract: reference } }
     await withPackage(
       {
         'FLOW.md': metadata({
-          channels,
           uses: { worker: { contract: './contracts/worker.json' } },
         }),
-        'contracts/worker.json': JSON.stringify(capability(channels)),
+        'FLOW.contract.json': JSON.stringify({ $schema: INVOCATION_CONTRACT_SCHEMA, channels }),
+        'contracts/worker.json': JSON.stringify(
+          invocation({ events: { ...channels.events, contract: './public-events.json' } }),
+        ),
         'contracts/public-events.json': JSON.stringify(descriptor()),
       },
       async (root) => {
         const checked = await checkPackageDirectory(root)
-        expect(checked.metadata.channels!.events!.contract).toBe(reference)
-        expect(checked.usedContracts[0]!.contract.descriptor.methods.run!.channels).toEqual(
-          channels,
+        expect(checked.invocation!.channels!.events!.contract).toBe(reference)
+        expect(checked.usedContracts[0]!.contract.invocation!.channels!.events!.contract).toBe(
+          './public-events.json',
         )
       },
     )
   })
 
   test('rejects missing optional profiles instead of fetching or ignoring them', async () => {
-    for (const fromCapability of [false, true]) {
+    for (const fromDependency of [false, true]) {
       const channels = { events: { direction: 'send', required: false, contract: reference } }
       await withPackage(
         {
           'FLOW.md': metadata(
-            fromCapability
-              ? { uses: { worker: { contract: './contracts/worker.json' } } }
-              : { channels },
+            fromDependency ? { uses: { worker: { contract: './contracts/worker.json' } } } : {},
           ),
-          ...(fromCapability
-            ? { 'contracts/worker.json': JSON.stringify(capability(channels)) }
-            : {}),
+          ...(fromDependency
+            ? {
+                'contracts/worker.json': JSON.stringify(
+                  invocation({ events: { ...channels.events, contract: './public-events.json' } }),
+                ),
+              }
+            : { 'FLOW.contract.json': JSON.stringify(invocation(channels)) }),
         },
         async (root) => {
           await expect(checkPackageDirectory(root)).rejects.toMatchObject({
-            code: 'PACKAGE_FILE_MISSING',
+            code: 'PACKAGE_REFERENCE_MISSING',
             path: 'contracts/public-events.json',
           })
         },
@@ -270,15 +275,18 @@ describe('package channel closure', () => {
     }
   })
 
-  test('rejects equivocal named meanings across Flow and capability declarations', async () => {
-    const channels = { events: { direction: 'send', contract: './contracts/other.json' } }
+  test('rejects equivocal named channel meanings across invocation declarations', async () => {
+    const channels = { events: { direction: 'send', contract: './other.json' } }
     await withPackage(
       {
         'FLOW.md': metadata({
-          channels: { events: { direction: 'receive', contract: reference } },
           uses: { worker: { contract: './contracts/worker.json' } },
         }),
-        'contracts/worker.json': JSON.stringify(capability(channels)),
+        'FLOW.contract.json': JSON.stringify({
+          $schema: INVOCATION_CONTRACT_SCHEMA,
+          channels: { events: { direction: 'receive', contract: reference } },
+        }),
+        'contracts/worker.json': JSON.stringify(invocation(channels)),
         'contracts/public-events.json': JSON.stringify(descriptor()),
         'contracts/other.json': JSON.stringify(
           descriptor({ semantics: 'Replace rather than append.' }),

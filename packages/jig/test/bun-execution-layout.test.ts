@@ -18,12 +18,36 @@ function workspace() {
 
 const regularFiles = [
   { path: 'flows/main/package.json' },
-  { path: 'flows/main/flow.ts' },
+  { path: 'flows/main/FLOW.ts' },
   { path: 'libraries/shared/package.json' },
   { path: 'libraries/shared/value.ts' },
 ]
 
 describe('private Bun execution layout', () => {
+  test('a dependency Flow root must identify a captured installed package', () => {
+    const layout = normalizePrivateBunExecutionLayout({
+      flowRoot: 'node_modules/@fixture/flow',
+      members: [],
+      aliases: [],
+    })
+    expect(() =>
+      assertPrivateBunExecutionLayoutFiles(layout, [
+        { path: 'package.json' },
+        { path: 'node_modules/@fixture/flow/package.json' },
+        { path: 'node_modules/@fixture/flow/FLOW.ts' },
+      ]),
+    ).not.toThrow()
+    expect(() => assertPrivateBunExecutionLayoutFiles(layout, [{ path: 'package.json' }])).toThrow()
+    for (const flowRoot of [
+      'node_modules/.hidden',
+      'node_modules/@fixture/.bin',
+      'node_modules/flow/FLOW.ts',
+      '../node_modules/flow',
+    ])
+      expect(() =>
+        normalizePrivateBunExecutionLayout({ flowRoot, members: [], aliases: [] }),
+      ).toThrow()
+  })
   test('normalizes standalone and workspace layouts into independent immutable values', () => {
     expect(normalizePrivateBunExecutionLayout({ flowRoot: '', members: [], aliases: [] })).toEqual(
       EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
@@ -148,8 +172,8 @@ describe('private Bun execution layout', () => {
     ).toThrow()
   })
 
-  test('requires a selected Flow root and keeps ordinary package layout empty', () => {
-    expect(() => normalizePrivateBunExecutionLayout({ ...workspace(), flowRoot: '' })).toThrow()
+  test('accepts workspace-root preparation but rejects unselected nested roots', () => {
+    expect(normalizePrivateBunExecutionLayout({ ...workspace(), flowRoot: '' }).flowRoot).toBe('')
     expect(() =>
       normalizePrivateBunExecutionLayout({ ...workspace(), flowRoot: 'unselected' }),
     ).toThrow()

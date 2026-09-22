@@ -7,10 +7,15 @@ stays unchanged.
 
 ## Try it
 
-Complete [workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
-and [configure an Agent](https://jig.md/guide/agents) on a
-[supported host](https://jig.md/guide/). Inspect `issue.json`,
-`bindings/specialist.ts`, and `flows/project/cases.json`, then run here:
+Install Jig on a [supported host](https://jig.md/guide/).
+
+The application declares the ordinary ACP Agent package as a workspace dependency.
+Select your native client in `bindings/agent.ts`; it shows Pi as an example,
+with Codex and Claude supported by the same interface. Follow
+[Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
+Then inspect `issue.json`,
+`bindings/specialist.ts`, and `flows/project/logs-cases.json`.
+From this directory:
 
 ```sh
 jig review
@@ -47,11 +52,17 @@ Selected source reaches the configured provider.
 
 ## Make it your own
 
-Change the issue, permitted source paths, and independent acceptance cases for
-another small Bun project. Review the changed application before running it.
-The [walkthrough](https://jig.md/guide/tested-patch) explains the evidence and
-adaptation steps. Keep one issue and one specialist so the acceptance boundary
-remains easy to follow.
+For your own project, add `flows/project/<name>-cases.json` with independent CLI
+expectations and set `"checks": "<name>"` in the issue. The default is `logs`.
+Select your test files and CLI in `bindings/specialist.ts`, then review the
+application. The [walkthrough](https://jig.md/guide/tested-patch) explains the
+evidence and adaptation steps. Keep one issue and one specialist so the
+acceptance boundary remains easy to follow.
+
+The walkthrough also describes optional [conversation-based correction](https://jig.md/guide/tested-patch#keep-conversation-context-for-a-correction):
+settle the first Agent, execute checks, then restore its retained native state
+for one revision. It requires explicit retention authority; default one-shot
+repair needs none.
 
 Run `bun test examples/tested-patch/test` from the repository root after workspace
 setup. These are authored application checks, not a claim of general coding reliability.

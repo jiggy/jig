@@ -42,7 +42,7 @@ export function invocationGuide(snapshot: JsonValue): string {
             '\n',
           )}\n\nChoose a target with jig run, or inspect its interface with jig inspect <target>.\n`
   }
-  const input = record(item.schemas).input
+  const input = record(item.contract).input
   const schema = record(input)
   const fields = record(schema.properties)
   const required = Array.isArray(schema.required) ? schema.required : []
@@ -71,12 +71,12 @@ export function invocationGuide(snapshot: JsonValue): string {
     lines.push(
       '  File paths below are placeholders. Choose input directories and a new output destination outside them.',
     )
-  const outputs = Object.entries(record(item.channels)).filter(
+  const outputs = Object.entries(record(record(item.contract).channels)).filter(
     ([, value]) => record(value).direction === 'send',
   )
   for (const [name, value] of outputs)
     if (record(value).required !== false) command.push('--receive', cliShellWord(name))
-  const requiresSender = Object.values(record(item.channels)).some(
+  const requiresSender = Object.values(record(record(item.contract).channels)).some(
     (value) => record(value).direction === 'receive' && record(value).required !== false,
   )
   if (requiresSender)
@@ -104,7 +104,7 @@ export function invocationGuide(snapshot: JsonValue): string {
 
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
-  const commands = 'init new review run inspect completion'
+  const commands = 'init new review run inspect completion import-contract'
   const runOptions =
     '--help --input --attach --select --out --receive --timeout --verification --json'
   if (shell === 'bash')
@@ -124,9 +124,9 @@ export function completionScript(shell: string): string | undefined {
     local opts='--help'
     case "$command" in
       run) opts='${runOptions}';;
-      review) opts='--help --allow-resolution-network --yes --details --verification';;
+      review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification';;
       inspect) opts='--help --json --verification';;
-      init) opts='--help --bare';;
+      init) opts='--help --bare --agent';;
     esac
     mapfile -t COMPREPLY < <(compgen -W "$opts" -- "$cur")
   elif (( word == 2 )) && [[ "$command" == run || "$command" == inspect ]]; then
@@ -150,9 +150,9 @@ _jig() {
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
-      review) choices=(--help --allow-resolution-network --yes --details --verification);;
+      review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification);;
       inspect) choices=(--help --json --verification);;
-      init) choices=(--help --bare);;
+      init) choices=(--help --bare --agent);;
       *) choices=(--help);;
     esac
   elif (( CURRENT == 3 )) && [[ "$words[2]" == run || "$words[2]" == inspect ]]; then
@@ -172,8 +172,9 @@ complete -c jig -n '__fish_seen_subcommand_from run inspect' -a '(jig completion
 complete -c jig -n '__fish_seen_subcommand_from run review inspect' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
+complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
-${['yes', 'details', 'allow-resolution-network'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from review' -l ${flag}`).join('\n')}
+${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'generate-contracts'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from review' -l ${flag}`).join('\n')}
 `
   return undefined
 }

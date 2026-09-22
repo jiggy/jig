@@ -1,0 +1,4 @@
+{
+  "name": "contact-import-convert",
+  "description": "Validate a mapping and turn supplied rows into contacts and row errors."
+}

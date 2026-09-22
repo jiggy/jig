@@ -5,22 +5,26 @@ import {
   requireChannelReference,
 } from '../channel-contract.js'
 import type { JsonValue } from '../json.js'
+import type { RootRunStatus } from '../administration/root.js'
 import type { CapturedPackage } from '../package/capture.js'
-import type { InspectedPackage } from '../package/inspect.js'
+import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
 import {
+  ChannelBroker,
   type ChannelDeclaration,
   type ChannelGrant,
   ChannelOperationError,
   type ChannelParticipant,
-  ChannelBroker,
   type ResolvedChannelContract,
+  type ChannelContractReference,
 } from '../run/channels.js'
 
 /** Command-local presentation. Its callbacks confer no execution authority. */
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
   record(value: JsonValue): Promise<void>
-  diagnostic(bytes: Uint8Array): void
+  diagnostic(bytes: Uint8Array, operations?: readonly string[]): void
+  /** Command-local observation of an authoritative settled root, including during close. */
+  terminal?(status: Extract<RootRunStatus, { state: 'terminal' }>): void
 }
 
 export type PrivateChannelContractCache = Map<string, Promise<ResolvedChannelContract>>
@@ -51,10 +55,10 @@ export class PrivateRunChannels {
   ): Promise<PrivateRunChannels> {
     const broker = new ChannelBroker()
     const contracts: PrivateChannelContractCache = new Map()
-    const resolveContract = channelContractResolver(captured, contracts)
+    const resolveContract = channelContractResolver(captured, contracts, inspected)
     const root = broker.participant('root', { resolveContract })
     const declarations = await resolveChannelDeclarations(
-      inspected.metadata.channels ?? {},
+      inspected.invocation?.channels ?? {},
       resolveContract,
     )
     const cli = broker.participant('command', { resolveContract })
@@ -66,7 +70,7 @@ export class PrivateRunChannels {
       if (new Set(selected).size !== selected.length || selected.length > 16)
         throw new ChannelOperationError('INVALID_INPUT', 'select each root output once, at most 16')
       for (const name of selected) {
-        const declaration = inspected.metadata.channels?.[name]
+        const declaration = inspected.invocation?.channels?.[name]
         if (declaration?.direction !== 'send')
           throw new ChannelOperationError(
             'UNAVAILABLE',
@@ -151,8 +155,23 @@ export class PrivateRunChannels {
 export function channelContractResolver(
   captured: CapturedPackage,
   cache: PrivateChannelContractCache = new Map(),
-): (path: string) => Promise<ResolvedChannelContract> {
-  return (reference) => {
+  inspected?: InspectedPackage,
+): (path: ChannelContractReference) => Promise<ResolvedChannelContract> {
+  let inspection: Promise<InspectedPackage> | undefined
+  return async (reference) => {
+    if (typeof reference !== 'string') {
+      const selector = reference
+      const packageInfo = inspected ?? (await (inspection ??= inspectCapturedPackage(captured)))
+      const used = packageInfo.usedContracts.find((entry) => entry.slot === selector.slot)
+      const port = used?.contract.invocation?.channels?.[selector.channel]
+      if (!used || !port?.contract)
+        throw new ChannelOperationError(
+          'INVALID_INPUT',
+          'slot channel has no declared named agreement',
+        )
+      const slash = used.path.lastIndexOf('/')
+      reference = `./${slash < 0 ? '' : used.path.slice(0, slash + 1)}${port.contract.slice(2)}`
+    }
     requireChannelReference(reference, 'channel contract')
     const key = `${captured.digest}:${reference}`
     let pending = cache.get(key)

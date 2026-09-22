@@ -6,6 +6,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
+let completed = false
 const expectedInstalledFiles = [
   'LICENSE.md',
   'PRICING.md',
@@ -22,9 +23,13 @@ const expectedInstalledFiles = [
   'dist/json.d.ts',
   'dist/project/author.d.ts',
   'dist/project/commands.d.ts',
+  'dist/project/grants.d.ts',
+  'dist/schema/types.d.ts',
   'libexec/installed-cli.js',
-  'libexec/agent/openai.LICENSE',
-  'libexec/agent/openai-agent-worker.js',
+  'libexec/authoring/contract-authoring-worker.js',
+  'libexec/markdown-runtime.js',
+  'libexec/http-request-worker.js',
+  'libexec/flow.LICENSE',
   'libexec/agent/codex-acp.LICENSE',
   'libexec/agent/codex-acp.js',
   'libexec/agent/codex-agent-launcher.js',
@@ -78,7 +83,13 @@ try {
     await readFile(join(installed, 'package.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.deepEqual(installedFiles, expectedInstalledFiles)
+  await stat(
+    join(installed, 'libexec/authoring/node_modules/@jigging/flow-authoring/dist/index.js'),
+  )
   assert.deepEqual(installedManifest.bin, { jig: './bin/jig' })
+  await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.package-lock.json')), {
+    code: 'ENOENT',
+  })
   assert.deepEqual(installedManifest.dependencies, {
     '@oven/bun-linux-x64-baseline': '1.3.3',
   })
@@ -122,7 +133,6 @@ try {
     'Missing bundled Zod license notice',
   )
   for (const [retained, original] of [
-    ['openai.LICENSE', 'openai/LICENSE'],
     ['codex-acp.LICENSE', '@agentclientprotocol/codex-acp/LICENSE'],
     ['claude-agent-acp.LICENSE', '@agentclientprotocol/claude-agent-acp/LICENSE'],
     ['claude-agent-sdk.LICENSE', '@anthropic-ai/claude-agent-sdk/LICENSE.md'],
@@ -183,23 +193,26 @@ try {
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/)
   const runHelp = await run([command, 'run', '--help'], consumer)
   assert.equal(runHelp.stderr, '')
-  assert.match(runHelp.stdout, /^Usage: jig run \[flow:path\|binding:id\] \[options\]/)
+  assert.match(runHelp.stdout, /^Usage: jig run \[flow:path\|npm:package\|binding:id\] \[options\]/)
   assert.match(runHelp.stdout, /--input JSON\|@FILE/)
   assert.match(runHelp.stdout, /--receive CHANNEL/)
   assert.match(runHelp.stdout, /Ctrl-C cancels/)
   assert.doesNotMatch(runHelp.stdout, /jig init|--allow-resolution-network/)
   const reviewHelp = await run([command, 'review', '--help'], consumer)
   assert.match(reviewHelp.stdout, /--details/)
-  assert.match(reviewHelp.stdout, /--yes does not grant resolution networking/)
+  assert.match(reviewHelp.stdout, /--generate-contracts/)
+  assert.match(reviewHelp.stdout, /--yes alone does not approve new resource authority/)
   const greeting = join(consumer, 'greeting')
   const initializedGreeting = await run([command, 'init', greeting], consumer)
   assert.match(initializedGreeting.stdout, /jig review --allow-resolution-network/)
-  assert.match(await readFile(join(greeting, 'flows/hello/flow.ts'), 'utf8'), /@jigging\/flow/)
+  assert.match(await readFile(join(greeting, 'flows/hello/FLOW.ts'), 'utf8'), /@jigging\/flow/)
   await assert.rejects(stat(join(greeting, '.jig')), { code: 'ENOENT' })
   await assert.rejects(stat(join(greeting, 'flows/hello/node_modules')), { code: 'ENOENT' })
   const added = await run([command, 'new', 'summarize'], greeting)
   assert.match(added.stdout, /Created Flow "flows\/summarize"/)
-  assert.match(await readFile(join(greeting, 'flows/summarize/flow.ts'), 'utf8'), /@jigging\/flow/)
+  assert.match(added.stdout, /Edit flows\/summarize\/FLOW\.ts/)
+  assert.doesNotMatch(added.stdout, /FLOW\.md/)
+  assert.match(await readFile(join(greeting, 'flows/summarize/FLOW.ts'), 'utf8'), /@jigging\/flow/)
   await assert.rejects(stat(join(greeting, '.jig')), { code: 'ENOENT' })
   const completion = await run([command, 'completion', 'bash'], greeting)
   assert.match(completion.stdout, /jig completion targets/)
@@ -208,11 +221,83 @@ try {
   assert.equal(targets.stderr, '')
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
 
+  // Ordinary installed authoring must work without acquiring the execution host
+  // and must not evaluate the source package or the consumer's ambient config.
+  const contractSource = join(consumer, 'contract-source')
+  await mkdir(join(contractSource, 'agreements'), { recursive: true })
+  const borrowed = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    id: 'https://example.org/import-progress',
+    version: '1.0.0',
+    semantics: 'Progress is not success.',
+    item: true,
+  })
+  const contract = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    channels: { progress: { direction: 'send', contract: './agreements/progress.json' } },
+  })
+  await writeFile(join(contractSource, 'FLOW.contract.json'), contract)
+  await writeFile(join(contractSource, 'agreements/progress.json'), borrowed)
+  await writeFile(join(contractSource, 'FLOW.ts'), 'throw new Error("must not execute")')
+  const imported = await run(
+    [command, 'import-contract', 'contract-source/FLOW.contract.json', 'imported-contract'],
+    consumer,
+  )
+  assert.match(imported.stdout, /Imported 2 contract files/)
+  assert.equal(
+    await readFile(join(consumer, 'imported-contract/FLOW.contract.json'), 'utf8'),
+    contract,
+  )
+  assert.equal(
+    await readFile(join(consumer, 'imported-contract/agreements/progress.json'), 'utf8'),
+    borrowed,
+  )
+  await assert.rejects(stat(join(consumer, 'imported-contract/FLOW.ts')), { code: 'ENOENT' })
+  await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
+
   await Promise.all([
     rm(join(consumer, '.env')),
     rm(join(consumer, 'bunfig.toml')),
     rm(join(consumer, 'ambient-preload.mjs')),
   ])
+
+  // Exercise the installed compiler closure, not workspace imports. This catches
+  // archive omissions even when another package manager would fetch missing deps.
+  const compiler = Bun.spawn(
+    [
+      process.env.JIG_AUTHORING_NODE_PATH ?? process.env.FLOW_NODE ?? 'node',
+      join(installed, 'libexec/authoring/contract-authoring-worker.js'),
+    ],
+    { cwd: consumer, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+  )
+  const compilerTimeout = setTimeout(() => compiler.kill('SIGKILL'), 25000)
+  try {
+    compiler.stdin.write(
+      JSON.stringify({
+        source: `
+import "@jigging/flow-authoring/typespec";
+using FLOW;
+@invocation(Input, Result) namespace Smoke;
+@closed model Input { name: string; }
+@closed model Result { outcome: "done"; output: string; }
+`,
+      }) + '\n',
+    )
+    await compiler.stdin.flush()
+    const [code, output, diagnostic] = await Promise.all([
+      compiler.exited,
+      new Response(compiler.stdout).text(),
+      new Response(compiler.stderr).text(),
+    ])
+    assert.equal(code, 0, diagnostic)
+    const generated = JSON.parse(output)
+    assert.equal(JSON.parse(generated.artifacts['FLOW.contract.json']).$defs.Input.type, 'object')
+    assert.match(generated.artifacts['FLOW.contract.d.ts'], /FlowInput/)
+  } finally {
+    clearTimeout(compilerTimeout)
+    compiler.kill('SIGKILL')
+    await compiler.exited
+  }
 
   const runtime = join(consumer, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
   const runtimeBytes = await readFile(runtime)
@@ -267,9 +352,9 @@ try {
 
   for (const relative of [
     'libexec/linux-rootless-supervisor.js',
+    'libexec/markdown-runtime.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
-    'libexec/agent/openai-agent-worker.js',
     'libexec/agent/codex-agent-launcher.js',
     'libexec/agent/claude-agent-acp.js',
     'libexec/agent/claude-agent-launcher.js',
@@ -285,16 +370,15 @@ try {
     join(consumer, 'smoke.mjs'),
     `
 import { defineBinding, defineJig, discover } from "@jigging/jig";
-const project = defineJig({ flows: discover("./flows") });
+const project = defineJig({ flows: discover("./flows"), grants: discover("./grants") });
 const binding = defineBinding({
   package: "./flows/review",
   settings: { profile: "fast" },
-  slots: { worker: "flow:./flows/worker" },
-  commands: { cli: { run: "src/cli.ts" } },
+  slots: { worker: "flow:./flows/worker", cli: { kind: "command", run: "src/cli.ts" }, reference: "grant:documents" },
 });
 if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     binding.settings.profile !== "fast" || binding.slots.worker !== "flow:flows/worker" ||
-    binding.commands.cli.run !== "src/cli.ts") {
+    binding.slots.cli.run !== "src/cli.ts") {
   throw new Error("bad package exports");
 }
 `,
@@ -310,8 +394,7 @@ const project = defineJig(input);
 const bindingInput: PackageBindingInput = {
   package: "./flows/router",
   settings: { profile: "fast" },
-  slots: { worker: "flow:./flows/worker" },
-  commands: { tests: { test: ["test/project.test.ts"] } },
+  slots: { worker: "flow:./flows/worker", tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
 };
 const binding = defineBinding(bindingInput);
 void project;
@@ -340,23 +423,475 @@ void binding;
     ],
     packageRoot,
   )
+  if (process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+    const project = join(consumer, 'granted-command')
+    for (const path of ['flows/check', 'bindings', 'grants', 'libs/flow'])
+      await mkdir(join(project, path), { recursive: true })
+    // Qualify both candidate archives before publication. The complete SDK is an
+    // ordinary local workspace member, never an injected private runtime helper.
+    const sdkArtifacts = join(temporary, 'sdk-artifacts')
+    await mkdir(sdkArtifacts)
+    const sdkArchive = await selectArchive(sdkArtifacts, 'flow-sdk')
+    await run(
+      ['tar', '-xzf', sdkArchive, '--strip-components=1', '-C', join(project, 'libs/flow')],
+      consumer,
+    )
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({ private: true, workspaces: ['flows/*', 'libs/*'] }),
+    )
+    await writeFile(
+      join(project, 'jig.ts'),
+      'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings"),grants:discover("grants")});',
+    )
+    await writeFile(
+      join(project, 'flows/check/package.json'),
+      JSON.stringify({
+        name: 'grant-consumer',
+        private: true,
+        type: 'module',
+        dependencies: { '@jigging/flow': 'workspace:*' },
+      }),
+    )
+    await writeFile(
+      join(project, 'flows/check/flow.meta.json'),
+      JSON.stringify({ uses: { check: { contract: './command.json' } } }),
+    )
+    await writeFile(
+      join(project, 'flows/check/command.json'),
+      await readFile(
+        join(packageRoot, '../../docs/jig/spec/contracts/project-command/contract.json'),
+      ),
+    )
+    await writeFile(
+      join(project, 'flows/check/FLOW.ts'),
+      'import {handle} from "@jigging/flow"; await handle(run=>run.call({operationId:"check",slot:"check",input:run.input}));',
+    )
+    await writeFile(
+      join(project, 'grants/check.json'),
+      JSON.stringify({ kind: 'command', run: 'index.ts' }),
+    )
+    for (const [name, policy] of [
+      ['inline', { kind: 'command', run: 'index.ts' }],
+      ['named', 'grant:check'],
+    ]) {
+      await writeFile(
+        join(project, 'bindings', name + '.ts'),
+        'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+          JSON.stringify({ package: 'flows/check', slots: { check: policy } }) +
+          ');',
+      )
+    }
+    await assert.rejects(
+      run([command, 'review', '--yes', '--allow-resolution-network'], project, {}, 120000),
+      /JIG_AUTHORITY_APPROVAL_REQUIRED/,
+    )
+    await run(
+      [command, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
+      project,
+      {},
+      120000,
+    )
+    for (const target of ['binding:inline', 'binding:named']) {
+      const observed = await run(
+        [
+          command,
+          'run',
+          target,
+          '--input',
+          JSON.stringify({ files: { 'index.ts': 'console.log("checked");' } }),
+        ],
+        project,
+        {},
+        120000,
+      )
+      const result = JSON.parse(observed.stdout)
+      assert.equal(result.status, 'succeeded')
+      assert.equal(result.output.exitCode, 0)
+      assert.equal(result.output.stdout.text, 'checked\n')
+      assert.equal(result.output.cleanup, 'complete')
+      assert.deepEqual(result.output.invocation, ['bun', 'index.ts'])
+    }
+    const unsuccessful = await run(
+      [
+        command,
+        'run',
+        'binding:named',
+        '--input',
+        JSON.stringify({
+          files: { 'index.ts': 'console.error("failed check"); process.exit(17);' },
+        }),
+      ],
+      project,
+      {},
+      120000,
+    )
+    const failure = JSON.parse(unsuccessful.stdout)
+    assert.equal(failure.output.exitCode, 17)
+    assert.equal(failure.output.stderr.text, 'failed check\n')
+    assert.equal(failure.output.cleanup, 'complete')
+
+    // Consume the complete ordinary Agent through installed public commands,
+    // with no rewritten workers or private host imports in the application.
+    const agentProject = join(consumer, 'http-agent')
+    for (const path of ['flows/agent', 'bindings'])
+      await mkdir(join(agentProject, path), { recursive: true })
+    const methodArtifacts = join(temporary, 'method-artifacts')
+    await mkdir(methodArtifacts)
+    const methodArchive = await selectArchive(methodArtifacts, 'agent-method')
+    await run(
+      [
+        'tar',
+        '-xzf',
+        methodArchive,
+        '--strip-components=1',
+        '-C',
+        join(agentProject, 'flows/agent'),
+      ],
+      consumer,
+    )
+    let mode: 'answer' | 'malformed' | 'markdown' | 'markdown-malformed' = 'answer'
+    let requests = 0
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(request) {
+        requests++
+        assert.equal(request.headers.get('authorization'), 'Bearer local-method-test-token')
+        const body = (await request.json()) as any
+        const responses = new URL(request.url).pathname === '/v1/responses'
+        assert.equal(body.model, 'recorded-model')
+        assert.equal(responses ? body.max_output_tokens : body.max_completion_tokens, 32)
+        assert.equal(body.stream, false)
+        assert.equal(body.store, false)
+        assert.equal(body.n, responses ? undefined : 1)
+        assert.equal(body.tools, undefined)
+        assert.match(
+          responses ? body.input : body.messages[0].content,
+          mode.startsWith('markdown') ? /Return the word READY/ : /Classify this request/,
+        )
+        const format = responses ? body.text.format : body.response_format.json_schema
+        assert.equal(format.strict, true)
+        assert.equal(format.name, 'flow_agent_result')
+        assert.doesNotMatch(JSON.stringify(body), /local-method-test-token/)
+        if (responses)
+          return Response.json({
+            object: 'response',
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                role: 'assistant',
+                status: 'completed',
+                content: [
+                  {
+                    type: 'output_text',
+                    text: mode === 'answer' ? '{"category":"support"}' : '{"category":42}',
+                  },
+                ],
+              },
+            ],
+          })
+        return Response.json({
+          object: 'chat.completion',
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'stop',
+              message: {
+                role: 'assistant',
+                content: mode.startsWith('markdown')
+                  ? JSON.stringify({
+                      action: 'finish',
+                      recipe: mode === 'markdown-malformed' ? 99 : 0,
+                      operand: 'literal',
+                      value: JSON.stringify({ outcome: 'done', output: 'READY' }),
+                      path: '',
+                    })
+                  : mode === 'answer'
+                    ? '{"category":"support"}'
+                    : '{"category":42}',
+              },
+            },
+          ],
+        })
+      },
+    })
+    try {
+      await writeFile(
+        join(agentProject, 'jig.ts'),
+        'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings"),defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }});',
+      )
+      await writeFile(
+        join(agentProject, 'bindings/agent.ts'),
+        'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+          JSON.stringify({
+            package: 'flows/agent',
+            settings: {
+              model: 'recorded-model',
+              maxCompletionTokens: 32,
+              structuredOutput: 'json-schema',
+            },
+            slots: {
+              http: {
+                kind: 'http',
+                method: 'POST',
+                url: `http://127.0.0.1:${server.port}/v1/chat/completions`,
+                bearerEnv: 'METHOD_TEST_TOKEN',
+              },
+            },
+          }) +
+          ');',
+      )
+      const environment: NodeJS.ProcessEnv = {
+        ...Object.fromEntries(
+          Object.keys(process.env)
+            .filter((name) => /^(OPENAI_|OPENROUTER_|CODEX_|CLAUDE_|PI_)/.test(name))
+            .map((name) => [name, undefined]),
+        ),
+        METHOD_TEST_TOKEN: 'local-method-test-token',
+      }
+      await run(
+        [command, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
+        agentProject,
+        environment,
+        120000,
+      )
+      const input = JSON.stringify({
+        instructions: 'Classify this request: I need help.',
+        responseSchema: {
+          $schema: 'https://flow.jig.md/schemas/schema-1.json',
+          type: 'object',
+          properties: { category: { type: 'string', enum: ['support'] } },
+          required: ['category'],
+          additionalProperties: false,
+        },
+      })
+      const completed = await run(
+        [command, 'run', 'binding:agent', '--input', input],
+        agentProject,
+        environment,
+        120000,
+      )
+      const answer = JSON.parse(completed.stdout)
+      assert.equal(answer.status, 'succeeded')
+      assert.equal(answer.outcome, 'done')
+      assert.deepEqual(answer.output.structured, { category: 'support' })
+      assert.doesNotMatch(completed.stdout + completed.stderr, /local-method-test-token/)
+      mode = 'malformed'
+      await assert.rejects(
+        run([command, 'run', 'binding:agent', '--input', input], agentProject, environment, 120000),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 2) // One per invocation, including the unsuccessful one.
+      // An ordinary consumer adds two authored methods around the unchanged
+      // Agent. No private dispatch helper or special SDK entrypoint is involved.
+      await mkdir(join(agentProject, 'libs/flow'), { recursive: true })
+      await run(
+        ['tar', '-xzf', sdkArchive, '--strip-components=1', '-C', join(agentProject, 'libs/flow')],
+        consumer,
+      )
+      await writeFile(
+        join(agentProject, 'package.json'),
+        JSON.stringify({
+          private: true,
+          workspaces: ['flows/application', 'flows/specialist', 'libs/flow'],
+        }),
+      )
+      for (const [name, slot, target] of [
+        ['application', 'specialist', 'flow:flows/specialist'],
+        ['specialist', 'agent', 'binding:agent'],
+      ]) {
+        const flow = join(agentProject, 'flows', name!)
+        await mkdir(flow)
+        await writeFile(
+          join(flow, 'package.json'),
+          JSON.stringify({
+            name,
+            private: true,
+            type: 'module',
+            dependencies: { '@jigging/flow': 'workspace:*' },
+          }),
+        )
+        await writeFile(
+          join(flow, 'FLOW.ts'),
+          `import {handle} from '@jigging/flow';
+await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},input:run.input}));`,
+        )
+        if (name === 'specialist') {
+          await mkdir(join(flow, 'contracts/agent/contracts'), { recursive: true })
+          await writeFile(
+            join(flow, 'contracts/agent/contract.json'),
+            await readFile(join(agentProject, 'flows/agent/FLOW.contract.json')),
+          )
+          for (const name of [
+            'acp-public-updates.json',
+            'agent-commands.json',
+            'agent-replies.json',
+          ])
+            await writeFile(
+              join(flow, 'contracts/agent/contracts', name),
+              await readFile(join(agentProject, 'flows/agent/contracts', name)),
+            )
+          await writeFile(
+            join(flow, 'flow.meta.json'),
+            JSON.stringify({ uses: { agent: { contract: './contracts/agent/contract.json' } } }),
+          )
+        }
+        if (name === 'application')
+          await writeFile(
+            join(agentProject, 'bindings', `${name}.ts`),
+            'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+              JSON.stringify({ package: `flows/${name}`, slots: { [slot!]: target } }) +
+              ');',
+          )
+      }
+      await run(
+        [command, 'review', '--yes', '--allow-resolution-network'],
+        agentProject,
+        environment,
+        120000,
+      )
+      mode = 'answer'
+      // Execution uses retained effective routes, never the live default list.
+      const admittedDeclaration = await readFile(join(agentProject, 'jig.ts'))
+      await writeFile(join(agentProject, 'jig.ts'), 'throw new Error("not admitted");')
+      const composed = await run(
+        [command, 'run', 'binding:application', '--input', input],
+        agentProject,
+        environment,
+        120000,
+      )
+      assert.deepEqual(JSON.parse(composed.stdout).output.structured, { category: 'support' })
+      assert.equal(JSON.parse(composed.stdout).status, 'succeeded')
+      mode = 'malformed'
+      await assert.rejects(
+        run(
+          [command, 'run', 'binding:application', '--input', input],
+          agentProject,
+          environment,
+          120000,
+        ),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 4)
+      await writeFile(join(agentProject, 'jig.ts'), admittedDeclaration)
+      // A Markdown consumer selects the same ordinary Agent, with no native
+      // provider setup. The interpreter retains its independent decision gate.
+      await mkdir(join(agentProject, 'flows/markdown'))
+      await writeFile(join(agentProject, 'flows/markdown/FLOW.md'), 'Return the word READY.\n')
+      await run(
+        [command, 'review', '--yes', '--allow-resolution-network'],
+        agentProject,
+        environment,
+        120000,
+      )
+      mode = 'markdown'
+      const markdown = await run(
+        [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+        agentProject,
+        environment,
+        120000,
+      )
+      assert.equal(JSON.parse(markdown.stdout).status, 'succeeded')
+      assert.equal(JSON.parse(markdown.stdout).output, 'READY')
+      mode = 'markdown-malformed'
+      await assert.rejects(
+        run(
+          [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+          agentProject,
+          environment,
+          120000,
+        ),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 6)
+      // The same installed package switches API syntax through settings. The
+      // separately reviewed HTTP grant remains the only endpoint authority.
+      await writeFile(
+        join(agentProject, 'bindings/agent.ts'),
+        'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+          JSON.stringify({
+            package: 'flows/agent',
+            settings: {
+              model: 'recorded-model',
+              api: 'responses',
+              maxCompletionTokens: 32,
+              structuredOutput: 'json-schema',
+            },
+            slots: {
+              http: {
+                kind: 'http',
+                method: 'POST',
+                url: `http://127.0.0.1:${server.port}/v1/responses`,
+                bearerEnv: 'METHOD_TEST_TOKEN',
+              },
+            },
+          }) +
+          ');',
+      )
+      await run(
+        [command, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
+        agentProject,
+        environment,
+        120000,
+      )
+      mode = 'answer'
+      const response = await run(
+        [command, 'run', 'flow:flows/specialist', '--input', input],
+        agentProject,
+        environment,
+        120000,
+      )
+      assert.deepEqual(JSON.parse(response.stdout).output.structured, { category: 'support' })
+      mode = 'malformed'
+      await assert.rejects(
+        run(
+          [command, 'run', 'flow:flows/specialist', '--input', input],
+          agentProject,
+          environment,
+          120000,
+        ),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 8)
+    } finally {
+      await server.stop(true)
+    }
+  }
+  completed = true
 } finally {
-  await rm(temporary, { recursive: true, force: true })
+  if (completed) await rm(temporary, { recursive: true, force: true })
+  else console.error(`Package smoke failed; retained consumer and artifacts at ${temporary}`)
 }
 
-async function selectArchive(artifacts: string): Promise<string> {
-  const supplied = process.env.JIG_PACKAGE_ARCHIVE
+async function selectArchive(
+  artifacts: string,
+  packageName: 'jig' | 'flow-sdk' | 'agent-method' = 'jig',
+): Promise<string> {
+  const variable =
+    packageName === 'jig'
+      ? 'JIG_PACKAGE_ARCHIVE'
+      : packageName === 'agent-method'
+        ? 'AGENT_METHOD_PACKAGE_ARCHIVE'
+        : 'FLOW_SDK_PACKAGE_ARCHIVE'
+  const supplied = process.env[variable]
   if (supplied !== undefined) {
     if (!isAbsolute(supplied) || supplied.includes('\0') || !supplied.endsWith('.tgz')) {
-      throw new Error('JIG_PACKAGE_ARCHIVE must name one absolute .tgz file')
+      throw new Error(`${variable} must name one absolute .tgz file`)
     }
     const canonical = await realpath(supplied)
     if (canonical !== supplied || !(await stat(canonical)).isFile()) {
-      throw new Error('JIG_PACKAGE_ARCHIVE must name one canonical regular file')
+      throw new Error(`${variable} must name one canonical regular file`)
     }
     return canonical
   }
-  await run(['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts], packageRoot)
+  await run(
+    packageName !== 'flow-sdk'
+      ? ['bun', 'scripts/pack.ts', '--destination', artifacts]
+      : ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
+    resolve(packageRoot, '..', packageName),
+  )
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
   assert.equal(archives.length, 1)
   return join(artifacts, archives[0]!)
@@ -366,6 +901,7 @@ async function listFiles(root: string, prefix = ''): Promise<string[]> {
   const output: string[] = []
   for (const entry of await readdir(join(root, prefix), { withFileTypes: true })) {
     const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+    if (path === 'libexec/authoring/node_modules') continue
     if (entry.isDirectory()) output.push(...(await listFiles(root, path)))
     else if (entry.isFile()) output.push(path)
     else throw new Error(`installed package contains a non-file member: ${path}`)
@@ -377,6 +913,7 @@ async function run(
   command: string[],
   cwd: string,
   environment: NodeJS.ProcessEnv = {},
+  timeoutMs = 30_000,
 ): Promise<{ readonly stdout: string; readonly stderr: string }> {
   const child = Bun.spawn(command, {
     cwd,
@@ -384,7 +921,7 @@ async function run(
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const timeout = setTimeout(() => child.kill(), 30_000)
+  const timeout = setTimeout(() => child.kill(), timeoutMs)
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),

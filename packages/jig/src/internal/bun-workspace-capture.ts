@@ -10,8 +10,12 @@ import {
 import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
 import { openPrivateProjectRoot, type PrivateProjectRoot } from '../project/root.js'
+import {
+  PrivateBunManifestError,
+  requirePrivateBunPatches,
+  requirePrivateBunResolutionManifest,
+} from './bun-native-lock-policy.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
-import { requirePrivateBunResolutionManifest } from './bun-native-lock-policy.js'
 
 const MANIFEST_BYTES = 1024 * 1024
 const MAX_MEMBERS = 256
@@ -51,13 +55,14 @@ export async function capturePrivateBunWorkspace(input: {
   const manifest = parseManifest(manifestBytes)
   const dependencies = runtimeDependencies(manifest)
   if (
+    manifest.workspaces === undefined &&
     !Object.values(dependencies).some(
       (value) => typeof value === 'string' && value.startsWith('workspace:'),
     )
   )
     return undefined
   const physical = resolve(input.projectRoot.requestedPath, input.packagePath)
-  for (let path = dirname(physical), depth = 0; depth < MAX_DEPTH; depth++, path = dirname(path)) {
+  for (let path = physical, depth = 0; depth < MAX_DEPTH; depth++, path = dirname(path)) {
     input.signal.throwIfAborted()
     const root = await openPrivateProjectRoot(path)
     try {
@@ -67,7 +72,7 @@ export async function capturePrivateBunWorkspace(input: {
         if (rootManifest.workspaces !== undefined) {
           const patterns = workspacePatterns(rootManifest.workspaces)
           const target = relative(path, physical)
-          if (matches(patterns, target)) {
+          if (target === '' || matches(patterns, target)) {
             try {
               return await capture(
                 root,
@@ -77,6 +82,7 @@ export async function capturePrivateBunWorkspace(input: {
                 manifestBytes,
                 input.captured,
                 input.signal,
+                input.projectRoot.requestedPath,
               )
             } catch (error) {
               if (error instanceof CheckError && !error.code.startsWith('PACKAGE_BUN_')) {
@@ -112,7 +118,11 @@ async function capture(
   targetBytes: Uint8Array,
   source: CapturedPackage,
   signal: AbortSignal,
+  projectPath: string,
 ): Promise<PrivateBunWorkspace> {
+  const manifestPath = (member = ''): string =>
+    relative(projectPath, resolve(root.requestedPath, member, 'package.json'))
+  requireManifest(parseManifest(rootBytes), manifestPath(), true)
   const paths = await discover(root.handle, patterns, signal)
   const members: Member[] = []
   const byName = new Map<string, Member>()
@@ -127,7 +137,7 @@ async function capture(
       if (metadataBytes > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes)
         fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace metadata exceeds the capture budget')
       const manifest = parseManifest(bytes)
-      requireManifest(manifest)
+      requireManifest(manifest, manifestPath(path))
       if (typeof manifest.name !== 'string' || byName.has(manifest.name))
         fail('PACKAGE_BUN_WORKSPACE_INVALID', 'workspace names must be present and unique')
       const member = { path, bytes, manifest }
@@ -137,12 +147,15 @@ async function capture(
       await directory.close()
     }
   }
-  const entry = members.find((member) => member.path === target)
+  const entry =
+    target === ''
+      ? { path: '', bytes: rootBytes, manifest: parseManifest(rootBytes) }
+      : members.find((member) => member.path === target)
   if (entry === undefined || !Buffer.from(entry.bytes).equals(targetBytes)) changed()
   const selected = new Set<string>()
   const visit = (member: Member): void => {
     if (selected.has(member.path)) return
-    selected.add(member.path)
+    if (member.path !== '') selected.add(member.path)
     for (const [name, request] of Object.entries(runtimeDependencies(member.manifest))) {
       const local = byName.get(name)
       const explicit = typeof request === 'string' && request.startsWith('workspace:')
@@ -187,8 +200,32 @@ async function capture(
     records.set(path, { size, ...value })
   }
   try {
-    requireManifest(parseManifest(rootBytes), true)
+    const patchPaths = [
+      ...new Set(
+        Object.values(requirePrivateBunPatches(parseManifest(rootBytes).patchedDependencies)),
+      ),
+    ]
+    const patches = new Map<string, Uint8Array>()
+    let patchBytes = 0
+    for (const path of patchPaths) {
+      signal.throwIfAborted()
+      const bytes = await readPatch(root.handle, path)
+      patchBytes += bytes.byteLength
+      if (patchBytes + metadataBytes > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes)
+        fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace patch inputs exceed the capture budget')
+      patches.set(path, bytes)
+    }
     add('package.json', rootBytes.byteLength, { bytes: rootBytes })
+    // Root dependency selection supplies metadata, not ambient repository source.
+    // Ordinary Flow packages are captured separately through project membership.
+    if (
+      target === '' &&
+      source.files.some(({ path }) => !['package.json', 'bun.lock'].includes(path))
+    )
+      fail(
+        'PACKAGE_BUN_WORKSPACE_INVALID',
+        'workspace root dependency capture requires package metadata only',
+      )
     const lock = await readOptional(root.handle, 'bun.lock', 2 * MANIFEST_BYTES)
     if (lock !== undefined) add('bun.lock', lock.byteLength, { bytes: lock })
     for (const member of members) {
@@ -221,6 +258,15 @@ async function capture(
         )
       for (const file of captured.files)
         add(`${member.path}/${file.path}`, file.size, { source: captured, path: file.path })
+    }
+    for (const [path, bytes] of patches) {
+      const existing = records.get(path)
+      if (existing === undefined) add(path, bytes.byteLength, { bytes })
+      else if (
+        !Buffer.from(existing.bytes ?? (await existing.source!.read(existing.path!))).equals(bytes)
+      )
+        changed()
+      if (!Buffer.from(await readPatch(root.handle, path)).equals(bytes)) changed()
     }
     // Verify metadata and membership again after the byte capture. A changed
     // local dependency never qualifies for old admitted-execution reuse.
@@ -276,10 +322,11 @@ async function capture(
   }
 }
 
-function requireManifest(value: Record<string, unknown>, root = false): void {
+function requireManifest(value: Record<string, unknown>, path: string, root = false): void {
   try {
     requirePrivateBunResolutionManifest(value, root ? 'root' : 'member')
-  } catch {
+  } catch (error) {
+    if (error instanceof PrivateBunManifestError) throw error.atProjectPath(path)
     fail('PACKAGE_BUN_WORKSPACE_INVALID', 'unsupported workspace manifest source or override')
   }
 }
@@ -467,6 +514,20 @@ async function readOptional(
     return buffer.subarray(0, size)
   } finally {
     await handle.close()
+  }
+}
+
+async function readPatch(root: FileHandle, path: string): Promise<Uint8Array> {
+  const parts = path.split('/')
+  const name = parts.pop()!
+  const directory = parts.length === 0 ? root : await openBeneath(root, parts.join('/'))
+  try {
+    const bytes = await readOptional(directory, name)
+    if (bytes === undefined)
+      fail('PACKAGE_BUN_WORKSPACE_INVALID', 'a declared workspace patch is missing')
+    return bytes
+  } finally {
+    if (directory !== root) await directory.close()
   }
 }
 

@@ -3,7 +3,6 @@ import { digest, sha256, object, type RepairInput } from './policy.ts'
 
 export interface CommandEvidence {
   candidateDigest: string
-  command: string
   invocation: string[]
   stdinDigest: string
   stdout: { text: string; truncated: boolean }
@@ -35,7 +34,6 @@ export function evaluate(
       c.candidateDigest !== candidateDigest ||
       c.cleanup !== 'complete' ||
       c.stopReason !== 'exited' ||
-      c.command !== (index === 0 ? 'tests' : 'cli') ||
       c.stdinDigest !== sha256(index === 0 ? '' : input.cases[index - 1]!.stdin)
     )
       throw new TypeError('Command identity or termination does not match this evaluation.')

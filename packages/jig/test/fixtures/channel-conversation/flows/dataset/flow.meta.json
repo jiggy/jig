@@ -1,0 +1,4 @@
+{
+  "name": "sample-reader",
+  "description": "Answer bounded requests for Celsius readings from this invocation's explicit dataset."
+}

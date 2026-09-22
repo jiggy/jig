@@ -1,0 +1,9 @@
+{
+  "name": "contact-import-map-mixed",
+  "description": "Try the known format first, then ask the interpreter when it is unknown.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

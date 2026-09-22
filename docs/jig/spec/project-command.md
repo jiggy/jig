@@ -1,4 +1,4 @@
-# Project Command capability
+# Project Command native invocation
 
 *Status: prerelease implementation candidate.*
 
@@ -7,20 +7,19 @@ the Flow a shell or the candidate access to an Agent provider. The command
 returns host-collected output and termination. Application code decides what
 that evidence means.
 
-This is a Jig-owned capability carried by ordinary FLOW Run/1 `capability/call`.
+This is a Jig-owned native invocation carried by ordinary FLOW Run/1 `flow/call`.
 It adds no FLOW protocol method or requirement on other hosts. Its exact
-[descriptor](https://jig.md/contracts/project-command.capability.json) has ID
+[descriptor](https://jig.md/contracts/project-command/contract.json) has ID
 `https://jig.md/contracts/project-command`, version `1.0.0`, and digest
-`sha256:aed62fe17f01897545f82d7ee91f163a023721431433c8f4f6981b4367c85bcf`.
+`sha256:745905affe3fab5e7bcb3066419702ceaefca38871be131281a5e7f9f53dc59f`.
 
 ## Reviewed authority
 
-The Flow declares one companion, alongside Agent Run if needed:
+The Flow declares the companion for each command slot, alongside Agent Run if needed, in `flow.meta.json`
+(or optional `FLOW.md` frontmatter):
 
-```yaml
-uses:
-  command:
-    contract: ./contracts/project-command.capability.json
+```json
+{"uses":{"tests":{"contract":"./contracts/project-command/contract.json"},"cli":{"contract":"./contracts/project-command/contract.json"}}}
 ```
 
 The operator configures the permitted invocations in a Binding:
@@ -28,15 +27,15 @@ The operator configures the permitted invocations in a Binding:
 ```ts
 export default defineBinding({
   package: 'flows/repair',
-  commands: {
-    tests: { test: ['test/project.test.ts'] },
-    cli: { run: 'src/cli.ts' },
+  slots: {
+    tests: { kind: 'command', test: ['test/project.test.ts'] },
+    cli: { kind: 'command', run: 'src/cli.ts' },
   },
 })
 ```
 
-`commands` is an optional map of at most eight LocalNames. Each entry contains
-exactly one of `run` (one `.ts` or `.js` entrypoint) or `test` (1–16 distinct
+Each command slot receives a [grant](grants.md), inline or named, with
+`kind: "command"` and exactly one of `run` (one `.ts` or `.js` entrypoint) or `test` (1–16 distinct
 `.test.ts`, `.test.js`, `.spec.ts`, or `.spec.js` paths). Paths are canonical
 relative ASCII names, at most 256 bytes and 16 components, without traversal,
 backslashes, empty components, or shell syntax. The named files must exist
@@ -45,11 +44,11 @@ shell command, executable selector, environment map, or runtime registry.
 
 Command policy participates in review, the portable lock, admission identity,
 and the exact execution recipe. Editing it requires review and admission.
-An omitted or empty map grants no command authority. A map on a package which
-does not declare this capability is invalid. An otherwise valid unconfigured
-command target is unavailable; unrelated targets remain usable.
+At most eight command grants may be selected by one Binding. Missing or
+incompatible slot grants reject the candidate; no implicit command authority
+is supplied.
 
-A root or exact leaf Binding can use its own command policy. Direct `flow:`
+A root or exact child Binding can use its own command policy. Direct `flow:`
 targets have no command policy. A child receives neither parent commands nor
 attachments. A command is exclusive in its context. The root may instead run
 two sibling Flows, each with its own effect capacity. Sequential commands are
@@ -58,12 +57,10 @@ allowed; [root reservations](project-policy.md) bound their combined resources.
 ## Request
 
 ```ts
-const evidence = await run.callCapability({
+const result = await run.call({
   operationId: 'candidate-tests',
-  slot: 'command',
-  method: 'run',
+  slot: 'tests',
   input: {
-    command: 'tests',
     files: {
       'src/value.ts': 'export const value = 2',
       'test/project.test.ts': 'import { test, expect } from "bun:test"; import { value } from "../src/value.ts"; test("value", () => expect(value).toBe(2))',
@@ -85,16 +82,16 @@ const evidence = await run.callCapability({
 Jig fixes Bun's runtime and configuration posture, uses the candidate root
 as the working directory, and invokes the selected entrypoint or exact test
 paths. Dependencies must already be source-local or supported Bun/Node built-ins.
-The capability does not run the Flow package's prepared dependencies.
+The native invocation does not run the Flow package's prepared dependencies.
 
 ## Evidence
 
-The SDK returns one value containing:
+The SDK returns `{ outcome: 'done', output: evidence }`. The evidence contains:
 
 | Field | Meaning |
 | --- | --- |
 | `candidateDigest` | SHA-256 of the canonical JSON/1 `files` map, prefixed `sha256:`. No trailing newline is hashed. |
-| `command`, `invocation` | Selected policy name and logical argument vector beginning with `bun`; no host paths. |
+| `invocation` | Logical argument vector beginning with `bun`; no host paths. The application already knows which slot it called. |
 | `stdinDigest` | SHA-256 of the UTF-8 stdin bytes, prefixed `sha256:`. |
 | `stdout`, `stderr` | `{text, truncated}` for the first 64 KiB of each stream. The collector drains the rest. |
 | `exitCode`, `signal` | Actual collected termination, with unavailable alternatives represented by `null`. |
@@ -106,10 +103,10 @@ it is not a lossless binary channel. Truncation means the retained prefix is
 not complete evidence. Collected text remains untrusted candidate output.
 
 A completed command, including a nonzero exit or process signal, is a
-successful effect carrying process evidence—not a successful repair.
+completed invocation carrying process evidence—not a successful repair.
 Cancellation and deadline expiry are operational failures; collected evidence
 may appear at `details.command` when available. Missing evidence is never
-invented. The method declares no application-error variants.
+invented. The invocation declares only `done`; operational failures do not become domain outcomes.
 
 Host collection establishes what the process emitted and how it terminated.
 It does not establish that repository tests ran honestly: imported candidate
@@ -140,5 +137,5 @@ and exact-replay conflict rules apply.
 
 No writable repository, native Agent workspace tools, shell service, package
 installation, credentials, arbitrary network, or detached job is authorized
-by this capability. It returns observations; the application owns patch policy,
+by this native invocation. It returns observations; the application owns patch policy,
 acceptance, and the human decision to apply or merge.

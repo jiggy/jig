@@ -5,5 +5,8 @@
   "devDependencies": {
     "@jigging/flow": "workspace:*",
     "csv-parse": "6.1.0"
+  },
+  "dependencies": {
+    "@jigging/agent-acp": "workspace:*"
   }
 }

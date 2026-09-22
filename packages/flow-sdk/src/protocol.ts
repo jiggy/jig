@@ -1,8 +1,7 @@
 import type {
   Attachment,
-  CapabilityCall,
-  ChildFlowRequest,
   ChannelContractIdentity,
+  FlowCall,
   JsonObject,
   JsonValue,
   OperationErrorCode,
@@ -10,8 +9,8 @@ import type {
 } from './types.js'
 import { OPERATION_ERROR_CODES } from './types.js'
 
-export const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/
-export const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+export const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$(?![\s\S])/
+export const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\s\S])/
 
 type StructuredParams = JsonObject | readonly JsonValue[]
 
@@ -268,59 +267,64 @@ export function parseRunParams(value: JsonValue): RunParams {
   }
 }
 
-export function validateChildFlowRequest(call: ChildFlowRequest): JsonObject {
-  requireWireId(call.operationId)
-  requireLocalName(call.slot)
-  if (call.intent !== undefined) {
-    if (typeof call.intent !== 'string') {
+export function validateFlowCall(call: FlowCall): FlowCall {
+  const object = snapshotDataObject(call, 'Flow call', 5)
+  const hasIntent = Object.hasOwn(object, 'intent')
+  requireExactKeys(object, [
+    'operationId',
+    'slot',
+    'input',
+    ...(hasIntent ? ['intent'] : []),
+    ...(Object.hasOwn(object, 'channels') ? ['channels'] : []),
+  ])
+  const operationId = requireWireId(object.operationId as JsonValue)
+  const slot = requireLocalName(object.slot as JsonValue)
+  if (Object.hasOwn(object, 'channels')) {
+    requireObject(object.channels as JsonValue, 'call channels')
+  }
+  const intent = hasIntent ? object.intent : undefined
+  if (hasIntent) {
+    if (typeof intent !== 'string') {
       throw new TypeError('intent must be a string')
     }
-    const scalarLength = Array.from(call.intent).length
+    const scalarLength = Array.from(intent).length
     if (scalarLength === 0 || scalarLength > 16_384) {
       throw new TypeError('intent must contain 1-16384 Unicode scalars')
     }
   }
   return {
-    operationId: call.operationId,
-    slot: call.slot,
-    ...(call.intent === undefined ? {} : { intent: call.intent }),
-    input: call.input,
+    operationId,
+    slot,
+    ...(intent === undefined ? {} : { intent: intent as string }),
+    input: object.input as JsonValue,
+    ...(Object.hasOwn(object, 'channels')
+      ? { channels: object.channels as NonNullable<FlowCall['channels']> }
+      : {}),
   }
 }
 
-export function validateCapabilityCall(call: CapabilityCall): JsonObject {
-  requireWireId(call.operationId)
-  requireLocalName(call.slot)
-  requireLocalName(call.method)
-  return {
-    operationId: call.operationId,
-    slot: call.slot,
-    method: call.method,
-    input: call.input,
+/** Capture only passive own fields; inherited metadata never becomes supplied data. */
+export function snapshotDataObject(
+  value: unknown,
+  description: string,
+  maximumMembers: number,
+): Record<string, unknown> {
+  const object = requireObject(value as JsonValue, description)
+  const keys = Reflect.ownKeys(object)
+  if (keys.length > maximumMembers) throw new TypeError(`too many ${description} members`)
+  const snapshot: Record<string, unknown> = Object.create(null)
+  for (const key of keys) {
+    if (typeof key !== 'string') throw new TypeError(`${description} requires string members`)
+    const descriptor = Object.getOwnPropertyDescriptor(object, key)
+    if (descriptor === undefined || !descriptor.enumerable || !('value' in descriptor))
+      throw new TypeError(`${description} requires enumerable data members`)
+    snapshot[key] = descriptor.value
   }
-}
-
-export function attributedFlowCall(ownerRequestId: string, call: ChildFlowRequest): JsonObject {
-  return { ownerRequestId: requireWireId(ownerRequestId), ...validateChildFlowRequest(call) }
-}
-
-export function attributedEffectCall(ownerRequestId: string, call: CapabilityCall): JsonObject {
-  return { ownerRequestId: requireWireId(ownerRequestId), ...validateCapabilityCall(call) }
+  return snapshot
 }
 
 export function emptyResultMessage(id: string): JsonObject {
   return { jsonrpc: '2.0', id, result: {} }
-}
-
-export function effectResultMessage(
-  id: string,
-  result:
-    | { readonly value: JsonValue }
-    | {
-        readonly error: { readonly name: string; readonly data: JsonValue }
-      },
-): JsonObject {
-  return { jsonrpc: '2.0', id, result }
 }
 
 export function parseRunResult(value: JsonValue): RunResult {
@@ -328,30 +332,6 @@ export function parseRunResult(value: JsonValue): RunResult {
   requireExactKeys(object, ['outcome', 'output'])
   const outcome = requireLocalName(object.outcome as JsonValue)
   return { outcome, output: object.output as JsonValue }
-}
-
-export type EffectResult =
-  | { readonly kind: 'value'; readonly value: JsonValue }
-  | {
-      readonly kind: 'error'
-      readonly name: string
-      readonly data: JsonValue
-    }
-
-export function parseEffectResult(value: JsonValue): EffectResult {
-  const object = requireObject(value, 'effect result')
-  if (Object.hasOwn(object, 'value')) {
-    requireExactKeys(object, ['value'])
-    return { kind: 'value', value: object.value as JsonValue }
-  }
-  requireExactKeys(object, ['error'])
-  const error = requireObject(object.error as JsonValue, 'declared effect error')
-  requireExactKeys(error, ['name', 'data'])
-  return {
-    kind: 'error',
-    name: requireLocalName(error.name as JsonValue),
-    data: error.data as JsonValue,
-  }
 }
 
 export function parseOperationError(error: ErrorPayload): {
@@ -445,7 +425,7 @@ export function requireObject(value: JsonValue, description: string): Record<str
 }
 
 export function requireExactKeys(
-  object: Record<string, JsonValue>,
+  object: Record<string, unknown>,
   expected: readonly string[],
 ): void {
   const keys = Object.keys(object).sort()

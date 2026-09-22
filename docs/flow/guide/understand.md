@@ -44,15 +44,16 @@ A Skill is a useful place to capture how an Agent should work. FLOW brings
 that readable guidance together with a defined execution boundary, so the
 method can also become a building block in software.
 
-An instructions-only Flow can hold guidance and resources. Add an executable
-entrypoint such as `flow.ts` or `flow.py`, and a compatible host can invoke it
-directly. The program decides where ordinary procedure is sufficient and where
-to request interpretation. It can use existing Skills during Agent work.
+A Flow has one implementation entrypoint, such as `FLOW.md`, `FLOW.ts`, or
+`FLOW.py`. A compatible host invokes it through the same boundary. Markdown
+uses an interpreter; code decides where ordinary procedure is sufficient and
+where to request interpretation. Either can use supporting guidance and resources.
 
 Skills can bundle scripts, and code can invoke those scripts directly too.
 FLOW's contribution is a common package and invocation contract around the
-complete method. A Markdown rename alone does not create an executable Flow;
-[Package/1](../spec/package-format.md) defines valid metadata and implementations.
+complete method. Compatible Skills can become Markdown Flows, with execution
+subject to the host's interpreter and granted powers;
+[Package/1](../spec/package-format.md) defines the supported authoring format.
 
 ## Let capability build on capability
 

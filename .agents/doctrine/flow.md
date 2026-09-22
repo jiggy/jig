@@ -151,7 +151,7 @@ needed, without turning every procedure into platform machinery.
 
 Readable purpose and inspectable package content make a method understandable
 before anyone accepts it. Simple bounded work should not require a formal
-capability contract merely because it contains a sophisticated procedure.
+named invocation contract merely because it contains a sophisticated procedure.
 Ordinary invocation and appropriate input/result validation should remain
 the simple path.
 

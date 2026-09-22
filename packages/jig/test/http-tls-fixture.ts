@@ -1,0 +1,19 @@
+// Public test material: a deliberately untrusted certificate and its disposable key.
+// These bytes grant no access and are not used by the installed host.
+export const untrustedCertificate = `-----BEGIN CERTIFICATE-----
+MIIBvTCCAWKgAwIBAgIUSeU9Lzj92avZ+LZ/sa/f5RXd1ZYwCgYIKoZIzj0EAwIw
+ITEfMB0GA1UEAwwWdW50cnVzdGVkLXRlc3QuaW52YWxpZDAgFw0yNjA5MTMwOTI2
+NTJaGA8yMTI2MDgyMDA5MjY1MlowITEfMB0GA1UEAwwWdW50cnVzdGVkLXRlc3Qu
+aW52YWxpZDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABCcQaQvajZ4t16cg5+xM
+78Vb8uoaxyNC4rfkWXmTuxRssE59sPbT4QdPJ0pgmcntWxgfBZBrTfj3H1Mjool2
+x5SjdjB0MB0GA1UdDgQWBBSdjiSG0gMX/5lPqyJAcfmQgY/9YzAfBgNVHSMEGDAW
+gBSdjiSG0gMX/5lPqyJAcfmQgY/9YzAPBgNVHRMBAf8EBTADAQH/MCEGA1UdEQQa
+MBiCFnVudHJ1c3RlZC10ZXN0LmludmFsaWQwCgYIKoZIzj0EAwIDSQAwRgIhAKEV
+lY/nesY6XvTIJ5yR4v4DEoWqlaEb8FwoBROeeQcgAiEAolGt1d4bFfCVbNVztlye
+cB8SDVMrl7XFw6raghQeErY=
+-----END CERTIFICATE-----`
+export const untrustedKey = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgMOH0gGAYyLkxwXMx
+6iW8RBXVAtEA6Q7CSuqsdZ6b3vehRANCAAQnEGkL2o2eLdenIOfsTO/FW/LqGscj
+QuK35Fl5k7sUbLBOfbD20+EHTydKYJnJ7VsYHwWQa0349x9TI6KJdseU
+-----END PRIVATE KEY-----`

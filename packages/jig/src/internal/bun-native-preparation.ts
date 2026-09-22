@@ -10,12 +10,6 @@ import {
   createCapturedPackage,
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
-import {
-  assertPrivateBunExecutionLayoutFiles,
-  normalizePrivateBunExecutionLayout,
-  privateBunAliasPackageName,
-  type PrivateBunExecutionLayout,
-} from './bun-execution-layout.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
 import {
   type PrivateBunPreparationOwnerFact,
@@ -23,6 +17,13 @@ import {
   readPrivateBunPreparationOwner,
   replacePrivateBunPreparationOwner,
 } from './activation-admission-store.js'
+import {
+  assertPrivateBunExecutionLayoutFiles,
+  normalizePrivateBunExecutionLayout,
+  type PrivateBunExecutionLayout,
+  privateBunAliasPackageName,
+} from './bun-execution-layout.js'
+import { requirePrivateBunPatches } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
   PRIVATE_BUN_PREPARATION_LIMITS,
@@ -267,6 +268,29 @@ async function interact(
         ) {
           throw protocolFailure()
         }
+        let location: { path: string; pointer: string } | undefined
+        if (message.location !== undefined) {
+          const value = ordinaryRecord(message.location, 'preparation diagnostic location')
+          if (
+            message.code !== 'PACKAGE_BUN_LOCK_STALE' ||
+            Reflect.ownKeys(value).length !== 2 ||
+            typeof value.path !== 'string' ||
+            !(value.path === 'package.json' || value.path.endsWith('/package.json')) ||
+            !input.captured.files.some((file) => file.path === value.path) ||
+            typeof value.pointer !== 'string' ||
+            ![
+              '',
+              '/name',
+              '/version',
+              '/dependencies',
+              '/devDependencies',
+              '/optionalDependencies',
+              '/peerDependencies',
+            ].includes(value.pointer)
+          )
+            throw protocolFailure()
+          location = { path: value.path, pointer: value.pointer }
+        }
         terminal = new CheckError(
           message.code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
             message.code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
@@ -278,11 +302,15 @@ async function interact(
             : 'invalid',
           message.code,
           boundedMessage(message.message),
-          message.code.startsWith('PACKAGE_BUN_RESOL')
-            ? 'package.json'
-            : message.code.includes('LOCK') || message.code.includes('SOURCE_UNSUPPORTED')
-              ? 'bun.lock'
-              : undefined,
+          location?.path ??
+            (message.code.startsWith('PACKAGE_BUN_RESOL') ||
+            message.code === 'PACKAGE_BUN_INPUT_LIMIT' ||
+            message.code === 'PACKAGE_BUN_OUTPUT_LIMIT'
+              ? 'package.json'
+              : message.code.includes('LOCK') || message.code.includes('SOURCE_UNSUPPORTED')
+                ? 'bun.lock'
+                : undefined),
+          location?.pointer,
         )
       } else {
         throw protocolFailure()
@@ -515,11 +543,25 @@ export async function decodePrivateBunPreparedResult(
   } catch {
     throw protocolFailure()
   }
+  const patchPaths = new Set(
+    input.workspace === undefined
+      ? []
+      : Object.values(
+          requirePrivateBunPatches(
+            JSON.parse(
+              new TextDecoder('utf-8', { fatal: true }).decode(
+                await input.captured.read('package.json', 1024 * 1024),
+              ),
+            ).patchedDependencies,
+          ),
+        ),
+  )
   const retainedSource = input.captured.files.filter(
     ({ path }) =>
       input.workspace === undefined ||
       path === 'package.json' ||
       path === 'bun.lock' ||
+      patchPaths.has(path) ||
       selected.some((member) => path.startsWith(`${member}/`)),
   )
   const sourcePaths = new Set(retainedSource.map(({ path }) => path))

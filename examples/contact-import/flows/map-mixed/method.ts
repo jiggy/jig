@@ -1,9 +1,7 @@
 import type { RunContext, RunResult } from '@jigging/flow'
 import responseSchema from './proposal.schema.json'
 
-export async function runMethod(
-  run: Pick<RunContext, 'input' | 'callCapability'>,
-): Promise<RunResult> {
+export async function runMethod(run: Pick<RunContext, 'input' | 'call'>): Promise<RunResult> {
   const { headers } = run.input as { headers: string[] }
   const expected = ['Customer', 'Email address', 'Company']
   if (headers.length === 3 && expected.every((h) => headers.includes(h)))
@@ -17,10 +15,9 @@ export async function runMethod(
         },
       },
     }
-  const result = (await run.callCapability({
+  const result = (await run.call({
     operationId: 'map-headings',
     slot: 'agent',
-    method: 'run',
     input: {
       instructions:
         'Map CSV headings to full contact name, email address, and organization. ' +
@@ -33,22 +30,24 @@ export async function runMethod(
     },
   })) as {
     outcome: string
-    text?: string
-    structured?: { name: number | null; email: number | null; organization: number | null }
+    output: {
+      text?: string
+      structured?: { name: number | null; email: number | null; organization: number | null }
+    }
   }
   if (result?.outcome === 'blocked' || result?.outcome === 'limit') {
-    if (typeof result.text !== 'string') throw new TypeError('Missing Agent reason.')
-    return { outcome: result.outcome, output: { reason: result.text } }
+    if (typeof result.output?.text !== 'string') throw new TypeError('Missing Agent reason.')
+    return { outcome: result.outcome, output: { reason: result.output?.text } }
   }
   if (
-    result?.outcome !== 'completed' ||
-    !result.structured ||
-    Object.keys(result.structured).sort().join(',') !== 'email,name,organization'
+    result?.outcome !== 'done' ||
+    !result.output?.structured ||
+    Object.keys(result.output?.structured).sort().join(',') !== 'email,name,organization'
   )
     throw new TypeError('Missing structured mapping.')
   // The result schema checks shape; the converter checks indices against actual columns.
-  const mapping = Object.values(result.structured).some((value) => value === null)
+  const mapping = Object.values(result.output?.structured).some((value) => value === null)
     ? null
-    : result.structured
+    : result.output?.structured
   return { outcome: 'done', output: { mapping } }
 }

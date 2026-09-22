@@ -2,11 +2,88 @@ import { describe, expect, test } from 'bun:test'
 import { parse as parseYaml } from 'yaml'
 
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
-import type { PrivateAgentProvider } from '../src/internal/agent-provider.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from '../src/internal/private-agent-run.js'
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from './fixtures/agent-contract.js'
 import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 
 describe('private project Plan review', () => {
+  test('names the exact missing-feature edge and retains provider claims in details', () => {
+    const base = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
+    const digest = `sha256:${'a'.repeat(64)}`
+    const identity = {
+      id: AGENT_RUN_CONTRACT_ID,
+      version: AGENT_RUN_CONTRACT_VERSION,
+      digest: AGENT_RUN_CONTRACT_DIGEST,
+    }
+    const target = (path: string, slots: unknown, unavailable = false) => ({
+      request: {
+        target: { kind: 'flow', path },
+        mode: 'run',
+        packagePath: path,
+        package: { digest },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
+        settings: {},
+        slots,
+        attachments: {},
+      },
+      disposition: unavailable
+        ? { state: 'unavailable', code: 'FEATURE_UNAVAILABLE' }
+        : { state: 'ready' },
+    })
+    const rendered = renderPrivateProjectPlanReview({
+      baseCandidate: null,
+      plan: {
+        ...base,
+        proposed: {
+          ...base.proposed,
+          lock: {
+            packages: {
+              'flows/caller': {
+                digest,
+                directRun: true,
+                uses: { agent: { ...identity, requires: ['events', 'conversation'] } },
+              },
+              'flows/renamed-provider': { digest, directRun: true, uses: {}, supports: ['events'] },
+            },
+            bindings: {},
+          },
+          targets: [
+            target(
+              'flows/caller',
+              {
+                agent: {
+                  kind: 'flow',
+                  target: { kind: 'flow', path: 'flows/renamed-provider' },
+                  contract: identity,
+                },
+              },
+              true,
+            ),
+            target('flows/renamed-provider', {}),
+          ],
+        },
+      },
+    } as unknown as PrivateActivationReviewPlan)
+    expect(rendered.text).toContain('"caller": "flow:flows/caller"')
+    expect(rendered.text).toContain('"slot": "agent"')
+    expect(rendered.text).toContain('"selected": "flow:flows/renamed-provider"')
+    for (const detail of [
+      '"caller": "flow:flows/caller"',
+      '"slot": "agent"',
+      '"selected": "flow:flows/renamed-provider"',
+      '"missing":',
+      '"conversation"',
+      '"supports":',
+      '"events"',
+    ])
+      expect(rendered.details).toContain(detail)
+    expect(rendered.details).toContain('Added: "flows/renamed-provider"')
+    expect(rendered.details).not.toContain('"proposed":')
+  })
+
   test('change-first review omits unchanged policy but details retains it', () => {
     const plan = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
     const lock = {
@@ -31,63 +108,6 @@ describe('private project Plan review', () => {
     expect(rendered.text).toContain('jig review --details')
   })
 
-  test('review names selected Agent behavior without credentials or private support', () => {
-    const plan = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
-    const review = {
-      plan: {
-        ...plan,
-        proposed: {
-          ...plan.proposed,
-          targets: [
-            {
-              request: {
-                target: { kind: 'flow', path: 'flows/agent' },
-                mode: 'run',
-                packagePath: 'flows/agent',
-                entrypoint: { path: 'flow.ts', suffix: 'ts' },
-                settings: {},
-                attachments: {},
-                capabilities: { agent: { digest: AGENT_RUN_CONTRACT_DIGEST } },
-              },
-              disposition: { state: 'ready' },
-            },
-          ],
-        },
-      },
-      baseCandidate: null,
-    } as unknown as PrivateActivationReviewPlan
-    for (const provider of [
-      {
-        kind: 'private-openai-agent-provider/1',
-        api: 'responses',
-        baseURL: 'https://api.example.test/v1',
-        model: 'selected-test-model',
-        credential: 'secret-sentinel',
-        executable: '/private/host/path',
-      },
-      {
-        kind: 'private-acp-agent-provider/1',
-        client: 'codex',
-        model: 'selected-test-model',
-        credentialMode: 'subscription',
-        credential: 'secret-sentinel',
-        executable: '/private/host/path',
-      },
-    ]) {
-      const rendered = renderPrivateProjectPlanReview(
-        review,
-        undefined,
-        provider as unknown as PrivateAgentProvider,
-      )
-      for (const value of [rendered.text, rendered.details]) {
-        expect(value).toContain('selected-test-model')
-        expect(value).not.toContain('secret-sentinel')
-        expect(value).not.toContain('/private/host/path')
-      }
-      expect(rendered.text).toContain('Instructions and selected data go to this Agent')
-    }
-  })
-
   test('renders complete portable policy while omitting private host identities', () => {
     const digest = `sha256:${'a'.repeat(64)}`
     const plan = {
@@ -106,7 +126,7 @@ describe('private project Plan review', () => {
                 agent: {
                   id: 'https://jig.md/contracts/agent-run',
                   version: '1.0.0',
-                  digest: 'sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56',
+                  digest: AGENT_RUN_CONTRACT_DIGEST,
                 },
               },
             },
@@ -126,13 +146,13 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: 'flows/review',
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: {
                 style: 'focused',
                 hidden: '\u202e\u200bline\n\t\u0000é😀',
                 '\u202ekey': 'value',
               },
-              flowSlots: {},
+              slots: {},
               attachments: {},
               digest: `sha256:${'b'.repeat(64)}`,
             },
@@ -214,9 +234,9 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: 'flows/old',
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: {},
-              flowSlots: {},
+              slots: {},
               attachments: {},
             },
             disposition: { state: 'ready' },
@@ -239,9 +259,9 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: 'flows/new',
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: {},
-              flowSlots: {},
+              slots: {},
               attachments: {},
             },
             disposition: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
@@ -273,9 +293,9 @@ describe('private project Plan review', () => {
         mode: 'run' as const,
         packagePath: 'flows/review',
         package: { digest },
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
-        flowSlots: {},
+        slots: {},
         attachments: {},
       },
       disposition: { state: 'ready' as const },
@@ -319,9 +339,9 @@ describe('private project Plan review', () => {
         mode: 'run' as const,
         packagePath: 'flows/router',
         package: { digest: parentDigest },
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
-        flowSlots: { work: { kind: 'flow', path: slotPath } },
+        slots: { work: { kind: 'flow', target: { kind: 'flow', path: slotPath } } },
         attachments: {},
       },
       disposition: { state: 'ready' as const },
@@ -336,9 +356,9 @@ describe('private project Plan review', () => {
         mode: 'run' as const,
         packagePath: path,
         package: { digest },
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
-        flowSlots: {},
+        slots: {},
         attachments: {},
       },
       disposition:
@@ -460,9 +480,14 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: binding.packagePath,
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: binding.settings,
-              flowSlots: binding.slots,
+              slots: Object.fromEntries(
+                Object.entries(binding.slots).map(([name, target]) => [
+                  name,
+                  { kind: 'flow', target },
+                ]),
+              ),
               attachments: {},
             },
             disposition:
@@ -546,8 +571,9 @@ describe('private project Plan review', () => {
         target: { kind: 'flow', path: 'flows/test' },
         mode: 'run',
         packagePath: 'flows/test',
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
+        slots: {},
         attachments: {},
       },
       disposition: {
@@ -560,10 +586,14 @@ describe('private project Plan review', () => {
       },
     }
     const plan = reviewPlan('admission', 'unused')
+    const lock = {
+      packages: { 'flows/test': { digest: `sha256:${'a'.repeat(64)}`, directRun: true, uses: {} } },
+      bindings: {},
+    }
     const render = (next: unknown) =>
       renderPrivateProjectPlanReview({
-        plan: { ...plan, proposed: { ...plan.proposed, targets: [next] } },
-        baseCandidate: { lock: plan.proposed.lock, candidate: { targets: [target] } },
+        plan: { ...plan, proposed: { ...plan.proposed, lock, targets: [next] } },
+        baseCandidate: { lock, candidate: { targets: [target] } },
       } as unknown as PrivateActivationReviewPlan)
     const changed = render({
       ...target,

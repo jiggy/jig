@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { OperationError } from '@jigging/flow'
-import cases from '../flows/project/cases.json'
-import issue from '../issue.json'
-import { digest, sha256, type RepairInput } from '../flows/repair/policy.ts'
+import { OperationError, type RunContext } from '@jigging/flow'
+import cases from '../flows/project/logs-cases.json'
+import { digest, type RepairInput, sha256 } from '../flows/repair/policy.ts'
 import { repair } from '../flows/repair/repair.ts'
+import issue from '../issue.json'
 
 export const input: RepairInput = {
   ...issue,
@@ -54,7 +54,6 @@ export function recorded(
   const c = cases.find((c) => c.stdin === stdin && JSON.stringify(c.args) === JSON.stringify(args))
   return {
     candidateDigest: digest(files),
-    command,
     invocation:
       command === 'tests'
         ? ['bun', 'test', 'test/project.test.ts']
@@ -84,27 +83,34 @@ export async function syntheticRepair(
   const result = await repair({
     input: input as any,
     signal: new AbortController().signal,
-    callCapability: async (call) => {
+    channels: options.channels ?? {},
+    call: async (call) => {
       if (call.slot === 'agent') {
         agents++
         return {
-          outcome: 'completed',
-          structured: options.invalid
-            ? { ...proposal, replacements: [{ path: 'test/project.test.ts', content: '' }] }
-            : proposal,
+          outcome: 'done',
+          output: {
+            text: 'Synthetic proposal.',
+            structured: options.invalid
+              ? { ...proposal, replacements: [{ path: 'test/project.test.ts', content: '' }] }
+              : proposal,
+          },
         }
       }
       commands++
       if (options.failCommand && call.operationId.startsWith('attempt-'))
         throw new OperationError(options.failCommand as any, 'Synthetic interruption.')
       const p = call.input as any
-      return recorded(
-        p.command,
-        p.files,
-        p.args,
-        p.stdin,
-        options.alreadyPasses || (options.success !== false && agents > 0),
-      )
+      return {
+        outcome: 'done',
+        output: recorded(
+          call.slot,
+          p.files,
+          p.args,
+          p.stdin,
+          options.alreadyPasses || (options.success !== false && agents > 0),
+        ),
+      }
     },
   })
   return { result, agents, commands }

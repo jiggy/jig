@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,6 +7,7 @@ import { join } from 'node:path'
 
 import { ProjectAdministrationError } from '../src/administration/project.js'
 import { CheckError } from '../src/diagnostics.js'
+import { PrivateBunManifestError } from '../src/internal/bun-native-lock-policy.js'
 import {
   openPrivateProjectSession,
   type PrivateProjectSessionHost,
@@ -16,7 +17,72 @@ import {
 
 const missingPlan = `sha256:${'0'.repeat(64)}`
 
+// Durable fixture initialization and cleanup are outside the session's execution limits.
+setDefaultTimeout(30_000)
+
 describe('private finite project session', () => {
+  test('manifest diagnostics distinguish already-scoped workspace paths from standalone packages', () => {
+    const standalone = new PrivateBunManifestError('SOURCE', '/dependencies/x')
+    expect(scopePrivatePackagePlanningError(standalone, 'flows/demo')).toMatchObject({
+      path: 'flows/demo/package.json',
+      pointer: '/dependencies/x',
+    })
+    const root = standalone.atProjectPath('package.json')
+    expect(scopePrivatePackagePlanningError(root, 'flows/demo')).toBe(root)
+    expect(projectError(root, 'plan').diagnostic?.path).toBe('package.json')
+  })
+
+  test('ancestor manifest locations never open arbitrary diagnostic paths', () => {
+    for (const path of ['../package.json', '../../libs/tool/package.json']) {
+      expect(
+        projectError(
+          new PrivateBunManifestError('SOURCE', '/dependencies/x').atProjectPath(path),
+          'plan',
+        ).diagnostic?.path,
+      ).toBe(path)
+    }
+    for (const path of [
+      '../private-token',
+      '/private/package.json',
+      '../.jig/package.json',
+      '../libs/.jig/package.json',
+      '../libs/../../package.json',
+      '../'.repeat(33) + 'package.json',
+    ]) {
+      expect(
+        projectError(
+          new PrivateBunManifestError('SOURCE', '/dependencies/x').atProjectPath(path),
+          'plan',
+        ).diagnostic,
+      ).toBeUndefined()
+    }
+    expect(
+      projectError(
+        new CheckError('invalid', 'PROJECT_DEFAULT_MISSING', 'private detail', '../package.json'),
+        'plan',
+      ).diagnostic,
+    ).toBeUndefined()
+  })
+
+  test('preserves missing default diagnostics without exposing source error text', () => {
+    const failure = projectError(
+      new CheckError(
+        'invalid',
+        'PROJECT_DEFAULT_MISSING',
+        'private source detail',
+        'jig.ts',
+        '/defaultProviders',
+      ),
+      'plan',
+    )
+    expect(failure.code).toBe('INVALID_CANDIDATE')
+    expect(failure.diagnostic).toEqual({
+      code: 'PROJECT_DEFAULT_MISSING',
+      path: 'jig.ts',
+      pointer: '/defaultProviders',
+    })
+    expect(JSON.stringify(failure)).not.toContain('private source detail')
+  })
   test('preserves closed type facts while discarding private error messages', () => {
     const failure = projectError(
       new CheckError(
@@ -258,17 +324,24 @@ describe('private finite project session', () => {
   })
 
   test('admits only source diagnostic code families and closes private state codes', () => {
-    for (const code of ['CHANNEL_FIELD', 'CHANNEL_LIMIT', 'CHANNEL_REFERENCE']) {
+    for (const code of [
+      'CHANNEL_FIELD',
+      'CHANNEL_LIMIT',
+      'CHANNEL_REFERENCE',
+      'CONTRACT_FIELD',
+      'CONTRACT_LIMIT',
+      'CONTRACT_REFERENCE',
+    ]) {
       const failure = new CheckError(
         'invalid',
         code,
         'private diagnostic text',
-        'flows/bad/FLOW.md',
+        'flows/bad/FLOW.contract.json',
       )
       expect(projectError(failure, 'plan').toJSON()).toEqual({
         code: 'INVALID_CANDIDATE',
         message: 'project candidate is invalid',
-        diagnostic: { code, path: 'flows/bad/FLOW.md' },
+        diagnostic: { code, path: 'flows/bad/FLOW.contract.json' },
       })
     }
     expect(
@@ -370,6 +443,19 @@ describe('private finite project session', () => {
       code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
       path: 'flows/dependent/bun.lock',
     })
+    const tooLarge = scopePrivatePackagePlanningError(
+      new CheckError(
+        'invalid',
+        'PACKAGE_BUN_OUTPUT_LIMIT',
+        'private preparation detail',
+        'package.json',
+      ),
+      'flows/dependent',
+    )
+    expect(projectError(tooLarge, 'plan').diagnostic).toEqual({
+      code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+      path: 'flows/dependent/package.json',
+    })
 
     const preparation = new CheckError(
       'unavailable',
@@ -409,14 +495,14 @@ describe('private finite project session', () => {
       projectError(
         new CheckError(
           'unavailable',
-          'PROJECT_AGENT_UNAVAILABLE',
+          'PROJECT_ACP_UNAVAILABLE',
           'private configuration',
           'flows/drafter/FLOW.md',
         ),
         'plan',
       ).diagnostic,
     ).toEqual({
-      code: 'PROJECT_AGENT_UNAVAILABLE',
+      code: 'PROJECT_ACP_UNAVAILABLE',
       path: 'flows/drafter/FLOW.md',
     })
   })

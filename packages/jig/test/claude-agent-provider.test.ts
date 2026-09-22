@@ -64,6 +64,49 @@ describe('private native Claude Code Agent provider', () => {
       model: 'default',
     })
     expect(pinnedSubscription.model).toBe('subscription/model')
+    const selectedSubscription = await openPrivateClaudeAgentProvider(
+      fixture.releaseRoot,
+      {
+        CLAUDE_PATH: fixture.executablePath,
+        CLAUDE_CODE_OAUTH_TOKEN: 'subscription-secret',
+        CLAUDE_MODEL: 'ambient',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedSubscription).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'claude-subscription',
+    })
+    const selectedApi = await openPrivateClaudeAgentProvider(
+      fixture.releaseRoot,
+      {
+        CLAUDE_PATH: fixture.executablePath,
+        ANTHROPIC_API_KEY: 'api-key-secret',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedApi).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'anthropic-api-key',
+    })
+    for (const model of ['bad model', 'model\n']) {
+      await expect(
+        openPrivateClaudeAgentProvider(fixture.releaseRoot, {
+          CLAUDE_PATH: fixture.executablePath,
+          CLAUDE_CODE_OAUTH_TOKEN: 'subscription-secret',
+          CLAUDE_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+      await expect(
+        openPrivateClaudeAgentProvider(fixture.releaseRoot, {
+          CLAUDE_PATH: fixture.executablePath,
+          ANTHROPIC_API_KEY: 'api-secret',
+          ANTHROPIC_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+    }
     expect(apiKey).toMatchObject({
       client: 'anthropic-claude-code',
       credentialMode: 'anthropic-api-key',
@@ -82,18 +125,18 @@ describe('private native Claude Code Agent provider', () => {
         ANTHROPIC_AUTH_TOKEN: 'auth-token-secret',
         ANTHROPIC_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('authentication is ambiguous')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateClaudeAgentProvider(fixture.releaseRoot, {
         CLAUDE_PATH: fixture.executablePath,
         ANTHROPIC_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('API configuration is unavailable')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateClaudeAgentProvider(fixture.releaseRoot, {
         CLAUDE_PATH: fixture.executablePath,
       }),
-    ).rejects.toThrow('subscription credential is unavailable')
+    ).rejects.toMatchObject({ stage: 'login' })
   })
 
   test('projects a subscription token only through bounded startup input', async () => {

@@ -156,8 +156,9 @@ export async function evaluateAuthorClosure(
   const installedSupport = requirePrivateInstalledBunSupport(options.installedSupport)
   await revalidatePrivateInstalledBunSupport(installedSupport).catch((error) =>
     unavailable(
-      'PROJECT_EVALUATOR_UNAVAILABLE',
+      'PROJECT_EVALUATOR_SUPPORT',
       `installed evaluator support is unavailable: ${errorText(error)}`,
+      entryProjectPath,
     ),
   )
   const runtimeMounts = installedSupport.runtimeMounts
@@ -167,8 +168,9 @@ export async function evaluateAuthorClosure(
     readFile(join(installedSupport.evaluatorSupportPath, 'project-authoring-1.schema.json')),
   ]).catch((error) =>
     unavailable(
-      'PROJECT_EVALUATOR_UNAVAILABLE',
+      'PROJECT_EVALUATOR_SUPPORT',
       `cannot seal evaluator toolchain: ${errorText(error)}`,
+      entryProjectPath,
     ),
   )
   const authoringProfile = 'project-authoring/1' as const
@@ -219,8 +221,9 @@ export async function evaluateAuthorClosure(
     )
     .catch((error) =>
       unavailable(
-        'PROJECT_EVALUATOR_UNAVAILABLE',
+        'PROJECT_EVALUATOR_LAUNCH',
         `cannot launch evaluator envelope: ${errorText(error)}`,
+        entryProjectPath,
       ),
     )
   if (
@@ -232,19 +235,22 @@ export async function evaluateAuthorClosure(
     await component.terminate().catch(() => undefined)
     const completion = await component.completion.catch((error) =>
       unavailable(
-        'PROJECT_EVALUATOR_UNAVAILABLE',
+        'PROJECT_EVALUATOR_CLEANUP',
         `evaluator envelope lost while rejecting its predicates: ${errorText(error)}`,
+        entryProjectPath,
       ),
     )
     if (!completion.fenced || completion.cleanupError !== undefined) {
       unavailable(
-        'PROJECT_EVALUATOR_UNAVAILABLE',
+        'PROJECT_EVALUATOR_CLEANUP',
         'evaluator envelope predicates were absent and cleanup was not proven',
+        entryProjectPath,
       )
     }
     unavailable(
-      'PROJECT_EVALUATOR_UNAVAILABLE',
+      'PROJECT_EVALUATOR_ENVELOPE',
       'evaluator envelope did not preserve its sealed runtime or root-only predicates',
+      entryProjectPath,
     )
   }
   const profile: EvaluatorProfile = Object.freeze({
@@ -281,7 +287,7 @@ export async function evaluateAuthorClosure(
     ])
     if (exit.cleanupError !== undefined || !exit.fenced) {
       unavailable(
-        'PROJECT_EVALUATOR_UNAVAILABLE',
+        'PROJECT_EVALUATOR_CLEANUP',
         `evaluator cleanup was not proven: ${exit.cleanupError ?? 'not fenced'}`,
         entryProjectPath,
       )
@@ -309,7 +315,7 @@ export async function evaluateAuthorClosure(
     }
     if (terminationReason !== 'payload_exit') {
       unavailable(
-        'PROJECT_EVALUATOR_UNAVAILABLE',
+        'PROJECT_EVALUATOR_INTERRUPTED',
         `evaluator ended for an unexpected reason: ${terminationReason}`,
         entryProjectPath,
       )
@@ -331,7 +337,7 @@ export async function evaluateAuthorClosure(
       throw error
     }
     const value = checkedResponse(response, entryProjectPath)
-    contextualAuthorSchema(schemaBytes, expected).validate(
+    contextualAuthorSchema(schemaBytes, expected, entryProjectPath).validate(
       value,
       'PROJECT_AUTHORING_SCHEMA_INVALID',
     )
@@ -436,18 +442,27 @@ function checkedResponse(response: JsonValue, projectPath: string): JsonValue {
   return response.value!
 }
 
-function contextualAuthorSchema(bytes: Uint8Array, expected: AuthorEvaluationExpectation) {
+function contextualAuthorSchema(
+  bytes: Uint8Array,
+  expected: AuthorEvaluationExpectation,
+  projectPath: string,
+) {
   let document: JsonValue
   try {
     document = decodeJson1(bytes)
   } catch (error) {
     unavailable(
-      'PROJECT_EVALUATOR_UNAVAILABLE',
+      'PROJECT_EVALUATOR_SUPPORT',
       `captured authoring schema is invalid: ${errorText(error)}`,
+      projectPath,
     )
   }
   if (!isRecord(document) || !isRecord(document.$defs)) {
-    unavailable('PROJECT_EVALUATOR_UNAVAILABLE', 'captured authoring schema has no definitions')
+    unavailable(
+      'PROJECT_EVALUATOR_SUPPORT',
+      'captured authoring schema has no definitions',
+      projectPath,
+    )
   }
   const definition = expected === 'project' ? 'project' : 'bindingDefinition'
   try {
@@ -457,8 +472,9 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: AuthorEvaluationExp
     })
   } catch (error) {
     unavailable(
-      'PROJECT_EVALUATOR_UNAVAILABLE',
+      'PROJECT_EVALUATOR_SUPPORT',
       `captured authoring schema cannot compile: ${errorText(error)}`,
+      projectPath,
     )
   }
 }

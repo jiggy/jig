@@ -53,13 +53,20 @@ Capability can grow through composition without requiring the host to absorb
 each new workflow or Agent technique. Runtime independence lets authors choose
 how their methods advance; explicit boundaries let other software use the work.
 
-The elegance we seek is substantial expressive power through a small set of
-responsibilities. "Microkernel-inspired" names that design conviction. It does
-not require an operating system, general service framework, or universal
-application model. Flows perform bounded work; capabilities expose interfaces
-or controlled effects; runtimes own internal control. FLOW's independent
-method boundary supports this composition without adopting Jig's host policy.
-Their detailed product reasoning lives in [FLOW](flow.md) and [Jig](jig.md).
+"Microkernel-inspired" is primarily a communication analogy for a powerful
+host with clear responsibilities, not a development objective. Prioritize useful
+power, easier adoption and composition, and less configuration and lifecycle
+knowledge for consumers. Neither shrinking the core nor extracting another
+module into a Flow earns priority by itself. Judge extraction by the reuse,
+replaceability, or reduced burden it enables while preserving the boundaries.
+
+This does not require an operating system, general service framework, or
+universal application model. Flows perform bounded work; optional invocation
+contracts name interfaces, including services backed by host-held powers.
+Uniform calls do not make that native authority package authority. FLOW's
+independent method boundary does not adopt Jig's host policy. The product
+reasoning lives in [FLOW](flow.md) and [Jig](jig.md); the
+[communication guide](../communication.md) owns the architectural analogy's use.
 
 ## 2. Preserve the promise with the least burden
 
@@ -91,6 +98,29 @@ substantial when it upholds a demonstrated safety, failure, or lifecycle
 invariant. Neither a smaller file nor a smaller table count is sufficient
 evidence of a better design. Equally, invoking safety does not excuse machinery
 whose actual responsibility has disappeared.
+
+### Progressive disclosure is a design obligation
+
+Some distinctions are essential; making every caller manually coordinate them
+is not. Preserve the difference between observations and results, requested
+cancellation and settled work, or a valid answer and retained state. Put their
+repetitive coordination in reusable SDK or library helpers, methods, or host
+machinery at the layer that owns the responsibility. Keep application decisions
+and operator authority explicit.
+
+An ordinary author should concentrate on the method, and an operator on its
+powers. Introduce advanced controls when the task needs them, without requiring
+simple callers to learn unused protocols or lifecycle states. Defaults and
+helpers must preserve inspectable choices, honest failures and cleanup; they
+must not silently grant powers, retry uncertain work, or equate partial results
+with success.
+
+Judge simplicity across the complete consumer task, not by API method count.
+Count required concepts, configuration files, duplicated declarations, manual
+wiring and recovery code. Prefer making existing power easier to use over
+adding another abstraction. A reusable public correction must work in ordinary
+consumer projects; example-only wrappers or extra instructions that conceal
+product friction do not satisfy this obligation.
 
 ### Warning signs
 
@@ -150,7 +180,8 @@ For a material change, apply that hierarchy through these questions:
 3. What authority, information, or lifetime crosses a boundary? Who grants,
    observes, and revokes it, and can the operator understand the change?
 4. Can existing finite calls, exact choices, schemas, ordinary data, and sane
-   defaults express the outcome?
+   defaults express the outcome? Which configuration or lifecycle coordination
+   must the consumer still manage, and which can its responsible layer remove?
 5. Has an independent consumer required this abstraction, or is one
    implementation being mistaken for a portable interface?
 6. What happens when a model lies, abstains, returns malformed data, or names

@@ -11,6 +11,7 @@ import {
   resolvePrivateNativeAgentExecutable,
 } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const PI_CLIENT = 'pi'
 const SANDBOX_LAUNCHER_PATH = '/agent/pi-agent-launcher.js'
@@ -38,6 +39,7 @@ export async function openPrivatePiAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
+  selectedModel?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   const executablePath = await resolvePrivateNativeAgentExecutable(
@@ -45,9 +47,11 @@ export async function openPrivatePiAgentProvider(
     environment,
     projectDirectory,
   )
-  const runtime = await inspectPrivateNativeAgentRuntime(executablePath, projectDirectory)
+  const runtime = await checkAcpSetup('installation', () =>
+    inspectPrivateNativeAgentRuntime(executablePath, projectDirectory),
+  )
   // Pi locates its manifest and themes beside the actual standalone binary.
-  if (runtime.pathPrefix) throw new Error('wrapped native Pi is unsupported')
+  if (runtime.pathPrefix) throw new PrivateAcpSetupError('installation')
   const outsideProject = await privateNativeAgentSupportResolver(projectDirectory)
   async function asset(path: string): Promise<string> {
     const exact = await outsideProject(path)
@@ -55,51 +59,56 @@ export async function openPrivatePiAgentProvider(
     return exact
   }
   const nativeRoot = dirname(executablePath)
-  const manifestPath = await piManifestFile(await asset(join(nativeRoot, 'package.json')))
-  const support: PrivatePiAgentSupport = Object.freeze({
-    launcherPath: join(releaseRoot, 'libexec', 'agent', 'pi-agent-launcher.js'),
-    adapterPath: join(releaseRoot, 'libexec', 'agent', 'pi-acp.js'),
-    executablePath,
-    runtimeMounts: runtime.mounts,
-    manifestPath,
-    darkThemePath: await ordinaryFile(
-      await asset(join(nativeRoot, 'theme', 'dark.json')),
-      'native Pi dark theme',
-    ),
-    lightThemePath: await ordinaryFile(
-      await asset(join(nativeRoot, 'theme', 'light.json')),
-      'native Pi light theme',
-    ),
-    certificatesPath: await ordinaryFile(
-      '/etc/ssl/certs/ca-certificates.crt',
-      'host certificate bundle',
-    ),
-  })
+  const support: PrivatePiAgentSupport = await checkAcpSetup('installation', async () =>
+    Object.freeze({
+      launcherPath: join(releaseRoot, 'libexec', 'agent', 'pi-agent-launcher.js'),
+      adapterPath: join(releaseRoot, 'libexec', 'agent', 'pi-acp.js'),
+      executablePath,
+      runtimeMounts: runtime.mounts,
+      manifestPath: await piManifestFile(await asset(join(nativeRoot, 'package.json'))),
+      darkThemePath: await ordinaryFile(
+        await asset(join(nativeRoot, 'theme', 'dark.json')),
+        'native Pi dark theme',
+      ),
+      lightThemePath: await ordinaryFile(
+        await asset(join(nativeRoot, 'theme', 'light.json')),
+        'native Pi light theme',
+      ),
+      certificatesPath: await ordinaryFile(
+        '/etc/ssl/certs/ca-certificates.crt',
+        'host certificate bundle',
+      ),
+    }),
+  )
 
   const provider = environment.PI_PROVIDER
-  const model = environment.PI_MODEL
+  const model = configuredAcpModel(selectedModel ?? environment.PI_MODEL)
   const apiKey = environment.PI_API_KEY
   if (provider !== undefined || model !== undefined || apiKey !== undefined) {
     if (provider === undefined || model === undefined) {
-      throw new Error('the Pi provider configuration is unavailable')
+      throw new PrivateAcpSetupError('model')
     }
     if (apiKey !== undefined) {
-      const opened = await createPrivatePiApiKeyAgentProvider({
-        ...support,
-        provider,
-        model,
-        apiKey,
-      })
+      const opened = await checkAcpSetup('api', () =>
+        createPrivatePiApiKeyAgentProvider({
+          ...support,
+          provider,
+          model,
+          apiKey,
+        }),
+      )
       runtime.verifyProvider(opened)
       return opened
     }
-    const selectedProvider = requireSubscriptionProvider(provider)
+    const selectedProvider = await checkAcpSetup('login', () =>
+      requireSubscriptionProvider(provider),
+    )
     const configuredAgentDirectory = environment.PI_CODING_AGENT_DIR
     if (
       configuredAgentDirectory !== undefined &&
       (configuredAgentDirectory.length === 0 || configuredAgentDirectory.includes('\0'))
     ) {
-      throw new Error('the Pi subscription configuration is unavailable')
+      throw new PrivateAcpSetupError('login')
     }
     const credentialPath = join(
       configuredAgentDirectory === undefined
@@ -107,10 +116,12 @@ export async function openPrivatePiAgentProvider(
         : resolve(configuredAgentDirectory),
       'auth.json',
     )
-    const sourceCredential = await readCredentialFile(credentialPath)
+    const sourceCredential = await checkAcpSetup('login', () => readCredentialFile(credentialPath))
     let credential: Uint8Array | undefined
     try {
-      credential = projectSubscriptionCredential(sourceCredential, selectedProvider)
+      credential = await checkAcpSetup('login', () =>
+        projectSubscriptionCredential(sourceCredential, selectedProvider),
+      )
       const opened = await createPrivatePiSubscriptionAgentProvider({
         ...support,
         provider: selectedProvider,
@@ -124,7 +135,7 @@ export async function openPrivatePiAgentProvider(
       credential?.fill(0)
     }
   }
-  throw new Error('the Pi provider configuration is unavailable')
+  throw new PrivateAcpSetupError('model')
 }
 
 export interface PrivatePiAgentSupport {

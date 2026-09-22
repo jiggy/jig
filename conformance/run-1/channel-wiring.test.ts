@@ -88,7 +88,7 @@ else
             receive: grant('parent:reader', 'receive'),
           })
           const incompatible = await parent.receive()
-          expect(incompatible.method).toBe('flow/run-child')
+          expect(incompatible.method).toBe('flow/call')
           expect(incompatible.params).toEqual({
             operationId: 'incompatible',
             slot: 'incompatible',
@@ -101,8 +101,8 @@ else
           const children = [await parent.receive(), await parent.receive()]
           const work = children.find((request) => (request.params as any).slot === 'worker')!
           const watch = children.find((request) => (request.params as any).slot === 'monitor')!
-          expect(work.method).toBe('flow/run-child')
-          expect(watch.method).toBe('flow/run-child')
+          expect(work.method).toBe('flow/call')
+          expect(watch.method).toBe('flow/call')
           expect((work.params as any).channels).toEqual({ events: 'parent:writer' })
           expect((watch.params as any).channels).toEqual({
             events: 'parent:reader',
@@ -119,11 +119,10 @@ else
             },
           )
           const agent = await worker.receive()
-          expect(agent.method).toBe('capability/call')
+          expect(agent.method).toBe('flow/call')
           expect(agent.params).toEqual({
             operationId: 'answer',
             slot: 'agent',
-            method: 'run',
             input: null,
             channels: { events: 'worker:writer' },
           })
@@ -184,7 +183,7 @@ else
           answer(parent, watch, monitorResult)
           // EOF, lost observation and deliberate disposal do not finish work.
           // The Agent and its worker still need their separate actual result.
-          answer(worker, agent, { value: { answer: 'Actual answer' } })
+          answer(worker, agent, { outcome: 'done', output: { answer: 'Actual answer' } })
           const workerTerminal = await worker.receive()
           expect(workerTerminal).toEqual({
             jsonrpc: '2.0',

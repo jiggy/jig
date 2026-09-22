@@ -1,13 +1,117 @@
 import { describe, expect, test } from 'bun:test'
 
 import { CheckError } from '../src/diagnostics.js'
-import { parseFlowDocument } from '../src/package/metadata.js'
+import { parseFlowDocument, parseFlowMetadataSidecar } from '../src/package/metadata.js'
 
 const encoder = new TextEncoder()
 const flow = (frontmatter: string, body = ''): Uint8Array =>
   encoder.encode(`---\n${frontmatter}\n---\n${body}`)
 
 describe('FLOW.md Metadata/1', () => {
+  const featureParsers = [
+    ['Markdown', (value: unknown) => parseFlowDocument(flow(JSON.stringify(value))).metadata],
+    ['JSON', (value: unknown) => parseFlowMetadataSidecar(encoder.encode(JSON.stringify(value)))],
+  ] as const
+
+  for (const [owner, parse] of featureParsers) {
+    test(`${owner} preserves optional feature declarations and their explicit presence`, () => {
+      const metadata = parse({
+        supports: ['sessions', 'conversation'],
+        uses: {
+          worker: { contract: './contracts/worker.json', requires: ['conversation'] },
+          ordinary: { contract: './contracts/worker.json' },
+          uncontracted: {},
+        },
+      })
+      expect(metadata.supports).toEqual(['sessions', 'conversation'])
+      expect(metadata.uses).toEqual({
+        worker: { contract: './contracts/worker.json', requires: ['conversation'] },
+        ordinary: { contract: './contracts/worker.json' },
+        uncontracted: {},
+      })
+      expect(metadata.unknownFields).toEqual({})
+      expect(Object.isFrozen(metadata.supports)).toBe(true)
+      expect(Object.isFrozen(metadata.uses?.worker?.requires)).toBe(true)
+      expect(parse({})).not.toHaveProperty('supports')
+      expect(
+        parse({ supports: [], uses: { worker: { contract: './worker.json', requires: [] } } }),
+      ).toMatchObject({ supports: [], uses: { worker: { requires: [] } } })
+      // Catalog membership belongs to aggregate inspection, not metadata parsing.
+      expect(parse({ supports: ['not-in-a-catalog'] }).supports).toEqual(['not-in-a-catalog'])
+    })
+
+    test(`${owner} rejects malformed or duplicate feature names and misplaced requirements`, () => {
+      for (const names of [
+        null,
+        true,
+        'conversation',
+        {},
+        [true],
+        [''],
+        ['Conversation'],
+        ['conversation\n'],
+        ['a'.repeat(65)],
+        ['events', 'events'],
+      ]) {
+        expectCheckError(() => parse({ supports: names }))
+        expectCheckError(() =>
+          parse({ uses: { worker: { contract: './worker.json', requires: names } } }),
+        )
+      }
+      for (const declaration of [
+        { requires: [] },
+        { requires: ['events'] },
+        { contract: './worker.json', supports: ['events'] },
+        { contract: './worker.json', requires: [], unknown: true },
+      ])
+        expectCheckError(() => parse({ uses: { worker: declaration } }), 'METADATA_USES')
+    })
+
+    test(`${owner} uses inclusive feature list and LocalName bounds`, () => {
+      const names = Array.from({ length: 256 }, (_, index) => `feature-${index}`)
+      const metadata = parse({
+        supports: names,
+        uses: { worker: { contract: './worker.json', requires: names } },
+      })
+      expect(metadata.supports).toHaveLength(256)
+      expect(metadata.uses?.worker?.requires).toHaveLength(256)
+      expect(parse({ supports: ['a'.repeat(64)] }).supports).toEqual(['a'.repeat(64)])
+      expectCheckError(() => parse({ supports: [...names, 'extra'] }), 'METADATA_LIMIT')
+      expectCheckError(
+        () =>
+          parse({
+            uses: {
+              worker: {
+                contract: './worker.json',
+                requires: [...names, 'extra'],
+              },
+            },
+          }),
+        'METADATA_LIMIT',
+      )
+    })
+  }
+
+  test('accepts natural YAML feature lists and rejects duplicate members in either owner', () => {
+    const metadata = parseFlowDocument(
+      flow(`supports: [events, conversation]
+uses:
+  worker:
+    contract: ./worker.json
+    requires:
+      - conversation`),
+    ).metadata
+    expect(metadata.supports).toEqual(['events', 'conversation'])
+    expect(metadata.uses?.worker?.requires).toEqual(['conversation'])
+    expectCheckError(() => parseFlowDocument(flow('supports: []\nsupports: []')))
+    expectCheckError(() =>
+      parseFlowMetadataSidecar(encoder.encode('{"supports":[],"supports":[]}')),
+    )
+    const duplicate = '{"uses":{"worker":{"contract":"./worker.json","requires":[],"requires":[]}}}'
+    expectCheckError(() => parseFlowDocument(flow(duplicate)))
+    expectCheckError(() => parseFlowMetadataSidecar(encoder.encode(duplicate)))
+  })
+
   test('accepts the minimal Run form and preserves the Markdown body', () => {
     const parsed = parseFlowDocument(
       flow(
@@ -19,25 +123,25 @@ describe('FLOW.md Metadata/1', () => {
       name: 'gauntlet-loop',
       description: 'Build and review an artifact.',
       extensions: {},
+      unknownFields: {},
     })
     expect(parsed.markdown).toBe('# Procedure\n\r\nKeep these bytes.\n')
   })
 
-  test('accepts the optional Run fields and inert JSON-shaped extensions', () => {
+  test('accepts Skill metadata, exact uses and inert JSON-shaped extensions', () => {
     const parsed = parseFlowDocument(
       flow(`name: document-index
 description: >-
   Query a document index.
 uses:
   agent:
-    contract: ./contracts/agent.capability.json
-  scratch:
-    local: true
-attachments:
-  source: read
-  cache: read-write
-outcomes:
-  waiting: External input is required.
+    contract: ./contracts/agent.json
+  scratch: {}
+license: MIT
+compatibility: Requires supplied text.
+metadata:
+  author: example
+allowed-tools: Read
 x-example:
   - null
   - true
@@ -49,12 +153,15 @@ x-example:
       name: 'document-index',
       description: 'Query a document index.',
       uses: {
-        agent: { contract: './contracts/agent.capability.json' },
-        scratch: { local: true },
+        agent: { contract: './contracts/agent.json' },
+        scratch: {},
       },
-      attachments: { source: 'read', cache: 'read-write' },
-      outcomes: { waiting: 'External input is required.' },
+      license: 'MIT',
+      compatibility: 'Requires supplied text.',
+      metadata: { author: 'example' },
+      'allowed-tools': 'Read',
       extensions: { 'x-example': [null, true, 1, '2026-08-24'] },
+      unknownFields: {},
     })
   })
 
@@ -101,24 +208,77 @@ x-example:
     const parsed = parseFlowDocument(flow(`name: exact\ndescription: Exact.\n${maximum}: true`))
     expect(parsed.metadata.extensions[maximum]).toBe(true)
 
-    expectCheckError(
-      () => parseFlowDocument(flow(`name: exact\ndescription: Exact.\nx-${'a'.repeat(65)}: true`)),
-      'METADATA_FIELD',
-    )
+    const unknown = `x-${'a'.repeat(65)}`
+    expect(parseFlowDocument(flow(`${unknown}: true`)).metadata.unknownFields[unknown]).toBe(true)
   })
 
-  test('locates an unknown metadata member without reflecting it in the public message', () => {
-    try {
-      parseFlowDocument(flow('name: exact\ndescription: Exact.\nformat: 2'))
-      throw new Error('expected CheckError')
-    } catch (error) {
-      expect(error).toBeInstanceOf(CheckError)
-      expect(error).toMatchObject({
-        code: 'METADATA_FIELD',
-        path: 'FLOW.md',
-        pointer: '/format',
+  test('preserves unknown declarations for unsupported qualification without granting meaning', () => {
+    const parsed = parseFlowDocument(flow('format: 2\nchannels: {forged: true}\nx-Bad: true'))
+    expect(parsed.metadata.unknownFields).toEqual({
+      format: 2,
+      channels: { forged: true },
+      'x-Bad': true,
+    })
+    expect(parsed.metadata.extensions).toEqual({})
+    expect(Object.isFrozen(parsed.metadata.unknownFields)).toBe(true)
+  })
+
+  test('accepts absent or empty frontmatter and preserves inexact delimiters as prose', () => {
+    for (const body of ['# Revise the input.\n', '--- \nname: exact\n---\n', '']) {
+      const parsed = parseFlowDocument(encoder.encode(body))
+      expect(parsed.metadata).toEqual({ extensions: {}, unknownFields: {} })
+      expect(parsed.markdown).toBe(body)
+    }
+    for (const source of ['---\n---\n', '---\r---\r', '---\r\n---']) {
+      expect(parseFlowDocument(encoder.encode(source))).toEqual({
+        metadata: { extensions: {}, unknownFields: {} },
+        markdown: '',
       })
     }
+    expectCheckError(() => parseFlowDocument(encoder.encode('---')), 'METADATA_DELIMITER')
+    expectCheckError(() => parseFlowDocument(flow('null')), 'METADATA_ROOT')
+  })
+
+  test('validates optional names/descriptions only when present', () => {
+    expect(parseFlowDocument(flow('name: exact')).metadata.description).toBeUndefined()
+    expect(parseFlowDocument(flow('description: Exact.')).metadata.name).toBeUndefined()
+    expectCheckError(() => parseFlowDocument(flow('name: ""')))
+    expectCheckError(() => parseFlowDocument(flow('description: ""')))
+    expectCheckError(() => parseFlowDocument(flow('name: "exact\\n"')))
+    expectCheckError(() => parseFlowDocument(flow('uses: {markdown-agent: {}}')), 'METADATA_USES')
+  })
+
+  test('code-side JSON metadata has the same fields and bounds without Markdown interpretation', () => {
+    const parsed = parseFlowMetadataSidecar(
+      encoder.encode(
+        JSON.stringify({
+          name: 'exact',
+          'allowed-tools': '',
+          metadata: { author: 'example' },
+          uses: { 'markdown-agent': {} },
+          unknown: true,
+        }),
+      ),
+    )
+    expect(parsed['allowed-tools']).toBe('')
+    expect(parsed.unknownFields).toEqual({ unknown: true })
+    expect(parsed.uses).toEqual({ 'markdown-agent': {} })
+    for (const source of [
+      'null',
+      '{"name":"a","name":"b"}',
+      '{"metadata":{"a":1}}',
+      '{"allowed-tools":[]}',
+    ]) {
+      expectCheckError(() => parseFlowMetadataSidecar(encoder.encode(source)))
+    }
+    expectCheckError(
+      () =>
+        parseFlowMetadataSidecar(
+          encoder.encode(JSON.stringify({ 'x-data': Array.from({ length: 257 }, () => null) })),
+        ),
+      'METADATA_LIMIT',
+    )
+    expectCheckError(() => parseFlowMetadataSidecar(new Uint8Array(262_145)), 'METADATA_LIMIT')
   })
 
   test('enforces frontmatter bytes, depth, and total nodes inclusively', () => {
@@ -169,8 +329,6 @@ function invalidDocuments(): Array<readonly [string, Uint8Array]> {
   return [
     ['UTF-8 BOM', Uint8Array.from([0xef, 0xbb, 0xbf, ...flow(minimal)])],
     ['invalid UTF-8 in the Markdown body', Uint8Array.from([...flow(minimal), 0xff])],
-    ['a missing opening delimiter', encoder.encode(`${minimal}\n---\n`)],
-    ['an inexact opening delimiter', encoder.encode(`--- \n${minimal}\n---\n`)],
     ['a missing closing delimiter', encoder.encode(`---\n${minimal}\n`)],
     ['an inexact closing delimiter', encoder.encode(`---\n${minimal}\n--- \n`)],
     ['a duplicate key', flow('name: exact\nname: other\ndescription: Exact.')],
@@ -178,18 +336,16 @@ function invalidDocuments(): Array<readonly [string, Uint8Array]> {
     ['an alias', flow('name: exact\ndescription: &text Exact.\nx-copy: *text')],
     ['an explicit tag', flow('name: exact\ndescription: !!str Exact.')],
     ['a non-string mapping key', flow('name: exact\ndescription: Exact.\n? [bad]\n: value')],
-    ['flow: 1', flow(`${minimal}\nflow: 1`)],
-    ['a format discriminator', flow(`${minimal}\nformat: 2`)],
-    ['an unknown unnamespaced field', flow(`${minimal}\nunknown: true`)],
-    ['an invalid extension key', flow(`${minimal}\nx-Bad: true`)],
-    ['a reserved outcome', flow(`${minimal}\noutcomes:\n  done: No.`)],
+    ['non-string Skill metadata', flow(`${minimal}\nmetadata: {count: 1}`)],
+    ['invalid tool declaration', flow(`${minimal}\nallowed-tools: [Read]`)],
+    ['a non-object use declaration', flow(`${minimal}\nuses: {agent: true}`)],
     ['an unsafe JSON/1 number', flow(`${minimal}\nx-number: 9007199254740993`)],
     [
       'an escaping author reference',
       flow(`${minimal}\nuses:\n  agent:\n    contract: ../agent.json`),
     ],
     [
-      'an ambiguous capability use',
+      'an unsupported invocation-use field',
       flow(`${minimal}\nuses:\n  agent:\n    contract: ./agent.json\n    local: true`),
     ],
   ]

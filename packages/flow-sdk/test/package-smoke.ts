@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 
@@ -70,7 +70,7 @@ try {
     unknown
   >
   assert.equal(Object.hasOwn(manifest, 'private'), false)
-  assert.equal(manifest.version, '0.1.0-alpha.10')
+  assert.equal(manifest.version, '0.1.0-alpha.11')
   assert.equal(Object.hasOwn(manifest, 'scripts'), false)
   assert.equal(manifest.license, 'Apache-2.0')
   assert.deepEqual(manifest.publishConfig, { access: 'public' })
@@ -78,12 +78,12 @@ try {
 
   await writeFile(
     join(consumer, 'smoke.mjs'),
-    `import { CapabilityError, OperationError, handle } from "@jigging/flow";
+    `import * as flow from "@jigging/flow";
+const { OperationError, handle } = flow;
 const operation = new OperationError("UNAVAILABLE");
-const effect = new CapabilityError("not-found", null);
 if (
   operation.code !== "UNAVAILABLE" ||
-  effect.errorName !== "not-found" ||
+  Object.keys(flow).sort().join(",") !== "OperationError,handle" ||
   typeof handle !== "function"
 ) {
   throw new Error("installed runtime exports are invalid");
@@ -111,7 +111,7 @@ if (
     join(consumer, 'root-flow.mjs'),
     `import { handle } from "@jigging/flow";
 await handle(async (run) => {
-  if (typeof run.runChildFlow !== "function" || typeof run.callCapability !== "function" ||
+  if (typeof run.call !== "function" ||
       typeof run.channel !== "function" || Object.keys(run.channels).length !== 0) {
     throw new Error("installed RunContext methods are unavailable");
   }
@@ -154,6 +154,63 @@ console.log("packed after handle");
   }
 
   await writeFile(
+    join(consumer, 'call-flow.mjs'),
+    `import { handle } from "@jigging/flow";
+await handle(async (run) => {
+  const work = run.call({
+    operationId: "work:1", slot: "worker", input: run.input,
+    intent: "Advisory metadata", channels: {},
+  });
+  const lookup = run.call({ operationId: "lookup:1", slot: "records", input: null });
+  return { outcome: "done", output: { work: await work, lookup: await lookup } };
+});
+`,
+  )
+  const workResult = { outcome: 'done', output: { reviewed: true } }
+  const lookupResult = { outcome: 'not-found', output: { id: 7 } }
+  const callResponses = [
+    { jsonrpc: '2.0', id: 'component:2', result: lookupResult },
+    { jsonrpc: '2.0', id: 'component:1', result: workResult },
+  ]
+    .map((message) => `${JSON.stringify(message)}\n`)
+    .join('')
+  for (const runtime of [bun, node]) {
+    const handled = await run([runtime, 'call-flow.mjs'], consumer, request + callResponses, true)
+    assert.equal(handled.stderr, '')
+    assert.deepEqual(
+      handled.stdout
+        .trimEnd()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+      [
+        {
+          jsonrpc: '2.0',
+          id: 'component:1',
+          method: 'flow/call',
+          params: {
+            operationId: 'work:1',
+            slot: 'worker',
+            input: { source: 'packed-archive' },
+            intent: 'Advisory metadata',
+            channels: {},
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 'component:2',
+          method: 'flow/call',
+          params: { operationId: 'lookup:1', slot: 'records', input: null },
+        },
+        {
+          jsonrpc: '2.0',
+          id: 'package:smoke',
+          result: { outcome: 'done', output: { work: workResult, lookup: lookupResult } },
+        },
+      ],
+    )
+  }
+
+  await writeFile(
     join(consumer, 'application.mjs'),
     `console.log("packed application top-level log");
 const cachedLog = console.log.bind(console);
@@ -190,20 +247,26 @@ await handle(async (run) => {
 
   await writeFile(
     join(consumer, 'smoke.ts'),
-    `import { CapabilityError, OperationError, type CallOptions, type ChildFlowRequest, type CapabilityCall, type ChannelBroadcast, type ChannelContractIdentity, type ChannelEndpoint, type ChannelOptions, type ChannelPair, type ChannelReceiver, type ChannelSender, type JsonValue, type RunContext, type RunHandler, type RunResult } from "@jigging/flow";
-const child: ChildFlowRequest = { operationId: "child:1", slot: "reviewer", input: null };
-const capability: CapabilityCall = {
+    `import { OperationError, type CallOptions, type FlowCall, type ChannelBroadcast, type ChannelContractIdentity, type ChannelEndpoint, type ChannelOptions, type ChannelPair, type ChannelReceiver, type ChannelSender, type JsonValue, type RunContext, type RunHandler, type RunResult } from "@jigging/flow";
+const child: FlowCall = { operationId: "child:1", slot: "reviewer", input: null };
+const call: FlowCall = {
     operationId: "smoke:1",
     slot: "clock",
-    method: "now",
+    intent: "Read the current time.",
     input: null,
 };
 const handler: RunHandler = async (run) => {
-  const result = await run.runChildFlow(child);
-  await run.callCapability(capability);
+  const result: RunResult = await run.call(child);
+  const other: RunResult = await run.call(call);
+  void other;
   return result;
 };
-void new CapabilityError("not-found", null);
+// @ts-expect-error Input is required even when its value is null.
+const incomplete: FlowCall = { operationId: "missing:1", slot: "worker" };
+// @ts-expect-error The single execution profile has no operation selector.
+const selected: FlowCall = { ...call, operation: "read" };
+void incomplete;
+void selected;
 void handler;
 const runResult: RunResult = {
   outcome: "done",
@@ -224,7 +287,7 @@ async function channelTypes(run: RunContext, options: CallOptions): Promise<RunR
   const receiver: ChannelReceiver = pair.receive;
   const identity: ChannelContractIdentity | undefined = receiver.contract;
   const endpoints: Readonly<Record<string, ChannelEndpoint>> = { events: sender };
-  const work = run.callCapability({ ...capability, channels: endpoints }, options);
+  const work: Promise<RunResult> = run.call({ ...call, channels: endpoints }, options);
   for await (const value of receiver) console.log(value);
   await receiver.close(options);
   const result = await work;
@@ -234,7 +297,7 @@ async function channelTypes(run: RunContext, options: CallOptions): Promise<RunR
     await output.close(options);
   }
   const item: IteratorResult<JsonValue> = await receiver.next(options);
-  const childResult = await run.runChildFlow({ ...child, channels: {} }, options);
+  const childResult = await run.call({ ...child, channels: {} }, options);
   const direct: ChannelPair = await run.channel();
   const broadcast: ChannelBroadcast = await run.channel({ delivery: "broadcast" }, options);
   const subscribed: ChannelReceiver = await broadcast.subscribe(options);

@@ -6,6 +6,9 @@ on:
     paths:
       - ".github/workflows/linux-host-conformance.yml"
       - "packages/jig/**"
+      - "packages/agent-method/**"
+      - "packages/agent-acp/**"
+      - "packages/flow-authoring/**"
       - "packages/flow-sdk/**"
       - "docs/jig/spec/**"
       - "examples/tested-patch/**"
@@ -19,6 +22,7 @@ on:
       - "scripts/ci/provision-github-rootless-host.sh"
       - "scripts/test-installed-hostile-baseline.ts"
       - "scripts/test-operational-baseline.ts"
+      - "scripts/operational-baseline-checks.ts"
   push:
     branches:
       - main
@@ -59,31 +63,50 @@ jobs:
       - name: Provision and preflight the ephemeral host
         run: scripts/ci/provision-github-rootless-host.sh provision
 
-      - name: Install Jig and FLOW SDK build dependencies
-        run: bun install --ignore-scripts --filter @jigging/jig --filter @jigging/flow
+      - name: Install Jig, Agent method, and FLOW build dependencies
+        run: >-
+          bun install --ignore-scripts --filter @jigging/jig
+          --filter @jigging/agent-method --filter @jigging/flow-authoring
+          --filter @jigging/agent-acp
+          --filter @jigging/flow
 
       - name: Build the FLOW SDK used by host fixtures
         run: just --justfile packages/flow-sdk/justfile build
 
       - name: Build and pack once
+        id: pack
         shell: bash
         run: |
           set -euo pipefail
           just --justfile packages/jig/justfile build
           artifact_directory="$RUNNER_TEMP/jig-artifact"
           mkdir "$artifact_directory"
-          (
-            cd packages/jig
-            bun pm pack --ignore-scripts --destination "$artifact_directory"
-          )
-          mapfile -t archives < <(find "$artifact_directory" -maxdepth 1 -type f -name '*.tgz' -print)
-          if [[ ${#archives[@]} -ne 1 ]]; then
-            echo "packing did not produce exactly one Jig archive" >&2
-            exit 1
-          fi
-          archive=$(readlink -f "${archives[0]}")
-          sha256sum "$archive"
-          printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
+          mkdir "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
+          one_archive() {
+            local -a archives
+            mapfile -t archives < <(find "$1" -maxdepth 1 -type f -name '*.tgz' -print)
+            if [[ ${#archives[@]} -ne 1 ]]; then
+              echo "packing did not produce exactly one archive in $1" >&2
+              return 1
+            fi
+            readlink -f "${archives[0]}"
+          }
+          bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$artifact_directory/flow-sdk"
+          FLOW_SDK_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/flow-sdk")
+          export FLOW_SDK_PACKAGE_ARCHIVE
+          bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$artifact_directory/agent-method"
+          AGENT_METHOD_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-method")
+          export AGENT_METHOD_PACKAGE_ARCHIVE
+          bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$artifact_directory/agent-acp"
+          AGENT_ACP_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-acp")
+          bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
+          JIG_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/jig")
+          sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" |
+            tee "$artifact_directory/SHA256SUMS"
+          printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\nAGENT_METHOD_PACKAGE_ARCHIVE=%s\nJIG_PACKAGE_ARCHIVE=%s\n' \
+            "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" >> "$GITHUB_ENV"
+          printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$AGENT_ACP_PACKAGE_ARCHIVE" >> "$GITHUB_ENV"
+          printf 'JIG_CI_ARCHIVE_DIGESTS=%s\n' "$artifact_directory/SHA256SUMS" >> "$GITHUB_ENV"
 
       - name: Prove transient delegation and lifetime fencing
         run: >-
@@ -120,6 +143,13 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/project-command-lifecycle.test.ts
           --timeout 180000
 
+      - name: Prove delegated HTTP authority and coordinator-loss cleanup
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/http-request-lifecycle.test.ts
+          --timeout 240000
+
       - name: Prove retained progress and coordinator-loss delivery
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
@@ -127,17 +157,37 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/run-checkpoint-lifecycle.test.ts
           --timeout 90000
 
-      - name: Prove the deterministic Agent lifecycle
+      - name: Prove the Agent lifecycle and ordinary method composition
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE"
+          "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts
           --timeout 180000
 
-      - name: Run Operational Baseline/1 against the packed archive
+      - name: Prove ordinary ACP Agent progress and cancellation
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE"
+          "$JIG_CI_BUN" test packages/jig/test/finite-acp-lifecycle.test.ts
+          --timeout 180000
+
+      - name: Prove installed Markdown and exact typed calls
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
+          "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE"
+          "$JIG_CI_BUN" test packages/jig/test/markdown-worker.test.ts
+          --timeout 120000
+
+      - name: Run Operational Baseline/1 against the packed archive
+        id: operational
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
+          env TMPDIR=/tmp "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" scripts/test-operational-baseline.ts
 
       - name: Attack the packed CLI inside the proved envelope
@@ -146,6 +196,19 @@ jobs:
           env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts
 
+      - name: Verify the tested archives are unchanged
+        if: ${{ always() && steps.pack.outcome == 'success' }}
+        run: sha256sum --check "$JIG_CI_ARCHIVE_DIGESTS"
+
       - name: Require zero host residue
         if: always()
         run: scripts/ci/provision-github-rootless-host.sh assert-clean
+
+      - name: Retain failed operational command transcripts
+        if: ${{ always() && (steps.operational.outcome == 'failure' || steps.operational.outcome == 'cancelled') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: operational-baseline-failure
+          path: /tmp/jig-operational-baseline-*/command-*.json
+          if-no-files-found: ignore
+          retention-days: 7

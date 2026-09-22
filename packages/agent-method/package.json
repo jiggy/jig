@@ -1,0 +1,54 @@
+{
+  "name": "@jigging/agent-method",
+  "version": "0.1.0-alpha.1",
+  "description": "A reusable bounded Agent method with an ordinary FLOW entrypoint",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiggy/jig.git",
+    "directory": "packages/agent-method"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./skills": {
+      "types": "./dist/skills.d.ts",
+      "import": "./dist/skills.js"
+    },
+    "./conversation": {
+      "types": "./dist/conversation.d.ts",
+      "import": "./dist/conversation.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "FLOW.ts",
+    "FLOW.contract.json",
+    "flow.meta.json",
+    "settings.schema.json",
+    "contracts",
+    "skills",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES",
+    "licenses",
+    "justfile",
+    "tsconfig.json",
+    "test"
+  ],
+  "devDependencies": {
+    "@jigging/flow": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

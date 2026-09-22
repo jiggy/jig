@@ -1,0 +1,8 @@
+{
+  "name": "agent-method",
+  "supports": [],
+  "description": "Prepare instructions and guidance, request one text response through an HTTP slot, and check the result.",
+  "uses": {
+    "http": { "contract": "./contracts/http-request/contract.json" }
+  }
+}

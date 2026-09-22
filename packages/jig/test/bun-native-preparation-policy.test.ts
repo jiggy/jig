@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'bun:test'
-
-import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../src/internal/bun-execution-layout.js'
 import {
+  PrivateBunManifestError,
+  requirePrivateBunLockPolicy,
+  requirePrivateBunPatches,
+  requirePrivateBunResolutionManifest,
+} from '../src/internal/bun-native-lock-policy.js'
+import {
+  encodePrivateBunMessage,
+  maximumPrivateBunFileMessageBytes,
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
-  encodePrivateBunMessage,
-  maximumPrivateBunFileMessageBytes,
   privateBunMessageFits,
 } from '../src/internal/bun-native-preparation-protocol.js'
 import { PACKAGE_1_MAX_PATH_BYTES } from '../src/package/paths.js'
@@ -16,6 +20,80 @@ const INTEGRITY =
   'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
 
 describe('private Bun preparation policy', () => {
+  test.each([
+    [null, 'SHAPE', ''],
+    [{ overrides: { x: 'sensitive-rejected-value' } }, 'FIELD', '/overrides'],
+    [{ devDependencies: 'sensitive-rejected-value' }, 'DEPENDENCIES', '/devDependencies'],
+    [{ dependencies: { 'secret\nhttps://credential@host': '*' } }, 'NAME', '/dependencies'],
+    [
+      { dependencies: { '@example/tool': 'https://credential@host/private.tgz' } },
+      'SOURCE',
+      '/dependencies/@example~1tool',
+    ],
+    [
+      { optionalDependencies: { 'a~b': 'file:/private/path' } },
+      'SOURCE',
+      '/optionalDependencies/a~0b',
+    ],
+    [{ peerDependencies: { x: 'github:private/project' } }, 'SOURCE', '/peerDependencies/x'],
+    [{ patchedDependencies: { x: '/private/path' } }, 'PATCH', '/patchedDependencies'],
+  ])(
+    'manifest refusals preserve only a closed cause and safe field: %j',
+    (manifest, reason, pointer) => {
+      let failure: unknown
+      try {
+        requirePrivateBunResolutionManifest(manifest, 'root')
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(PrivateBunManifestError)
+      expect(failure).toMatchObject({
+        code: `PACKAGE_BUN_MANIFEST_${reason}`,
+        pointer,
+        path: 'package.json',
+      })
+      expect(JSON.stringify(failure)).not.toMatch(
+        /sensitive-rejected-value|credential|private\/path|secret/,
+      )
+    },
+  )
+
+  test('accepts exact workspace-root patch declarations without permitting member or standalone policy', () => {
+    const patchedDependencies = { '@example/value@1.2.3': 'packages/owner/patches/value.patch' }
+    expect(requirePrivateBunPatches(patchedDependencies)).toEqual(patchedDependencies)
+    expect(() => requirePrivateBunResolutionManifest({ patchedDependencies }, 'root')).not.toThrow()
+    expect(() => requirePrivateBunResolutionManifest({ patchedDependencies })).toThrow()
+    expect(() =>
+      requirePrivateBunResolutionManifest({ name: 'member', patchedDependencies }, 'member'),
+    ).toThrow()
+    expect(() =>
+      requirePrivateBunLockPolicy({ ...lock({}), patchedDependencies }, new Set()),
+    ).not.toThrow()
+    expect(() => requirePrivateBunLockPolicy({ ...lock({}), patchedDependencies })).toThrow()
+  })
+
+  test.each([
+    null,
+    [[]],
+    { 'value@^1.0.0': 'value.patch' },
+    { value: 'value.patch' },
+    { 'value@1.0.0': '../outside.patch' },
+    { 'value@1.0.0': '/outside.patch' },
+    { 'value@1.0.0': 'node_modules/value.patch' },
+    { 'value@1.0.0': '.jig/value.patch' },
+    { 'value@1.0.0': 'patches/../value.patch' },
+    { 'value@1.0.0': 'patches\\value.patch' },
+    { 'value@1.0.0': 'bunfig.toml' },
+    { 'value@1.0.0': 1 },
+    { 'value@1.0.0': 'x'.repeat(1025) + '.patch' },
+    Object.fromEntries(Array.from({ length: 257 }, (_, i) => [`value@1.0.${i}`, 'value.patch'])),
+  ])('rejects unsafe or unbounded native patch declarations: %j', (patches) => {
+    expect(() => requirePrivateBunPatches(patches)).toThrow()
+    expect(() =>
+      requirePrivateBunLockPolicy({ ...lock({}), patchedDependencies: patches }, new Set()),
+    ).toThrow()
+  })
+
   test.each([
     ['Git', ['value@git+https://github.com/example/value.git#abcdef', {}]],
     ['GitHub', ['value@github:example/value#abcdef', {}]],

@@ -5,9 +5,8 @@ import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { ChannelOperationError } from '../run/channels.js'
 import {
-  type RunHostEffectOperationTerminal,
-  type RunHostFlowOperationTerminal,
   type RunHostOperationDispatcher,
+  type RunHostOperationTerminal,
   RunHostSession,
   type RunHostTerminal,
 } from '../run/session.js'
@@ -23,13 +22,15 @@ import {
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
 } from './activation-admission-store.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
+import { openBoundAttachments } from './bound-attachments.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import type { PrivateHttpGrants } from './http-grants.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
@@ -58,26 +59,21 @@ import {
   recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
-import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
+import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
 import {
-  PrivateCheckpointRejected,
-  parseRunCheckpointInput,
-  RUN_CHECKPOINT_CONTRACT_DIGEST,
-} from './private-run-checkpoint.js'
+  executePrivateRootFiniteAcp,
+  recoverPrivateRootFiniteAcpOwners,
+} from './root-finite-acp-controller.js'
 import {
-  executePrivateRootAgentRun,
-  recoverPrivateRootAgentRunOwners,
-} from './root-agent-run-controller.js'
+  executePrivateContainedEffect,
+  recoverPrivateContainedEffectOwners,
+} from './root-contained-effect-controller.js'
 import {
   executePrivateRootFlowCall,
   recoverPrivateRootFlowCallOwners,
 } from './root-flow-call-controller.js'
 import { PRIVATE_ROOT_RESOURCE_POLICY } from './root-operation-limits.js'
-import {
-  executePrivateProjectCommand,
-  recoverPrivateProjectCommandOwners,
-} from './root-project-command-controller.js'
-import type { PrivateRootRunFiles } from './root-run-files.js'
+import { PrivateRootRunFiles } from './root-run-files.js'
 import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
 import { type PrivateRunChannelOutput, PrivateRunChannels } from './run-channels.js'
 
@@ -128,7 +124,8 @@ export async function executePrivateRootRunLaunch(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
-  readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly httpGrants?: PrivateHttpGrants | undefined
+  readonly acpResources?: PrivateAcpResources | undefined
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly signal?: AbortSignal
@@ -175,6 +172,7 @@ async function startOrResumeCurrentExecution(
   let channelPackage: Awaited<ReturnType<typeof captureStoredPackage>> | undefined
   let stopChannels: (() => void) | undefined
   let channelDeadline: ReturnType<typeof setTimeout> | undefined
+  let boundFiles: Awaited<ReturnType<typeof openBoundAttachments>> | undefined
   try {
     let recipe: PrivateDirectRunRecipe
     let plan: PrivateDirectRootPlanRecord
@@ -256,7 +254,13 @@ async function startOrResumeCurrentExecution(
     if (stop.terminal !== undefined) {
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
-    const fileProjection = input.files?.projection(work.run.runId, recipe.request, work.run.files)
+    boundFiles = await openBoundAttachments(input.packageStoreRoot, recipe.request.boundAttachments)
+    const fileProjection = (input.files ?? new PrivateRootRunFiles([], null)).projection(
+      work.run.runId,
+      recipe.request,
+      work.run.files,
+      boundFiles.attachments,
+    )
     if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
       throw new Error('root attachment authority is unavailable')
     const sealed = await input.backend.seal(
@@ -314,6 +318,7 @@ async function startOrResumeCurrentExecution(
         plan.effectiveDeadlineUnixMs,
         channels,
         channelInspected,
+        recipe,
       )
       provisional = await new RunHostSession(
         component,
@@ -454,9 +459,13 @@ async function startOrResumeCurrentExecution(
       try {
         await channelPackage?.dispose()
       } finally {
-        if (channelDeadline !== undefined) clearTimeout(channelDeadline)
-        if (stopChannels !== undefined) input.signal?.removeEventListener('abort', stopChannels)
-        stop.dispose()
+        try {
+          boundFiles?.close()
+        } finally {
+          if (channelDeadline !== undefined) clearTimeout(channelDeadline)
+          if (stopChannels !== undefined) input.signal?.removeEventListener('abort', stopChannels)
+          stop.dispose()
+        }
       }
     }
   }
@@ -720,7 +729,8 @@ async function reproduceRecipe(
     execution: target.disposition.execution,
     installedSupport: input.installedSupport,
     backend: input.backend,
-    agentProvider: input.agentProvider,
+    httpGrants: input.httpGrants,
+    acpResources: input.acpResources,
   })
   if (
     recipe.digest !== work.intent.recipeDigest ||
@@ -738,7 +748,7 @@ function backendPlan(
   plan: PrivateDirectRootPlanRecord,
 ): PrivateLinuxLaunchPlan {
   const readOnlyMounts = [
-    ...recipe.installedSupport.runtimeMounts,
+    ...recipe.runtimeMounts,
     { source: packageRoot, destination: recipe.packageDestination },
   ]
   const limits = Object.freeze({
@@ -1059,7 +1069,8 @@ function operationInput(input: RootExecutionInput, parent: PrivateReacquiredRoot
     coordinator: input.coordinator,
     installedSupport: input.installedSupport,
     backend: input.backend,
-    agentProvider: input.agentProvider,
+    httpGrants: input.httpGrants,
+    acpResources: input.acpResources,
   } as const
 }
 
@@ -1067,8 +1078,8 @@ async function recoverPrivateRootOperationOwners(
   input: ReturnType<typeof operationInput>,
 ): Promise<void> {
   await recoverPrivateRootFlowCallOwners(input)
-  await recoverPrivateRootAgentRunOwners(input)
-  await recoverPrivateProjectCommandOwners(input)
+  await recoverPrivateRootFiniteAcpOwners(input)
+  await recoverPrivateContainedEffectOwners(input)
 }
 
 function operationDispatcher(
@@ -1077,11 +1088,10 @@ function operationDispatcher(
   parentDeadlineUnixMs: number,
   channels: PrivateRunChannels,
   inspected: InspectedPackage,
+  recipe: PrivateDirectRunRecipe,
 ): RunHostOperationDispatcher | undefined {
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (target === undefined) return undefined
-  const hasFlows = Object.keys(target.request.flowSlots).length !== 0
-  const hasEffects = Object.keys(target.request.capabilities).length !== 0
   let activeFlows = 0
   let activeEffect = false
   let activeCheckpoint = false
@@ -1121,123 +1131,114 @@ function operationDispatcher(
     ...(input.channelOutput === undefined
       ? {}
       : { onDiagnostic: (bytes: Uint8Array) => input.channelOutput!.diagnostic(bytes) }),
-    ...(hasFlows
-      ? {
-          runChildFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> =>
-            enter(
-              'flow',
-              () =>
-                executePrivateRootFlowCall({
-                  ...operationInput(input, parent),
-                  channels: {
-                    caller: channels.root,
-                    broker: channels.broker,
-                    contracts: channels.contracts,
-                  },
-                  ...(input.channelOutput === undefined
-                    ? {}
-                    : {
-                        onDiagnostic: (bytes: Uint8Array) => input.channelOutput!.diagnostic(bytes),
-                      }),
-                  call,
-                  parentDeadlineUnixMs,
-                  signal,
-                }),
-              operationBusy(),
-            ),
-        }
-      : {}),
-    ...(hasEffects
-      ? {
-          callCapability: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
-            if (
-              Object.keys(call.channels ?? {}).length !== 0 &&
-              [RUN_CHECKPOINT_CONTRACT_DIGEST, PROJECT_COMMAND_CONTRACT_DIGEST].includes(
-                target.request.capabilities[call.slot]?.digest ?? '',
-              )
-            )
-              return {
-                status: 'failed',
-                code: 'UNAVAILABLE',
-                message: 'this capability has no supported channels',
-              }
-            if (target.request.capabilities[call.slot]?.digest === RUN_CHECKPOINT_CONTRACT_DIGEST) {
-              if (activeCheckpoint) return operationBusy()
-              if (call.method !== 'save')
-                return {
-                  status: 'failed',
-                  code: 'UNAVAILABLE',
-                  message: 'unknown checkpoint method',
-                }
-              let checkpoint: ReturnType<typeof parseRunCheckpointInput>
-              try {
-                checkpoint = parseRunCheckpointInput(call.input)
-              } catch {
-                return {
-                  status: 'failed',
-                  code: 'INVALID_INPUT',
-                  message: 'checkpoint exceeds its declared shape or limits',
-                }
-              }
-              if (signal.aborted)
-                return {
-                  status: 'failed',
-                  code: 'CANCELLED',
-                  message: 'checkpoint request cancelled',
-                }
-              activeCheckpoint = true
-              try {
-                if (input.files === undefined) throw new Error('checkpoint owner unavailable')
-                const receipt = await input.files.saveCheckpoint(checkpoint)
-                return { status: 'succeeded', result: { value: receipt as unknown as JsonValue } }
-              } catch (error) {
-                return {
-                  status: 'failed',
-                  code: error instanceof PrivateCheckpointRejected ? 'INVALID_INPUT' : 'UNCERTAIN',
-                  message:
-                    error instanceof PrivateCheckpointRejected
-                      ? 'checkpoint replacement rejected; earlier progress is unchanged'
-                      : 'checkpoint acknowledgement unavailable; inspect the final retained checkpoint',
-                }
-              } finally {
-                activeCheckpoint = false
-              }
-            }
-            if (target.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
-              return enter(
-                'effect',
-                () =>
-                  executePrivateProjectCommand({
-                    ...operationInput(input, parent),
-                    call,
-                    parentDeadlineUnixMs,
-                    signal,
+    call: async (call, signal): Promise<RunHostOperationTerminal> => {
+      const route = target.request.slots[call.slot]
+      if (route === undefined)
+        return { status: 'failed', code: 'UNAVAILABLE', message: 'invocation slot is not admitted' }
+      if (route.kind === 'flow')
+        return enter(
+          'flow',
+          () =>
+            executePrivateRootFlowCall({
+              ...operationInput(input, parent),
+              channels: {
+                caller: channels.root,
+                broker: channels.broker,
+                contracts: channels.contracts,
+              },
+              ...(input.channelOutput === undefined
+                ? {}
+                : {
+                    onDiagnostic: (bytes: Uint8Array, operations?: readonly string[]) =>
+                      input.channelOutput!.diagnostic(bytes, operations),
+                    diagnosticPath: [call.operationId],
                   }),
-                operationBusy(),
-              )
-            if (input.agentProvider === undefined) {
-              return Object.freeze({
-                status: 'failed' as const,
-                code: 'UNAVAILABLE' as const,
-                message: 'the admitted Agent provider is unavailable',
-              })
-            }
-            return enter(
-              'effect',
-              () =>
-                executePrivateRootAgentRun({
-                  ...operationInput(input, parent),
-                  agentProvider: input.agentProvider!,
-                  channels: { caller: channels.root, broker: channels.broker },
-                  call,
-                  parentDeadlineUnixMs,
-                  signal,
-                }),
-              operationBusy(),
-            )
-          },
+              call,
+              parentDeadlineUnixMs,
+              signal,
+            }),
+          operationBusy(),
+        )
+      if (Object.keys(call.channels ?? {}).length !== 0 && route.native !== 'finite-acp')
+        return {
+          status: 'failed',
+          code: 'UNAVAILABLE',
+          message: 'this invocation has no supported channels',
         }
-      : {}),
+      if (route.native === 'run-checkpoint') {
+        if (activeCheckpoint) return operationBusy()
+        let checkpoint: ReturnType<typeof parseRunCheckpointInput>
+        try {
+          checkpoint = parseRunCheckpointInput(call.input)
+        } catch {
+          return {
+            status: 'failed',
+            code: 'INVALID_INPUT',
+            message: 'checkpoint exceeds its declared shape or limits',
+          }
+        }
+        if (signal.aborted)
+          return {
+            status: 'failed',
+            code: 'CANCELLED',
+            message: 'checkpoint request cancelled',
+          }
+        activeCheckpoint = true
+        try {
+          if (input.files === undefined) throw new Error('checkpoint owner unavailable')
+          const receipt = await input.files.saveCheckpoint(checkpoint)
+          return {
+            status: 'succeeded',
+            result: { outcome: 'done', output: receipt as unknown as JsonValue },
+          }
+        } catch (error) {
+          return {
+            status: 'failed',
+            code: error instanceof PrivateCheckpointRejected ? 'INVALID_INPUT' : 'UNCERTAIN',
+            message:
+              error instanceof PrivateCheckpointRejected
+                ? 'checkpoint replacement rejected; earlier progress is unchanged'
+                : 'checkpoint acknowledgement unavailable; inspect the final retained checkpoint',
+          }
+        } finally {
+          activeCheckpoint = false
+        }
+      }
+      if (route.native === 'project-command' || route.native === 'http-request')
+        return enter(
+          'effect',
+          () =>
+            executePrivateContainedEffect({
+              ...operationInput(input, parent),
+              call,
+              parentDeadlineUnixMs,
+              signal,
+            }),
+          operationBusy(),
+        )
+      const provider = recipe.acp[call.slot]
+      if (provider === undefined) {
+        return Object.freeze({
+          status: 'failed' as const,
+          code: 'UNAVAILABLE' as const,
+          message: 'the admitted finite ACP provider is unavailable',
+        })
+      }
+      return enter(
+        'effect',
+        () => {
+          const invocation = {
+            ...operationInput(input, parent),
+            channels: { caller: channels.root, broker: channels.broker },
+            call,
+            parentDeadlineUnixMs,
+            signal,
+          }
+          return executePrivateRootFiniteAcp({ ...invocation, provider })
+        },
+        operationBusy(),
+      )
+    },
   } satisfies RunHostOperationDispatcher)
 }
 

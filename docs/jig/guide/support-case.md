@@ -53,7 +53,7 @@ a charge ID and an amount. The `resolve` method receives that proposal through
 its configured slot and applies the application's policy:
 
 ```ts
-const assessment = await run.runChildFlow({
+const assessment = await run.call({
   operationId: 'assess-case',
   slot: 'assessment',
   input: run.input,

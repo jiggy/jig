@@ -15,9 +15,10 @@ the small package and process boundaries that make those pieces work together.
 
 ![A Flow package contains descriptive files and an executable method. Operator choices configure a host, such as Jig, which invokes the method through Run/1.](./flow-boundary.svg)
 
-Every package has `FLOW.md`; implementation, schemas, and capability contracts
-are optional. The Run SDK helps implement the exchange. FLOW defines these
-portable boundaries, while each host decides which implementations it supports.
+Every package has one `FLOW.<ext>` implementation, including Markdown as
+`FLOW.md`. Metadata and invocation contracts are optional. The Run SDK helps
+implement the exchange. FLOW defines these portable boundaries, while each host
+decides which implementations it supports.
 
 New to FLOW? [Start building a method](./start.mdx) or read
 [why this boundary exists](./understand.md) before exploring the exact contracts.
@@ -36,13 +37,15 @@ A host's language support is separate from FLOW's SDK availability.
 ## Specifications
 
 - [JSON/1](../spec/json-values.md) defines bounded portable values.
-- [Schema/1](../spec/schema-files.md) defines conventional
-  `input.schema.json`, `settings.schema.json`, and `result.schema.json` files.
+- [Schema/1](../spec/schema-files.md) defines bounded invocation, channel and
+  implementation-settings validation.
 - [Package/1](../spec/package-format.md) defines the portable package.
 - [Run/1](../spec/run-protocol.md) defines one finite process exchange.
 - [Run SDK/1](../spec/run-sdk.md) defines TypeScript and Python SDK behavior.
-- [Capability Contract/1](../spec/capability-contracts.md) defines optional
-  machine-verifiable capability descriptors.
+- [Invocation Contract/1](../spec/invocation-contracts.md) defines one optional
+  descriptor for local validation or an exact named invocation agreement.
+- [Markdown/1](../spec/markdown-runtime.md) defines bounded prose interpretation
+  and exact SDK recipes in `FLOW.md`.
 - [Channel Contract/1](../spec/channel-contracts.md) defines optional direct
   communication ports and named message meaning.
 

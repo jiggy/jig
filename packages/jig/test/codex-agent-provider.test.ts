@@ -19,6 +19,12 @@ import {
   projectPrivateCodexSubscriptionCredential,
 } from '../src/internal/codex-agent-provider.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
+import { selectPrivateAcpResources } from '../src/internal/private-acp-resources.js'
+import {
+  FINITE_ACP_CONTRACT_ID,
+  FINITE_ACP_CONTRACT_VERSION,
+  FINITE_ACP_CONTRACT_DIGEST,
+} from '../src/internal/private-finite-acp-contract.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 import { nativeElf } from './fixtures/native-elf.js'
@@ -31,6 +37,30 @@ afterEach(async () => {
 })
 
 describe('private native Codex Agent provider', () => {
+  test('an unsupported wrapper retains its actionable stage without exposing wrapper contents', async () => {
+    const fixture = await files('/var/tmp')
+    await writeFile(
+      fixture.executablePath,
+      nativeElf({
+        wrapper: `makeCWrapper '/unavailable/native' --set 'PRIVATE_TOKEN' 'secret-canary'\n\n`,
+      }),
+      { mode: 0o700 },
+    )
+    const host = await openPrivateInstalledBunHost(installedBunLocation, {
+      CODEX_PATH: fixture.executablePath,
+      OPENAI_API_KEY: 'test-secret',
+      OPENAI_MODEL: 'test-model',
+    })
+    try {
+      await selectCodex(host)
+      throw new Error('Unsupported wrapper unexpectedly qualified')
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'PROJECT_ACP_CODEX_WRAPPER' })
+      expect(String(error)).not.toContain('secret-canary')
+      expect(String(error)).not.toContain('test-secret')
+    }
+  })
+
   test('uses operator Bubblewrap without a bundled directory and rejects later replacement', async () => {
     const fixture = await files()
     const project = join(fixture.root, 'project')
@@ -107,21 +137,18 @@ describe('private native Codex Agent provider', () => {
   })
 
   test('opens a PATH-selected client and retains its identity across PATH changes', async () => {
-    const fixture = await files()
+    // Resource admission rejects /tmp: that destination belongs to the payload.
+    // Use a normal Linux host installation location for this successful selection.
+    const fixture = await files('/var/tmp')
     const environment = {
       PATH: dirname(fixture.executablePath),
-      JIG_AGENT_CLIENT: 'codex',
       OPENAI_API_KEY: 'test-secret',
       OPENAI_MODEL: 'test-model',
     }
     const pending = openPrivateInstalledBunHost(installedBunLocation, environment)
     environment.PATH = '/missing-after-snapshot'
     const host = await pending
-    expect(host.agentUnavailableHint).toBeUndefined()
-    expect(host.agentExecutable).toEqual({ client: 'codex', path: fixture.executablePath })
-    const provider = host.agentProvider
-    if (provider?.kind !== 'private-acp-agent-provider/1')
-      throw new Error('missing native provider')
+    const provider = await selectCodex(host)
     expect(privateAcpAgentRuntime(provider).executablePath).toBe(fixture.executablePath)
     await revalidatePrivateAcpAgentProvider(provider)
     await writeFile(fixture.executablePath, 'replacement executable', { mode: 0o700 })
@@ -134,8 +161,7 @@ describe('private native Codex Agent provider', () => {
       },
       fixture.root,
     )
-    expect(rejected.agentProvider).toBeUndefined()
-    expect(rejected.agentUnavailableHint).toContain('operator PATH outside the project')
+    await expect(selectCodex(rejected)).rejects.toThrow('selected codex runtime')
   })
 
   test('a PATH-selected installation with missing support does not fall back', async () => {
@@ -193,6 +219,49 @@ describe('private native Codex Agent provider', () => {
       model: 'client-default',
     })
     expect(pinnedSubscription.model).toBe('gpt-5.3-codex-spark')
+    const selectedSubscription = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      {
+        CODEX_HOME: codexHome,
+        CODEX_PATH: fixture.executablePath,
+        CODEX_MODEL: 'ambient',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedSubscription).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'openai-subscription',
+    })
+    const selectedApi = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      {
+        CODEX_PATH: fixture.executablePath,
+        OPENAI_API_KEY: 'gateway-secret',
+      },
+      undefined,
+      'binding-model',
+    )
+    expect(selectedApi).toMatchObject({
+      model: 'binding-model',
+      credentialMode: 'openai-responses-api-key',
+    })
+    for (const model of ['bad model', 'model\n']) {
+      await expect(
+        openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+          CODEX_HOME: codexHome,
+          CODEX_PATH: fixture.executablePath,
+          CODEX_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+      await expect(
+        openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+          CODEX_PATH: fixture.executablePath,
+          OPENAI_API_KEY: 'api-secret',
+          OPENAI_MODEL: model,
+        }),
+      ).rejects.toMatchObject({ stage: 'model' })
+    }
     expect(gateway).toMatchObject({
       client: 'openai-codex',
       credentialMode: 'openai-responses-api-key',
@@ -203,7 +272,7 @@ describe('private native Codex Agent provider', () => {
         CODEX_PATH: fixture.executablePath,
         OPENAI_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('Responses API configuration is unavailable')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
         CODEX_PATH: fixture.executablePath,
@@ -211,7 +280,7 @@ describe('private native Codex Agent provider', () => {
         OPENAI_API_KEY: 'gateway-secret',
         OPENAI_MODEL: 'provider/test-model',
       }),
-    ).rejects.toThrow('requires the OpenAI Responses API')
+    ).rejects.toMatchObject({ stage: 'api' })
     await expect(
       openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
         CODEX_HOME: join(fixture.root, 'missing-home'),
@@ -221,12 +290,8 @@ describe('private native Codex Agent provider', () => {
     const unavailable = await openPrivateInstalledBunHost(installedBunLocation, {
       CODEX_HOME: join(fixture.root, 'missing-home'),
       CODEX_PATH: fixture.executablePath,
-      JIG_AGENT_CLIENT: 'codex',
     })
-    expect(unavailable.agentProvider).toBeUndefined()
-    expect(unavailable.agentUnavailableHint).toContain(
-      'cli_auth_credentials_store="file", run codex login as this OS user',
-    )
+    await expect(selectCodex(unavailable)).rejects.toThrow('selected codex runtime')
     await expect(
       openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
         CODEX_PATH: join(fixture.root, 'missing-codex'),
@@ -234,23 +299,15 @@ describe('private native Codex Agent provider', () => {
     ).rejects.toBeInstanceOf(PrivateCodexExecutableUnavailableError)
     const missingExecutable = await openPrivateInstalledBunHost(installedBunLocation, {
       CODEX_PATH: join(fixture.root, 'missing-codex'),
-      JIG_AGENT_CLIENT: 'codex',
     })
-    expect(missingExecutable.agentUnavailableHint).toContain('export CODEX_PATH')
+    await expect(selectCodex(missingExecutable)).rejects.toThrow('selected codex runtime')
     await rename(fixture.nativeBubblewrapPath, join(fixture.root, 'outer-bwrap'))
     const missingSandbox = await openPrivateInstalledBunHost(installedBunLocation, {
       CODEX_HOME: codexHome,
       CODEX_PATH: fixture.executablePath,
-      JIG_AGENT_CLIENT: 'codex',
       JIG_BWRAP_PATH: join(fixture.root, 'outer-bwrap'),
     })
-    expect(missingSandbox.agentUnavailableHint).toContain(
-      'make an unprivileged bwrap available on operator PATH',
-    )
-    const unsupported = await openPrivateInstalledBunHost(installedBunLocation, {
-      JIG_AGENT_CLIENT: 'unknown',
-    })
-    expect(unsupported.agentProvider).toBeUndefined()
+    await expect(selectCodex(missingSandbox)).rejects.toThrow('selected codex runtime')
   })
 
   test('resolves a Codex link and preserves its bundled helper despite outer overrides', async () => {
@@ -414,6 +471,8 @@ describe('private native Codex Agent provider', () => {
         check_for_update_on_startup: false,
         features: {
           apps: false,
+          code_mode: false,
+          code_mode_host: false,
           plugins: false,
           remote_plugin: false,
           tool_suggest: false,
@@ -640,7 +699,29 @@ describe('private native Codex Agent provider', () => {
   })
 })
 
-async function files(): Promise<{
+async function selectCodex(host: Awaited<ReturnType<typeof openPrivateInstalledBunHost>>) {
+  const resources = await selectPrivateAcpResources(
+    host.acpResources,
+    {
+      session: {
+        kind: 'native',
+        native: 'finite-acp',
+        contract: {
+          id: FINITE_ACP_CONTRACT_ID,
+          version: FINITE_ACP_CONTRACT_VERSION,
+          digest: FINITE_ACP_CONTRACT_DIGEST,
+        },
+        grant: { kind: 'acp', client: 'codex' },
+      },
+    },
+    host.installedBunSupport,
+  )
+  const provider = resources.session
+  if (!provider) throw new Error('The test did not select its ACP session resource.')
+  return provider
+}
+
+async function files(parent = tmpdir()): Promise<{
   readonly root: string
   readonly launcherPath: string
   readonly adapterPath: string
@@ -651,7 +732,7 @@ async function files(): Promise<{
   readonly certificatesPath: string
   readonly requirementsPath: string
 }> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-codex-provider-'))
+  const root = await mkdtemp(join(parent, 'jig-codex-provider-'))
   temporary.add(root)
   const launcherPath = join(root, 'codex-agent-launcher.js')
   const adapterPath = join(root, 'codex-acp.js')

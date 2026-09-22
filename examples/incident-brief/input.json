@@ -1,0 +1,35 @@
+{
+  "task": "Prepare a concise internal incident brief. Separate facts from uncertainties; do not publish anything.",
+  "earlierContext": "A synthetic checkout incident began at 09:00. The initial estimate was 600 affected requests. Root cause is not confirmed.",
+  "files": [
+    {
+      "path": "incident-notes.txt",
+      "text": "Current measurements: service recovered at 09:48; 48 affected requests, not 600. The rollback and recovery are correlated, not proven causal."
+    }
+  ],
+  "laterInstructions": [
+    {
+      "revision": 1,
+      "text": "Correct the impact to 48 requests and duration to 48 minutes. Keep the cause uncertain."
+    }
+  ],
+  "turnBudget": 3,
+  "replacement": {
+    "files": [
+      {
+        "path": "incident-notes.txt",
+        "text": "Reconciled measurements: service recovered at 09:47; 48 affected requests. Root cause remains unconfirmed."
+      }
+    ],
+    "laterInstructions": [
+      {
+        "revision": 1,
+        "text": "Correct the impact to 48 requests and duration to 48 minutes. Keep the cause uncertain."
+      },
+      {
+        "revision": 2,
+        "text": "The reconciled recovery time is 09:47: use a 47-minute duration. Keep earlier estimates identifiable and the cause uncertain."
+      }
+    ]
+  }
+}

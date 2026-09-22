@@ -1,17 +1,17 @@
 import { decodeJson, encodeJson } from './json.js'
 import {
+  type ChannelGrant,
   parseChannelGrant,
   requireExactKeys,
   requireLocalName,
   requireObject,
   requireWireId,
-  type ChannelGrant,
+  snapshotDataObject,
 } from './protocol.js'
 import {
-  OperationError,
-  OPERATION_ERROR_CODES,
   type CallOptions,
   type ChannelBroadcast,
+  type ChannelCloseOptions,
   type ChannelEndpoint,
   type ChannelOptions,
   type ChannelPair,
@@ -19,6 +19,8 @@ import {
   type ChannelSender,
   type JsonObject,
   type JsonValue,
+  OPERATION_ERROR_CODES,
+  OperationError,
 } from './types.js'
 
 export type ChannelMethod =
@@ -56,6 +58,7 @@ interface EndpointState {
   releasedEndSequence?: number
   read?: Promise<void>
   seal?: Promise<void>
+  sealError?: 'LAGGED'
   disposal?: Promise<void>
   cause?: unknown
   exposed: boolean
@@ -90,14 +93,12 @@ export class Channels {
 
   mappings(value: Readonly<Record<string, ChannelEndpoint>> | undefined): JsonObject | undefined {
     if (value === undefined) return undefined
-    if (value === null || typeof value !== 'object' || Array.isArray(value))
-      throw new TypeError('channels must be a map')
-    if (Object.keys(value).length > 256) throw new TypeError('too many channel mappings')
+    const mappings = snapshotDataObject(value, 'channel mappings', 256)
     const result: Record<string, JsonValue> = Object.create(null)
     const states: EndpointState[] = []
-    for (const [name, endpoint] of Object.entries(value)) {
+    for (const [name, endpoint] of Object.entries(mappings)) {
       requireLocalName(name)
-      const state = this.brands.get(endpoint)
+      const state = this.brands.get(endpoint as ChannelEndpoint)
       if (!state || state.used || state.closed)
         throw new TypeError('channels require owned unused endpoints')
       if (states.includes(state)) throw new TypeError('one endpoint cannot fill multiple channels')
@@ -141,9 +142,22 @@ export class Channels {
       throw new TypeError('schema and contract are exclusive')
     if (
       params.contract !== undefined &&
-      (typeof params.contract !== 'string' || !params.contract.startsWith('./'))
+      !(typeof params.contract === 'string'
+        ? params.contract.startsWith('./')
+        : params.contract !== null &&
+          typeof params.contract === 'object' &&
+          !Array.isArray(params.contract) &&
+          Object.keys(params.contract).length === 2 &&
+          ['slot', 'channel'].every(
+            (key) =>
+              typeof (params.contract as JsonObject)[key] === 'string' &&
+              /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/.test(
+                (params.contract as JsonObject)[key] as string,
+              ) &&
+              ((params.contract as JsonObject)[key] as string).length <= 64,
+          ))
     )
-      throw new TypeError('contract must be package-local')
+      throw new TypeError('contract must be package-local or an exact slot/channel reference')
     let channel: ChannelPair | ChannelBroadcast | undefined
     await this.request('channel/create', params, callOptions, {
       settled: (settlement, exposed) => {
@@ -274,9 +288,17 @@ export class Channels {
             direction: 'send' as const,
             send: (value: JsonValue, options?: CallOptions) =>
               this.sendValue(state, value, options),
-            close: async (options?: CallOptions) => {
-              this.checkSignal(options)
-              await this.wait(this.seal(state), options)
+            close: async (options?: ChannelCloseOptions) => {
+              const data = snapshotDataObject(options ?? {}, 'channel close options', 2)
+              if (
+                Object.keys(data).some((key) => key !== 'signal' && key !== 'error') ||
+                (Object.hasOwn(data, 'error') && data.error !== 'LAGGED')
+              )
+                throw new TypeError('channel close accepts only optional signal and error: LAGGED')
+              const calls =
+                data.signal === undefined ? undefined : { signal: data.signal as AbortSignal }
+              this.checkSignal(calls)
+              await this.wait(this.seal(state, data.error as 'LAGGED' | undefined), calls)
             },
           })
         : Object.freeze({
@@ -332,24 +354,36 @@ export class Channels {
     })
   }
 
-  private seal(state: EndpointState): Promise<void> {
-    if (state.seal) return state.seal
+  private seal(state: EndpointState, error?: 'LAGGED'): Promise<void> {
+    if (state.seal) {
+      if (error !== undefined && state.sealError !== error)
+        return Promise.reject(
+          new OperationError('INVALID_INPUT', 'a clean channel end cannot become a failure'),
+        )
+      return state.seal
+    }
     if (state.closed) return Promise.resolve()
-    if (state.sends)
+    if (state.sends && error === undefined)
       return Promise.reject(
         new OperationError('INVALID_INPUT', 'channel writer has unaccepted sends'),
       )
     state.used = true
-    const promise = this.request('channel/close', { endpoint: state.grant.endpoint }, undefined, {
-      control: true,
-      settled: (settlement) => {
-        if ('result' in settlement) {
-          if (settlement.result !== null) throw new Error('invalid channel/close result')
-          state.closed = true
-        }
+    const promise = this.request(
+      'channel/close',
+      { endpoint: state.grant.endpoint, ...(error === undefined ? {} : { error }) },
+      undefined,
+      {
+        control: true,
+        settled: (settlement) => {
+          if ('result' in settlement) {
+            if (settlement.result !== null) throw new Error('invalid channel/close result')
+            state.closed = true
+          }
+        },
       },
-    }).then(() => undefined)
+    ).then(() => undefined)
     state.seal = promise
+    if (error !== undefined) state.sealError = error
     this.track(promise)
     return promise
   }

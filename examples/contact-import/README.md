@@ -18,8 +18,9 @@ jig run binding:code --input '{}' --attach source=fixtures/known --out preview-k
 
 The CSV parser is an ordinary declared dependency. The resolution flag permits
 fresh dependency resolution during this review; inspect and approve the result.
-The project includes Agent configurations even when this particular run uses
-only code. The known-format path makes no Agent calls.
+The project includes an ordinary Agent dependency and `bindings/model.ts`, where
+you select the native client and grant its authority. Review that configuration
+even when this particular run uses only code. The known-format path makes no Agent calls.
 
 Open `preview-known/files/preview.json`. Ada and Mei have accepted contact
 records. Grace's invalid email appears in `rejected`, with CSV record number 3.
@@ -48,13 +49,12 @@ the direct code path. Every output destination must be new.
 | `flows/import` | Read `source/contacts.csv`, call `mapper`, call `converter`, write a final preview. |
 | `flows/map-code` | Recognize the exact known headings, in any order. |
 | `flows/map-agent` | Ask one Agent for column indices; send headings only, never rows. |
-| `flows/map-mixed` | Recognize known headings in code; otherwise call the Agent capability. |
+| `flows/map-mixed` | Recognize known headings in code; otherwise call the Agent Flow. |
 | `flows/convert` | Check column indices, select and trim values, report accepted contacts and rejected rows. |
 
 Compare `bindings/code.ts`, `agent.ts`, and `mixed.ts`. They select different
 implementations of `mapper` while using the same importer and converter. The mixed
-implementation combines code and an Agent capability inside one leaf. Current Jig
-child Bindings cannot have child slots of their own. Each method is self-contained;
+implementation combines code and an Agent Flow inside one leaf. Each method is self-contained;
 none imports another Flow's implementation.
 Review changes to code or Bindings before running them.
 

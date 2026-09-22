@@ -1,0 +1,4 @@
+{
+  "name": "threshold-search",
+  "description": "Find the first Celsius threshold crossing by requesting only the readings needed for a bounded adaptive search."
+}

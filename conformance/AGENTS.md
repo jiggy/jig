@@ -10,11 +10,23 @@ protocol candidates.
 - `run-1/` owns Run/1 fixtures, black-box harnesses, TypeScript and Python
   peers, integration witnesses, and the evidence matrix.
 - `docs/flow/spec/` owns normative behavior.
+- Shared invocation fixtures use only `flow/call`, return complete
+  `{outcome, output}` results, and keep declared domain outcomes separate from
+  operational errors. Invocation descriptor tests cover structural acceptance;
+  digest closure, graph compilation, and package/runtime qualification remain
+  separate host responsibilities.
+- `run-1/fixtures/invocation-features.json` supplies shared feature catalog
+  acceptance/rejection values and exact identity vectors. `schema.test.ts`
+  validates catalog structure; Jig's parser tests validate JSON/1 and closure.
+  Python's `test_invocation_features.py` independently checks the vectors using
+  their bounded JCS-equivalent value subset, not a general package inspector.
 - Channel fixtures and `channels`/`broadcast` components exercise real exchanges
   against both host peers. SDK disposal-race evidence remains package-owned;
   scripted channel values are not host-broker isolation, native Agent, or
   containment qualification. Broadcast peers check suffix identity and ordinary
   recovery when one subscribed stream fails.
+  Shared message fixtures include closed slot/channel agreement references;
+  both schema validation and the independent Python peer check their shape.
 - `channel-wiring` witnesses cover incoming grants, exact-call forwarding and
   sibling-monitor composition. Scripted admission rejection verifies SDK
   recovery, not host contract matching or transfer enforcement.
@@ -27,6 +39,9 @@ protocol candidates.
 
 - Test observable protocol behavior through process boundaries; do not depend
   on SDK implementation internals.
+- Operation reference ledgers are invocation-local. They preserve optional-key
+  presence and exclude only `operationId` from the unified call identity;
+  they do not model production durability or route authorization.
 - Keep the Python peer independent of the FLOW SDK and Bun peer harness.
 - Development skips remain explicit. Release gates never count a skip as a
   pass.
@@ -42,6 +57,9 @@ protocol candidates.
 - Use `node:assert/strict`'s `rejects` for failures that await subprocess exit.
   Bun's promise rejection matcher can stall exit observation in the pinned
   runner. Preserve checks for exit status, trailing frames, and partial bytes.
+- `run-1/package.json` and its lock own the pinned Ajv schema-test and Sley
+  integration dependencies; prepare them with
+  `bun install --cwd conformance/run-1 --frozen-lockfile`.
 
 ## Verification
 

@@ -13,14 +13,13 @@ for (let index = 1; index <= requests; index += 1) {
       : {
           operationId: `lifetime:${index}`,
           slot: 'sink',
-          method: 'write',
           input: null,
         }
   process.stdout.write(
     `${JSON.stringify({
       jsonrpc: '2.0',
       id: reuse ? 'component:1' : `component:${index}`,
-      method: 'capability/call',
+      method: 'flow/call',
       params,
     })}\n`,
   )

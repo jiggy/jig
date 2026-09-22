@@ -12,9 +12,11 @@ The order serves three commitments throughout development.
   example that an independent consumer can reproduce from public artifacts.
 - **Keep the promises intact.** FLOW independence, operator-held authority,
   understandable control, and honest failure apply from the first outcome.
-- **Earn the next increment.** Build on verified work; add only what the next
-  demonstrated need requires. The roadmap does not authorize every mechanism
-  that might support it.
+- **Earn the next increment.** Prefer making existing power easier to adopt
+  and compose, with less configuration and lifecycle knowledge, before adding
+  another abstraction. Build on verified work; add only what the next
+  demonstrated need requires. Architectural purity is not an outcome, and the
+  roadmap does not authorize every mechanism that might support one.
 
 ## Outcome order
 
@@ -44,30 +46,59 @@ foundations do not need to be rebuilt.
 
 ## Next milestones
 
-Build on finite Runs, exact sibling calls, contained project commands,
-root file delivery and checkpoints, and channel-based observation. Improve
-these public paths rather than rebuilding their foundations.
+Build on one reusable invocation interface for Flow specialists and qualified
+native operations, optional `FLOW.contract.json`, and one `FLOW.<ext>` implementation
+per package. Every Markdown method uses an admitted Agent to interpret its
+body and select exact recipes. Exact sibling calls, contained project commands,
+root file delivery, checkpoints and channels remain the composition foundation.
+Improve these public paths rather than rebuilding them.
 
-### Immediate: dependable batch repair
+Qualify Markdown-to-code substitution and supported Skill reuse through ordinary
+interpreted calls. The sequential Markdown profile does not promise universal
+Skill support or reliable model judgment; method quality needs its own evidence.
+Agent methods are ordinary Flows. Native launch, authenticated HTTP, contained
+commands and checkpoint retention keep their reviewed host-owned boundaries.
+
+### Foundation: replaceable Agents
+
+Use an ordinary HTTP or finite ACP Agent through the same offered contract and
+exact slot calls. Project defaults select an admitted implementation; explicit
+slots remain authoritative. Packages own prompts, protocol dialogue, response
+interpretation and selected progress. Resource grants own only the approved
+endpoint or native-client powers, with host-enforced lifetime and cleanup.
+
+Keep this boundary useful as the product advances: an independent author must
+be able to replace the Agent without changing Jig or its consumers. Complete
+packages must remain inspectable, editable and rebuildable outside this repository.
+Maintain actual installed evidence for selected context, structured results,
+ordinary recovery and the application → specialist → Agent → resource chain.
+Native workspace tools and continuing sessions remain separate authority decisions.
+
+### Next: independently usable project repair
 
 A user can run two repair workers and receive each patch with trustworthy
-command and acceptance evidence. Diagnose the command-uncertainty failure at
-its responsible host boundary and fix the confirmed cause. Preserve useful
-diagnostics without exposing private execution details; genuine uncertainty
-must remain unsuccessful, never become an automatic retry.
+command and acceptance evidence. Make adapting the application to a small
+user-owned Bun project a data-and-configuration task, not a rewrite of the
+orchestrator. Keep source selection explicit, acceptance policy outside proposed
+edits, and test commands separately contained from the Agent.
 
-Finish when a focused regression covers the cause and an ordinary installed
-batch run demonstrates independent worker results, retained healthy work when
-another worker fails, and complete cleanup. Keep original repositories and
-acceptance policy unchanged. Do not make the check pass by extending deadlines
-or weakening evidence and containment guarantees.
+Finish when an independent builder obtains and inspects a patch for a different
+project using public materials, understands a failed check, and can stop work.
+Preserve healthy batch output after peer failure, honest command uncertainty,
+unchanged originals and complete cleanup. Fix new observed defects at their
+responsible layer without replay or deadline extensions.
 
-### Deferred: continuing Agent control and handoff
+Then use continuing conversations for evidence-driven correction where they
+remove a demonstrated burden. Retain bounded proposals and unchanged acceptance
+criteria. Automatic handoff is available for a concrete context-management need,
+not a mandatory repair stage. Method benefit remains a separate claim.
 
-Reconsider these capabilities with the owner after batch repair is complete.
-They are documented directions, not implementation work authorized by this
-milestone. Before either begins, define the smallest public contract and
-authority boundary against its consuming application.
+### Foundation: continuing Agent control, restoration and handoff
+
+Deliver these approved capabilities incrementally. Before each begins, define
+the smallest public contract and authority boundary against its consuming
+application. Qualify one real client per delivered path; protocol fixtures alone
+do not establish client behavior.
 
 1. **Direct a continuing native Agent.** An application observes a turn,
    requests interruption, waits for confirmed settlement, and sends a follow-up
@@ -80,7 +111,14 @@ authority boundary against its consuming application.
    cleanup. Native workspace tools require a separate authority decision;
    candidate commands cannot run in a credential-bearing provider scope.
 
-2. **Automate one worker's time-travel handoff.** Build on qualified control,
+2. **Restore a cleanly closed conversation.** Retain bounded, explicitly
+   identified native conversation state separately from credentials. A later
+   authorized Run restores that state with current grants and reports genuine
+   restoration or an honest failure, never an implicit fresh conversation.
+   Qualify one client across process exit and reentry. Native restoration,
+   transcript reconstruction and summary handoff remain distinct claims.
+
+3. **Automate one worker's time-travel handoff.** Build on qualified control,
    not on observation alone. While another worker progresses, settle task
    advancement, obtain a handoff using recent context,
    prepare retained earlier context with current files and later instructions,
@@ -119,4 +157,5 @@ demand-gated rather than requirements on this critical path.
 
 Use the doctrine's [decision test](doctrine/design-judgment.md#the-decision-test)
 before expanding scope. Revisit this order when evidence supports a simpler path.
-Current status, detailed tasks, and blockers belong in `.tmp/`.
+Deferred product tasks live in [`management/inbox`](../management/inbox/).
+Current execution plans, status, evidence and blockers belong in `.tmp/`.

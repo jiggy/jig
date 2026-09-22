@@ -1,10 +1,10 @@
-import { Flow, RunError, node } from '@jigging/sley'
+import { Flow, node, RunError } from '@jigging/sley'
 
 import {
-  OperationError,
   handle,
   type JsonObject,
   type JsonValue,
+  OperationError,
   type RunContext,
   type RunResult,
 } from '../../../packages/flow-sdk/src/index'
@@ -50,7 +50,7 @@ function buildGraph(run: RunContext): Flow<State> {
   })
 
   const child = node<State>(async (context) => {
-    context.state.result = await run.runChildFlow({
+    context.state.result = await run.call({
       operationId: 'delegate:1',
       slot: 'delegate',
       intent: 'Process the supplied value.',

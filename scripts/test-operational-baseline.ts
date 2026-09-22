@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { checkInvalidRunTarget, finishOperationalBaseline } from './operational-baseline-checks.js'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageRoot = join(repositoryRoot, 'packages', 'jig')
@@ -20,7 +21,8 @@ const systemctl = await fixedSystemctl()
 const temporary = await mkdtemp(join(tmpdir(), 'jig-operational-baseline-'))
 const runtimeTemporary = join(temporary, 'runtime-tmp')
 
-let failure: unknown
+const failures: unknown[] = []
+let commandSequence = 0
 try {
   await mkdir(runtimeTemporary)
   await eventuallyNoJigResidue()
@@ -58,6 +60,20 @@ try {
   )
 
   const jig = join(consumer, 'node_modules', '.bin', 'jig')
+  // Parser checks precede acquisition and the expensive contained workload.
+  checkInvalidRunTarget(await run([jig, 'run', 'hello'], consumer, [1], 60_000))
+  const malformedInput = await run(
+    [jig, 'run', 'flow:flows/hello', '--input', '{'],
+    consumer,
+    [1],
+    60_000,
+  )
+  assert.equal(malformedInput.stdout, '')
+  assert.match(malformedInput.stderr, /^Error: Run input is invalid\n/)
+  assert.match(malformedInput.stderr, /--input must be valid JSON/)
+  assert.match(malformedInput.stderr, /quote inline JSON or use --input @file\.json/)
+  assert.match(malformedInput.stderr, /No Flow was started/)
+  assert.match(malformedInput.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
   const project = join(consumer, 'hello-project')
   const initialized = await run([jig, 'init', '--bare', project], consumer)
   assert.match(initialized.stdout, /^Created bare Jig project /)
@@ -68,8 +84,8 @@ try {
   const malformed = await run([jig, 'review', project, '--yes'], consumer, [1], 120_000)
   assert.equal(malformed.stdout, '')
   assert.match(malformed.stderr, /^Review could not finish\n/)
-  assert.match(malformed.stderr, /Location: "flows\/malformed\/FLOW.md"\n  Value: "\/format"/)
-  assert.match(malformed.stderr, /Next step\n.*unsupported name or shape/)
+  assert.match(malformed.stderr, /Location: "flows\/malformed\/flow\.meta\.json"\n/)
+  assert.match(malformed.stderr, /Next step\n\s+a metadata field has an unsupported shape/)
   assert.match(malformed.stderr, /Diagnostic code: METADATA_FIELD\n  Category: INVALID_CANDIDATE/)
   // A public flow.jig.md help URL is not a protected .jig filesystem path.
   assert.doesNotMatch(malformed.stderr, /(?:^|[\s"/])\.jig(?:[/\s"]|$)|coordinator|sqlite|\/tmp\//i)
@@ -83,10 +99,9 @@ try {
 
   const approved = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
   assert.match(approved.stdout, /^Review changes before approval\n/)
-  assert.match(
-    approved.stdout,
-    /\nProject ready\n\n  The exact reviewed revision is approved\. No Flow was started\./,
-  )
+  assert.match(approved.stdout, /\nProject ready\n/)
+  assert.match(approved.stdout, /The exact reviewed revision is approved/)
+  assert.match(approved.stdout, /No Flow was started/)
   assert.equal(approved.stderr, '')
   assert.doesNotMatch(
     approved.stdout,
@@ -119,37 +134,33 @@ try {
     `prep-${(lockedPackage.digest as string).slice('sha256:'.length, 'sha256:'.length + 48)}`,
   )
   await mkdir(preparationGuard, { mode: 0o700 })
+  const unchangedFailures: unknown[] = []
   try {
     const unchanged = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
-    assert.equal(
+    assert.match(unchanged.stdout, /^Project ready\n/)
+    assert.match(unchanged.stdout, /The exact reviewed revision is approved/)
+    assert.match(unchanged.stdout, /No Flow was started/)
+    assert.match(unchanged.stdout, /Next: jig run <target>/)
+    assert.match(unchanged.stdout, /jig run --help/)
+    assert.doesNotMatch(
       unchanged.stdout,
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+      /Review changes before approval|planDigest|lockDigest|recipeDigest|observationDigest|coordinator|cgroup|bubblewrap/i,
     )
     assert.equal(unchanged.stderr, '')
     assert.equal(unchanged.exitCode, 0)
-  } finally {
-    await rm(preparationGuard, { recursive: true, force: true })
+  } catch (error) {
+    unchangedFailures.push(error)
   }
-
-  const invalidTarget = await run([jig, 'run', 'hello'], project, [1], 60_000)
-  assert.equal(invalidTarget.stdout, '')
-  assert.match(invalidTarget.stderr, /^Error: Run target is invalid\n/)
-  assert.match(invalidTarget.stderr, /use flow:<path> or binding:<id>/)
-  assert.match(invalidTarget.stderr, /Diagnostic code: JIG_RUN_TARGET_INVALID/)
-
-  const malformedInput = await run(
-    [jig, 'run', 'flow:flows/hello', '--input', '{'],
-    project,
-    [1],
-    60_000,
-  )
-  assert.equal(malformedInput.stdout, '')
-  assert.match(malformedInput.stderr, /^Error: Run input is invalid\n/)
-  assert.match(
-    malformedInput.stderr,
-    /--input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started./,
-  )
-  assert.match(malformedInput.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
+  try {
+    await rm(preparationGuard, { recursive: true, force: true })
+  } catch (error) {
+    unchangedFailures.push(error)
+  }
+  if (unchangedFailures.length > 0)
+    throw new AggregateError(
+      unchangedFailures,
+      'unchanged review or preparation-guard removal failed',
+    )
 
   const schemaInvalid = await run(
     [jig, 'run', 'flow:flows/hello', '--input', JSON.stringify({ name: 42 })],
@@ -175,7 +186,13 @@ try {
   )
   assert.equal(inspected.state, 'environment-matches')
   assert.equal(inspected.target, 'flow:flows/hello')
-  assert.equal(requireRecord(requireRecord(inspected.schemas).input).type, 'object')
+  assert.equal(
+    requireRecord(
+      requireRecord(inspected.contract, 'inspect.contract').input,
+      'inspect.contract.input',
+    ).type,
+    'object',
+  )
   // A different installed supervisor path changes the reviewed environment.
   // Inspect must catch that without opening a project session or attempting a Run.
   const relocated = join(consumer, 'node_modules', '@jigging', 'jig-relocated')
@@ -220,7 +237,7 @@ try {
   // JSON result. This fixture fails before its FLOW handler can start.
   assert.match(
     unsupportedDependency.stderr,
-    /Cannot find package 'jig-alpha-deliberately-missing' from '\/package\/flow\.ts'/,
+    /Cannot find package 'jig-alpha-deliberately-missing' from '\/package\/FLOW\.ts'/,
   )
   assert.ok(Buffer.byteLength(unsupportedDependency.stderr) <= 64 * 1024)
   assert.doesNotMatch(unsupportedDependency.stderr, /\u001b|\.jig|\/proc\/|\/home\/|\/tmp\//)
@@ -246,7 +263,7 @@ try {
     code: 'ENOENT',
   })
 
-  await exerciseWorkspace(jig, consumer)
+  await exerciseWorkspace(jig, consumer, archive)
 
   // Exercise the public permission boundary from the installed archive, not
   // an example-specific installer or a private session option.
@@ -306,7 +323,7 @@ try {
   )
   assert.deepEqual(requireRecord(JSON.parse(resolvedRun.stdout)).output, { capitalized: 'Ada' })
 
-  const entry = join(resolvingFlow, 'flow.ts')
+  const entry = join(resolvingFlow, 'FLOW.ts')
   await writeFile(entry, `${await readFile(entry, 'utf8')}\n// source changed\n`)
   const changed = await run([jig, 'review', resolvingProject, '--yes'], consumer, [2], 120_000)
   assert.match(changed.stderr, /PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED/)
@@ -384,23 +401,15 @@ try {
     received: { name: 'Ada' },
   })
 } catch (error) {
-  failure = error
+  failures.push(error)
 }
 
-try {
-  await eventuallyNoJigResidue()
-} catch (cleanupFailure) {
-  failure =
-    failure === undefined
-      ? cleanupFailure
-      : new AggregateError(
-          [failure, cleanupFailure],
-          'Operational Baseline/1 and its residue check both failed',
-        )
-} finally {
-  await rm(temporary, { recursive: true, force: true })
-}
-if (failure !== undefined) throw failure
+await finishOperationalBaseline({
+  failures,
+  temporary,
+  checkResidue: () => eventuallyNoJigResidue(),
+  removeFixture: () => rm(temporary, { recursive: true, force: true }),
+})
 
 process.stdout.write('Operational Baseline/1 passed\n')
 
@@ -420,12 +429,7 @@ async function selectPackageArchive(artifacts: string): Promise<string> {
   // Build and pack the release candidate exactly once. Packing is explicitly
   // script-free so it cannot trigger a second build through `prepack`.
   await run(['just', 'build'], packageRoot, [0], 120_000)
-  await run(
-    ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
-    packageRoot,
-    [0],
-    60_000,
-  )
+  await run(['bun', 'scripts/pack.ts', '--destination', artifacts], packageRoot, [0], 60_000)
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
   assert.equal(archives.length, 1, 'packing must produce exactly one Jig archive')
   return join(artifacts, archives[0]!)
@@ -435,25 +439,42 @@ async function writeHelloFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'hello')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: hello',
-      'description: Return a greeting for the supplied name.',
-      '---',
-      '',
-      'A dependency-closed finite FLOW Run/1 example.',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({ name: 'hello', description: 'Return a greeting for the supplied name.' }),
   )
+  await writeFile(join(flow, 'README.md'), 'A dependency-closed finite FLOW Run/1 example.\n')
   await writeFile(
-    join(flow, 'input.schema.json'),
+    join(flow, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: { name: { type: 'string' } },
-      required: ['name'],
-      additionalProperties: false,
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      input: {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+      result: {
+        type: 'object',
+        properties: {
+          outcome: { const: 'done' },
+          output: {
+            type: 'object',
+            properties: {
+              greeting: { type: 'string' },
+              received: {
+                type: 'object',
+                properties: { name: { type: 'string' } },
+                required: ['name'],
+                additionalProperties: false,
+              },
+            },
+            required: ['greeting', 'received'],
+            additionalProperties: false,
+          },
+        },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
+      },
     }),
   )
   await writeFile(
@@ -465,34 +486,9 @@ async function writeHelloFlow(project: string): Promise<void> {
       additionalProperties: false,
     }),
   )
+
   await writeFile(
-    join(flow, 'result.schema.json'),
-    JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: {
-        outcome: { const: 'done' },
-        output: {
-          type: 'object',
-          properties: {
-            greeting: { type: 'string' },
-            received: {
-              type: 'object',
-              properties: { name: { type: 'string' } },
-              required: ['name'],
-              additionalProperties: false,
-            },
-          },
-          required: ['greeting', 'received'],
-          additionalProperties: false,
-        },
-      },
-      required: ['outcome', 'output'],
-      additionalProperties: false,
-    }),
-  )
-  await writeFile(
-    join(flow, 'flow.ts'),
+    join(flow, 'FLOW.ts'),
     [
       'import { createInterface } from "node:readline";',
       '',
@@ -521,7 +517,7 @@ async function writeHelloFlow(project: string): Promise<void> {
   )
 }
 
-async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
+async function exerciseWorkspace(jig: string, consumer: string, archive: string): Promise<void> {
   const workspace = join(consumer, 'local-workspace')
   const project = join(workspace, 'app')
   await mkdir(workspace)
@@ -555,7 +551,7 @@ async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
       dependencies: { 'local-greeting': 'workspace:*' },
     }),
   )
-  const method = join(project, 'flows/hello/flow.ts')
+  const method = join(project, 'flows/hello/FLOW.ts')
   const source = await readFile(method, 'utf8')
   await writeFile(
     method,
@@ -570,6 +566,30 @@ async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
   )
   assert.match(missing.stderr, /complete jig review/)
   assert.match(missing.stderr, /Diagnostic code: ADMISSION_MISSING/)
+  // Reproduce the consumer's archived CLI devDependency refusal. Identify
+  // the ancestor manifest, not the selected Flow's package.json; do not
+  // reveal the rejected archive's host location.
+  const rootManifest = join(workspace, 'package.json')
+  const originalManifest = await readFile(rootManifest, 'utf8')
+  await writeFile(
+    rootManifest,
+    JSON.stringify({
+      ...JSON.parse(originalManifest),
+      devDependencies: { '@jigging/jig': `file:${archive}` },
+    }),
+  )
+  const refused = await run([jig, 'review', '--yes'], project, [1], 120_000)
+  assert.equal(refused.stdout, '')
+  assert.match(refused.stderr, /Location: "\.\.\/package\.json"/)
+  assert.match(refused.stderr, /Value: "\/devDependencies\/@jigging~1jig"/)
+  assert.match(refused.stderr, /Diagnostic code: PACKAGE_BUN_MANIFEST_SOURCE/)
+  assert.match(
+    refused.stderr,
+    /use a default npm registry version or a declared workspace: dependency/,
+  )
+  assert.equal(refused.stderr.includes(archive), false)
+  assert.doesNotMatch(refused.stderr, /file:|\.tgz/)
+  await writeFile(rootManifest, originalManifest)
   await run(
     ['bun', '--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts'],
     workspace,
@@ -617,16 +637,14 @@ async function writeMalformedFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'malformed')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: malformed',
-      'description: Exercise one bounded author diagnostic.',
-      'format: 1',
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'malformed',
+      description: 'Exercise one bounded author diagnostic.',
+      license: 1,
+    }),
   )
+  await writeFile(join(flow, 'FLOW.ts'), 'export {};\n')
 }
 
 async function writeFriendlyBinding(project: string): Promise<void> {
@@ -648,30 +666,24 @@ async function writeMissingDependencyFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'missing-dependency')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: missing-dependency',
-      'description: Prove that unsupported dependencies fail without installation.',
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'missing-dependency',
+      description: 'Prove that unsupported dependencies fail without installation.',
+    }),
   )
-  await writeFile(join(flow, 'flow.ts'), 'import "jig-alpha-deliberately-missing";\n')
+  await writeFile(join(flow, 'FLOW.ts'), 'import "jig-alpha-deliberately-missing";\n')
 }
 
 async function writeLockedDependencyFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'locked-dependency')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: locked-dependency',
-      'description: Run one ordinary locked Bun production dependency.',
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'locked-dependency',
+      description: 'Run one ordinary locked Bun production dependency.',
+    }),
   )
   await writeFile(
     join(flow, 'package.json'),
@@ -703,7 +715,7 @@ async function writeLockedDependencyFlow(project: string): Promise<void> {
 }\n`,
   )
   await writeFile(
-    join(flow, 'flow.ts'),
+    join(flow, 'FLOW.ts'),
     [
       'import capitalize from "lodash/capitalize.js";',
       'import { createInterface } from "node:readline";',
@@ -743,6 +755,11 @@ async function run(
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]).finally(() => clearTimeout(timeout))
+  await writeFile(
+    join(temporary, `command-${String(++commandSequence).padStart(4, '0')}.json`),
+    JSON.stringify({ command, cwd, exitCode, stdout, stderr }),
+    { flag: 'wx', mode: 0o600 },
+  )
   if (!acceptedExitCodes.includes(exitCode)) {
     throw new Error(`${command.map(shellWord).join(' ')} exited ${exitCode}\n${stdout}${stderr}`)
   }
@@ -753,8 +770,11 @@ function shellWord(value: string): string {
   return /^[A-Za-z0-9_./:=@+-]+$/.test(value) ? value : JSON.stringify(value)
 }
 
-function requireRecord(value: unknown): Record<string, unknown> {
-  assert.ok(typeof value === 'object' && value !== null && !Array.isArray(value))
+function requireRecord(value: unknown, label = 'baseline response'): Record<string, unknown> {
+  assert.ok(
+    typeof value === 'object' && value !== null && !Array.isArray(value),
+    `${label} must be an object`,
+  )
   return value as Record<string, unknown>
 }
 

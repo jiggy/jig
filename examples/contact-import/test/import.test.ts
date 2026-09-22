@@ -57,9 +57,9 @@ for (const selected of [headers, ['Organisation', 'Courriel', 'Nom complet']])
     let calls = 0
     const result = await mixed({
       input: { headers: selected },
-      callCapability: async () => {
+      call: async () => {
         calls++
-        return { outcome: 'completed', structured: mapping }
+        return { outcome: 'done', output: { structured: mapping } }
       },
     })
     expect(result).toEqual(completed({ mapping }))
@@ -71,9 +71,9 @@ for (const outcome of ['blocked', 'limit'])
     expect(
       await mixed({
         input: { headers: ['Unknown'] },
-        callCapability: async () => {
+        call: async () => {
           calls++
-          return { outcome, text: 'Cannot proceed.' }
+          return { outcome, output: { text: 'Cannot proceed.' } }
         },
       }),
     ).toEqual({ outcome, output: { reason: 'Cannot proceed.' } })
@@ -84,7 +84,7 @@ test('code and mixed agree on reordered known headings', async () => {
   expect(
     await mixed({
       input,
-      callCapability: async () => {
+      call: async () => {
         throw Error('No Agent needed')
       },
     }),
@@ -95,12 +95,12 @@ test('Agent request contains headings and structured mapping contract', async ()
   expect(
     await agent({
       input: { headers },
-      callCapability: async (request) => {
+      call: async (request) => {
         expect(request.slot).toBe('agent')
-        expect(request.method).toBe('run')
+        expect(request.operationId).toBe('map-headings')
         expect((request.input as any).instructions).toContain(JSON.stringify({ headers }))
         expect((request.input as any).responseSchema.additionalProperties).toBe(false)
-        return { outcome: 'completed', structured: mapping }
+        return { outcome: 'done', output: { structured: mapping } }
       },
     }),
   ).toEqual(completed({ mapping }))
@@ -110,18 +110,18 @@ for (const outcome of ['blocked', 'limit'])
     expect(
       await agent({
         input: { headers },
-        callCapability: async () => ({ outcome, text: 'reason' }),
+        call: async () => ({ outcome, output: { text: 'reason' } }),
       }),
     ).toEqual({ outcome, output: { reason: 'reason' } })
   })
 test('Agent malformed response and execution failure stay errors', async () => {
   await expect(
-    agent({ input: { headers }, callCapability: async () => ({ outcome: 'completed' }) }),
+    agent({ input: { headers }, call: async () => ({ outcome: 'done', output: {} }) }),
   ).rejects.toThrow()
   await expect(
     agent({
       input: { headers },
-      callCapability: async () => {
+      call: async () => {
         throw Error('uncertain dispatch')
       },
     }),
@@ -191,7 +191,7 @@ async function withImport(
         source: { access: 'read', path: join(root, 'source') },
         preview: { access: 'read-write', path: join(root, 'preview') },
       },
-      runChildFlow: async () => {
+      call: async () => {
         throw Error('Provide a child')
       },
     } as Parameters<typeof importer>[0]
@@ -204,7 +204,7 @@ async function withImport(
 test('composes public handlers and writes only the complete preview', async () =>
   withImport(async (run, out) => {
     const calls: string[] = []
-    run.runChildFlow = async (request) => {
+    run.call = async (request) => {
       calls.push(request.slot)
       if (request.slot === 'mapper') {
         expect(Object.keys(request.input as object)).toEqual(['headers'])
@@ -224,7 +224,7 @@ for (const failure of ['blocked', 'limit', 'error', 'cancel'])
       const controller = new AbortController()
       run = { ...run, signal: controller.signal }
       let calls = 0
-      run.runChildFlow = async () => {
+      run.call = async () => {
         calls++
         if (failure === 'error') throw Error('uncertain dispatch')
         if (failure === 'cancel') {
@@ -240,21 +240,19 @@ for (const failure of ['blocked', 'limit', 'error', 'cancel'])
     }))
 
 test('all mapper implementations expose the same input and result contracts', async () => {
-  for (const schema of ['input', 'result']) {
-    const expected = await Bun.file(
-      join(import.meta.dir, `../flows/map-code/${schema}.schema.json`),
-    ).json()
-    for (const method of ['map-agent', 'map-mixed'])
-      expect(
-        await Bun.file(join(import.meta.dir, `../flows/${method}/${schema}.schema.json`)).json(),
-      ).toEqual(expected)
-  }
+  const expected = await Bun.file(
+    join(import.meta.dir, `../flows/map-code/FLOW.contract.json`),
+  ).json()
+  for (const method of ['map-agent', 'map-mixed'])
+    expect(
+      await Bun.file(join(import.meta.dir, `../flows/${method}/FLOW.contract.json`)).json(),
+    ).toEqual(expected)
 })
 
 test('a converter failure leaves no preview and does not rerun the mapper', async () =>
   withImport(async (run, out) => {
     const calls: string[] = []
-    run.runChildFlow = async (request) => {
+    run.call = async (request) => {
       calls.push(request.slot)
       if (request.slot === 'mapper') return completed({ mapping })
       throw Error('converter failed')
@@ -268,7 +266,7 @@ test('invalid CSV fails before any child work', async () =>
   withImport(async (run, out) => {
     await writeFile(join(run.attachments.source!.path, 'contacts.csv'), await fixture('malformed'))
     let called = false
-    run.runChildFlow = async () => {
+    run.call = async () => {
       called = true
       return completed({ mapping })
     }
@@ -282,9 +280,9 @@ for (const method of [agent, mixed])
     expect(
       await method({
         input: { headers: ['Unclear heading'] },
-        callCapability: async () => ({
-          outcome: 'completed',
-          structured: { name: 0, email: null, organization: 2 },
+        call: async () => ({
+          outcome: 'done',
+          output: { structured: { name: 0, email: null, organization: 2 } },
         }),
       }),
     ).toEqual(completed({ mapping: null }))

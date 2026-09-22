@@ -113,7 +113,8 @@ export class PrivateFileDeliveryOwner {
     sourcePid: number,
     outputFd: number | undefined,
     checkpoint?: RetainedRunCheckpoint,
-    recovered = false,
+    retainAfterCancellation = false,
+    coordinatorLost?: AbortSignal,
   ): Promise<PrivateDeliveryReceipt> {
     if (
       this.#parent === undefined ||
@@ -123,11 +124,23 @@ export class PrivateFileDeliveryOwner {
     )
       throw new Error('delivery has no available destination owner')
     this.#publishing = true
+    const retainedDelivery =
+      outputFd === undefined &&
+      (checkpoint !== undefined ||
+        (retainAfterCancellation &&
+          record !== null &&
+          typeof record === 'object' &&
+          !Array.isArray(record) &&
+          !Object.hasOwn(record, 'cleanup')))
     const deadline = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
     let timedOut = false
     const checkTime = () => {
-      // Accepted progress is published after fencing even when execution was cancelled.
-      if (checkpoint === undefined && !recovered) this.signal.throwIfAborted()
+      // Retaining a settled record does not waive its sender's lifetime.
+      // Recovery publishes separately only after independently confirmed fencing.
+      coordinatorLost?.throwIfAborted()
+      // Accepted progress or a settled terminal-only report can survive
+      // execution cancellation. Ordinary final-file copying remains cancellable.
+      if (!retainedDelivery) this.signal.throwIfAborted()
       if (performance.now() >= deadline) {
         timedOut = true
         throw new Error('file delivery deadline exceeded')
@@ -257,7 +270,7 @@ export class PrivateFileDeliveryOwner {
       return delivery
     } catch {
       let code: PrivateDeliveryReceipt['code'] =
-        this.signal.aborted && checkpoint === undefined && !recovered
+        coordinatorLost?.aborted || (this.signal.aborted && !retainedDelivery)
           ? 'CANCELLED'
           : timedOut
             ? 'DEADLINE_EXCEEDED'

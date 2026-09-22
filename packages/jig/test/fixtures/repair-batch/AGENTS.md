@@ -16,7 +16,12 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 
 ## Local Contracts
 
-- `batch.ts` resolves `files.ts` only after assembly into the test project.
+- `batch.ts` imports the public evidence/check helpers for source-level units.
+  Assembly rewrites only that fixture import prefix to package-local paths;
+  host execution uses the unchanged public helpers, never a private duplicate.
+- The retained monitor and wiring have deterministic channel lifecycle tests
+  in `test/repair-monitoring.test.ts`; batch cases live in
+  `test/repair-batch.test.ts`. These are not live Agent evidence.
 - Keep this fixture private to tests. It is not a recommended example or a
   second application distribution.
 - Preserve separate worker identities, fixed acceptance cases, and checkpoints.

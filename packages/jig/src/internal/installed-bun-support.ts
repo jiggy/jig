@@ -19,7 +19,8 @@ const BUN_DESTINATION = '/jig-runtime/bun'
 const LIBRARY_DESTINATION = '/jig-runtime/lib'
 const EVALUATOR_DESTINATION = '/jig-evaluator'
 const PREPARATION_WORKER_DESTINATION = '/jig-preparation-worker.js'
-const AGENT_WORKER_DESTINATION = '/jig-agent-worker.js'
+const HTTP_WORKER_DESTINATION = '/jig-http-worker.js'
+const MARKDOWN_RUNTIME_DESTINATION = '/jig-markdown-runtime.js'
 const BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
 const BUN_VERSION = '1.3.3'
 const BUN_REVISION = '274e01c737e85f8142070a9745b43a2ba09fce4c'
@@ -50,9 +51,12 @@ export interface PrivateInstalledBunSupport {
   readonly preparationWorkerPath: string
   readonly preparationWorkerDigest: string
   readonly sandboxPreparationWorkerPath: typeof PREPARATION_WORKER_DESTINATION
-  readonly agentWorkerPath: string
-  readonly agentWorkerDigest: string
-  readonly sandboxAgentWorkerPath: typeof AGENT_WORKER_DESTINATION
+  readonly httpWorkerPath: string
+  readonly httpWorkerDigest: string
+  readonly sandboxHttpWorkerPath: typeof HTTP_WORKER_DESTINATION
+  readonly markdownRuntimePath: string
+  readonly markdownRuntimeDigest: string
+  readonly sandboxMarkdownRuntimePath: typeof MARKDOWN_RUNTIME_DESTINATION
 }
 
 /**
@@ -118,10 +122,15 @@ export async function openPrivateInstalledBunSupport(
     false,
     'installed Bun preparation worker',
   )
-  const agentWorkerPath = await exactRegularFile(
-    join(releaseRoot, 'libexec', 'agent', 'openai-agent-worker.js'),
+  const httpWorkerPath = await exactRegularFile(
+    join(releaseRoot, 'libexec', 'http-request-worker.js'),
     false,
-    'installed Agent provider worker',
+    'installed HTTP worker',
+  )
+  const markdownRuntimePath = await exactRegularFile(
+    join(releaseRoot, 'libexec', 'markdown-runtime.js'),
+    false,
+    'installed Markdown interpreter',
   )
 
   const loaderPath = await exactRegularFile(
@@ -150,7 +159,8 @@ export async function openPrivateInstalledBunSupport(
     libraryDigests,
     evaluatorDigests,
     preparationWorkerDigest,
-    agentWorkerDigest,
+    httpWorkerDigest,
+    markdownRuntimeDigest,
   ] = await Promise.all([
     privateInstallationFileDigest(executablePath),
     privateInstallationFileDigest(installedCliPath),
@@ -173,7 +183,8 @@ export async function openPrivateInstalledBunSupport(
       ),
     ),
     privateInstallationFileDigest(preparationWorkerPath),
-    privateInstallationFileDigest(agentWorkerPath),
+    privateInstallationFileDigest(httpWorkerPath),
+    privateInstallationFileDigest(markdownRuntimePath),
   ])
   const bun = (
     globalThis as typeof globalThis & {
@@ -201,7 +212,8 @@ export async function openPrivateInstalledBunSupport(
     libraries: libraryDigests,
     evaluatorSupportDigest,
     preparationWorkerDigest,
-    agentWorkerDigest,
+    httpWorkerDigest,
+    markdownRuntimeDigest,
   })
   const runtimeMounts = Object.freeze([
     Object.freeze({ source: executablePath, destination: BUN_DESTINATION }),
@@ -231,9 +243,12 @@ export async function openPrivateInstalledBunSupport(
     preparationWorkerPath,
     preparationWorkerDigest,
     sandboxPreparationWorkerPath: PREPARATION_WORKER_DESTINATION,
-    agentWorkerPath,
-    agentWorkerDigest,
-    sandboxAgentWorkerPath: AGENT_WORKER_DESTINATION,
+    httpWorkerPath,
+    sandboxHttpWorkerPath: HTTP_WORKER_DESTINATION,
+    httpWorkerDigest,
+    markdownRuntimePath,
+    markdownRuntimeDigest,
+    sandboxMarkdownRuntimePath: MARKDOWN_RUNTIME_DESTINATION,
   })
   authenticSupports.add(support)
   return support
@@ -266,7 +281,8 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
     current.supervisorPath !== support.supervisorPath ||
     current.evaluatorSupportPath !== support.evaluatorSupportPath ||
     current.preparationWorkerPath !== support.preparationWorkerPath ||
-    current.agentWorkerPath !== support.agentWorkerPath
+    current.httpWorkerPath !== support.httpWorkerPath ||
+    current.markdownRuntimePath !== support.markdownRuntimePath
   ) {
     throw new Error('installed Bun support changed after selection')
   }

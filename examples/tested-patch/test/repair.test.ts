@@ -4,7 +4,7 @@ import { candidate, digest, parseInput, parseProposal } from '../flows/repair/po
 import { evaluate } from '../flows/repair/evidence.ts'
 import { input, proposal, recorded, syntheticRepair } from './fixture.ts'
 
-test('multi-file JSON leaf retains observation-shaped evidence and needs no child or attachment', async () => {
+test('multi-file repair delegates Agent work and retains independent command evidence', async () => {
   const { result, agents, commands } = await syntheticRepair()
   expect(result.outcome).toBe('done')
   expect(agents).toBe(1)
