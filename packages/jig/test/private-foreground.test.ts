@@ -792,7 +792,7 @@ proofDescribe('private rootless project session', () => {
               bunHostLibraryPath: host.installedBunSupport.hostLibraryDirectory,
               supervisorPath: supervisor,
             })
-            await writeCapabilityFreeProject(root)
+            await writeAgentFreeProject(root)
             session = await openPrivateProjectSession({
               directory: root,
               host: { ...host, backend },
