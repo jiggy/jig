@@ -48,7 +48,7 @@ The Licensor gives you worldwide, nonexclusive permission to inspect, copy, modi
 
 You owe no Software fee merely because the Software helped create a report, generated artifact, or other independent output. Software code included in an output keeps its applicable license.
 
-There is one complete product. You do not need runtime activation, license telemetry, execution metering, or network license checks to exercise these permissions. This is a source-available license, not an OSI-approved open-source license. It does not take away earlier valid permissions.
+There is one complete product. You do not need runtime activation, license telemetry, execution metering, or network license checks to exercise these permissions. This is a source-available license, not an OSI-approved open-source license. It does not take away earlier valid permissions. Nothing in this license limits rights you have under fair use, fair dealing, or equivalent copyright exceptions.
 
 ## 2. Free use and individual protection
 
@@ -238,7 +238,13 @@ If there is a concrete discrepancy, the seller may ask for proportionate clarifi
 
 Orders must state the total price, taxes, due dates, and renewal and cancellation terms. A standard fee does not promise support, indemnity, a service level, a particular update, or an execution result. Mandatory consumer, software, security, privacy, transfer, and other rights still apply. Downloading or evaluating the Software does not waive them.
 
-Except for express commitments and mandatory duties, the Software is supplied as available, without a warranty of fitness, uninterrupted operation, or correct output. To the extent permitted by law, the Licensor and contributors exclude liability for indirect or consequential loss. No exclusion applies where prohibited, including fraud or intentional wrongdoing.
+Except for express commitments and duties that cannot legally be excluded, the Software is supplied as is, without warranties or conditions of any kind. To the extent the law allows, the Licensor, authorized sellers, and contributors are not liable for damages from using the Software, being unable to use it, or defects in it. This includes direct, indirect, and consequential loss, regardless of the type of legal claim. This exclusion does not apply to breaches of express commitments in this license or separately accepted agreements.
+
+Under this license, indirect and consequential loss remain excluded to the extent the law allows, including for breaches of express commitments, unless greater liability was expressly accepted.
+
+For breaches of express software-license commitments owed under accepted company purchases, total direct damages are capped at the sum of the agreed license prices of the purchases whose commitments were breached, counting each purchase once. This is one combined cap across all claimants and claims against the Licensor, authorized sellers, and contributors, unless greater liability was expressly accepted. It does not govern separately purchased services.
+
+These limits do not cancel permissions, excuse promised performance, limit refunds or repayment otherwise owed, or prevent seeking an order to enforce rights. They do not exclude or limit liability for fraud, intentional wrongdoing, or anything the law does not allow to be excluded or limited.
 
 ### Names and authority
 
