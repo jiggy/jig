@@ -23,6 +23,8 @@ Jig public sites.
 ## Local Contracts
 
 - Never maintain copied prose or machine schemas here.
+- Jig's pricing navigation links to the canonical repository `PRICING.md`,
+  which routes buyers to its adoption notice and purchasing channel.
 - Exclude repository `AGENTS.md` work contracts from public documentation
   routes.
 - Keep origins, navigation, public roots, schemas, contracts, and deployment

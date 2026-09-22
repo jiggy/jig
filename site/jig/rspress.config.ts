@@ -110,6 +110,7 @@ export default defineConfig({
       {"text": "Documentation", "link": "/guide/overview"},
       {"text": "Example", "link": "/guide/request-triage"},
       {"text": "For agents", "link": "/guide/for-agents"},
+      {"text": "Pricing", "link": "https://github.com/jiggy/jig/blob/main/PRICING.md"},
       {"text": "FLOW", "link": "https://flow.jig.md/"},
       {"text": "GitHub", "link": "https://github.com/jiggy/jig"},
     ],

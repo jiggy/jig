@@ -86,8 +86,54 @@ try {
   const sourceManifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert.equal(installedManifest.version, sourceManifest.version)
   assert.equal(installedManifest.license, 'SEE LICENSE IN LICENSE.md')
-  assert.equal(await readFile(join(installed, 'LICENSE.md'), 'utf8'),
-    await readFile(resolve(packageRoot, '../../LICENSE.md'), 'utf8'))
+  for (const relative of [
+    'LICENSE.md',
+    'PRICING.md',
+    'LICENSES.md',
+    'LICENSES/Apache-2.0.txt',
+    'LICENSES/CC-BY-4.0.txt',
+    'LICENSES/Community-Spec-1.0.md',
+    'LICENSES/MPL-2.0.txt',
+  ]) {
+    assert.equal(
+      await readFile(join(installed, relative), 'utf8'),
+      await readFile(resolve(packageRoot, '../..', relative), 'utf8'),
+      relative,
+    )
+  }
+  // Published Bread 1.0, revision 2160335: the adoption notice may change,
+  // but the retained standard must stay exact without fetching it at build time.
+  const retainedLicense = await readFile(join(installed, 'LICENSE.md'), 'utf8')
+  const standardStart = retainedLicense.indexOf('\n# Bread License 1.0\n')
+  assert.notEqual(standardStart, -1, 'Missing retained Bread License 1.0')
+  assert.equal(
+    createHash('sha256')
+      .update(retainedLicense.slice(standardStart + 1))
+      .digest('hex'),
+    '80e9d09705bea0b964abdc5449f0384ad7758dc17ba05f2a0bb2998ea5ab2be9',
+    'The retained Bread 1.0 text differs from the published standard',
+  )
+  const thirdPartyNotices = await readFile(join(installed, 'THIRD_PARTY_NOTICES'), 'utf8')
+  assert.equal(thirdPartyNotices, await readFile(join(packageRoot, 'THIRD_PARTY_NOTICES'), 'utf8'))
+  assert.ok(
+    thirdPartyNotices.includes(
+      await readFile(join(packageRoot, 'node_modules/zod/LICENSE'), 'utf8'),
+    ),
+    'Missing bundled Zod license notice',
+  )
+  for (const [retained, original] of [
+    ['openai.LICENSE', 'openai/LICENSE'],
+    ['codex-acp.LICENSE', '@agentclientprotocol/codex-acp/LICENSE'],
+    ['claude-agent-acp.LICENSE', '@agentclientprotocol/claude-agent-acp/LICENSE'],
+    ['claude-agent-sdk.LICENSE', '@anthropic-ai/claude-agent-sdk/LICENSE.md'],
+    ['pi-acp.LICENSE', 'pi-acp/LICENSE'],
+  ]) {
+    assert.equal(
+      await readFile(join(installed, 'libexec/agent', retained), 'utf8'),
+      await readFile(join(packageRoot, 'node_modules', original), 'utf8'),
+      retained,
+    )
+  }
   assert.deepEqual(installedManifest.os, ['linux'])
   assert.deepEqual(installedManifest.cpu, ['x64'])
   assert.deepEqual(installedManifest.libc, ['glibc'])

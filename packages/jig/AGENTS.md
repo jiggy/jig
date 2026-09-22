@@ -150,7 +150,9 @@ admitted FLOW packages.
 - `bun test packages/jig`
 - `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
-- `just jig::test-package` checks the installed file inventory and retained license.
+- `just jig::test-package` checks the installed inventory, exact copied licensing
+  and pricing files, and the published Bread 1.0 text's fixed digest. The check
+  uses retained local text, without a Bread checkout or network lookup.
 - Trust-boundary changes require the provisioned host-conformance workflow.
 - CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-value-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,

@@ -15,7 +15,7 @@ retain their existing licenses; this notice does not revoke those grants.
 | Licensor | Victor Duarte, professionally known as zvictor, personally; correspondence: c/o Pereirinhos s.r.o., Mateja Bela 8769/30, 010 15 Žilina, Slovakia |
 | Seller | Pereirinhos s.r.o., IČO 53427599, DIČ 2121379700, VAT ID SK2121379700; registered seat: Mateja Bela 8769/30, 010 15 Žilina, Slovakia. The company is authorized to sell and administer Jig company licenses on the Licensor's behalf; ownership remains with the Licensor. |
 | Licensing and notices | `licensing@jig.md`; postal notices use the Licensor correspondence address above |
-| Exact instrument | Bread License 1.0, retained in full below; the unchanged standard bargain |
+| Exact instrument | [Bread License 1.0, finalized text](https://github.com/jiggy/bread/blob/2160335c58eb6b6ea164e29d58fa8160f9a2e0df/LICENSE.md), retained in full below; the unchanged standard bargain |
 | Official release records | [Jig GitHub releases](https://github.com/jiggy/jig/releases) and [npm versions and publication times](https://registry.npmjs.org/@jigging%2fjig), including prereleases; a source commit is licensed source, not by itself a newly published official release for update coverage |
 | Direct prices | Jig schedule P-1.0 in [PRICING.md](PRICING.md), effective 2026-09-21: USD; twelve-month Update Terms |
 | Purchases | Email `licensing@jig.md` for an ordinary order, directly or through a supplier naming the actual customer Group. The authorized seller accepts payment or express credit and sends the customer its coverage record. Email also handles cancellation; no registration platform is required. |

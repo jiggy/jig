@@ -20,6 +20,9 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 - Keep this fixture private to tests. It is not a recommended example or a
   second application distribution.
 - Preserve separate worker identities, fixed acceptance cases, and checkpoints.
+- Store deliberately failing sample checks as `project.test.ts.txt`; the host
+  test assembles them as `project.test.ts` in its disposable project. Ordinary
+  repository test discovery must not run these unrepaired sample checks.
 
 ## Work Guidance
 

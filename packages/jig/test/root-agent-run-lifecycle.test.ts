@@ -8,6 +8,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -82,6 +83,8 @@ async function addBatchRepairFixture(project: string) {
       filter: (path) => basename(path) !== 'node_modules',
     })
   }
+  const checks = join(project, 'fixtures/timesheet/test/project.test.ts')
+  await rename(`${checks}.txt`, checks)
 }
 
 test('assembles the batch host fixture over the current repair application', async () => {
@@ -103,6 +106,12 @@ test('assembles the batch host fixture over the current repair application', asy
       'handle(repairBatch)',
     )
     expect(await Bun.file(join(project, 'fixtures/timesheet/src/total.ts')).exists()).toBeTrue()
+    expect(await readFile(join(project, 'fixtures/timesheet/test/project.test.ts'), 'utf8')).toBe(
+      await readFile(
+        join(import.meta.dir, 'fixtures/repair-batch/fixtures/timesheet/test/project.test.ts.txt'),
+        'utf8',
+      ),
+    )
   } finally {
     await rm(project, { recursive: true, force: true })
   }
