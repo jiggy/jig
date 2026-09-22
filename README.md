@@ -32,6 +32,12 @@ The shared aspiration is to **expand human possibility**. FLOW pursues
 
 ## Quickstart
 
+Jig's current source uses the source-available [Bread License](LICENSE.md): personal non-business
+use, genuine evaluation, and business use below US$1m in consolidated group
+annual revenue are free. Larger groups need company coverage for operational
+use. [Jig's prices](PRICING.md) buy permanent rights to covered releases across
+applications, including twelve months of new official releases.
+
 Install the developer alpha on a [supported Linux host](docs/jig/guide/index.md#supported-host):
 
 ```sh

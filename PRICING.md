@@ -39,8 +39,10 @@ exclusive at the end, in UTC.
 Those release rights last for the duration of copyright, including permitted
 independent modifications. Nonrenewal and later revenue growth do not reprice
 or cancel them. Another application using a covered release requires no new
-Jig purchase; a newer uncovered official release does, including a security
-update. No future release or support service is promised.
+Jig purchase. A newer uncovered official release, including a security update,
+requires applicable permission and may require another purchase; a Group that
+now qualifies for free business use may use that grant. No future release or
+support service is promised.
 
 The purchase is twelve months, normally paid upfront. There is no one-month
 purchase. An expressly accepted credit order is an annual obligation, not a

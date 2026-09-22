@@ -98,6 +98,13 @@ standard for portable methods.
 
 Jig's adoption notice and complete Bread text are in [LICENSE.md](LICENSE.md),
 with retained [pricing](PRICING.md) and the [license mapping](LICENSES.md).
+Jig is source-available: personal non-business use, genuine evaluation, and
+business use below US$1m in consolidated group annual revenue are free. Larger
+groups need company coverage for operational use. Purchases preserve rights to
+covered releases after nonrenewal, across the Group's applications. Distributing
+Jig requires its corresponding source, including modifications; separate
+independent application files can remain private.
+
 FLOW and third-party components keep their separate terms.
 Download the source archive from the matching `jig-v<version>` entry on
 [GitHub Releases](https://github.com/jiggy/jig/releases). Each release links

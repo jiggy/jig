@@ -26,6 +26,8 @@ admitted FLOW packages.
   texts. Source delivery belongs to the matching GitHub release and its tagged
   repository archive. Never embed source archives or add source-assembly
   machinery to the npm package. `RELEASING.md` owns source-build instructions.
+- The package README summarizes free eligibility, company coverage, lasting
+  release rights, and distributed-source duties, linking to those retained terms.
 
 ## Local Contracts
 
