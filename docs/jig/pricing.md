@@ -8,12 +8,12 @@ description: Jig is source-available and always free for personal use, evaluatio
 
 <header className="hero">
 <div className="hero-field" aria-hidden="true"><div className="field-line"></div><div className="field-line"></div><div className="field-line"></div><div className="field-core"></div></div>
-<p className="eyebrow">Bread License 1.0 · Source-Available</p>
+<p className="eyebrow"><a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">🍞 Bread License 1.0</a> · Source-Available</p>
 <h1>Always free for individuals.<br /><span className="hero-emphasis">Always free for small business.</span></h1>
 <p className="hero-description">Jig has no seat counting, no usage metering, and no locked features. The complete product is 100% free for personal projects and any company under $1M in annual revenue.</p>
 <nav className="hero-actions" aria-label="Get started">
 <a href="/guide/" className="action action--brand">Start building <span aria-hidden="true">↗</span></a>
-<a href="https://github.com/jiggy/jig/blob/main/LICENSE.md" className="action action--alt">Read the license</a>
+<a href="https://bread.jig.md/" className="action action--alt" target="_blank" rel="noopener noreferrer">🍞 Read the Bread License</a>
 </nav>
 <p className="hero-status"><span aria-hidden="true"></span>One complete product · Permanent release rights · No license telemetry</p>
 </header>
@@ -78,6 +78,16 @@ description: Jig is source-available and always free for personal use, evaluatio
 </div>
 </div>
 
+<div className="pricing-bread-note">
+<div className="pricing-bread-icon" aria-hidden="true">🍞</div>
+<div className="pricing-bread-text">
+<h4>Licensed under Bread · Free for you. Friendly for business.</h4>
+<p>Jig is released under the <a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">Bread License</a> — a source-available model grounded in <em>reciprocity</em>: creators provide useful software and dependable freedoms, while commercial participation sustains that work and its broad availability. Put your ideas to work, build a business around them, and help software creators make a living.</p>
+<p>Individuals, evaluators, and companies under $1M consolidated revenue build for free forever, with permanent release rights, no runtime licensing checks, and zero license surveillance.</p>
+<a className="text-link" href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">Explore the Bread License at bread.jig.md <span aria-hidden="true">↗</span></a>
+</div>
+</div>
+
 <details className="pricing-funding-collapsible">
 <summary className="pricing-funding-summary">
 <div className="pricing-funding-summary-text">
@@ -121,13 +131,17 @@ description: Jig is source-available and always free for personal use, evaluatio
 <li><strong>Direct and simple:</strong> Email <code>licensing@jig.md</code> with your group's legal identity, billing contact, and declared revenue band. Authorized seller Pereirinhos s.r.o. provides the order terms and official coverage record.</li>
 <li><strong>Permanent availability guarantee:</strong> If purchasing is ever unavailable through published channels for 180 days after a request, your group automatically receives permanent, paid-up rights to covered releases.</li>
 </ul>
-<p className="pricing-doc-links">Official legal instruments: <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">LICENSE.md</a> · <a href="https://github.com/jiggy/jig/blob/main/PRICING.md">PRICING.md</a></p>
+<p className="pricing-doc-links">Official legal instruments: <a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">🍞 Bread License 1.0</a> · <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">Jig Adoption Notice</a> · <a href="https://github.com/jiggy/jig/blob/main/PRICING.md">PRICING.md</a></p>
 </div>
 </div>
 </details>
 
 <div className="pricing-faq">
 <h3>Common questions</h3>
+<details>
+<summary>What is the Bread License (🍞)?</summary>
+<p>The <a href="https://bread.jig.md/" target="_blank" rel="noopener noreferrer">Bread License</a> is a reusable commercial license for creators. It gives everyone full access to inspect, modify, run, and redistribute the software. Personal use, evaluation, and business use under $1M consolidated annual revenue are always free, while larger businesses purchase nominal company-wide licenses that fund continued maintenance.</p>
+</details>
 <details>
 <summary>What counts as annual revenue?</summary>
 <p>Revenue means your consolidated group's revenue for its last completed financial year using standard accounting rules. It does not include investment capital, funding rounds, company valuation, or employee headcount.</p>
