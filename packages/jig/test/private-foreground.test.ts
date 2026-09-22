@@ -902,7 +902,7 @@ proofDescribe('private rootless project session', () => {
           '',
         ].join('\n'),
       )
-      await writeFile(join(malformed, 'flow.meta.json'), 'not Metadata/1\n')
+      await writeFile(join(malformed, 'FLOW.meta.json'), 'not Metadata/1\n')
       await writeFile(join(malformed, 'FLOW.ts'), 'export {};\n')
 
       session = await openPrivateProjectSession({
@@ -918,7 +918,7 @@ proofDescribe('private rootless project session', () => {
         message: 'project candidate is invalid',
         diagnostic: {
           code: 'METADATA_INVALID_JSON',
-          path: 'flows/malformed/flow.meta.json',
+          path: 'flows/malformed/FLOW.meta.json',
         },
       })
       expect(JSON.stringify(failure)).not.toContain(root)
@@ -1509,7 +1509,7 @@ async function writeProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(worker, 'flow.meta.json'),
+    join(worker, 'FLOW.meta.json'),
     metadata('foreground-worker', 'Returns its input from one contained Bun Run.'),
   )
   await writeFile(
@@ -1577,7 +1577,7 @@ async function writeProject(root: string): Promise<void> {
     recursive,
   ]
   for (const directory of slotPackages) await mkdir(directory, { recursive: true })
-  await writeFile(join(router, 'flow.meta.json'), metadata('ticket-router', 'Routes one ticket.'))
+  await writeFile(join(router, 'FLOW.meta.json'), metadata('ticket-router', 'Routes one ticket.'))
   await writeFile(join(router, 'FLOW.contract.json'), ticketSchema())
   await writeFile(
     join(router, 'settings.schema.json'),
@@ -1590,17 +1590,17 @@ async function writeProject(root: string): Promise<void> {
     }),
   )
   await writeFile(join(router, 'FLOW.ts'), routerProgram())
-  await writeFile(join(bug, 'flow.meta.json'), metadata('handle-bug', 'Handles one bug.'))
+  await writeFile(join(bug, 'FLOW.meta.json'), metadata('handle-bug', 'Handles one bug.'))
   await writeFile(join(bug, 'FLOW.contract.json'), ticketSchema('bug'))
   await writeFile(join(bug, 'FLOW.ts'), childProgram('bug'))
   await writeFile(
-    join(question, 'flow.meta.json'),
+    join(question, 'FLOW.meta.json'),
     metadata('answer-question', 'Answers one question.'),
   )
   await writeFile(join(question, 'FLOW.contract.json'), ticketSchema('question'))
   await writeFile(join(question, 'FLOW.ts'), childProgram('question'))
   await writeFile(
-    join(invalidInput, 'flow.meta.json'),
+    join(invalidInput, 'FLOW.meta.json'),
     metadata('invalid-input-child', 'Must never start for the invalid test input.'),
   )
   await writeFile(
@@ -1620,7 +1620,7 @@ async function writeProject(root: string): Promise<void> {
     throwingChildProgram('invalid input reached child code'),
   )
   await writeFile(
-    join(invalidResult, 'flow.meta.json'),
+    join(invalidResult, 'FLOW.meta.json'),
     metadata('invalid-result-child', 'Returns a result rejected by its declaration.'),
   )
   await writeFile(
@@ -1645,7 +1645,7 @@ async function writeProject(root: string): Promise<void> {
   )
   await writeFile(join(invalidResult, 'FLOW.ts'), invalidResultChildProgram())
   await writeFile(
-    join(executionFailure, 'flow.meta.json'),
+    join(executionFailure, 'FLOW.meta.json'),
     metadata('execution-failure-child', 'Fails after it starts.'),
   )
   await writeFile(
@@ -1653,7 +1653,7 @@ async function writeProject(root: string): Promise<void> {
     throwingChildProgram('deliberate child failure'),
   )
   await writeFile(
-    join(recursive, 'flow.meta.json'),
+    join(recursive, 'FLOW.meta.json'),
     metadata('recursive-child', 'Attempts one unavailable child call.'),
   )
   await writeFile(join(recursive, 'FLOW.ts'), recursiveChildProgram())
@@ -1693,7 +1693,7 @@ async function writeAgentFreeProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(worker, 'flow.meta.json'),
+    join(worker, 'FLOW.meta.json'),
     metadata('agent-isolation', 'Returns its input without an Agent invocation.'),
   )
   await writeFile(join(worker, 'FLOW.ts'), bunWorkerProgram())
@@ -1730,7 +1730,7 @@ async function writeAgentRouterProject(root: string): Promise<void> {
     "# Ticket routing\n\nCopy the ticket's explicit `route` field exactly.\n",
   )
   await writeFile(
-    join(router, 'flow.meta.json'),
+    join(router, 'FLOW.meta.json'),
     JSON.stringify({
       name: 'ticket-router',
       description: 'Uses one Agent choice before calling an exact child.',
@@ -1745,7 +1745,7 @@ async function writeAgentRouterProject(root: string): Promise<void> {
     [technical, 'technical'],
   ] as const) {
     await writeFile(
-      join(directory, 'flow.meta.json'),
+      join(directory, 'FLOW.meta.json'),
       metadata(route, `Handles one ${route} ticket.`),
     )
     await writeFile(
@@ -2023,7 +2023,7 @@ async function writeChannelProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     metadata('channel-worker', 'Publish direct progress and retain the separate execution result.'),
   )
   await writeFile(
@@ -2101,7 +2101,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
               display: { direction: 'send', schema: { type: 'string' } },
             }
     await writeFile(
-      join(directory, 'flow.meta.json'),
+      join(directory, 'FLOW.meta.json'),
       metadata(`child-channel-${name}`, 'Exercise exact child communication.'),
     )
     await writeFile(
@@ -2262,7 +2262,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
               ready: { direction: 'send' },
             }
     await writeFile(
-      join(directory, 'flow.meta.json'),
+      join(directory, 'FLOW.meta.json'),
       metadata(`broadcast-${name}`, 'Exercise isolated broadcast delivery.'),
     )
     await writeFile(

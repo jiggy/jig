@@ -49,7 +49,7 @@ Approve this exact revision for execution? [y/N]
 Enter `y` to authorize that revision, or decline to leave it unapproved. Only
 run the next command after approval.
 
-`init` writes ordinary editable files: `jig.ts`, `flows/hello/flow.meta.json`,
+`init` writes ordinary editable files: `jig.ts`, `flows/hello/FLOW.meta.json`,
 `flows/hello/package.json`, and `flows/hello/FLOW.ts`, plus a README and empty
 Bindings directory. It installs nothing, makes no network requests, and
 approves nothing. Use `jig init --bare <directory>` when you want an empty

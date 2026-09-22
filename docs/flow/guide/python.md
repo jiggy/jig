@@ -80,7 +80,7 @@ protocol exercise, not a sandbox or production host; run only your own trusted
 code with it. Its pipe polling is POSIX-specific. Installed SDK runtime tests
 also run in the Windows CI job independently of this peer.
 
-`FLOW.py` is the package's single implementation. Add optional `flow.meta.json`
+`FLOW.py` is the package's single implementation. Add optional `FLOW.meta.json`
 for metadata/dependencies and `FLOW.contract.json` for input/result validation or
 ports, as specified by [Package/1](../spec/package-format.md). A host owns
 launching the interpreter, dependency preparation, authority, limits and cleanup.
@@ -100,7 +100,7 @@ result = await context.call(
 
 Every call returns the complete `{ outcome, output }` result, whether the selected
 implementation is a Flow or a native service. Declare both slots under `uses`
-in `flow.meta.json`; the host selects and authorizes their implementations.
+in `FLOW.meta.json`; the host selects and authorizes their implementations.
 Naming a slot never grants authority or creates a provider. Operation IDs are supplied by your method and follow Run/1's identity
 rules. Await owned calls before returning the root result.
 

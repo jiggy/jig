@@ -116,7 +116,7 @@ hostTest.each([false, true])(
         `import {defineJig,discover} from '@jigging/jig'; export default defineJig({ flows:discover('flows'),bindings:discover('bindings'), defaultProviders: { 'https://example.org/contracts/echo': 'npm:echo-method' } });`,
       )
       await putApp('flows/caller/FLOW.ts', caller)
-      await putApp('flows/caller/flow.meta.json', {
+      await putApp('flows/caller/FLOW.meta.json', {
         uses: { worker: { contract: './echo.json' } },
       })
       await putApp('flows/caller/echo.json', contract)

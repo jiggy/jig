@@ -643,7 +643,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             recursive: true,
           })
         await writeFile(
-          join(directory, 'flow.meta.json'),
+          join(directory, 'FLOW.meta.json'),
           JSON.stringify({ name, description: 'Finite composition lifecycle fixture.' }),
         )
         await writeFile(
@@ -710,7 +710,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       await writeProject(root)
       await writeSpecialistParent(root)
       await writeFile(
-        join(root, 'flows/router/flow.meta.json'),
+        join(root, 'flows/router/FLOW.meta.json'),
         JSON.stringify({
           name: 'subprocess',
           description: 'Exercises bounded subprocess execution.',
@@ -1713,7 +1713,7 @@ async function writeProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     JSON.stringify({
       name: 'deterministic-agent-router',
       description: 'Exercises one exact contained Agent call.',
@@ -1790,7 +1790,7 @@ async function writeAgentMethodProject(root: string, url: string, nested = false
     join(router, 'skills/answer-check/SKILL.md'),
   )
   await writeFile(
-    join(router, 'flow.meta.json'),
+    join(router, 'FLOW.meta.json'),
     JSON.stringify({
       name: 'agent-method-caller',
       description: 'Exercise two ordinary HTTP Agent method calls and reject invalid requests.',
@@ -1874,7 +1874,7 @@ async function writeRepairWorkspace(root: string, url: string, batch = false): P
     await addBatchRepairFixture(project)
     // Only the private batch root uses retention; the public single-job root does not.
     await writeFile(
-      join(project, 'flows/project/flow.meta.json'),
+      join(project, 'flows/project/FLOW.meta.json'),
       JSON.stringify({
         name: 'batch-repair-fixture',
         uses: { repair: {}, progress: { contract: './contracts/run-checkpoint/contract.json' } },
@@ -2062,7 +2062,7 @@ async function writeSpecialistParent(root: string): Promise<void> {
   await writeFile(join(parent, 'settings.schema.json'), settingsSchema)
   await writeFile(join(specialist, 'settings.schema.json'), settingsSchema)
   await writeFile(
-    join(parent, 'flow.meta.json'),
+    join(parent, 'FLOW.meta.json'),
     JSON.stringify({ name: 'parent', description: 'Calls an exact Agent specialist.' }),
   )
   await writeFile(

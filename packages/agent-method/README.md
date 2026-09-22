@@ -130,7 +130,7 @@ const completed = await withAgentConversation(run, {
 ```
 
 The caller declares the exact Agent bundle and required mechanisms once in
-`flow.meta.json`. The helper resolves channel agreements through that slot:
+`FLOW.meta.json`. The helper resolves channel agreements through that slot:
 
 With Jig, import the installed bundle in one step into an existing `contracts/`
 parent: `jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run`.

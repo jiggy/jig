@@ -42,7 +42,7 @@ describe('private package-project portable lock projection', () => {
       await withFlows(
         {
           'flows/provider': {
-            'flow.meta.json': metadata({
+            'FLOW.meta.json': metadata({
               name: 'provider',
               ...(supports === undefined ? {} : { supports }),
             }),
@@ -127,7 +127,7 @@ describe('private package-project portable lock projection', () => {
       await withFlows(
         {
           'flows/checkpoint': {
-            'flow.meta.json': metadata({
+            'FLOW.meta.json': metadata({
               name: 'checkpoint',
               description: 'Save progress.',
               uses: { progress: { contract: './contracts/run-checkpoint/contract.json' } },
@@ -140,7 +140,7 @@ describe('private package-project portable lock projection', () => {
             'contracts/run-checkpoint/contract.json': descriptor,
           },
           'flows/parent': {
-            'flow.meta.json': metadata({ name: 'parent', description: 'Parent.' }),
+            'FLOW.meta.json': metadata({ name: 'parent', description: 'Parent.' }),
             'FLOW.ts': 'export {};\n',
           },
         },
@@ -253,7 +253,7 @@ describe('private package-project portable lock projection', () => {
     await withFlows(
       {
         'flows/router': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'router',
             description: 'Router.',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
@@ -299,7 +299,7 @@ describe('private package-project portable lock projection', () => {
     await withFlows(
       {
         'flows/command': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'command',
             description: 'Command.',
             uses: { command: { contract: './contracts/project-command/contract.json' } },
@@ -367,7 +367,7 @@ describe('private package-project portable lock projection', () => {
         ...trees,
         'flows/configured': {
           ...trees['flows/configured'],
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'configured',
             description: 'Configured Agent consumer.',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
@@ -376,7 +376,7 @@ describe('private package-project portable lock projection', () => {
           ...agentChannelFiles('contracts/agent-run/contracts'),
         },
         'flows/agent': {
-          'flow.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
+          'FLOW.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
           'FLOW.ts': 'export {};\n',
           'FLOW.contract.json': agentRunContract,
           ...agentChannelFiles('contracts'),
@@ -629,7 +629,7 @@ describe('private package-project portable lock projection', () => {
     await withFlows(
       {
         'flows/consumer': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'consumer',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
           }),
@@ -641,7 +641,7 @@ describe('private package-project portable lock projection', () => {
           ['first', 'second'].map((name) => [
             `flows/${name}`,
             {
-              'flow.meta.json': metadata({ name }),
+              'FLOW.meta.json': metadata({ name }),
               'FLOW.ts': 'export {};\n',
               'FLOW.contract.json': agentRunContract,
               ...agentChannelFiles('contracts'),
@@ -783,7 +783,7 @@ function rootPackageCollection(count: number): unknown {
 function projectTrees(): Record<string, Record<string, string>> {
   return {
     'flows/configured': {
-      'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+      'FLOW.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
       'FLOW.ts': 'export {};\n',
       'settings.schema.json': schema({
         type: 'object',
@@ -793,11 +793,11 @@ function projectTrees(): Record<string, Record<string, string>> {
       }),
     },
     'flows/worker': {
-      'flow.meta.json': metadata({ name: 'worker', description: 'Worker.' }),
+      'FLOW.meta.json': metadata({ name: 'worker', description: 'Worker.' }),
       'FLOW.ts': 'export {};\n',
     },
     'flows/backup': {
-      'flow.meta.json': metadata({ name: 'backup', description: 'Backup.' }),
+      'FLOW.meta.json': metadata({ name: 'backup', description: 'Backup.' }),
       'FLOW.ts': 'export {};\n',
     },
   }

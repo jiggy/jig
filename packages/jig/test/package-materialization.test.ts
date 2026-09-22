@@ -136,7 +136,7 @@ describe('private package materialization', () => {
     const stagingParent = await mkdtemp(join(tmpdir(), 'jig-materialize-parent-'))
     try {
       await writeTree(source, {
-        'flow.meta.json': JSON.stringify({ name: 'exact', description: 'Exact fixture.' }),
+        'FLOW.meta.json': JSON.stringify({ name: 'exact', description: 'Exact fixture.' }),
         'FLOW.ts': "export const captured = 'old';\n",
         'lib/value.ts': 'export default 1;\n',
       })
@@ -671,7 +671,7 @@ async function workspaceFixture() {
   const protectedParent = await mkdtemp(join(tmpdir(), 'jig-layout-materializations-'))
   await writeTree(source, {
     'flows/main/package.json': '{"name":"@fixture/main"}',
-    'flows/main/flow.meta.json': JSON.stringify({
+    'flows/main/FLOW.meta.json': JSON.stringify({
       name: 'main',
       description: 'Workspace fixture.',
     }),
@@ -712,7 +712,7 @@ async function workspaceFixture() {
 
 function durableTree(): Readonly<Record<string, string>> {
   return {
-    'flow.meta.json': JSON.stringify({ name: 'durable', description: 'Durable fixture.' }),
+    'FLOW.meta.json': JSON.stringify({ name: 'durable', description: 'Durable fixture.' }),
     'FLOW.ts': "export default 'durable';\n",
     'nested/value.txt': 'nested durable bytes\n',
     'nested/removed/value.txt': 'removed before crash\n',

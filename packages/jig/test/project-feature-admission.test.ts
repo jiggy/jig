@@ -142,7 +142,7 @@ describe('retained project feature admission evidence', () => {
         {
           'flows/provider': {
             ...provider([]),
-            'flow.meta.json': JSON.stringify({ name: 'provider', description, supports: [] }),
+            'FLOW.meta.json': JSON.stringify({ name: 'provider', description, supports: [] }),
           },
           'flows/consumer': consumer(['conversation']),
         },
@@ -170,7 +170,7 @@ describe('retained project feature admission evidence', () => {
       async (project, root) => {
         const before = [...privateProjectFeatureFailures(project)]
         await writeFile(
-          join(root, 'flows/provider/flow.meta.json'),
+          join(root, 'flows/provider/FLOW.meta.json'),
           JSON.stringify({ name: 'provider', supports: ['conversation'] }),
         )
         expect([...privateProjectFeatureFailures(project)]).toEqual(before)
@@ -300,7 +300,7 @@ function key(selector: string): string {
 
 function run(name: string): Record<string, string> {
   return {
-    'flow.meta.json': JSON.stringify({ name }),
+    'FLOW.meta.json': JSON.stringify({ name }),
     'FLOW.ts': 'throw new Error("Feature review must never execute this package.");\n',
   }
 }
@@ -308,7 +308,7 @@ function run(name: string): Record<string, string> {
 function provider(supports?: readonly string[]): Record<string, string> {
   return {
     ...run('provider'),
-    'flow.meta.json': JSON.stringify({ name: 'provider', ...(supports ? { supports } : {}) }),
+    'FLOW.meta.json': JSON.stringify({ name: 'provider', ...(supports ? { supports } : {}) }),
     'FLOW.contract.json': contract,
   }
 }
@@ -316,7 +316,7 @@ function provider(supports?: readonly string[]): Record<string, string> {
 function consumer(requires?: readonly string[]): Record<string, string> {
   return {
     ...run('consumer'),
-    'flow.meta.json': JSON.stringify({
+    'FLOW.meta.json': JSON.stringify({
       name: 'consumer',
       uses: {
         review: {

@@ -286,7 +286,7 @@ async function fixture(root: string, grants: Record<string, unknown>) {
     await mkdir(path, { recursive: true })
     await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(path, 'sdk'), { recursive: true })
     await writeFile(
-      join(path, 'flow.meta.json'),
+      join(path, 'FLOW.meta.json'),
       JSON.stringify({
         name,
         description: 'Bounded HTTP resource consumer.',

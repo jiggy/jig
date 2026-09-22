@@ -24,7 +24,7 @@ latter defines optional public updates. The bundle also includes direct
 `agent-commands.json` and `agent-replies.json` channel contracts for conversational
 use. Copy the complete
 `agent-run/` bundle, preserving its descriptor-relative `contracts/` directory.
-Declare the slot in a code Flow's optional `flow.meta.json`:
+Declare the slot in a code Flow's optional `FLOW.meta.json`:
 
 ```json
 {

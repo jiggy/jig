@@ -1,6 +1,6 @@
 {
   "name": "@jigging/jig",
-  "version": "0.1.0-alpha.17",
+  "version": "0.1.0-alpha.18",
   "description": "A local, secure host for admitted FLOW packages",
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {

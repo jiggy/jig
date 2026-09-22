@@ -254,7 +254,7 @@ describe('private project Flow source capture', () => {
       })
       await packageFiles(root, 'flows/markdown', { 'FLOW.md': metadata('instruction') })
       await packageFiles(root, 'flows/dependency', {
-        'flow.meta.json': JSON.stringify({ uses: { host: {} } }),
+        'FLOW.meta.json': JSON.stringify({ uses: { host: {} } }),
         'FLOW.py': 'pass\n',
       })
       await packageFiles(root, 'flows/attachment', {
@@ -278,7 +278,7 @@ describe('private project Flow source capture', () => {
       })
       await packageFiles(root, 'flows/code-tools', {
         'FLOW.ts': 'export {}',
-        'flow.meta.json': JSON.stringify({ 'allowed-tools': 'Read' }),
+        'FLOW.meta.json': JSON.stringify({ 'allowed-tools': 'Read' }),
       })
       await packageFiles(root, 'flows/unsupported-tools', {
         'FLOW.md': metadata('tools', 'allowed-tools: Bash'),

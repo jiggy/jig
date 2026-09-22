@@ -99,7 +99,7 @@ qualified(
       await readFile(join(root, 'packages/agent-acp/FLOW.contract.json')),
     )
     await writeFile(
-      join(root, 'app/flows/restore/flow.meta.json'),
+      join(root, 'app/flows/restore/FLOW.meta.json'),
       JSON.stringify({ uses: { agent: { contract: './agent.json' } } }),
     )
     await writeFile(

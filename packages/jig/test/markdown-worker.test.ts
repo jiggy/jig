@@ -406,7 +406,7 @@ hosted('fresh installed Markdown admission on the provisioned proof host', () =>
 async function writeTypeScriptEcho(root: string, descriptor: string): Promise<void> {
   await mkdir(root)
   await writeFile(join(root, 'FLOW.contract.json'), descriptor)
-  await writeFile(join(root, 'flow.meta.json'), JSON.stringify({ name: basename(root) }))
+  await writeFile(join(root, 'FLOW.meta.json'), JSON.stringify({ name: basename(root) }))
   await writeFile(
     join(root, 'FLOW.ts'),
     'import { handle, type RunResult } from "@jigging/flow";\n' +

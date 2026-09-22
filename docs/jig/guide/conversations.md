@@ -35,7 +35,7 @@ dependency may be at `flows/worker/node_modules/@jigging/agent-method/` instead.
 
 This validates and copies the descriptor and all referenced channel agreements,
 without running the package or approving work. The new directory belongs to
-your project. In the worker's `flow.meta.json`:
+your project. In the worker's `FLOW.meta.json`:
 
 ```json
 {

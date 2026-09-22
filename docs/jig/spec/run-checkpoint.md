@@ -10,7 +10,7 @@ Later failure cannot turn unfinished scratch files into accepted progress.
 ## Declare and call
 
 Copy the [descriptor](https://jig.md/contracts/run-checkpoint/contract.json)
-into the Flow package and declare its local slot in `flow.meta.json`
+into the Flow package and declare its local slot in `FLOW.meta.json`
 (or optional Markdown frontmatter):
 
 ```json

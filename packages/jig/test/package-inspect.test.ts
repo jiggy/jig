@@ -42,7 +42,7 @@ describe('aggregate Package/1 inspection', () => {
       'JSON',
       (metadata: unknown) => ({
         'FLOW.ts': 'throw new Error("inspection must not execute package code");',
-        'flow.meta.json': JSON.stringify(metadata),
+        'FLOW.meta.json': JSON.stringify(metadata),
       }),
     ],
     [
@@ -222,7 +222,7 @@ describe('aggregate Package/1 inspection', () => {
     await withPackage(
       {
         'FLOW.py': 'pass\n',
-        'flow.meta.json': JSON.stringify({
+        'FLOW.meta.json': JSON.stringify({
           name: 'exact',
           description: 'Exact.',
           'allowed-tools': 'Read',
@@ -234,7 +234,10 @@ describe('aggregate Package/1 inspection', () => {
         expect(packageProfileIssue(checked)?.code).toBe('PACKAGE_TOOLS_UNSUPPORTED')
       },
     )
-    await withPackage({ 'FLOW.md': 'Prose', 'flow.meta.json': '{}' }, (root) =>
+    await withPackage({ 'FLOW.md': 'Prose', 'FLOW.meta.json': '{}' }, (root) =>
+      expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_METADATA_OWNER'),
+    )
+    await withPackage({ 'FLOW.ts': 'export {};\n', 'flow.meta.json': '{}' }, (root) =>
       expectCheckError(() => checkPackageDirectory(root), 'PACKAGE_METADATA_OWNER'),
     )
   })

@@ -12,7 +12,7 @@ provider framework, tool authority or expression language.
 [Package/1](package-format.md) owns the single entrypoint and its optional
 frontmatter. [Invocation Contract/1](invocation-contracts.md) exclusively owns
 input/result validation, explicit outcomes and ports. A code implementation
-instead uses optional `flow.meta.json`; simultaneous implementations and a
+instead uses optional `FLOW.meta.json`; simultaneous implementations and a
 sidecar beside `FLOW.md` reject. Source resources remain ordinary captured files.
 
 A host must qualify the exact parser, interpreter, profile, reasoning dependency
@@ -414,7 +414,7 @@ an Agent finish. Adding a heading or comment does not alter these rules.
 
 ```text
 fast/FLOW.ts                 considered/FLOW.md
-fast/flow.meta.json          considered/settings.schema.json
+fast/FLOW.meta.json          considered/settings.schema.json
 fast/settings.schema.json    considered/FLOW.contract.json
 fast/FLOW.contract.json
 ```

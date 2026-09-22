@@ -24,7 +24,7 @@ admitted FLOW packages.
   or the operator's absolute `JIG_AUTHORING_NODE_PATH`.
 - `src/markdown/` owns the sequential Markdown parser and interpreter, using
   the public FLOW SDK inside the ordinary contained runtime. Root `FLOW.contract.json`
-  owns invocation declarations; code metadata uses `flow.meta.json` and Markdown
+  owns invocation declarations; code metadata uses `FLOW.meta.json` and Markdown
   uses optional frontmatter. Exactly one `FLOW.<ext>` is executable.
 - `src/run/channels.ts` owns finite participant-scoped endpoint rights, atomic
   transfer, bounded direct delivery, isolated broadcast subscriptions and source

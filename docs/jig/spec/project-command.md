@@ -15,7 +15,7 @@ It adds no FLOW protocol method or requirement on other hosts. Its exact
 
 ## Reviewed authority
 
-The Flow declares the companion for each command slot, alongside Agent Run if needed, in `flow.meta.json`
+The Flow declares the companion for each command slot, alongside Agent Run if needed, in `FLOW.meta.json`
 (or optional `FLOW.md` frontmatter):
 
 ```json

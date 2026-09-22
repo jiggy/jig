@@ -1,6 +1,6 @@
 {
   "name": "@jigging/agent-method",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "A reusable bounded Agent method with an ordinary FLOW entrypoint",
   "license": "MPL-2.0",
   "repository": {
@@ -33,7 +33,7 @@
     "src",
     "FLOW.ts",
     "FLOW.contract.json",
-    "flow.meta.json",
+    "FLOW.meta.json",
     "settings.schema.json",
     "contracts",
     "skills",

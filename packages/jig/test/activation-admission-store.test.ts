@@ -2842,7 +2842,7 @@ async function createFixture(
     await mkdir(flowSource)
     await mkdir(declarationSource)
     await writeFile(
-      join(flowSource, 'flow.meta.json'),
+      join(flowSource, 'FLOW.meta.json'),
       JSON.stringify({ name: 'run', description: 'Direct alpha store fixture.' }),
     )
     await writeFile(join(flowSource, 'FLOW.ts'), '#!/usr/bin/env bun\nexport {};\n')
@@ -3321,7 +3321,7 @@ async function retainDistinctExecutionPackage(
   const source = join(fixture.base, `execution-${label}`)
   await mkdir(join(source, 'node_modules', 'dependency'), { recursive: true })
   await writeFile(
-    join(source, 'flow.meta.json'),
+    join(source, 'FLOW.meta.json'),
     JSON.stringify({ name: 'run', description: 'Prepared direct alpha store fixture.' }),
   )
   await writeFile(join(source, 'FLOW.ts'), "#!/usr/bin/env bun\nimport 'dependency';\nexport {};\n")

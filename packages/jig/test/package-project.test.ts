@@ -41,7 +41,7 @@ describe('private package-project linker', () => {
   test('feature requirements qualify only the selected graph and persist in the lock', async () => {
     const consumer = {
       ...agentConsumer('consumer'),
-      'flow.meta.json': metadata({
+      'FLOW.meta.json': metadata({
         uses: {
           agent: { contract: './contracts/agent-run/contract.json', requires: ['conversation'] },
         },
@@ -53,9 +53,9 @@ describe('private package-project linker', () => {
           'flows/consumer': consumer,
           'flows/provider': {
             ...agentProvider('provider'),
-            'flow.meta.json': metadata({ supports }),
+            'FLOW.meta.json': metadata({ supports }),
           },
-          'flows/parent': { ...run('parent'), 'flow.meta.json': metadata({ uses: { child: {} } }) },
+          'flows/parent': { ...run('parent'), 'FLOW.meta.json': metadata({ uses: { child: {} } }) },
           'flows/unrelated': run('unrelated'),
         },
         (flows) => {
@@ -96,7 +96,7 @@ describe('private package-project linker', () => {
       {
         'flows/consumer': {
           ...agentConsumer('consumer'),
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             uses: {
               agent: { contract: './contracts/agent-run/contract.json', requires: ['events'] },
             },
@@ -105,7 +105,7 @@ describe('private package-project linker', () => {
         'flows/plain': agentProvider('plain'),
         'flows/events': {
           ...agentProvider('events'),
-          'flow.meta.json': metadata({ supports: ['events'] }),
+          'FLOW.meta.json': metadata({ supports: ['events'] }),
         },
       },
       (flows) => {
@@ -288,7 +288,7 @@ describe('private package-project linker', () => {
     await mkdir(store, { mode: 0o700 })
     await mkdir(packageRoot, { recursive: true })
     await writeFile(
-      join(packageRoot, 'flow.meta.json'),
+      join(packageRoot, 'FLOW.meta.json'),
       metadata({ name: 'run', description: 'Run.' }),
     )
     await writeFile(join(packageRoot, 'FLOW.ts'), 'export {};\n')
@@ -369,7 +369,7 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/configurable': {
-          'flow.meta.json': metadata({ name: 'configurable', description: 'Configurable.' }),
+          'FLOW.meta.json': metadata({ name: 'configurable', description: 'Configurable.' }),
           'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({ type: 'object' }),
         },
@@ -394,7 +394,7 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/review': {
-          'flow.meta.json': metadata({ name: 'review', description: 'Review.' }),
+          'FLOW.meta.json': metadata({ name: 'review', description: 'Review.' }),
           'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({
             type: 'object',
@@ -449,7 +449,7 @@ describe('private package-project linker', () => {
         'flows/router': run('router'),
         'flows/bug': run('bug'),
         'flows/configured': {
-          'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+          'FLOW.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
           'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({
             type: 'object',
@@ -519,7 +519,7 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/consumer': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'consumer',
             description: 'Consumer.',
             uses: { index: { contract: './contracts/index.json' } },
@@ -567,7 +567,7 @@ describe('private package-project linker', () => {
       {
         'flows/consumer': {
           ...run('consumer'),
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'consumer',
             uses: { review: { contract: './contracts/review.json' } },
           }),
@@ -636,7 +636,7 @@ describe('private package-project linker', () => {
       {
         'flows/consumer': {
           ...run('consumer'),
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'consumer',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
           }),
@@ -677,7 +677,7 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/agent-consumer': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'agent-consumer',
             description: 'Agent consumer.',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
@@ -707,7 +707,7 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/local': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'local',
             description: 'Local.',
             uses: { child: {} },
@@ -715,7 +715,7 @@ describe('private package-project linker', () => {
           'FLOW.ts': 'export {};\n',
         },
         'flows/multiple': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'multiple',
             description: 'Multiple.',
             uses: {
@@ -763,7 +763,7 @@ describe('private package-project linker', () => {
         'flows/router': run('router'),
         'flows/agent': agentProvider('agent'),
         'flows/agent-child': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'agent-child',
             description: 'Agent child.',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
@@ -911,7 +911,7 @@ describe('private package-project linker', () => {
       {
         'flows/plain': run('plain'),
         'flows/configured': {
-          'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+          'FLOW.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
           'FLOW.contract.json': invocation({ attachments: { source: 'read' } }),
           'FLOW.ts': 'export {};\n',
         },
@@ -962,7 +962,7 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/files': {
-          'flow.meta.json': metadata({ name: 'files', description: 'Files.' }),
+          'FLOW.meta.json': metadata({ name: 'files', description: 'Files.' }),
           'FLOW.contract.json': invocation({
             attachments: { first: 'read-write', second: 'read-write' },
           }),
@@ -982,7 +982,7 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/immutable': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'immutable',
             description: 'Immutable.',
             'x-state': { nested: ['safe'] },
@@ -1257,7 +1257,7 @@ describe('private package-project linker', () => {
       {
         'flows/consumer': {
           ...run('consumer'),
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'consumer',
             uses: { work: {} },
           }),
@@ -1316,7 +1316,7 @@ function agentProvider(name: string): Record<string, string> {
 function agentConsumer(name: string): Record<string, string> {
   return {
     ...run(name),
-    'flow.meta.json': metadata({
+    'FLOW.meta.json': metadata({
       name,
       uses: { agent: { contract: './contracts/agent-run/contract.json' } },
     }),
@@ -1327,7 +1327,7 @@ function agentConsumer(name: string): Record<string, string> {
 
 function run(name: string): Record<string, string> {
   return {
-    'flow.meta.json': metadata({ name, description: `${name}.` }),
+    'FLOW.meta.json': metadata({ name, description: `${name}.` }),
     'FLOW.ts': 'export {};\n',
   }
 }

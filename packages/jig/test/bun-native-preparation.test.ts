@@ -54,7 +54,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
           type: 'module',
           dependencies: { helper: 'workspace:*' },
         })
-        await put(`apps/${project}/flows/work/flow.meta.json`, {
+        await put(`apps/${project}/flows/work/FLOW.meta.json`, {
           name: 'work',
           description: 'Workspace reuse proof.',
         })
@@ -368,7 +368,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-'))
   await writeFile(
-    join(root, 'flow.meta.json'),
+    join(root, 'FLOW.meta.json'),
     JSON.stringify({
       name: 'native-dependency-fixture',
       description: 'Exercises contained Bun dependency preparation.',

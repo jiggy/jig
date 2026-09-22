@@ -20,7 +20,7 @@ describe('private Package/1 result admission', () => {
     await withInspectedPackage(
       {
         'FLOW.ts': 'export {}\n',
-        'flow.meta.json': JSON.stringify({ name: 'outcomes', description: 'Outcome package.' }),
+        'FLOW.meta.json': JSON.stringify({ name: 'outcomes', description: 'Outcome package.' }),
         'FLOW.contract.json': JSON.stringify({
           $schema: contractUri,
           outcomes: { waiting: 'External input is required.' },
@@ -40,7 +40,7 @@ describe('private Package/1 result admission', () => {
     await withInspectedPackage(
       {
         'FLOW.ts': 'export {}\n',
-        'flow.meta.json': JSON.stringify({ name: 'outcomes', description: 'Outcome package.' }),
+        'FLOW.meta.json': JSON.stringify({ name: 'outcomes', description: 'Outcome package.' }),
       },
       async (inspected) => {
         for (const outcome of ['waiting', 'failed', 'cancelled', 'error']) {
@@ -60,7 +60,7 @@ describe('private Package/1 result admission', () => {
     await withInspectedPackage(
       {
         'FLOW.ts': 'export {}\n',
-        'flow.meta.json': JSON.stringify({
+        'FLOW.meta.json': JSON.stringify({
           name: 'correlated',
           description: 'Correlated result package.',
         }),
@@ -116,7 +116,7 @@ describe('private Package/1 result admission', () => {
     await withInspectedPackage(
       {
         'FLOW.ts': 'export {}\n',
-        'flow.meta.json': JSON.stringify({ name: 'exact', description: 'Exact package.' }),
+        'FLOW.meta.json': JSON.stringify({ name: 'exact', description: 'Exact package.' }),
       },
       async (inspected) => {
         for (const code of ['PROTOCOL_ERROR', 'EXECUTION_FAILED'] as const) {

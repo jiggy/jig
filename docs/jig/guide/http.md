@@ -10,7 +10,7 @@ Use Jig and FLOW SDK artifacts from that same candidate.
 ## Fetch a reference document
 
 Put an exact copy of the [HTTP Request descriptor](https://jig.md/contracts/http-request/contract.json)
-in `flows/reference/http.json`. Declare it in `flows/reference/flow.meta.json`:
+in `flows/reference/http.json`. Declare it in `flows/reference/FLOW.meta.json`:
 
 ```json
 {"uses":{"http":{"contract":"./http.json"}}}

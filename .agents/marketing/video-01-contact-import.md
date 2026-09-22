@@ -109,7 +109,7 @@ headings. This motivates interpretation without inventing a model failure.
 
 Build or explain `flows/map-agent/method.ts`. It requests a mapping from headings
 only, using the declared ordinary Agent Flow. It returns column indices, not generated
-transformation code. Show its `flow.meta.json` Agent slot declaration briefly.
+transformation code. Show its `FLOW.meta.json` Agent slot declaration briefly.
 
 Compare `bindings/code.ts` and `bindings/agent.ts`. Highlight the mapper target;
 keep the importer source visible and unchanged. These prepared Bindings are already

@@ -75,11 +75,11 @@ sufficient. When the structure itself matters, a reusable procedure should
 make it dependable rather than leave every consumer to reconstruct it.
 
 FLOW brings readable instructions and executable methods into one package
-model. An instructions-only Flow can hold guidance and resources. Adding an
-executable implementation gives a compatible host a method it can invoke
-directly, without a model first interpreting the prose to choose what to run.
-The program can use ordinary code throughout, request Agent judgment at chosen
-steps, or combine those approaches. Agent involvement is a method choice.
+model. A compatible host can execute `FLOW.md` through its Markdown interpreter;
+`FLOW.ts` or another code entrypoint is an alternative, not an additional
+implementation in the same package. Code can express known steps, request
+Agent judgment at chosen steps, or combine those approaches. Agent involvement
+is a method choice.
 
 Skills, tools, libraries, and graph runtimes remain valuable. Skills can bundle
 scripts, and those scripts can also be run directly. FLOW's proposal is a shared

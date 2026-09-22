@@ -372,7 +372,7 @@ async function writeHostileFlow(
   const flow = join(project, 'flows', name)
   await mkdir(flow)
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     JSON.stringify({
       name,
       description: 'Exercise one bounded installed-host containment invariant.',

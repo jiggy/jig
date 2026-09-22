@@ -85,7 +85,7 @@ export function packageProfileIssue(inspected: InspectedPackage): PackageProfile
     }
   }
   const unknown = Object.keys(inspected.metadata.unknownFields)[0]
-  const metadataPath = inspected.entrypoint.suffix === 'md' ? 'FLOW.md' : 'flow.meta.json'
+  const metadataPath = inspected.entrypoint.suffix === 'md' ? 'FLOW.md' : 'FLOW.meta.json'
   if (unknown !== undefined) {
     return {
       code: 'PACKAGE_METADATA_UNSUPPORTED',
@@ -129,28 +129,38 @@ export function requireSupportedPackageProfile(
  */
 export async function inspectCapturedPackage(captured: CapturedPackage): Promise<InspectedPackage> {
   const byPath = new Map(captured.files.map((file) => [file.path, file]))
+  const noncanonicalSidecar = captured.files.find(
+    ({ path }) =>
+      path !== 'FLOW.meta.json' && path.toLowerCase() === 'FLOW.meta.json'.toLowerCase(),
+  )
+  if (noncanonicalSidecar !== undefined)
+    invalid(
+      'PACKAGE_METADATA_OWNER',
+      'metadata sidecar must be named FLOW.meta.json',
+      noncanonicalSidecar.path,
+    )
   const entrypoint = await inspectEntrypoint(captured)
   let metadata: FlowMetadata
   if (entrypoint.suffix === 'md') {
-    if (byPath.has('flow.meta.json')) {
+    if (byPath.has('FLOW.meta.json')) {
       invalid(
         'PACKAGE_METADATA_OWNER',
-        'FLOW.md owns its optional frontmatter; flow.meta.json is not allowed beside it',
-        'flow.meta.json',
+        'FLOW.md owns its optional frontmatter; FLOW.meta.json is not allowed beside it',
+        'FLOW.meta.json',
       )
     }
     const metadataPrefix = await captured.readPrefix('FLOW.md', FLOW_FRONTMATTER_LIMIT + 1)
     metadata = parseFlowMetadataPrefix(metadataPrefix).metadata
     await validateUtf8File(captured, 'FLOW.md')
   } else {
-    const sidecar = byPath.get('flow.meta.json')
+    const sidecar = byPath.get('FLOW.meta.json')
     if (sidecar !== undefined && sidecar.size > FLOW_FRONTMATTER_LIMIT) {
-      invalid('METADATA_LIMIT', 'metadata exceeds 262144 bytes', 'flow.meta.json')
+      invalid('METADATA_LIMIT', 'metadata exceeds 262144 bytes', 'FLOW.meta.json')
     }
     metadata = parseFlowMetadataSidecar(
       sidecar === undefined
         ? new TextEncoder().encode('{}')
-        : await captured.read('flow.meta.json', FLOW_FRONTMATTER_LIMIT),
+        : await captured.read('FLOW.meta.json', FLOW_FRONTMATTER_LIMIT),
     )
   }
   const mode: PackageMode = 'run'
@@ -167,7 +177,7 @@ export async function inspectCapturedPackage(captured: CapturedPackage): Promise
     ? await readContract(captured, byPath, contractCache, 'FLOW.contract.json')
     : undefined
   const invocation = contract === undefined ? Object.freeze({}) : contract.invocation
-  const metadataPath = entrypoint.suffix === 'md' ? 'FLOW.md' : 'flow.meta.json'
+  const metadataPath = entrypoint.suffix === 'md' ? 'FLOW.md' : 'FLOW.meta.json'
   if (metadata.supports !== undefined)
     validateFeatureSelection(metadata.supports, contract, 'supports', metadataPath)
   const schemas: { input?: CompiledSchema; settings?: CompiledSchema; result?: CompiledSchema } = {}

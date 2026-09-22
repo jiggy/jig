@@ -161,7 +161,7 @@ test('ordinary Agent declares its packaged HTTP descriptor', async () => {
     await readFile(new URL('../contracts/http-request/contract.json', import.meta.url), 'utf8'),
   )
   expect(contract.id).toBe('https://jig.md/contracts/http-request')
-  const meta = JSON.parse(await readFile(new URL('../flow.meta.json', import.meta.url), 'utf8'))
+  const meta = JSON.parse(await readFile(new URL('../FLOW.meta.json', import.meta.url), 'utf8'))
   expect(meta.uses).toEqual({ http: { contract: './contracts/http-request/contract.json' } })
 })
 

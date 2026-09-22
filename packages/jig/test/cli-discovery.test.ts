@@ -159,8 +159,8 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
         .dependencies,
     ).toEqual({ '@jigging/flow': 'workspace:*' })
     expect((await readdir(join(project, 'flows/summarize'))).sort()).toEqual([
+      'FLOW.meta.json',
       'FLOW.ts',
-      'flow.meta.json',
       'package.json',
     ])
     expect((await checkPackageDirectory(join(project, 'flows/summarize'))).entrypoint.path).toBe(

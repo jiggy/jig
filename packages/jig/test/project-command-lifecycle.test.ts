@@ -235,7 +235,7 @@ async function fixture(root: string) {
     await mkdir(join(flow, 'contracts'), { recursive: true })
     await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
     await writeFile(
-      join(flow, 'flow.meta.json'),
+      join(flow, 'FLOW.meta.json'),
       JSON.stringify({
         name,
         description: 'Collect bounded project-command evidence.',

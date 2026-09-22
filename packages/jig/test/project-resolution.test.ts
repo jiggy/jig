@@ -225,7 +225,7 @@ describe('private package resolution', () => {
     const trees = {
       'flows/consumer': {
         ...run('consumer'),
-        'flow.meta.json': metadata({
+        'FLOW.meta.json': metadata({
           name: 'consumer',
           uses: { review: { contract: './contracts/review.json' } },
         }),
@@ -279,7 +279,7 @@ describe('private package resolution', () => {
         'flows/router': run('router'),
         'flows/agent': agentFlow(),
         'flows/reviewer': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'reviewer',
             description: 'Reviewer.',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
@@ -352,7 +352,7 @@ describe('private package resolution', () => {
       {
         'flows/agent': agentFlow(),
         'flows/router': {
-          'flow.meta.json': metadata({
+          'FLOW.meta.json': metadata({
             name: 'router',
             description: 'Router.',
             uses: { agent: { contract: './contracts/agent-run/contract.json' } },
@@ -710,7 +710,7 @@ function targetKey(target: RunTargetIdentity): string {
 
 function run(name: string): Record<string, string> {
   return {
-    'flow.meta.json': metadata({ name, description: `${name}.` }),
+    'FLOW.meta.json': metadata({ name, description: `${name}.` }),
     'FLOW.ts': 'export {};\n',
   }
 }
@@ -732,7 +732,7 @@ function digest(label: string): string {
 
 function agentFlow(): Readonly<Record<string, string>> {
   return {
-    'flow.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
+    'FLOW.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
     'FLOW.ts': 'export {};\n',
     'FLOW.contract.json': agentRunContract,
     ...agentChannelFiles('contracts'),

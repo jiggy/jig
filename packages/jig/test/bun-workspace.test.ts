@@ -90,7 +90,7 @@ async function fixture(versions = false, rootApplication = false) {
     type: 'module',
     dependencies: { helper: 'workspace:*', ...(versions ? { semver: '7.7.2' } : {}) },
   })
-  await put(`${target}/flow.meta.json`, { name: 'work', description: 'Workspace fixture.' })
+  await put(`${target}/FLOW.meta.json`, { name: 'work', description: 'Workspace fixture.' })
   await put(
     `${target}/FLOW.ts`,
     versions

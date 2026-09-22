@@ -52,7 +52,7 @@ versions; the descriptor carries the version and exact interface.
   [replies](https://jig.md/contracts/agent-run/contracts/agent-replies.json)
   descriptors beside it under `contracts/`, preserving their filenames. Copy
   the complete bundle into the Flow package and reference the invocation descriptor from
-  `flow.meta.json` (or Markdown frontmatter), as the specification shows.
+  `FLOW.meta.json` (or Markdown frontmatter), as the specification shows.
 - **See it in an application:** try the
   [support-case application](../guide/support-case.md).
 - **Continue or restore work:** read [Agent conversations](../guide/conversations.md).

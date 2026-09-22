@@ -121,7 +121,7 @@ export function parseFlowMetadataPrefix(bytes: Uint8Array): ParsedFlowMetadataPr
 }
 
 export function parseFlowMetadataSidecar(bytes: Uint8Array): FlowMetadata {
-  const path = 'flow.meta.json'
+  const path = 'FLOW.meta.json'
   if (bytes.byteLength > 262_144) invalid('METADATA_LIMIT', 'metadata exceeds 262144 bytes', path)
   let root: JsonValue
   try {

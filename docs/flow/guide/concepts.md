@@ -14,7 +14,7 @@ the linked specifications define exact requirements.
 | FLOW | Independent package and invocation standard | [Why FLOW exists](./understand.md) |
 | Flow | Package containing one reusable method | [Package/1](../spec/package-format.md) |
 | `FLOW.<ext>` | The package's single implementation; `FLOW.md` selects Markdown | [Package/1](../spec/package-format.md) |
-| `flow.meta.json` | Optional readable metadata and dependency declarations | [Package/1](../spec/package-format.md) |
+| `FLOW.meta.json` | Optional readable metadata and dependency declarations | [Package/1](../spec/package-format.md) |
 | Host | Consumer that supplies invocation and local execution policy | [Run/1](../spec/run-protocol.md) |
 | Runtime | Program or library advancing a method's internal execution | [The boundary](./understand.md#a-small-boundary-room-for-the-method) |
 | Run/1 | Protocol for one finite process exchange | [Run/1](../spec/run-protocol.md) |

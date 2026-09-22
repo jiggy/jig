@@ -397,7 +397,7 @@ routes from `binding:reviewer`; project defaults and qualified native
 implementations are resolved from each target's own requirements. The map is neither
 a candidate catalogue nor authority to select a different child at runtime.
 
-`uses` in `flow.meta.json` (code) or optional Markdown frontmatter declares
+`uses` in `FLOW.meta.json` (code) or optional Markdown frontmatter declares
 uncontracted requirements with `{}` or named requirements with a local
 `contract` path. A typed Flow route must offer the identical contract ID,
 version and descriptor/closure digest in its root `FLOW.contract.json`. An explicit

@@ -2169,14 +2169,14 @@ describe('finite Jig project commands', () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
       code: 'METADATA_FIELD',
-      path: 'flows/malformed/flow.meta.json',
+      path: 'flows/malformed/FLOW.meta.json',
     })
     const invocation = commandInvocation(
       fakeHost(fakeSession(events, { planFailure: failure }), events),
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.output).toBe('')
-    expect(invocation.error).toContain('Location: "flows/malformed/flow.meta.json"')
+    expect(invocation.error).toContain('Location: "flows/malformed/FLOW.meta.json"')
     expect(invocation.error).toContain('a metadata field has an unsupported shape')
     expect(invocation.error).toContain('Diagnostic code: METADATA_FIELD')
     expect(invocation.error).toContain('Category: INVALID_CANDIDATE')

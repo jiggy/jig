@@ -79,7 +79,7 @@ operational baselines, and public-site assembly.
 - Prefer POSIX shell for orchestration and TypeScript for non-trivial data or
   protocol logic.
 - Keep destructive cleanup limited to paths created by the current script.
-- Baseline fixtures use one `FLOW.<ext>`, code metadata in `flow.meta.json`,
+- Baseline fixtures use one `FLOW.<ext>`, code metadata in `FLOW.meta.json`,
   and invocation declarations in `FLOW.contract.json`. Preserve file-publication,
   diagnostic, authority, and residue assertions when updating their format.
 - Validate worktree arguments and shared-link collisions before creating a

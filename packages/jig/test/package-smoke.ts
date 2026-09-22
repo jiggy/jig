@@ -454,7 +454,7 @@ void binding;
       }),
     )
     await writeFile(
-      join(project, 'flows/check/flow.meta.json'),
+      join(project, 'flows/check/FLOW.meta.json'),
       JSON.stringify({ uses: { check: { contract: './command.json' } } }),
     )
     await writeFile(
@@ -734,7 +734,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
               await readFile(join(agentProject, 'flows/agent/contracts', name)),
             )
           await writeFile(
-            join(flow, 'flow.meta.json'),
+            join(flow, 'FLOW.meta.json'),
             JSON.stringify({ uses: { agent: { contract: './contracts/agent/contract.json' } } }),
           )
         }

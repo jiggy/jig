@@ -35,7 +35,7 @@ versions; the descriptor carries the version and exact interface.
 - **Get the interface file:** download the
   [Project Command JSON descriptor](https://jig.md/contracts/project-command/contract.json).
   Keep an exact copy in the Flow package and reference that local file from
-  `flow.meta.json` (or Markdown frontmatter), as the specification shows.
+  `FLOW.meta.json` (or Markdown frontmatter), as the specification shows.
 - **See it in an application:** follow
   [an issue becoming a tested patch](../guide/tested-patch.md).
 - **Understand contract matching:** read

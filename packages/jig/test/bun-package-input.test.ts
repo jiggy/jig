@@ -13,7 +13,7 @@ describe('private Bun package input', () => {
   test('accepts a package-local implementation without native dependencies', async () => {
     await withPackage(
       {
-        'flow.meta.json': metadata(),
+        'FLOW.meta.json': metadata(),
         'FLOW.ts':
           'import { readFile } from "node:fs/promises"; import "./helper.ts"; void readFile;\n',
         'helper.ts': 'export const value = 1;\n',
@@ -27,7 +27,7 @@ describe('private Bun package input', () => {
   test('accepts the ordinary package.json plus bun.lock shape', async () => {
     await withPackage(
       {
-        'flow.meta.json': metadata(),
+        'FLOW.meta.json': metadata(),
         'FLOW.ts': 'import { z } from "zod"; void z;\n',
         'package.json': '{"private":true,"dependencies":{"zod":"4.1.5"}}\n',
         'bun.lock':
@@ -46,7 +46,7 @@ describe('private Bun package input', () => {
   test('does not require a lock for an inert package.json', async () => {
     await withPackage(
       {
-        'flow.meta.json': metadata(),
+        'FLOW.meta.json': metadata(),
         'FLOW.ts': 'export {};\n',
         'package.json': '{"private":true,"type":"module"}\n',
       },
@@ -80,7 +80,7 @@ describe('private Bun package input', () => {
   ])('rejects incomplete or generated dependency input: $code', async ({ files, code, path }) => {
     await withPackage(
       {
-        'flow.meta.json': metadata(),
+        'FLOW.meta.json': metadata(),
         'FLOW.ts': 'export {};\n',
         ...files,
       },
@@ -145,7 +145,7 @@ describe('private Bun package input', () => {
   test('rejects malformed package.json', async () => {
     await withPackage(
       {
-        'flow.meta.json': metadata(),
+        'FLOW.meta.json': metadata(),
         'FLOW.ts': 'export {};\n',
         'package.json': 'not json\n',
         'bun.lock': '{}\n',

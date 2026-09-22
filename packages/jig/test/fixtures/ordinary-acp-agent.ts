@@ -77,7 +77,7 @@ export async function writeConversationCaller(root: string): Promise<void> {
     { recursive: true },
   )
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     JSON.stringify({ uses: { agent: { contract: './contracts/agent-run/contract.json' } } }),
   )
   await writeFile(

@@ -1,12 +1,12 @@
 ---
 pageType: home
 title: "Build with Agents as naturally as you build with code."
-description: "Start with readable instructions in FLOW.md. Add flow.<ext> to make the method executable. Compose code and Agent work through the same interface."
+description: "Start with executable instructions in FLOW.md, or choose FLOW.ts to express the method in code. Compose code and Agent work through the same interface."
 hero:
   name: FLOW
   eyebrow: "FLOW · An open standard for executable methods"
   text: "Build with Agents\nas naturally as you\nbuild with code."
-  tagline: "Start with readable instructions in FLOW.md. Add flow.<ext> to make the method executable. Compose code and Agent work through the same interface."
+  tagline: "Start with executable instructions in FLOW.md, or choose FLOW.ts to express the method in code. Compose code and Agent work through the same interface."
   status: "Open standard · prerelease specifications"
   statusLink: "/guide/"
   actions:
@@ -22,8 +22,8 @@ showcase:
   description: Familiar if you use SKILL.md. Built to become a callable part of your software.
   packageName: greet
   packageLabel: One Flow package
-  requiredLabel: Required
-  implementationLabel: Alternative entrypoint (choose one)
+  requiredLabel: Single entrypoint
+  implementationLabel: Code alternative (choose one)
   source:
     file: FLOW.md
     lang: markdown
@@ -93,7 +93,7 @@ showcase:
     - file: FLOW.contract.json
       description: Optionally declare input, results, outcomes and channels in one invocation contract.
       link: /spec/invocation-contracts
-    - file: flow.meta.json
+    - file: FLOW.meta.json
       description: Add optional metadata and declare the method's dependencies without executing its code.
       link: /spec/package-format
   note: Package walkthrough and SDK excerpts, not a live run. A host supplies the runtime and configures the child slot. Follow the authoring guide for complete setup.

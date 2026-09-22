@@ -1576,7 +1576,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_ENTRYPOINT_MISSING:
         'the selected package needs one exact-case FLOW.<suffix> entrypoint',
       PACKAGE_METADATA_OWNER:
-        'keep Markdown frontmatter in FLOW.md; use flow.meta.json only with a code entrypoint',
+        'keep Markdown frontmatter in FLOW.md; use FLOW.meta.json only with a code entrypoint',
       PACKAGE_SCHEMA_OWNER: 'place invocation input and result schemas in FLOW.contract.json',
       PACKAGE_PROFILE_UNSUPPORTED:
         'use a runtime and single-invocation contract supported by this host',

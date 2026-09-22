@@ -38,13 +38,14 @@ Metadata is optional. The owner depends on the implementation:
 
 | Implementation | Sole metadata owner |
 | --- | --- |
-| `FLOW.md` | Optional frontmatter in that file. A root `flow.meta.json` beside it is invalid. |
-| Any other `FLOW.<ext>` | Optional root `flow.meta.json`. Imported code and comment headers are never metadata. |
+| `FLOW.md` | Optional frontmatter in that file. A root `FLOW.meta.json` beside it is invalid. |
+| Any other `FLOW.<ext>` | Optional root `FLOW.meta.json`. Imported code and comment headers are never metadata. |
 
 There is no merge or precedence. Ordinary `metadata.json` is an ordinary
 resource. Metadata absence is an empty metadata object; names and descriptions
 remain absent, with package paths available for display. Names need not match
-directory names.
+directory names. A root metadata sidecar with different casing is invalid;
+it is not silently treated as an ordinary resource.
 
 Present known fields are validated as follows:
 

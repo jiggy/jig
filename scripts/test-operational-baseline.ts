@@ -439,7 +439,7 @@ async function writeHelloFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'hello')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     JSON.stringify({ name: 'hello', description: 'Return a greeting for the supplied name.' }),
   )
   await writeFile(join(flow, 'README.md'), 'A dependency-closed finite FLOW Run/1 example.\n')
@@ -637,7 +637,7 @@ async function writeMalformedFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'malformed')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     JSON.stringify({
       name: 'malformed',
       description: 'Exercise one bounded author diagnostic.',
@@ -666,7 +666,7 @@ async function writeMissingDependencyFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'missing-dependency')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     JSON.stringify({
       name: 'missing-dependency',
       description: 'Prove that unsupported dependencies fail without installation.',
@@ -679,7 +679,7 @@ async function writeLockedDependencyFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'locked-dependency')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'flow.meta.json'),
+    join(flow, 'FLOW.meta.json'),
     JSON.stringify({
       name: 'locked-dependency',
       description: 'Run one ordinary locked Bun production dependency.',

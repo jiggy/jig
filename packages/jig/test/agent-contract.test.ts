@@ -125,15 +125,15 @@ describe('ordinary Agent Run contract', () => {
 
   test('ordinary methods declare implemented features and consumers require only their complete method', async () => {
     const metadata = async (path: string) => Bun.file(new URL(path, import.meta.url)).json()
-    expect((await metadata('../../agent-method/flow.meta.json')).supports).toEqual([])
-    expect((await metadata('../../agent-acp/flow.meta.json')).supports).toEqual([
+    expect((await metadata('../../agent-method/FLOW.meta.json')).supports).toEqual([])
+    expect((await metadata('../../agent-acp/FLOW.meta.json')).supports).toEqual([
       'events',
       'conversation',
       'sessions',
     ])
-    const worker = await metadata('../../../examples/incident-brief/flows/worker/flow.meta.json')
+    const worker = await metadata('../../../examples/incident-brief/flows/worker/FLOW.meta.json')
     expect(worker.uses.agent.requires).toEqual(['conversation'])
-    const repair = await metadata('../../../examples/tested-patch/flows/repair/flow.meta.json')
+    const repair = await metadata('../../../examples/tested-patch/flows/repair/FLOW.meta.json')
     expect(repair.uses.agent.requires).toBeUndefined()
   })
 

@@ -18,7 +18,7 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 
 // Pair the generated source with its tested SDK, not a moving registry tag.
 const GREETING_SDK_VERSION = '0.1.0-alpha.11'
-const AGENT_ACP_VERSION = '0.1.0-alpha.1'
+const AGENT_ACP_VERSION = '0.1.0-alpha.2'
 export type ProjectInitAgent = 'codex' | 'claude' | 'pi'
 
 export type ProjectInitErrorCode =
@@ -107,7 +107,7 @@ export async function createFlow(project: string, name: string): Promise<string>
       .replace(/[^a-z0-9-]/g, '-')
       .slice(0, 64)
     const files: Record<string, string> = {
-      'flow.meta.json': `${JSON.stringify({ name, description: 'Describe what this method does.' }, null, 2)}\n`,
+      'FLOW.meta.json': `${JSON.stringify({ name, description: 'Describe what this method does.' }, null, 2)}\n`,
       'package.json': `${JSON.stringify({ name: `${projectName || 'jig'}-${name}-flow`, private: true, type: 'module', dependencies: { '@jigging/flow': sdk } }, null, 2)}\n`,
       'FLOW.ts':
         'import { handle } from "@jigging/flow";\n\nawait handle(async (run) => {\n  return { outcome: "done", output: run.input };\n});\n',
@@ -288,7 +288,7 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
 function greetingFiles(): readonly (readonly [string, string])[] {
   return [
     [
-      'flows/hello/flow.meta.json',
+      'flows/hello/FLOW.meta.json',
       '{"name":"hello","description":"Greet the supplied string, or world for other input values."}\n',
     ],
     [
