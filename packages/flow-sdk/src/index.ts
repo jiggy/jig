@@ -25,7 +25,7 @@ export type {
 } from './types.js'
 export { OperationError } from './types.js'
 
-/** Handle exactly one FLOW Run/1 root request over protocol stdio. */
+/** Handle exactly one FLOW Run/0 root request over protocol stdio. */
 export async function handle(handler: RunHandler): Promise<void> {
   const transport = stdioTransport()
   redirectApplicationConsole()
@@ -44,7 +44,7 @@ interface ProcessWithStderr {
  * Keep ordinary application logging away from protocol stdout.
  *
  * Raw descriptor writes remain the application's responsibility. This only
- * changes the language-level console after `handle()` assumes Run/1 ownership.
+ * changes the language-level console after `handle()` assumes Run/0 ownership.
  */
 function redirectApplicationConsole(): void {
   const current = globalThis.console as ConsoleWithConstructor

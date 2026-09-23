@@ -6,7 +6,7 @@ import { assertNoPathCollisions, comparePathBytes } from './paths.js'
 const MAX_FILES = 65_536
 const MAX_FILE_BYTES = 1_073_741_824
 const MAX_TOTAL_BYTES = 4_294_967_296
-const PACKAGE_1_HEADER = Buffer.from('FLOW-Package/1\0', 'ascii')
+const PACKAGE_1_HEADER = Buffer.from('FLOW-Package/0\0', 'ascii')
 
 export const PACKAGE_1_LIMITS = Object.freeze({
   files: MAX_FILES,
@@ -28,7 +28,7 @@ export async function packageDigest(
   return `sha256:${hash.digest('hex')}`
 }
 
-/** The exact canonical byte sequence hashed by Package/1. */
+/** The exact canonical byte sequence hashed by Package/0. */
 export async function* encodePackage1(
   files: readonly PackageDigestFile[],
   contents: (file: PackageDigestFile) => AsyncIterable<Uint8Array>,

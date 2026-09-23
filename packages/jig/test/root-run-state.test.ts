@@ -101,7 +101,7 @@ describe('private root Run origin state', () => {
     const canonical = encodePrivateRootRunOrigin(createPrivateExternalSubmissionOrigin('ticket'))
     expect(() =>
       decodePrivateRootRunOrigin(encoder.encode(` ${new TextDecoder().decode(canonical)}`)),
-    ).toThrow('not canonical JSON/1')
+    ).toThrow('not canonical JSON/0')
     expect(() =>
       decodePrivateRootRunOrigin(
         encoder.encode(

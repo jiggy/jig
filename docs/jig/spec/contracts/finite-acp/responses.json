@@ -1,7 +1,7 @@
 {
-  "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+  "$schema": "https://flow.jig.md/schemas/channel-contract-0.schema.json",
   "id": "https://jig.md/contracts/finite-acp-responses",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "semantics": "Required direct responses for one host-authorized finite ACP conversation. Exactly one ready item precedes data. Ready describes non-secret reviewed configuration and an armed transport, not completed authentication or an Agent result. Data items frame host-validated and authority-filtered ACP responses and public updates using the same bounded framing as finite-acp-requests. Thoughts, tools, permissions, credentials and raw diagnostic fields are not forwarded. This stream is essential: loss or incomplete framing fails the resource, not merely observation. EOF is not successful execution; await the separate resource result and interpret the Agent result separately.",
   "item": {
     "oneOf": [

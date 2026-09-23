@@ -31,7 +31,7 @@ export JIG_AUTHORING_NODE_PATH
 
 python_bin=${PYTHON:-python3}
 if ! "$python_bin" --version >/dev/null 2>&1; then
-  echo "Run/1 release tests require Python 3; set PYTHON to its executable." >&2
+  echo "Run/0 release tests require Python 3; set PYTHON to its executable." >&2
   exit 1
 fi
 
@@ -117,7 +117,7 @@ for application in tested-patch request-triage support-case contact-import incid
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
-bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-1 "$@"
+bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-0 "$@"
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 
@@ -128,7 +128,7 @@ PYTHONPATH=packages/jiggy-flow/src \
 
 PYTHONDONTWRITEBYTECODE=1 \
   "$python_bin" -m unittest discover \
-    -s conformance/run-1/python-peer -p 'test_*.py' -v
+    -s conformance/run-0/python-peer -p 'test_*.py' -v
 
 # Both installed Python distributions run the SDK suite and typed consumer.
 "$python_bin" scripts/build-python-sdk.py "$release_tmp/python-dist"

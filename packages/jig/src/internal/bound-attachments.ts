@@ -49,7 +49,7 @@ export function normalizeBoundAttachments(value: unknown): BoundAttachments {
     )
       throw new TypeError('invalid retained Binding attachment')
     const source = normalizeBindingAttachments({ [name]: item.source })[name]!
-    const { digest } = normalizePackageArtifactRef({ kind: 'flow-package/1', digest: item.digest })
+    const { digest } = normalizePackageArtifactRef({ kind: 'flow-package/0', digest: item.digest })
     const identity = normalizePrivateRunFileIdentity({
       attachments: [{ name, files: item.files }],
       output: null,
@@ -151,7 +151,7 @@ export async function openBoundAttachments(
     for (const [name, item] of Object.entries(bindings)) {
       const captured = await captureStoredPackage(
         storeRoot,
-        normalizePackageArtifactRef({ kind: 'flow-package/1', digest: item.digest }),
+        normalizePackageArtifactRef({ kind: 'flow-package/0', digest: item.digest }),
       )
       try {
         await verifyBoundAttachment(captured, item)

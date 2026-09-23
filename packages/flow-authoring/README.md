@@ -69,7 +69,7 @@ a data projection, not an Agent call or authority.
 
 The prototype returns:
 
-- `FLOW.contract.json`: the complete native Invocation Contract/1 descriptor.
+- `FLOW.contract.json`: the complete native Invocation Contract/0 descriptor.
 - `FLOW.contract.d.ts`: implementation declarations, when `types: true`.
 - Each explicitly selected `./name.schema.json`: an Agent response schema.
 - Each `@channelContract("./name.channel.json", options)` model: a named channel agreement.
@@ -93,9 +93,9 @@ artifacts after failure, install tools or compile during Run.
 
 ## Exact initial authoring profile
 
-The profile is `flow-authoring-typespec/1`, using TypeSpec **1.16.0** and the
+The profile is `flow-authoring-typespec/0`, using TypeSpec **1.16.0** and the
 fixed bundled FLOW decorator definitions. It compiles through TypeSpec's parser
-and semantic checker, then lowers the checked graph directly into Schema/1.
+and semantic checker, then lowers the checked graph directly into Schema/0.
 It does not use or sanitize the general JSON Schema emitter.
 
 One top-level namespace has one `@invocation(InputType, ResultType, options?)`.
@@ -111,14 +111,14 @@ declarations are checked too.
 | Model property without `?` | Required, including when its type admits null |
 | `?` property | Optional; no implicit null or default |
 | `T[]` | Homogeneous array with `items` |
-| `string`, `integer`, `float64`, `boolean` | Corresponding primitive; FLOW JSON/1 still applies |
+| `string`, `integer`, `float64`, `boolean` | Corresponding primitive; FLOW JSON/0 still applies |
 | Supported scalar alias | Inlined primitive and constraints; derived bounds cannot erase base bounds |
-| String/number/boolean literal | `const`; numbers must fit JSON/1, negative zero becomes zero |
+| String/number/boolean literal | `const`; numbers must fit JSON/0, negative zero becomes zero |
 | Null or other structural union | Explicit null type or union branches |
-| Length/item/numeric bound decorators | Corresponding Schema/1 keywords, retaining Unicode-scalar length meaning |
+| Length/item/numeric bound decorators | Corresponding Schema/0 keywords, retaining Unicode-scalar length meaning |
 | Explicit `@doc` | Description annotation; ordinary comments do not enter contract identity |
 
-Definitions retain authored names matching Schema/1. Reserved generated names,
+Definitions retain authored names matching Schema/0. Reserved generated names,
 TypeScript type keywords and `Array` reject; no silent name mangling.
 References are acyclic and local. Emission follows declaration/traversal order,
 omits unauthored options, and performs no general schema optimization.
@@ -129,7 +129,7 @@ The profile rejects imports other than its bundled library, executable
 extensions, compiler directives, unknown/duplicate decorators, templates,
 inheritance, model spreading, defaults, recursive graphs and unsupported types.
 It supports the complete drafter, not every TypeSpec program or every possible
-Schema/1 descriptor. Named operations, attachments and settings are not compiled
+Schema/0 descriptor. Named operations, attachments and settings are not compiled
 by this profile. Independently
 authored native descriptors retain those features and their separate ownership.
 
@@ -149,7 +149,7 @@ same decorator:
 
 ```typespec
 @invocation(Input, Result, #{
-  id: "https://example.org/methods/review", version: "1.0.0",
+  id: "https://example.org/methods/review", version: "0.1.0",
   features: #{progress: "Publishes selected progress; completion remains a separate result."}
 })
 namespace Review;

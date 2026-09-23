@@ -8,12 +8,12 @@ import { fileURLToPath } from 'node:url'
 const hostTest = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? test : test.skip
 const cli = fileURLToPath(new URL('../bin/jig', import.meta.url))
 const contract = {
-  $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+  $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
   id: 'https://example.org/contracts/echo',
   version: '1.0.0',
 }
 
-// Minimal independently authored Run/1 peer: no private host imports or copied SDK.
+// Minimal independently authored Run/0 peer: no private host imports or copied SDK.
 const peer = `import marker from 'is-number/jig-patch.js';
 if(marker !== 'captured patch') throw new Error('dependency patch was not applied');
 import {createInterface} from 'node:readline';

@@ -176,7 +176,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and dependency semantics; admission carries bytes and layout as one execution
   artifact. Recipes derive the launch command. Materialization receives only
   regular bytes and exact runtime-independent aliases; verification and cleanup
-  handle recorded aliases without following them. Package/1 stays
+  handle recorded aliases without following them. Package/0 stays
   regular-file-only. Runs receive no live workspace authority. Bun owns
   installation, not a parallel Jig resolver.
   Reuse workspace preparation only from this Jig project's active admission:

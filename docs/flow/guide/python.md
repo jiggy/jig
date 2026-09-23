@@ -4,7 +4,7 @@ title: Write a Flow in Python
 
 # Write a Flow in Python
 
-`jiggy-flow` lets a Python method receive one FLOW Run/1 invocation, call
+`jiggy-flow` lets a Python method receive one FLOW Run/0 invocation, call
 host-supplied slots, and return an outcome with data.
 It has no runtime dependencies and requires Python 3.11 or newer.
 FLOW is independent of Jig; choose a host that supports Python execution.
@@ -53,14 +53,14 @@ Do not call it inside an already-running asyncio loop.
 ## Exercise the protocol locally
 
 For a trusted local example on Linux or macOS, use the repository's existing
-[independent Python test peer](https://github.com/jiggy/jig/tree/main/conformance/run-1/python-peer).
-Save its `run1_peer.py` next to `FLOW.py`, then save the following as `try_flow.py`:
+[independent Python test peer](https://github.com/jiggy/jig/tree/main/conformance/run-0/python-peer).
+Save its `run0_peer.py` next to `FLOW.py`, then save the following as `try_flow.py`:
 
 ```python
 import sys
 import tempfile
 import time
-from run1_peer import HostPeer, flow_run_request
+from run0_peer import HostPeer, flow_run_request
 
 
 with tempfile.TemporaryDirectory() as scratch:
@@ -82,7 +82,7 @@ also run in the Windows CI job independently of this peer.
 
 `FLOW.py` is the package's single implementation. Add optional `FLOW.meta.json`
 for metadata/dependencies and `FLOW.contract.json` for input/result validation or
-ports, as specified by [Package/1](../spec/package-format.md). A host owns
+ports, as specified by [Package/0](../spec/package-format.md). A host owns
 launching the interpreter, dependency preparation, authority, limits and cleanup.
 
 ## Call a declared slot
@@ -101,7 +101,7 @@ result = await context.call(
 Every call returns the complete `{ outcome, output }` result, whether the selected
 implementation is a Flow or a native service. Declare both slots under `uses`
 in `FLOW.meta.json`; the host selects and authorizes their implementations.
-Naming a slot never grants authority or creates a provider. Operation IDs are supplied by your method and follow Run/1's identity
+Naming a slot never grants authority or creates a provider. Operation IDs are supplied by your method and follow Run/0's identity
 rules. Await owned calls before returning the root result.
 
 `context.settings`, `context.attachments`, `context.scratch` and
@@ -122,8 +122,8 @@ wait and sends protocol cancellation if dispatched. Use `try/finally` for local
 cleanup and propagate cancellation. A deadline is supplied context, not a timer
 created by the SDK. The host owns enforcement and settlement.
 
-Return JSON/1 values only: bounded JSON with safe integral numbers and valid
+Return JSON/0 values only: bounded JSON with safe integral numbers and valid
 Unicode. Invalid handler results become `INVALID_RESULT`. Keep protocol stdout
 free of raw writes and output from imports before `handle`; ordinary `print`
-after entry goes to stderr. See [Run SDK/1](../spec/run-sdk.md) for exact limits,
+after entry goes to stderr. See [Run SDK/0](../spec/run-sdk.md) for exact limits,
 result validation, logging and cancellation semantics shared with TypeScript.

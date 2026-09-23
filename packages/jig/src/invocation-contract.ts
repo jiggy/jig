@@ -23,7 +23,7 @@ import {
 } from './schema/index.js'
 
 export const INVOCATION_CONTRACT_SCHEMA =
-  'https://flow.jig.md/schemas/invocation-contract-1.schema.json'
+  'https://flow.jig.md/schemas/invocation-contract-0.schema.json'
 export const INVOCATION_CONTRACT_LIMITS = Object.freeze({
   bytes: 262_144,
   preimageBytes: 1_048_576,
@@ -35,7 +35,7 @@ export const INVOCATION_CONTRACT_LIMITS = Object.freeze({
   definitions: 1_024,
 })
 
-const DOMAIN = Buffer.from('FLOW-Invocation-Contract/1\0', 'ascii')
+const DOMAIN = Buffer.from('FLOW-Invocation-Contract/0\0', 'ascii')
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/
 const RESERVED_OUTCOMES = new Set(['done', 'failed', 'cancelled', 'error'])
 const OPERATION_FIELDS = ['input', 'result', 'outcomes', 'channels', 'attachments'] as const

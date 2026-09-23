@@ -105,7 +105,7 @@ test('complete result remains correlated rather than merely accepting either out
   ).toThrow()
 })
 
-test('JSON/1 rejection still precedes generated schema validation', () => {
+test('JSON/0 rejection still precedes generated schema validation', () => {
   expect(() => validateJson1({ ...input, count: 9007199254740992 })).toThrow()
   expect(() => validateJson1({ ...input, text: '\ud800' })).toThrow()
 })

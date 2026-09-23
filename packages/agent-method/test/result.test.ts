@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { checkAgentResult } from '../src/index.js'
 
 const schema = {
-  $schema: 'https://flow.jig.md/schemas/schema-1.json',
+  $schema: 'https://flow.jig.md/schemas/schema-0.json',
   type: 'object',
   properties: { answer: { type: 'string' } },
   required: ['answer'],

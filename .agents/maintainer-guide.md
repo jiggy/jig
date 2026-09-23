@@ -85,7 +85,7 @@ and sandbox policy do not belong in portable package metadata.
 
 ### Responsibility boundaries
 
-**Run/1** is FLOW's protocol for one finite invocation across a process
+**Run/0** is FLOW's protocol for one finite invocation across a process
 boundary. A component runtime advances a program or graph inside a Flow
 process. An application gives the work its domain purpose; a **Starter** is a
 coherent application copied and owned by its user. Neither needs to become
@@ -107,7 +107,7 @@ dependency preparation, and Agent clients are Jig or application facts, never
 FLOW vocabulary.
 
 Sley is an independent component runtime that a Flow may use directly behind
-Run/1. Jig should not fork its scheduler, subclass its elements, or put Jig
+Run/0. Jig should not fork its scheduler, subclass its elements, or put Jig
 domain state inside Sley objects. A Jig-specific graph layer is justified only
 by a real stored-graph consumer that direct Sley cannot express clearly.
 
@@ -185,7 +185,7 @@ workspace dependencies; rebuild the candidate before testing changed source.
 Finite invocation should remain simple for authors as well as consumers.
 
 The FLOW SDK's `handle()` operation serves one Run request and exits; it does
-not declare a resident server. Run/1 reserves standard output for protocol
+not declare a resident server. Run/0 reserves standard output for protocol
 frames. `handle()` captures its protocol writer before replacing the global
 console with a standard-error-backed console, so ordinary library logging that
 uses the current global console after `handle()` begins cannot corrupt the
@@ -272,7 +272,7 @@ supplies no queue or scheduler. Their operation
 identities and durable ownership remain distinct; cleanup drains the effect
 before releasing its specialist owner.
 
-Run/1 owns request identity, join, conflict, cancellation, deadline, and
+Run/0 owns request identity, join, conflict, cancellation, deadline, and
 uncertainty behavior across the process boundary. Internal graphs remain
 ordinary Flow implementation. Add recursive orchestration, selection
 languages, or child-history products only when a real application cannot be
@@ -304,7 +304,7 @@ A named **Invocation Contract** describes an exact interface for independently
 maintained consumers and implementations. It is offered by a Flow's optional
 `FLOW.contract.json` and required through a package-local `uses` reference. **Agent
 Run** is such an interface, implemented by an ordinary Flow and consumed through
-the same Run/1 `flow/call` as an exact Flow dependency.
+the same Run/0 `flow/call` as an exact Flow dependency.
 It is not a new FLOW method, model authority, or public provider framework.
 The public value contract belongs in
 [`agent-run.md`](../docs/jig/spec/agent-run.md).

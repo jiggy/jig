@@ -30,7 +30,7 @@ import {
 } from './fixtures/agent-contract.js'
 
 const encoder = new TextEncoder()
-const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
+const schemaUri = 'https://flow.jig.md/schemas/schema-0.json'
 const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
@@ -133,7 +133,7 @@ describe('private package-project portable lock projection', () => {
               uses: { progress: { contract: './contracts/run-checkpoint/contract.json' } },
             }),
             'FLOW.contract.json': JSON.stringify({
-              $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+              $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
               attachments,
             }),
             'FLOW.ts': 'export {};\n',
@@ -759,7 +759,7 @@ describe('private package-project portable lock projection', () => {
     )
   })
 
-  test('enforces the JSON/1 file-byte ceiling', () => {
+  test('enforces the JSON/0 file-byte ceiling', () => {
     expect(() => decodePrivateProjectLocalLock(new Uint8Array(JSON_1_LIMITS.bytes + 1))).toThrow(
       'maximum bytes exceeded',
     )

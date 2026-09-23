@@ -87,6 +87,8 @@ export default defineConfig({
       { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
     ],
     sidebar: { '/': sidebar },
-    footer: { message: 'Capability compounding. FLOW is openly implementable and prerelease.' },
+    footer: {
+      message: 'Capability compounding. FLOW v0 is openly implementable and experimental.',
+    },
   },
 })

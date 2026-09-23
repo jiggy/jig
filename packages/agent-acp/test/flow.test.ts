@@ -636,7 +636,7 @@ describe('ordinary finite ACP Agent Flow', () => {
   })
   test('prepares selected context, uses reviewed configuration, and independently checks a structured result', async () => {
     const responseSchema = {
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      $schema: 'https://flow.jig.md/schemas/schema-0.json',
       type: 'object',
       properties: { answer: { type: 'string' } },
       required: ['answer'],
@@ -674,7 +674,7 @@ describe('ordinary finite ACP Agent Flow', () => {
     ])
     const prompt = JSON.stringify(consumer.frames.find((f) => f.method === 'session/prompt'))
     expect(prompt).toContain('Selected Skill.')
-    expect(prompt).toContain('matching this canonical FLOW Schema/1')
+    expect(prompt).toContain('matching this canonical FLOW Schema/0')
     expect(consumer.frames[2]!.params).toEqual({
       sessionId: 'owned-session',
       configId: 'model',
@@ -847,7 +847,7 @@ describe('ordinary finite ACP Agent Flow', () => {
         instructions: 'Answer.',
         conversation: true,
         responseSchema: {
-          $schema: 'https://flow.jig.md/schemas/schema-1.json',
+          $schema: 'https://flow.jig.md/schemas/schema-0.json',
           type: 'object',
           properties: { accepted: { type: 'string' } },
           required: ['accepted'],

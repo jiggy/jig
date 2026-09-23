@@ -9,9 +9,9 @@ import {
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const PROJECT_COMMAND_CONTRACT_ID = 'https://jig.md/contracts/project-command'
-export const PROJECT_COMMAND_CONTRACT_VERSION = '1.0.0'
+export const PROJECT_COMMAND_CONTRACT_VERSION = '0.1.0'
 export const PROJECT_COMMAND_CONTRACT_DIGEST =
-  'sha256:745905affe3fab5e7bcb3066419702ceaefca38871be131281a5e7f9f53dc59f'
+  'sha256:b6bdad9771000d2fb41963634a463c9e9289f95275a9b29056376e93252e817e'
 export const PROJECT_COMMAND_LIMITS = Object.freeze({
   files: 64,
   bytes: 262_144,
@@ -139,7 +139,7 @@ export function parseProjectCommandInput(
   })
 }
 
-/** Public identity: SHA-256 of canonical JSON/1 mapping paths to exact source text. */
+/** Public identity: SHA-256 of canonical JSON/0 mapping paths to exact source text. */
 export function projectCommandCandidateDigest(files: Readonly<Record<string, string>>): string {
   return digest(canonicalJson(files as JsonValue))
 }

@@ -8,11 +8,11 @@ credential and enforces the request policy outside the Flow. The Flow owns
 request construction and response interpretation; it gains no socket, process,
 or credential access.
 
-HTTP Request uses the existing Run/1 `flow/call`. It adds no FLOW protocol or
+HTTP Request uses the existing Run/0 `flow/call`. It adds no FLOW protocol or
 SDK method. Other hosts may implement the same interface under their own
 authority policy. Its [descriptor](https://jig.md/contracts/http-request/contract.json)
-has ID `https://jig.md/contracts/http-request`, version `1.0.0`, and digest
-`sha256:2738827364016ec63be3ffbf47265869cfce9daa6be4ce1f6ff865a732a3196d`.
+has ID `https://jig.md/contracts/http-request`, version `0.1.0`, and digest
+`sha256:184ac7ea457618337e5696d101e218fdfccfa99792c56790b00750bfe80f40f0`.
 
 ## Declaration, selection, permission
 
@@ -37,7 +37,7 @@ The closed HTTP grant contains `kind: 'http'` and these fields:
 | `requestBytes` | Positive integer, default 262,144; explicitly reviewed maximum 8,388,608. UTF-8 bytes of the canonical JSON request body. |
 | `responseBytes` | Positive integer, default 1,048,576; explicitly reviewed maximum 12,582,912. Complete response-body bytes before decoding. |
 | `timeoutMs` | Positive integer, default and maximum 60,000; shortened by enclosing deadlines. |
-| `bodySchema` | Optional embedded Schema/1 declaration, at most 16 KiB canonical JSON, only for POST. Validates the request body before dispatch. No remote schema resolution. |
+| `bodySchema` | Optional embedded Schema/0 declaration, at most 16 KiB canonical JSON, only for POST. Validates the request body before dispatch. No remote schema resolution. |
 
 The resolved policy participates in the portable lock, authority and exact
 execution recipe. [Grant admission](grants.md#review-and-admission) distinguishes
@@ -55,7 +55,7 @@ const result = await run.call({
 ```
 
 Input is an object with optional `body` and `response: 'json'`. GET forbids a body; POST
-requires a JSON/1 value, including `null` when its schema allows that. There
+requires a JSON/0 value, including `null` when its schema allows that. There
 are no caller-selected URLs, methods, headers, credentials, redirects, retries,
 cookies, proxies, streaming switches or channel endpoints. To request another
 destination the operator must supply another exact grant.
@@ -68,8 +68,8 @@ A complete exchange returns:
 
 `status` is the collected final HTTP status (200–599). Without `response`, `body`
 is strict UTF-8 text. With `response: 'json'`, the worker decodes the complete body
-as JSON/1 and returns that value directly; even a JSON string, scalar or `null`
-is returned without another serialization layer. Invalid JSON/1 fails rather
+as JSON/0 and returns that value directly; even a JSON string, scalar or `null`
+is returned without another serialization layer. Invalid JSON/0 fails rather
 than falling back to text. This is a response codec, not new request authority.
 Redirects are returned, not followed. Non-2xx responses are HTTP evidence,
 not transport failures or domain success. Compressed or malformed text responses
@@ -86,11 +86,11 @@ const result = await run.call({
   slot: 'reference',
   input: { response: 'json' },
 })
-// result.output.body is the decoded JSON/1 value.
+// result.output.body is the decoded JSON/0 value.
 ```
 
 Larger byte allowances require explicit grant changes; defaults do not increase.
-All modes also retain JSON/1's 8 MiB per-string and 16 MiB complete-value limits.
+All modes also retain JSON/0's 8 MiB per-string and 16 MiB complete-value limits.
 The complete private request envelope is checked before dispatch, and decoded
 worker and FLOW results must fit those limits after escaping and framing.
 Thus a raw byte allowance is not a promise that every body of that size fits.

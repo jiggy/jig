@@ -28,7 +28,7 @@ import {
   AGENT_RUN_CONTRACT_VERSION,
 } from './fixtures/agent-contract.js'
 
-const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
+const schemaUri = 'https://flow.jig.md/schemas/schema-0.json'
 const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
@@ -245,7 +245,7 @@ describe('private package-project linker', () => {
         expect(recipes.uses).toEqual(prose.uses)
         expect(recipes.uses['markdown-agent']).toMatchObject({
           id: 'https://jig.md/contracts/agent-run',
-          version: '1.0.0',
+          version: '0.1.0',
         })
         expect(
           linked.flows.find((flow) => flow.provenance.projectPath === 'flows/code')!.uses,
@@ -336,7 +336,7 @@ describe('private package-project linker', () => {
   test('rejects forged retained inputs and oversized or active containers', () => {
     const forged = Object.freeze({
       provenance: Object.freeze({ membership: 'exact', projectPath: 'flows/forged' }),
-      package: Object.freeze({ kind: 'flow-package/1', digest: `sha256:${'a'.repeat(64)}` }),
+      package: Object.freeze({ kind: 'flow-package/0', digest: `sha256:${'a'.repeat(64)}` }),
       inspected: Object.freeze({ digest: `sha256:${'a'.repeat(64)}` }),
     })
     expectCode(
@@ -1346,7 +1346,7 @@ function schema(value: Record<string, unknown>): string {
 
 function invocation(value: Record<string, unknown> = {}): string {
   return JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
     ...value,
   })
 }

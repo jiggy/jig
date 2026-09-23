@@ -16,7 +16,7 @@ const closedObject = (properties: JsonObject): JsonObject => ({
   additionalProperties: false,
 })
 const schema = (properties: JsonObject): JsonObject => ({
-  $schema: 'https://flow.jig.md/schemas/schema-1.json',
+  $schema: 'https://flow.jig.md/schemas/schema-0.json',
   ...closedObject(properties),
 })
 const answerSchema = schema({ answer: { type: 'string', enum: ['READY'] } })
@@ -114,7 +114,7 @@ describe('shared Agent method', () => {
   test('projects schema without mutating or sharing nested values', () => {
     const projected = projectResponseSchema(answerSchema)
     expect(projected.$schema).toBeUndefined()
-    expect(answerSchema.$schema).toBe('https://flow.jig.md/schemas/schema-1.json')
+    expect(answerSchema.$schema).toBe('https://flow.jig.md/schemas/schema-0.json')
     expect(projected.properties).not.toBe(answerSchema.properties)
   })
 

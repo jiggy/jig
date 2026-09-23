@@ -1,15 +1,15 @@
-# FLOW Run SDK/1
+# FLOW Run SDK/0
 
-> *Status: prerelease SDK projection of [`FLOW Run/1`](run-protocol.md).*
+> *Status: prerelease SDK projection of [`FLOW Run/0`](run-protocol.md).*
 
-This document fixes the public component-author interface for the Run/1
-slice. It does not add wire behavior. When this document and Run/1 differ,
-Run/1 owns the protocol and this projection must be corrected.
+This document fixes the public component-author interface for the Run/0
+slice. It does not add wire behavior. When this document and Run/0 differ,
+Run/0 owns the protocol and this projection must be corrected.
 
 ## 1. Surface and ownership
 
 The TypeScript package root is `@jigging/flow`. The Python distribution is
-`jiggy-flow`, imported as `jiggy.flow`. These root modules expose Run SDK/1
+`jiggy-flow`, imported as `jiggy.flow`. These root modules expose Run SDK/0
 only.
 
 Both expose only:
@@ -46,7 +46,7 @@ trailing protocol bytes.
 
 Output from modules evaluated before `handle`, a console/stdout reference
 cached before `handle`, raw writes to stdout or file descriptor 1, and a child
-process inheriting stdout remain invalid protocol output. Bare Run/1
+process inheriting stdout remain invalid protocol output. Bare Run/0
 implementations are responsible for keeping protocol stdout clean. The SDK
 never treats malformed protocol output as a log.
 
@@ -193,7 +193,7 @@ and sends `request/cancel` if the request reached the wire.
 ## 4. Values and snapshots
 
 Public type annotations describe JSON-shaped values, but the wire accepts only
-bounded [`FLOW JSON/1`](json-values.md). SDKs validate every value crossing the
+bounded [`FLOW JSON/0`](json-values.md). SDKs validate every value crossing the
 boundary. Invalid call arguments fail locally before a request is admitted;
 invalid handler results become `INVALID_RESULT`.
 
@@ -204,14 +204,14 @@ containers; readonly or frozen outer declarations are authoring guidance, not
 a new runtime object model.
 
 Call fields are closed: `operationId`, `slot`, `input` and only optional
-`intent` and `channels`. Optional-key presence enters Run/1 identity; omitted
+`intent` and `channels`. Optional-key presence enters Run/0 identity; omitted
 channels and an explicit empty mapping remain distinct. TypeScript explicitly
 present `undefined` optional fields reject; Python `None` means omission for
 its optional keyword arguments. Intent is advisory metadata, never application
 input, Agent instructions, provider arguments or authority.
 
 The SDK never creates an `operationId`. Component code supplies a stable ID
-whose retry and deduplication meaning is defined by Run/1.
+whose retry and deduplication meaning is defined by Run/0.
 
 ## 5. Results and errors
 
@@ -232,7 +232,7 @@ OperationError(code, message?, details?)
 Authors inspect `code`, `message`, and `details`; they do not branch on the
 human message. In Python, omitted details are represented by `None`.
 
-The thirteen Run/1 operational codes may cross the wire. `PROTOCOL_ERROR` and
+The thirteen Run/0 operational codes may cross the wire. `PROTOCOL_ERROR` and
 `CHANNEL_LOST` are local-only classifications and are never serialized as
 operational errors. An unhandled valid wire-visible `OperationError` from the
 root handler is preserved. An ordinary exception, a local-only code, or
@@ -349,24 +349,24 @@ async def run(context: RunContext) -> RunResult:
 handle(run)
 ```
 
-When a host binds `research`, JSON/1 `input` and any explicitly mapped channel
-rights cross through this SDK operation; the complete JSON/1 `RunResult`
+When a host binds `research`, JSON/0 `input` and any explicitly mapped channel
+rights cross through this SDK operation; the complete JSON/0 `RunResult`
 returns separately. Child context,
 authorization, and resource policy belong to the host; the SDK creates no
 implicit inheritance.
 
-The caller-supplied `operationId` retains all Run/1 join, conflict,
+The caller-supplied `operationId` retains all Run/0 join, conflict,
 cancellation, and uncertainty semantics. Uncertain dispatch is not
 automatically replayed. The SDK creates no separately addressable child
 history, administration, scheduler, catalogue, resolver, or Agent-specific
 surface.
 
 A host may impose a lower child-concurrency limit and report
-`RESOURCE_EXHAUSTED`. The Run/1 request-lifetime limit still applies.
+`RESOURCE_EXHAUSTED`. The Run/0 request-lifetime limit still applies.
 
 The implementations live under `packages/flow-sdk/` and
 `packages/jiggy-flow/`. The shared executable seed is
-[`conformance/run-1/`](https://github.com/jiggy/jig/tree/main/conformance/run-1).
+[`conformance/run-0/`](https://github.com/jiggy/jig/tree/main/conformance/run-0).
 
 ## 9. Channel projection
 
@@ -459,7 +459,7 @@ language recovery applies; no acknowledgement or query operation is needed.
 Local failure to start a read is an operation failure, not proof that its
 endpoint ended. A fatal current-connection error remains fatal even when caught.
 Sender acceptance, receiver end and the separate execution result retain their
-different meanings under [Run/1](run-protocol.md#5-channels).
+different meanings under [Run/0](run-protocol.md#5-channels).
 
 An application must start producer work before awaiting its first message.
 In Python, assigning a coroutine alone does not start it. `gather` starts both

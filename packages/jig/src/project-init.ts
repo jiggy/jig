@@ -17,8 +17,8 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 }
 
 // Pair the generated source with its tested SDK, not a moving registry tag.
-const GREETING_SDK_VERSION = '0.1.0-alpha.11'
-const AGENT_ACP_VERSION = '0.1.0-alpha.2'
+const GREETING_SDK_VERSION = '0.1.0-alpha.12'
+const AGENT_ACP_VERSION = '0.1.0-alpha.3'
 export type ProjectInitAgent = 'codex' | 'claude' | 'pi'
 
 export type ProjectInitErrorCode =

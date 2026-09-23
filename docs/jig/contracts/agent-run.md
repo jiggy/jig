@@ -60,7 +60,7 @@ versions; the descriptor carries the version and exact interface.
   retention grant and a single-use reference. Its receipt appears only in the
   final invocation output; an individual answer does not prove retention.
 - **Understand contract matching:** read
-  [FLOW Invocation Contract/1](https://flow.jig.md/spec/invocation-contracts).
+  [FLOW Invocation Contract/0](https://flow.jig.md/spec/invocation-contracts).
 
 The interface is a prerelease candidate. Check the specification and your
 installed host's supported contract before adopting a descriptor update.

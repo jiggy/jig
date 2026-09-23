@@ -3,9 +3,9 @@ import { type HttpGrant, httpRequestBody, normalizeHttpGrant } from './http-gran
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const HTTP_REQUEST_CONTRACT_ID = 'https://jig.md/contracts/http-request'
-export const HTTP_REQUEST_CONTRACT_VERSION = '1.0.0'
+export const HTTP_REQUEST_CONTRACT_VERSION = '0.1.0'
 export const HTTP_REQUEST_CONTRACT_DIGEST =
-  'sha256:2738827364016ec63be3ffbf47265869cfce9daa6be4ce1f6ff865a732a3196d'
+  'sha256:184ac7ea457618337e5696d101e218fdfccfa99792c56790b00750bfe80f40f0'
 export interface PreparedHttpRequest {
   readonly grant: HttpGrant
   readonly body?: string

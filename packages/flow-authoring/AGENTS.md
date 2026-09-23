@@ -8,7 +8,7 @@ it returns artifacts to Jig's separately owned managed publisher.
 
 ## Ownership
 
-- Source, tests and fixtures qualify optional TypeSpec-to-Schema/1 compilation.
+- Source, tests and fixtures qualify optional TypeSpec-to-Schema/0 compilation.
 - The package README owns its supported authoring profile and limitations.
 - FLOW specifications continue to own native descriptor semantics.
 

@@ -53,7 +53,7 @@ async function fixture(rootApplication = false) {
   })
   await put('packages/echo/FLOW.ts', 'export {}' + '\n'.repeat(4096))
   await put('packages/echo/FLOW.contract.json', {
-    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
     id,
     version: '1.0.0',
   })

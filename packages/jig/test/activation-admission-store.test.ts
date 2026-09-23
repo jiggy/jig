@@ -2181,7 +2181,7 @@ describe.serial('direct alpha activation store', () => {
     const fixture = await createFixture('ready')
     try {
       const missing = normalizePackageArtifactRef({
-        kind: 'flow-package/1',
+        kind: 'flow-package/0',
         digest: digest('missing-execution-package'),
       })
       const candidate = insertExecutionCandidate(fixture, missing, 'missing')
@@ -2849,7 +2849,7 @@ async function createFixture(
     await writeFile(
       join(flowSource, 'FLOW.contract.json'),
       JSON.stringify({
-        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
         input: {
           type: 'object',
           properties: {

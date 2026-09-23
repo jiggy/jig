@@ -1,16 +1,16 @@
-# FLOW Markdown/1
+# FLOW Markdown/0
 
 > *Status: prerelease specification candidate for sequential Markdown execution.*
 
-Markdown/1 projects finite SDK operations through exact recipes inside an ordinary
+Markdown/0 projects finite SDK operations through exact recipes inside an ordinary
 `FLOW.md` procedure. Every body uses bounded Agent interpretation, including a
 body made entirely of recipes. Recipes are available actions, not an automatic
-execution sequence. Every call still crosses Run/1 and every result is a complete
+execution sequence. Every call still crosses Run/0 and every result is a complete
 `{outcome, output}` value. The profile adds no scheduler,
 provider framework, tool authority or expression language.
 
-[Package/1](package-format.md) owns the single entrypoint and its optional
-frontmatter. [Invocation Contract/1](invocation-contracts.md) exclusively owns
+[Package/0](package-format.md) owns the single entrypoint and its optional
+frontmatter. [Invocation Contract/0](invocation-contracts.md) exclusively owns
 input/result validation, explicit outcomes and ports. A code implementation
 instead uses optional `FLOW.meta.json`; simultaneous implementations and a
 sidecar beside `FLOW.md` reject. Source resources remain ordinary captured files.
@@ -21,9 +21,9 @@ Markdown package does not itself establish executable support.
 
 ## Source, resources and Skill restrictions
 
-Retain Package/1 UTF-8/path rules and bounded YAML 1.2 JSON-schema parsing. Optional
+Retain Package/0 UTF-8/path rules and bounded YAML 1.2 JSON-schema parsing. Optional
 frontmatter starts only with an exact first-line delimiter. Reject duplicate keys,
-tags, anchors, aliases, merges, non-string keys and values outside JSON/1.
+tags, anchors, aliases, merges, non-string keys and values outside JSON/0.
 Frontmatter/sidecars retain the 256 KiB, depth-16, 4,096-node and 256-entry/item
 bounds. Frontmatter opens with a first line exactly `---` and closes at the next
 line exactly `---`; line endings are not part of the delimiter. A started
@@ -97,7 +97,7 @@ is exposed as unavailable. Its selection returns a bounded pre-effect diagnostic
 unrelated prose may continue. There is no model repair or deferred source parsing.
 Unsafe/invalid package metadata, missing required dependencies or invocation ports,
 unsupported tool restrictions and missing reasoning remain whole-run failures:
-this does not turn Invocation Contract/1's required declarations into optional dependencies.
+this does not turn Invocation Contract/0's required declarations into optional dependencies.
 
 Frozen unavailable meaning remains exact and grants no effect. This preserves
 otherwise supported instructions around an unused malformed FLOW tutorial.
@@ -117,7 +117,7 @@ return <operand>           complete RunResult; stop
 The right-hand explanations are not syntax. Parse the CommonMark literal block
 content, trimming only space/tab/CR/LF at its ends. Operation/name tokens are
 separated by one or more spaces or tabs. For operand-bearing operations, the
-entire remaining text is either one exact operand token or one complete JSON/1
+entire remaining text is either one exact operand token or one complete JSON/0
 value; JSON whitespace may span lines. A second instruction, trailing comment,
 extra token or malformed JSON rejects that recipe. There is no shell tokenization.
 
@@ -129,7 +129,7 @@ only an available frozen recipe.
 
 | Operand | Activation meaning |
 | --- | --- |
-| JSON/1 | Frozen literal; all nested content remains literal. |
+| JSON/0 | Frozen literal; all nested content remains literal. |
 | `@input` | Immutable invocation input. |
 | `@previous` | Latest successful call or non-EOF receive's complete SDK result. |
 | `@value` | Agent must choose an existing immutable whole-value handle. |
@@ -287,7 +287,7 @@ or execution without an Agent.
 Before returning, dispose held receivers and expose settled late failures to
 reasoning. On failure, still dispose receivers without resuming interpretation.
 Only an explicitly selected `close` recipe seals a writer in the interpreter.
-Implicit writer sealing belongs to Run/1 finalization after full result validation
+Implicit writer sealing belongs to Run/0 finalization after full result validation
 and owned-work settlement; failure aborts unsealed writers. An explicitly sealed
 interval remains completed even if its producer subsequently fails. Neither
 kind of channel completion establishes execution success.

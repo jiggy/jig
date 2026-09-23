@@ -124,7 +124,7 @@ export function requireSupportedPackageProfile(
 }
 
 /**
- * Validate one already captured Package/1 snapshot without executing code,
+ * Validate one already captured Package/0 snapshot without executing code,
  * consulting a runtime, resolving providers, or claiming operational readiness.
  */
 export async function inspectCapturedPackage(captured: CapturedPackage): Promise<InspectedPackage> {

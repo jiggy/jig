@@ -345,7 +345,7 @@ for (const [name, body, code, message] of [
   ],
   ['unsupported default', simple('v: string = "x";'), 'SOURCE_UNSUPPORTED', /Defaults/],
   ['unsupported numeric primitive', simple('v: int64;'), 'SOURCE_UNSUPPORTED', /Scalar/],
-  ['unsafe integer literal', simple('v: 9007199254740992;'), 'SOURCE_UNSUPPORTED', /JSON\/1/],
+  ['unsafe integer literal', simple('v: 9007199254740992;'), 'SOURCE_UNSUPPORTED', /JSON\/0/],
   [
     'recursive graph',
     simple('v: Loop;', '@closed model Loop { next: Loop; }'),

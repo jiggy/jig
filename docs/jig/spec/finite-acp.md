@@ -108,7 +108,7 @@ Subsequent responses and all requests use the same fragment shape:
 ```
 
 Concatenate `text` in received order until `end:true`. That closes one complete
-ACP JSON/1 frame. There is only one partial frame per direction; frames cannot
+ACP JSON/0 frame. There is only one partial frame per direction; frames cannot
 interleave. Text chunks are nonempty, at most 8,192 UTF-8 bytes, and cut only
 between Unicode scalars. This leaves room for JSON escaping within the common
 64 KiB channel item bound. Transport is not binary and has no fragment replay,
@@ -124,7 +124,7 @@ independent chunk identity, or reconnect mechanism.
 Count received bytes before allocating additional reassembly storage. Malformed
 framing, an exceeded limit or EOF inside a frame fails the stream permanently.
 Receiving a fragment does not establish dispatch. The host validates complete
-JSON/1, finite protocol state and reviewed authority before forwarding the
+JSON/0, finite protocol state and reviewed authority before forwarding the
 frame; its operation allowance is consumed before any possibly uncertain write.
 
 These bounded text fragments use ordinary FLOW channels. Jig's common source

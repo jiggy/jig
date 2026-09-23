@@ -382,7 +382,7 @@ delegatedDescribe('private rootless Linux Run', () => {
     }
   })
 
-  test('executes one FLOW Run/1 component through the rootless envelope', async () => {
+  test('executes one FLOW Run/0 component through the rootless envelope', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture(`
       import { handle } from "/flow-sdk/src/index.ts";

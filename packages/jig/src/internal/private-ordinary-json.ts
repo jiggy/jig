@@ -12,7 +12,7 @@ export function snapshotPrivateOrdinaryJson(
   try {
     cloned = decodeJson1(canonicalJson(ordinary))
   } catch (error) {
-    if (error instanceof Json1Error) throw invalid(`${label} is not valid JSON/1: ${error.message}`)
+    if (error instanceof Json1Error) throw invalid(`${label} is not valid JSON/0: ${error.message}`)
     throw error
   }
   deepFreeze(cloned)
@@ -34,7 +34,7 @@ function cloneOrdinaryJson(
     return value
   }
   if (typeof value !== 'object' || utilTypes.isProxy(value)) {
-    throw invalid(`${label} must be ordinary JSON/1 data`)
+    throw invalid(`${label} must be ordinary JSON/0 data`)
   }
   if (ancestors.has(value)) {
     throw invalid(`${label} must not contain a cycle`)

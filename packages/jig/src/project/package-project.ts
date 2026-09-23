@@ -278,7 +278,7 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
       invalid('PROJECT_FLOW_NOT_RETAINED', errorText(error))
     }
     if (retained.package.digest !== retained.inspected.digest) {
-      throw new Error('retained Flow invariant violated: Package/1 digest differs from inspection')
+      throw new Error('retained Flow invariant violated: Package/0 digest differs from inspection')
     }
     if (retained.inspected.mode !== 'run') {
       invalid(

@@ -442,11 +442,11 @@ async function writeHelloFlow(project: string): Promise<void> {
     join(flow, 'FLOW.meta.json'),
     JSON.stringify({ name: 'hello', description: 'Return a greeting for the supplied name.' }),
   )
-  await writeFile(join(flow, 'README.md'), 'A dependency-closed finite FLOW Run/1 example.\n')
+  await writeFile(join(flow, 'README.md'), 'A dependency-closed finite FLOW Run/0 example.\n')
   await writeFile(
     join(flow, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       input: {
         type: 'object',
         properties: { name: { type: 'string' } },
@@ -480,7 +480,7 @@ async function writeHelloFlow(project: string): Promise<void> {
   await writeFile(
     join(flow, 'settings.schema.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      $schema: 'https://flow.jig.md/schemas/schema-0.json',
       type: 'object',
       properties: { prefix: { type: 'string' } },
       additionalProperties: false,
@@ -496,7 +496,7 @@ async function writeHelloFlow(project: string): Promise<void> {
       'for await (const line of lines) {',
       '  const request = JSON.parse(line);',
       '  if (request.jsonrpc !== "2.0" || request.method !== "flow/run") {',
-      '    throw new Error("expected one FLOW Run/1 request");',
+      '    throw new Error("expected one FLOW Run/0 request");',
       '  }',
       '  const received = request.params.input;',
       '  const prefix = request.params.settings.prefix ?? "Hello";',

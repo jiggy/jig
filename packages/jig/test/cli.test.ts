@@ -1627,7 +1627,7 @@ describe('finite Jig project commands', () => {
           malformed.options,
         ),
       ).toBe(1)
-      expect(malformed.error).toContain('the selected --input file is not FLOW JSON/1')
+      expect(malformed.error).toContain('the selected --input file is not FLOW JSON/0')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1817,7 +1817,7 @@ describe('finite Jig project commands', () => {
     expect(privateCliCommandLifetimeMs(['review'])).toBe(300_000)
   })
 
-  test('run parses bounded JSON/1 and maps failure and loss to stable exits', async () => {
+  test('run parses bounded JSON/0 and maps failure and loss to stable exits', async () => {
     const cases: readonly [RootRunTerminal, number][] = [
       [
         {
@@ -1865,7 +1865,7 @@ describe('finite Jig project commands', () => {
     }
   })
 
-  test('run rejects invalid target and JSON/1 before acquiring a project', async () => {
+  test('run rejects invalid target and JSON/0 before acquiring a project', async () => {
     const target = commandInvocation(unusedHost())
     expect(await main(['run', 'work'], target.options)).toBe(1)
     expect(target.error).toBe(
@@ -2196,7 +2196,7 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toBe(
-      'Review could not finish\n\n  Location: "flows/worker/FLOW.contract.json"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/1\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
+      'Review could not finish\n\n  Location: "flows/worker/FLOW.contract.json"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/0\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
     )
     expect(invocation.error).not.toContain('private parser detail')
   })

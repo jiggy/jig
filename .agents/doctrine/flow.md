@@ -86,7 +86,7 @@ scripts, and those scripts can also be run directly. FLOW's proposal is a shared
 package and invocation boundary for the complete method, independent of how
 its author implements it. Sharing should feel as approachable as a Skill,
 and composition as natural as a function. Exact file compatibility and whether
-a package is executable are governed by Package/1, not by this analogy.
+a package is executable are governed by Package/0, not by this analogy.
 
 A Flow performs bounded work. It owns its domain logic, prompts, selected
 Skills, validation, and internal method. FLOW owns portable package meaning,

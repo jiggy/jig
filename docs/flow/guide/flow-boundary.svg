@@ -341,7 +341,7 @@ rect.c-bg-rect { fill: var(--bg); }
         <!-- Connection paths (before components for correct z-order) -->
         <path data-edge-from="files" data-edge-to="method" data-edge-label="Describes" data-edge-key="0" data-composition-points="110,114;110,190" d="M 110 114 L 110 190" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="operator" data-edge-to="host" data-edge-label="Configures" data-edge-key="1" data-composition-points="410,114;410,190" d="M 410 114 L 410 190" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="host" data-edge-to="method" data-edge-label="Run/1 invocation" data-edge-key="2" data-composition-points="320,222;200,222" d="M 320 222 L 200 222" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="host" data-edge-to="method" data-edge-label="Run/0 invocation" data-edge-key="2" data-composition-points="320,222;200,222" d="M 320 222 L 200 222" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
 
         <!-- Components -->
         <g id="node-files" data-node-id="files" data-node-label="Package files" tabindex="0" role="button" aria-label="Focus Package files, Flow package" aria-pressed="false" data-node-kind="frontend" data-node-context="Flow package">
@@ -397,9 +397,9 @@ rect.c-bg-rect { fill: var(--bg); }
           <rect x="381" y="118" width="58" height="14" rx="3" class="c-mask"/>
           <text x="410" y="128" class="t-security" font-size="8" text-anchor="middle">Configures</text>
         </g>
-        <g data-edge-from="host" data-edge-to="method" data-edge-label="Run/1 invocation" data-edge-key="2">
+        <g data-edge-from="host" data-edge-to="method" data-edge-label="Run/0 invocation" data-edge-key="2">
           <rect x="216.6" y="202" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="260" y="212" class="t-backend" font-size="8" text-anchor="middle">Run/1 invocation</text>
+          <text x="260" y="212" class="t-backend" font-size="8" text-anchor="middle">Run/0 invocation</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->

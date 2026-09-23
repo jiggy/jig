@@ -19,9 +19,9 @@ import {
   validateLogicalPath,
 } from '../package/paths.js'
 
-const ARTIFACT_KIND = 'flow-package/1'
+const ARTIFACT_KIND = 'flow-package/0'
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/
-const HEADER = Buffer.from('FLOW-Package/1\0', 'ascii')
+const HEADER = Buffer.from('FLOW-Package/0\0', 'ascii')
 const COPY_CHUNK_BYTES = 1024 * 1024
 const MIB = 1024 * 1024
 // Linux O_TMPFILE is __O_TMPFILE | O_DIRECTORY; Node does not expose it.
@@ -37,17 +37,17 @@ const publicationTurns = new Map<string, Promise<void>>()
 declare const packageArtifactDigestBrand: unique symbol
 
 export type PackageDigest = string & {
-  readonly [packageArtifactDigestBrand]: 'Package/1'
+  readonly [packageArtifactDigestBrand]: 'Package/0'
 }
 
-/** A private durable reference to Package/1 bytes, not provenance or admission. */
+/** A private durable reference to Package/0 bytes, not provenance or admission. */
 export interface PackageArtifactRef {
   readonly kind: typeof ARTIFACT_KIND
   readonly digest: PackageDigest
 }
 
 /**
- * Publish one captured Package/1 value into an already-protected host store.
+ * Publish one captured Package/0 value into an already-protected host store.
  * The source capture remains owned by the caller.
  */
 export async function publishCapturedPackage(
@@ -79,7 +79,7 @@ async function publishCapturedPackageExclusive(
   if (artifactBytes > PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes) {
     unavailable(
       'PACKAGE_ARTIFACT_LIMIT',
-      `Package/1 artifact exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes}-byte alpha limit`,
+      `Package/0 artifact exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes}-byte alpha limit`,
     )
   }
   const location = await openArtifactShard(storeRoot, digest, true)
@@ -93,7 +93,7 @@ async function publishCapturedPackageExclusive(
     const existing = await tryCapturePackageArtifactFile(
       location.finalPath,
       digest,
-      `stored Package/1 ${digest}`,
+      `stored Package/0 ${digest}`,
       location.ownerUid,
     )
     if (existing !== undefined) {
@@ -102,7 +102,7 @@ async function publishCapturedPackageExclusive(
       if (observedDigest !== digest) {
         invalid(
           'PACKAGE_ARTIFACT_SOURCE_MISMATCH',
-          `captured Package/1 bytes produced ${observedDigest}, not ${digest}`,
+          `captured Package/0 bytes produced ${observedDigest}, not ${digest}`,
         )
       }
       return packageArtifactRef(digest)
@@ -112,7 +112,7 @@ async function publishCapturedPackageExclusive(
     if (retainedBytes + artifactBytes > PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes) {
       unavailable(
         'PACKAGE_ARTIFACT_STORE_LIMIT',
-        `protected Package/1 store exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes}-byte alpha limit`,
+        `protected Package/0 store exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes}-byte alpha limit`,
       )
     }
 
@@ -126,7 +126,7 @@ async function publishCapturedPackageExclusive(
     if (observedDigest !== digest) {
       invalid(
         'PACKAGE_ARTIFACT_SOURCE_MISMATCH',
-        `captured Package/1 bytes produced ${observedDigest}, not ${digest}`,
+        `captured Package/0 bytes produced ${observedDigest}, not ${digest}`,
       )
     }
 
@@ -139,7 +139,7 @@ async function publishCapturedPackageExclusive(
     const staged = await capturePackageArtifactFile(
       stage,
       digest,
-      'staged Package/1 artifact',
+      'staged Package/0 artifact',
       location.ownerUid,
     )
     await staged.dispose()
@@ -163,7 +163,7 @@ async function publishCapturedPackageExclusive(
       const existing = await capturePackageArtifactFile(
         location.finalPath,
         digest,
-        `stored Package/1 ${digest}`,
+        `stored Package/0 ${digest}`,
         location.ownerUid,
       )
       await existing.dispose()
@@ -183,7 +183,7 @@ async function publishCapturedPackageExclusive(
       ? new CheckError(
           'unavailable',
           'PACKAGE_ARTIFACT_RESOURCE_EXHAUSTED',
-          `cannot publish Package/1 artifact: ${errorText(error)}`,
+          `cannot publish Package/0 artifact: ${errorText(error)}`,
         )
       : error
   } finally {
@@ -210,11 +210,11 @@ async function publishCapturedPackageExclusive(
     }
     if (cleanupFailures.length > 0) {
       if (failure !== undefined) cleanupFailures.unshift(failure)
-      throw new AggregateError(cleanupFailures, 'Package/1 publication cleanup did not complete')
+      throw new AggregateError(cleanupFailures, 'Package/0 publication cleanup did not complete')
     }
   }
   if (failure !== undefined) throw failure
-  if (result === undefined) throw new Error('Package/1 publication produced no result')
+  if (result === undefined) throw new Error('Package/0 publication produced no result')
   return result
 }
 
@@ -229,13 +229,13 @@ export function privatePackageArtifactArchiveBytes(
     if (pathBytes > PACKAGE_1_MAX_PATH_BYTES || !Number.isSafeInteger(file.size) || file.size < 0) {
       invalid(
         'PACKAGE_ARTIFACT_SOURCE_INVALID',
-        'captured Package/1 metadata is invalid',
+        'captured Package/0 metadata is invalid',
         file.path,
       )
     }
     bytes += 1 + 4 + pathBytes + 8 + file.size
     if (!Number.isSafeInteger(bytes)) {
-      invalid('PACKAGE_ARTIFACT_SOURCE_INVALID', 'captured Package/1 archive size is invalid')
+      invalid('PACKAGE_ARTIFACT_SOURCE_INVALID', 'captured Package/0 archive size is invalid')
     }
   }
   return bytes
@@ -253,21 +253,21 @@ export async function captureStoredPackage(
     location = await openArtifactShard(storeRoot, digest, false)
     // Publication synchronizes both the artifact and its shard before it
     // returns a reference. Acquisition rechecks the exact inode and complete
-    // Package/1 digest; syncing an unchanged directory here adds no evidence.
+    // Package/0 digest; syncing an unchanged directory here adds no evidence.
     captured = await capturePackageArtifactFile(
       location.finalPath,
       digest,
-      `stored Package/1 ${digest}`,
+      `stored Package/0 ${digest}`,
       location.ownerUid,
     )
   } catch (error) {
     if (hasCode(error, 'ENOENT')) {
-      unavailable('PACKAGE_ARTIFACT_MISSING', `stored Package/1 ${digest} is missing`)
+      unavailable('PACKAGE_ARTIFACT_MISSING', `stored Package/0 ${digest} is missing`)
     }
     if (isResourceError(error)) {
       unavailable(
         'PACKAGE_ARTIFACT_RESOURCE_EXHAUSTED',
-        `cannot acquire Package/1 artifact: ${errorText(error)}`,
+        `cannot acquire Package/0 artifact: ${errorText(error)}`,
       )
     }
     throw error
@@ -295,19 +295,19 @@ export function normalizePackageArtifactRef(reference: unknown): PackageArtifact
 
 function parsePackageArtifactRef(reference: unknown): PackageDigest {
   if (typeof reference !== 'object' || reference === null || Array.isArray(reference)) {
-    invalid('PACKAGE_ARTIFACT_REF', 'Package/1 artifact reference must be an object')
+    invalid('PACKAGE_ARTIFACT_REF', 'Package/0 artifact reference must be an object')
   }
   const prototype = Object.getPrototypeOf(reference)
   const keys = Reflect.ownKeys(reference).sort((left, right) =>
     String(left).localeCompare(String(right)),
   )
   if (prototype !== Object.prototype && prototype !== null) {
-    invalid('PACKAGE_ARTIFACT_REF', 'Package/1 artifact reference must be a plain object')
+    invalid('PACKAGE_ARTIFACT_REF', 'Package/0 artifact reference must be a plain object')
   }
   if (keys.length !== 2 || keys[0] !== 'digest' || keys[1] !== 'kind') {
     invalid(
       'PACKAGE_ARTIFACT_REF',
-      `Package/1 artifact reference must contain only kind=${ARTIFACT_KIND} and digest`,
+      `Package/0 artifact reference must contain only kind=${ARTIFACT_KIND} and digest`,
     )
   }
   const kind = Object.getOwnPropertyDescriptor(reference, 'kind')
@@ -323,7 +323,7 @@ function parsePackageArtifactRef(reference: unknown): PackageDigest {
   ) {
     invalid(
       'PACKAGE_ARTIFACT_REF',
-      `Package/1 artifact reference must contain enumerable data fields kind=${ARTIFACT_KIND} and digest`,
+      `Package/0 artifact reference must contain enumerable data fields kind=${ARTIFACT_KIND} and digest`,
     )
   }
   return parsePackageDigest(digest.value)
@@ -333,7 +333,7 @@ function parsePackageDigest(value: unknown): PackageDigest {
   if (typeof value !== 'string' || !DIGEST_PATTERN.test(value)) {
     invalid(
       'PACKAGE_ARTIFACT_DIGEST',
-      'Package/1 artifact digest must be sha256: followed by 64 lowercase hexadecimal digits',
+      'Package/0 artifact digest must be sha256: followed by 64 lowercase hexadecimal digits',
     )
   }
   return value as PackageDigest
@@ -371,7 +371,7 @@ async function openArtifactShard(
         const information = await child.stat({ bigint: true })
         requireProtectedDirectory(
           information,
-          'protected Package/1 store directory',
+          'protected Package/0 store directory',
           parent.ownerUid,
         )
         // Every publisher establishes durability before relying on this name,
@@ -418,14 +418,14 @@ async function openStoreRoot(storeRoot: string): Promise<OpenStoreDirectory> {
     if (hasCode(error, 'ENOENT')) {
       unavailable(
         'PACKAGE_ARTIFACT_STORE_MISSING',
-        'protected Package/1 store root does not exist',
+        'protected Package/0 store root does not exist',
         path,
       )
     }
     throw error
   }
   if (observed.isSymbolicLink()) {
-    invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/1 store root must not be a symlink', path)
+    invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/0 store root must not be a symlink', path)
   }
   const handle = await open(
     path,
@@ -436,18 +436,18 @@ async function openStoreRoot(storeRoot: string): Promise<OpenStoreDirectory> {
     if (!sameIdentity(observed, actual)) {
       unavailable(
         'PACKAGE_ARTIFACT_STORE_CHANGED',
-        'protected Package/1 store root changed while opening',
+        'protected Package/0 store root changed while opening',
         path,
       )
     }
     if (typeof process.geteuid !== 'function') {
       unavailable(
         'PACKAGE_ARTIFACT_STORE_UNAVAILABLE',
-        'the Package/1 store requires a Unix effective user identity',
+        'the Package/0 store requires a Unix effective user identity',
       )
     }
     const expectedUid = BigInt(process.geteuid())
-    requireProtectedDirectory(actual, 'protected Package/1 store root', expectedUid)
+    requireProtectedDirectory(actual, 'protected Package/0 store root', expectedUid)
     return { handle, ownerUid: expectedUid }
   } catch (error) {
     await handle.close().catch(() => undefined)
@@ -504,19 +504,19 @@ async function retainedStoreBytes(storeRoot: string, expectedOwnerUid: bigint): 
       const childPath = `${path}/${entry.name}`
       const information = await lstat(childPath, { bigint: true })
       if (information.isSymbolicLink()) {
-        invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/1 store contains a symlink')
+        invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/0 store contains a symlink')
       }
       if (information.isDirectory()) {
         requireProtectedDirectory(
           information,
-          'protected Package/1 store directory',
+          'protected Package/0 store directory',
           expectedOwnerUid,
         )
         await visit(childPath)
         continue
       }
       if (!information.isFile() || information.uid !== expectedOwnerUid || information.nlink < 1n) {
-        invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/1 store contains an unsafe entry')
+        invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/0 store contains an unsafe entry')
       }
       total += information.size
       if (total > maximum) return
@@ -542,7 +542,7 @@ async function capturePackageArtifactFile(
     if (before.size > BigInt(PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes)) {
       unavailable(
         'PACKAGE_ARTIFACT_LIMIT',
-        `Package/1 artifact exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes}-byte alpha limit`,
+        `Package/0 artifact exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes}-byte alpha limit`,
       )
     }
     snapshot = await openAnonymousArchiveSnapshot()
@@ -561,7 +561,7 @@ async function capturePackageArtifactFile(
     if (hasCode(error, 'ENOENT')) throw error
     if (isResourceError(error)) throw error
     return artifactCorrupt(
-      `${sourceLabel} is not a valid retained Package/1 artifact: ${errorText(error)}`,
+      `${sourceLabel} is not a valid retained Package/0 artifact: ${errorText(error)}`,
     )
   } finally {
     await handle?.close().catch(() => undefined)
@@ -595,42 +595,42 @@ async function parsePackageArchive(
       if (isResourceError(error)) throw error
       unavailable(
         'PACKAGE_ARTIFACT_SNAPSHOT_IO',
-        `cannot copy verified Package/1 bytes into the invocation snapshot: ${errorText(error)}`,
+        `cannot copy verified Package/0 bytes into the invocation snapshot: ${errorText(error)}`,
       )
     }
     return bytes
   }
 
-  const header = await readHashed(HEADER.byteLength, 'Package/1 header')
+  const header = await readHashed(HEADER.byteLength, 'Package/0 header')
   if (!Buffer.from(header).equals(HEADER))
-    artifactCorrupt('stored artifact has the wrong Package/1 header')
+    artifactCorrupt('stored artifact has the wrong Package/0 header')
   const count = bigintToNumber(
-    readUnsigned(await readHashed(8, 'Package/1 file count')),
+    readUnsigned(await readHashed(8, 'Package/0 file count')),
     'file count',
   )
   if (count > PACKAGE_1_LIMITS.files)
-    artifactCorrupt('stored artifact exceeds the Package/1 file limit')
+    artifactCorrupt('stored artifact exceeds the Package/0 file limit')
 
   const records: ArchiveRecord[] = []
   let totalBytes = 0
   let previousPath: string | undefined
   for (let index = 0; index < count; index += 1) {
-    const marker = await readHashed(1, 'Package/1 record marker')
+    const marker = await readHashed(1, 'Package/0 record marker')
     if (marker[0] !== 0x01)
-      artifactCorrupt('stored artifact has an invalid Package/1 record marker')
+      artifactCorrupt('stored artifact has an invalid Package/0 record marker')
     const pathBytes = bigintToNumber(
-      readUnsigned(await readHashed(4, 'Package/1 path length')),
+      readUnsigned(await readHashed(4, 'Package/0 path length')),
       'path length',
     )
     if (pathBytes < 1 || pathBytes > PACKAGE_1_MAX_PATH_BYTES)
-      artifactCorrupt('stored artifact has an invalid Package/1 path length')
-    const rawPath = await readHashed(pathBytes, 'Package/1 path')
+      artifactCorrupt('stored artifact has an invalid Package/0 path length')
+    const rawPath = await readHashed(pathBytes, 'Package/0 path')
     let logicalPath: string
     try {
       logicalPath = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(rawPath)
       validateLogicalPath(logicalPath)
     } catch (error) {
-      artifactCorrupt(`stored artifact has an invalid Package/1 path: ${errorText(error)}`)
+      artifactCorrupt(`stored artifact has an invalid Package/0 path: ${errorText(error)}`)
     }
     if (previousPath !== undefined && comparePathBytes(previousPath, logicalPath) >= 0) {
       artifactCorrupt('stored artifact paths are not in strict canonical order')
@@ -638,20 +638,20 @@ async function parsePackageArchive(
     previousPath = logicalPath
 
     const size = bigintToNumber(
-      readUnsigned(await readHashed(8, 'Package/1 content length')),
+      readUnsigned(await readHashed(8, 'Package/0 content length')),
       'content length',
     )
     if (size > PACKAGE_1_LIMITS.fileBytes)
-      artifactCorrupt(`stored artifact file ${logicalPath} exceeds the Package/1 limit`)
+      artifactCorrupt(`stored artifact file ${logicalPath} exceeds the Package/0 limit`)
     totalBytes += size
     if (!Number.isSafeInteger(totalBytes) || totalBytes > PACKAGE_1_LIMITS.totalBytes) {
-      artifactCorrupt('stored artifact exceeds the Package/1 total-content limit')
+      artifactCorrupt('stored artifact exceeds the Package/0 total-content limit')
     }
     const offset = position
     let remaining = size
     while (remaining > 0) {
       const length = Math.min(COPY_CHUNK_BYTES, remaining)
-      await readHashed(length, `Package/1 content ${logicalPath}`)
+      await readHashed(length, `Package/0 content ${logicalPath}`)
       remaining -= length
     }
     records.push(Object.freeze({ path: logicalPath, size, offset }))
@@ -703,7 +703,7 @@ async function openAnonymousArchiveSnapshot(): Promise<FileHandle> {
     if (isResourceError(error)) throw error
     unavailable(
       'PACKAGE_ARTIFACT_SNAPSHOT_UNAVAILABLE',
-      `cannot create an anonymous Package/1 snapshot: ${errorText(error)}`,
+      `cannot create an anonymous Package/0 snapshot: ${errorText(error)}`,
     )
   }
 }
@@ -717,13 +717,13 @@ async function sealArchiveSnapshot(
   try {
     const before = await writable.stat({ bigint: true })
     if (!before.isFile() || before.size !== BigInt(expectedSize)) {
-      artifactCorrupt('anonymous Package/1 snapshot has the wrong size')
+      artifactCorrupt('anonymous Package/0 snapshot has the wrong size')
     }
     await writable.chmod(0o400)
     readonly = await open(`/proc/self/fd/${writable.fd}`, constants.O_RDONLY)
     const after = await readonly.stat({ bigint: true })
     if (!sameIdentity(before, after) || after.size !== BigInt(expectedSize)) {
-      artifactCorrupt('anonymous Package/1 snapshot changed while sealing')
+      artifactCorrupt('anonymous Package/0 snapshot changed while sealing')
     }
     await writable.close()
     return archiveBacking(readonly, records)
@@ -783,7 +783,7 @@ async function writeCapturedArchive(
         if (error instanceof CheckError || isResourceError(error)) throw error
         invalid(
           'PACKAGE_ARTIFACT_SOURCE_INVALID',
-          `captured Package/1 stream is inconsistent: ${errorText(error)}`,
+          `captured Package/0 stream is inconsistent: ${errorText(error)}`,
         )
       }
       if (item.done) {
@@ -808,7 +808,7 @@ async function writeCapturedArchive(
   if (failure !== undefined && iteratorFailure !== undefined) {
     throw new AggregateError(
       [failure, iteratorFailure],
-      'Package/1 source iterator cleanup did not complete',
+      'Package/0 source iterator cleanup did not complete',
     )
   }
   if (failure !== undefined) throw failure
@@ -823,7 +823,7 @@ async function digestCapturedPackage(captured: CapturedPackage): Promise<string>
     if (error instanceof CheckError || isResourceError(error)) throw error
     invalid(
       'PACKAGE_ARTIFACT_SOURCE_INVALID',
-      `captured Package/1 stream is inconsistent: ${errorText(error)}`,
+      `captured Package/0 stream is inconsistent: ${errorText(error)}`,
     )
   }
 }
@@ -832,7 +832,7 @@ async function writeAll(handle: FileHandle, bytes: Uint8Array): Promise<void> {
   let written = 0
   while (written < bytes.byteLength) {
     const result = await handle.write(bytes, written, bytes.byteLength - written)
-    if (result.bytesWritten === 0) throw new Error('Package/1 artifact write made no progress')
+    if (result.bytesWritten === 0) throw new Error('Package/0 artifact write made no progress')
     written += result.bytesWritten
   }
 }
@@ -845,7 +845,7 @@ async function requireSameFile(left: string, right: string): Promise<void> {
   if (!sameIdentity(first, second) || !first.isFile() || !second.isFile()) {
     unavailable(
       'PACKAGE_ARTIFACT_PUBLISH_RACE',
-      'published Package/1 artifact identity changed unexpectedly',
+      'published Package/0 artifact identity changed unexpectedly',
     )
   }
 }

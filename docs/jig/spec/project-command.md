@@ -7,11 +7,11 @@ the Flow a shell or the candidate access to an Agent provider. The command
 returns host-collected output and termination. Application code decides what
 that evidence means.
 
-This is a Jig-owned native invocation carried by ordinary FLOW Run/1 `flow/call`.
+This is a Jig-owned native invocation carried by ordinary FLOW Run/0 `flow/call`.
 It adds no FLOW protocol method or requirement on other hosts. Its exact
 [descriptor](https://jig.md/contracts/project-command/contract.json) has ID
-`https://jig.md/contracts/project-command`, version `1.0.0`, and digest
-`sha256:745905affe3fab5e7bcb3066419702ceaefca38871be131281a5e7f9f53dc59f`.
+`https://jig.md/contracts/project-command`, version `0.1.0`, and digest
+`sha256:b6bdad9771000d2fb41963634a463c9e9289f95275a9b29056376e93252e817e`.
 
 ## Reviewed authority
 
@@ -90,7 +90,7 @@ The SDK returns `{ outcome: 'done', output: evidence }`. The evidence contains:
 
 | Field | Meaning |
 | --- | --- |
-| `candidateDigest` | SHA-256 of the canonical JSON/1 `files` map, prefixed `sha256:`. No trailing newline is hashed. |
+| `candidateDigest` | SHA-256 of the canonical JSON/0 `files` map, prefixed `sha256:`. No trailing newline is hashed. |
 | `invocation` | Logical argument vector beginning with `bun`; no host paths. The application already knows which slot it called. |
 | `stdinDigest` | SHA-256 of the UTF-8 stdin bytes, prefixed `sha256:`. |
 | `stdout`, `stderr` | `{text, truncated}` for the first 64 KiB of each stream. The collector drains the rest. |
@@ -132,7 +132,7 @@ Jig records ownership before dispatch. Cancellation, parent settlement, and
 coordinator loss fence all owned descendants before release. Independent
 supervision survives coordinator failure; later recovery closes retained
 ownership without redispatch. Cleanup failure cannot become `cleanup: complete`.
-An uncertain command is not retried automatically. Run/1 operation identity
+An uncertain command is not retried automatically. Run/0 operation identity
 and exact-replay conflict rules apply.
 
 No writable repository, native Agent workspace tools, shell service, package

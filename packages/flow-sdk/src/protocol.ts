@@ -15,7 +15,7 @@ export const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\s\S])/
 type StructuredParams = JsonObject | readonly JsonValue[]
 
 export interface RunParams {
-  readonly protocol: 'run/1'
+  readonly protocol: 'run/0'
   readonly input: JsonValue
   readonly settings: JsonObject
   readonly attachments: Readonly<Record<string, Attachment>>
@@ -229,7 +229,7 @@ export function parseRunParams(value: JsonValue): RunParams {
     'deadlineUnixMs',
     ...(Object.hasOwn(object, 'channels') ? ['channels'] : []),
   ])
-  if (object.protocol !== 'run/1') throw new Error('unsupported Run protocol')
+  if (object.protocol !== 'run/0') throw new Error('unsupported Run protocol')
   const settings = requireObject(object.settings as JsonValue, 'settings')
   const attachmentsObject = requireObject(object.attachments as JsonValue, 'attachments')
   if (Object.keys(attachmentsObject).length > 256) throw new Error('too many attachments')
@@ -257,7 +257,7 @@ export function parseRunParams(value: JsonValue): RunParams {
     throw new Error('invalid deadlineUnixMs')
   }
   return {
-    protocol: 'run/1',
+    protocol: 'run/0',
     input: object.input as JsonValue,
     settings,
     attachments,
@@ -375,7 +375,7 @@ export function errorMessage(
     id,
     error: {
       code: rpcCode,
-      message: Array.from(message).slice(0, 1_024).join('') || 'Run/1 error',
+      message: Array.from(message).slice(0, 1_024).join('') || 'Run/0 error',
       ...(data === undefined ? {} : { data }),
     },
   }
@@ -442,7 +442,7 @@ export function requireWireId(value: JsonValue): string {
     !WIRE_ID.test(value) ||
     new TextEncoder().encode(value).byteLength > 128
   ) {
-    throw new Error('invalid Run/1 ID')
+    throw new Error('invalid Run/0 ID')
   }
   return value
 }

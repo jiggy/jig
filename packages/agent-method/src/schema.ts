@@ -19,7 +19,7 @@ interface ResponseSchemaProfileState {
 /** Validate Jig's deliberately bounded recursive Agent structured-output profile. */
 export function assertResponseSchema(schema: JsonObject): void {
   requireSchemaJson(schema)
-  if (schema.$schema !== 'https://flow.jig.md/schemas/schema-1.json') invalidSchemaProfile()
+  if (schema.$schema !== 'https://flow.jig.md/schemas/schema-0.json') invalidSchemaProfile()
   const state: ResponseSchemaProfileState = {
     properties: 0,
     enumValues: 0,
@@ -184,7 +184,7 @@ function requireSchemaJson(schema: unknown): void {
     }
   } catch (error) {
     if (error instanceof AgentMethodError) throw error
-    throw new AgentMethodError('INVALID_INPUT', 'Agent responseSchema must be valid JSON/1')
+    throw new AgentMethodError('INVALID_INPUT', 'Agent responseSchema must be valid JSON/0')
   }
 }
 

@@ -29,14 +29,14 @@ def _reject_constant(token: str) -> None:
 
 def _parse_number(token: str) -> int | float:
     if len(token.encode("ascii")) > MAX_NUMBER_TOKEN_BYTES:
-        raise Json1Error("number token exceeds the JSON/1 limit")
+        raise Json1Error("number token exceeds the JSON/0 limit")
 
     value = float(token)
     if not math.isfinite(value):
         raise Json1Error("number is not finite binary64")
     if value.is_integer():
         if abs(value) > MAX_SAFE_INTEGER:
-            raise Json1Error("integral number exceeds the JSON/1 safe range")
+            raise Json1Error("integral number exceeds the JSON/0 safe range")
         return int(value)
     return value
 
@@ -59,12 +59,12 @@ def _string_bytes(value: str, *, member_name: bool = False) -> int:
     limit = MAX_MEMBER_NAME_BYTES if member_name else MAX_STRING_BYTES
     if size > limit:
         kind = "member name" if member_name else "string"
-        raise Json1Error(f"{kind} exceeds the JSON/1 limit")
+        raise Json1Error(f"{kind} exceeds the JSON/0 limit")
     return size
 
 
 def normalize_json1(value: Any) -> Any:
-    """Validate a Python value as JSON/1 and return plain JSON containers."""
+    """Validate a Python value as JSON/0 and return plain JSON containers."""
 
     nodes = 0
     active: set[int] = set()
@@ -73,9 +73,9 @@ def normalize_json1(value: Any) -> Any:
         nonlocal nodes
         nodes += 1
         if nodes > MAX_NODES:
-            raise Json1Error("value exceeds the JSON/1 node limit")
+            raise Json1Error("value exceeds the JSON/0 node limit")
         if depth > MAX_DEPTH:
-            raise Json1Error("value exceeds the JSON/1 depth limit")
+            raise Json1Error("value exceeds the JSON/0 depth limit")
 
         if current is None or isinstance(current, bool):
             return current
@@ -84,14 +84,14 @@ def normalize_json1(value: Any) -> Any:
             return current
         if isinstance(current, int):
             if abs(current) > MAX_SAFE_INTEGER:
-                raise Json1Error("integral number exceeds the JSON/1 safe range")
+                raise Json1Error("integral number exceeds the JSON/0 safe range")
             return current
         if isinstance(current, float):
             if not math.isfinite(current):
                 raise Json1Error("number is not finite binary64")
             if current.is_integer():
                 if abs(current) > MAX_SAFE_INTEGER:
-                    raise Json1Error("integral number exceeds the JSON/1 safe range")
+                    raise Json1Error("integral number exceeds the JSON/0 safe range")
                 return int(current)
             return current
 
@@ -100,7 +100,7 @@ def normalize_json1(value: Any) -> Any:
             if identity in active:
                 raise Json1Error("cyclic object is not JSON")
             if len(current) > MAX_OBJECT_MEMBERS:
-                raise Json1Error("object exceeds the JSON/1 member limit")
+                raise Json1Error("object exceeds the JSON/0 member limit")
             active.add(identity)
             try:
                 result: dict[str, Any] = {}
@@ -118,7 +118,7 @@ def normalize_json1(value: Any) -> Any:
             if identity in active:
                 raise Json1Error("cyclic array is not JSON")
             if len(current) > MAX_ARRAY_ITEMS:
-                raise Json1Error("array exceeds the JSON/1 item limit")
+                raise Json1Error("array exceeds the JSON/0 item limit")
             active.add(identity)
             try:
                 return [visit(child, depth + 1) for child in current]
@@ -132,10 +132,10 @@ def normalize_json1(value: Any) -> Any:
 
 def parse_json1(payload: bytes) -> Any:
     if len(payload) > MAX_DOCUMENT_BYTES:
-        raise Json1Error("document exceeds the JSON/1 byte limit")
+        raise Json1Error("document exceeds the JSON/0 byte limit")
     if payload.startswith(b"\xef\xbb\xbf"):
-        # A BOM is valid UTF-8 but outside JSON/1. It therefore receives the
-        # same best-effort parse error as any other complete JSON/1 violation.
+        # A BOM is valid UTF-8 but outside JSON/0. It therefore receives the
+        # same best-effort parse error as any other complete JSON/0 violation.
         raise Json1Error("UTF-8 BOM is not allowed")
     try:
         text = payload.decode("utf-8", "strict")
@@ -167,7 +167,7 @@ def encode_json1(value: Any) -> bytes:
             separators=(",", ":"),
         ).encode("utf-8", "strict")
     except (TypeError, ValueError, UnicodeEncodeError) as error:
-        raise Json1Error("value cannot be encoded as JSON/1") from error
+        raise Json1Error("value cannot be encoded as JSON/0") from error
     if len(payload) > MAX_DOCUMENT_BYTES:
-        raise Json1Error("encoded document exceeds the JSON/1 byte limit")
+        raise Json1Error("encoded document exceeds the JSON/0 byte limit")
     return payload

@@ -11,14 +11,14 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 const agreement = JSON.stringify({
-  $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+  $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
   id: 'https://example.org/events',
   version: '1.0.0',
   semantics: 'Selected progress.',
   item: true,
 })
 const descriptor = JSON.stringify({
-  $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+  $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
   id: 'https://example.org/work',
   version: '1.0.0',
   channels: { events: { direction: 'send', contract: './contracts/events.json' } },

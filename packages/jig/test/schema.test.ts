@@ -27,7 +27,7 @@ function captured(action: () => void): SchemaDiagnostic {
   throw new Error('expected SchemaDiagnostic')
 }
 
-describe('Schema/1 compilation', () => {
+describe('Schema/0 compilation', () => {
   test('reports type mismatches without retaining the input value', () => {
     const compiled = compileSchemaFile(
       fileSchema({
@@ -84,7 +84,7 @@ describe('Schema/1 compilation', () => {
     compiled.validate(2, 'INVALID_INPUT')
   })
 
-  test('reserves SCHEMA_INVALID_JSON for the encoded JSON/1 seam', () => {
+  test('reserves SCHEMA_INVALID_JSON for the encoded JSON/0 seam', () => {
     const duplicate = encoder.encode(
       `{"$schema":"${SCHEMA_1_URI}","type":"string","type":"number"}`,
     )
@@ -217,7 +217,7 @@ describe('Schema/1 compilation', () => {
   })
 })
 
-describe('Schema/1 evaluation', () => {
+describe('Schema/0 evaluation', () => {
   test('evaluates object, array, string, numeric, and conditional keywords', () => {
     const compiled = compileSchemaFile(
       fileSchema({
@@ -323,7 +323,7 @@ describe('Schema/1 evaluation', () => {
     compiled.validate('x'.repeat(600_000), 'INVALID_INPUT')
   })
 
-  test('rejects non-JSON/1 instances using the requested boundary code', () => {
+  test('rejects non-JSON/0 instances using the requested boundary code', () => {
     const compiled = compileSchemaFile(fileSchema({ type: 'number' }), 'settings.schema.json')
     const error = captured(() => compiled.validate(Number.NaN, 'INVALID_SETTINGS'))
     expect(error.code).toBe('INVALID_SETTINGS')
@@ -331,8 +331,8 @@ describe('Schema/1 evaluation', () => {
   })
 })
 
-test('published Schema/1 meta-schema has the canonical identity', async () => {
-  const url = new URL('../../../docs/flow/spec/machine/schema-1.json', import.meta.url)
+test('published Schema/0 meta-schema has the canonical identity', async () => {
+  const url = new URL('../../../docs/flow/spec/machine/schema-0.json', import.meta.url)
   const value = JSON.parse(await readFile(url, 'utf8')) as JsonObject
   expect(value.$id).toBe(SCHEMA_1_URI)
   expect(value.$schema).toBe('https://json-schema.org/draft/2020-12/schema')

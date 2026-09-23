@@ -14,7 +14,7 @@ this README does not assert registry publication.
 | Entry | Guidance source | Invocation |
 | --- | --- | --- |
 | Pure library | Explicit input and Skill text supplied by its caller | In the caller's existing process |
-| Ordinary `FLOW.ts` | Explicit caller Skill contents and guidance | One Run/1 invocation and one granted HTTP request |
+| Ordinary `FLOW.ts` | Explicit caller Skill contents and guidance | One Run/0 invocation and one granted HTTP request |
 | Ordinary ACP Agent package | The same explicit Skill contents and guidance | Separate Flow using this library and a finite native resource |
 
 The ordinary Flow offers the exact Agent Run contract. Its result does not
@@ -188,7 +188,7 @@ control semantics, and the raw channel interface.
 
 ## Ordinary Flow and explicit Skills
 
-The root `FLOW.ts` runs the bundled method through Run/1. Its input adds
+The root `FLOW.ts` runs the bundled method through Run/0. Its input adds
 `skills?: SkillText[]` to the shared input. This HTTP implementation rejects any
 `session` field, conversational mode and requested channels before HTTP
 dispatch. Omitted Skills supply none. For example:
@@ -290,7 +290,7 @@ HTTP grants default to a 256 KiB canonical request and 1 MiB response. Larger
 requests and answers require explicit `requestBytes` / `responseBytes` policy,
 up to 8 MiB / 12 MiB. The Flow requests `response: 'json'` and interprets the
 decoded API value, avoiding an extra JSON-string wrapper around large answers.
-The shared 1 MiB rendered prompt, 8 MiB answer text and JSON/1 complete-value
+The shared 1 MiB rendered prompt, 8 MiB answer text and JSON/0 complete-value
 bounds remain unchanged. Each request stays within the grant's timeout (at most
 60 seconds) and enclosing deadline. Oversized values fail rather than being
 clipped. Caller-supplied context is not host-attested provenance.
@@ -324,7 +324,7 @@ JSON escaping, labels, paths and schema instructions, has a separate 1 MiB
 bound. Oversized content is rejected rather than truncated.
 
 The schema profile requires the root declaration
-`https://flow.jig.md/schemas/schema-1.json` and a nonempty closed object with
+`https://flow.jig.md/schemas/schema-0.json` and a nonempty closed object with
 every property required. Nested nodes support closed objects, bounded arrays,
 strings and safe integers; only string/integer nodes can be nullable. String
 enums are supported. Booleans, numbers, references, optional properties and
@@ -333,7 +333,7 @@ accepted. Limits are 256 KiB canonical schema bytes, depth 8, 32 properties per
 object, 128 total properties, 256 array items, 256 total enum values and 120,000
 property-name/enum Unicode scalar values. Enums with over 250 values are limited
 to 15,000 string scalar values. Nullable string enums contain both null and at
-least one string. JSON/1's finite safe-number, Unicode, duplicate-member and
+least one string. JSON/0's finite safe-number, Unicode, duplicate-member and
 absolute value bounds apply throughout.
 
 ## Build and adapt
@@ -360,7 +360,7 @@ path publishes, mutates source manifests or embeds dependency archives.
 Rebuilding extracted source requires its declared dependency versions to be
 available; unpublished development uses ordinary source workspaces.
 
-Tests cover preparation/results, JSON/1 bounds, package reads, ordinary Flow
+Tests cover preparation/results, JSON/0 bounds, package reads, ordinary Flow
 wiring, source inclusion, dependency versions and standalone runtime imports.
 They do not establish provider quality, real-client compatibility or containment.
 

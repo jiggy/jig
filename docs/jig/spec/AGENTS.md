@@ -39,7 +39,7 @@ descriptors.
   Authoring and lock schemas mirror selected targets and retained effective
   routes, not mutable runtime lookup or new resource authority.
 - `http-request.md` owns exact endpoint policy and requests,
-  optional JSON/1 response decoding, explicit byte ceilings above unchanged
+  optional JSON/0 response decoding, explicit byte ceilings above unchanged
   defaults, private bearer delivery and finite contained-worker settlement. Its descriptor
   is a native invocation companion, not a FLOW-wide resource model.
 - `finite-acp.md` owns the finite native resource grant, exact request/response

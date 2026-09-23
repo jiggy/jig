@@ -50,7 +50,7 @@ async function invoke(
       id,
       method: 'flow/run',
       params: {
-        protocol: 'run/1',
+        protocol: 'run/0',
         input: { hello: 'world' },
         settings: {},
         attachments: {},

@@ -6,7 +6,7 @@ import { SchemaDiagnostic } from '../schema/index.js'
  * Turn one clean protocol/process terminal into an admitted package result.
  *
  * Process hosting owns framing, owner quiescence, fencing, and cleanup. This
- * gate owns only Package/1 outcome and result-schema meaning, and therefore
+ * gate owns only Package/0 outcome and result-schema meaning, and therefore
  * belongs after a RunHostSession settles but before durable success commits.
  */
 export function admitPrivatePackageResult(

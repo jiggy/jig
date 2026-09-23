@@ -107,7 +107,7 @@ export function compileSchemaFile(bytes: Uint8Array, path: string): CompiledSche
     throw error
   }
   if (!isObject(parsed)) {
-    throw diagnostic('SCHEMA_INVALID', 'a Schema/1 file root must be an object', path, '')
+    throw diagnostic('SCHEMA_INVALID', 'a Schema/0 file root must be an object', path, '')
   }
   if (parsed.$schema !== SCHEMA_1_URI) {
     throw diagnostic(
@@ -236,7 +236,7 @@ class GraphBuilder {
       if (!KEYWORDS.has(keyword)) {
         this.fail(
           'SCHEMA_KEYWORD_UNSUPPORTED',
-          `unsupported Schema/1 keyword ${keyword}`,
+          `unsupported Schema/0 keyword ${keyword}`,
           childPointer(pointer, keyword),
           keyword,
         )
@@ -261,7 +261,7 @@ class GraphBuilder {
           if (!allowDefinitions) {
             this.fail(
               'SCHEMA_INVALID',
-              '$defs is allowed only on a Schema/1 file root',
+              '$defs is allowed only on a Schema/0 file root',
               keywordPointer,
               keyword,
             )
@@ -296,7 +296,7 @@ class GraphBuilder {
           if (!isScalar(value))
             this.fail(
               'SCHEMA_INVALID',
-              'const is limited to a JSON/1 scalar',
+              'const is limited to a JSON/0 scalar',
               keywordPointer,
               keyword,
             )
@@ -395,7 +395,7 @@ class GraphBuilder {
     const values = this.arrayValue(value, pointer, 'enum')
     for (const item of values) {
       if (!isScalar(item))
-        this.fail('SCHEMA_INVALID', 'enum is limited to JSON/1 scalars', pointer, 'enum')
+        this.fail('SCHEMA_INVALID', 'enum is limited to JSON/0 scalars', pointer, 'enum')
     }
   }
 
@@ -441,7 +441,7 @@ class GraphBuilder {
     if (!DEFINITION_NAME.test(name)) {
       this.fail(
         'SCHEMA_INVALID',
-        `invalid Schema/1 definition name ${JSON.stringify(name)}`,
+        `invalid Schema/0 definition name ${JSON.stringify(name)}`,
         childPointer(defsPointer, name),
         '$defs',
       )
@@ -564,7 +564,7 @@ function evaluate(
   if (memoized !== undefined) return memoized
   charge(state, 1, graph.path, schemaPointer, instancePointer)
   const node = graph.nodes.get(schemaPointer)
-  if (node === undefined) throw new Error(`internal Schema/1 node missing at ${schemaPointer}`)
+  if (node === undefined) throw new Error(`internal Schema/0 node missing at ${schemaPointer}`)
   if (node.schema === true) {
     const valid = { valid: true } as const
     memoize(state, schemaPointer, instancePointer, valid)
@@ -907,7 +907,7 @@ function charge(
   if (state.work + units > SCHEMA_1_LIMITS.work) {
     throw diagnostic(
       'SCHEMA_LIMIT_EXCEEDED',
-      `Schema/1 validation exceeds ${SCHEMA_1_LIMITS.work} work units`,
+      `Schema/0 validation exceeds ${SCHEMA_1_LIMITS.work} work units`,
       path,
       schemaPointer,
       undefined,

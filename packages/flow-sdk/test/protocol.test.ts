@@ -282,7 +282,7 @@ describe('public call validation', () => {
 })
 
 describe('Run results', () => {
-  test('preserves the exact Run/1 result wire shape', () => {
+  test('preserves the exact Run/0 result wire shape', () => {
     const result = parseRunResult({
       outcome: 'done',
       output: { nested: [true, null, 'value'] },

@@ -20,7 +20,7 @@ summarizing supplied text. Keep the operation's own checks in ordinary code.
 The package contains one `FLOW.<ext>` implementation, such as `FLOW.ts`,
 `FLOW.py`, or `FLOW.md`. Add optional metadata, resources and contracts when
 the method needs them. See
-[Package/1](../spec/package-format.md) for the exact metadata and layout.
+[Package/0](../spec/package-format.md) for the exact metadata and layout.
 
 A Markdown implementation needs a compatible interpreter. Code implementations
 likewise need support from the chosen host.
@@ -75,7 +75,7 @@ With input `{"name":"Ada"}`, the method's result is
 The host may wrap that result with its own execution status and diagnostics.
 
 These snippets define handlers; they are not standalone shell invocations. `handle`
-expects a Run/1 host exchange on stdin and stdout. Use the complete setup in
+expects a Run/0 host exchange on stdin and stdout. Use the complete setup in
 your selected tutorial. Keep raw writes off protocol stdout; the SDK routes
 ordinary console diagnostics to stderr after `handle` starts.
 

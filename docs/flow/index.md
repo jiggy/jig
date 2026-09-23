@@ -120,7 +120,7 @@ showcase:
 <div className="reader-grid">
 <a className="reader-card" href="/guide/start"><span className="tile-index">01 · Quickstart</span><h3>Build your first Flow</h3><p>Create a package in Markdown, TypeScript, or Python and run it through a standard runner.</p><span className="card-link">Start building ↗</span></a>
 <a className="reader-card" href="/guide/understand"><span className="tile-index">02 · Architecture</span><h3>Why FLOW exists</h3><p>Understand the single compositional model for code and Agents, and how capability compounds.</p><span className="card-link">Read architecture ↗</span></a>
-<a className="reader-card" href="/spec/package-format"><span className="tile-index">03 · Specifications</span><h3>The Package/1 standard</h3><p>Inspect the normative specification for package structure, metadata, and invocation contracts.</p><span className="card-link">Inspect spec ↗</span></a>
+<a className="reader-card" href="/spec/package-format"><span className="tile-index">03 · Specifications</span><h3>The Package/0 standard</h3><p>Inspect the normative specification for package structure, metadata, and invocation contracts.</p><span className="card-link">Inspect spec ↗</span></a>
 </div>
 </section>
 

@@ -6,7 +6,7 @@ import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from './j
 import { isNfc15_1 } from './package/paths.js'
 import { type CompiledSchema, compileEmbeddedSchema } from './schema/index.js'
 
-export const CHANNEL_CONTRACT_SCHEMA = 'https://flow.jig.md/schemas/channel-contract-1.schema.json'
+export const CHANNEL_CONTRACT_SCHEMA = 'https://flow.jig.md/schemas/channel-contract-0.schema.json'
 export const CHANNEL_CONTRACT_BYTES = 262_144
 
 export interface ChannelDeclaration {
@@ -121,7 +121,7 @@ export function parseChannelContract(
     typeof root.item !== 'boolean' &&
     (root.item === null || typeof root.item !== 'object' || Array.isArray(root.item))
   )
-    invalid('CHANNEL_FIELD', 'channel item must be a Schema/1 schema', path)
+    invalid('CHANNEL_FIELD', 'channel item must be a Schema/0 schema', path)
   const defs = root.$defs === undefined ? undefined : object(root.$defs, path)
   if (defs !== undefined && Object.keys(defs).length > 1_024)
     invalid('CHANNEL_LIMIT', 'channel descriptor exceeds 1024 definitions', path)
@@ -132,7 +132,7 @@ export function parseChannelContract(
   })
   const descriptor = root as unknown as ChannelContractDescriptor
   freeze(root)
-  const digest = `sha256:${createHash('sha256').update('FLOW-Channel-Contract/1\0').update(canonicalJson(root)).digest('hex')}`
+  const digest = `sha256:${createHash('sha256').update('FLOW-Channel-Contract/0\0').update(canonicalJson(root)).digest('hex')}`
   return Object.freeze({ descriptor, digest, itemSchema })
 }
 

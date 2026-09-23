@@ -8,7 +8,7 @@ import {
   validateLogicalPath,
 } from '../src/package/paths.js'
 
-describe('Package/1 canonical paths', () => {
+describe('Package/0 canonical paths', () => {
   test('accepts canonical relative paths at the segment boundary', () => {
     const path = Array.from({ length: 64 }, () => 'a').join('/')
     expect(validateLogicalPath(path)).toBe(path)

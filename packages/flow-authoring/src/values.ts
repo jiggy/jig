@@ -36,7 +36,7 @@ export function checkText(text: string, maxBytes: number): void {
 export function encode(value: unknown): string {
   let nodes = 0
   function check(v: unknown, depth: number): void {
-    if (++nodes > 262144 || depth > 128) fail('VALUE_LIMIT', 'Output exceeds JSON/1 value limits.')
+    if (++nodes > 262144 || depth > 128) fail('VALUE_LIMIT', 'Output exceeds JSON/0 value limits.')
     if (v === null || typeof v === 'boolean') return
     if (typeof v === 'string') {
       checkText(v, 8388608)
@@ -44,17 +44,17 @@ export function encode(value: unknown): string {
     }
     if (typeof v === 'number') {
       if (!Number.isFinite(v) || (Number.isInteger(v) && !Number.isSafeInteger(v))) {
-        fail('VALUE_INVALID', 'Output contains a non-JSON/1 number.')
+        fail('VALUE_INVALID', 'Output contains a non-JSON/0 number.')
       }
       return
     }
-    if (typeof v !== 'object') fail('VALUE_INVALID', 'Output is not a JSON/1 value.')
+    if (typeof v !== 'object') fail('VALUE_INVALID', 'Output is not a JSON/0 value.')
     if (Array.isArray(v)) {
-      if (v.length > 65536) fail('VALUE_LIMIT', 'Output array exceeds JSON/1 limits.')
+      if (v.length > 65536) fail('VALUE_LIMIT', 'Output array exceeds JSON/0 limits.')
       for (const member of v) check(member, depth + 1)
     } else {
       const entries = Object.entries(v)
-      if (entries.length > 65536) fail('VALUE_LIMIT', 'Output object exceeds JSON/1 limits.')
+      if (entries.length > 65536) fail('VALUE_LIMIT', 'Output object exceeds JSON/0 limits.')
       for (const [key, member] of entries) {
         checkText(key, 1024)
         check(member, depth + 1)

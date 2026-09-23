@@ -29,7 +29,7 @@ import { type CapturedPackage, capturePackageDirectory } from '../src/package/ca
 
 const metadata = '---\nname: retained\ndescription: Retained fixture.\n---\n'
 
-describe('private Package/1 artifact store', () => {
+describe('private Package/0 artifact store', () => {
   test('publishes canonical bytes and reacquires them after source disposal', async () => {
     await withStoreAndSource(async (store, source) => {
       await writeTree(source, {
@@ -41,7 +41,7 @@ describe('private Package/1 artifact store', () => {
       const reference = await publishCapturedPackage(store, captured)
       const blob = artifactPath(store, reference)
 
-      expect(reference).toEqual({ kind: 'flow-package/1', digest: captured.digest })
+      expect(reference).toEqual({ kind: 'flow-package/0', digest: captured.digest })
       expect(
         `sha256:${createHash('sha256')
           .update(await readFile(blob))
@@ -242,11 +242,11 @@ describe('private Package/1 artifact store', () => {
   test('rejects noncanonical and confused references before path derivation', async () => {
     await withStoreAndSource(async (store) => {
       const uppercase = {
-        kind: 'flow-package/1',
+        kind: 'flow-package/0',
         digest: `sha256:${'A'.repeat(64)}`,
       } as unknown as PackageArtifactRef
       const candidateShaped = {
-        kind: 'flow-package/1',
+        kind: 'flow-package/0',
         digest: `sha256:${'a'.repeat(64)}`,
         captureDigest: `sha256:${'b'.repeat(64)}`,
       } as unknown as PackageArtifactRef
@@ -259,7 +259,7 @@ describe('private Package/1 artifact store', () => {
       })
 
       let getterInvoked = false
-      const accessor = Object.defineProperty({ kind: 'flow-package/1' }, 'digest', {
+      const accessor = Object.defineProperty({ kind: 'flow-package/0' }, 'digest', {
         get() {
           getterInvoked = true
           return `sha256:${'a'.repeat(64)}`
@@ -273,17 +273,17 @@ describe('private Package/1 artifact store', () => {
 
       for (const reference of [
         Object.assign(Object.create({}), {
-          kind: 'flow-package/1',
+          kind: 'flow-package/0',
           digest: `sha256:${'a'.repeat(64)}`,
         }),
         Object.assign(
           {
-            kind: 'flow-package/1',
+            kind: 'flow-package/0',
             digest: `sha256:${'a'.repeat(64)}`,
           },
           { [Symbol('hidden')]: true },
         ),
-        Object.defineProperty({ kind: 'flow-package/1' }, 'digest', {
+        Object.defineProperty({ kind: 'flow-package/0' }, 'digest', {
           value: `sha256:${'a'.repeat(64)}`,
           enumerable: false,
         }),
@@ -335,7 +335,7 @@ describe('private Package/1 artifact store', () => {
       const path = Buffer.from('FLOW.md', 'utf8')
       const content = Buffer.from(metadata, 'utf8')
       const archive = Buffer.concat([
-        Buffer.from('FLOW-Package/1\0', 'ascii'),
+        Buffer.from('FLOW-Package/0\0', 'ascii'),
         unsignedBigEndian(1n, 8),
         Buffer.from([0x01]),
         unsignedBigEndian(BigInt(path.byteLength), 4),
@@ -360,7 +360,7 @@ describe('private Package/1 artifact store', () => {
   test('rejects an oversized retained archive before snapshotting it', async () => {
     await withStoreAndSource(async (store) => {
       const reference = {
-        kind: 'flow-package/1',
+        kind: 'flow-package/0',
         digest: `sha256:${'0'.repeat(64)}`,
       } as PackageArtifactRef
       const blob = artifactPath(store, reference)
@@ -377,7 +377,7 @@ describe('private Package/1 artifact store', () => {
   test('rejects a malformed archive even when its filename matches its bytes', async () => {
     await withStoreAndSource(async (store) => {
       const archive = Buffer.concat([
-        Buffer.from('FLOW-Package/1\0', 'ascii'),
+        Buffer.from('FLOW-Package/0\0', 'ascii'),
         unsignedBigEndian(1n, 8),
         Buffer.from([0x02]),
       ])
@@ -406,7 +406,7 @@ function artifactPath(store: string, reference: PackageArtifactRef): string {
 
 function referenceForArchive(archive: Uint8Array): PackageArtifactRef {
   return {
-    kind: 'flow-package/1',
+    kind: 'flow-package/0',
     digest: `sha256:${createHash('sha256').update(archive).digest('hex')}`,
   } as PackageArtifactRef
 }

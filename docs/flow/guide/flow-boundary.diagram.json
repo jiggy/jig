@@ -91,7 +91,7 @@
     {
       "from": "host",
       "to": "method",
-      "label": "Run/1 invocation",
+      "label": "Run/0 invocation",
       "variant": "emphasis"
     }
   ],

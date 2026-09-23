@@ -8,7 +8,7 @@ import { defineJig, discover } from '../src/project/author.js'
 import { captureFlowSource, deriveDirectRunTargetCandidates } from '../src/project/flow-source.js'
 import { SchemaDiagnostic } from '../src/schema/index.js'
 
-const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
+const schemaUri = 'https://flow.jig.md/schemas/schema-0.json'
 const linuxTest = process.platform === 'linux' ? test : test.skip
 
 describe('private project Flow source capture', () => {
@@ -259,7 +259,7 @@ describe('private project Flow source capture', () => {
       })
       await packageFiles(root, 'flows/attachment', {
         'FLOW.contract.json': JSON.stringify({
-          $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
           attachments: { source: 'read' },
         }),
         'FLOW.py': 'pass\n',
@@ -286,7 +286,7 @@ describe('private project Flow source capture', () => {
       await packageFiles(root, 'flows/named-profile', {
         'FLOW.ts': 'export {}',
         'FLOW.contract.json': JSON.stringify({
-          $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
           operations: { run: {} },
         }),
       })

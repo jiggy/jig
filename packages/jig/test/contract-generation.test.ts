@@ -61,7 +61,7 @@ test('bundled compiler reuses a borrowed agreement without generating or owning 
   ).replace(/@channelContract\([\s\S]*?\)\s*@closed model Progress \{[\s\S]*?\}/, '')
   await writeFile(join(root, 'flow/FLOW.contract.tsp'), source)
   const agreement = JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
     id: 'https://example.org/progress',
     version: '1.0.0',
     semantics: 'Shared progress.',
@@ -83,12 +83,12 @@ test('bundled compiler reuses a borrowed agreement without generating or owning 
   expect(await prepare(root, false)).toBe(false)
 }, 30000)
 const descriptor = JSON.stringify({
-  $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+  $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
   input: true,
   result: true,
 })
 const projection = JSON.stringify({
-  $schema: 'https://flow.jig.md/schemas/schema-1.json',
+  $schema: 'https://flow.jig.md/schemas/schema-0.json',
   type: 'object',
   additionalProperties: false,
   required: ['text'],
@@ -139,7 +139,7 @@ test('borrowed agreement bytes stay user-owned and changes require explicit rege
   const root = await fixture()
   await mkdir(join(root, 'flow/contracts'))
   const agreement = JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
     id: 'https://example.org/progress',
     version: '1.0.0',
     semantics: 'Progress, not success.',
@@ -174,7 +174,7 @@ test('borrowed agreement bytes stay user-owned and changes require explicit rege
 test('borrowed agreement mutation during publication prevents completion without overwriting it', async () => {
   const root = await fixture()
   const agreement = JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
     id: 'https://example.org/progress',
     version: '1.0.0',
     semantics: 'Progress.',
@@ -219,7 +219,7 @@ test('source-only review is inert; authorized generation publishes and becomes f
 test('publisher validates channel closure before publishing and retains complete compilerless artifacts', async () => {
   const root = await fixture()
   const channel = JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
     id: 'https://example.org/progress',
     version: '1.0.0',
     semantics: 'Review progress only.',

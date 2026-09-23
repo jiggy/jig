@@ -7,7 +7,7 @@ protocol candidates.
 
 ## Ownership
 
-- `run-1/` owns Run/1 fixtures, black-box harnesses, TypeScript and Python
+- `run-0/` owns Run/0 fixtures, black-box harnesses, TypeScript and Python
   peers, integration witnesses, and the evidence matrix.
 - `docs/flow/spec/` owns normative behavior.
 - Shared invocation fixtures use only `flow/call`, return complete
@@ -15,9 +15,9 @@ protocol candidates.
   operational errors. Invocation descriptor tests cover structural acceptance;
   digest closure, graph compilation, and package/runtime qualification remain
   separate host responsibilities.
-- `run-1/fixtures/invocation-features.json` supplies shared feature catalog
+- `run-0/fixtures/invocation-features.json` supplies shared feature catalog
   acceptance/rejection values and exact identity vectors. `schema.test.ts`
-  validates catalog structure; Jig's parser tests validate JSON/1 and closure.
+  validates catalog structure; Jig's parser tests validate JSON/0 and closure.
   Python's `test_invocation_features.py` independently checks the vectors using
   their bounded JCS-equivalent value subset, not a general package inspector.
 - Channel fixtures and `channels`/`broadcast` components exercise real exchanges
@@ -57,14 +57,14 @@ protocol candidates.
 - Use `node:assert/strict`'s `rejects` for failures that await subprocess exit.
   Bun's promise rejection matcher can stall exit observation in the pinned
   runner. Preserve checks for exit status, trailing frames, and partial bytes.
-- `run-1/package.json` and its lock own the pinned Ajv schema-test and Sley
+- `run-0/package.json` and its lock own the pinned Ajv schema-test and Sley
   integration dependencies; prepare them with
-  `bun install --cwd conformance/run-1 --frozen-lockfile`.
+  `bun install --cwd conformance/run-0 --frozen-lockfile`.
 
 ## Verification
 
-- `bun test conformance/run-1`
-- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s conformance/run-1/python-peer -p 'test_*.py' -v`
+- `bun test conformance/run-0`
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s conformance/run-0/python-peer -p 'test_*.py' -v`
 - Use `scripts/test-release.sh` for release-coupled changes.
 
 ## Child DOX Index

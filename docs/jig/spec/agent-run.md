@@ -2,7 +2,7 @@
 
 **Status:** experimental alpha candidate.
 
-Agent Run is one exact FLOW Invocation Contract consumed through Run/1
+Agent Run is one exact FLOW Invocation Contract consumed through Run/0
 `flow/call`. A caller supplies explicit instructions, Skill contents and optional
 guidance. The shared [Agent method](../guide/agent-method.md) prepares the prompt
 and interprets the response in an ordinary Flow. Jig provides the granted
@@ -14,8 +14,8 @@ The canonical descriptor is
 
 ```text
 id       https://jig.md/contracts/agent-run
-version  1.0.0
-digest   sha256:d0c9ceb0c2b2940fa9d29daaea50e926a8060414d43c9a37f5a837641a55ef09
+version  0.1.0
+digest   sha256:8cabbb0ea65ce001e43124071ad85fde180364c6f4706c67736b57cc691ea035
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
@@ -127,7 +127,7 @@ Its result is:
 }
 ```
 
-On the Run/1 wire and in the SDK, `run.call()` returns that complete result.
+On the Run/0 wire and in the SDK, `run.call()` returns that complete result.
 An Agent `blocked` or `limit` outcome is ordinary domain data, not an execution
 error. A `done` call requesting `responseSchema` includes `output.structured`;
 The consumer must check it against the requested schema before using it. The pure
@@ -278,7 +278,7 @@ separate requirements; the descriptor alone establishes neither.
 ## Structured-output profile
 
 The alpha accepts one bounded recursive structured-output profile. Its root is
-a nonempty closed object with the FLOW Schema/1 `$schema` identifier. Every
+a nonempty closed object with the FLOW Schema/0 `$schema` identifier. Every
 object:
 
 - has `type: "object"`, 1–32 properties, and
@@ -294,14 +294,14 @@ Values may be:
   `maxItems` from 0 through 256; `minItems` may additionally bound the lower
   end;
 - a string, optionally restricted by a nonempty string `enum`;
-- a JSON/1 safe integer; or
+- a JSON/0 safe integer; or
 - a nullable string or safe integer, expressed by including `"null"` in its
   `type` array.
 
 A nullable string enum includes `null` and at least one string in `enum`;
 otherwise its `type` declaration and allowed values would disagree.
 
-The canonical JSON/1 schema is limited to 256 KiB, eight schema levels including the root, 128
+The canonical JSON/0 schema is limited to 256 KiB, eight schema levels including the root, 128
 properties across all objects, and 256 enum members across all string enums.
 Property names and enum strings together may contain at most 120,000 Unicode
 characters; an enum with more than 250 members has a 15,000-character limit.
@@ -311,7 +311,7 @@ booleans, non-integer numbers, and nullable objects or arrays are outside this
 profile. Use an unstructured call for other result shapes. Unsupported schemas
 fail before provider dispatch rather than being translated approximately.
 
-`operationId` has the ordinary Run/1 meaning: use one stable identity for one
+`operationId` has the ordinary Run/0 meaning: use one stable identity for one
 logical call. Reusing it with changed slot, input, intent, or channel mappings conflicts. Work
 which may have been dispatched is fenced and reported honestly; Jig does not
 silently send it again. Cancellation fences Jig's local provider worker, but
@@ -359,7 +359,7 @@ type AgentResult = {
 };
 
 const routeSchema = {
-  $schema: "https://flow.jig.md/schemas/schema-1.json",
+  $schema: "https://flow.jig.md/schemas/schema-0.json",
   type: "object",
   properties: {
     route: { type: "string", enum: ["billing", "technical"] },

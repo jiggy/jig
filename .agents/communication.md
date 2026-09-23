@@ -103,7 +103,7 @@ also supports Markdown implementations through a compatible interpreter.
 Explain the entrypoint and required host support when promising invocation or
 composition; a Markdown rename alone does not establish that support or grant
 execution authority. Claims about exact file compatibility must follow
-[Package/1](../docs/flow/spec/package-format.md) and the
+[Package/0](../docs/flow/spec/package-format.md) and the
 [Agent Skills specification](https://agentskills.io/specification).
 “Evolution” does not establish universal rename compatibility or deprecation
 of Skills. Existing Skills can remain useful within an Agent-assisted method.

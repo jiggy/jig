@@ -1,4 +1,4 @@
-"""Private channel endpoints; authority remains with the Run/1 host."""
+"""Private channel endpoints; authority remains with the Run/0 host."""
 
 from __future__ import annotations
 

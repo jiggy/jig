@@ -174,7 +174,7 @@ describe('ordinary Flow wiring', () => {
     let calls = 0
     const signal = new AbortController().signal
     const responseSchema = {
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      $schema: 'https://flow.jig.md/schemas/schema-0.json',
       type: 'object',
       properties: { answer: { type: 'string' } },
       required: ['answer'],
@@ -229,7 +229,7 @@ describe('ordinary Flow wiring', () => {
         input: {
           instructions: 'Answer.',
           responseSchema: {
-            $schema: 'https://flow.jig.md/schemas/schema-1.json',
+            $schema: 'https://flow.jig.md/schemas/schema-0.json',
             type: 'object',
             properties: { answer: { type: 'string' } },
             required: ['answer'],

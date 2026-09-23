@@ -36,7 +36,7 @@ export async function retainFlowSourcePackages(
 
 export function requireRetainedFlowInput(value: unknown): RetainedFlowInput {
   if (value === null || typeof value !== 'object' || !retainedInputs.has(value)) {
-    throw new TypeError('Flow input was not produced by retained Package/1 inspection')
+    throw new TypeError('Flow input was not produced by retained Package/0 inspection')
   }
   return value as RetainedFlowInput
 }

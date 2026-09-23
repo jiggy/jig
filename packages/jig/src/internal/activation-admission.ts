@@ -272,7 +272,7 @@ export function decodePrivateActivationCandidateV5(
   const lock = decodePrivateProjectLocalLock(lockBytes)
   const candidate = normalizeCandidateV5(decodeJson1(candidateBytes), lock)
   if (!sameBytes(candidateBytes, encodeCandidateV5(candidate))) {
-    throw new TypeError('private activation candidate/5 is not in canonical JSON/1 + LF form')
+    throw new TypeError('private activation candidate/5 is not in canonical JSON/0 + LF form')
   }
   return markInertCandidateV5(candidate, lock)
 }
@@ -421,7 +421,7 @@ export function createPrivateActivationPlanV2(input: {
       targets: artifact.candidate.targets,
     },
   })
-  // Independently valid embedded values may exceed the aggregate JSON/1
+  // Independently valid embedded values may exceed the aggregate JSON/0
   // budget. Factory success therefore proves the complete Plan encoding too.
   encodeRecord(plan, 'private activation plan/2')
   return markInertPlanV2(plan)
@@ -431,7 +431,7 @@ export function decodePrivateActivationPlanV2(bytesValue: unknown): PrivateActiv
   const bytes = copiedBytes(bytesValue, 'activation plan/2 bytes')
   const plan = normalizePlanV2(decodeJson1(bytes), true)
   if (!sameBytes(bytes, encodeRecord(plan, 'private activation plan/2'))) {
-    throw new TypeError('private activation plan/2 is not in canonical JSON/1 + LF form')
+    throw new TypeError('private activation plan/2 is not in canonical JSON/0 + LF form')
   }
   return markInertPlanV2(plan)
 }
@@ -471,7 +471,7 @@ export function decodePrivateActivationAdmission(bytesValue: unknown): PrivateAc
   const bytes = copiedBytes(bytesValue, 'activation admission bytes')
   const admission = normalizeAdmission(decodeJson1(bytes))
   if (!sameBytes(bytes, encodePrivateActivationAdmission(admission))) {
-    throw new TypeError('private activation admission is not in canonical JSON/1 + LF form')
+    throw new TypeError('private activation admission is not in canonical JSON/0 + LF form')
   }
   return admission
 }

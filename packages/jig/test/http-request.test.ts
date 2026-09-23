@@ -92,7 +92,7 @@ describe('delegated HTTP policy and trusted transport', () => {
         {
           api: {
             id: 'https://jig.md/contracts/http-request',
-            version: '1.0.0',
+            version: '0.1.0',
             digest: HTTP_REQUEST_CONTRACT_DIGEST,
           },
         },
@@ -231,7 +231,7 @@ describe('delegated HTTP policy and trusted transport', () => {
     expect(() => encodeHttpWorkerInput(request)).toThrow('maximum encoded bytes')
   })
 
-  test('JSON response mode carries an exact 8 MiB string; text mode retains JSON/1 string bounds', async () => {
+  test('JSON response mode carries an exact 8 MiB string; text mode retains JSON/0 string bounds', async () => {
     const text = 'x'.repeat(8_388_608)
     await endpoint(
       (_request, response) => response.end(JSON.stringify({ text })),

@@ -211,7 +211,7 @@ describe('private package resolution', () => {
 
   test('pins typed Flow substitution separately from its exact shared interface identity', async () => {
     const contract = JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       id: 'https://example.org/contracts/review',
       version: '1.0.0',
       input: { type: 'string' },
@@ -288,7 +288,7 @@ describe('private package resolution', () => {
           'contracts/agent-run/contract.json': agentRunContract,
           ...agentChannelFiles('contracts/agent-run/contracts'),
           'settings.schema.json': JSON.stringify({
-            $schema: 'https://flow.jig.md/schemas/schema-1.json',
+            $schema: 'https://flow.jig.md/schemas/schema-0.json',
             type: 'object',
             required: ['style'],
             properties: { style: { type: 'string' } },

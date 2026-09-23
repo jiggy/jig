@@ -213,7 +213,7 @@ export function prepareAgent(
     assertResponseSchema(responseSchema)
     prompt = [
       prompt,
-      'Return only one JSON value matching this canonical FLOW Schema/1 schema:',
+      'Return only one JSON value matching this canonical FLOW Schema/0 schema:',
       'Do not wrap the JSON value in Markdown or a code fence.',
       decoder.decode(canonicalJson(projectResponseSchema(responseSchema))),
     ].join('\n')
@@ -277,7 +277,7 @@ export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResu
       if (outcome === 'done')
         throw new AgentMethodError(
           'INVALID_RESULT',
-          'Completed structured Agent output is not valid JSON/1',
+          'Completed structured Agent output is not valid JSON/0',
         )
     }
     if (structured !== undefined && !matchesResponseSchema(responseSchema, structured)) {
@@ -291,7 +291,7 @@ export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResu
     outcome,
     output: { text: output.text, ...(structured === undefined ? {} : { structured }) },
   } as const
-  // The complete result has its own JSON/1 byte/node budget, including both presentations.
+  // The complete result has its own JSON/0 byte/node budget, including both presentations.
   return freezeJson(snapshot(completed, 'INVALID_RESULT')) as unknown as AgentResult
 }
 

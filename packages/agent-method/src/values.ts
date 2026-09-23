@@ -41,7 +41,7 @@ export function snapshot(value: unknown, code: AgentMethodErrorCode): JsonValue 
   try {
     return decodeJson1(canonicalJson(value as JsonValue))
   } catch {
-    throw new AgentMethodError(code, 'Agent method values must be ordinary bounded JSON/1 data')
+    throw new AgentMethodError(code, 'Agent method values must be ordinary bounded JSON/0 data')
   }
 }
 

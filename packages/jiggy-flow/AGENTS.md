@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Implements the dependency-free Python projection of Run SDK/1 and Run/1. It
+Implements the dependency-free Python projection of Run SDK/0 and Run/0. It
 is independently packaged for PyPI prereleases; Jig hosting is outside its scope.
 
 ## Ownership
 
 - `src/jiggy/flow/` owns the typed public module and runtime implementation.
-- `tests/` owns JSON/1, subprocess, concurrency, cancellation, and artifact
+- `tests/` owns JSON/0, subprocess, concurrency, cancellation, and artifact
   evidence.
 - `justfile` owns Python build and test commands; `scripts/build-python-sdk.py`
   assembles and qualifies retained wheel/sdist candidates.
@@ -23,14 +23,14 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 - Importing the package performs no protocol I/O or global mutation.
 - `handle()` owns exactly one root Run and protocol standard I/O; application
   output after entry is redirected to standard error.
-- Python names may be idiomatic, but wire keys, JSON/1 limits, errors,
-  cancellation, and terminal behavior remain Run/1-exact.
+- Python names may be idiomatic, but wire keys, JSON/0 limits, errors,
+  cancellation, and terminal behavior remain Run/0-exact.
 - `call()` emits `flow/call` with operation identity, slot and input, plus optional
   advisory intent and channel mappings. It returns the complete `RunResult`;
   declared domain outcomes remain normal data and `OperationError` represents
   operational failures. The initial single-operation profile has no selector.
   Preserve optional-key presence and ordinary task cancellation semantics.
-- Direct and broadcast channels exchange JSON/1 values through `run.channel()`, declared
+- Direct and broadcast channels exchange JSON/0 values through `run.channel()`, declared
   `run.channels`, and ordinary call `channels=` maps. `_channels.py` owns typed
   endpoint behavior; `_runtime.py` owns correlated wire requests and retained
   cancellation settlement. The host alone decides actual endpoint transfer
@@ -56,7 +56,7 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 
 ## Work Guidance
 
-- Preserve Python's `bool` versus `int` distinction in JSON/1 validation.
+- Preserve Python's `bool` versus `int` distinction in JSON/0 validation.
 - Test thread/event-loop coordination and terminal-write races through
   subprocess behavior. Unit race tests should force the relevant write orders
   and correlate frames by method and request identity; concurrent cancellation

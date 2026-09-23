@@ -21,7 +21,7 @@ Declare the attachment in the package’s `FLOW.contract.json`:
 
 ```json
 {
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
   "attachments": {"deliverables":"read-write"}
 }
 ```
@@ -44,14 +44,14 @@ const receipt = await run.call({
 
 The call returns `{outcome:'done', output:{sequence, digest}}` after the independent owner holds an
 immutable copy. The contract ID is `https://jig.md/contracts/run-checkpoint`,
-version `1.0.0`, with canonical descriptor digest
-`sha256:dfeacf83289c3a1d5f0cad012d64b8f59dfbb32e9c39d2469019330215e979a7`.
-It uses ordinary Run/1 `flow/call`; FLOW does not require this Jig policy.
+version `0.1.0`, with canonical descriptor digest
+`sha256:42b07d88fbb5cf8af33d8422230e8db4ffdf579e32ec899b1700997c78855f6f`.
+It uses ordinary Run/0 `flow/call`; FLOW does not require this Jig policy.
 
 ## Bounds and identity
 
 - Sequence starts at 1 and advances by one, up to 16 accepted saves.
-- Each complete input is at most 2 MiB of canonical JSON/1. Its `files` map
+- Each complete input is at most 2 MiB of canonical JSON/0. Its `files` map
   contains at most 64 UTF-8 files totaling 1 MiB. Relative paths follow Jig's
   file-delivery path rules; traversal and file/directory collisions are invalid.
 - Jig retains the latest aggregate, not a history. Replacing it is bounded

@@ -1,6 +1,6 @@
-# FLOW JSON/1 value model
+# FLOW JSON/0 value model
 
-FLOW uses JSON as a bounded cross-language value format. JSON/1 fixes the
+FLOW uses JSON as a bounded cross-language value format. JSON/0 fixes the
 parts which ordinary host parsers otherwise disagree about; it is not a new
 serialization syntax.
 
@@ -9,7 +9,7 @@ descriptors unless a particular protocol or value seam states a lower limit.
 
 ## Syntax and strings
 
-JSON/1 is [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) JSON encoded as
+JSON/0 is [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) JSON encoded as
 UTF-8, with no BOM. Parsers reject duplicate
 object member names before constructing an object. Strings and member names
 contain Unicode scalar values only; literal or escaped lone surrogates are
@@ -24,7 +24,7 @@ not values. A number whose resulting value is mathematically integral must be
 within `[-9007199254740991, 9007199254740991]`; larger integral quantities use
 strings. Negative zero is admitted but equals and canonicalizes as zero.
 
-Consequently `1` and `1.0` are the same JSON/1 value, while the integer token
+Consequently `1` and `1.0` are the same JSON/0 value, while the integer token
 `9007199254740993` is invalid instead of being preserved by Python and rounded
 by JavaScript.
 
@@ -39,13 +39,13 @@ Equality is recursive:
   values, independent of source member order.
 
 [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) serializes an already valid
-JSON/1 value for digests and operation
+JSON/0 value for digests and operation
 identities. Canonicalization does not repair duplicate keys, invalid Unicode,
 an out-of-domain number, or an oversized value; those fail first.
 
 ## Absolute value limits
 
-One encoded JSON/1 document or protocol frame has these inclusive maxima:
+One encoded JSON/0 document or protocol frame has these inclusive maxima:
 
 ```text
 UTF-8 encoded bytes                   16,777,216
@@ -61,10 +61,10 @@ bytes in one number token                      128
 Every array item and object member value is one child value node; member names
 are not additional nodes. A narrower protocol, contract, or schema may impose
 a smaller bound only when that bound is fixed and known before the value is
-produced or accepted. It may never accept a value above the JSON/1 absolute
-maxima while claiming JSON/1 conformance.
+produced or accepted. It may never accept a value above the JSON/0 absolute
+maxima while claiming JSON/0 conformance.
 
-JSON/1 does not define a universal wire error name. The protocol or value seam
+JSON/0 does not define a universal wire error name. The protocol or value seam
 reports the applicable failure—for example a fatal framing error, JSON-RPC
 invalid params, `INVALID_INPUT`, `INVALID_RESULT`, or
 `SCHEMA_INVALID_JSON`.

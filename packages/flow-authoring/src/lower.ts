@@ -67,9 +67,9 @@ interface ChannelDescriptor {
   item: Schema
   $defs: Record<string, Schema>
 }
-export const schemaId = 'https://flow.jig.md/schemas/schema-1.json'
-export const contractId = 'https://flow.jig.md/schemas/invocation-contract-1.schema.json'
-const channelId = 'https://flow.jig.md/schemas/channel-contract-1.schema.json'
+export const schemaId = 'https://flow.jig.md/schemas/schema-0.json'
+export const contractId = 'https://flow.jig.md/schemas/invocation-contract-0.schema.json'
+const channelId = 'https://flow.jig.md/schemas/channel-contract-0.schema.json'
 const definitionName = /^[A-Za-z][A-Za-z0-9]{0,63}(?![\s\S])/
 const reservedTypes = new Set(
   'Array FlowInput FlowResult any unknown never undefined string number boolean bigint symbol object void null true false default import export class enum extends interface type break case catch const continue debugger delete do else finally for function if in instanceof new return super switch this throw try typeof var while with yield let static await implements private protected public package infer keyof readonly unique is asserts as satisfies abstract declare namespace module require global'.split(
@@ -91,7 +91,7 @@ const getters = [
 function number(value: number | Numeric, target: Type): number {
   const n = typeof value === 'number' ? value : value.asNumber()
   if (n === null || !Number.isFinite(n) || (Number.isInteger(n) && !Number.isSafeInteger(n))) {
-    fail('SOURCE_UNSUPPORTED', 'This number cannot be represented exactly within JSON/1.', target)
+    fail('SOURCE_UNSUPPORTED', 'This number cannot be represented exactly within JSON/0.', target)
   }
   return n === 0 ? 0 : n!
 }
@@ -249,7 +249,7 @@ export function lower(program: Program, channelContracts: ReadonlySet<string> = 
       if (!definitionName.test(t.name) || reservedTypes.has(t.name)) {
         fail(
           'SOURCE_UNSUPPORTED',
-          'Use a distinct Schema/1 definition name (FlowInput and FlowResult are reserved).',
+          'Use a distinct Schema/0 definition name (FlowInput and FlowResult are reserved).',
           t,
         )
       }

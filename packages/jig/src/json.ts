@@ -257,7 +257,7 @@ class Parser {
 }
 
 export function decodeJson1(bytes: Uint8Array): JsonValue {
-  if (bytes.byteLength === 0) throw new Json1Error('empty JSON/1 document')
+  if (bytes.byteLength === 0) throw new Json1Error('empty JSON/0 document')
   if (bytes.byteLength > JSON_1_LIMITS.bytes) throw new Json1Error('maximum bytes exceeded')
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
     throw new Json1Error('UTF-8 BOM is not allowed')
@@ -306,7 +306,7 @@ function visitJson(value: unknown, depth: number, state: VisitState, memberName:
     chargeEncodedBytes(state, encodedJsonStringBytes(value))
     return
   }
-  if (typeof value !== 'object') throw new Json1Error('value is not JSON/1')
+  if (typeof value !== 'object') throw new Json1Error('value is not JSON/0')
   if (state.active.has(value)) throw new Json1Error('cyclic value')
   state.active.add(value)
   try {
@@ -361,7 +361,7 @@ function validateString(value: string, byteLimit: number): void {
   }
 }
 
-/** RFC 8785 canonical bytes for an already validated JSON/1 value. */
+/** RFC 8785 canonical bytes for an already validated JSON/0 value. */
 export function canonicalJson(value: JsonValue): Uint8Array {
   validateJson1(value)
   return encoder.encode(canonicalText(value))

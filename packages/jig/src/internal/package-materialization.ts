@@ -909,7 +909,7 @@ async function packageModesMatch(
   return true
 }
 
-/** Validate host-created aliases independently; regular Package/1 capture never follows them. */
+/** Validate host-created aliases independently; regular Package/0 capture never follows them. */
 async function aliasesMatch(
   root: FileHandle,
   filesystem: BigIntStats,
@@ -1054,7 +1054,7 @@ async function removeTree(
     await requireChildIdentity(root, name, information!)
     await unlink(path)
   }
-  // The tree is reconstructible from its immutable Package/1 artifact. One
+  // The tree is reconstructible from its immutable Package/0 artifact. One
   // directory barrier is enough to make cleanup progress observable without
   // turning every dependency file into a separate synchronous transaction.
   await root.sync()

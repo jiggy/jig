@@ -1,5 +1,5 @@
 {
-  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "$schema": "https://flow.jig.md/schemas/schema-0.json",
   "type": "object",
   "properties": {
     "title": {

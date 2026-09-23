@@ -8,14 +8,14 @@ import type { JsonValue } from '../src/json.js'
 import { checkPackageDirectory, type InspectedPackage } from '../src/package/inspect.js'
 import type { RunDiagnostics, RunHostTerminal } from '../src/run/session.js'
 
-const contractUri = 'https://flow.jig.md/schemas/invocation-contract-1.schema.json'
+const contractUri = 'https://flow.jig.md/schemas/invocation-contract-0.schema.json'
 const diagnostics = Object.freeze({
   stderr: 'component diagnostic\n',
   stderrBytes: 21,
   stderrTruncated: false,
 }) satisfies RunDiagnostics
 
-describe('private Package/1 result admission', () => {
+describe('private Package/0 result admission', () => {
   test('accepts done and declared custom outcomes without a result schema', async () => {
     await withInspectedPackage(
       {

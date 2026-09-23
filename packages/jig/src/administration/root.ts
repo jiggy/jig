@@ -173,12 +173,12 @@ function snapshotJson(value: unknown, label: string): JsonValue {
     snapshot = copyJson(value, label, new WeakSet<object>(), { nodes: 0 }, 1)
     validateJson1(snapshot)
   } catch {
-    invalidRequest(`${label} must be FLOW JSON/1`)
+    invalidRequest(`${label} must be FLOW JSON/0`)
   }
   return snapshot
 }
 
-/** Package-private immutable JSON/1 projection for trusted controller output. */
+/** Package-private immutable JSON/0 projection for trusted controller output. */
 export function snapshotRootAdministrationJson(value: unknown, label: string): JsonValue {
   return snapshotJson(value, label)
 }

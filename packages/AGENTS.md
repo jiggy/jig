@@ -27,7 +27,7 @@ and optional contract authoring toolchain.
   package recipes locally. `pack` builds explicitly; manifests have no build
   or packing lifecycle scripts. Just is development tooling, not an installed
   Jig or FLOW dependency.
-- TypeScript and Python FLOW SDKs implement the same Run SDK/1 and Run/1 wire
+- TypeScript and Python FLOW SDKs implement the same Run SDK/0 and Run/0 wire
   semantics. Language ergonomics may differ only where the specifications
   allow it.
 - Only manifest-declared exports are public. Test seams and exported internal
@@ -58,8 +58,8 @@ and optional contract authoring toolchain.
 - [flow-authoring/AGENTS.md](flow-authoring/AGENTS.md) — Optional TypeSpec
   mapping toolchain, generated contracts, Agent projections and editor types.
 
-- [flow-sdk/AGENTS.md](flow-sdk/AGENTS.md) — Public TypeScript Run SDK/1
+- [flow-sdk/AGENTS.md](flow-sdk/AGENTS.md) — Public TypeScript Run SDK/0
   package.
-- [jiggy-flow/AGENTS.md](jiggy-flow/AGENTS.md) — Independently released Python Run SDK/1 package.
+- [jiggy-flow/AGENTS.md](jiggy-flow/AGENTS.md) — Independently released Python Run SDK/0 package.
 - [jig/AGENTS.md](jig/AGENTS.md) — Public Jig authoring package and installed
   secure host.

@@ -292,7 +292,7 @@ function normalizeUniquePaths(
   rejectGlob: boolean,
 ): readonly string[] {
   if (values.length > JSON_1_LIMITS.containerEntries) {
-    throw new TypeError(`${label} values exceed the JSON/1 container bound`)
+    throw new TypeError(`${label} values exceed the JSON/0 container bound`)
   }
   const paths = values.map((value) => {
     const path = normalizeProjectPath(value, label)

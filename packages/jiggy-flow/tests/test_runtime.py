@@ -160,7 +160,7 @@ def root_request(mode: str) -> dict[str, object]:
         "id": "host:1",
         "method": "flow/run",
         "params": {
-            "protocol": "run/1",
+            "protocol": "run/0",
             "input": {"mode": mode},
             "settings": {},
             "attachments": {},

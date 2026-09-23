@@ -11,7 +11,7 @@ import {
 const encode = (value: string): Uint8Array => new TextEncoder().encode(value)
 const text = (value: Uint8Array): string => new TextDecoder().decode(value)
 
-describe('FLOW JSON/1', () => {
+describe('FLOW JSON/0', () => {
   test('parses JSON values without object-prototype semantics', () => {
     const value = decodeJson1(encode('{"__proto__":{"safe":true},"items":[null,false,1.5,"ok"]}'))
     expect(value).toEqual({

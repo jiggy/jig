@@ -67,7 +67,7 @@ test('Responses requests select the exact wire format without changing endpoint 
 })
 
 const schema = {
-  $schema: 'https://flow.jig.md/schemas/schema-1.json',
+  $schema: 'https://flow.jig.md/schemas/schema-0.json',
   type: 'object',
   properties: { answer: { type: 'string' } },
   required: ['answer'],
@@ -140,7 +140,7 @@ test('the method validates structured output independently of the provider finis
   const request = prepareAgent({
     instructions: 'Answer.',
     responseSchema: {
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      $schema: 'https://flow.jig.md/schemas/schema-0.json',
       type: 'object',
       properties: { answer: { type: 'string' } },
       required: ['answer'],
@@ -153,7 +153,7 @@ test('the method validates structured output independently of the provider finis
   expect(() => finishAgent(request, chatResult(response('{"answer":42}')))).toThrow(
     'responseSchema',
   )
-  expect(() => finishAgent(request, chatResult(response('not JSON')))).toThrow('JSON/1')
+  expect(() => finishAgent(request, chatResult(response('not JSON')))).toThrow('JSON/0')
 })
 
 test('ordinary Agent declares its packaged HTTP descriptor', async () => {
@@ -284,7 +284,7 @@ test('Responses structured results are independently checked even after a comple
     ).toThrow()
 })
 
-test('both APIs preserve the complete HTTP byte bounds and JSON/1 failure behavior', () => {
+test('both APIs preserve the complete HTTP byte bounds and JSON/0 failure behavior', () => {
   for (const api of ['chat-completions', 'responses'] as const) {
     expect(() =>
       prepareApiRequest(prepareAgent({ instructions: 'x'.repeat(262144) }), { api, model: 'x' }),
@@ -322,5 +322,5 @@ test('decoded HTTP data preserves the full 8 MiB Agent text bound without JSON-s
       maximum.length,
     )
   }
-  expect(() => chatResult(response(`${maximum}x`))).toThrow('JSON/1')
+  expect(() => chatResult(response(`${maximum}x`))).toThrow('JSON/0')
 })

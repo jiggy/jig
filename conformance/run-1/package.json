@@ -1,9 +1,0 @@
-{
-  "name": "@jigging/flow-run-1-conformance",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "@jigging/sley": "0.0.2",
-    "ajv": "8.17.1"
-  }
-}

@@ -843,7 +843,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       error instanceof PrivateFileInputError
         ? error.message
         : error instanceof Json1Error
-          ? `the selected --input file is not FLOW JSON/1: ${error.message}`
+          ? `the selected --input file is not FLOW JSON/0: ${error.message}`
           : (error as NodeJS.ErrnoException).code === 'ENOENT'
             ? 'the selected --input file does not exist'
             : (error as NodeJS.ErrnoException).code === 'EACCES'
@@ -1004,14 +1004,14 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     try {
       encodedRecord = canonicalJson(record)
     } catch {
-      // File manifests or late observations may exceed JSON/1 even when the
+      // File manifests or late observations may exceed JSON/0 even when the
       // accepted terminal fits. Preserve that terminal; never truncate it or
       // reinterpret a report failure as permission to repeat the Run.
       await emitTerminal(publicTerminal(status.terminal))
       runtime.writeError(
         renderDiagnostic(
           'JIG_REPORT_LIMIT',
-          `the expanded report exceeds JSON/1 limits; execution terminal preserved; delivery ${delivery?.status ?? 'not requested'}${cleanupFailed ? '; cleanup failed' : ''}; inspect any --out destination before starting new work`,
+          `the expanded report exceeds JSON/0 limits; execution terminal preserved; delivery ${delivery?.status ?? 'not requested'}${cleanupFailed ? '; cleanup failed' : ''}; inspect any --out destination before starting new work`,
         ),
       )
       return 2
@@ -1584,7 +1584,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'this host cannot honor the indicated metadata requirement; use a qualified host or revise that requirement explicitly',
       PACKAGE_TOOLS_UNSUPPORTED:
         'the selected runtime cannot enforce this allowed-tools restriction',
-      CONTRACT_FIELD: 'check FLOW.contract.json fields against FLOW Invocation Contract/1',
+      CONTRACT_FIELD: 'check FLOW.contract.json fields against FLOW Invocation Contract/0',
       CONTRACT_IDENTITY:
         'a required interface must declare both its canonical id and exact version',
       CONTRACT_LIMIT:
@@ -1645,7 +1645,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
       PROJECT_DECLARATION_INVALID:
         'export a valid defineJig or defineBinding declaration from the indicated module',
-      CHANNEL_FIELD: 'check channel declarations and descriptors against FLOW Channel Contract/1',
+      CHANNEL_FIELD: 'check channel declarations and descriptors against FLOW Channel Contract/0',
       CHANNEL_LIMIT: 'check channel declaration counts and descriptor bounds',
       CHANNEL_REFERENCE: 'use a canonical package-local ./ channel contract path',
       PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED: `supply bun.lock or rerun jig review with --allow-resolution-network. ${RESOLUTION_WARNING}`,
@@ -1825,7 +1825,7 @@ function renderRunFailure(
   if (terminal.code === 'PROTOCOL_ERROR')
     return renderDiagnostic(
       'JIG_RUN_PROTOCOL_ERROR',
-      'The Flow did not complete the FLOW Run/1 exchange.\nCheck its SDK version against this Jig release and keep stdout reserved for protocol messages.\nInspect the result and any effects before another Run; review source changes first. See https://flow.jig.md/spec/run-sdk.',
+      'The Flow did not complete the FLOW Run/0 exchange.\nCheck its SDK version against this Jig release and keep stdout reserved for protocol messages.\nInspect the result and any effects before another Run; review source changes first. See https://flow.jig.md/spec/run-sdk.',
     )
   const details =
     terminal.status === 'failed' &&

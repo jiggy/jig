@@ -40,15 +40,15 @@ build: flow::build jig::build authoring::build
 @lint *paths:
     bun x --no-install biome lint --files-ignore-unknown=true --no-errors-on-unmatched "$@"
 
-# Run ordinary method, SDK, Jig, and Run/1 tests
+# Run ordinary method, SDK, Jig, and Run/0 tests
 [positional-arguments]
 @test *args:
-    bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-1 "$@"
+    bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-0 "$@"
 
-# Run the portable Run/1 corpus
+# Run the portable Run/0 corpus
 [positional-arguments]
-@test-run-1 *args:
-    bun test conformance/run-1 "$@"
+@test-run-0 *args:
+    bun test conformance/run-0 "$@"
 
 # Run the installed operational baseline with its documented host prerequisites
 @test-baseline:

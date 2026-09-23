@@ -32,7 +32,7 @@ export async function readDataset(
       samples.has(value.sample)
     )
       throw new TypeError(
-        'Sample identifiers must be unique and readings must be finite JSON/1 numbers.',
+        'Sample identifiers must be unique and readings must be finite JSON/0 numbers.',
       )
     samples.set(value.sample, value.celsius)
   }

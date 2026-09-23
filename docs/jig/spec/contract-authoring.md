@@ -2,7 +2,7 @@
 
 Jig's optional authoring operation serves editable, portable methods without
 adding a compiler requirement to FLOW. Native invocation meaning remains owned
-by [Invocation Contract/1](https://flow.jig.md/spec/invocation-contracts).
+by [Invocation Contract/0](https://flow.jig.md/spec/invocation-contracts).
 
 `jig review --generate-contracts` grants per-command permission to use the installed
 fixed TypeSpec translator and publish its generated files before review. It
@@ -10,7 +10,7 @@ does not admit execution or authorize dependency networking. Plain review and
 Run MUST NOT compile. Previously admitted generations remain immutable.
 
 Only selected Flow members participate. Compilation consumes captured root
-`FLOW.contract.tsp`, with the bounded `flow-authoring-typespec/1` profile; no
+`FLOW.contract.tsp`, with the bounded `flow-authoring-typespec/0` profile; no
 package executable, module extension, remote import or ambient configuration
 is evaluated. The operator's absolute `JIG_AUTHORING_NODE_PATH`, or a Node 22+
 binary at `/usr/bin/node`, `/usr/local/bin/node`, or
@@ -65,7 +65,7 @@ recovery check borrowed inputs before and after writing outputs. Changed inputs
 block completion; recovery never replaces them. A managed output cannot silently
 become borrowed, nor a recorded borrowed input become a generated output.
 
-Each package has local management state outside Package/1 under `.jig`.
+Each package has local management state outside Package/0 under `.jig`.
 The project session provides one cooperating publisher. The complete descriptor
 with its channel closure and requested Agent projections MUST pass the existing exact readers before
 publication. Output names are fixed to `FLOW.contract.json`, optional

@@ -60,7 +60,7 @@ describe('private Candidate/5', () => {
     expect(Object.isFrozen(artifact.candidate.targets)).toBeTrue()
   })
 
-  test('pins one valid execution Package/1 in every ready target', () => {
+  test('pins one valid execution Package/0 in every ready target', () => {
     const first = readyCandidateFixture('prepared:first')
     const second = readyCandidateFixture('prepared:second')
     const encoded = encodePrivateActivationCandidateV5(first)
@@ -71,7 +71,7 @@ describe('private Candidate/5', () => {
       recipeDigest: digest('ready-recipe'),
       observationDigest: digest('ready-observation'),
       execution: privateBunExecutionArtifact({
-        kind: 'flow-package/1',
+        kind: 'flow-package/0',
         digest: digest('prepared:first'),
       }),
     })
@@ -100,7 +100,7 @@ describe('private Candidate/5', () => {
       malformed.observedSemanticDigest,
       malformed.targets,
     )
-    expectInvalidCandidate(encoded, malformed, 'Package/1 artifact digest')
+    expectInvalidCandidate(encoded, malformed, 'Package/0 artifact digest')
   })
 
   test('retains bounded preparation evidence in the admitted execution identity', () => {
@@ -599,7 +599,7 @@ describe('private Plan/2', () => {
     }
   })
 
-  test('rejects an aggregate Plan that exceeds JSON/1 although each lock fits', () => {
+  test('rejects an aggregate Plan that exceeds JSON/0 although each lock fits', () => {
     const candidate = candidateFixture(['flows/run'], 8_000)
     expect(() =>
       createPrivateActivationPlanV2({
@@ -650,7 +650,7 @@ function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPa
       target: { kind: 'flow', path },
       mode: 'run',
       packagePath: path,
-      package: { kind: 'flow-package/1', digest: digest(`package:${path}`) },
+      package: { kind: 'flow-package/0', digest: digest(`package:${path}`) },
       entrypoint: { path: 'FLOW.py', suffix: 'py' },
       settings: {},
       attachments: {},
@@ -682,7 +682,7 @@ function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPa
         declarationArtifact: {
           kind: 'author-closure/1',
           closureDigest: digest('declaration-closure'),
-          package: { kind: 'flow-package/1', digest: digest('declarations') },
+          package: { kind: 'flow-package/0', digest: digest('declarations') },
         },
         targets,
       }),
@@ -704,7 +704,7 @@ function readyCandidateFixture(
     recipeDigest: digest('ready-recipe'),
     observationDigest: digest('ready-observation'),
     execution: privateBunExecutionArtifact(
-      { kind: 'flow-package/1', digest: digest(executionPackage) },
+      { kind: 'flow-package/0', digest: digest(executionPackage) },
       executionLayout,
       preparationInputDigest,
     ),
@@ -757,7 +757,7 @@ function slottedCandidateFixture(
       target: { kind: 'flow', path },
       mode: 'run',
       packagePath: path,
-      package: { kind: 'flow-package/1', digest: packages[path].digest },
+      package: { kind: 'flow-package/0', digest: packages[path].digest },
       entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
       settings: {},
       attachments: {},
@@ -774,7 +774,7 @@ function slottedCandidateFixture(
         target: { kind: 'binding', id: 'router' },
         mode: 'run',
         packagePath: 'flows/router',
-        package: { kind: 'flow-package/1', digest: packages['flows/router'].digest },
+        package: { kind: 'flow-package/0', digest: packages['flows/router'].digest },
         entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: { style: 'brief' },
         slots: Object.fromEntries(
@@ -812,7 +812,7 @@ function slottedCandidateFixture(
         declarationArtifact: {
           kind: 'author-closure/1',
           closureDigest: digest('slotted-declaration-closure'),
-          package: { kind: 'flow-package/1', digest: digest('slotted-declarations') },
+          package: { kind: 'flow-package/0', digest: digest('slotted-declarations') },
         },
         targets,
       }),

@@ -47,9 +47,9 @@ receiving host remain responsible for their powers.
 
 ## Choose only the context you need
 
-- **Package author:** [authoring path](./start.mdx), [Package/1](../spec/package-format.md), and your SDK guide.
-- **Host implementer:** [Run/1](../spec/run-protocol.md), [JSON/1](../spec/json-values.md), and the public conformance corpus.
-- **SDK implementer:** [Run SDK/1](../spec/run-sdk.md) together with Run/1.
+- **Package author:** [authoring path](./start.mdx), [Package/0](../spec/package-format.md), and your SDK guide.
+- **Host implementer:** [Run/0](../spec/run-protocol.md), [JSON/0](../spec/json-values.md), and the public conformance corpus.
+- **SDK implementer:** [Run SDK/0](../spec/run-sdk.md) together with Run/0.
 - **Interface author:** [invocation contracts](../spec/invocation-contracts.md) or [channel contracts](../spec/channel-contracts.md).
 
 Jig's operator configuration belongs in [Jig's documentation](https://jig.md/guide/for-agents).

@@ -326,7 +326,7 @@ function validateValue(
     validateString(value, memberName ? MAX_MEMBER_NAME_BYTES : MAX_STRING_BYTES)
     return
   }
-  if (typeof value !== 'object') throw new JsonViolation('value is not JSON/1')
+  if (typeof value !== 'object') throw new JsonViolation('value is not JSON/0')
 
   const object = value as object
   if (state.active.has(object)) throw new JsonViolation('cyclic value')

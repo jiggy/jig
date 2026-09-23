@@ -5,7 +5,7 @@ import { runMarkdown } from '../markdown/runtime.js'
 import { capturePackageDirectory } from '../package/capture.js'
 import { inspectCapturedPackage, requireSupportedPackageProfile } from '../package/inspect.js'
 
-// This entry runs inside the same contained FLOW/1 process as a code runner.
+// This entry runs inside the same contained FLOW/0 process as a code runner.
 // The sole argument names its immutable package; provider credentials, host
 // paths and session-changing tools are absent from this process.
 await handle(async (run) => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 
-import featureCases from '../../../conformance/run-1/fixtures/invocation-features.json'
+import featureCases from '../../../conformance/run-0/fixtures/invocation-features.json'
 import { CHANNEL_CONTRACT_SCHEMA } from '../src/channel-contract.js'
 import { CheckError } from '../src/diagnostics.js'
 import {
@@ -43,7 +43,7 @@ function reject(value: unknown, code?: string): void {
   }
 }
 
-describe('Invocation Contract/1', () => {
+describe('Invocation Contract/0', () => {
   test.each(featureCases.valid)('preserves exact feature identity: $name', (fixture) => {
     const parsed = parseInvocationContract(bytes(fixture.descriptor))
     expect(parsed.digest).toBe(fixture.digest)
@@ -197,7 +197,7 @@ describe('Invocation Contract/1', () => {
     const parsed = parseInvocationContract(bytes(value))
     const canonical = canonicalJson({ descriptor: value, channelContracts: {} } as JsonValue)
     expect(parsed.digest).toBe(
-      `sha256:${createHash('sha256').update('FLOW-Invocation-Contract/1\0').update(canonical).digest('hex')}`,
+      `sha256:${createHash('sha256').update('FLOW-Invocation-Contract/0\0').update(canonical).digest('hex')}`,
     )
     expect(parsed.digest).toBe(
       parseInvocationContract(new TextEncoder().encode(JSON.stringify(value, null, 2))).digest,

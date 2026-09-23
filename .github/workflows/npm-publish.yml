@@ -421,7 +421,7 @@ jobs:
               --title "@jigging/$kind $version" --notes-file "$notes"
           }
 
-          create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/1.' \
+          create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/0.' \
             "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/'
           create_release agent-method "$AGENT_VERSION" 'Replaceable HTTP Agent Flow and reusable method library.' \
             "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method'

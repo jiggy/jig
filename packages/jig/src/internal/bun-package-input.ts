@@ -21,7 +21,7 @@ export type PrivateBunPackageInput =
 /**
  * Classify the one Bun authoring shape supported by the alpha host.
  *
- * This is host policy, not Package/1 metadata. Package/1 already binds the
+ * This is host policy, not Package/0 metadata. Package/0 already binds the
  * exact manifest and lock bytes when they are present.
  */
 export async function inspectPrivateBunPackageInput(

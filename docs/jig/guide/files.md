@@ -140,7 +140,7 @@ Jig can still save the interrupted Run's terminal record without Flow files.
 Cancellation after publication does not retract the packet. The ordinary stdout record matches
 the packet, but a later cleanup or acknowledgement failure can add a CLI error.
 After connection loss, delivery may be unknown even though a packet exists.
-If file metadata makes the report exceed JSON/1 limits, `JIG_REPORT_LIMIT`
+If file metadata makes the report exceed JSON/0 limits, `JIG_REPORT_LIMIT`
 preserves the execution terminal on stdout and reports delivery separately on
 stderr; inspect the destination before starting new work.
 
@@ -167,7 +167,7 @@ Declare portable attachments in `FLOW.contract.json`, then use the paths in
 
 ```json
 {
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
   "attachments": { "source": "read", "deliverables": "read-write" }
 }
 ```

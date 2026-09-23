@@ -36,7 +36,7 @@ const channel = (fields: Record<string, unknown> = {}): string =>
     ...fields,
   })
 
-describe('aggregate Package/1 inspection', () => {
+describe('aggregate Package/0 inspection', () => {
   const metadataOwners = [
     [
       'JSON',
@@ -304,7 +304,7 @@ describe('aggregate Package/1 inspection', () => {
           },
         }),
         'settings.schema.json': JSON.stringify({
-          $schema: 'https://flow.jig.md/schemas/schema-1.json',
+          $schema: 'https://flow.jig.md/schemas/schema-0.json',
           type: 'object',
           maxProperties: 0,
         }),

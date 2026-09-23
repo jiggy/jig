@@ -132,7 +132,7 @@ declaration with a different package tree.
 ## 4. Flow members and direct targets
 
 Every selected Flow directory is captured and inspected as one immutable
-FLOW Package/1 tree. Package paths and digests enter the project candidate.
+FLOW Package/0 tree. Package paths and digests enter the project candidate.
 
 A Flow is a direct Run target only when it:
 
@@ -239,7 +239,7 @@ Workspace lock entries must name captured members and agree with their manifests
 Only selected members' code is staged, after installation. Preparation uses the
 pinned Bun hoisted linker and preserves workspace-relative source paths and
 installed dependency scopes. Exact installer aliases to selected member roots
-are retained as bounded private layout metadata, not Package/1 file records.
+are retained as bounded private layout metadata, not Package/0 file records.
 This preserves nested versions and canonical module identity, including cyclic
 imports. Unselected member links are omitted; unknown links, aliases traversing
 aliases, and source-path collisions fail closed. Preparation permits at most
@@ -286,8 +286,8 @@ regular-file records.
 
 ### Prepared execution and limits
 
-The admitted target pins the separately retained prepared Package/1 while the
-portable lock continues to identify the reviewed source Package/1. Generated
+The admitted target pins the separately retained prepared Package/0 while the
+portable lock continues to identify the reviewed source Package/0. Generated
 `bun.lock` bytes live only in the retained execution package, not visible
 source. Without an authored dependency lock, identical source and `jig.lock`
 on different machines may resolve different dependency versions. A Run
@@ -314,7 +314,7 @@ none of the preparation count or output budget. One package accepts at most
 4,096 source files and 16 MiB before installation and at most 4,096 files and
 32 MiB after installation.
 
-Source, author-closure, and prepared Package/1 artifacts share one protected
+Source, author-closure, and prepared Package/0 artifacts share one protected
 content-addressed store. Its fixed limits are 64 MiB per canonical artifact
 and 1 GiB per project. Review may retain immutable evidence even when the Plan
 is later declined or superseded; that evidence still consumes the cap. The
@@ -368,7 +368,7 @@ export default defineBinding({
 must name one selected Flow package. Moving a Binding file therefore does not
 retarget it.
 
-`settings` is one complete immutable JSON/1 object. Omission means `{}`. A
+`settings` is one complete immutable JSON/0 object. Omission means `{}`. A
 present `settings.schema.json` validates it; without that schema, nonempty
 settings are invalid. Jig does not merge defaults, environment values, or
 per-invocation overrides into settings.
@@ -575,7 +575,7 @@ One planning attempt:
 
 1. captures the exact author module graph;
 2. evaluates and retains its inert project and Binding values;
-3. captures and retains every selected Package/1 tree;
+3. captures and retains every selected Package/0 tree;
 4. links packages, settings, resolved defaults, exact slots, and the complete
    direct-Flow and Binding target graph;
 5. selects one exact installed-host recipe for every target;
@@ -605,7 +605,7 @@ path bounds. Only these manifest diagnostics permit ancestor locations;
 they grant no filesystem access and cannot name protected `.jig` state.
 A successful review
 shows the complete added, removed, and changed package, Binding, and target
-identities. Current and proposed package entries include their full Package/1
+identities. Current and proposed package entries include their full Package/0
 content digest, which is the same portable identity written to `jig.lock`.
 The default CLI view leads with additions, changes, removals, and the resulting
 target list. It shows changed fields as previous/proposed values and omits
@@ -641,7 +641,7 @@ meaning without admitting it.
 
 `jig.lock` is the one portable desired-state lock. It records only:
 
-- selected package paths and Package/1 digests;
+- selected package paths and Package/0 digests;
 - direct-target eligibility, invocation requirements, and effective ordinary
   routes for direct Flows;
 - Binding package choices, settings, and effective slots;
@@ -706,7 +706,7 @@ deadline ceiling, or containment. The installed CLI may supply the exact
 declared root attachments and choose one root execution duration within
 the host's fixed policy; it does not change admitted project meaning.
 
-Each submission has one bounded project-local idempotency key and JSON/1 input.
+Each submission has one bounded project-local idempotency key and JSON/0 input.
 The first accepted request stores the exact target, canonical input, captured
 file manifest, and output intent before
 dispatch. Repeating the key with identical content returns the same Run;
@@ -716,23 +716,23 @@ After allocation, Jig validates the actual input against
 the `input` schema in `FLOW.contract.json`, when present. Invalid input terminates that same durable
 Run without starting package code.
 
-Package schema roots use FLOW Schema/1 and therefore declare exactly
-`"$schema": "https://flow.jig.md/schemas/schema-1.json"`. This is a portable
+Package schema roots use FLOW Schema/0 and therefore declare exactly
+`"$schema": "https://flow.jig.md/schemas/schema-0.json"`. This is a portable
 package rule, not Jig project authoring metadata.
 
-The host launches one Run/1 process from the exact admitted package bytes in a
+The host launches one Run/0 process from the exact admitted package bytes in a
 rootless Linux envelope. It validates the returned outcome and the complete
 result against `FLOW.contract.json` outcomes and its `result` schema. A success is
 published only after the complete process tree is fenced, reaped, and cleaned.
 
-While a direct Flow or Binding Run remains open, its package may use Run/1
+While a direct Flow or Binding Run remains open, its package may use Run/0
 `flow/call` with one of that target's admitted slot names. Jig resolves the name only to the
 exact Flow or Binding target captured in the same admitted generation. The call
-carries one JSON/1 input and returns that child's complete JSON/1 Run result;
+carries one JSON/0 input and returns that child's complete JSON/0 Run result;
 there is no argument or response channel for target selection, settings,
 attachments, or host authority.
 
-Each child starts in a fresh Run/1 context with its own scratch directory,
+Each child starts in a fresh Run/0 context with its own scratch directory,
 the selected target's own settings and slots, and empty attachments.
 A direct Flow child has empty settings and its own reviewed routes resolved
 from project defaults and qualified native requirements. Parent settings,
@@ -740,11 +740,11 @@ routes, grants and attachments are not inherited. Its effective deadline is the 
 own direct-Run ceiling and the parent's deadline, so it can never outlive or
 widen the parent deadline.
 
-Run/1 owns child operation identity, duplicate joins, conflicting reuse,
+Run/0 owns child operation identity, duplicate joins, conflicting reuse,
 cancellation races, and `UNCERTAIN` completion. Jig does not automatically
 replay possibly dispatched child work; a deliberate retry uses a new
 `operationId`. The child is invocation-local owned work, not an independently
-addressable Run. Its terminal exists only as the parent-owned Run/1 operation
+addressable Run. Its terminal exists only as the parent-owned Run/0 operation
 result; Jig creates no child Run history and exposes no child administration,
 scheduler, catalogue, or resolver.
 
@@ -755,7 +755,7 @@ or branch exceeding remaining aggregate capacity receives `RESOURCE_EXHAUSTED` b
 there is no host queue or automatic retry. Identical waiters join the same
 operation. Applications use ordinary promises to schedule and aggregate work,
 and per-call cancellation to stop a selected sibling without stopping another.
-Run/1's request-lifetime limit still applies.
+Run/0's request-lifetime limit still applies.
 
 Before dispatch, Jig reserves every Flow level in the selected branch's longest
 admitted path plus its largest possible effect
@@ -778,7 +778,7 @@ a changed policy requires renewed review before execution.
 
 An Agent-using root or child uses `flow/call` through its exact Agent Run slot,
 selecting an ordinary Flow implementation. Input carries instructions, optional
-explicit Skill contents and guidance, and an optional response Schema/1 value. The result is
+explicit Skill contents and guidance, and an optional response Schema/0 value. The result is
 `{ "outcome": "done" | "blocked" | "limit", "output": { "text", "structured"? } }`.
 There is no method selector or native-only value wrapper. A completed
 structured result must match the caller's schema. Consumers validate replacement
@@ -839,7 +839,7 @@ its execution environment changed, Jig refuses execution with the host-only
 Its details are `reason: "EXECUTION_ENVIRONMENT_CHANGED"` and `flowStarted: false`.
 This refusal is established before starting Flow code; it is not inferred from
 arbitrary execution failures or missing diagnostics. Existing cancellation and
-recovery precedence remain authoritative. Flow Run/1 responses cannot emit this
+recovery precedence remain authoritative. Flow Run/0 responses cannot emit this
 host-only code. Neither the refusal nor subsequent review replays the failed Run.
 
 
@@ -875,14 +875,14 @@ capture; the captured set is not an atomic repository revision or a secret scan.
 
 `@FILE` is operator-selected data, not an execution attachment. Jig opens its
 non-symbolic-link regular-file leaf once, bounds and snapshots its bytes, checks
-that the opened file remained stable, and parses it as JSON/1 before project
+that the opened file remained stable, and parses it as JSON/0 before project
 acquisition. Parent-directory aliases and filesystems do not need attachment
 mount semantics because neither the path nor its descriptor enters Flow code.
-JSON/1's byte and value limits still apply.
+JSON/0's byte and value limits still apply.
 
 Input is projected from immutable sealed bytes, never live host directories.
 Per-run captured bytes live only through command ownership and are not retained
-as Package/1 artifacts. Reviewed Binding resources instead belong to the admitted
+as Package/0 artifacts. Reviewed Binding resources instead belong to the admitted
 configuration and retained store described above. Durable request evidence sorts attachment names and paths
 ordinally and records names, lengths, SHA-256 content digests, and the absolute
 output intent. Equivalent selected bytes have the same data identity regardless
@@ -909,7 +909,7 @@ remain accounted for after the Run cgroup is removed; see the security ceilings.
 Publication uses one no-replace atomic directory rename. Directories have mode
 `0700`, files `0600`; empty directories and source permissions are not preserved.
 `files/` contains Flow deliverables. `result.json` contains the accepted execution
-record, Run identity, admitted Package/1 and configuration identity when resolved,
+record, Run identity, admitted Package/0 and configuration identity when resolved,
 canonical JSON input digest, captured manifest, and delivery manifest. The
 manifest lists only Flow files, never its own host record. Private launch,
 inode, device, provider, and credential evidence is not exported.
@@ -936,7 +936,7 @@ never retracts the packet, rewrites its terminal, or authorizes reexecution.
 Channel loss may leave publication unknown to the caller. The immutable packet
 and ordinary stdout agree; later CLI errors can report additional observations.
 `written` promises atomic visibility, not persistence through machine failure.
-If expanded metadata exceeds the report's JSON/1 limits, the CLI preserves the
+If expanded metadata exceeds the report's JSON/0 limits, the CLI preserves the
 unexpanded execution terminal on stdout, reports known delivery/cleanup status
 with `JIG_REPORT_LIMIT` on stderr, and exits nonzero without replay.
 
@@ -1004,7 +1004,7 @@ Package code receives:
 - the admitted package tree, read-only;
 - the root's immutable read attachments and optional bounded empty output;
 - one private writable scratch directory;
-- Run/1 protocol stdio; and
+- Run/0 protocol stdio; and
 - only the minimal read-only process and device views required by the pinned
   Bun runtime.
 

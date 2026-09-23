@@ -58,7 +58,7 @@ the reviewer to finish its two-turn method.
 The worker also accepts revisions from another application through its optional
 `revisions` receiver. The matching `updates` sender is used by its independent
 mode. Their named agreement is
-`https://github.com/jiggy/jig/tree/main/examples/incident-brief`, version `1.0.0`;
+`https://github.com/jiggy/jig/tree/main/examples/incident-brief`, version `0.1.0`;
 both packages include the same [offline descriptor](flows/worker/contracts/revisions.json).
 The identifier names this agreement; it is not a server to contact.
 

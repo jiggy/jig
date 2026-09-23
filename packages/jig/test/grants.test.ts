@@ -21,7 +21,7 @@ import { compileSchemaFile } from '../src/schema/index.js'
 
 const http = {
   id: 'https://jig.md/contracts/http-request',
-  version: '1.0.0',
+  version: '0.1.0',
   digest: HTTP_REQUEST_CONTRACT_DIGEST,
 }
 
@@ -38,7 +38,7 @@ test('session retention is separately reviewed and restricted to qualified Codex
 })
 const command = {
   id: 'https://jig.md/contracts/project-command',
-  version: '1.0.0',
+  version: '0.1.0',
   digest: PROJECT_COMMAND_CONTRACT_DIGEST,
 }
 const policy = normalizeGrant({ kind: 'http', url: 'https://example.org/', method: 'GET' })

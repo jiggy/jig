@@ -8,7 +8,7 @@ Add this declaration to that Flow's `FLOW.contract.json`:
 
 ```json
 {
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
   "channels": {
     "progress": {
       "direction": "send",
@@ -71,7 +71,7 @@ const display = await events.subscribe()
 const recorder = await events.subscribe()
 ```
 
-Here `eventSchema` is the application's FLOW Schema/1 item schema. This excerpt
+Here `eventSchema` is the application's FLOW Schema/0 item schema. This excerpt
 allocates endpoints only: the handler must connect the sender, consume or close
 each subscription, and settle owned work. Subscribe before dispatch to receive
 the beginning. A slow subscription can fail with `LAGGED` independently of other

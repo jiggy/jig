@@ -1,7 +1,7 @@
 {
-  "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+  "$schema": "https://flow.jig.md/schemas/channel-contract-0.schema.json",
   "id": "https://jig.md/contracts/agent-replies",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "semantics": "Essential direct replies for conversational Agent Run. accepted acknowledges a control, not completed work; result is one settled Agent answer; cancelled settles a cancelled turn without an answer; error reports a settled but invalid answer. rejected performs no requested action. All items are at most 64 KiB; lost, oversized or persistently blocked replies fail the conversation rather than truncate results. End of stream is not native cleanup: await the enclosing invocation.",
   "item": {
     "oneOf": [

@@ -39,7 +39,7 @@ async function run(input: {
       })
     }
     return {
-      kind: 'private-foreground-run/1',
+      kind: 'private-foreground-run/0',
       runs,
     }
   })

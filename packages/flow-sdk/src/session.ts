@@ -178,7 +178,7 @@ export class RunSession {
       return
     }
     if (this.seenHostIds.size >= MAX_REQUEST_IDS) {
-      this.failChannel('PROTOCOL_ERROR', 'host exceeded the Run/1 request-ID lifetime limit')
+      this.failChannel('PROTOCOL_ERROR', 'host exceeded the Run/0 request-ID lifetime limit')
       return
     }
     this.seenHostIds.add(id)

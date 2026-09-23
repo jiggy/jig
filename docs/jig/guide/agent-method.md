@@ -64,7 +64,7 @@ their UTF-8 content plus instructions is bounded to 1 MiB. Selected Skills and f
 duplicates and invalid UTF-8 reject. The final rendered prompt, including
 instructions and schema guidance, has its own 1 MiB bound.
 Structured schemas use the [bounded profile](../spec/agent-run.md#structured-output-profile)
-and at most 256 KiB of canonical JSON/1.
+and at most 256 KiB of canonical JSON/0.
 
 For Jig, declare `@jigging/agent-method` in the project's `package.json`
 dependencies. Use `workspace:*` for source in your Bun workspace or a selected
@@ -137,7 +137,7 @@ HTTP grants default to a 256 KiB request and 1 MiB response. For larger explicit
 context or answers, set `requestBytes` up to 8 MiB and `responseBytes` up to 12 MiB
 in the reviewed HTTP slot. The method requests `response: 'json'`, so a structured
 API response is passed as data rather than wrapped in another JSON string.
-The shared 1 MiB rendered-prompt and 8 MiB text limits still apply, as do JSON/1's
+The shared 1 MiB rendered-prompt and 8 MiB text limits still apply, as do JSON/0's
 complete-value bounds, the grant's timeout (at most 60 seconds), and the Run
 deadline. Requests are rejected, not truncated.
 
@@ -238,6 +238,6 @@ Markdown uses the same project default, or an explicit Binding can select
 `slots: { 'markdown-agent': 'binding:agent' }`. The interpreter checks each
 structured decision before activating an exact authored recipe.
 
-Other finite Run/1 hosts can supply the same exact HTTP Request interface under
+Other finite Run/0 hosts can supply the same exact HTTP Request interface under
 their own authority. Library reuse, unchanged Flow consumption,
 and Agent answer quality require separate evidence.

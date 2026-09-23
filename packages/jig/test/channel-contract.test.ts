@@ -47,12 +47,12 @@ function metadata(fields: JsonObject): string {
   return `---\n${JSON.stringify({ name: 'reader', description: 'Read public events.', ...fields })}\n---\nObserve supplied values.\n`
 }
 
-describe('Channel Contract/1', () => {
+describe('Channel Contract/0', () => {
   test('uses the complete canonical descriptor and a distinct digest domain', () => {
     const value = descriptor()
     const compact = parseChannelContract(bytes(value))
     const spaced = parseChannelContract(encoder.encode(`${JSON.stringify(value, null, 2)}\n`))
-    const expected = `sha256:${createHash('sha256').update('FLOW-Channel-Contract/1\0').update(canonicalJson(value)).digest('hex')}`
+    const expected = `sha256:${createHash('sha256').update('FLOW-Channel-Contract/0\0').update(canonicalJson(value)).digest('hex')}`
     expect(compact.digest).toBe(expected)
     expect(spaced.digest).toBe(expected)
     expect(
@@ -128,7 +128,7 @@ describe('Channel Contract/1', () => {
     ).toThrow(CheckError)
   })
 
-  test('rejects invalid JSON/1 before identity or schema interpretation', () => {
+  test('rejects invalid JSON/0 before identity or schema interpretation', () => {
     for (const source of [
       '{"item":true,"item":false}',
       JSON.stringify(descriptor({ semantics: '\ud800' })),
@@ -189,7 +189,7 @@ describe('channel declarations', () => {
     expect(() => parseChannelDeclarations(many, 'FLOW.md')).toThrow(CheckError)
   })
 
-  test('uses canonical Package/1 reference byte and segment bounds', () => {
+  test('uses canonical Package/0 reference byte and segment bounds', () => {
     expect(requireChannelReference(reference, 'FLOW.md')).toBe(reference)
     expect(requireChannelReference(`./${'é'.repeat(127)}a`, 'FLOW.md')).toBe(
       `./${'é'.repeat(127)}a`,

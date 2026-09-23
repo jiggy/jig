@@ -3,11 +3,11 @@
 ## Purpose
 
 Implements the dependency-free `@jigging/flow` TypeScript projection of Run
-SDK/1 and Run/1.
+SDK/1 and Run/0.
 
 ## Ownership
 
-- `src/` owns public types and the JSON/1, protocol, session, channel, and transport
+- `src/` owns public types and the JSON/0, protocol, session, channel, and transport
   implementation.
 - `test/` owns unit, subprocess, race, and packed-package evidence.
 - `justfile` owns build and package tasks; `package.json`, `README.md`, and
@@ -20,10 +20,10 @@ SDK/1 and Run/1.
 - Importing the package performs no protocol I/O or global mutation.
 - `handle()` owns exactly one root Run over newline-framed protocol standard
   input and output; application diagnostics go to standard error.
-- Preserve strict JSON/1 validation, exact messages, full-duplex calls,
+- Preserve strict JSON/0 validation, exact messages, full-duplex calls,
   cancellation, terminal ordering, and bounded request behavior.
   Validate and snapshot the complete root result envelope before cleanup;
-  envelope overhead counts toward JSON/1 bounds and overflow is `INVALID_RESULT`.
+  envelope overhead counts toward JSON/0 bounds and overflow is `INVALID_RESULT`.
 - `run.call()` sends one exact `FlowCall` through `flow/call`, requiring
   `operationId`, `slot`, and `input`, with only optional `intent` and `channels`.
   It returns the complete `RunResult`; domain outcomes remain ordinary data.

@@ -467,7 +467,7 @@ export class ChannelBroker {
       const failure =
         error instanceof ChannelOperationError
           ? error
-          : new ChannelOperationError('INVALID_INPUT', 'channel item is not valid JSON/1')
+          : new ChannelOperationError('INVALID_INPUT', 'channel item is not valid JSON/0')
       this.fail(source, failure)
       throw failure
     }
@@ -1032,7 +1032,7 @@ function compileConstraint(schema: JsonValue | undefined): Constraint {
   } catch {
     throw new ChannelOperationError(
       'INVALID_INPUT',
-      'channel schema is not a supported Schema/1 value',
+      'channel schema is not a supported Schema/0 value',
     )
   }
 }

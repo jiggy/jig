@@ -1,4 +1,4 @@
-# FLOW Channel Contract/1
+# FLOW Channel Contract/0
 
 > *Status: prerelease specification candidate for JSON channels.*
 
@@ -9,14 +9,14 @@ protocols. Generic channels need no named contract.
 
 ## 1. Declarations
 
-Invocation Contract/1 operation objects may declare a `channels`
+Invocation Contract/0 operation objects may declare a `channels`
 map. Each key is a `LocalName`; each value is a closed object:
 
 | Field | Meaning |
 | --- | --- |
 | `direction` | Required `send` or `receive` |
 | `required` | Boolean, default `true`; optional unwired ports are absent |
-| `schema` | Optional inline Schema/1 item schema; omission means generic JSON/1 |
+| `schema` | Optional inline Schema/0 item schema; omission means generic JSON/0 |
 | `contract` | Optional package-local `./` descriptor reference, exclusive with `schema` |
 | `delivery` | Optional `direct` or `broadcast`; omission accepts either supported profile |
 | `start` | Receive-only `beginning` or `suffix`, default `beginning` |
@@ -28,7 +28,7 @@ nor replay. Declarations describe requirements, not grants. A required port must
 be connected before invocation; this does not guarantee its peer will succeed.
 Channel names are local slots, not globally discoverable addresses.
 
-References obey Package/1's canonical downward-only reference rules. Resolve
+References obey Package/0's canonical downward-only reference rules. Resolve
 declaration references relative to the invocation descriptor's containing
 directory in the immutable package; runtime creation references remain relative
 to the calling package root. No URI is fetched. The complete referenced closure
@@ -38,26 +38,26 @@ positions reject; literal property names and annotation/example data remain data
 
 ## 2. Descriptor and identity
 
-A self-contained UTF-8 JSON/1 descriptor has exactly these fields:
+A self-contained UTF-8 JSON/0 descriptor has exactly these fields:
 
 | Field | Meaning |
 | --- | --- |
-| `$schema` | `https://flow.jig.md/schemas/channel-contract-1.schema.json` |
-| `id` | Canonical [Invocation Contract/1 identity URI](invocation-contracts.md#11-contract-identity-and-version-syntax) |
+| `$schema` | `https://flow.jig.md/schemas/channel-contract-0.schema.json` |
+| `id` | Canonical [Invocation Contract/0 identity URI](invocation-contracts.md#11-contract-identity-and-version-syntax) |
 | `version` | Exact three-component SemVer core, using the same syntax |
 | `semantics` | Normative nonempty description, at most 16,384 UTF-8 bytes |
-| `item` | One Schema/1 schema; `true` accepts any JSON/1 value |
-| `$defs` | Optional local definitions under Schema/1's restrictions |
+| `item` | One Schema/0 schema; `true` accepts any JSON/0 value |
+| `$defs` | Optional local definitions under Schema/0's restrictions |
 
 The complete descriptor is at most 262,144 UTF-8 bytes. Embedded schemas retain
-Schema/1 graph, keyword and reference limits. Unknown fields reject. Machine
+Schema/0 graph, keyword and reference limits. Unknown fields reject. Machine
 schema validation does not replace byte bounds or the schema-graph checks.
 Examples and executable behavioral checks can live beside the descriptor.
 
 Derive the digest over the complete descriptor, including `semantics`:
 
 ```text
-sha256(UTF8("FLOW-Channel-Contract/1\0") || RFC8785(descriptor))
+sha256(UTF8("FLOW-Channel-Contract/0\0") || RFC8785(descriptor))
 ```
 
 The result is `sha256:` plus 64 lowercase hexadecimal digits. Authors supply
@@ -95,6 +95,6 @@ versus snapshots and domain completeness. Sequence one identifies this source's
 origin, not complete upstream history. A clean channel end cannot establish a
 successful Agent result, accepted application outcome or durable processing.
 
-The exchange and lifecycle rules are in [Run/1](run-protocol.md#5-channels).
+The exchange and lifecycle rules are in [Run/0](run-protocol.md#5-channels).
 This contract does not grant network access, session mutation or arbitrary
 transports. Binary payloads require separately specified support.

@@ -1,9 +1,9 @@
-# FLOW Schema/1 files
+# FLOW Schema/0 files
 
 > *Status: prerelease specification candidate. The machine meta-schema is
-> published as [`schema-1.json`](https://flow.jig.md/schemas/schema-1.json).*
+> published as [`schema-0.json`](https://flow.jig.md/schemas/schema-0.json).*
 
-Schema/1 describes bounded values in invocation contracts, channel contracts and
+Schema/0 describes bounded values in invocation contracts, channel contracts and
 the optional implementation settings schema. These declarations are inert;
 they are never runtime mailboxes, configuration stores, templates or code.
 
@@ -25,7 +25,7 @@ schema express that correlation; an output-only schema could not.
   data model is valid input.
 - Without `settings.schema.json`, the only valid settings value is `{}`. A
   package must contain a settings schema to expose a configurable seam.
-- Without an invocation `result` schema, any result satisfying the Run/1 base envelope
+- Without an invocation `result` schema, any result satisfying the Run/0 base envelope
   and declared-outcome rules is valid.
 
 Absence never asks a host to infer a schema from TypeScript, Markdown,
@@ -49,26 +49,26 @@ replace variable interpolation rather than hiding it elsewhere.
 
 Input is validated against the actual call value before implementation dispatch.
 
-A normal component result first passes the Run/1 envelope checks: it has one
+A normal component result first passes the Run/0 envelope checks: it has one
 declared domain outcome and an `output` value, and it is not a protocol,
 execution, cancellation, provider-loss, or uncertainty failure disguised as a
 domain outcome. After all owner work has quiesced, the host validates the
 complete result against the selected invocation `result` schema; only then may owner success commit.
 Validation failure is `INVALID_RESULT`.
 
-## 3. Schema/1 dialect
+## 3. Schema/0 dialect
 
 A standalone settings schema is a JSON object whose root contains this exact declaration:
 
 ```json
-"$schema": "https://flow.jig.md/schemas/schema-1.json"
+"$schema": "https://flow.jig.md/schemas/schema-0.json"
 ```
 
-Schema/1 is a closed, resource-bounded dialect of JSON Schema 2020-12. Boolean
+Schema/0 is a closed, resource-bounded dialect of JSON Schema 2020-12. Boolean
 schemas are allowed below a standalone root and at embedded schema roots. A keyword is valid only in the locations
 and with the value shapes assigned to it by JSON Schema 2020-12.
 Both schemas and instances first satisfy the
-[`FLOW JSON/1 value model`](json-values.md).
+[`FLOW JSON/0 value model`](json-values.md).
 
 The complete v1 keyword allowlist is:
 
@@ -104,7 +104,7 @@ differences. `multipleOf` is deferred to avoid cross-language numeric
 disagreement. `uniqueItems` is deferred because portable deep-uniqueness work
 is difficult to bound. `propertyNames` is deferred to avoid inventing a virtual
 instance-pointer identity for object keys. Values in `const` and `enum` are
-limited to JSON/1 scalars; structural alternatives use schema applicators.
+limited to JSON/0 scalars; structural alternatives use schema applicators.
 `description` and `examples` remain inert annotations. An Invocation Contract
 descriptor which embeds them still digests the complete descriptor; “inert for
 validation” does not mean “excluded from interface identity.”
@@ -116,7 +116,7 @@ percent encoding and JSON Pointer `~` escapes are not supported. Remote,
 relative, anchor, recursive, and dynamic resolution are invalid. Referenced
 definitions use the same closed dialect.
 
-For an Invocation Contract/1 graph, the descriptor's `$defs` is the sole root
+For an Invocation Contract/0 graph, the descriptor's `$defs` is the sole root
 definition map. Input, result and definition schemas cannot declare their own
 `$defs`. All embedded roots, inline channel schemas and shared definitions,
 including unused definitions and unselected operations, share one graph's node,
@@ -127,11 +127,11 @@ Contracts each own their independently bounded graph and definition namespace.
 
 Validation is pure. A conforming evaluator never coerces a value, inserts a
 default, removes a property, resolves a URI, executes code, or changes the
-instance. Number handling and equality use JSON/1 rather than host-language
+instance. Number handling and equality use JSON/0 rather than host-language
 integer or decimal extensions.
 
-The exact same Schema/1 keyword and evaluation dialect is used by embedded
-input and complete result schemas in Invocation Contract/1; embedded schemas
+The exact same Schema/0 keyword and evaluation dialect is used by embedded
+input and complete result schemas in Invocation Contract/0; embedded schemas
 do not repeat the file-root `$schema` declaration. FLOW does not maintain two
 subtly different schema languages.
 
@@ -209,8 +209,8 @@ SCHEMA_LIMIT_EXCEEDED
 ```
 
 `SCHEMA_INVALID_JSON` is reserved for invalid UTF-8, JSON syntax, duplicate
-members, and other JSON/1 failures. `SCHEMA_INVALID` means the parsed value
-violates Schema/1's root, keyword-location, or keyword-value-shape rules.
+members, and other JSON/0 failures. `SCHEMA_INVALID` means the parsed value
+violates Schema/0's root, keyword-location, or keyword-value-shape rules.
 Keeping those cases distinct lets a host report malformed data without
 misclassifying a well-formed but invalid schema as an unsupported extension.
 
@@ -224,10 +224,10 @@ schemaPointer        RFC 6901
 keyword              when applicable
 ```
 
-Human wording and multi-error ordering are non-normative. Schema/1 defines no
+Human wording and multi-error ordering are non-normative. Schema/0 defines no
 standalone public schema digest. A package schema is identified by its
-containing Package/1 digest and canonical logical path; an embedded schema by
-its containing Invocation Contract/1 or Channel Contract/1 identity and JSON Pointer. A host may use a
+containing Package/0 digest and canonical logical path; an embedded schema by
+its containing Invocation Contract/0 or Channel Contract/0 identity and JSON Pointer. A host may use a
 private cache fingerprint, but that value is not a portable identity,
 compatibility token, lock input, or author-facing requirement. A host may
 report those containing identities and locations, plus schema compilation and

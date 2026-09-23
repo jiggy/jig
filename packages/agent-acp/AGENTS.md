@@ -11,7 +11,7 @@ retains credential, process, and dispatch authority.
   `src/conversation.ts` owns serial turn controls and essential replies; native
   dispatch authority remains in the resource, not this controller.
 - `src/transport.ts` owns the public finite-ACP text framing helper; it neither
-  authenticates nor authorizes a frame. The host validates reassembled JSON/1
+  authenticates nor authorizes a frame. The host validates reassembled JSON/0
   and independently enforces its reviewed finite protocol policy.
 - `contracts/finite-acp/` mirrors `docs/jig/spec/contracts/finite-acp/` exactly.
   `FLOW.contract.json` and its three public channel descriptors mirror Agent Run.

@@ -1,7 +1,7 @@
-# FLOW Invocation Contract/1
+# FLOW Invocation Contract/0
 
 > *Status: prerelease specification candidate. The structural companion is
-> [`invocation-contract-1.schema.json`](https://flow.jig.md/schemas/invocation-contract-1.schema.json).*
+> [`invocation-contract-0.schema.json`](https://flow.jig.md/schemas/invocation-contract-0.schema.json).*
 
 An invocation contract describes the input, complete result and caller ports of
 one finite call. A Flow may use the same interface whether its host selects an
@@ -13,7 +13,7 @@ invocation declaration owner:
 
 | Need | Declaration |
 | --- | --- |
-| Unconstrained finite work | No descriptor: bounded JSON/1 input, implicit `done` and bounded JSON/1 output, no declared ports or custom outcomes. |
+| Unconstrained finite work | No descriptor: bounded JSON/0 input, implicit `done` and bounded JSON/0 output, no declared ports or custom outcomes. |
 | Local validation, ports or custom outcomes | An anonymous `FLOW.contract.json` containing the needed declarations. |
 | Independently agreed interface | The same descriptor with an exact `id` and `version`. |
 
@@ -25,9 +25,9 @@ may need different settings and grants. Neither is inherited through a match.
 ## 1. Descriptor
 
 The descriptor is an object whose required `$schema` is exactly
-`https://flow.jig.md/schemas/invocation-contract-1.schema.json`. Unknown fields,
+`https://flow.jig.md/schemas/invocation-contract-0.schema.json`. Unknown fields,
 root booleans or null, and missing or wrong discriminators reject. Original
-UTF-8 bytes must pass JSON/1, including duplicate-member checks, before parsing
+UTF-8 bytes must pass JSON/0, including duplicate-member checks, before parsing
 loses that evidence.
 
 Shared root fields are:
@@ -36,7 +36,7 @@ Shared root fields are:
 | --- | --- |
 | `$schema` | Required exact discriminator. |
 | `id`, `version` | Both absent for an anonymous contract, or both present with the exact syntax below. Never fetched. |
-| `$defs` | Optional shared Schema/1 definitions, at most 1,024 entries. |
+| `$defs` | Optional shared Schema/0 definitions, at most 1,024 entries. |
 
 The **single form** has these shared fields and the fields of one operation.
 A root containing only the discriminator is a valid anonymous contract. This
@@ -62,16 +62,16 @@ contain it. There are no operation-specific feature declarations.
 An omitted or empty catalog defines no feature names; both forms are valid but
 have distinct identities. Null, non-object catalogs, invalid names, duplicate
 members and nontext descriptions reject. The existing descriptor byte and
-JSON/1 limits apply; catalog descriptions do not add Schema/1 graph nodes.
+JSON/0 limits apply; catalog descriptions do not add Schema/0 graph nodes.
 
 One operation object has only:
 
 | Field | Rule |
 | --- | --- |
-| `input` | Optional embedded Schema/1. Absence accepts any bounded JSON/1 input. |
-| `result` | Optional embedded Schema/1 for the complete `{outcome, output}` result. Absence retains the base envelope and outcome checks. |
+| `input` | Optional embedded Schema/0. Absence accepts any bounded JSON/0 input. |
+| `result` | Optional embedded Schema/0 for the complete `{outcome, output}` result. Absence retains the base envelope and outcome checks. |
 | `outcomes` | Optional map of custom `LocalName` outcomes to nonempty descriptions. |
-| `channels` | Optional directional [Channel Contract/1 declarations](channel-contracts.md#1-declarations). |
+| `channels` | Optional directional [Channel Contract/0 declarations](channel-contracts.md#1-declarations). |
 | `attachments` | Optional map of required caller-port `LocalName`s to exactly `read` or `read-write`. |
 
 `done` is implicit. Custom outcome descriptions contain 1–16,384 Unicode
@@ -93,7 +93,7 @@ resources remain reviewed implementation dependencies; they are not undeclared
 caller requirements. The initial `flow/call` has no attachment-transfer field;
 an attachment-bearing route needs an independently qualified host mapping.
 
-Input/result schemas use the closed embedded [Schema/1](schema-files.md)
+Input/result schemas use the closed embedded [Schema/0](schema-files.md)
 dialect, without a file-root `$schema`. Their references resolve solely against
 the descriptor's `$defs`. Inline channel schemas are reference-free: `$ref` and
 `$defs` in schema-keyword positions reject. Literal message property names and
@@ -133,17 +133,17 @@ range matching or version precedence calculation.
 
 ## 2. Offline channel closure and exact digest
 
-An invocation descriptor may reference complete Channel Contract/1 files.
+An invocation descriptor may reference complete Channel Contract/0 files.
 Resolve every reference relative to the invocation descriptor's containing
 directory in the immutable package, including optional ports and unselected
 named operations. Input or settings never supply the reference base.
 
-References begin with exact `./` and use Package/1 canonical downward-only
+References begin with exact `./` and use Package/0 canonical downward-only
 paths without C0 controls or DEL. No `..`, decoding, normalization, special file or package escape is
 allowed. Strip the one `./` prefix to obtain the descriptor-relative logical
 path. Deduplicate repeated paths; two different paths with equal content remain
 separate entries. Every target is a complete valid Channel Contract, whose
-Schema/1 references are internal, so this is not a recursive file graph.
+Schema/0 references are internal, so this is not a recursive file graph.
 
 For example, moving `FLOW.contract.json` and its referenced `contracts/events.json`
 together beneath `interfaces/reviewer/` preserves interface identity. Runtime
@@ -154,7 +154,7 @@ extraction, alias manifest or lookup API.
 The sole canonical preimage is:
 
 ```text
-UTF8("FLOW-Invocation-Contract/1\0") || RFC8785({
+UTF8("FLOW-Invocation-Contract/0\0") || RFC8785({
   descriptor: complete parsed invocation descriptor,
   channelContracts: {
     descriptorRelativePath: complete parsed channel descriptor,
@@ -171,18 +171,18 @@ Identity includes the entire descriptor and channel closure: annotations,
 the complete feature catalog, optional ports, unselected operations, internal
 paths and referenced content.
 Containing-directory location, source line endings and unrelated package files
-do not enter the invocation digest. Package/1 separately covers exact
+do not enter the invocation digest. Package/0 separately covers exact
 implementation bytes. A package, runtime, source or host-storage digest cannot
 substitute for this domain-separated interface digest.
 
 Validate each original invocation and channel document at at most 262,144 UTF-8
-bytes. The complete derived wrapper also satisfies JSON/1. At most 64 distinct
+bytes. The complete derived wrapper also satisfies JSON/0. At most 64 distinct
 descriptor-relative channel paths may occur, and the entire domain-separated
 canonical preimage is at most 1,048,576 bytes, including its NUL, wrapper/path
 keys and all content. Path byte and Unicode constraints apply independently of
 the structural meta-schema.
 
-One invocation Schema/1 graph shares 4,096 schema nodes and depth 64 across all
+One invocation Schema/0 graph shares 4,096 schema nodes and depth 64 across all
 input/result/inline-channel schemas and definitions, including unused
 definitions and unselected operations. Each referenced Channel Contract has its
 own independently bounded graph and namespace. All references must resolve and
@@ -211,7 +211,7 @@ mandatory obligations, and cannot select a subset of named operations. The
 contract's behavioral specification defines how an unsupported optional request
 is refused; feature metadata cannot invent a weaker baseline.
 
-Consumers name slots through [Package/1 metadata](package-format.md):
+Consumers name slots through [Package/0 metadata](package-format.md):
 
 ```yaml
 uses:
@@ -224,7 +224,7 @@ uses:
 Here the referenced reviewer contract must define `conversation` in its feature
 catalog. `requires` is optional; ordinary callers omit it. A package offering
 that exact named single-form contract may declare `supports: [conversation]`
-in its own metadata. [Package/1](package-format.md#dependencies) owns the bounded
+in its own metadata. [Package/0](package-format.md#dependencies) owns the bounded
 list grammar. Support and requirement names must belong to their own offered
 or expected catalog before route matching. Unknown names reject, even if both
 parties repeat the same unknown spelling or no selected caller uses the claim.
@@ -286,7 +286,7 @@ does not create another invocation digest or a compatibility alias.
 
 ## 4. Calls, outcomes and finite ownership
 
-The initial call is [Run/1 `flow/call`](run-protocol.md#4-flowcall), projected as
+The initial call is [Run/0 `flow/call`](run-protocol.md#4-flowcall), projected as
 `run.call(...)` in both SDKs. Required operation identity, slot and input plus
 optional advisory intent and channels produce one complete normal
 `{outcome, output}` result. There is no method selector, successful-value wrapper,
@@ -294,14 +294,14 @@ declared-error exception or automatic outcome conversion.
 
 Domain refusal is an explicitly declared normal outcome. For example, a
 session-store lookup returns `done` with the record or `not-found` with its
-declared data. Operational failures retain Run/1 JSON-RPC errors and ordinary
+declared data. Operational failures retain Run/0 JSON-RPC errors and ordinary
 language recovery. Root cancellation, fatal transport, uncertain ownership,
 live abandonment and failed cleanup still prevent success.
 
 Operation identity belongs to the authenticated invoking participant. Exact
 duplicates join the same established selection and do not transfer moved rights
 again; altered input, slot, intent or endpoint-map presence conflicts. The exact
-comparison and cancellation races remain [Run/1](run-protocol.md#6-operation-identity).
+comparison and cancellation races remain [Run/0](run-protocol.md#6-operation-identity).
 
 Each ordinary call creates a fresh finite invocation. Package/Binding names,
 future operation names, string session IDs and channel tokens do not create a
@@ -328,7 +328,7 @@ Conforming implementations must establish:
 7. Wrong ports, grants, explicit selections or named matches fail before effects;
    native evidence and authority cannot be manufactured by interface equality.
 8. Caller-scoped duplicates, changed optional-key presence, cancellation, late
-   disposal, forgotten live work and uncertainty preserve Run/1 ownership.
+   disposal, forgotten live work and uncertainty preserve Run/0 ownership.
 9. Feature catalogs occur only on identified single-form roots, obey name,
    description and entry bounds, and reject unknown structure. Omission, empty
    catalogs, names and descriptions retain their exact identity consequences.

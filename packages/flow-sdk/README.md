@@ -1,10 +1,10 @@
 # @jigging/flow
 
-Minimal, dependency-free TypeScript projection of FLOW Run/1.
+Minimal, dependency-free TypeScript projection of FLOW Run/0.
 
-This is the prerelease `0.1.0-alpha.11` package. Its authoritative documents
-are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
-[Run/1](https://flow.jig.md/spec/run-protocol) specifications.
+This is the prerelease `0.1.0-alpha.12` package. Its authoritative documents
+are the [Run SDK/0](https://flow.jig.md/spec/run-sdk) and
+[Run/0](https://flow.jig.md/spec/run-protocol) specifications.
 
 Declare the exact alpha in the FLOW package's `package.json`:
 
@@ -12,7 +12,7 @@ Declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.11"
+    "@jigging/flow": "0.1.0-alpha.12"
   }
 }
 ```
@@ -87,7 +87,7 @@ ignored. For Jig's admitted targets and Agent implementation, see its
 [Agent Run documentation](https://jig.md/spec/agent-run).
 An unavailable operation rejects with `OperationError` code
 `UNAVAILABLE`. A call-specific `AbortSignal` rejects a cancelled call with
-code `CANCELLED` and sends the matching Run/1 cancellation notification if
+code `CANCELLED` and sends the matching Run/0 cancellation notification if
 the request reached the wire. A cancellation-only catch must rethrow every
 other error. Cancellation does not claim that remote work was undone.
 

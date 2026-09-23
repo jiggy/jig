@@ -138,7 +138,7 @@ describe('finite Markdown runtime', () => {
         const input = call.input as unknown as AgentCallInput
         const { skills, ...request } = input
         prepareAgent(request, skills)
-        expect(input.responseSchema?.$schema).toBe('https://flow.jig.md/schemas/schema-1.json')
+        expect(input.responseSchema?.$schema).toBe('https://flow.jig.md/schemas/schema-0.json')
         expect(() => assertResponseSchema(input.responseSchema!)).not.toThrow()
         const structured = finish('qualified')
         expect(

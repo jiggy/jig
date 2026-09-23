@@ -580,7 +580,7 @@ describe('private project Plan review', () => {
         state: 'ready',
         recipeDigest: 'private-before',
         execution: {
-          package: { kind: 'flow-package/1', digest: `sha256:${'a'.repeat(64)}` },
+          package: { kind: 'flow-package/0', digest: `sha256:${'a'.repeat(64)}` },
           layout: { flowRoot: 'flows/test', members: ['flows/test'], aliases: [] },
         },
       },

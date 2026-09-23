@@ -6,7 +6,7 @@ import { fail } from './errors.js'
 import { checkText } from './values.js'
 
 export interface Toolchain {
-  profile: 'flow-authoring-typespec/1'
+  profile: 'flow-authoring-typespec/0'
   tool: string
   compiler: '1.16.0'
   digest: string
@@ -94,10 +94,10 @@ async function fingerprint(): Promise<Toolchain> {
   const digest =
     'sha256:' +
     createHash('sha256')
-      .update('FLOW-Authoring-Toolchain/1\0')
+      .update('FLOW-Authoring-Toolchain/0\0')
       .update(JSON.stringify([...hashes].sort(([a], [b]) => (a < b ? -1 : 1))))
       .digest('hex')
-  return Object.freeze({ profile: 'flow-authoring-typespec/1', tool, compiler: '1.16.0', digest })
+  return Object.freeze({ profile: 'flow-authoring-typespec/0', tool, compiler: '1.16.0', digest })
 }
 
 /** Return source with an explicit pin. This function never writes the source file. */

@@ -91,11 +91,11 @@ actual=$(
     sed "s|^$repository/||" |
     LC_ALL=C sort
 )
-expected='docs/flow/spec/machine/channel-contract-1.schema.json
-docs/flow/spec/machine/invocation-contract-1.schema.json
-docs/flow/spec/machine/run-1-errors.json
-docs/flow/spec/machine/run-1.schema.json
-docs/flow/spec/machine/schema-1.json
+expected='docs/flow/spec/machine/channel-contract-0.schema.json
+docs/flow/spec/machine/invocation-contract-0.schema.json
+docs/flow/spec/machine/run-0-errors.json
+docs/flow/spec/machine/run-0.schema.json
+docs/flow/spec/machine/schema-0.json
 docs/jig/spec/machine/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json'
 if [ "$actual" != "$expected" ]; then
@@ -120,11 +120,11 @@ case $site_name in
       echo "the Python SDK guide is missing" >&2
       exit 1
     fi
-    schema_map='docs/flow/spec/machine/invocation-contract-1.schema.json|invocation-contract-1.schema.json|https://flow.jig.md/schemas/invocation-contract-1.schema.json
-docs/flow/spec/machine/channel-contract-1.schema.json|channel-contract-1.schema.json|https://flow.jig.md/schemas/channel-contract-1.schema.json
-docs/flow/spec/machine/run-1-errors.json|run-1-errors.json|-
-docs/flow/spec/machine/run-1.schema.json|run-1.json|https://flow.jig.md/schemas/run-1.json
-docs/flow/spec/machine/schema-1.json|schema-1.json|https://flow.jig.md/schemas/schema-1.json'
+    schema_map='docs/flow/spec/machine/invocation-contract-0.schema.json|invocation-contract-0.schema.json|https://flow.jig.md/schemas/invocation-contract-0.schema.json
+docs/flow/spec/machine/channel-contract-0.schema.json|channel-contract-0.schema.json|https://flow.jig.md/schemas/channel-contract-0.schema.json
+docs/flow/spec/machine/run-0-errors.json|run-0-errors.json|-
+docs/flow/spec/machine/run-0.schema.json|run-0.json|https://flow.jig.md/schemas/run-0.json
+docs/flow/spec/machine/schema-0.json|schema-0.json|https://flow.jig.md/schemas/schema-0.json'
     forbidden_page='spec/project-policy.html'
     ;;
   jig)

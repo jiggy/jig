@@ -518,7 +518,7 @@ function activationRequest(
     target,
     mode: 'run',
     packagePath: path,
-    package: { kind: 'flow-package/1', digest: digest('package') },
+    package: { kind: 'flow-package/0', digest: digest('package') },
     entrypoint: { path: 'FLOW.ts', suffix: 'ts', selector: 'bun' },
     settings: {},
     slots,

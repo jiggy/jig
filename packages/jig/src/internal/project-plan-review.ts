@@ -7,7 +7,7 @@ import type { PrivateActivationReviewPlan } from './activation-admission-store.j
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { grantChanges, requiresAuthorityApproval } from './grant-review.js'
 
-// Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
+// Four MiB leaves a conservative JSON/0 envelope after every ASCII backslash
 // and quote in the review string is escaped by the outer value encoding.
 const MAX_REVIEW_BYTES = 4 * 1024 * 1024
 const BUFFER_BYTES = 8 * 1024

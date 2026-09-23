@@ -13,11 +13,11 @@ case $site_name in
     default_base=https://flow.jig.md
     home_title='<title>FLOW</title>'
     guide_title='<title>FLOW specifications - FLOW</title>'
-    json_map='docs/flow/spec/machine/invocation-contract-1.schema.json|schemas/invocation-contract-1.schema.json
-docs/flow/spec/machine/channel-contract-1.schema.json|schemas/channel-contract-1.schema.json
-docs/flow/spec/machine/run-1-errors.json|schemas/run-1-errors.json
-docs/flow/spec/machine/run-1.schema.json|schemas/run-1.json
-docs/flow/spec/machine/schema-1.json|schemas/schema-1.json'
+    json_map='docs/flow/spec/machine/invocation-contract-0.schema.json|schemas/invocation-contract-0.schema.json
+docs/flow/spec/machine/channel-contract-0.schema.json|schemas/channel-contract-0.schema.json
+docs/flow/spec/machine/run-0-errors.json|schemas/run-0-errors.json
+docs/flow/spec/machine/run-0.schema.json|schemas/run-0.json
+docs/flow/spec/machine/schema-0.json|schemas/schema-0.json'
     ;;
   jig)
     default_base=https://jig.md

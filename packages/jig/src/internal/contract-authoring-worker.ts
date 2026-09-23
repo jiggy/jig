@@ -26,7 +26,7 @@ async function execute() {
     let types = true
     if (source.startsWith('// flow-authoring: ')) {
       const header = JSON.parse(source.split('\n', 1)[0]!.slice(19))
-      if (header.profile !== 'flow-authoring-typespec/1' || typeof header.types !== 'boolean')
+      if (header.profile !== 'flow-authoring-typespec/0' || typeof header.types !== 'boolean')
         throw new Error('Unsupported authoring header')
       types = header.types
     }

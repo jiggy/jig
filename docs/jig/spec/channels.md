@@ -109,9 +109,9 @@ permits bounded fragmented protocol exchanges without increasing message size,
 receiver buffers, or pending-send capacity. These bounds participate in the
 reviewed launch identity; changed policy requires renewed admission.
 
-Existing Run/1 wire limits remain 64 live and 65,536 lifetime requests, with
+Existing Run/0 wire limits remain 64 live and 65,536 lifetime requests, with
 settlement capacity reserved inside those bounds. They are not new per-local-
-attempt quotas. Contract compilation retains Schema/1 limits.
+attempt quotas. Contract compilation retains Schema/0 limits.
 
 The ordinary ACP Agent separates optional updates from its essential protocol
 dialogue. Its relay retains at most 16 items / 256 KiB, including its pending
@@ -123,7 +123,7 @@ essential protocol data still fails execution. No raw ACP stream is echoed priva
 ## Installed subprocess output
 
 With `--receive` and redirected stdout or explicit `--json`, stdout is
-newline-delimited JSON/1, with these records:
+newline-delimited JSON/0, with these records:
 
 | `type` | Fields |
 | --- | --- |

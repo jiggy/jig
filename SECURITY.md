@@ -9,7 +9,7 @@ boundary. There is no privileged or weaker fallback.
 
 An admitted Flow receives only its exact execution package, fixed runtime
 support, explicitly supplied root attachments, private scratch space, private process and network namespaces, and
-the Run/1 channel. It does not receive the project tree, host environment,
+the Run/0 channel. It does not receive the project tree, host environment,
 ambient `PATH`, host process tree, host network, writable cgroup controls,
 general host devices, inherited descriptors, or Jig's control channel.
 Trusted launchers exclude unselected descriptors before entering the sandbox
@@ -62,7 +62,7 @@ The HTTP Request worker receives one reviewed exact URL/method grant and its
 optional bearer via private stdin. It alone has network access for that request;
 Flow code gets neither the credential nor sockets. No authored imports, redirects,
 proxies, arbitrary headers or automatic retries run in that worker. Request and
-response sizes and deadlines are bounded, and optional operator-owned Schema/1
+response sizes and deadlines are bounded, and optional operator-owned Schema/0
 validates the JSON request body. Public grant policy is review-pinned; secrets
 are excluded from identities and retained records. Revocation stops new commands;
 cancel existing commands to stop their snapshotted authority. Remote effects
@@ -171,7 +171,7 @@ them. Each contained preparation has the earlier 60-second hard deadline.
 Each accepts at most 4,096 source files and 16 MiB of source content, and
 produces at most 4,096 files and 32 MiB of prepared content.
 
-The protected Package/1 store accepts at most 64 MiB per canonical artifact
+The protected Package/0 store accepts at most 64 MiB per canonical artifact
 and 1 GiB per project. Review may retain content-addressed source and
 prepared artifacts before the user approves a Plan. Declined and superseded
 artifacts therefore continue to consume the same fixed cap; Jig does not
@@ -191,7 +191,7 @@ and destination-parent filesystems must be ext4, XFS, Btrfs or tmpfs. This does
 not detect secrets in explicitly selected files or defeat a malicious host user.
 
 Bindings may select read-only project-relative resource trees for capture during
-review. Their bytes and manifests are retained under the existing Package/1
+review. Their bytes and manifests are retained under the existing Package/0
 store cap, including after declined review. They are not secret storage or live
 host mounts. Each Run revalidates and projects only its selected Binding's
 retained bytes, combined with per-run input under the same 64-file/8-MiB limit.
@@ -216,10 +216,10 @@ policy together; removing them is not a usability fallback.
 Temporary content may coexist: 8 MiB of sealed input and a bounded capture
 buffer; the read-only named input tree in a 16 MiB private tmpfs; the retained
 output mount and up to 16 MiB of copied file buffers;
-and up to 16 MiB of destination file staging plus a bounded JSON/1 host record.
+and up to 16 MiB of destination file staging plus a bounded JSON/0 host record.
 The Run memory ceiling includes runtime and tmpfs metadata, not all trusted
 coordinator or delivery-process memory. No per-invocation source tree is added
-to the retained Package/1 store. Only bounded request and terminal evidence
+to the retained Package/0 store. Only bounded request and terminal evidence
 survives command cleanup; the requested final packet is intentionally retained.
 
 A project command accepts at most 256 KiB of text across 64 files, 16 KiB of

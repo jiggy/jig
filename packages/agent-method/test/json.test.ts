@@ -10,7 +10,7 @@ import {
 
 const bytes = (text: string) => new TextEncoder().encode(text)
 
-describe('local complete JSON/1 codec', () => {
+describe('local complete JSON/0 codec', () => {
   test('decodes and canonicalizes portable scalars, magic names and Unicode', () => {
     const value = decodeJson1(bytes('{"__proto__":1,"z":-0,"a":[true,false,null,"😀",1.25]}'))
     expect(Object.getPrototypeOf(value)).toBeNull()

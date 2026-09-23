@@ -27,7 +27,7 @@ import { packageDigest } from '../src/package/digest.js'
 
 const metadata = '---\nname: x\ndescription: x\n---\n'
 
-describe('Package/1 digest', () => {
+describe('Package/0 digest', () => {
   test('matches an independently generated fixed vector', async () => {
     await withDirectory(async (root) => {
       const flowPath = join(root, 'FLOW.md')
@@ -43,7 +43,7 @@ describe('Package/1 digest', () => {
         ['a.bin', binaryPath],
       ])
       expect(await packageDigest(files, (file) => createReadStream(paths.get(file.path)!))).toBe(
-        'sha256:e12f178c28f22af5e4620ff41ed3aaca76f11103bb37bdc04ca1600857ae8b50',
+        'sha256:71e40c5716a95f11719bfa6d01b8a8f1c37a90ff7ee04470105fa1cfe196f8b1',
       )
     })
   })
@@ -92,7 +92,7 @@ describe('Package/1 digest', () => {
 
 const linuxTest = process.platform === 'linux' ? test : test.skip
 
-describe('Linux Package/1 directory capture', () => {
+describe('Linux Package/0 directory capture', () => {
   linuxTest(
     'captures every regular file in canonical byte order and isolates staged bytes',
     async () => {
@@ -250,7 +250,7 @@ describe('Linux Package/1 directory capture', () => {
   })
 
   linuxTest(
-    'rejects a file one byte above the absolute Package/1 ceiling before copying',
+    'rejects a file one byte above the absolute Package/0 ceiling before copying',
     async () => {
       await withDirectory(async (source) => {
         await writeFile(join(source, 'FLOW.md'), metadata)

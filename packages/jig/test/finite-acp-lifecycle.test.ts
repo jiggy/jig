@@ -99,7 +99,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
         stderr = ''
         cancellation = new AbortController()
         const responseSchema = {
-          $schema: 'https://flow.jig.md/schemas/schema-1.json',
+          $schema: 'https://flow.jig.md/schemas/schema-0.json',
           type: 'object',
           properties: {
             decision: {

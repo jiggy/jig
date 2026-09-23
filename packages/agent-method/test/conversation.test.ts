@@ -57,7 +57,7 @@ async function exercise(mode: string) {
     id: 'root',
     method: 'flow/run',
     params: {
-      protocol: 'run/1',
+      protocol: 'run/0',
       input: mode,
       settings: {},
       attachments: {},

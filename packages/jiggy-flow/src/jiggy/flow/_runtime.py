@@ -149,7 +149,7 @@ def _is_wire_id(value: Any) -> TypeGuard[str]:
 
 def _require_wire_id(value: Any, field: str) -> str:
     if not _is_wire_id(value):
-        raise _InvalidParams(f"{field} is not a Run/1 request ID")
+        raise _InvalidParams(f"{field} is not a Run/0 request ID")
     return value
 
 
@@ -190,8 +190,8 @@ def _validate_flow_run_params(value: Any) -> tuple[Any, Any, dict[str, Attachmen
         {"protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs", "channels"},
         {"protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs"},
     )
-    if params["protocol"] != "run/1":
-        raise _InvalidParams("protocol must be run/1")
+    if params["protocol"] != "run/0":
+        raise _InvalidParams("protocol must be run/0")
     if not isinstance(params["settings"], dict):
         raise _InvalidParams("settings must be an object")
     attachments_value = params["attachments"]
@@ -260,11 +260,11 @@ def _flow_error_from_wire(value: Any) -> OperationError:
 
     if code == -32000:
         if "data" not in value:
-            raise _InvalidParams("Run/1 operation error requires data")
+            raise _InvalidParams("Run/0 operation error requires data")
         data = _require_exact_object(value["data"], {"code", "details"}, {"code"})
         operation_code = data["code"]
         if not isinstance(operation_code, str) or operation_code not in _FLOW_ERROR_CODES:
-            raise _InvalidParams("unknown Run/1 operation error code")
+            raise _InvalidParams("unknown Run/0 operation error code")
         details = normalize_json1(data.get("details"))
         return OperationError(cast(OperationErrorCode, operation_code), message=message, details=details)
 
@@ -356,7 +356,7 @@ class _Runtime:
                 return
             buffered.extend(chunk)
             if len(buffered) > MAX_DOCUMENT_BYTES and b"\n" not in buffered:
-                self._offer(_FrameFailure(None, "frame exceeds the Run/1 limit"))
+                self._offer(_FrameFailure(None, "frame exceeds the Run/0 limit"))
                 return
             while True:
                 newline = buffered.find(b"\n")
@@ -365,7 +365,7 @@ class _Runtime:
                 payload = bytes(buffered[:newline])
                 del buffered[: newline + 1]
                 if len(payload) > MAX_DOCUMENT_BYTES:
-                    self._offer(_FrameFailure(None, "frame exceeds the Run/1 limit"))
+                    self._offer(_FrameFailure(None, "frame exceeds the Run/0 limit"))
                     return
                 try:
                     frame = parse_json1(payload)
@@ -619,7 +619,7 @@ class _Runtime:
             if self._termination_code is not None:
                 raise OperationError(self._termination_code)
             # Validate the exact response envelope before success-path cleanup;
-            # its depth, node count and bytes also consume the JSON/1 limits.
+            # its depth, node count and bytes also consume the JSON/0 limits.
             validated = _validate_run_result(result)
             response = {
                 "jsonrpc": "2.0",
@@ -1189,7 +1189,7 @@ class _Runtime:
 
 
 def handle(handler: RunHandler) -> None:
-    """Handle exactly one FLOW Run/1 request over this process's stdio."""
+    """Handle exactly one FLOW Run/0 request over this process's stdio."""
 
     if not callable(handler):
         raise TypeError("handler must be callable")
@@ -1201,7 +1201,7 @@ def handle(handler: RunHandler) -> None:
         raise RuntimeError("handle() cannot run inside an existing asyncio event loop")
     protocol_output = sys.stdout.buffer
     # `print()` and ordinary `sys.stdout` writes are application diagnostics.
-    # Keep the original binary stream private for Run/1 and leave redirection
+    # Keep the original binary stream private for Run/0 and leave redirection
     # installed after the one-shot handler so later output cannot become a
     # trailing protocol frame.
     sys.stdout = sys.stderr

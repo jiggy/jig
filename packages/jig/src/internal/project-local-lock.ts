@@ -92,7 +92,7 @@ export function encodePrivateProjectLocalLock(value: PrivateProjectLocalLock): U
 export function decodePrivateProjectLocalLock(bytes: Uint8Array): PrivateProjectLocalLock {
   const normalized = normalizeLock(decodeJson1(bytes))
   if (!sameBytes(bytes, encodeNormalized(normalized))) {
-    throw new TypeError('private package-project lock is not in canonical JSON/1 + LF form')
+    throw new TypeError('private package-project lock is not in canonical JSON/0 + LF form')
   }
   return markValidated(normalized)
 }

@@ -1730,7 +1730,7 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(
     join(flow, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       input: {
         type: 'object',
         properties: {
@@ -1799,7 +1799,7 @@ async function writeAgentMethodProject(root: string, url: string, nested = false
   await writeFile(
     join(router, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       input: {
         type: 'object',
         properties: {
@@ -1850,7 +1850,7 @@ function agentMethodCallerProgram(): string {
     '      operationId: lane, slot: lane, input: {',
     '        instructions: "Return the lane from explicit guidance as JSON.",',
     '        guidance: [{ label: "lane", text: lane }], skills: [{ name: "answer-check", files: [{ path: "SKILL.md", text: await Bun.file(new URL("./skills/answer-check/SKILL.md", import.meta.url)).text() }] }],',
-    '        responseSchema: { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "object",',
+    '        responseSchema: { $schema: "https://flow.jig.md/schemas/schema-0.json", type: "object",',
     '          properties: { lane: { type: "string", enum: [lane] } }, required: ["lane"], additionalProperties: false },',
     '      },',
     '    })));',
@@ -2054,7 +2054,7 @@ async function writeSpecialistParent(root: string): Promise<void> {
     ].join('\n'),
   )
   const settingsSchema = JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/schema-1.json',
+    $schema: 'https://flow.jig.md/schemas/schema-0.json',
     type: 'object',
     properties: { profile: { type: 'string' } },
     additionalProperties: false,
@@ -2093,7 +2093,7 @@ function flowProgram(): string {
     '  return [{name: "selected", files}];',
     '}',
     'const responseSchema = {',
-    '  $schema: "https://flow.jig.md/schemas/schema-1.json", type: "object",',
+    '  $schema: "https://flow.jig.md/schemas/schema-0.json", type: "object",',
     '  properties: {',
     '    decision: { type: "object", properties: {',
     '      route: { type: "string", enum: ["technical"] },',
@@ -2123,7 +2123,7 @@ function flowProgram(): string {
     '        : `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`, skills: await selectedSkills(),',
     '        ...(input.scenario === "api-text" ? {} : {',
     '          responseSchema: input.scenario === "schema-input-invalid"',
-    '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
+    '            ? { $schema: "https://flow.jig.md/schemas/schema-0.json", type: "unknown" }',
     '            : responseSchema,',
     '        }) },',
     '    });',

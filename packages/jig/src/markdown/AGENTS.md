@@ -48,7 +48,7 @@ the operator's authority and execution ownership intact.
 ## Verification
 
 - `bun test packages/jig/test/markdown-parser.test.ts packages/jig/test/markdown-runtime.test.ts packages/jig/test/markdown-worker.test.ts`
-- Worker tests build current source, exchange ordinary FLOW/1 messages and
+- Worker tests build current source, exchange ordinary FLOW/0 messages and
   validate the actual native Agent response-schema profile without a provider.
 - The installed public-CLI regression is gated by `JIG_LINUX_ROOTLESS_HOSTILE=1`;
   run it only on the provisioned proof host. It reuses the canonical regular

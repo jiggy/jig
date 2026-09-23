@@ -70,7 +70,7 @@ try {
     unknown
   >
   assert.equal(Object.hasOwn(manifest, 'private'), false)
-  assert.equal(manifest.version, '0.1.0-alpha.11')
+  assert.equal(manifest.version, '0.1.0-alpha.12')
   assert.equal(Object.hasOwn(manifest, 'scripts'), false)
   assert.equal(manifest.license, 'Apache-2.0')
   assert.deepEqual(manifest.publishConfig, { access: 'public' })
@@ -129,7 +129,7 @@ console.log("packed after handle");
     id: 'package:smoke',
     method: 'flow/run',
     params: {
-      protocol: 'run/1',
+      protocol: 'run/0',
       input: { source: 'packed-archive' },
       settings: { mode: 'root-only' },
       attachments: {},

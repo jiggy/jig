@@ -7,7 +7,7 @@ const encoder = new TextEncoder()
 const flow = (frontmatter: string, body = ''): Uint8Array =>
   encoder.encode(`---\n${frontmatter}\n---\n${body}`)
 
-describe('FLOW.md Metadata/1', () => {
+describe('FLOW.md Metadata/0', () => {
   const featureParsers = [
     ['Markdown', (value: unknown) => parseFlowDocument(flow(JSON.stringify(value))).metadata],
     ['JSON', (value: unknown) => parseFlowMetadataSidecar(encoder.encode(JSON.stringify(value)))],
@@ -339,7 +339,7 @@ function invalidDocuments(): Array<readonly [string, Uint8Array]> {
     ['non-string Skill metadata', flow(`${minimal}\nmetadata: {count: 1}`)],
     ['invalid tool declaration', flow(`${minimal}\nallowed-tools: [Read]`)],
     ['a non-object use declaration', flow(`${minimal}\nuses: {agent: true}`)],
-    ['an unsafe JSON/1 number', flow(`${minimal}\nx-number: 9007199254740993`)],
+    ['an unsafe JSON/0 number', flow(`${minimal}\nx-number: 9007199254740993`)],
     [
       'an escaping author reference',
       flow(`${minimal}\nuses:\n  agent:\n    contract: ../agent.json`),

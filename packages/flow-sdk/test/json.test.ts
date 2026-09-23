@@ -5,7 +5,7 @@ import { decodeJson, encodeJson, JsonViolation } from '../src/json.ts'
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-describe('FLOW JSON/1', () => {
+describe('FLOW JSON/0', () => {
   test('round-trips ordinary values', () => {
     const encoded = encodeJson({ answer: 42, nested: [true, null, '✓'] })
     expect(decodeJson(encoded)).toEqual({

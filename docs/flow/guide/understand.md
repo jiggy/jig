@@ -53,7 +53,7 @@ Skills can bundle scripts, and code can invoke those scripts directly too.
 FLOW's contribution is a common package and invocation contract around the
 complete method. Compatible Skills can become Markdown Flows, with execution
 subject to the host's interpreter and granted powers;
-[Package/1](../spec/package-format.md) defines the supported authoring format.
+[Package/0](../spec/package-format.md) defines the supported authoring format.
 
 ## Let capability build on capability
 

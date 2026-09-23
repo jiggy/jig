@@ -63,7 +63,7 @@ interface OpenRoot {
   readonly information: BigIntStats
 }
 
-/** Private host selection; the default Package/1 capture still includes every file. */
+/** Private host selection; the default Package/0 capture still includes every file. */
 export interface PackageCaptureSelection {
   readonly includes: (path: string) => boolean
   readonly maximumFiles: number

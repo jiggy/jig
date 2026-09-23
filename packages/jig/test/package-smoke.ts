@@ -226,14 +226,14 @@ try {
   const contractSource = join(consumer, 'contract-source')
   await mkdir(join(contractSource, 'agreements'), { recursive: true })
   const borrowed = JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/channel-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
     id: 'https://example.org/import-progress',
     version: '1.0.0',
     semantics: 'Progress is not success.',
     item: true,
   })
   const contract = JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
     channels: { progress: { direction: 'send', contract: './agreements/progress.json' } },
   })
   await writeFile(join(contractSource, 'FLOW.contract.json'), contract)
@@ -660,7 +660,7 @@ void binding;
       const input = JSON.stringify({
         instructions: 'Classify this request: I need help.',
         responseSchema: {
-          $schema: 'https://flow.jig.md/schemas/schema-1.json',
+          $schema: 'https://flow.jig.md/schemas/schema-0.json',
           type: 'object',
           properties: { category: { type: 'string', enum: ['support'] } },
           required: ['category'],

@@ -67,7 +67,7 @@ async function fixture(files: Record<string, string>) {
 }
 
 // A deterministic wire peer is evidence for the bundled worker/SDK seam, not a
-// provider or containment claim. Responses enter only through public FLOW/1.
+// provider or containment claim. Responses enter only through public FLOW/0.
 async function exchange(
   root: string,
   input: unknown,
@@ -91,7 +91,7 @@ async function exchange(
     id: 'markdown:root',
     method: 'flow/run',
     params: {
-      protocol: 'run/1',
+      protocol: 'run/0',
       input,
       settings: {},
       attachments: {},
@@ -133,7 +133,7 @@ async function exchange(
   }
 }
 
-describe('bundled Markdown worker over FLOW/1', () => {
+describe('bundled Markdown worker over FLOW/0', () => {
   test('requires an Agent decision even for one frontmatter-free return recipe', async () => {
     const root = await fixture({ 'FLOW.md': block('return @input') })
     const result = done({ exact: ['😺', null, 0] })
@@ -152,7 +152,7 @@ describe('bundled Markdown worker over FLOW/1', () => {
       const root = await fixture({
         'FLOW.md': block('send progress "partial"') + block('close progress'),
         'FLOW.contract.json': JSON.stringify({
-          $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
           channels: { progress: { direction: 'send' } },
         }),
       })
@@ -354,7 +354,7 @@ hosted('fresh installed Markdown admission on the provisioned proof host', () =>
       additionalProperties: false,
     }
     const descriptor = JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       id: 'https://example.org/markdown-echo',
       version: '1.0.0',
       input: resultSchema,

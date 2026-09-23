@@ -129,7 +129,7 @@ function rootRequest(id = 'host:1'): JsonObject {
     id,
     method: 'flow/run',
     params: {
-      protocol: 'run/1',
+      protocol: 'run/0',
       input: { subject: 'test' },
       settings: {},
       attachments: {},
@@ -1808,7 +1808,7 @@ describe('RunSession', () => {
     expect(transport.message(0).result).toEqual(result)
   })
 
-  test('classifies a complete invalid JSON/1 frame as PROTOCOL_ERROR', async () => {
+  test('classifies a complete invalid JSON/0 frame as PROTOCOL_ERROR', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async () => ({
       outcome: 'done',
@@ -1824,7 +1824,7 @@ describe('RunSession', () => {
     })
   })
 
-  test('reports a BOM as invalid JSON/1 before closing', async () => {
+  test('reports a BOM as invalid JSON/0 before closing', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async () => ({
       outcome: 'done',

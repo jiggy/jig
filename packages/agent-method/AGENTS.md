@@ -7,8 +7,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 ## Ownership
 
-- `src/` owns prompt preparation, structured schema checking, JSON/1 decoding,
-  result assembly, the optional package Skill reader, and ordinary Run/1 wiring.
+- `src/` owns prompt preparation, structured schema checking, JSON/0 decoding,
+  result assembly, the optional package Skill reader, and ordinary Run/0 wiring.
 - The root `FLOW.ts` invokes the bundled runtime; it performs no implicit Skill reads.
 - `contracts/http-request/` mirrors the ordinary
   Flow's exact delegated HTTP interface. Canonical descriptors live under
@@ -61,9 +61,9 @@ ordinary Flow, preserving operator ownership of Agent execution.
   `FLOW.contract.json` offers the exact Agent Run interface; an unsupported
   optional channel rejects before HTTP dispatch.
 - `settings.schema.json` owns API/model/token/output-mode authoring validation.
-  The HTTP call requests decoded JSON/1 responses. Its 8 MiB request / 12 MiB
+  The HTTP call requests decoded JSON/0 responses. Its 8 MiB request / 12 MiB
   response ceilings do not increase the operator's smaller default grant or
-  JSON/1 value limits; reject oversized requests before dispatch, never truncate.
+  JSON/0 value limits; reject oversized requests before dispatch, never truncate.
 - Preserve the shared 64-group, 1,024-item, 1 MiB content and 1 MiB rendered
   prompt limits. Reject duplicate selections, invalid UTF-8 and symlinks.
 - Runtime dependencies are bundled; installed consumers need no build hook.
@@ -76,7 +76,7 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 ## Work Guidance
 
-- Keep the bounded JSON/1 codec and schema profile local; no sibling private
+- Keep the bounded JSON/0 codec and schema profile local; no sibling private
   imports or general provider/schema framework.
 - Update source and rebuild the corresponding packed runtime when adapting the
   method. Do not edit generated `dist/` files.
@@ -87,7 +87,7 @@ ordinary Flow, preserving operator ownership of Agent execution.
   cannot survive in the packed runtime or declaration files.
 
 - `just build` compiles declarations and bundles the ordinary runtime.
-- `just test` checks the method, JSON/1, bounded reader, and Flow wiring.
+- `just test` checks the method, JSON/0, bounded reader, and Flow wiring.
   Session tests cover strict opaque references, immutable metadata and receipts,
   unchanged model prompts, and pre-dispatch HTTP refusal.
 - `just pack --destination <directory>` builds the complete archive explicitly.

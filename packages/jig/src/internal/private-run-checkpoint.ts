@@ -4,9 +4,9 @@ import { privateFilePath, sha256 } from './linux-file-input.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const RUN_CHECKPOINT_CONTRACT_ID = 'https://jig.md/contracts/run-checkpoint'
-export const RUN_CHECKPOINT_CONTRACT_VERSION = '1.0.0'
+export const RUN_CHECKPOINT_CONTRACT_VERSION = '0.1.0'
 export const RUN_CHECKPOINT_CONTRACT_DIGEST =
-  'sha256:dfeacf83289c3a1d5f0cad012d64b8f59dfbb32e9c39d2469019330215e979a7'
+  'sha256:42b07d88fbb5cf8af33d8422230e8db4ffdf579e32ec899b1700997c78855f6f'
 export const RUN_CHECKPOINT_LIMITS = Object.freeze({
   bytes: 2 * 1024 * 1024,
   fileBytes: 1024 * 1024,

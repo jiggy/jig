@@ -33,7 +33,7 @@ OperationErrorCode: TypeAlias = Literal[
 
 
 class OperationError(Exception):
-    """A Run/1 operation failed outside its normal declared outcomes."""
+    """A Run/0 operation failed outside its normal declared outcomes."""
 
     def __init__(
         self,

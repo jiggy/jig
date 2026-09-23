@@ -16,7 +16,7 @@ export interface RetainedAuthorClosure {
   readonly package: PackageArtifactRef
 }
 
-/** Retain every byte of one authentic author closure in protected Package/1 storage. */
+/** Retain every byte of one authentic author closure in protected Package/0 storage. */
 export async function retainAuthorClosure(
   storeRoot: string,
   closure: CapturedAuthorClosure,

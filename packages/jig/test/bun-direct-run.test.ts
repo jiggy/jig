@@ -117,7 +117,7 @@ describe('private Bun direct Run', () => {
       bunHostLibraryPath: '/test/lib',
     })
     const request = activationRequest()
-    const executionPackage = { kind: 'flow-package/1' as const, digest: digest('prepared') }
+    const executionPackage = { kind: 'flow-package/0' as const, digest: digest('prepared') }
     const executionLayout = {
       flowRoot: 'flows/first',
       members: ['flows/first', 'flows/second', 'libs/first', 'libs/second'],
@@ -365,7 +365,7 @@ function activationRequest(acp = false): PrivateActivationRequest {
     mode: 'run' as const,
     packagePath: 'flows/example',
     package: Object.freeze({
-      kind: 'flow-package/1' as const,
+      kind: 'flow-package/0' as const,
       digest: digest('package'),
     }),
     entrypoint: Object.freeze({ path: 'FLOW.ts', suffix: 'ts', selector: 'bun' }),

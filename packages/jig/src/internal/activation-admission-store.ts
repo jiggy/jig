@@ -1632,7 +1632,7 @@ export async function listPrivateRootExecutionWork(input: {
 
 /**
  * Reopen one unresolved Run from its pinned admission and candidate revision,
- * then reprove every protected Package/1 artifact before returning work. This
+ * then reprove every protected Package/0 artifact before returning work. This
  * never consults the current candidate or admission head.
  */
 export async function reacquirePrivateRootExecutionWork(input: {
@@ -5027,7 +5027,7 @@ async function reacquireCandidateArtifacts(
       ),
     ])
     for (const digest of [...digests].sort()) {
-      const reference = normalizePackageArtifactRef({ kind: 'flow-package/1', digest })
+      const reference = normalizePackageArtifactRef({ kind: 'flow-package/0', digest })
       captures.set(digest, await captureStoredPackage(packageStoreRoot, reference))
     }
     for (const [path, expected] of Object.entries(candidate.lock.packages)) {
@@ -5092,7 +5092,7 @@ function requirePackageProjection(
   } catch {
     invalid(
       'ADMISSION_ARTIFACT_MISMATCH',
-      `stored Package/1 ${path} no longer matches its candidate lock`,
+      `stored Package/0 ${path} no longer matches its candidate lock`,
     )
   }
   const observed = {
@@ -5105,7 +5105,7 @@ function requirePackageProjection(
   if (!sameBytes(canonicalJson(observed), canonicalJson(expected as unknown as JsonValue))) {
     invalid(
       'ADMISSION_ARTIFACT_MISMATCH',
-      `stored Package/1 ${path} no longer matches its candidate lock`,
+      `stored Package/0 ${path} no longer matches its candidate lock`,
     )
   }
 }
@@ -5123,7 +5123,7 @@ async function disposeCaptures(
   }
   return failures.length === 0
     ? undefined
-    : new AggregateError(failures, 'Package/1 captures did not all close')
+    : new AggregateError(failures, 'Package/0 captures did not all close')
 }
 
 function requireCandidateRoot(

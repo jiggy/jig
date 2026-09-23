@@ -902,7 +902,7 @@ proofDescribe('private rootless project session', () => {
           '',
         ].join('\n'),
       )
-      await writeFile(join(malformed, 'FLOW.meta.json'), 'not Metadata/1\n')
+      await writeFile(join(malformed, 'FLOW.meta.json'), 'not Metadata/0\n')
       await writeFile(join(malformed, 'FLOW.ts'), 'export {};\n')
 
       session = await openPrivateProjectSession({
@@ -922,7 +922,7 @@ proofDescribe('private rootless project session', () => {
         },
       })
       expect(JSON.stringify(failure)).not.toContain(root)
-      expect(JSON.stringify(failure)).not.toContain('not Metadata/1')
+      expect(JSON.stringify(failure)).not.toContain('not Metadata/0')
     } finally {
       await session?.close().catch(() => undefined)
       await rm(root, { recursive: true, force: true })
@@ -1357,7 +1357,7 @@ proofDescribe('private rootless project session', () => {
         '--request',
         JSON.stringify(directRequest),
       ])) as ForegroundRunResult
-      expect(ran.kind).toBe('private-foreground-run/1')
+      expect(ran.kind).toBe('private-foreground-run/0')
       expect(ran.runs).toHaveLength(2)
       expect(ran.runs[0]!.receipt).toEqual(ran.runs[1]!.receipt)
       for (const run of ran.runs) {
@@ -1515,7 +1515,7 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(
     join(worker, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       input: {
         type: 'object',
         properties: {
@@ -1582,7 +1582,7 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(
     join(router, 'settings.schema.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      $schema: 'https://flow.jig.md/schemas/schema-0.json',
       type: 'object',
       properties: { label: { const: 'parent' } },
       required: ['label'],
@@ -1606,7 +1606,7 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(
     join(invalidInput, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       input: {
         type: 'object',
         properties: { allowed: { const: true } },
@@ -1626,7 +1626,7 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(
     join(invalidResult, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       result: {
         type: 'object',
         properties: {
@@ -1780,7 +1780,7 @@ function agentRouterProgram(): string {
     '#!/usr/bin/env bun',
     'import { handle } from "./flow-sdk/index.ts";',
     'const responseSchema = {',
-    '  $schema: "https://flow.jig.md/schemas/schema-1.json",',
+    '  $schema: "https://flow.jig.md/schemas/schema-0.json",',
     '  type: "object", properties: { decision: {',
     '    type: "object", properties: {',
     '      route: { type: "string", enum: ["billing", "technical"] },',
@@ -1827,7 +1827,7 @@ function metadata(name: string, description: string): string {
 
 function ticketSchema(kind?: 'bug' | 'question'): string {
   return JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
     input: {
       type: 'object',
       properties: {
@@ -2029,7 +2029,7 @@ async function writeChannelProject(root: string): Promise<void> {
   await writeFile(
     join(flow, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       channels: { progress: { direction: 'send', required: false, schema: { type: 'string' } } },
     }),
   )
@@ -2107,7 +2107,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
     await writeFile(
       join(directory, 'FLOW.contract.json'),
       JSON.stringify({
-        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
         channels,
       }),
     )
@@ -2115,7 +2115,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
   await writeFile(
     join(root, 'flows/worker/FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       result: {
         type: 'object',
         properties: {
@@ -2268,7 +2268,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
     await writeFile(
       join(directory, 'FLOW.contract.json'),
       JSON.stringify({
-        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
         channels,
       }),
     )
@@ -2486,7 +2486,7 @@ async function invokeChannelCli(
   }
 }
 
-// Ordinary public Run/1 consumer: no repository SDK injection or host imports.
+// Ordinary public Run/0 consumer: no repository SDK injection or host imports.
 async function writeBoundResourceProject(root: string): Promise<void> {
   await writeFile(
     join(root, 'jig.ts'),
@@ -2497,7 +2497,7 @@ async function writeBoundResourceProject(root: string): Promise<void> {
   await writeFile(
     join(root, 'flows/decode/FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       attachments: { decoder: 'read' },
       outcomes: { blocked: 'The selected decoder refused its input.' },
     }),
@@ -2593,7 +2593,7 @@ async function invokeRun(root: string, request: unknown): Promise<ForegroundRunR
 }
 
 function firstRun(result: ForegroundRunResult): ForegroundRunEntry {
-  expect(result.kind).toBe('private-foreground-run/1')
+  expect(result.kind).toBe('private-foreground-run/0')
   expect(result.runs).toHaveLength(1)
   return result.runs[0]!
 }

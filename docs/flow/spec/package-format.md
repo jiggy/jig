@@ -1,4 +1,4 @@
-# FLOW Package/1
+# FLOW Package/0
 
 > *Status: prerelease specification candidate.*
 
@@ -15,7 +15,7 @@ to execute it.
 ## 1. Package tree
 
 A source adapter selects one component subtree and stages every descendant
-regular file. Package/1 has no ignore file, package-manager filtering, dependency
+regular file. Package/0 has no ignore file, package-manager filtering, dependency
 exclusion or generated-file exception: every selected regular file is content.
 
 Empty directories have no meaning. Symlinks and other special files are invalid.
@@ -28,11 +28,11 @@ visible source after calculating the package digest. A mutable-directory adapter
 uses descriptor-relative reads and retries detected changes; it cannot claim
 atomic source-snapshot provenance when its source mechanism does not provide it.
 
-Two source mechanisms produce the same Package/1 digest exactly when they present
+Two source mechanisms produce the same Package/0 digest exactly when they present
 the same canonical logical file map. Scripts, assets and references remain
 ordinary captured resources. Their existence does not grant execution or reads.
 
-## 2. Metadata/1
+## 2. Metadata/0
 
 Metadata is optional. The owner depends on the implementation:
 
@@ -59,11 +59,11 @@ Present known fields are validated as follows:
 | `compatibility` | Optional string describing environmental requirements. |
 | `metadata` | Optional string-to-string map of descriptive metadata. |
 | `allowed-tools` | Optional string whose execution restriction must be qualified and enforced by the runtime. |
-| `x-<LocalName>` | Inert extension value satisfying the metadata and JSON/1 bounds. |
+| `x-<LocalName>` | Inert extension value satisfying the metadata and JSON/0 bounds. |
 
 Malformed known fields reject package metadata. Unknown top-level fields remain
 inspectable but prevent execution qualification; they never silently acquire
-meaning. Extensions cannot grant powers or acquire core Metadata/1 meaning.
+meaning. Extensions cannot grant powers or acquire core Metadata/0 meaning.
 Invocation input/result schemas, outcomes, channels and attachments belong only
 to `FLOW.contract.json`; putting them in metadata does not declare them.
 
@@ -77,8 +77,8 @@ Empty frontmatter is empty metadata; a non-object YAML document rejects. Without
 frontmatter, the entire file is the exact Markdown body.
 
 The bytes through the closing delimiter are at most 262,144 bytes. A sidecar is
-at most 262,144 original UTF-8 bytes, is parsed as JSON/1 with duplicate-member
-checks, and must contain an object. Both metadata forms satisfy JSON/1 and:
+at most 262,144 original UTF-8 bytes, is parsed as JSON/0 with duplicate-member
+checks, and must contain an object. Both metadata forms satisfy JSON/0 and:
 
 ```text
 nesting depth          16
@@ -116,7 +116,7 @@ uses:
   archive: {}
 ```
 
-The first entry expects a named [Invocation Contract/1](invocation-contracts.md)
+The first entry expects a named [Invocation Contract/0](invocation-contracts.md)
 and its complete channel closure. The second declares an uncontracted slot
 available only through explicit host configuration, without an interchangeability
 claim. One namespace covers Flow and native targets. There is no method selector
@@ -167,7 +167,7 @@ requirements or an Agent's completion claim.
 
 A runtime must explicitly qualify enforcement of a declared `allowed-tools`
 restriction, or report execution unsupported. It cannot silently treat that
-field as inert. [Markdown/1](markdown-runtime.md) defines its bounded projection;
+field as inert. [Markdown/0](markdown-runtime.md) defines its bounded projection;
 this specification qualifies no code runtime's restriction enforcement.
 Resources and text cannot grant native tools, filesystem authority, credentials
 or provider configuration.
@@ -197,7 +197,7 @@ interpolation and shell commands are not selectors. It identifies implementation
 semantics, not installation or a host launch command.
 
 `FLOW.md` can contain ordinary instructions, exact SDK recipes or both, under
-[Markdown/1](markdown-runtime.md). A host must explicitly support and qualify its
+[Markdown/0](markdown-runtime.md). A host must explicitly support and qualify its
 selected parser/interpreter profile; absence of support fails visibly. A host
 cannot substitute prose for a different executable implementation.
 
@@ -207,12 +207,12 @@ Only these optional exact root owners establish validation:
 
 | File | Meaning |
 | --- | --- |
-| `FLOW.contract.json` | [Invocation Contract/1](invocation-contracts.md): input, complete result, explicit outcomes, channels and caller attachments. |
-| `settings.schema.json` | [Schema/1](schema-files.md): the complete immutable implementation settings object. |
+| `FLOW.contract.json` | [Invocation Contract/0](invocation-contracts.md): input, complete result, explicit outcomes, channels and caller attachments. |
+| `settings.schema.json` | [Schema/0](schema-files.md): the complete immutable implementation settings object. |
 
 Compile present declarations during inert inspection, before code or instructions
-run. Without a contract, input is any bounded JSON/1, only `done` is a normal
-outcome, output is bounded JSON/1, and there are no declared ports. An anonymous
+run. Without a contract, input is any bounded JSON/0, only `done` is a normal
+outcome, output is bounded JSON/0, and there are no declared ports. An anonymous
 contract may add only the local constraints needed; a named identity is optional.
 Without a settings schema only `{}` is valid settings. No code inference,
 environment fallback, per-call merge or defaults are inserted.
@@ -257,7 +257,7 @@ content bytes. Sort files by `P`, then compute:
 
 ```text
 SHA-256(
-  ASCII("FLOW-Package/1\0")
+  ASCII("FLOW-Package/0\0")
   || u64be(fileCount)
   || for each file (
        0x01

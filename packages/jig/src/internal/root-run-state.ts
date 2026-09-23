@@ -146,7 +146,7 @@ export function encodePrivateRootRunOrigin(value: PrivateRootRunOrigin): Uint8Ar
 export function decodePrivateRootRunOrigin(bytes: Uint8Array): PrivateRootRunOrigin {
   const origin = normalizePrivateRootRunOrigin(decodeJson1(bytes))
   if (!sameBytes(bytes, canonicalJson(origin as unknown as JsonValue))) {
-    throw new TypeError('root Run origin is not canonical JSON/1')
+    throw new TypeError('root Run origin is not canonical JSON/0')
   }
   return origin
 }
@@ -197,7 +197,7 @@ export function requirePrivateRootSubmissionId(value: unknown): asserts value is
   try {
     validateJson1(value)
   } catch {
-    invalid('SUBMISSION_ID_INVALID', 'root submission ID must be FLOW JSON/1')
+    invalid('SUBMISSION_ID_INVALID', 'root submission ID must be FLOW JSON/0')
   }
   const length = [...value].length
   if (length < 1 || length > 1024) {
@@ -223,7 +223,7 @@ export function decodePrivateRootRunRequest(bytes: Uint8Array): PrivateRootRunRe
     deadlineUnixMs: value.deadlineUnixMs as number,
   })
   if (!sameBytes(bytes, canonicalJson(request as unknown as JsonValue))) {
-    throw new TypeError('root Run request is not canonical JSON/1')
+    throw new TypeError('root Run request is not canonical JSON/0')
   }
   return request
 }

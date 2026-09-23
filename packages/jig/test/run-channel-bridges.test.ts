@@ -28,7 +28,7 @@ describe('ordinary command channel bridges', () => {
   test('slot references resolve only caller-declared agreements and share the file cache', async () => {
     const used = parseInvocationContract(
       canonicalJson({
-        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
         id: 'https://example.org/logger',
         version: '1.0.0',
         channels: { events: { direction: 'send', contract: './events.json' } },

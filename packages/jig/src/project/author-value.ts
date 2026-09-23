@@ -21,7 +21,7 @@ export function snapshotJson(
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) {
-      throw new TypeError(`${label} contains an invalid JSON/1 number`)
+      throw new TypeError(`${label} contains an invalid JSON/0 number`)
     }
     return value
   }

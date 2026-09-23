@@ -209,7 +209,7 @@ jobs:
             --jq '.[].tag_name' > "$RUNNER_TEMP/releases"
           if ! grep -Fx "$tag" "$RUNNER_TEMP/releases" > /dev/null; then
             {
-              printf 'Python SDK for FLOW Run/1.\n\n'
+              printf 'Python SDK for FLOW Run/0.\n\n'
               printf '[View jiggy-flow %s on PyPI](https://pypi.org/project/jiggy-flow/%s/).\n\n' "$VERSION" "$VERSION"
               printf '```sh\npython -m pip install jiggy-flow==%s\n```\n\n' "$VERSION"
               printf '[Python guide](https://flow.jig.md/guide/python). Python 3.11 or newer.\n\n'

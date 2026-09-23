@@ -12,16 +12,16 @@ the linked specifications define exact requirements.
 | Term | Meaning | Exact or explanatory source |
 | --- | --- | --- |
 | FLOW | Independent package and invocation standard | [Why FLOW exists](./understand.md) |
-| Flow | Package containing one reusable method | [Package/1](../spec/package-format.md) |
-| `FLOW.<ext>` | The package's single implementation; `FLOW.md` selects Markdown | [Package/1](../spec/package-format.md) |
-| `FLOW.meta.json` | Optional readable metadata and dependency declarations | [Package/1](../spec/package-format.md) |
-| Host | Consumer that supplies invocation and local execution policy | [Run/1](../spec/run-protocol.md) |
+| Flow | Package containing one reusable method | [Package/0](../spec/package-format.md) |
+| `FLOW.<ext>` | The package's single implementation; `FLOW.md` selects Markdown | [Package/0](../spec/package-format.md) |
+| `FLOW.meta.json` | Optional readable metadata and dependency declarations | [Package/0](../spec/package-format.md) |
+| Host | Consumer that supplies invocation and local execution policy | [Run/0](../spec/run-protocol.md) |
 | Runtime | Program or library advancing a method's internal execution | [The boundary](./understand.md#a-small-boundary-room-for-the-method) |
-| Run/1 | Protocol for one finite process exchange | [Run/1](../spec/run-protocol.md) |
-| Outcome | Method-declared result meaning, paired with output data | [Run/1](../spec/run-protocol.md) |
-| Schema | A declared shape used to validate a portable value | [Schema/1](../spec/schema-files.md) |
-| Invocation contract | Optional input/result contract, optionally named for independently maintained collaborators | [Invocation Contract/1](../spec/invocation-contracts.md) |
-| Channel contract | Exact declared meaning for live messages | [Channel Contract/1](../spec/channel-contracts.md) |
+| Run/0 | Protocol for one finite process exchange | [Run/0](../spec/run-protocol.md) |
+| Outcome | Method-declared result meaning, paired with output data | [Run/0](../spec/run-protocol.md) |
+| Schema | A declared shape used to validate a portable value | [Schema/0](../spec/schema-files.md) |
+| Invocation contract | Optional input/result contract, optionally named for independently maintained collaborators | [Invocation Contract/0](../spec/invocation-contracts.md) |
+| Channel contract | Exact declared meaning for live messages | [Channel Contract/0](../spec/channel-contracts.md) |
 
 ## Is FLOW tied to Jig?
 

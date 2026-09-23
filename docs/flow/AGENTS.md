@@ -35,7 +35,7 @@ and invocation-contract semantics.
 
 - Keep FLOW host-neutral. A host example cannot turn a Jig implementation
   choice into a portable requirement.
-- FLOW Run/1 owns wire behavior; Run SDK/1 defers to it when they differ.
+- FLOW Run/0 owns wire behavior; Run SDK/0 defers to it when they differ.
 - Explanatory pages are not a second conformance source.
 - The public origin is `https://flow.jig.md`; route changes must reconcile the
   FLOW site navigation, `llms.txt`, and assembly mappings.

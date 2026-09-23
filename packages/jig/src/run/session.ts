@@ -111,7 +111,7 @@ export type RunHostOperationTerminal =
     }
   | RunHostOperationFailure
 
-/** Private host seam. Portable components see only Run/1. */
+/** Private host seam. Portable components see only Run/0. */
 export interface RunHostOperationDispatcher {
   readonly channels?: ChannelParticipant
   /** Private nonblocking consumer of bounded Flow diagnostics, never provider-private output. */
@@ -248,7 +248,7 @@ const DEFAULT_LIMITS: RunHostLimits = Object.freeze({
 
 /**
  * One pre-release host session for one already selected and sandboxed process.
- * The optional dispatcher is private Jig host machinery, not a Run/1 field.
+ * The optional dispatcher is private Jig host machinery, not a Run/0 field.
  */
 export class RunHostSession {
   private readonly limits: RunHostLimits
@@ -504,7 +504,7 @@ export class RunHostSession {
     const settlement = request.method === 'channel/close' || request.method === 'channel/release'
     const channelReserve = this.dispatcher?.channels === undefined ? 0 : 32
     if (this.componentIds.size >= MAX_COMPONENT_REQUEST_IDS) {
-      this.failProtocol('component exceeded the Run/1 request-ID lifetime limit')
+      this.failProtocol('component exceeded the Run/0 request-ID lifetime limit')
       return
     }
     if (!settlement && this.componentIds.size >= MAX_COMPONENT_REQUEST_IDS - channelReserve) {
@@ -524,7 +524,7 @@ export class RunHostSession {
     if (this.responseOverflowed) return
     const active = this.pendingResponses + this.operationWaiters.size + this.channelRequests.size
     if (this.dispatcher?.channels !== undefined && active >= MAX_PENDING_COMPONENT_REQUESTS) {
-      this.recordResourceFailure('component exceeded the Run/1 simultaneous request limit')
+      this.recordResourceFailure('component exceeded the Run/0 simultaneous request limit')
       this.startTermination()
       return
     }
@@ -753,7 +753,7 @@ export class RunHostSession {
       line = encodeFrame(value)
     } catch {
       line = encodeFrame(
-        operationError(id, 'RESOURCE_EXHAUSTED', 'the response exceeds JSON/1 limits'),
+        operationError(id, 'RESOURCE_EXHAUSTED', 'the response exceeds JSON/0 limits'),
       )
     }
     if (this.queuedResponseBytes + line.byteLength > MAX_QUEUED_RESPONSE_BYTES) {
@@ -842,7 +842,7 @@ export class RunHostSession {
       // joins and replays. A child root response may fit with its shorter ID.
       canonicalJson(operationResponse('r'.repeat(128), terminal))
     } catch {
-      terminal = failedOperation('RESOURCE_EXHAUSTED', 'the operation result exceeds JSON/1 limits')
+      terminal = failedOperation('RESOURCE_EXHAUSTED', 'the operation result exceeds JSON/0 limits')
       bytes = canonicalJson(terminal as unknown as JsonValue).byteLength
     }
     if (this.retainedOperationBytes + bytes > MAX_RETAINED_OPERATION_BYTES) {
@@ -1121,7 +1121,7 @@ function rootRequest(invocation: RunHostInvocation): JsonObject {
     id: ROOT_ID,
     method: 'flow/run',
     params: {
-      protocol: 'run/1',
+      protocol: 'run/0',
       input: invocation.input,
       settings: invocation.settings,
       attachments: invocation.attachments as unknown as JsonObject,
@@ -1332,7 +1332,7 @@ function operationSignature(params: JsonObject): string {
     if (key !== 'operationId') semantic[key] = value
   }
   return createHash('sha256')
-    .update(Buffer.from('FLOW-Call/1\0', 'ascii'))
+    .update(Buffer.from('FLOW-Call/0\0', 'ascii'))
     .update(canonicalJson(semantic))
     .digest('hex')
 }
@@ -1449,7 +1449,7 @@ function requireWireId(value: JsonValue | undefined): string {
     value.includes('\n') ||
     encoder.encode(value).byteLength > 128
   )
-    throw new Error('invalid Run/1 request ID')
+    throw new Error('invalid Run/0 request ID')
   return value
 }
 

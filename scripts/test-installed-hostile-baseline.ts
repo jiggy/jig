@@ -381,7 +381,7 @@ async function writeHostileFlow(
   await writeFile(
     join(flow, 'FLOW.contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
       ...invocation,
     }),
   )
@@ -410,7 +410,7 @@ const lines = createInterface({ input: process.stdin });
 for await (const line of lines) {
   const request = JSON.parse(line);
   if (request.jsonrpc !== "2.0" || request.method !== "flow/run") {
-    throw new Error("expected one FLOW Run/1 request");
+    throw new Error("expected one FLOW Run/0 request");
   }
   const envelope = requireHostileEnvelope();
   const output = await (async () => {${attack}

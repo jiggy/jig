@@ -1,6 +1,6 @@
 # jiggy-flow
 
-Minimal, dependency-free Python projection of FLOW Run/1.
+Minimal, dependency-free Python projection of FLOW Run/0.
 
 The SDK is prerelease software and requires Python 3.11 or newer. Install the
 latest published prerelease with `python -m pip install --upgrade --pre jiggy-flow`.
@@ -9,9 +9,9 @@ do not establish a stable compatibility promise. The SDK has no third-party
 runtime dependencies.
 
 The [Python guide](https://flow.jig.md/guide/python) walks through a complete
-method and a local Run/1 exchange. FLOW does not require Jig; execution support
-belongs to the chosen host. Its authoritative documents are [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
-[Run/1](https://flow.jig.md/spec/run-protocol). This installed README contains
+method and a local Run/0 exchange. FLOW does not require Jig; execution support
+belongs to the chosen host. Its authoritative documents are [Run SDK/0](https://flow.jig.md/spec/run-sdk) and
+[Run/0](https://flow.jig.md/spec/run-protocol). This installed README contains
 a minimal quickstart.
 
 Finite work uses `handle()` in the package's single `FLOW.py` entrypoint:
@@ -39,7 +39,7 @@ diagnostic stderr, including output after `handle()` returns. Output written
 before `handle()` begins and raw writes to file descriptor 1 remain invalid
 protocol output. Handler cancellation uses ordinary `asyncio.CancelledError`.
 Cancelling a task awaiting `call()` sends the matching
-Run/1 cancellation notification.
+Run/0 cancellation notification.
 
 `call()` invokes a declared local slot and returns the complete
 `{"outcome": ..., "output": ...}` result. Domain outcomes such as `blocked` or

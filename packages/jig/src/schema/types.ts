@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from '../json.js'
 
-export const SCHEMA_1_URI = 'https://flow.jig.md/schemas/schema-1.json'
+export const SCHEMA_1_URI = 'https://flow.jig.md/schemas/schema-0.json'
 
 export const SCHEMA_1_LIMITS = Object.freeze({
   bytes: 262_144,
@@ -72,7 +72,7 @@ export interface CompiledSchema {
   readonly path: string
   readonly schemaPointer: string
 
-  /** Validate one bounded FLOW JSON/1 value without changing it. */
+  /** Validate one bounded FLOW JSON/0 value without changing it. */
   validate(instance: unknown, code: string): void
 }
 

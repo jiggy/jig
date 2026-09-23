@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -18,9 +18,13 @@ import { buildPrivateActivationRequests } from '../src/project/package-resolutio
 import { retainFlowSourcePackages } from '../src/project/retained-flow.js'
 import { settleTestCommand } from './fixtures/bounded-command.js'
 
+// These cases retain and clean multiple packages on disk. Let storage settle
+// under the combined release suite without changing production deadlines.
+setDefaultTimeout(20_000)
+
 const contractId = 'https://example.org/contracts/feature-review'
 const contract = JSON.stringify({
-  $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+  $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
   id: contractId,
   version: '1.0.0',
   features: { conversation: 'Implements serial follow-up requests; authority is separate.' },
@@ -119,7 +123,7 @@ describe('retained project feature admission evidence', () => {
         'flows/provider': {
           ...provider(['conversation']),
           'settings.schema.json': JSON.stringify({
-            $schema: 'https://flow.jig.md/schemas/schema-1.json',
+            $schema: 'https://flow.jig.md/schemas/schema-0.json',
             type: 'object',
             properties: { mode: { enum: ['quiet', 'verbose'] } },
             additionalProperties: false,

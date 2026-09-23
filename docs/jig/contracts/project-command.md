@@ -39,7 +39,7 @@ versions; the descriptor carries the version and exact interface.
 - **See it in an application:** follow
   [an issue becoming a tested patch](../guide/tested-patch.md).
 - **Understand contract matching:** read
-  [FLOW Invocation Contract/1](https://flow.jig.md/spec/invocation-contracts).
+  [FLOW Invocation Contract/0](https://flow.jig.md/spec/invocation-contracts).
 
 The interface is a prerelease candidate. Check the specification and your
 installed host's supported contract before adopting a descriptor update.

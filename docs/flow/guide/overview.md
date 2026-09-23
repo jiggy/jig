@@ -21,15 +21,15 @@ A compatible host supplies local powers.
 | I want to… | Read |
 | --- | --- |
 | See code and Agent work compose through one boundary | [Understand FLOW](./understand.md), then [the Jig example](https://jig.md/guide/request-triage) |
-| Package a reusable procedure | [Start building](./start.mdx), then [Package/1](../spec/package-format.md) |
+| Package a reusable procedure | [Start building](./start.mdx), then [Package/0](../spec/package-format.md) |
 | Write a Python method and exercise the protocol | [Python SDK guide](./python.md) |
 | Write TypeScript under a qualified Jig build | [Jig's first Flow](https://jig.md/guide/) |
-| Understand portable input and output values | [JSON/1](../spec/json-values.md) |
-| Validate inputs, settings, or results | [Schema/1](../spec/schema-files.md) |
-| Launch a method or implement a host | [Run/1](../spec/run-protocol.md) |
-| Implement or use an SDK | [Run SDK/1](../spec/run-sdk.md) |
-| Define an independently maintained invocation interface | [Invocation Contract/1](../spec/invocation-contracts.md) |
-| Define exact live-message meaning | [Channel Contract/1](../spec/channel-contracts.md) |
+| Understand portable input and output values | [JSON/0](../spec/json-values.md) |
+| Validate inputs, settings, or results | [Schema/0](../spec/schema-files.md) |
+| Launch a method or implement a host | [Run/0](../spec/run-protocol.md) |
+| Implement or use an SDK | [Run SDK/0](../spec/run-sdk.md) |
+| Define an independently maintained invocation interface | [Invocation Contract/0](../spec/invocation-contracts.md) |
+| Define exact live-message meaning | [Channel Contract/0](../spec/channel-contracts.md) |
 | Resolve terminology or a common question | [Concepts and questions](./concepts.md) |
 
 ## What belongs to a host?
@@ -48,4 +48,4 @@ specification. Copy Markdown when you need the page in an Agent's context.
 The standard is prerelease. An SDK candidate in source is not necessarily a
 published package. Authoring guides identify their execution prerequisites;
 implementers should qualify a concrete revision against the public
-[conformance material](https://github.com/jiggy/jig/tree/main/conformance/run-1).
+[conformance material](https://github.com/jiggy/jig/tree/main/conformance/run-0).

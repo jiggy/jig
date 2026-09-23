@@ -1,7 +1,7 @@
 {
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
   "id": "https://jig.md/contracts/agent-run",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "features": {
     "events": "Implements the optional public-update protocol, including honest observation loss.",
     "conversation": "Implements conversational commands, replies, turn results and final settlement; prompt allowances remain separately granted.",

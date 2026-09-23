@@ -111,7 +111,7 @@ export async function* readFrames(input: AsyncIterable<Uint8Array>): AsyncGenera
       const segment = chunk.subarray(start, index)
       const frameLength = length + segment.byteLength
       if (frameLength > MAX_FRAME_BYTES) {
-        throw new FramingViolation('frame exceeds FLOW JSON/1 byte limit')
+        throw new FramingViolation('frame exceeds FLOW JSON/0 byte limit')
       }
       ensureCapacity(frameLength)
       buffer.set(segment, length)
@@ -125,7 +125,7 @@ export async function* readFrames(input: AsyncIterable<Uint8Array>): AsyncGenera
       const remainder = chunk.subarray(start)
       const nextLength = length + remainder.byteLength
       if (nextLength > MAX_FRAME_BYTES) {
-        throw new FramingViolation('frame exceeds FLOW JSON/1 byte limit')
+        throw new FramingViolation('frame exceeds FLOW JSON/0 byte limit')
       }
       ensureCapacity(nextLength)
       buffer.set(remainder, length)
@@ -141,7 +141,7 @@ export async function* readFrames(input: AsyncIterable<Uint8Array>): AsyncGenera
     while (capacity < required) {
       capacity = Math.min(MAX_FRAME_BYTES, capacity * 2)
       if (capacity < required && capacity === MAX_FRAME_BYTES) {
-        throw new FramingViolation('frame exceeds FLOW JSON/1 byte limit')
+        throw new FramingViolation('frame exceeds FLOW JSON/0 byte limit')
       }
     }
     const grown = new Uint8Array(capacity)

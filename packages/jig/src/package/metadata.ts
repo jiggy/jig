@@ -248,7 +248,7 @@ function convertScalar(node: Scalar): JsonValue {
     }
     const value = Number(source)
     if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) {
-      invalid('METADATA_NUMBER', 'frontmatter number is outside FLOW JSON/1', 'FLOW.md')
+      invalid('METADATA_NUMBER', 'frontmatter number is outside FLOW JSON/0', 'FLOW.md')
     }
     return value
   }
@@ -362,7 +362,7 @@ export function requireAuthorReference(value: string, field: string, owner = 'FL
 
 function requireLocalName(value: JsonValue | undefined, field: string, path: string): string {
   if (typeof value !== 'string' || !isLocalName(value)) {
-    invalid('METADATA_LOCAL_NAME', `${field} must be a Metadata/1 LocalName`, path)
+    invalid('METADATA_LOCAL_NAME', `${field} must be a Metadata/0 LocalName`, path)
   }
   return value
 }
