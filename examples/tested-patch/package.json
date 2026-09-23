@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jigging/agent-acp": "workspace:*"
+    "@jigging/agent-acp": "0.1.0-alpha.3"
   },
   "devDependencies": {
-    "@jigging/flow": "workspace:*"
+    "@jigging/flow": "0.1.0-alpha.12"
   }
 }

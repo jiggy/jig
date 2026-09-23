@@ -19,10 +19,18 @@ The example declares the ordinary ACP Agent dependency and includes
 choice, not a Jig preference. The `defaultProviders` map selects that Binding
 for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/project/logs-cases.json`.
-After [workspace setup](dependencies.md#local-workspace-packages), run from the example directory:
+Download the example directory, then install its pinned public dependencies
+without lifecycle scripts:
 
 ```sh
-jig review
+bun install --ignore-scripts
+```
+
+Keep the resulting lock so later reviews use the same resolution. Run from the
+example directory:
+
+```sh
+jig review --allow-resolution-network
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 

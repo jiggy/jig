@@ -9,7 +9,14 @@ stays unchanged.
 
 Install Jig on a [supported host](https://jig.md/guide/).
 
-The application declares the ordinary ACP Agent package as a workspace dependency.
+The application declares pinned ordinary FLOW and ACP Agent packages. Download
+this directory, install its dependencies with lifecycle scripts disabled, and
+keep the resulting lock so review uses the same resolved packages:
+
+```sh
+bun install --ignore-scripts
+```
+
 Select your native client in `bindings/agent.ts`; it shows Pi as an example,
 with Codex and Claude supported by the same interface. Follow
 [Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
@@ -18,7 +25,7 @@ Then inspect `issue.json`,
 From this directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
