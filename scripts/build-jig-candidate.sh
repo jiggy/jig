@@ -27,6 +27,19 @@ if [ ! -f "$JIG_NPM" ] || [ ! -x "$JIG_NPM" ]; then
   echo "JIG_NPM must name an executable file" >&2
   exit 2
 fi
+JIG_AUTHORING_NODE_PATH=${JIG_AUTHORING_NODE_PATH:-${FLOW_NODE:-$(command -v node || true)}}
+case $JIG_AUTHORING_NODE_PATH in
+  /*) ;;
+  *)
+    echo "set JIG_AUTHORING_NODE_PATH to an absolute Node executable for the candidate gate" >&2
+    exit 2
+    ;;
+esac
+if [ ! -f "$JIG_AUTHORING_NODE_PATH" ] || [ ! -x "$JIG_AUTHORING_NODE_PATH" ]; then
+  echo "JIG_AUTHORING_NODE_PATH must name an executable file" >&2
+  exit 2
+fi
+export JIG_AUTHORING_NODE_PATH
 npm_version=$("$JIG_NPM" --version)
 case $npm_version in
   ""|*[!0-9A-Za-z.+-]*)
