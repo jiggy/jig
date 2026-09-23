@@ -73,6 +73,10 @@ export function PackageShowcase({ data }: { data: PackageShowcaseData }) {
   return (
     <section id="showcase" className="showcase package-showcase" aria-labelledby="package-title">
       <div className="showcase-instrument">
+        <div className="instrument-chrome" aria-hidden="true">
+          <div className="window-dots"><span /><span /><span /></div>
+          <span className="chrome-badge">FLOW Engine · Run/1 Protocol</span>
+        </div>
         <div className="showcase-tabs" role="tablist" aria-label={data.title}>
           {data.stages.map((stage, index) => (
             <button

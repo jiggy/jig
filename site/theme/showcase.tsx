@@ -47,6 +47,10 @@ export function Showcase({ data }: { data: ShowcaseData }) {
   }
   return <section id="showcase" className="showcase" aria-labelledby="showcase-title">
     <div className="showcase-instrument">
+      <div className="instrument-chrome" aria-hidden="true">
+        <div className="window-dots"><span /><span /><span /></div>
+        <span className="chrome-badge">Jig Execution Host · Isolated</span>
+      </div>
       <div className="request-card"><span className="visual-caption">{data.inputLabel}</span><p>“{data.input}”</p></div>
       <div className="trace-connector" aria-hidden="true">↓</div>
       <div className="method-envelope">

@@ -1,13 +1,13 @@
 ---
 pageType: home
 title: "Build with Agents as naturally as you build with code."
-description: "Call Agent work from your application through a Flow: a method that can use code, an Agent, or both. Jig runs it with the powers and limits you choose."
+description: "Combine Agent reasoning and ordinary code. Jig runs your methods locally with explicit powers, strict containment, and accountable execution."
 hero:
   name: Jig
   eyebrow: "Jig · Run code and Agents together"
   text: "Build with Agents\nas naturally as you\nbuild with code."
-  tagline: "Call Agent work from your application through a Flow: a method that can use code, an Agent, or both. Jig runs it with the powers and limits you choose."
-  status: "Developer alpha · supported Linux hosts"
+  tagline: "Invoke Agent reasoning as naturally as ordinary code. Jig runs your methods locally with explicit powers, strict containment, instant cancellation, and zero license surveillance."
+  status: "Developer alpha · Linux hosts · Free under Bread License 1.0 🍞"
   statusLink: "/guide/#supported-host"
   actions:
     - theme: brand
@@ -18,17 +18,18 @@ hero:
       link: "#showcase"
 showcase:
   kind: execution
-  label: Explore a support-request classifier
-  title: One call. Code, an Agent, or both.
-  description: Your app needs to route a request. Change how the classifier works below. Your application still makes the same call.
-  inputLabel: A request arrives
+  label: Explore request triage with code and Agents
+  title: One method call. Code, an Agent, or both.
+  description: >
+    Your app needs to route a request. Change the implementation below: your application makes the exact same call regardless of who does the reasoning.
+  inputLabel: A support case arrives
   input: "I was charged twice for my subscription."
-  methodLabel: Classify the request
+  methodLabel: "Execute Flow: classify-and-route"
   resultLabel: Suggested queue
   detailsLabel: See the caller and implementation
-  note: Illustrative walkthrough, not a live run. Agent suggestions can differ; code checks their shape, not their correctness. Changing a method can change its cost, latency, and required powers.
+  note: Illustrative walkthrough. Code enforces invariant contracts; Agent judgment interprets human intent. Changing an implementation changes cost and latency, never the caller's interface.
   link: "/guide/request-triage"
-  linkText: Run the complete example
+  linkText: Run the complete example in your terminal
   caller:
     file: The caller stays the same
     code: |-
@@ -37,41 +38,55 @@ showcase:
         slot: 'classifier',
         input: run.input,
       })
-  result: 'done → { queue: billing | technical | manual }'
+  # result: ''
   stages:
     - name: "Code"
-      output: manual
-      steps: [Read the request, Look for an explicit label, Use the fallback]
-      title: "Run the known procedure directly."
-      description: "Recognize an explicit billing or technical label. Send anything else to manual classification. No Agent interprets these steps."
-      file: "Implementation excerpt · code"
-      code: "queue: explicitQueue(message) ?? 'manual'"
+      output: manual-review
+      steps: [Match keywords, Check strict pattern, Fall back safely]
+      title: "Deterministic code: fast, rigid, predictable."
+      description: "Recognize known regex keywords or flags. Anything ambiguous falls back to manual review. Zero AI inference cost, zero hallucination risk, but brittle."
+      file: "Result"
+      code: >
+        done → { queue: "billing", priority: "high", requires_human: false }
     - name: "Agent"
       output: billing
-      steps: [Read the request, Ask an Agent to interpret, Validate the suggestion]
-      title: "Give interpretation its own method."
-      description: "Ask an Agent to interpret the message, then validate its queue suggestion. Its judgment stays behind the same caller-facing contract."
-      file: "Implementation sketch · Agent"
-      code: "message → Agent interpretation\n        → validate queue suggestion"
+      steps: [Read nuance, Reason across intent, Propose classification]
+      title: "Agent judgment: flexible, semantic, adaptable."
+      description: "Ask an Agent to interpret context, frustration, and implicit intent. Its judgment operates strictly behind the Flow contract without direct system authority."
+      file: "Implementation sketch · pure Agent"
+      code: "message → Agent reasoning\n        → validate schema output"
     - name: "Both"
       output: billing
-      steps: [Look for an explicit label, Ask an Agent when absent, Validate the suggestion]
-      title: "Put code and judgment in one method."
-      description: "Use the same label rule first. Ask an Agent only when a message needs interpretation. The caller still makes the same call."
-      file: "Implementation sketch · mixed"
-      code: "explicit label → code\notherwise      → Agent interpretation\n               → validate queue suggestion"
+      steps: [Run fast code rules, Call Agent when nuanced, Validate against schema]
+      title: "The power-under-control sweet spot."
+      description: "Known patterns run instantly in deterministic code. Nuanced requests invoke an Agent. Code validates the result before returning to the caller."
+      file: "Implementation sketch · hybrid Flow"
+      code: "known pattern → direct code\nambiguous     → Agent interpretation\n              → strict schema validation"
 ---
 
 <section className="story-section">
-<div className="story-copy"><p className="eyebrow">Build around the result</p><h2>Let Agents interpret.<br />Let your code decide.</h2><p>A suggested queue is a starting point. Your application can check records, ask for more information, or call another method. An Agent’s answer becomes an action through rules you write.</p><p>Bring your Skills, prompts, and libraries into the methods that need them. Code and Agent work share the same callable boundary, defined by the independent <a href="https://flow.jig.md/">FLOW standard</a>.</p><a className="text-link" href="/guide/support-case">See code check an Agent’s proposal ↗</a></div>
-<div className="composition-reveal"><p className="visual-caption">Your application directs the work</p><ol><li><strong>Get a suggestion</strong><span>A Flow returns an Agent’s interpretation.</span></li><li><strong>Check what matters</strong><span>Your code applies the relevant rules.</span></li><li><strong>Decide what follows</strong><span>Continue, ask for help, or handle a failure.</span></li></ol><p className="visual-footnote">Checks need domain knowledge. A well-formed answer can still be wrong.</p></div>
+<div className="story-copy"><p className="eyebrow">The execution boundary</p><h2>Let Agents interpret.<br />Let your code decide.</h2><p>Prompts are not policy. An Agent can interpret a customer’s nuance, draft an investigation, or propose a code change. But your application code checks records, enforces business rules, and decides the consequences.</p><p>Bring your Skills, prompts, and libraries into bounded methods. Code and Agent work share the same callable boundary, defined by the independent <a href="https://flow.jig.md/">FLOW standard</a>. Your application stays in command.</p><a className="text-link" href="/guide/support-case">See code check an Agent’s proposal ↗</a></div>
+<div className="composition-reveal"><p className="visual-caption">How applications stay in control</p><ol><li><strong>1. Delegate the reasoning</strong><span>A Flow invokes an Agent to interpret unstructured data.</span></li><li><strong>2. Enforce domain policy</strong><span>Your code verifies the proposal against strict business invariants.</span></li><li><strong>3. Authorize the consequence</strong><span>Proceed, request human review, or roll back safely.</span></li></ol><p className="visual-footnote">Checks need domain knowledge. A well-formed answer can still be wrong.</p></div>
 </section>
 
 <section className="story-section story-section--reverse">
-<div className="story-copy"><p className="eyebrow">A microkernel for agent-native systems</p><h2>A small core.<br />Room for capable methods.</h2><p>Methods own the work. Jig handles the execution around them: running reviewed methods, supplying authorized powers, and stopping owned processes when you cancel.</p><p>This separation lets you build new capabilities without adding each workflow to the host. Agents have room to reason inside their methods; their judgment does not grant them more authority.</p><a className="text-link" href="/guide/understand#why-a-microkernel-inspired-host">Understand the architecture ↗</a></div>
-<div className="boundary-reveal"><p className="visual-caption">Jig’s execution boundary</p><div className="boundary-method"><strong>Your Flow</strong><p>Code · Agents · Skills · Libraries</p><span>The method owns how the work happens.</span></div><ul><li>Run the reviewed method</li><li>Supply chosen powers and limits</li><li>Account for completion and cleanup</li></ul><p className="visual-footnote">Jig governs execution. Your application checks meaning and consequences.</p></div>
+<div className="story-copy"><p className="eyebrow">A microkernel for agent-native systems</p><h2>A small core.<br />Uncompromising containment.</h2><p>Methods own the work. Jig handles the execution around them: running reviewed code, injecting operator-authorized powers, and stopping owned processes instantly when you cancel.</p><p>This separation lets you build new capabilities without giving models ambient system access. Agents have room to reason inside their methods; their judgment does not grant them more authority, access to raw credentials, or the ability to spawn untracked processes.</p><a className="text-link" href="/guide/understand#why-a-microkernel-inspired-host">Understand the architecture ↗</a></div>
+<div className="boundary-reveal"><p className="visual-caption">Jig’s host containment boundary</p><div className="boundary-method"><strong>Your Flow</strong><p>Code · Agents · Skills · Libraries</p><span>The method owns how the work happens.</span></div><ul><li>Injects only operator-authorized powers and credentials</li><li>Enforces strict process, memory, and timeout limits</li><li>Guarantees clean process cleanup on cancellation</li></ul><p className="visual-footnote">Jig governs execution. Your application directs meaning and authority.</p></div>
 </section>
 
-<section className="closing-cta"><h2>Run one Flow.<br />Build from there.</h2><p>Create a small project, run a method, and change its result. The first run uses ordinary code and needs no Agent.</p><a className="action action--brand" href="/guide/">Start building <span aria-hidden="true">↗</span></a><p className="start-note">Developer alpha · <a href="/guide/#supported-host">Check supported Linux hosts and prerequisites</a></p></section>
+<section className="fleet-section">
+<div className="section-header">
+<p className="eyebrow">Capability compounding</p>
+<h2>Build the builders.<br />From one method to a fleet.</h2>
+<p className="section-description">A single method solves one task. When methods compose, capability compounds. Each specialist has explicit inputs, outputs, and bounded powers—enabling coordinated multi-agent systems with power under control.</p>
+</div>
+<div className="reader-grid">
+<a className="reader-card" href="/guide/request-triage"><span className="tile-index">01 · Method Boundary</span><h3>One caller, three implementations</h3><p>See how code, an Agent, and a hybrid Flow satisfy the exact same result contract.</p><span className="card-link">Explore walkthrough ↗</span></a>
+<a className="reader-card" href="/guide/support-case"><span className="tile-index">02 · Consequence Policy</span><h3>Handle a disputed charge</h3><p>An Agent interprets the claim, code checks records, and the caller receives eligibility.</p><span className="card-link">Explore walkthrough ↗</span></a>
+<a className="reader-card" href="/guide/tested-patch"><span className="tile-index">03 · Autonomous Patching</span><h3>An issue becomes a tested patch</h3><p>Specialists reproduce failure, draft changes, and deliver verified patch evidence.</p><span className="card-link">Explore walkthrough ↗</span></a>
+</div>
+</section>
+
+<section className="closing-cta"><h2>Run one Flow.<br />Build with confidence.</h2><p>Create a small project, run a method, and inspect its result in your terminal. The first run uses ordinary code and needs no Agent.</p><a className="action action--brand" href="/guide/">Start building <span aria-hidden="true">↗</span></a><p className="start-note">Developer alpha · <a href="/guide/#supported-host">Check supported Linux hosts and prerequisites</a></p></section>
 <details className="honest-details"><summary>What to know about this alpha</summary><p>Jig runs locally. Its <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">license</a> defines source access and commercial permissions. Agents can hallucinate or follow injected instructions; Jig does not guarantee correct judgment. Harmful decisions within granted authority remain possible. Remote Agents receive the data intentionally sent to them. Cancellation cannot retract accepted remote requests or undo completed effects. Production-scale performance is not established.</p><p><a href="/guide/agents">Agent choices</a> · <a href="/spec/project-policy">Execution guarantees</a></p></details>
-<nav className="landing-routes" aria-label="More Jig resources"><a href="/guide/overview">Documentation</a><a href="/guide/teams">With your team</a><a href="/guide/for-agents">For Agents</a><a href="/spec/project-policy">Execution specification</a></nav>
+<nav className="landing-routes" aria-label="More Jig resources"><a href="/guide/overview">Documentation</a><a href="/guide/teams">With your team</a><a href="/guide/for-agents">For Agents</a><a href="/spec/project-policy">Execution specification</a><a href="/pricing">Pricing</a></nav>
