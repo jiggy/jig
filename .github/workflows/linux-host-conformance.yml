@@ -31,14 +31,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: linux-host-conformance-${{ github.ref }}
-  cancel-in-progress: true
+  group: linux-host-conformance-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  rootless-linux:
+  host-artifacts:
+    name: Freeze Linux host artifacts
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-
+    timeout-minutes: 15
     steps:
       - name: Check out the exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,6 +50,58 @@ jobs:
           just-version: '1.43.1'
 
       - name: Install exact Bun build tool
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.3
+
+      - name: Install Jig, Agent method, and FLOW build dependencies
+        run: >-
+          bun install --ignore-scripts --filter @jigging/jig
+          --filter @jigging/agent-method --filter @jigging/flow-authoring
+          --filter @jigging/agent-acp
+          --filter @jigging/flow
+
+      - name: Build and freeze archives once
+        shell: bash
+        run: |
+          set -euo pipefail
+          just --justfile packages/jig/justfile build
+          artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
+          mkdir "$artifact_directory"
+          mkdir "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
+          bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$artifact_directory/flow-sdk"
+          bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$artifact_directory/agent-method"
+          bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$artifact_directory/agent-acp"
+          bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
+          (
+            cd "$artifact_directory"
+            sha256sum flow-sdk/*.tgz agent-method/*.tgz agent-acp/*.tgz jig/*.tgz > SHA256SUMS
+          )
+
+      - name: Retain exact Linux host artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-host-artifacts-${{ github.sha }}
+          path: ${{ runner.temp }}/linux-host-artifacts
+          if-no-files-found: error
+          retention-days: 7
+
+  host-suite:
+    name: Linux host — ${{ matrix.suite }}
+    needs: host-artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [agent-lifecycle, delegated-authority, installed-evidence]
+    steps:
+      - name: Check out the exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install exact Bun test tool
         id: setup-bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -61,54 +113,52 @@ jobs:
         run: printf 'JIG_CI_BUN=%s\n' "$JIG_CI_BUN" >> "$GITHUB_ENV"
 
       - name: Provision and preflight the ephemeral host
-        run: scripts/ci/provision-github-rootless-host.sh provision
+        id: host
+        run: |
+          scripts/ci/provision-github-rootless-host.sh provision
+          printf 'ready=true\n' >> "$GITHUB_OUTPUT"
 
-      - name: Install Jig, Agent method, and FLOW build dependencies
+      - name: Install host-test dependencies
         run: >-
           bun install --ignore-scripts --filter @jigging/jig
           --filter @jigging/agent-method --filter @jigging/flow-authoring
           --filter @jigging/agent-acp
           --filter @jigging/flow
 
-      - name: Build the FLOW SDK used by host fixtures
-        run: just --justfile packages/flow-sdk/justfile build
+      - name: Download the frozen archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-host-artifacts-${{ github.sha }}
+          path: ${{ runner.temp }}/linux-host-artifacts
 
-      - name: Build and pack once
-        id: pack
+      - name: Identify and verify the frozen archives
         shell: bash
         run: |
           set -euo pipefail
-          just --justfile packages/jig/justfile build
-          artifact_directory="$RUNNER_TEMP/jig-artifact"
-          mkdir "$artifact_directory"
-          mkdir "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
+          artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
+          (
+            cd "$artifact_directory"
+            sha256sum --check SHA256SUMS
+          )
           one_archive() {
             local -a archives
             mapfile -t archives < <(find "$1" -maxdepth 1 -type f -name '*.tgz' -print)
             if [[ ${#archives[@]} -ne 1 ]]; then
-              echo "packing did not produce exactly one archive in $1" >&2
+              echo "expected exactly one archive in $1" >&2
               return 1
             fi
             readlink -f "${archives[0]}"
           }
-          bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$artifact_directory/flow-sdk"
-          FLOW_SDK_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/flow-sdk")
-          export FLOW_SDK_PACKAGE_ARCHIVE
-          bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$artifact_directory/agent-method"
-          AGENT_METHOD_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-method")
-          export AGENT_METHOD_PACKAGE_ARCHIVE
-          bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$artifact_directory/agent-acp"
-          AGENT_ACP_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/agent-acp")
-          bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
-          JIG_PACKAGE_ARCHIVE=$(one_archive "$artifact_directory/jig")
-          sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" |
-            tee "$artifact_directory/SHA256SUMS"
-          printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\nAGENT_METHOD_PACKAGE_ARCHIVE=%s\nJIG_PACKAGE_ARCHIVE=%s\n' \
-            "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" >> "$GITHUB_ENV"
-          printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$AGENT_ACP_PACKAGE_ARCHIVE" >> "$GITHUB_ENV"
-          printf 'JIG_CI_ARCHIVE_DIGESTS=%s\n' "$artifact_directory/SHA256SUMS" >> "$GITHUB_ENV"
+          {
+            printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
+            printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
+            printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
+            printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/jig")"
+            printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
+          } >> "$GITHUB_ENV"
 
       - name: Prove transient delegation and lifetime fencing
+        if: matrix.suite == 'agent-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -116,48 +166,15 @@ jobs:
           --timeout 30000
 
       - name: Prove the rootless Run envelope
+        if: matrix.suite == 'agent-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
           "$JIG_CI_BUN" test packages/jig/test/linux-rootless-run.test.ts
           --timeout 30000
 
-      - name: Prove contained native preparation
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/bun-native-preparation.test.ts
-          --timeout 120000
-
-      - name: Prove the finite foreground product path
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/private-foreground.test.ts
-          --timeout 30000
-
-      - name: Prove contained project commands
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/project-command-lifecycle.test.ts
-          --timeout 180000
-
-      - name: Prove delegated HTTP authority and coordinator-loss cleanup
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/http-request-lifecycle.test.ts
-          --timeout 240000
-
-      - name: Prove retained progress and coordinator-loss delivery
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/run-checkpoint-lifecycle.test.ts
-          --timeout 90000
-
       - name: Prove the Agent lifecycle and ordinary method composition
+        if: matrix.suite == 'agent-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -166,7 +183,48 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts
           --timeout 180000
 
+      - name: Prove the finite foreground product path
+        if: matrix.suite == 'delegated-authority'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/private-foreground.test.ts
+          --timeout 30000
+
+      - name: Prove contained project commands
+        if: matrix.suite == 'delegated-authority'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/project-command-lifecycle.test.ts
+          --timeout 180000
+
+      - name: Prove delegated HTTP authority and coordinator-loss cleanup
+        if: matrix.suite == 'delegated-authority'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/http-request-lifecycle.test.ts
+          --timeout 240000
+
+      - name: Prove contained native preparation
+        if: matrix.suite == 'installed-evidence'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/bun-native-preparation.test.ts
+          --timeout 120000
+
+      - name: Prove retained progress and coordinator-loss delivery
+        if: matrix.suite == 'installed-evidence'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/run-checkpoint-lifecycle.test.ts
+          --timeout 90000
+
       - name: Prove ordinary ACP Agent progress and cancellation
+        if: matrix.suite == 'installed-evidence'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -175,6 +233,7 @@ jobs:
           --timeout 180000
 
       - name: Prove installed Markdown and exact typed calls
+        if: matrix.suite == 'installed-evidence'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -185,30 +244,50 @@ jobs:
 
       - name: Run Operational Baseline/1 against the packed archive
         id: operational
+        if: matrix.suite == 'installed-evidence'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
           env TMPDIR=/tmp "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" scripts/test-operational-baseline.ts
 
       - name: Attack the packed CLI inside the proved envelope
+        if: matrix.suite == 'installed-evidence'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
           env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts
 
       - name: Verify the tested archives are unchanged
-        if: ${{ always() && steps.pack.outcome == 'success' }}
-        run: sha256sum --check "$JIG_CI_ARCHIVE_DIGESTS"
+        if: always()
+        run: cd "$JIG_CI_ARCHIVE_DIRECTORY" && sha256sum --check SHA256SUMS
 
       - name: Require zero host residue
-        if: always()
+        if: always() && steps.host.outputs.ready == 'true'
         run: scripts/ci/provision-github-rootless-host.sh assert-clean
 
       - name: Retain failed operational command transcripts
-        if: ${{ always() && (steps.operational.outcome == 'failure' || steps.operational.outcome == 'cancelled') }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && matrix.suite == 'installed-evidence' && (steps.operational.outcome == 'failure' || steps.operational.outcome == 'cancelled') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: operational-baseline-failure
+          name: operational-baseline-failure-${{ github.sha }}
           path: /tmp/jig-operational-baseline-*/command-*.json
           if-no-files-found: ignore
           retention-days: 7
+
+  rootless-linux:
+    name: rootless-linux
+    if: always()
+    needs: [host-artifacts, host-suite]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every Linux host shard
+        env:
+          ARTIFACT_RESULT: ${{ needs.host-artifacts.result }}
+          SUITE_RESULT: ${{ needs.host-suite.result }}
+        run: |
+          set -eu
+          if [ "$ARTIFACT_RESULT" != success ] || [ "$SUITE_RESULT" != success ]; then
+            echo "Linux host conformance requires successful artifacts and every suite; artifacts=$ARTIFACT_RESULT suites=$SUITE_RESULT" >&2
+            exit 1
+          fi

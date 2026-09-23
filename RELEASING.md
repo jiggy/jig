@@ -2,11 +2,12 @@
 
 The exact prerelease versions in the `@jigging/flow`, `@jigging/agent-method`,
 `@jigging/agent-acp` and `@jigging/jig` manifests are release intent for this workflow.
-After CI succeeds for a reviewed merge to `main`, the release workflow builds
-the package candidates and tests their exact archives while a read-only gate
-waits for complete Linux Host Conformance on that same push revision. Only
-after both succeed may it publish a version not yet present on npm, refetch the
-registry bytes, and create package-specific annotated source tags.
+CI builds and tests the package candidates for every revision. After CI
+succeeds for a reviewed merge to `main`, the release workflow downloads those
+exact retained archives while a read-only gate waits for complete Linux Host
+Conformance on that same push revision. Only after both succeed may it publish
+a version not yet present on npm, refetch the registry bytes, and create
+package-specific annotated source tags.
 
 There is no release button, version input, npm token, or separately rebuilt
 archive. The workflow publishes through npm trusted publishing in the `npm`
@@ -47,8 +48,9 @@ transitive dependencies. The publication guarantee is the tested, retained
 archive, not reproducibility from a source commit alone; recovery must reuse
 that archive rather than rebuild it.
 
-On the successful CI result, all candidates are built once in parallel from
-CI's exact source revision. A separate authorization job accepts only a
+All npm candidates are built once in parallel as part of CI from its exact
+source revision. The publication workflow selects artifacts from that exact
+successful CI run. A separate authorization job accepts only a
 successful `main` push run of the complete Linux Host Conformance workflow for
 that same revision. The publish job consumes only the retained candidate
 archives in the dependency order above. If a version already exists, its
@@ -114,8 +116,8 @@ qualification or model reliability. The complete Linux host gate remains separat
 
 If candidate construction fails, fix the source in a new reviewed commit. If
 publication may have succeeded but its response or a later gate failed, use
-GitHub's **Re-run failed jobs** action. The successful build matrix is not
-rerun, and the publish job converges against its retained seven-day artifacts.
+GitHub's **Re-run failed jobs** action. CI's successful candidate jobs are not
+rerun, and the publish job converges against their retained seven-day artifacts.
 If Host Conformance failed because of a transient host fault, rerun that exact
 workflow before rerunning the failed authorization and publication jobs. A
 later push is a new candidate, not an uncertainty retry.
@@ -137,7 +139,9 @@ sdist timestamps use the latest package-source commit, with normalized sdist
 archive metadata, so wall-clock time alone does not change release bytes.
 Build dependencies are pinned; retained bytes remain the publication authority.
 The same
-candidate bytes are then tested on the Python-version/OS matrix before release.
+candidate bytes are then tested on the Python-version/OS matrix in CI and
+retained there. The publication workflow downloads that exact successful
+push-run candidate; it does not rebuild or repeat the matrix.
 
 PyPI setup for the first publication:
 

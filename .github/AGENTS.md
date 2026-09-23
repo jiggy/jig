@@ -19,6 +19,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   publication or Git-write authority.
 - Build, test, publish, and tag the exact triggering source and retained
   candidate bytes. Never rebuild a release during publication.
+- CI freezes npm and Python candidates while source gates run. The protected
+  publication workflows download those exact successful push-run artifacts;
+  they do not rebuild or accept artifacts from a different CI run.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
   dependency order; all retain the same-revision CI/host gates and isolated
   trusted publisher. First publication requires each package's npm setup.
@@ -42,6 +45,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.
 - Preserve zero-residue checks around provisioned Jig host tests.
+- Build Linux host archives once, then run the complete suite in independent
+  shards on separately provisioned hosts. Every shard rechecks the frozen
+  archive hashes, performs zero-residue verification, and contributes to the
+  aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
+  prevent that aggregate from succeeding.
 - Failed operational-baseline command transcripts are retained for seven days.
   Upload only the explicit transcript files, not consumer trees, admission
   databases, credentials, or retained native state.

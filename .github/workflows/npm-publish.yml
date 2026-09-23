@@ -39,138 +39,9 @@ jobs:
           scripts/require-linux-host-conformance.sh
           "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
 
-  build:
-    name: Build ${{ matrix.package }} candidate
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [flow, agent, acp, jig]
-    env:
-      RELEASE_PACKAGE: ${{ matrix.package }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ env.SOURCE_REVISION }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24'
-
-      - name: Select and validate package
-        id: selected
-        run: |
-          set -eu
-          case $RELEASE_PACKAGE in
-            flow)
-              package_name=@jigging/flow
-              manifest=packages/flow-sdk/package.json
-              ;;
-            jig)
-              package_name=@jigging/jig
-              manifest=packages/jig/package.json
-              ;;
-            agent)
-              package_name=@jigging/agent-method
-              manifest=packages/agent-method/package.json
-              ;;
-            acp)
-              package_name=@jigging/agent-acp
-              manifest=packages/agent-acp/package.json
-              ;;
-            *)
-              echo "package must be flow, agent, acp or jig" >&2
-              exit 1
-              ;;
-          esac
-          PACKAGE_MANIFEST=$manifest EXPECTED_NAME=$package_name \
-            node --input-type=module <<'NODE'
-          import { readFile } from "node:fs/promises";
-
-          const manifest = JSON.parse(await readFile(process.env.PACKAGE_MANIFEST, "utf8"));
-          const prerelease = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|next)(?:\.[0-9A-Za-z-]+)*$/;
-          if (manifest.name !== process.env.EXPECTED_NAME || !prerelease.test(manifest.version)) {
-            throw new Error(`${process.env.PACKAGE_MANIFEST} must declare one exact alpha or next version for ${process.env.EXPECTED_NAME}`);
-          }
-          if (manifest.private === true) {
-            throw new Error(`${manifest.name} is still private`);
-          }
-          if (manifest.publishConfig?.access !== "public") {
-            throw new Error(`${manifest.name} must publish with public access`);
-          }
-          NODE
-          version=$(PACKAGE_MANIFEST=$manifest node --input-type=module -e \
-            'import { readFileSync } from "node:fs"; process.stdout.write(JSON.parse(readFileSync(process.env.PACKAGE_MANIFEST, "utf8")).version)')
-          artifact_name="npm-candidate-$RELEASE_PACKAGE-$version-$SOURCE_REVISION"
-          printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
-
-      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
-        with:
-          just-version: '1.43.1'
-
-      - name: Install exact build tools
-        run: |
-          set -eu
-          npm install --global npm@11.6.2
-          npm install --global bun@1.3.3
-          npm --version
-          bun --version
-          bun --revision
-
-      - name: Provision Jig's disposable rootless host
-        id: jig_host
-        if: matrix.package == 'jig'
-        run: |
-          set -eu
-          JIG_CI_BUN=$(readlink -f "$(command -v bun)")
-          export JIG_CI_BUN
-          scripts/ci/provision-github-rootless-host.sh provision
-          printf 'ready=true\n' >> "$GITHUB_OUTPUT"
-
-      - name: Build and test exact candidate
-        run: |
-          set -eu
-          if [ "$RELEASE_PACKAGE" = flow ]; then
-            FLOW_NODE=$(command -v node)
-            FLOW_NPM=$(command -v npm)
-            export FLOW_NODE FLOW_NPM
-            scripts/build-flow-sdk-candidate.sh "$RUNNER_TEMP/candidate"
-          elif [ "$RELEASE_PACKAGE" = jig ]; then
-            JIG_NPM=$(command -v npm)
-            export JIG_NPM
-            scripts/build-jig-candidate.sh "$RUNNER_TEMP/candidate"
-          else
-            FLOW_NODE=$(command -v node)
-            FLOW_NPM=$(command -v npm)
-            export FLOW_NODE FLOW_NPM
-            agent_package=agent-method
-            if [ "$RELEASE_PACKAGE" = acp ]; then agent_package=agent-acp; fi
-            just agent-candidate "$agent_package" "$RUNNER_TEMP/candidate"
-          fi
-
-      - name: Require zero Jig host residue
-        if: always() && steps.jig_host.outputs.ready == 'true'
-        run: scripts/ci/provision-github-rootless-host.sh assert-clean
-
-      - name: Upload exact candidate
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ${{ steps.selected.outputs.artifact_name }}
-          path: ${{ runner.temp }}/candidate
-          if-no-files-found: error
-          retention-days: 7
-
   publish:
     name: Publish exact candidates
-    needs: [authorize, build]
+    needs: authorize
     environment: npm
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -211,6 +82,8 @@ jobs:
         with:
           pattern: npm-candidate-*-${{ env.SOURCE_REVISION }}
           path: ${{ runner.temp }}/candidates
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
 
       - name: Publish or converge FLOW, Agent packages, then Jig
         id: release
