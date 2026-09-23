@@ -149,7 +149,7 @@ fi
 for expected in \
   "  jig init <directory>       Create a project with a small greeting Flow" \
   "  jig review [project]       Review changes and approve an exact revision" \
-  "  jig run <target>           Run a reviewed Flow or Binding" \
+  "  jig run [target]           Choose or run a reviewed Flow or Binding" \
   "  jig --version             Print the installed version"
 do
   if ! grep -F -x "$expected" "$temporary/npm-help" >/dev/null; then
