@@ -18,7 +18,7 @@ Jig public sites.
 - `theme/` owns the shared default-theme extension; `landing.css` owns shared
   landing and reading presentation. Both deployment triggers include these inputs.
 - `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
-  the FLOW and Jig Rspress build recipes.
+  the FLOW and Jig Rspress build and development server recipes.
 
 ## Local Contracts
 

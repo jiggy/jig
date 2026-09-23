@@ -45,6 +45,16 @@ test('module and root tasks preserve arguments and select their own working dire
       ['jig::test', 'packages/jig', ['test']],
       ['flow::test', 'packages/flow-sdk', ['test']],
       [
+        'site::dev-flow',
+        'site',
+        ['node_modules/@rspress/core/bin/rspress.js', 'dev', '-c', 'flow/rspress.config.ts'],
+      ],
+      [
+        'site::dev-jig',
+        'site',
+        ['node_modules/@rspress/core/bin/rspress.js', 'dev', '-c', 'jig/rspress.config.ts'],
+      ],
+      [
         'biome-check',
         '',
         [

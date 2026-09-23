@@ -12,3 +12,24 @@
 # Compile Jig documentation; build-site.sh owns complete publication assembly
 @build-jig:
     bun node_modules/@rspress/core/bin/rspress.js build -c jig/rspress.config.ts
+
+# Run local development server for FLOW documentation
+[positional-arguments]
+@dev-flow *args:
+    bun node_modules/@rspress/core/bin/rspress.js dev -c flow/rspress.config.ts "$@"
+
+# Run local development server for Jig documentation
+[positional-arguments]
+@dev-jig *args:
+    bun node_modules/@rspress/core/bin/rspress.js dev -c jig/rspress.config.ts "$@"
+
+# Run local development server for Jig or FLOW documentation (defaults to Jig)
+[positional-arguments]
+dev site="jig" *args:
+    #!/bin/sh
+    case "$1" in
+      flow) exec bun node_modules/@rspress/core/bin/rspress.js dev -c flow/rspress.config.ts "${@:2}" ;;
+      jig)  exec bun node_modules/@rspress/core/bin/rspress.js dev -c jig/rspress.config.ts "${@:2}" ;;
+      -*)   exec bun node_modules/@rspress/core/bin/rspress.js dev -c jig/rspress.config.ts "$@" ;;
+      *)    echo "the site must be flow or jig: $1" >&2; exit 2 ;;
+    esac
