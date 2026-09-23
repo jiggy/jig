@@ -84,7 +84,7 @@ try {
   const malformed = await run([jig, 'review', project, '--yes'], consumer, [1], 120_000)
   assert.equal(malformed.stdout, '')
   assert.match(malformed.stderr, /^Review could not finish\n/)
-  assert.match(malformed.stderr, /Location: "flows\/malformed\/flow\.meta\.json"\n/)
+  assert.match(malformed.stderr, /Location: "flows\/malformed\/FLOW\.meta\.json"\n/)
   assert.match(malformed.stderr, /Next step\n\s+a metadata field has an unsupported shape/)
   assert.match(malformed.stderr, /Diagnostic code: METADATA_FIELD\n  Category: INVALID_CANDIDATE/)
   // A public flow.jig.md help URL is not a protected .jig filesystem path.

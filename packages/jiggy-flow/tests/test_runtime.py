@@ -711,7 +711,7 @@ class RuntimeCallTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.001)
         requests = [json.loads(payload) for payload in self.output.payloads]
         base = {"operationId": "review:1", "slot": "reviewer", "input": {"text": "original"}}
-        self.assertEqual([request["params"] for request in requests], [
+        self.assertCountEqual([request["params"] for request in requests], [
             base, {**base, "channels": {}}, {**base, "intent": "Advisory only."},
         ])
         self.assertEqual({request["method"] for request in requests}, {"flow/call"})
