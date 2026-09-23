@@ -103,10 +103,15 @@ archive_sha256=${hash_line%% *}
 printf '%s\n' "$hash_line" > "$archive.sha256"
 tar -tzf "$archive" > "$temporary/inventory"
 LC_ALL=C sort "$temporary/inventory" > "$archive.files"
-if grep -F '/node_modules/' "$temporary/inventory" >/dev/null; then
-  echo "the Jig archive unexpectedly contains installed dependencies" >&2
-  exit 1
-fi
+while IFS= read -r member; do
+  case $member in
+    package/libexec/authoring/node_modules|package/libexec/authoring/node_modules/*) ;;
+    */node_modules|*/node_modules/*)
+      echo "the Jig archive contains installed dependencies outside private authoring: $member" >&2
+      exit 1
+      ;;
+  esac
+done < "$temporary/inventory"
 
 JIG_PACKAGE_ARCHIVE="$archive" bun "$package/test/package-smoke.ts"
 JIG_PACKAGE_ARCHIVE="$archive" bun "$temporary/source/scripts/test-operational-baseline.ts"
