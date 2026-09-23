@@ -46,112 +46,60 @@ foundations do not need to be rebuilt.
 
 ## Next milestones
 
-Build on one reusable invocation interface for Flow specialists and qualified
-native operations, optional `FLOW.contract.json`, and one `FLOW.<ext>` implementation
-per package. Every Markdown method uses an admitted Agent to interpret its
-body and select exact recipes. Exact sibling calls, contained project commands,
-root file delivery, checkpoints and channels remain the composition foundation.
-Improve these public paths rather than rebuilding them.
+The current foundation includes exact Flow composition, contained project
+commands, channels, root file delivery, checkpoints, ordinary HTTP and ACP Agent
+Flows, continuing conversations, optional native restoration, and an
+application-owned handoff. These are available paths with different levels of
+qualification, not milestones to rebuild.
 
-Qualify Markdown-to-code substitution and supported Skill reuse through ordinary
-interpreted calls. The sequential Markdown profile does not promise universal
-Skill support or reliable model judgment; method quality needs its own evidence.
-Agent methods are ordinary Flows. Native launch, authenticated HTTP, contained
-commands and checkpoint retention keep their reviewed host-owned boundaries.
+### 1. Deliver a coherent installed alpha
 
-### Foundation: replaceable Agents
+Bring the published FLOW, Jig, and ordinary Agent packages into alignment with
+their current source and public guidance. Use the existing candidate, release,
+and host-conformance gates; qualify each advertised native-client behavior with
+installed artifacts rather than protocol fixtures alone.
 
-Use an ordinary HTTP or finite ACP Agent through the same offered contract and
-exact slot calls. Project defaults select an admitted implementation; explicit
-slots remain authoritative. Packages own prompts, protocol dialogue, response
-interpretation and selected progress. Resource grants own only the approved
-endpoint or native-client powers, with host-enforced lifetime and cleanup.
+Finish when a new installation can follow the public quickstart, admit an
+ordinary Agent package, run a useful Flow, inspect its evidence, and cancel it.
+Published package identities and claims must match the tested artifacts. A
+source-only demonstration is not completion.
 
-Keep this boundary useful as the product advances: an independent author must
-be able to replace the Agent without changing Jig or its consumers. Complete
-packages must remain inspectable, editable and rebuildable outside this repository.
-Maintain actual installed evidence for selected context, structured results,
-ordinary recovery and the application → specialist → Agent → resource chain.
-Native workspace tools and continuing sessions remain separate authority decisions.
+### 2. Make project repair independently usable
 
-### Next: independently usable project repair
+Give a fresh builder the published artifacts and public instructions to adapt
+the existing repair method to a different small Bun project. Keep selected
+source and acceptance checks explicit, candidate commands contained, and the
+original project unchanged.
 
-A user can run two repair workers and receive each patch with trustworthy
-command and acceptance evidence. Make adapting the application to a small
-user-owned Bun project a data-and-configuration task, not a rewrite of the
-orchestrator. Keep source selection explicit, acceptance policy outside proposed
-edits, and test commands separately contained from the Agent.
+Finish when they obtain a reviewable patch with executed tests and independent
+acceptance evidence, understand a deliberately failed check, and cancel work
+without private instructions or platform edits. Correct friction at its owning
+product or application layer. This tests adoption and reuse, not a claim that
+the method outperforms every coding Agent.
 
-Finish when an independent builder obtains and inspects a patch for a different
-project using public materials, understands a failed check, and can stop work.
-Preserve healthy batch output after peer failure, honest command uncertainty,
-unchanged originals and complete cleanup. Fix new observed defects at their
-responsible layer without replay or deadline extensions.
+### 3. Deliver a small software factory
 
-Then use continuing conversations for evidence-driven correction where they
-remove a demonstrated burden. Retain bounded proposals and unchanged acceptance
-criteria. Automatic handoff is available for a concrete context-management need,
-not a mandatory repair stage. Method benefit remains a separate claim.
+Compose the proven repair and checking methods for several authorized issues.
+Keep bounded attempts, inspectable patches, honest unsuccessful outcomes, and a
+human merge gate. Let a second builder adapt the application through its
+intended configuration.
 
-### Foundation: continuing Agent control, restoration and handoff
-
-Deliver these approved capabilities incrementally. Before each begins, define
-the smallest public contract and authority boundary against its consuming
-application. Qualify one real client per delivered path; protocol fixtures alone
-do not establish client behavior.
-
-1. **Direct a continuing native Agent.** An application observes a turn,
-   requests interruption, waits for confirmed settlement, and sends a follow-up
-   in the same owned conversation. Qualify one client over the existing ACP
-   foundation. Channels carry observations, not implicit control authority;
-   execution results remain separate. Preserve simple one-shot calls, ordinary
-   error recovery, accepted instructions, and aggregate remaining budgets.
-   Finish when an installed application demonstrates interruption and
-   continuation, including rejected or uncertain control and full cancellation
-   cleanup. Native workspace tools require a separate authority decision;
-   candidate commands cannot run in a credential-bearing provider scope.
-
-2. **Restore a cleanly closed conversation.** Retain bounded, explicitly
-   identified native conversation state separately from credentials. A later
-   authorized Run restores that state with current grants and reports genuine
-   restoration or an honest failure, never an implicit fresh conversation.
-   Qualify one client across process exit and reentry. Native restoration,
-   transcript reconstruction and summary handoff remain distinct claims.
-
-3. **Automate one worker's time-travel handoff.** Build on qualified control,
-   not on observation alone. While another worker progresses, settle task
-   advancement, obtain a handoff using recent context,
-   prepare retained earlier context with current files and later instructions,
-   and commit one successor. Finish when a useful application preserves
-   instructions, budgets, and uncertainty across that replacement; duplicate
-   triggers, failed preparation, and cancellation cannot create overlapping
-   owners or replay effects. Measure the method's claimed benefit separately
-   from proving its lifecycle. This is not arbitrary scratch salvage,
-   machine-crash recovery, or automatic replay.
+Finish with a useful application and a bounded comparison against one capable
+coding Agent plus tests and human review. Select the claimed advantage and
+metric beforehand; a tied or unfavorable result limits the claim, not further
+useful product work.
 
 ## Work alongside the milestones
 
-Ship each useful increment through existing release and host-conformance gates;
-project repair need not wait for automatic handoff. Correct concrete CLI
-problems and integrate focused evidence for new capabilities. Experienced
-contributors author recommended examples; independent consumers receive public
-materials without platform-edit authority. Comparative evidence limits product
-claims without making a favorable benchmark a prerequisite for development.
+Preserve outside-Jig interoperability as a separate FLOW proof: an independent
+implementation runs an unchanged package through public contracts. Fix
+concrete release, CLI, authority, and cleanup defects as found. Keep native
+workspace tools, general schedulers, public locks, provider frameworks,
+workspace services, event buses, automatic ticket intake, and Kanban outside
+the critical path until an application earns them.
 
 A blocker in one authorized outcome does not stop independent work. Commit
 stable slices and record owner-actionable blockers in `.tmp/current-blockers`.
-Keep general schedulers, public locks, provider frameworks, workspace services,
-and event buses outside these increments.
-
-Preserve bounded outside-Jig interoperability as an independent FLOW proof:
-an independent consumer runs an unchanged package through public contracts,
-without creating a second production host. This need not wait for successful
-prose review or block the coding capability.
-
-An application-owned Kanban remains a software-factory direction, not a
-prerequisite for its first useful version. Automatic ticket intake, semantic
-discovery, long-lived services, and additional execution environments remain
-demand-gated rather than requirements on this critical path.
 
 ## Advancing
 
