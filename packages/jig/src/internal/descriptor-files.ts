@@ -6,16 +6,22 @@ import {
   mkdir,
   open,
   opendir,
+  readlink,
   rename,
+  rmdir,
+  symlink,
   unlink,
 } from 'node:fs/promises'
 import {
   privateMacosDirectory,
+  privateMacosDuplicate,
   privateMacosLinkAt,
   privateMacosMkdirAt,
   privateMacosOpenAt,
+  privateMacosReadlinkAt,
   privateMacosRenameAt,
   privateMacosStatAt,
+  privateMacosSymlinkAt,
   privateMacosUnlinkAt,
 } from './macos-descriptor-files.js'
 
@@ -73,6 +79,38 @@ export async function unlinkPrivateFile(path: PrivateFileLocation): Promise<void
   const { parent, name } = child(path)
   if (process.platform === 'darwin') return privateMacosUnlinkAt(parent.fd, name)
   return unlink(linuxPath(path))
+}
+
+export async function rmdirPrivateFile(path: PrivateChildLocation): Promise<void> {
+  const { parent, name } = child(path)
+  if (process.platform === 'darwin') return privateMacosUnlinkAt(parent.fd, name, true)
+  return rmdir(linuxPath(path))
+}
+
+export async function readlinkPrivateFile(path: PrivateChildLocation): Promise<string> {
+  const { parent, name } = child(path)
+  if (process.platform === 'darwin')
+    return new TextDecoder('utf-8', { fatal: true }).decode(privateMacosReadlinkAt(parent.fd, name))
+  return readlink(linuxPath(path))
+}
+
+export async function symlinkPrivateFile(
+  target: string,
+  path: PrivateChildLocation,
+): Promise<void> {
+  const { parent, name } = child(path)
+  if (process.platform === 'darwin') return privateMacosSymlinkAt(parent.fd, name, target)
+  return symlink(target, linuxPath(path))
+}
+
+export async function duplicatePrivateDirectory(directory: FileHandle): Promise<FileHandle> {
+  if (process.platform === 'darwin') return privateMacosDuplicate(directory.fd)
+  requireLinux()
+  const { constants } = await import('node:fs')
+  return open(
+    `/proc/self/fd/${directory.fd}`,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK,
+  )
 }
 
 export async function renamePrivateFile(

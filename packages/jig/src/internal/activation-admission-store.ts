@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { type BigIntStats, constants } from 'node:fs'
-import { type FileHandle, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
+import { type FileHandle, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { ProjectAdministrationError } from '../administration/project.js'
@@ -46,6 +46,15 @@ import {
 import { privateActivationTargetKey } from './activation-planning.js'
 import { verifyBoundAttachment } from './bound-attachments.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import {
+  privateChildLocation as descriptorChild,
+  statPrivateFile as lstat,
+  mkdirPrivateFile,
+  openPrivateFile as open,
+  type PrivateFileLocation,
+  renamePrivateFile as rename,
+  unlinkPrivateFile as unlink,
+} from './descriptor-files.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
 import {
@@ -3273,7 +3282,7 @@ async function openCoordinatorLock(owner: StateOwner): Promise<CoordinatorLock> 
     COORDINATOR_DATABASE_NAME,
   )
   await validateSidecars(owner.directory, databaseInformation.dev, COORDINATOR_DATABASE_NAME)
-  const visibleStatePath = join(owner.root.requestedPath, STATE_DIRECTORY)
+  const visibleStatePath = join(await sqliteVisibleRoot(owner.root), STATE_DIRECTORY)
   const visibleDatabasePath = join(visibleStatePath, COORDINATOR_DATABASE_NAME)
   await verifyVisibleHierarchy(
     owner.root,
@@ -3579,7 +3588,7 @@ async function openStateOwner(
     const statePath = descriptorChild(root.handle, STATE_DIRECTORY)
     if (create) {
       try {
-        await mkdir(statePath, { mode: 0o700 })
+        await mkdirPrivateFile(statePath)
         await root.handle.sync()
       } catch (error) {
         if (!hasCode(error, 'EEXIST')) throw error
@@ -3597,7 +3606,7 @@ async function openStateOwner(
       create && !databaseExists,
     )
     await validateSidecars(directory, databaseInformation.dev)
-    const visibleStatePath = join(root.requestedPath, STATE_DIRECTORY)
+    const visibleStatePath = join(await sqliteVisibleRoot(root), STATE_DIRECTORY)
     const visibleDatabasePath = join(visibleStatePath, DATABASE_NAME)
     await verifyVisibleHierarchy(
       root,
@@ -3750,10 +3759,13 @@ async function acquireStateTurn(root: PrivateProjectRoot): Promise<() => void> {
   }
 }
 
-async function openCheckedDirectory(path: string, projectDevice: bigint): Promise<FileHandle> {
+async function openCheckedDirectory(
+  path: PrivateFileLocation,
+  projectDevice: bigint,
+): Promise<FileHandle> {
   let observed: BigIntStats
   try {
-    observed = await lstat(path, { bigint: true })
+    observed = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT'))
       unavailable('ADMISSION_STATE_MISSING', 'protected .jig admission state does not exist')
@@ -3796,7 +3808,7 @@ function requireStateDirectory(information: BigIntStats, projectDevice: bigint):
 }
 
 async function ensureDatabaseFile(
-  path: string,
+  path: PrivateFileLocation,
   directory: FileHandle,
   expectedDevice: bigint,
   create: boolean,
@@ -3821,7 +3833,7 @@ async function ensureDatabaseFile(
   }
   let observed: BigIntStats
   try {
-    observed = await lstat(path, { bigint: true })
+    observed = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT'))
       unavailable('ADMISSION_STATE_MISSING', `${databaseName} does not exist`)
@@ -3877,7 +3889,7 @@ async function validateSidecars(
   const journalPath = descriptorChild(directory, `${databaseName}-journal`)
   let journal: BigIntStats
   try {
-    journal = await lstat(journalPath, { bigint: true })
+    journal = await lstat(journalPath)
   } catch (error) {
     if (hasCode(error, 'ENOENT')) return
     throw error
@@ -4701,7 +4713,7 @@ async function observeVisibleLock(root: PrivateProjectRoot): Promise<
       invalid('LOCK_INVALID', 'jig.lock exceeds the private lock byte ceiling')
     const bytes = await readBounded(handle, Number(before.size), JSON_1_LIMITS.bytes)
     const after = await handle.stat({ bigint: true })
-    const pathInformation = await lstat(path, { bigint: true })
+    const pathInformation = await lstat(path)
     if (!sameSnapshot(before, after) || !sameSnapshot(after, pathInformation)) {
       invalid('LOCK_CHANGED', 'jig.lock changed while it was being observed')
     }
@@ -4820,7 +4832,7 @@ async function synchronizeExactVisibleLock(owner: StateOwner, proposed: Uint8Arr
     if (!sameBytes(bytes, proposed)) stale('jig.lock differs from the exact proposed bytes')
     await handle.sync()
     const after = await handle.stat({ bigint: true })
-    const visible = await lstat(path, { bigint: true })
+    const visible = await lstat(path)
     if (!sameSnapshot(before, after) || !sameSnapshot(after, visible)) {
       stale('jig.lock changed while it was synchronized')
     }
@@ -4860,7 +4872,7 @@ async function publishVisibleLock(
     await handle.sync()
     const prepared = await handle.stat({ bigint: true })
     requirePreparedLockStage(prepared, owner.root.information.dev, proposed.byteLength)
-    const preparedPath = await lstat(stagePath, { bigint: true })
+    const preparedPath = await lstat(stagePath)
     if (!sameSnapshot(prepared, preparedPath)) {
       invalid('ADMISSION_LOCK_STAGE_CHANGED', 'reserved lock stage changed while it was prepared')
     }
@@ -4886,7 +4898,7 @@ async function publishVisibleLock(
     await rename(stagePath, lockPath)
     const renamed = await handle.stat({ bigint: true })
     requirePreparedLockStage(renamed, owner.root.information.dev, proposed.byteLength)
-    const visible = await lstat(lockPath, { bigint: true })
+    const visible = await lstat(lockPath)
     if (!sameSnapshot(renamed, visible)) {
       invalid('LOCK_CHANGED', 'published jig.lock path differs from its staged inode')
     }
@@ -4930,7 +4942,7 @@ async function clearSafeLockStage(owner: StateOwner): Promise<void> {
   const path = descriptorChild(owner.directory, LOCK_STAGE_NAME)
   let information: BigIntStats
   try {
-    information = await lstat(path, { bigint: true })
+    information = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT')) return
     throw error
@@ -4942,12 +4954,12 @@ async function clearSafeLockStage(owner: StateOwner): Promise<void> {
 
 async function clearOwnedStage(
   owner: StateOwner,
-  path: string,
+  path: PrivateFileLocation,
   expected: BigIntStats,
 ): Promise<void> {
   let current: BigIntStats
   try {
-    current = await lstat(path, { bigint: true })
+    current = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT')) return
     throw error
@@ -5140,20 +5152,27 @@ function requireCandidateRoot(
 }
 
 async function verifyPathIdentity(
-  path: string,
+  path: PrivateFileLocation,
   expected: BigIntStats,
   label: string,
   validate?: (information: BigIntStats) => void,
 ): Promise<void> {
   let current: BigIntStats
   try {
-    current = await lstat(path, { bigint: true })
+    current = await lstat(path)
   } catch {
     invalid('ADMISSION_STATE_CHANGED', `${label} disappeared during the operation`)
   }
   if (!sameIdentity(current, expected))
     invalid('ADMISSION_STATE_CHANGED', `${label} changed during the operation`)
   validate?.(current)
+}
+
+// Apple's system SQLite rejects even the OS /var -> /private/var ancestor alias.
+// SQLite still opens a visible pathname with NOFOLLOW; every hierarchy check
+// compares it with the held root/state/database and also verifies the requested root.
+async function sqliteVisibleRoot(root: PrivateProjectRoot): Promise<string> {
+  return process.platform === 'darwin' ? realpath(root.requestedPath) : root.requestedPath
 }
 
 async function verifyVisibleHierarchy(
@@ -5341,10 +5360,6 @@ async function readBounded(
   return buffer.subarray(0, offset)
 }
 
-function descriptorChild(parent: FileHandle, name: string): string {
-  return `/proc/self/fd/${parent.fd}/${name}`
-}
-
 function sameIdentity(
   left: { readonly dev: bigint; readonly ino: bigint },
   right: { readonly dev: bigint; readonly ino: bigint },
@@ -5378,7 +5393,7 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index])
 }
 
-async function pathExists(path: string): Promise<boolean> {
+async function pathExists(path: PrivateFileLocation): Promise<boolean> {
   try {
     await lstat(path)
     return true

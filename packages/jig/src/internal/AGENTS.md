@@ -15,6 +15,19 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+- Admission storage uses the closed native descriptor operations while SQLite
+  retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
+  Darwin resolves system ancestor aliases only for SQLite's visible filename;
+  verify that hierarchy against the held state/database and the original
+  requested project root before and after opening. Do not use this pathname
+  normalization to replace descriptor-relative file authority.
+- Durable materialization preserves exact package identity through native
+  creation, aliases, reacquisition and disposal. Darwin requires the package
+  directory writable for the disposal rename, after fencing and digest checks.
+  A crash in that window cannot readmit it: disposal rechecks the same lease,
+  restores read-only mode and validates all bytes before resuming the rename.
+  Changed bytes fail closed; recorded allocation recovery may remove an
+  incomplete projection without treating it as an executable lease.
 - Admission storage retains private native-session snapshots under exact
   recipient scopes: at most sixteen 8 MiB UTF-8 rollouts, with 24-hour logical
   expiry and atomic single-use claims that delete the payload. Access requires
@@ -488,6 +501,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   publication. `package-capture.test.ts` runs shared source-capture cases on the
   qualified Mac when opted in; Linux retains filesystem-specific byte-name and
   case-sensitive collision fixtures.
+  `activation-admission-store.test.ts` exercises real SQLite durability and
+  recovery on both hosts. `package-materialization.test.ts` includes fresh-process
+  reacquisition, interrupted cleanup and the Darwin chmod-before-rename window.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
