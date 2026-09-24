@@ -90,6 +90,9 @@ try {
   await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.package-lock.json')), {
     code: 'ENOENT',
   })
+  await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.bin')), {
+    code: 'ENOENT',
+  })
   assert.deepEqual(installedManifest.dependencies, {
     '@oven/bun-linux-x64-baseline': '1.3.3',
   })

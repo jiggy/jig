@@ -75,7 +75,8 @@ admitted FLOW packages.
   the defect, verification, concrete removal conditions, and known upstream
   issue or pull-request links. Distinguish related reports from an exact fix.
 - `scripts/pack.ts` stages the complete script-disabled npm compiler installation
-  under private `libexec/authoring`, then archives the allowlisted package tree.
+  under private `libexec/authoring`, removes unused npm executable links, and
+  rejects any non-regular archive entry before packing the allowlisted tree.
   Consumers do not resolve the authoring workspace package from a registry.
 
 

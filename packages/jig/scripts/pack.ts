@@ -1,7 +1,7 @@
 // Assemble a normal npm dependency layout before packing. Bun's isolated
 // workspace links are not a complete bundled-dependency distribution.
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -60,9 +60,13 @@ try {
   // npm's local install index can contain the temporary archive locator; it
   // is preparation metadata, not a runtime dependency.
   await rm(join(stage, 'node_modules/.package-lock.json'), { force: true })
+  // npm's executable links are not used by the bundled authoring API, and the
+  // registry rejects symlinks inside a published package archive.
+  await rm(join(stage, 'node_modules/.bin'), { recursive: true, force: true })
   await rename(join(stage, 'node_modules'), join(stage, 'libexec/authoring/node_modules'))
   delete manifest.devDependencies
   await writeFile(join(stage, 'package.json'), JSON.stringify(manifest, null, 2))
+  await requireRegularTree(stage)
   const output = join(
     destination,
     `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`,
@@ -75,4 +79,12 @@ try {
   console.log(output)
 } finally {
   await rm(temporary, { recursive: true, force: true })
+}
+
+async function requireRegularTree(root: string, relative = ''): Promise<void> {
+  for (const entry of await readdir(join(root, relative), { withFileTypes: true })) {
+    const path = join(relative, entry.name)
+    if (entry.isDirectory()) await requireRegularTree(root, path)
+    else if (!entry.isFile()) throw new Error(`Jig archive contains a non-regular entry: ${path}`)
+  }
 }
