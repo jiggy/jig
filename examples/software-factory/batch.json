@@ -4,14 +4,14 @@
       "id": "logs",
       "directory": "log-report",
       "checks": "logs",
-      "issue": "Reject fractional and out-of-range HTTP status codes. Count 4xx client errors separately from 5xx server errors.",
+      "issue": "Reject fractional and out-of-range HTTP status codes. Count 4xx client errors separately from 5xx server errors. Make only one proposal; stop if it fails checks.",
       "editPaths": ["src/parse.ts", "src/report.ts"]
     },
     {
       "id": "timesheet",
       "directory": "timesheet",
       "checks": "timesheet",
-      "issue": "Reject invalid clock minutes. Include shifts crossing midnight, while equal start/end means zero minutes.",
+      "issue": "Reject invalid clock minutes. Include shifts crossing midnight, while equal start/end means zero minutes. Use check feedback for one correction if the first proposal fails.",
       "editPaths": ["src/parse.ts", "src/total.ts"]
     }
   ]

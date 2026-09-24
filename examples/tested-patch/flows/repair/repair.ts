@@ -21,10 +21,13 @@ export async function repair(
   const input = parseInput(run.input)
   const settings = object(run.settings ?? {})
   if (
-    Object.keys(settings).some((key) => key !== 'restoreCorrections') ||
-    (settings.restoreCorrections !== undefined && typeof settings.restoreCorrections !== 'boolean')
+    Object.keys(settings).some((key) => !['restoreCorrections', 'maxProposals'].includes(key)) ||
+    (settings.restoreCorrections !== undefined &&
+      typeof settings.restoreCorrections !== 'boolean') ||
+    (settings.maxProposals !== undefined && ![1, 2].includes(settings.maxProposals))
   )
-    throw new TypeError('restoreCorrections must be a boolean repair setting.')
+    throw new TypeError('restoreCorrections must be boolean and maxProposals must be 1 or 2.')
+  const maxProposals = settings.maxProposals ?? 2
   const restoreCorrections = settings.restoreCorrections === true
   const progress = run.channels.progress
   if (progress && progress.direction !== 'send')
@@ -108,7 +111,7 @@ export async function repair(
         'blocked',
         'The independent acceptance cases did not reproduce the defect.',
       )
-    for (let index = 0; index < 2; index++) {
+    for (let index = 0; index < maxProposals; index++) {
       run.signal.throwIfAborted()
       const previousSession = attempts.at(-1)?.session
       let session: AgentSessionRequest | undefined
@@ -204,7 +207,7 @@ export async function repair(
     }
     return await finish(
       'blocked',
-      'Neither proposal passed the fixed acceptance cases and repository command.',
+      'The permitted proposals did not pass the fixed acceptance cases and repository command.',
     )
   } catch (error) {
     if (error instanceof OperationError)

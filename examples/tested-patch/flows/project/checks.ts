@@ -2,7 +2,7 @@ import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export interface AcceptanceCase {
+export type AcceptanceCase = {
   id: string
   args: string[]
   stdin: string

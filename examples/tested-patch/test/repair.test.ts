@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { OperationError } from '@jigging/flow'
-import { candidate, digest, parseInput, parseProposal } from '../flows/repair/policy.ts'
 import { evaluate } from '../flows/repair/evidence.ts'
+import { candidate, digest, parseInput, parseProposal } from '../flows/repair/policy.ts'
 import { input, proposal, recorded, syntheticRepair } from './fixture.ts'
 
 test('multi-file repair delegates Agent work and retains independent command evidence', async () => {
@@ -83,4 +83,20 @@ test('candidate-reported pass flags cannot replace externally captured behavior'
   })
   records[1]!.candidateDigest = 'sha256:' + '0'.repeat(64)
   expect(() => evaluate(input, input.files, records)).toThrow('identity')
+})
+
+// Both configurations use the same independent checks; only correction differs.
+test('one proposal stops on failed checks while two proposals can correct them', async () => {
+  for (const maxProposals of [1, 2]) {
+    const { result, agents, commands } = await syntheticRepair({
+      settings: { maxProposals },
+      succeedsOn: 2,
+    })
+    expect(agents).toBe(maxProposals)
+    expect(commands).toBe((maxProposals + 1) * (input.cases.length + 1))
+    expect(result.outcome).toBe(maxProposals === 1 ? 'blocked' : 'done')
+    expect((result.output as any).attempts[0].evaluation.accepted).toBe(false)
+  }
+  for (const maxProposals of [0, 3, '1', null])
+    await expect(syntheticRepair({ settings: { maxProposals } })).rejects.toThrow('maxProposals')
 })

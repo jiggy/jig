@@ -55,6 +55,9 @@ Ordinary software verifies the choice before anything runs.
   [vetted rule front desk](./use-cases.md#vetted-rule-front-desk),
   [approved waste disposition](./use-cases.md#approved-waste-disposition), and
   [approved release transform](./use-cases.md#approved-release-transform).
+- **Current example:** The [small software factory](./guide/software-factory.md)
+  implements finite selection with a reusable router and caller-owned exact slots.
+  Its implementation does not establish superiority over explicit selection.
 - **What would prove it:** Test adversarial out-of-set requests and show better task
   completion than the best deterministic router with zero unauthorized calls.
 

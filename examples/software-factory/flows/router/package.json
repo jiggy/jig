@@ -1,0 +1,13 @@
+{
+  "name": "semantic-router-flow",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./decision": "./decision.ts",
+    "./route": "./route.ts"
+  },
+  "dependencies": {
+    "@jigging/agent-method": "0.1.0-alpha.3",
+    "@jigging/flow": "0.1.0-alpha.12"
+  }
+}

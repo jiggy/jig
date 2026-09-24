@@ -72,6 +72,9 @@ export function recorded(
 }
 export async function syntheticRepair(
   options: {
+    settings?: Record<string, any>
+    succeedsOn?: number
+    channels?: RunContext['channels']
     success?: boolean
     invalid?: boolean
     failCommand?: string
@@ -82,6 +85,7 @@ export async function syntheticRepair(
     commands = 0
   const result = await repair({
     input: input as any,
+    settings: options.settings ?? {},
     signal: new AbortController().signal,
     channels: options.channels ?? {},
     call: async (call) => {
@@ -108,7 +112,8 @@ export async function syntheticRepair(
           p.files,
           p.args,
           p.stdin,
-          options.alreadyPasses || (options.success !== false && agents > 0),
+          options.alreadyPasses ||
+            (options.success !== false && agents >= (options.succeedsOn ?? 1)),
         ),
       }
     },

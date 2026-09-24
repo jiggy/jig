@@ -1,0 +1,9 @@
+{
+  "name": "semantic-router",
+  "description": "Choose among supplied eligible methods or abstain; the caller owns dispatch.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

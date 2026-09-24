@@ -10,8 +10,10 @@ project defaults or an explicit Binding route.
 The operator binds `tests` to reviewed Bun test paths and `cli` to the project
 entrypoint. The method first runs the original tests and CLI cases. A concrete
 acceptance mismatch allows an Agent proposal of replacement text, never shell
-commands. An invalid proposal or failed candidate earns one correction, for a
-maximum of two Agent calls. Every proposal remains relative to the original.
+commands. Binding `settings: { maxProposals: 1 }` stops after one proposal;
+`maxProposals: 2` (the default) permits one correction after an invalid proposal
+or failed candidate. Both configurations require identical checks for success.
+Every proposal remains relative to the original.
 
 Optional Binding `settings: { restoreCorrections: true }` uses the first
 conversation for correction through native retention and restoration. The

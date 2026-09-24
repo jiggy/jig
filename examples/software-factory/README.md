@@ -1,14 +1,16 @@
 # Run a small software factory
 
 This application takes one or two preselected Bun-project issues and produces
-separate tested patch packets for human review. It composes the repair and
+separate tested patch packets for human review. A reusable Semantic Router chooses
+one checked proposal or up to two proposals with corrective feedback according to
+the issue and work preferences. It can also abstain. It composes the repair and
 independent evidence methods from `tested-patch`; it does not edit the originals,
 merge patches, operate Git or CI, or decide that a change should ship.
 
 ## Run the supplied issue set
 
 Complete the repository workspace setup, select and authenticate an Agent in
-`bindings/agent.ts`, then inspect `batch.json`, `bindings/specialist.ts`, and
+`bindings/agent.ts`, then inspect `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
 the two named case files under `flows/factory/`. From this directory:
 
 ```sh
@@ -29,14 +31,34 @@ selected patches yourself.
 
 ## Adapt a bounded batch
 
-Keep the common paths selected by `bindings/specialist.ts`, then add each small
+Keep the common paths selected by `bindings/single-pass.ts`, `bindings/checked-correction.ts`, then add each small
 project below the source attachment. Add a named `*-cases.json` beside the
 factory Flow and list its name, issue, directory, and existing `src/*.ts` or
 `src/*.js` edit paths in `batch.json`. The batch accepts one or two jobs. Review
 again after any issue, command, case, Agent, or grant changes.
 
-Each repair permits at most two Agent proposals. `cancelAfterMs` may stop one
-selected worker without stopping a healthy peer; root cancellation still stops
+The reviewed configurations permit one or two Agent proposals and share the same
+acceptance checks. `cancelAfterMs` covers the complete per-job routing-and-repair
+interval and may stop one selected job without stopping a healthy peer; root cancellation still stops
 all owned work. Keep acceptance policy outside editable source and never relax
 it after seeing a candidate. An incomplete or wholly empty source read fails
 before any worker is dispatched.
+
+
+## Adapt the method choice
+
+`flows/factory/methods.ts` owns readable candidates and their exact slots. The
+router sees only opaque IDs and descriptions, then returns an ID and reason or
+abstains. The factory validates a replacement router's complete result too.
+Descriptions can guide choices but never grant paths, commands, tests or providers.
+An abstention or routing failure produces no patch and does not stop a healthy peer.
+Final and checkpoint job evidence retains `routing.input`, validated `routing.result`
+and the selected slot; summaries include the routing outcome.
+
+To add a genuinely different eligible method, add candidate data and its slot in
+the factory metadata and Binding. Keep deterministic input/result adaptation in
+application code and preserve independent evidence inspection. Do not change the
+router prompt. For use with unrelated methods, follow the self-contained
+[Semantic Router package](flows/router/README.md). This is bounded semantic dispatch,
+not open discovery. An explicit method choice is cheaper when the caller already
+knows which configuration it wants; semantic judgment can still choose incorrectly.

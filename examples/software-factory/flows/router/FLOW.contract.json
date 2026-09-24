@@ -1,0 +1,89 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "outcomes": {
+    "blocked": "The Agent could not provide a decision.",
+    "limit": "The Agent reached its limit."
+  },
+  "input": {
+    "type": "object",
+    "properties": {
+      "task": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16000
+      },
+      "candidates": {
+        "type": "array",
+        "maxItems": 16,
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "required": ["id", "description"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["task", "candidates"],
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "enum": ["done", "blocked", "limit"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "candidateId": {
+            "type": ["string", "null"],
+            "maxLength": 64
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": ["reason"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false,
+    "if": {
+      "properties": {
+        "outcome": {
+          "const": "done"
+        }
+      }
+    },
+    "then": {
+      "properties": {
+        "output": {
+          "required": ["candidateId"]
+        }
+      }
+    },
+    "else": {
+      "properties": {
+        "output": {
+          "not": {
+            "required": ["candidateId"]
+          }
+        }
+      }
+    }
+  }
+}

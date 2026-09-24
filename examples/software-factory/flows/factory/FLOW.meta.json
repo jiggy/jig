@@ -5,6 +5,8 @@
     "progress": {
       "contract": "./contracts/run-checkpoint/contract.json"
     },
-    "repair": {}
+    "router": {},
+    "single-pass": {},
+    "checked-correction": {}
   }
 }

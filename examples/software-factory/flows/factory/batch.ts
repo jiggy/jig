@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
+import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
+import { checkRoutingResult } from 'semantic-router-flow/decision'
 import { checkName, loadChecks } from 'tested-patch-project-flow/checks'
 import {
   identity,
@@ -9,6 +10,7 @@ import {
   repairDeliverables,
   writeRepairDeliverables,
 } from 'tested-patch-project-flow/files'
+import { candidates, methods } from './methods.ts'
 
 interface Job {
   id: string
@@ -93,11 +95,14 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
   const results = await Promise.all(
     prepared
       .map(async ({ job, input }) => {
+        const routingInput = { task: input.issue, candidates }
+        const routing: Record<string, JsonValue> = { input: routingInput }
         const captured = {
           id: job.id,
           directory: job.directory,
           baseDigest: identity(input.files),
           acceptanceDigest: identity(input.cases),
+          routing,
         }
         const selected = new AbortController()
         const timer =
@@ -106,8 +111,32 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
             : setTimeout(() => selected.abort(), job.cancelAfterMs)
         let result: RunResult
         try {
+          run.signal.throwIfAborted()
+          const decision = await run.call(
+            { operationId: `route:${job.id}`, slot: 'router', input: routingInput },
+            { signal: selected.signal },
+          )
+          run.signal.throwIfAborted()
+          // A replacement router has no more authority than the ordinary router.
+          let route: ReturnType<typeof checkRoutingResult>
+          try {
+            route = checkRoutingResult(decision, candidates)
+          } catch {
+            throw new OperationError('INVALID_RESULT', 'Router returned an invalid decision.')
+          }
+          routing.result = route
+          if (route.outcome !== 'done' || route.output.candidateId === null)
+            return { ...captured, status: 'unrouted' }
+          const candidateId = route.output.candidateId
+          const method = methods.find((candidate) => candidate.id === candidateId)
+          if (!method)
+            throw new OperationError('INVALID_RESULT', 'The selected method has no reviewed slot.')
+          routing.slot = method.slot
+          // Do not reset the job budget after routing, including between calls.
+          if (selected.signal.aborted)
+            throw new OperationError('CANCELLED', 'The routing and repair interval expired.')
           result = await run.call(
-            { operationId: `repair:${job.id}`, slot: 'repair', input },
+            { operationId: `repair:${job.id}`, slot: method.slot, input },
             { signal: selected.signal },
           )
         } catch (error) {
@@ -118,7 +147,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
             ...captured,
             status: 'failed',
             code: value.code ?? 'EXECUTION_FAILED',
-            message: value.message ?? 'Worker failed.',
+            message: value.message ?? 'Routing or repair failed.',
             ...(value.details === undefined ? {} : { details: value.details }),
           }
         } finally {
@@ -173,8 +202,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
             files['summary.txt'] =
               settled
                 .map((j) => {
-                  const value = retained[j.id] as { ready?: boolean }
-                  return `${j.id}: ${value.ready ? 'review-ready' : 'unsuccessful'}`
+                  return summary(retained[j.id]!)
                 })
                 .join('\n') +
               `\nPending: ${pending.join(', ') || 'none'}\nPatches were checked separately. Review before applying.\n`
@@ -204,9 +232,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
     results.every((r) => 'ready' in r && r.ready) && !overlaps.some((o) => o.conflicting)
   await writeFile(
     join(deliverables.path, 'summary.txt'),
-    results
-      .map((r) => `${r.id}: ${'ready' in r && r.ready ? 'review-ready' : 'unsuccessful'}`)
-      .join('\n') +
+    results.map((r) => summary(r as unknown as JsonValue)).join('\n') +
       '\nPatches were checked separately, not as a combined change. Review before applying.\n' +
       overlaps
         .map((o) => `${o.conflicting ? 'CONFLICT' : 'OVERLAP'} ${o.path}: ${o.jobs.join(', ')}`)
@@ -214,4 +240,20 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
     { flag: 'wx' },
   )
   return { outcome: ready ? 'done' : 'blocked', output: { jobs: results, overlaps } as JsonValue }
+}
+
+function summary(value: JsonValue): string {
+  const job = value as unknown as {
+    id: string
+    ready?: boolean
+    code?: string
+    routing: {
+      slot?: string
+      result?: { outcome: string; output: { candidateId?: string | null; reason: string } }
+    }
+  }
+  const route = job.routing.result
+  const selection =
+    job.routing.slot ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
+  return `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing: ${selection}${job.code ? `; ${job.code}` : ''}${route ? `; ${route.output.reason.replace(/[\r\n]+/g, ' ')}` : ''}`
 }

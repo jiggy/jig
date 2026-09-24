@@ -5,7 +5,8 @@ title: Run a small software factory
 # Run a small software factory
 
 Turn a fixed set of one or two authorized issues into separate tested patch
-packets. Each worker uses the [tested-patch method](./tested-patch.md): reproduce
+packets. A reusable Semantic Router selects a reviewed repair configuration from
+the issue and its work preferences, or abstains. Each worker uses the [tested-patch method](./tested-patch.md): reproduce
 the defect, request bounded source replacements, execute reviewed commands, and
 check unchanged acceptance cases. You still decide whether any patch should be
 combined, merged, or released.
@@ -15,11 +16,13 @@ This is an implemented source application. It reuses the sibling tested-patch
 repair Flow through an ordinary local workspace dependency, so its own setup
 still follows the repository workspace instructions. Its external Agent and
 FLOW dependencies are published alphas; the comparison below used source
-candidates and does not establish a public-only factory installation.
+candidates and does not establish a public-only factory installation. The
+Semantic Router below is a separate ordinary Flow package; its deterministic
+tests do not establish a live installed factory run.
 
 ## Run the supplied batch
 
-After repository workspace setup, inspect `batch.json`, the Agent and specialist
+After repository workspace setup, inspect `batch.json`, the Agent, single-pass and checked-correction
 Bindings, and both named case files. Select and authenticate your Agent, then:
 
 ```sh
@@ -28,8 +31,9 @@ jig run binding:factory --input @batch.json --attach source=fixtures --out facto
 ```
 
 The factory accepts at most two jobs. It validates and captures every selected
-project and case set before starting paid work, then runs the repair workers
-independently. Each repair permits at most two proposals. Original projects are
+project and case set before starting paid work, then routes and repairs each job
+independently. One configuration allows a single checked proposal; the other
+allows one correction using check feedback. Both require the same evidence. Original projects are
 read-only; only a new result packet is writable. Source reads use explicit file
 offsets and must match their observed sizes; an incomplete or wholly empty
 materialization stops before worker dispatch.
@@ -69,10 +73,44 @@ For each job:
 4. review again before starting the batch.
 
 Do not move acceptance policy into candidate source or relax it after seeing a
-proposal. Optional `cancelAfterMs` stops one selected worker while its peer may
-finish; root cancellation still stops all owned work.
+proposal. Optional `cancelAfterMs` covers the entire routing-and-repair interval of
+one job while its peer may finish; root cancellation still stops all owned work.
 
-## What the bounded evidence showed
+## Choose a method without changing its authority
+
+The supplied issues express different work preferences: the log repair gets one
+proposal, while the timesheet repair can use check feedback for a correction.
+`flows/factory/methods.ts` supplies opaque IDs and descriptions and maps them to
+reviewed slots. A second proposal is a work budget choice, not weaker acceptance.
+With no preference, the candidate data describes checked correction as the default.
+Use an explicit menu when the operator already knows which configuration to select;
+it avoids a routing call and its uncertain judgment.
+
+The [Semantic Router source package](https://github.com/jiggy/jig/tree/main/examples/software-factory/flows/router)
+is independently reusable. It accepts only task text and a bounded candidate list,
+uses the ordinary Agent contract, and returns a supplied ID with a reason or null
+for abstention. Candidate IDs and descriptions are data, not executable selectors.
+It has no host registry, provider configuration, or factory-specific prompt.
+
+The factory validates even a replacement router's complete result and membership
+before calling the mapped slot. Abstention, Agent blocked/limit, malformed output
+and operational failure produce no worker dispatch or patch for that job. They
+remain visible alongside healthy peers. Job evidence retains the exact routing
+input, validated decision and selected slot; checkpoint and final summaries show
+the routing outcome. The router returns before the worker starts, keeping each
+concurrent branch within the ordinary host budget.
+
+Adding an eligible method changes candidate data and the factory's declared slot
+and Binding. Keep any input/result adaptation in application code and preserve
+independent patch inspection. Reusing the router for a different domain changes
+only candidate data and project wiring. This is bounded semantic dispatch, not
+catalogue discovery or installation. Membership checks enforce the finite set;
+they cannot guarantee an appropriate choice within it.
+
+## Earlier factory evidence
+
+The following comparison predates semantic dispatch and does not measure routing.
+
 
 On the supplied two-project candidate run, one native Agent request failed while
 the other worker produced a patch passing two repository tests and four

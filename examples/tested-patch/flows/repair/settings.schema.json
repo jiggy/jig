@@ -2,7 +2,13 @@
   "$schema": "https://flow.jig.md/schemas/schema-0.json",
   "type": "object",
   "properties": {
-    "restoreCorrections": { "type": "boolean" }
+    "restoreCorrections": {
+      "type": "boolean"
+    },
+    "maxProposals": {
+      "type": "integer",
+      "enum": [1, 2]
+    }
   },
   "additionalProperties": false
 }

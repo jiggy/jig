@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@jigging/flow": "0.1.0-alpha.12",
-    "tested-patch-project-flow": "workspace:*"
+    "tested-patch-project-flow": "workspace:*",
+    "semantic-router-flow": "workspace:*"
   }
 }

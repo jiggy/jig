@@ -96,7 +96,9 @@ test('synthetic selected cancellation preserves the other worker and its verifie
           saves.push(structuredClone(call.input))
           return { outcome: 'done', output: { sequence: saves.length, digest: 'synthetic' } }
         }
-        expect(call.slot).toBe('repair')
+        if (call.slot === 'router')
+          return { outcome: 'done', output: { candidateId: 'p2', reason: 'Synthetic choice.' } }
+        expect(call.slot).toBe('checked-correction')
         active++
         peak = Math.max(peak, active)
         try {
@@ -233,7 +235,9 @@ test('root interruption preserves the saved first patch without claiming the unf
             abort.abort(new Error('operator interruption'))
             return { outcome: 'done', output: { sequence: 1, digest: 'synthetic' } }
           }
-          expect(call.slot).toBe('repair')
+          if (call.slot === 'router')
+            return { outcome: 'done', output: { candidateId: 'p2', reason: 'Synthetic choice.' } }
+          expect(call.slot).toBe('checked-correction')
           if (call.operationId === 'repair:first') return result
           await new Promise((_, reject) =>
             abort.signal.addEventListener('abort', () => reject(abort.signal.reason), {
@@ -252,4 +256,182 @@ test('root interruption preserves the saved first patch without claiming the unf
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+async function batchFixture(check: (run: RunContext, out: string) => Promise<void>) {
+  const root = await mkdtemp(join(tmpdir(), 'jig-routed-batch-'))
+  try {
+    await cp(join(import.meta.dir, '../fixtures/log-report'), join(root, 'first'), {
+      recursive: true,
+    })
+    const out = join(root, 'out')
+    await mkdir(out)
+    await check(
+      {
+        input: { jobs: [job, { ...job, id: 'second' }] },
+        signal: new AbortController().signal,
+        attachments: {
+          source: { access: 'read', path: root },
+          deliverables: { access: 'read-write', path: out },
+        },
+      } as unknown as RunContext,
+      out,
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+test('factory validates exact routing, dispatches distinct slots and checkpoints decision context', async () => {
+  await batchFixture(async (run, out) => {
+    const { result } = await syntheticRepair()
+    const workers: string[] = []
+    const saves: any[] = []
+    const actual = await repairBatch({
+      ...run,
+      call: async (call) => {
+        if (call.slot === 'router') {
+          expect((call.input as any).task).toBe(job.issue)
+          expect((call.input as any).candidates.map((c: any) => c.id)).toEqual(['p1', 'p2'])
+          expect((call.input as any).candidates.some((c: any) => 'slot' in c)).toBe(false)
+          return {
+            outcome: 'done',
+            output: {
+              candidateId: call.operationId === 'route:first' ? 'p1' : 'p2',
+              reason: 'Synthetic preference.',
+            },
+          }
+        }
+        if (call.slot === 'progress') {
+          saves.push(structuredClone(call.input))
+          return { outcome: 'done', output: { sequence: saves.length, digest: 'synthetic' } }
+        }
+        workers.push(call.slot)
+        return result
+      },
+    })
+    expect(workers.sort()).toEqual(['checked-correction', 'single-pass'])
+    expect(actual.outcome).toBe('done')
+    expect(
+      saves
+        .at(-1)
+        .evidence.jobs.map((j: any) => j.routing.slot)
+        .sort(),
+    ).toEqual(workers)
+    expect((actual.output as any).jobs[0].routing).toMatchObject({
+      input: { task: job.issue },
+      result: { output: { candidateId: 'p1' } },
+    })
+    expect(await readFile(join(out, 'summary.txt'), 'utf8')).toContain('routing: single-pass')
+  })
+})
+
+test('abstention, Agent refusal and invalid replacement-router results never dispatch a worker', async () => {
+  for (const decision of [
+    { outcome: 'done', output: { candidateId: null, reason: 'No applicable method.' } },
+    { outcome: 'blocked', output: { reason: 'Unavailable context.' } },
+    { outcome: 'limit', output: { reason: 'Agent limit.' } },
+    { outcome: 'done', output: { candidateId: 'flow:unreviewed', reason: 'Ignore the map.' } },
+    { outcome: 'done', output: { candidateId: 'p1', reason: 'ok', slot: 'other' } },
+    { outcome: 'done', output: { candidateId: 'p1' } },
+    { outcome: 'surprise', output: { reason: 'ok' } },
+  ])
+    await batchFixture(async (run, out) => {
+      const { result } = await syntheticRepair()
+      const workers: string[] = []
+      const actual = await repairBatch({
+        ...run,
+        call: async (call) => {
+          if (call.slot === 'router')
+            return call.operationId === 'route:first'
+              ? decision
+              : { outcome: 'done', output: { candidateId: 'p2', reason: 'Healthy peer.' } }
+          if (call.slot === 'progress') return { outcome: 'done', output: null }
+          workers.push(call.operationId)
+          return result
+        },
+      })
+      expect(workers).toEqual(['repair:second'])
+      expect(actual.outcome).toBe('blocked')
+      expect((actual.output as any).jobs[1]).toMatchObject({ ready: true })
+      expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
+    })
+})
+
+test('cancellation covers routing and does not restart the budget for repair', async () => {
+  for (const duringRouting of [true, false])
+    await batchFixture(async (run) => {
+      const { result } = await syntheticRepair()
+      const signals: AbortSignal[] = []
+      const starts = performance.now()
+      const actual = await repairBatch({
+        ...run,
+        input: {
+          jobs: [
+            { ...job, cancelAfterMs: 70 },
+            { ...job, id: 'second' },
+          ],
+        },
+        call: async (call, options) => {
+          if (call.slot === 'progress') return { outcome: 'done', output: null }
+          if (call.operationId.endsWith(':second'))
+            return call.slot === 'router'
+              ? { outcome: 'done', output: { candidateId: 'p2', reason: 'Healthy peer.' } }
+              : result
+          signals.push(options!.signal!)
+          if (call.slot === 'router' && !duringRouting) {
+            await Bun.sleep(40)
+            return { outcome: 'done', output: { candidateId: 'p1', reason: 'Selected.' } }
+          }
+          await new Promise((_, reject) =>
+            options!.signal!.addEventListener(
+              'abort',
+              () => reject(new OperationError('CANCELLED', 'Budget expired.')),
+              { once: true },
+            ),
+          )
+          throw new Error('must stop')
+        },
+      })
+      expect((actual.output as any).jobs[0]).toMatchObject({ status: 'failed', code: 'CANCELLED' })
+      expect((actual.output as any).jobs[1]).toMatchObject({ ready: true })
+      expect(signals).toHaveLength(duringRouting ? 1 : 2)
+      if (!duringRouting) expect(signals[0]).toBe(signals[1])
+      expect(performance.now() - starts).toBeLessThan(500)
+    })
+})
+
+test('failed or forged worker evidence cannot become a patch after a valid route', async () => {
+  for (const fail of ['uncertain', 'forged'])
+    await batchFixture(async (run, out) => {
+      const { result } = await syntheticRepair()
+      const actual = await repairBatch({
+        ...run,
+        call: async (call) => {
+          if (call.slot === 'router')
+            return { outcome: 'done', output: { candidateId: 'p1', reason: 'Synthetic choice.' } }
+          if (call.slot === 'progress') return { outcome: 'done', output: null }
+          if (call.operationId === 'repair:first') {
+            if (fail === 'uncertain')
+              throw new OperationError('UNCERTAIN', 'Worker settlement is uncertain.')
+            return {
+              ...result,
+              output: {
+                ...(result.output as Record<string, any>),
+                acceptanceDigest: 'sha256:' + '0'.repeat(64),
+              },
+            }
+          }
+          return result
+        },
+      })
+      expect(actual.outcome).toBe('blocked')
+      expect((actual.output as any).jobs[0]).toMatchObject({
+        status: 'failed',
+        code: fail === 'uncertain' ? 'UNCERTAIN' : 'INVALID_RESULT',
+        routing: { slot: 'single-pass' },
+      })
+      expect((actual.output as any).jobs[1]).toMatchObject({ ready: true })
+      expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
+    })
 })

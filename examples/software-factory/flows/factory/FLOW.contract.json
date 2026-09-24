@@ -1,8 +1,7 @@
 {
   "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
   "outcomes": {
-    "blocked": "The defect was not reproduced or no acceptable patch was produced.",
-    "limit": "The Agent stopped at its limit."
+    "blocked": "At least one job was unrouted or unsuccessful, or accepted patches conflict."
   },
   "channels": {
     "progress": {

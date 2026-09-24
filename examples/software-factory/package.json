@@ -7,6 +7,7 @@
     "tested-patch-repair-flow": "workspace:*"
   },
   "devDependencies": {
-    "@jigging/flow": "0.1.0-alpha.12"
+    "@jigging/flow": "0.1.0-alpha.12",
+    "semantic-router-flow": "workspace:*"
   }
 }

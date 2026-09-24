@@ -35,8 +35,10 @@ only after executed checks and independent acceptance.
   This introductory root connects no monitoring channels. Batch and observation
   checks live in Jig's private repair fixture; they reuse this leaf and evidence
   helpers without making the public walkthrough a batch application.
-- Reproduce an independent baseline mismatch before an Agent call. Permit at most
-  one correction; every proposal and evaluation uses the original files and cases.
+- Reproduce an independent baseline mismatch before an Agent call. The reviewed
+  `maxProposals` setting is 1 or 2 (default 2); 1 stops after its first checked
+  proposal, while 2 permits one correction. Both use identical acceptance rules;
+  every proposal and evaluation uses the original files and cases.
 - Read attachment files from explicit offsets, require every stat-sized file to
   be read completely, and reject wholly empty captured projects before dispatch.
 - Repository tests can be interfered with by candidate code. Independent assertions
