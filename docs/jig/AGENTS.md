@@ -37,7 +37,7 @@ use-case and orchestration hypotheses.
 - `guide/files.md` explains per-run files and review-pinned Binding resources,
   their shared read attachment interface, retention and root-only limits.
 - `guide/agent-method.md` explains the reusable method's pure library and
-  ordinary Agent Run artifact, honest source-candidate adoption, explicit
+  published ordinary Agent Run artifact, reviewed-source adoption, explicit
   caller context and independent consumer result validation.
 - `guide/contracts.md` teaches optional managed TypeSpec authoring and generated
   file ownership, including named optional feature catalogs;

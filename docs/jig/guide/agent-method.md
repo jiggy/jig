@@ -4,16 +4,16 @@ title: Reuse the Agent method
 
 # Reuse the Agent method
 
-The `@jigging/agent-method` source candidate packages one bounded Agent method
+The published `@jigging/agent-method` alpha packages one bounded Agent method
 for reuse as a pure TypeScript library or an ordinary Flow. It renders
 instructions and selected guidance, prepares a bounded structured schema,
 decodes the returned JSON presentation, checks its shape and assembles the
 complete `done`, `blocked` or `limit` result.
 
-Use the complete package built from the source revision you reviewed; the
-[package source and build instructions](https://github.com/jiggy/jig/tree/main/packages/agent-method)
-describe that artifact. This source guide does not establish registry
-publication. The packed Flow includes its runtime, library and FLOW SDK,
+Install the [published package](https://www.npmjs.com/package/@jigging/agent-method)
+with an authored Bun lock, or build the complete archive from
+[reviewed source](https://github.com/jiggy/jig/tree/main/packages/agent-method).
+The packed Flow includes its runtime, library and FLOW SDK,
 descriptors, source, declarations and licenses. Running that Flow needs no
 consumer build hook or unpublished runtime dependency.
 

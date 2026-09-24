@@ -11,9 +11,11 @@ check unchanged acceptance cases. You still decide whether any patch should be
 combined, merged, or released.
 
 Use the [small software factory source](https://github.com/jiggy/jig/tree/main/examples/software-factory).
-This is an implemented source application. Until the ordinary Agent alphas have
-converged in npm, its live evidence qualifies matching source candidates rather
-than a public-only installation.
+This is an implemented source application. It reuses the sibling tested-patch
+repair Flow through an ordinary local workspace dependency, so its own setup
+still follows the repository workspace instructions. Its external Agent and
+FLOW dependencies are published alphas; the comparison below used source
+candidates and does not establish a public-only factory installation.
 
 ## Run the supplied batch
 

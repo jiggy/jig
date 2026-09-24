@@ -93,10 +93,11 @@ version to be published or supplied through an ordinary workspace.
 
 Declare `@jigging/agent-acp` in the project's `package.json` dependencies. Use
 `workspace:*` when it is a member of your Bun workspace; otherwise select a
-published version and retain the Bun lock. Its
+published version and retain the Bun lock. The
+[published package](https://www.npmjs.com/package/@jigging/agent-acp)
+contains the runnable Flow. Its
 [source package](https://github.com/jiggy/jig/tree/main/packages/agent-acp)
-documents building and packing the candidate; this guide does not assert
-registry publication. Build workspace source through its ordinary package build.
+also documents building and packing a candidate from reviewed source.
 Create `bindings/agent.ts`:
 
 ```ts

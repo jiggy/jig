@@ -4,8 +4,8 @@ A Flow may need a private document, a notification endpoint, or a model API.
 Give its invocation slot an HTTP grant: the method builds and interprets requests,
 while Jig keeps the credential and limits where those requests can go.
 
-This guide describes the HTTP-enabled source candidate, not a published release.
-Use Jig and FLOW SDK artifacts from that same candidate.
+Use the published Jig and FLOW SDK alphas through the
+[installation guide](./index.md), with their reviewed contracts.
 
 ## Fetch a reference document
 
