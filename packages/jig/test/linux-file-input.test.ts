@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import {
   PrivateFileInputError,
   privateCaptureAttachments,
+  privateDuplicateInputForStdio,
   privateOpenFileRoot,
   privatePublishDirectory,
   privateVerifySealedFile,
@@ -37,6 +38,39 @@ test('captures selected binary and empty files into sealed anonymous input', asy
       for (const file of files) privateVerifySealedFile(file.fd, file.bytes, file.digest)
       await expect(writeFile(`/proc/self/fd/${files[0]!.fd}`, 'changed')).rejects.toThrow()
     } finally {
+      capture.close()
+    }
+  }))
+
+test('duplicates sealed inputs above every child stdio destination without changing bytes', async () =>
+  fixture(async (root) => {
+    for (let index = 0; index < 24; index++)
+      await writeFile(join(root, `file-${index}`), `distinct payload ${index}`)
+    const capture = privateCaptureAttachments([
+      {
+        name: 'source',
+        directory: root,
+        select: Array.from({ length: 24 }, (_, index) => `file-${index}`),
+      },
+    ])
+    const duplicates: number[] = []
+    try {
+      const files = capture.attachments[0]!.files
+      for (const file of files)
+        duplicates.push(privateDuplicateInputForStdio(file.fd, 6 + files.length))
+      expect(new Set(duplicates).size).toBe(files.length)
+      for (const [index, fd] of duplicates.entries()) {
+        expect(fd).toBeGreaterThanOrEqual(6 + files.length)
+        expect(readFileSync(`/proc/self/fd/${fd}`)).toEqual(
+          readFileSync(`/proc/self/fd/${files[index]!.fd}`),
+        )
+        privateVerifySealedFile(fd, files[index]!.bytes, files[index]!.digest)
+        expect(() =>
+          privateVerifySealedFile(fd, files[index]!.bytes, `sha256:${'0'.repeat(64)}`),
+        ).toThrow('captured input descriptor changed')
+      }
+    } finally {
+      for (const fd of duplicates) closeSync(fd)
       capture.close()
     }
   }))

@@ -314,10 +314,12 @@ delegatedDescribe('private rootless Linux Run', () => {
         ...plan(host, fixture, 'captured-input-width'),
         output: true,
         inputDirectories: ['/jig-input/source'],
+        // Scramble source descriptor order so a source may overlap an earlier
+        // child stdio destination. The handoff must preserve every identity.
         capturedInputs: capture.attachments[0]!.files.map((file) => ({
           ...file,
           destination: `/jig-input/source/${file.path}`,
-        })),
+        })).sort((a, b) => b.fd - a.fd),
       })
       const [stdout, stderr, receipt] = await Promise.all([
         collect(component.stdout),

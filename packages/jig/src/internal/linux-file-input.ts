@@ -27,6 +27,7 @@ export const PRIVATE_FILE_LIMITS = Object.freeze({
 })
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const CLOSED_SEALS = 0x0f
+const F_DUPFD_CLOEXEC = 1030
 const O_PATH = 0x200000
 const O_CLOEXEC = 0x80000
 const O_DIRECTORY = 0x10000
@@ -445,6 +446,12 @@ export function privateVerifySealedFile(fd: number, bytes: number, digest: strin
     sha256(readFileSync(`/proc/self/fd/${fd}`)) !== digest
   )
     throw new TypeError('captured input descriptor changed')
+}
+/** Keep spawn's source descriptors above all destination slots to avoid remapping collisions. */
+export function privateDuplicateInputForStdio(fd: number, minimum: number): number {
+  if (!Number.isSafeInteger(fd) || fd < 0 || !Number.isSafeInteger(minimum) || minimum < 6)
+    throw new TypeError('invalid captured input descriptor handoff')
+  return result(calls().symbols.fcntl!(fd, F_DUPFD_CLOEXEC, minimum))
 }
 export function sha256(bytes: Uint8Array): string {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`

@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { closeSync } from 'node:fs'
 import {
   type FileHandle,
   link,
@@ -26,7 +27,11 @@ import type { JsonValue } from '../json.js'
 import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
 import { privateDomainDigest } from './identity.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
-import { PRIVATE_FILE_LIMITS, privateVerifySealedFile } from './linux-file-input.js'
+import {
+  PRIVATE_FILE_LIMITS,
+  privateDuplicateInputForStdio,
+  privateVerifySealedFile,
+} from './linux-file-input.js'
 import {
   acquirePrivateRootlessLinux,
   inspectPrivateRootlessLinuxSupport,
@@ -603,34 +608,36 @@ export class PrivateLinuxCgroupBackend {
     try {
       await listen(server, controlPath)
       const accepted = acceptOne(server, this.#options.startupTimeoutMs)
-      supervisor = requirePipedChild(
-        spawn(
-          data.mechanism.support.trustedCoordinatorBunPath,
-          [
-            ...BUN_POLICY,
-            data.mechanism.support.trustedSupervisorPath,
-            '--supervisor',
-            controlPath,
-            String(this.#options.startupTimeoutMs),
-          ],
-          {
-            cwd: '/',
-            env: {
-              LD_LIBRARY_PATH: data.mechanism.support.trustedCoordinatorLibraryPath,
-            },
-            detached: true,
-            stdio: [
-              'pipe',
-              'pipe',
-              'pipe',
-              'ignore',
-              'ignore',
-              'ignore',
-              ...data.sealedPlan.capturedInputs.map((file) => file.fd),
+      const inputFds: number[] = []
+      try {
+        // Bun remaps stdio slots in ascending order. Sources inside the target
+        // interval can be overwritten before a later input is copied.
+        const minimum = 6 + data.sealedPlan.capturedInputs.length
+        for (const file of data.sealedPlan.capturedInputs)
+          inputFds.push(privateDuplicateInputForStdio(file.fd, minimum))
+        supervisor = requirePipedChild(
+          spawn(
+            data.mechanism.support.trustedCoordinatorBunPath,
+            [
+              ...BUN_POLICY,
+              data.mechanism.support.trustedSupervisorPath,
+              '--supervisor',
+              controlPath,
+              String(this.#options.startupTimeoutMs),
             ],
-          },
-        ),
-      )
+            {
+              cwd: '/',
+              env: {
+                LD_LIBRARY_PATH: data.mechanism.support.trustedCoordinatorLibraryPath,
+              },
+              detached: true,
+              stdio: ['pipe', 'pipe', 'pipe', 'ignore', 'ignore', 'ignore', ...inputFds],
+            },
+          ),
+        )
+      } finally {
+        for (const fd of inputFds) closeSync(fd)
+      }
       const closed = childClose(supervisor)
       control = await Promise.race([
         accepted,
