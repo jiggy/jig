@@ -10,6 +10,11 @@ export const PRIVATE_FILE_LIMITS = Object.freeze({
   captureMs: 10_000,
   deliveryMs: 20_000,
 })
+export const PRIVATE_CAPTURE_LIMITS = Object.freeze({
+  input: PRIVATE_FILE_LIMITS.bytes,
+  output: 16 * 1024 * 1024,
+})
+export type PrivateCapturePurpose = keyof typeof PRIVATE_CAPTURE_LIMITS
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const protectedParts = new Set(['.jig'])
 // biome-ignore lint/suspicious/noControlCharactersInRegex: The file boundary must reject control characters.

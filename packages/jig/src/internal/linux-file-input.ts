@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { dirname, posix, resolve } from 'node:path'
 import { getSystemErrorName } from 'node:util'
 import {
+  PRIVATE_CAPTURE_LIMITS,
   PRIVATE_FILE_LIMITS,
   PrivateFileInputError,
   privateFilePath,
@@ -148,13 +149,19 @@ export function privateLinuxSealedBytes(bytes: Uint8Array): number {
     throw error
   }
 }
-export function privateVerifyLinuxSealedFile(fd: number, bytes: number, digest: string): void {
+export function privateVerifyLinuxSealedFile(
+  fd: number,
+  bytes: number,
+  digest: string,
+  maximumBytes = PRIVATE_FILE_LIMITS.bytes,
+): void {
   if (
+    !Object.values(PRIVATE_CAPTURE_LIMITS).includes(maximumBytes) ||
     !Number.isSafeInteger(fd) ||
     fd < 0 ||
     !Number.isSafeInteger(bytes) ||
     bytes < 0 ||
-    bytes > PRIVATE_FILE_LIMITS.bytes ||
+    bytes > maximumBytes ||
     !/^sha256:[0-9a-f]{64}$/.test(digest)
   )
     throw new TypeError('invalid captured input identity')

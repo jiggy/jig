@@ -84,13 +84,22 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Directory ancestry may use only the closed `.`/`..` operation; observed
   filesystem paths never authorize reopening. These adapters do not by themselves
   qualify native execution or output delivery.
-- `macos-captured-input.ts` owns private, capability-backed macOS input captures.
+- `captured-bytes.ts` binds anonymous byte capabilities to a closed input or
+  output purpose and its separate byte limit. `input-capture.ts` owns the
+  invocation-only interface; output handles cannot substitute for input authority.
+  `macos-captured-bytes.ts` owns private, capability-backed macOS byte captures.
   Mint a handle only after unlinking the only pathname and closing the only
   writable descriptor. Allocate its directory outside every payload file grant;
   same-UID permissions alone are insufficient. Revalidation requires the original
   live capability and exact bytes; serialized metadata cannot mint authority.
   Transfer descriptors only through an authenticated trusted handoff. This
   primitive does not by itself qualify or enable an installed macOS host.
+- `captured-output.ts` snapshots an already-fenced output directory into one
+  anonymous immutable backing under the 16 MiB aggregate output bound. Preserve
+  directory evidence, including empty directories, for native-session validation.
+  Keep capture/profile failures distinct from execution and cleanup evidence.
+  The snapshot may outlive a detached native volume; its descriptors and bytes
+  remain command-owned and cannot be recreated from serialized metadata.
 - `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
   file operations, raw directory enumeration and anonymous streaming backings.
   Do not substitute F_GETPATH followed by a pathname reopen for a held
@@ -567,7 +576,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   candidate native runtime outside an enclosing sandbox. They use finite
   user-domain launchd jobs, exact cleanup and an unrelated-process sentinel;
   the execution test compiles its native fixture with the local Apple toolchain.
-  `macos-captured-input.test.ts` covers anonymous read-only capture on macOS.
+  `macos-captured-bytes.test.ts` covers anonymous read-only capture on macOS.
   `macos-guardian.test.ts` qualifies the complete private guardian connection,
   gated native streams, cancellation, blocked output, and both coordinator and
   guardian loss. Portable framing cases live in `macos-control-channel.test.ts`.
@@ -610,6 +619,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   binary/empty reads from the immutable projection, denies source writes and
   private data, refuses changed/closed captures before execution, and recovers
   after source handles have already closed.
+  `captured-output.test.ts` covers source removal, binary/empty bytes, immutable
+  readers, purpose separation, aggregate bounds, invalid trees and cancellation.
+  The native input/guardian test also verifies an output snapshot after its
+  original filesystem image and collector have been released.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,

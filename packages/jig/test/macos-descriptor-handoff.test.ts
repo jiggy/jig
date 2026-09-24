@@ -5,9 +5,9 @@ import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, writeFile } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  capturePrivateMacosInput,
-  requirePrivateMacosCapturedInput,
-} from '../src/internal/macos-captured-input.js'
+  capturePrivateMacosBytes,
+  requirePrivateMacosCapturedBytes,
+} from '../src/internal/macos-captured-bytes.js'
 import { privateMacosOpenAt } from '../src/internal/macos-descriptor-files.js'
 import {
   createPrivateMacosDescriptorReceiver,
@@ -26,12 +26,12 @@ native(
     const root = await mkdtemp('/private/tmp/jig-fds-')
     const owner = privateMacosCurrentProcessIdentity()
     let receiver: Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>> | undefined
-    let captured: ReturnType<typeof capturePrivateMacosInput> | undefined
+    let captured: ReturnType<typeof capturePrivateMacosBytes> | undefined
     let directory: Awaited<ReturnType<typeof open>> | undefined
     let received: PrivateMacosReceivedDescriptors | undefined
     try {
       receiver = await createPrivateMacosDescriptorReceiver(root, 'inputs')
-      captured = capturePrivateMacosInput(root, Buffer.from('anonymous input'))
+      captured = capturePrivateMacosBytes(root, Buffer.from('anonymous input'), 'input')
       const source = join(root, 'source'),
         moved = join(root, 'moved')
       await mkdir(source)
@@ -40,7 +40,7 @@ native(
       await rename(source, moved)
       await mkdir(source)
       await writeFile(join(source, 'data'), 'replacement')
-      const original = requirePrivateMacosCapturedInput(captured).fd
+      const original = requirePrivateMacosCapturedBytes(captured, 'input').fd
       const [bundle] = await Promise.all([
         receiver.receive(owner, 2000),
         sendPrivateMacosDescriptors(receiver.path, owner, [original, directory.fd], 2000),
@@ -73,7 +73,7 @@ native(
       received.close()
       received.close()
       expect(() => fstatSync(fd)).toThrow()
-      expect(requirePrivateMacosCapturedInput(captured).fd).toBe(original)
+      expect(requirePrivateMacosCapturedBytes(captured, 'input').fd).toBe(original)
       await expect(receiver.receive(owner, 100)).rejects.toThrow('unavailable')
     } finally {
       received?.close()

@@ -5,6 +5,11 @@ import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  capturePrivateOutput,
+  type PrivateCapturedOutput,
+  readPrivateCapturedOutput,
+} from '../src/internal/captured-output.js'
 import { privateReadRegularFile, sha256 } from '../src/internal/file-input.js'
 import { capturePrivateInput } from '../src/internal/input-capture.js'
 import {
@@ -144,6 +149,7 @@ console.log('native-input-complete')
           capturedInputs,
         }
         let owner: Awaited<ReturnType<typeof preparePrivateMacosGuardian>> | undefined
+        let capturedOutput: PrivateCapturedOutput | undefined
         let settled = false
         try {
           if (mode === 'manifest-mismatch') {
@@ -184,6 +190,7 @@ console.log('native-input-complete')
               bytes: [0, 255, 128],
               empty: 0,
             })
+            capturedOutput = capturePrivateOutput(fenced.outputFd!)
             if (mode === 'guardian-loss') {
               const ffi = createRequire(import.meta.url)('bun:ffi')
               const api = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
@@ -204,6 +211,10 @@ console.log('native-input-complete')
           settled = terminal.fenced
           expect(await exists(mountPath)).toBe(false)
           expect(await exists(join(ownerDirectory, 'storage/volume.dmg'))).toBe(false)
+          if (capturedOutput !== undefined)
+            expect(
+              JSON.parse(readPrivateCapturedOutput(capturedOutput)[0]!.contents.toString()).answer,
+            ).toBe(42)
         } finally {
           try {
             if (!settled && owner !== undefined) {
@@ -213,6 +224,7 @@ console.log('native-input-complete')
               settled = true
             }
           } finally {
+            capturedOutput?.close()
             for (const file of capturedInputs) file.input.close()
             if (settled) await rm(root, { recursive: true })
             else {
