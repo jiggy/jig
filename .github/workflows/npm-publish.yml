@@ -260,12 +260,12 @@ jobs:
               echo "$package_name@$version preflight: $state"
               return
             fi
-            if [ "$state" = verified ] && [ "$relation" = newer ]; then
-              echo "$package_name@$version matches registry bytes; a newer $release_tag tag remains unchanged"
-            elif [ "$state" = verified ] && [ "$relation" = older ]; then
-              echo "$package_name@$version matches registry bytes; the older $release_tag tag cannot be changed through trusted-publisher OIDC" >&2
-            elif [ "$state" = verified ] && [ -z "$tagged" ]; then
+            if [ "$state" = verified ] && [ -z "$tagged" ]; then
               echo "$package_name@$version matches registry bytes; the missing $release_tag tag cannot be changed through trusted-publisher OIDC" >&2
+            elif [ "$state" = verified ] && [ "$relation" = older ]; then
+              echo "$package_name@$version matches registry bytes; a newer $release_tag tag remains unchanged"
+            elif [ "$state" = verified ] && [ "$relation" = newer ]; then
+              echo "$package_name@$version matches registry bytes; the older $release_tag tag cannot be changed through trusted-publisher OIDC" >&2
             fi
             if [ "$state" = published ]; then
               attempt=1

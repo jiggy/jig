@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -178,6 +178,7 @@ test('older exact-version retry verifies bytes promptly despite newer tag', asyn
     const result = await run(root, state)
     expect(result.result.status).toBe(0)
     expect(result.output.match(/_state=verified/g)).toHaveLength(4)
+    expect(result.result.stdout).toContain('a newer alpha tag remains unchanged')
     expect(result.state.calls.filter((call: string[]) => call[0] === 'publish')).toHaveLength(0)
   })
 })
@@ -205,6 +206,8 @@ test('existing bytes with missing or older tag never wait or mutate the channel'
     const result = await run(root, state)
     expect(result.result.status).toBe(0)
     expect(result.output.match(/_state=verified/g)).toHaveLength(4)
+    expect(result.result.stderr).toContain('the older alpha tag cannot be changed')
+    expect(result.result.stderr).toContain('the missing alpha tag cannot be changed')
     expect(result.state.calls.filter((call: string[]) => call[0] === 'publish')).toHaveLength(0)
     expect(result.state.packages['@jigging/flow'].tags.alpha).toBe('0.1.0-alpha.13')
   })
