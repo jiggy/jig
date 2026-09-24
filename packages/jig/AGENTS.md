@@ -10,6 +10,12 @@ admitted FLOW packages.
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
+- `src/package/capture.ts` snapshots through held directory descriptors and
+  rechecks source identity and contents. Linux uses unnamed temporary files;
+  qualified Mac capture opens a private reader beside its sole writer, unlinks
+  the only pathname, and closes the writer before exposing streamed bytes.
+  Source renames cannot redirect opened-directory capture. This source adapter
+  does not independently qualify the installed Mac execution host.
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking, retained-lock decoding and dispatch. Dispatch
   caches longest paths per immutable candidate; repeated routes must not expand

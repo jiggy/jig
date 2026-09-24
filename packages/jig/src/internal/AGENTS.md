@@ -54,6 +54,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   live capability and exact bytes; serialized metadata cannot mint authority.
   Transfer descriptors only through an authenticated trusted handoff. This
   primitive does not by itself qualify or enable an installed macOS host.
+- `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
+  file operations, raw directory enumeration and anonymous streaming backings.
+  Do not substitute F_GETPATH followed by a pathname reopen for a held
+  descriptor. The pinned Bun FileHandle adoption seam and SDK stat/dirent layouts
+  require native qualification. Use matching INODE64 entrypoints, independent
+  enumeration offsets, and O_NOFOLLOW_ANY without the conflicting O_NOFOLLOW.
+  Anonymous readers remain private until their only writer has closed.
 - `macos-process-controls.ts` owns the qualified Darwin process ABI: acquire
   only the guardian's initially exclusive resource coalition, observe kernel
   accounting, and signal matching PID versions. Sampled footprint and process
@@ -469,6 +476,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   gated native streams, cancellation, blocked output, and both coordinator and
   guardian loss. Portable framing cases live in `macos-control-channel.test.ts`.
   These checks are primitive evidence, not installed-host conformance.
+  `macos-descriptor-files.test.ts` compiles SDK layout assertions and checks
+  identity across directory replacement, raw enumeration and exclusive
+  publication. `package-capture.test.ts` runs shared source-capture cases on the
+  qualified Mac when opted in; Linux retains filesystem-specific byte-name and
+  case-sensitive collision fixtures.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
