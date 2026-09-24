@@ -41,8 +41,10 @@ retaining separate evidence and leaving every merge decision to a person.
 ## Verification
 
 - `bun test examples/software-factory/test`
-- Installed host evidence runs `binding:factory` with the exact reviewed
-  workspaces, commands, Agent, checkpoint owner, and cleanup boundary.
+- The release gate repeats deterministic application tests against packed SDK
+  candidates. Jig's private repair-batch host fixture exercises the same
+  contained command and checkpoint boundaries, but does not qualify this
+  application's `binding:factory` or a live Agent.
 
 ## Child DOX Index
 
