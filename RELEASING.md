@@ -6,8 +6,9 @@ CI builds and tests the package candidates for every revision. After CI
 succeeds for a reviewed merge to `main`, the release workflow downloads those
 exact retained archives while a read-only gate waits for complete Linux Host
 Conformance on that same push revision. Only after both succeed may it publish
-a version not yet present on npm, refetch the registry bytes, and create
-package-specific annotated source tags.
+a missing version newer than its channel tag, refetch the registry bytes, and
+create package-specific annotated source tags. A missing older candidate is
+superseded without publication.
 
 There is no release button, version input, npm token, or separately rebuilt
 archive. The workflow publishes through npm trusted publishing in the `npm`
@@ -58,11 +59,28 @@ registry archive must be byte-for-byte identical to the candidate. Changed
 package bytes under an existing version fail with an instruction to bump that
 package's version; npm versions are never replaced.
 
-After registry convergence, the workflow creates any missing
+The publisher preflights all four exact archives and registry states before
+mutating any package, then rechecks each package immediately before its ordered
+action. An exact version already present is verified against the retained bytes;
+a newer `alpha` or `next` tag does not delay or fail that historical check. A
+missing version older than its channel is reported as superseded and receives
+no source tag or GitHub release. Prerelease precedence follows SemVer rather
+than lexical order (`alpha.10` is newer than `alpha.9`). These rules prevent a
+delayed older push or retry from intentionally moving the channel backward.
+
+If an exact version exists with a missing or older channel tag, its bytes are
+verified and the version-qualified install remains valid, but this workflow
+does not move the channel. npm trusted-publisher OIDC authorizes `npm publish`,
+not `npm dist-tag add`; channel repair needs separate registry-owner action.
+The workflow reports that condition promptly instead of waiting for an
+unreachable tag state or silently downgrading it.
+
+After registry verification, the workflow creates any missing
 `flow-v<version>`, `agent-method-v<version>`, `agent-acp-v<version>` or
 `jig-v<version>` tag. A newly published version must tag
 the exact candidate commit. An existing tag is never moved; when its package
-was unchanged, it remains on the earlier release commit.
+was unchanged, it remains on the earlier release commit. Superseded archives
+make no package-release claim.
 
 After tags are verified, the same job creates a GitHub prerelease for each
 package version, linking its exact npm version, install command, and public

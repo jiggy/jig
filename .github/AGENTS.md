@@ -25,6 +25,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
   dependency order; all retain the same-revision CI/host gates and isolated
   trusted publisher. First publication requires each package's npm setup.
+- Before any npm mutation, inspect every retained archive, exact registry
+  version, and channel tag. Existing versions require byte identity even if a
+  newer tag exists; absent older versions are superseded without publication,
+  tags, or releases. Recheck registry state before each ordered mutation.
 - Publish only after CI and the complete Linux Host Conformance workflow have
   both succeeded for the exact triggering source revision.
 - Keep path filters synchronized with every real workflow input.
@@ -70,6 +74,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - Validate the called script locally where possible and inspect the complete
   workflow permission and artifact flow after any automation change.
+- `bun test scripts/npm-publish.test.ts` exercises the publisher's actual shell
+  with controlled registry responses, including reverse completion and retries.
 
 ## Child DOX Index
 

@@ -50,12 +50,16 @@ jobs:
       id-token: write
     outputs:
       flow_new: ${{ steps.release.outputs.flow_new }}
+      flow_state: ${{ steps.release.outputs.flow_state }}
       flow_version: ${{ steps.release.outputs.flow_version }}
       jig_new: ${{ steps.release.outputs.jig_new }}
+      jig_state: ${{ steps.release.outputs.jig_state }}
       jig_version: ${{ steps.release.outputs.jig_version }}
       agent_new: ${{ steps.release.outputs.agent_new }}
+      agent_state: ${{ steps.release.outputs.agent_state }}
       agent_version: ${{ steps.release.outputs.agent_version }}
       acp_new: ${{ steps.release.outputs.acp_new }}
+      acp_state: ${{ steps.release.outputs.acp_state }}
       acp_version: ${{ steps.release.outputs.acp_version }}
     steps:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -89,6 +93,39 @@ jobs:
         id: release
         run: |
           set -eu
+
+          compare_versions() {
+            CANDIDATE_VERSION=$1 CHANNEL_VERSION=$2 node --input-type=module -e '
+              const parse = (value) => {
+                const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(value);
+                if (!match) throw new Error(`invalid registry version: ${value}`);
+                const pre = match[4]?.split(".") ?? [];
+                if (pre.some((part) => /^\d+$/.test(part) && part.length > 1 && part[0] === "0"))
+                  throw new Error(`invalid numeric prerelease identifier: ${value}`);
+                return { core: match.slice(1, 4).map(BigInt), pre };
+              };
+              const candidate = parse(process.env.CANDIDATE_VERSION);
+              const channel = process.env.CHANNEL_VERSION ? parse(process.env.CHANNEL_VERSION) : null;
+              if (channel === null) { console.log("newer"); process.exit(0); }
+              const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+              let order = 0;
+              for (let index = 0; index < 3 && order === 0; index++)
+                order = compare(candidate.core[index], channel.core[index]);
+              if (order === 0) {
+                if (candidate.pre.length === 0 || channel.pre.length === 0)
+                  order = compare(candidate.pre.length === 0, channel.pre.length === 0);
+                else for (let index = 0; index < Math.max(candidate.pre.length, channel.pre.length) && order === 0; index++) {
+                  const a = candidate.pre[index], b = channel.pre[index];
+                  if (a === undefined || b === undefined) order = compare(a !== undefined, b !== undefined);
+                  else {
+                    const an = /^\d+$/.test(a), bn = /^\d+$/.test(b);
+                    order = an !== bn ? (an ? -1 : 1) : an ? compare(BigInt(a), BigInt(b)) : compare(a, b);
+                  }
+                }
+              }
+              console.log(order < 0 ? "older" : order > 0 ? "newer" : "equal");
+            '
+          }
 
           publish_candidate() {
             package_kind=$1
@@ -134,70 +171,132 @@ jobs:
             presence_error="$RUNNER_TEMP/$package_kind-presence-error"
             new_release=false
             if npm view "$package_name@$version" version --json > /dev/null 2> "$presence_error"; then
-              publish_status=0
+              present=true
             elif grep -F 'E404' "$presence_error" > /dev/null; then
-              new_release=true
-              set +e
-              npm publish "$archive" --access public --tag "$release_tag" --provenance --ignore-scripts
-              publish_status=$?
-              set -e
+              present=false
             else
               echo "npm could not determine whether $package_name@$version exists" >&2
               sed -n '1,20p' "$presence_error" >&2
               exit 1
             fi
 
-            refetched_directory="$RUNNER_TEMP/refetched-$package_kind"
-            mkdir -p "$refetched_directory"
-            refetched=
-            attempt=1
-            while [ "$attempt" -le "$visibility_attempts" ]; do
-              rm -f "$refetched_directory"/*.tgz
-              if npm pack "$package_name@$version" \
-                  --pack-destination "$refetched_directory" --ignore-scripts > /dev/null 2>&1; then
-                set -- "$refetched_directory"/*.tgz
-                if [ "$#" -eq 1 ] && [ -f "$1" ]; then
-                  refetched=$1
-                  break
+            tag_error="$RUNNER_TEMP/$package_kind-tag-error"
+            if tagged_json=$(npm view "$package_name" "dist-tags.$release_tag" --json 2> "$tag_error"); then
+              :
+            elif grep -F 'E404' "$tag_error" > /dev/null; then
+              tagged_json=
+            else
+              echo "npm could not read the $release_tag channel for $package_name" >&2
+              sed -n '1,20p' "$tag_error" >&2
+              exit 1
+            fi
+            tagged=$(TAGGED_JSON="$tagged_json" node --input-type=module -e '
+              const value = process.env.TAGGED_JSON;
+              if (!value || value === "null") process.exit(0);
+              const parsed = JSON.parse(value);
+              if (typeof parsed !== "string") throw new Error("invalid npm dist-tag response");
+              process.stdout.write(parsed);
+            ')
+            relation=$(compare_versions "$version" "$tagged")
+            if [ "$present" = true ]; then
+              state=verified
+            elif [ "$relation" = older ]; then
+              state=superseded
+            elif [ "$relation" = equal ]; then
+              echo "$package_name@$version is tagged but its exact version is unavailable" >&2
+              exit 1
+            else
+              state=published
+            fi
+
+            if [ "$state" = superseded ]; then
+              echo "$package_name@$version is superseded by $release_tag@$tagged; no archive was published"
+            elif [ "$state" = verified ] || [ "${PREFLIGHT:-false}" = false ]; then
+              if [ "$state" = published ]; then
+                new_release=true
+                set +e
+                npm publish "$archive" --access public --tag "$release_tag" --provenance --ignore-scripts
+                publish_status=$?
+                set -e
+              else
+                publish_status=0
+              fi
+
+              refetched_directory="$RUNNER_TEMP/refetched-$package_kind"
+              mkdir -p "$refetched_directory"
+              refetched=
+              attempt=1
+              while [ "$attempt" -le "$visibility_attempts" ]; do
+                rm -f "$refetched_directory"/*.tgz
+                if npm pack "$package_name@$version" \
+                    --pack-destination "$refetched_directory" --ignore-scripts > /dev/null 2>&1; then
+                  set -- "$refetched_directory"/*.tgz
+                  if [ "$#" -eq 1 ] && [ -f "$1" ]; then
+                    refetched=$1
+                    break
+                  fi
                 fi
+                if [ "$attempt" -lt "$visibility_attempts" ]; then
+                  sleep "$visibility_delay_seconds"
+                fi
+                attempt=$((attempt + 1))
+              done
+              if [ -z "$refetched" ]; then
+                echo "npm did not expose $package_name@$version before the visibility deadline (publish exit $publish_status)" >&2
+                exit 1
               fi
-              if [ "$attempt" -lt "$visibility_attempts" ]; then
-                sleep "$visibility_delay_seconds"
+
+              candidate_digest=$(sha256sum "$archive")
+              candidate_digest=${candidate_digest%% *}
+              registry_digest=$(sha256sum "$refetched")
+              registry_digest=${registry_digest%% *}
+              if [ "$candidate_digest" != "$registry_digest" ]; then
+                echo "registry bytes differ from the persisted $package_name candidate; bump its version" >&2
+                exit 1
               fi
-              attempt=$((attempt + 1))
-            done
-            if [ -z "$refetched" ]; then
-              echo "npm did not expose $package_name@$version before the visibility deadline (publish exit $publish_status)" >&2
-              exit 1
             fi
 
-            candidate_digest=$(sha256sum "$archive")
-            candidate_digest=${candidate_digest%% *}
-            registry_digest=$(sha256sum "$refetched")
-            registry_digest=${registry_digest%% *}
-            if [ "$candidate_digest" != "$registry_digest" ]; then
-              echo "registry bytes differ from the persisted $package_name candidate; bump its version" >&2
-              exit 1
+            if [ "${PREFLIGHT:-false}" = true ]; then
+              echo "$package_name@$version preflight: $state"
+              return
             fi
-
-            expected=$(RELEASE_VERSION=$version node -p 'JSON.stringify(process.env.RELEASE_VERSION)')
-            attempt=1
-            while [ "$attempt" -le "$visibility_attempts" ]; do
-              tagged=$(npm view "$package_name" "dist-tags.$release_tag" --json 2> /dev/null || true)
-              if [ "$tagged" = "$expected" ]; then break; fi
-              if [ "$attempt" -lt "$visibility_attempts" ]; then
-                sleep "$visibility_delay_seconds"
+            if [ "$state" = verified ] && [ "$relation" = newer ]; then
+              echo "$package_name@$version matches registry bytes; a newer $release_tag tag remains unchanged"
+            elif [ "$state" = verified ] && [ "$relation" = older ]; then
+              echo "$package_name@$version matches registry bytes; the older $release_tag tag cannot be changed through trusted-publisher OIDC" >&2
+            elif [ "$state" = verified ] && [ -z "$tagged" ]; then
+              echo "$package_name@$version matches registry bytes; the missing $release_tag tag cannot be changed through trusted-publisher OIDC" >&2
+            fi
+            if [ "$state" = published ]; then
+              attempt=1
+              while [ "$attempt" -le "$visibility_attempts" ]; do
+                observed=$(npm view "$package_name" "dist-tags.$release_tag" --json 2> /dev/null || true)
+                observed=$(TAGGED_JSON="$observed" node --input-type=module -e '
+                  const value = process.env.TAGGED_JSON;
+                  if (value && value !== "null") process.stdout.write(JSON.parse(value));
+                ')
+                relation=$(compare_versions "$version" "$observed")
+                if [ "$relation" != newer ]; then break; fi
+                if [ "$attempt" -lt "$visibility_attempts" ]; then sleep "$visibility_delay_seconds"; fi
+                attempt=$((attempt + 1))
+              done
+              if [ "$relation" = newer ]; then
+                echo "$package_name@$version did not converge on the $release_tag dist-tag (publish exit $publish_status)" >&2
+                exit 1
               fi
-              attempt=$((attempt + 1))
-            done
-            if [ "$tagged" != "$expected" ]; then
-              echo "$package_name@$version did not converge on the $release_tag dist-tag (publish exit $publish_status)" >&2
-              exit 1
             fi
             printf '%s_new=%s\n' "$package_kind" "$new_release" >> "$GITHUB_OUTPUT"
+            printf '%s_state=%s\n' "$package_kind" "$state" >> "$GITHUB_OUTPUT"
             printf '%s_version=%s\n' "$package_kind" "$version" >> "$GITHUB_OUTPUT"
           }
 
+          # Inspect all archives and already-published bytes before any registry mutation.
+          PREFLIGHT=true
+          publish_candidate flow @jigging/flow
+          publish_candidate agent @jigging/agent-method
+          publish_candidate acp @jigging/agent-acp
+          publish_candidate jig @jigging/jig
+          PREFLIGHT=false
           publish_candidate flow @jigging/flow
           publish_candidate agent @jigging/agent-method
           publish_candidate acp @jigging/agent-acp
@@ -213,13 +312,17 @@ jobs:
       - name: Create or verify annotated package tags
         env:
           FLOW_NEW: ${{ needs.publish.outputs.flow_new }}
+          FLOW_STATE: ${{ needs.publish.outputs.flow_state }}
           FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
           GH_TOKEN: ${{ github.token }}
           JIG_NEW: ${{ needs.publish.outputs.jig_new }}
+          JIG_STATE: ${{ needs.publish.outputs.jig_state }}
           JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
           AGENT_NEW: ${{ needs.publish.outputs.agent_new }}
+          AGENT_STATE: ${{ needs.publish.outputs.agent_state }}
           AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
           ACP_NEW: ${{ needs.publish.outputs.acp_new }}
+          ACP_STATE: ${{ needs.publish.outputs.acp_state }}
           ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
           SOURCE_REVISION: ${{ env.SOURCE_REVISION }}
         run: |
@@ -229,6 +332,8 @@ jobs:
             tag=$1
             message=$2
             require_current=$3
+            state=$4
+            if [ "$state" = superseded ]; then return; fi
             if ref_type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.type 2> /dev/null); then
               ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)
               if [ "$ref_type" = tag ]; then
@@ -249,17 +354,21 @@ jobs:
               -f ref="refs/tags/$tag" -f sha="$tag_object" > /dev/null
           }
 
-          converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW"
-          converge_tag "agent-method-v$AGENT_VERSION" "@jigging/agent-method $AGENT_VERSION" "$AGENT_NEW"
-          converge_tag "agent-acp-v$ACP_VERSION" "@jigging/agent-acp $ACP_VERSION" "$ACP_NEW"
-          converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW"
+          converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW" "$FLOW_STATE"
+          converge_tag "agent-method-v$AGENT_VERSION" "@jigging/agent-method $AGENT_VERSION" "$AGENT_NEW" "$AGENT_STATE"
+          converge_tag "agent-acp-v$ACP_VERSION" "@jigging/agent-acp $ACP_VERSION" "$ACP_NEW" "$ACP_STATE"
+          converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW" "$JIG_STATE"
 
       - name: Link published packages from GitHub Releases
         env:
           FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
+          FLOW_STATE: ${{ needs.publish.outputs.flow_state }}
           JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
+          JIG_STATE: ${{ needs.publish.outputs.jig_state }}
           AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
+          AGENT_STATE: ${{ needs.publish.outputs.agent_state }}
           ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
+          ACP_STATE: ${{ needs.publish.outputs.acp_state }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
@@ -272,6 +381,8 @@ jobs:
             description=$3
             install=$4
             documentation=$5
+            state=$6
+            if [ "$state" = superseded ]; then return; fi
             tag="$kind-v$version"
             if grep -Fx -- "$tag" "$RUNNER_TEMP/existing-releases" > /dev/null; then
               return
@@ -295,10 +406,10 @@ jobs:
           }
 
           create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/0.' \
-            "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/'
+            "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/' "$FLOW_STATE"
           create_release agent-method "$AGENT_VERSION" 'Replaceable HTTP Agent Flow and reusable method library.' \
-            "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method'
+            "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method' "$AGENT_STATE"
           create_release agent-acp "$ACP_VERSION" 'Replaceable Agent Flow over a host-authorized finite ACP resource.' \
-            "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/guide/agents'
+            "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/guide/agents' "$ACP_STATE"
           create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
-            "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/'
+            "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/' "$JIG_STATE"

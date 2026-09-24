@@ -95,6 +95,8 @@ operational baselines, and public-site assembly.
   least one expected failure path.
 - `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
   partial retries, registry failures, and immutable candidate/registry bytes.
+- `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
+  shell against controlled registry responses without credentials.
 - Validate the Host Conformance authorization script with `shellcheck` and
   success plus fail-closed API fixtures.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
