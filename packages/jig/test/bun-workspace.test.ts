@@ -382,10 +382,11 @@ test('workspace lock resolution cannot introduce undeclared paths or names', () 
   ).toThrow()
 })
 
-// Real pinned Bun worker, with only /work relocated into a disposable fixture.
+// Real pinned Bun worker, launched with a disposable working directory.
 // These tests prove capture/install semantics, not the containment envelope.
 test.each([
   'unlocked',
+  'unlocked-versions',
   'locked',
   'stale',
   'topology',
@@ -405,7 +406,7 @@ test.each([
     const patchMode = mode === 'patched' || mode.startsWith('patch-')
     const rootApplication = mode === 'root' || mode === 'root-pinned' || mode === 'root-stale'
     const value = await fixture(
-      mode === 'versions' || patchMode,
+      mode === 'versions' || mode === 'unlocked-versions' || patchMode,
       rootApplication,
       mode === 'root-pinned' ? '0.1.0' : 'workspace:*',
       mode === 'member-pinned' ? '0.1.0' : 'workspace:*',
@@ -467,7 +468,7 @@ test.each([
         })
         await value.put('libs/side/index.js', 'export { marker } from "leaf"')
       }
-      if (mode !== 'unlocked') {
+      if (!mode.startsWith('unlocked')) {
         const child = Bun.spawn(
           [
             process.execPath,
@@ -528,7 +529,7 @@ test.each([
         target: 'bun',
       })
       expect(build.success, JSON.stringify(build.logs)).toBeTrue()
-      await writeFile(worker, (await build.outputs[0]!.text()).replaceAll('/work', work))
+      await writeFile(worker, await build.outputs[0]!.text())
       await mkdir(work)
       const files = await Promise.all(
         captured!.captured.files
@@ -545,9 +546,9 @@ test.each([
           '--no-install',
           '--config=/dev/null',
           worker,
-          ...(mode === 'unlocked' ? ['--allow-resolution-network'] : []),
+          ...(mode.startsWith('unlocked') ? ['--allow-resolution-network'] : []),
         ],
-        { cwd: value.root, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+        { cwd: work, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
       )
       child.stdin.write(
         `${JSON.stringify({ type: 'source', files, workspace: { target: captured!.target, members: captured!.members, selected: captured!.selected } })}\n`,
@@ -634,7 +635,7 @@ test.each([
       ])
       expect(runExit, error).toBe(0)
       expect(output).toBe(
-        mode === 'versions' || mode === 'patched'
+        mode === 'versions' || mode === 'unlocked-versions' || mode === 'patched'
           ? '["6.3.1","7.7.2"]\n'
           : mode === 'topology'
             ? '{"same":true,"cyclic":true,"asset":"retained resource"}\n'

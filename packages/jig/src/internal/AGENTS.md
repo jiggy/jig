@@ -268,6 +268,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   separate from Run approval, before acquisition. Never persist that grant or
   infer it from project input, `--yes`, or an earlier review. Validate the
   generated graph before frozen installation; retain its exact bytes privately.
+  The worker derives scratch paths from its trusted launch working directory,
+  never rewritten worker or consumer source. Select the native lock version for
+  the pinned runtime (Linux Bun 1.3.3 or candidate Mac Bun 1.4.2), retaining exact
+  source/provenance checks without translating locks. Missing-lock resolution
+  uses `--omit=dev` so production-only installation does not suppress publication
+  of the new lock; the subsequent install stays frozen and script-disabled.
 - Workspace capture supports root applications and declared ancestor members,
   reading root metadata and selected dependency source, never installed links.
   Discover an ancestor workspace for exact versions as well as `workspace:`
@@ -527,6 +533,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   writers, backing-file denial, journal and inode forgery refusal, case-sensitive
   names, fresh-process recovery, and repeated exact cleanup without administrator
   access. It preserves failed allocations when recovery cannot be confirmed.
+  `macos-preparation.test.ts` runs the unchanged preparer and a retained ordinary
+  TypeScript dependency consumer in native guardians with bounded storage. It
+  checks ignored install scripts, production dependency selection, source-write
+  and private-file denial, and complete cleanup. Project workspace preparation
+  tests use the worker's real working-directory interface without source rewriting.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
