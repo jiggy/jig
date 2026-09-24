@@ -4,6 +4,7 @@ import { type CapturedPackage, createCapturedPackage } from '../package/capture.
 import { packageDigest } from '../package/digest.js'
 import { normalizeBindingAttachments } from '../project/author.js'
 import type { PrivateProjectRoot } from '../project/root.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateCapturedAttachment,
   PrivateFileInputError,
@@ -67,7 +68,7 @@ export function normalizeBoundAttachments(value: unknown): BoundAttachments {
 export async function captureBoundAttachments(
   root: PrivateProjectRoot,
   selections: Readonly<Record<string, string>>,
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
 ): Promise<BoundAttachments> {
   const sources = normalizeBindingAttachments(selections)
   let parent: number | undefined
@@ -135,7 +136,7 @@ export async function verifyBoundAttachment(
 
 /** Reopen admitted bytes only. The original paths are never consulted by execution. */
 export async function openBoundAttachments(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   value: BoundAttachments = {},
 ): Promise<{
   readonly attachments: readonly Omit<PrivateCapturedAttachment, 'rootFd'>[]

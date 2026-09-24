@@ -1,7 +1,6 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
-import { isPrivateBranchDepth } from './root-operation-limits.js'
 import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { flowSlotTargets } from '../project/invocation-slots.js'
@@ -37,8 +36,8 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import type { PrivateAcpResources } from './private-acp-resources.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
@@ -46,13 +45,13 @@ import {
 } from './direct-run.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
+import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   normalizeParentFlow,
-  requireParentTarget,
-  requireParentFlowOwner,
   type PrivateParentFlow,
+  requireParentFlowOwner,
+  requireParentTarget,
 } from './invocation-context.js'
-import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxConfirmedEnforcementReceipt,
@@ -81,14 +80,16 @@ import {
   recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
-import {
-  executePrivateRootFiniteAcp,
-  recoverPrivateRootFiniteAcpOwners,
-} from './root-finite-acp-controller.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
   executePrivateContainedEffect,
   recoverPrivateContainedEffectOwners,
 } from './root-contained-effect-controller.js'
+import {
+  executePrivateRootFiniteAcp,
+  recoverPrivateRootFiniteAcpOwners,
+} from './root-finite-acp-controller.js'
+import { isPrivateBranchDepth } from './root-operation-limits.js'
 import {
   channelContractResolver,
   type PrivateChannelContractCache,
@@ -126,7 +127,7 @@ interface ChildCleanup {
 
 interface ChildInput {
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly parent: PrivateReacquiredRootExecutionWork
   readonly parentFlow?: PrivateParentFlow | undefined
   readonly coordinator: PrivateProjectCoordinator
@@ -532,7 +533,7 @@ function specialistDispatcher(
 }
 
 async function admitOperationResult(
-  store: string,
+  store: PrivateFileLocation,
   reference: Parameters<typeof captureStoredPackage>[1],
   provisional: RunHostTerminal,
 ): Promise<RunHostOperationTerminal> {
@@ -557,7 +558,7 @@ async function admitOperationResult(
 }
 
 async function materializeChild(
-  store: string,
+  store: PrivateFileLocation,
   recipe: PrivateDirectRunRecipe,
   allocation: PrivatePackageMaterializationAllocationIdentity,
 ): Promise<PrivatePackageMaterializationLease> {

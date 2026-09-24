@@ -1,5 +1,4 @@
 import { type BigIntStats, constants } from 'node:fs'
-import { lstat, mkdir, open } from 'node:fs/promises'
 import {
   normalizeProjectApplyRequest,
   normalizeProjectPlanRequest,
@@ -12,8 +11,8 @@ import {
 } from '../administration/project.js'
 import type { RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
-import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
 import { validateJson1 } from '../json.js'
+import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
 import {
   buildPrivateActivationRequests,
   resolveRetainedPackageProjectObservation,
@@ -29,9 +28,10 @@ import {
   readPrivateAdmittedExecutionReuse,
   PRIVATE_PACKAGE_STORE_DIRECTORY as STORE_DIRECTORY,
 } from './activation-admission-store.js'
-import { createPrivateActivationPlanningObservation } from './activation-planning.js'
-import { privateActivationTargetKey } from './activation-planning.js'
-import { privateProjectFeatureFailures } from './project-feature-qualification.js'
+import {
+  createPrivateActivationPlanningObservation,
+  privateActivationTargetKey,
+} from './activation-planning.js'
 import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
@@ -52,6 +52,13 @@ import {
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
 import { prepareContractGeneration } from './contract-generation.js'
 import { captureDependencyFlows } from './dependency-flows.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
+import {
+  statPrivateFile as lstat,
+  mkdirPrivateFile,
+  openPrivateFile as open,
+  privateChildLocation,
+} from './descriptor-files.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import type { PrivateHttpGrants } from './http-grants.js'
@@ -64,6 +71,7 @@ import {
   publishCapturedPackage,
 } from './package-artifact-store.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
+import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
 import { renderPrivateProjectPlanReview } from './project-plan-review.js'
 import {
@@ -100,6 +108,7 @@ export async function recoverPrivateCheckpointRun(
   host: PrivateProjectSessionHost,
 ): Promise<RootRunTerminal> {
   const owner = await openPrivateProjectSessionOwner(selected.project)
+  let store: PreparedPackageStore | undefined
   try {
     if (
       String(owner.root.information.dev) !== selected.device ||
@@ -113,9 +122,10 @@ export async function recoverPrivateCheckpointRun(
     })
     if (run.coordinatorEpoch !== selected.epoch || run.coordinatorEpoch >= owner.coordinator.epoch)
       throw new Error('recovery cannot execute a current or substituted Run')
+    store = await preparePackageStore(owner)
     const settled = await executePrivateRootRunLaunch({
       projectRoot: selected.project,
-      packageStoreRoot: await preparePackageStore(owner),
+      packageStoreRoot: store.root,
       runId: selected.runId,
       coordinator: owner.coordinator,
       installedSupport: host.installedBunSupport,
@@ -134,7 +144,11 @@ export async function recoverPrivateCheckpointRun(
         }
       : terminal
   } finally {
-    await owner.dispose()
+    try {
+      await store?.dispose()
+    } finally {
+      await owner.dispose()
+    }
   }
 }
 
@@ -145,11 +159,13 @@ export async function openPrivateProjectSession(input: {
 }): Promise<ProjectSession> {
   let owner: PrivateProjectSessionOwner | undefined
   let roots: PrivateRootAdministrationController | undefined
+  let packageStore: PreparedPackageStore | undefined
   let projectIdentityLost = false
   let closeForIdentityLoss: (() => void) | undefined
   try {
     owner = await openPrivateProjectSessionOwner(input.directory)
-    const packageStoreRoot = await preparePackageStore(owner)
+    packageStore = await preparePackageStore(owner)
+    const packageStoreRoot = packageStore.root
     await recoverPrivateBunPreparationOwner({
       projectRoot: owner.root.requestedPath,
       coordinator: owner.coordinator,
@@ -185,7 +201,7 @@ export async function openPrivateProjectSession(input: {
         closeForIdentityLoss?.()
       },
     })
-    const created = createSession(owner, roots, packageStoreRoot, input.host)
+    const created = createSession(owner, roots, packageStore, input.host)
     closeForIdentityLoss = created.projectIdentityLost
     if (projectIdentityLost) created.projectIdentityLost()
     return created.session
@@ -193,6 +209,11 @@ export async function openPrivateProjectSession(input: {
     const failures: unknown[] = [error]
     try {
       await roots?.dispose()
+    } catch (cleanup) {
+      failures.push(cleanup)
+    }
+    try {
+      await packageStore?.dispose()
     } catch (cleanup) {
       failures.push(cleanup)
     }
@@ -214,12 +235,13 @@ export async function openPrivateProjectSession(input: {
 function createSession(
   owner: PrivateProjectSessionOwner,
   roots: PrivateRootAdministrationController,
-  packageStoreRoot: string,
+  packageStore: PreparedPackageStore,
   host: PrivateProjectSessionHost,
 ): {
   readonly session: ProjectSession
   readonly projectIdentityLost: () => void
 } {
+  const packageStoreRoot = packageStore.root
   const planningCancellation = new AbortController()
   const operations = new Set<Promise<void>>()
   let state: 'open' | 'closing' | 'closed' = 'open'
@@ -636,6 +658,11 @@ function createSession(
       failures.push(error)
     }
     try {
+      await packageStore.dispose()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
       await owner.dispose()
     } catch (error) {
       failures.push(error)
@@ -664,22 +691,29 @@ function createSession(
   }
 }
 
-async function preparePackageStore(owner: PrivateProjectSessionOwner): Promise<string> {
+interface PreparedPackageStore {
+  readonly root: PrivateFileLocation
+  dispose(): Promise<void>
+}
+
+async function preparePackageStore(
+  owner: PrivateProjectSessionOwner,
+): Promise<PreparedPackageStore> {
   await owner.verify()
-  const statePath = `/proc/self/fd/${owner.root.handle.fd}/.jig`
+  const statePath = privateChildLocation(owner.root.handle, '.jig')
   const state = await open(
     statePath,
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   )
   try {
-    const storePath = `/proc/self/fd/${state.fd}/${STORE_DIRECTORY}`
+    const storePath = privateChildLocation(state, STORE_DIRECTORY)
     try {
-      await mkdir(storePath, { mode: 0o700 })
+      await mkdirPrivateFile(storePath)
     } catch (error) {
       if (!hasCode(error, 'EEXIST')) throw error
     }
     await state.sync()
-    const observed = await lstat(storePath, { bigint: true })
+    const observed = await lstat(storePath)
     requireProtectedStore(observed, owner.root.information.dev)
     const store = await open(
       storePath,
@@ -697,11 +731,20 @@ async function preparePackageStore(owner: PrivateProjectSessionOwner): Promise<s
     } finally {
       await store.close()
     }
-  } finally {
+    await owner.verify()
+    let closed = false
+    return Object.freeze({
+      root: storePath,
+      async dispose(): Promise<void> {
+        if (closed) return
+        closed = true
+        await state.close()
+      },
+    })
+  } catch (error) {
     await state.close()
+    throw error
   }
-  await owner.verify()
-  return `/proc/self/fd/${owner.root.handle.fd}/.jig/${STORE_DIRECTORY}`
 }
 
 function requireProtectedStore(information: BigIntStats, projectDevice: bigint): void {

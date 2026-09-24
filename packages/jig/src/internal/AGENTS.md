@@ -52,6 +52,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Package publication serializes by store device/inode, publishes by exclusive
   hard link, and reacquires verified anonymous snapshots. Store enumeration
   retains and rechecks directory descriptors instead of following child paths.
+  Project sessions retain their protected store parent through all planning and
+  Run operations, then close it after root settlement and before the project
+  owner. Acquisition failures and checkpoint recovery close that same owner;
+  retained-project and child-call plumbing pass live locations without serializing them.
 - `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
   contained Bun preparation. It inspects a regular-file package view and retains
   the original dependency lookup layout with that package as the execution root.

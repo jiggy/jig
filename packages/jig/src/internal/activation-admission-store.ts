@@ -658,7 +658,7 @@ export function readPrivateAdmittedExecutionReuse(input: {
  */
 export async function publishPrivateActivationReviewPlan(input: {
   readonly projectRoot: string | PrivateProjectRoot
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly planningBase: PrivateActivationPlanningBase
   readonly candidate: PrivateActivationCandidateArtifactV5
   readonly lockMode: 'update' | 'locked'
@@ -900,7 +900,7 @@ export async function replacePrivateBunPreparationOwner(input: {
 export async function submitPrivateRootRun(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly submissionId: string
   readonly target: RunTargetIdentity
   readonly input: JsonValue
@@ -1647,7 +1647,7 @@ export async function listPrivateRootExecutionWork(input: {
 export async function reacquirePrivateRootExecutionWork(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly runId: string
 }): Promise<PrivateReacquiredRootExecutionWork> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator)
@@ -2113,7 +2113,7 @@ function requireCoordinatorRoot(
 export async function applyPrivateActivationReviewPlan(input: {
   readonly allowAuthorityChanges?: boolean
   readonly projectRoot: string | PrivateProjectRoot
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly planDigest: string
 }): Promise<PrivateActivationApplyReceipt> {
   requireDigest(input.planDigest, 'review plan')
@@ -5021,7 +5021,7 @@ function requireVisibleLockFile(information: BigIntStats, expectedDevice: bigint
 }
 
 async function reacquireCandidateArtifacts(
-  packageStoreRoot: string,
+  packageStoreRoot: PrivateFileLocation,
   candidate: PrivateActivationCandidateArtifactV5,
 ): Promise<ReacquiredArtifacts> {
   const captures = new Map<string, Awaited<ReturnType<typeof captureStoredPackage>>>()

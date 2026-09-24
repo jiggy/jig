@@ -1,6 +1,7 @@
 import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
+import type { PrivateFileLocation } from '../internal/descriptor-files.js'
 import { privateDomainDigest } from '../internal/identity.js'
 import type { JsonValue } from '../json.js'
 import type { BindingDefinition, JigDefinition } from './author.js'
@@ -37,13 +38,13 @@ const authenticProjects = new WeakSet<object>()
 
 export interface PrivateRetainedProjectOptions {
   readonly projectRoot: string
-  readonly storeRoot: string
+  readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
 }
 
 export interface PrivateRetainedOpenedProjectOptions {
   readonly projectRoot: PrivateProjectRoot
-  readonly storeRoot: string
+  readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
   readonly prepareFlow?: PrepareCapturedFlow
   readonly dependencyFlows?: (selectors: readonly string[]) => Promise<CapturedFlowSource>

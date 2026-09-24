@@ -1,26 +1,27 @@
 import {
-  RootAdministrationError,
   normalizeRootRunStatusRequest,
   normalizeStartRootRunRequest,
-  snapshotRootAdministrationJson,
   type RootAdministration,
+  RootAdministrationError,
   type RootRunStatus,
   type RootRunStatusRequest,
   type StartRootRunReceipt,
   type StartRootRunRequest,
+  snapshotRootAdministrationJson,
 } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
 import {
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
-  submitPrivateRootRun,
   type PrivateProjectCoordinator,
   type PrivateRootRunSnapshot,
+  submitPrivateRootRun,
 } from './activation-admission-store.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
-import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
+import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
 
 export interface PrivateRootAdministrationController {
   readonly administration: RootAdministration
@@ -54,7 +55,7 @@ export interface PrivateRootLaunchExecutor {
  */
 export async function openPrivateRootAdministrationController(input: {
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly onProjectIdentityLoss?: () => void
@@ -95,7 +96,7 @@ export async function openPrivateRootAdministrationController(input: {
 export async function attachPrivateRootAdministrationController(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly files?: PrivateRootRunFiles
@@ -124,7 +125,7 @@ export async function attachPrivateRootAdministrationController(input: {
 
 function createController(input: {
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly files?: PrivateRootRunFiles

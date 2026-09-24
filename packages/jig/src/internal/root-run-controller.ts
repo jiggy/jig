@@ -22,9 +22,9 @@ import {
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
 } from './activation-admission-store.js'
-import type { PrivateAcpResources } from './private-acp-resources.js'
 import { openBoundAttachments } from './bound-attachments.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
@@ -59,15 +59,16 @@ import {
   recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
-import {
-  executePrivateRootFiniteAcp,
-  recoverPrivateRootFiniteAcpOwners,
-} from './root-finite-acp-controller.js'
 import {
   executePrivateContainedEffect,
   recoverPrivateContainedEffectOwners,
 } from './root-contained-effect-controller.js'
+import {
+  executePrivateRootFiniteAcp,
+  recoverPrivateRootFiniteAcpOwners,
+} from './root-finite-acp-controller.js'
 import {
   executePrivateRootFlowCall,
   recoverPrivateRootFlowCallOwners,
@@ -119,7 +120,7 @@ interface PrivateDirectRootFenceRecord {
 /** Drive one exact durable root execution from its persisted lifecycle. */
 export async function executePrivateRootRunLaunch(input: {
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly runId: string
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport

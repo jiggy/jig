@@ -1,7 +1,6 @@
-import { join } from 'node:path'
 import type { FileHandle } from 'node:fs/promises'
+import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
-import { PrivateFiniteAcpPolicyError } from './finite-acp-policy.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import { nativeInvocationKind } from '../project/invocation-slots.js'
 import {
@@ -12,37 +11,44 @@ import {
 import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
 import { RunHostFatalOperationError } from '../run/session.js'
 import {
-  privateAcpAgentRuntime,
-  revalidatePrivateAcpAgentProvider,
-  requirePrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
+  privateAcpAgentRuntime,
+  requirePrivateAcpAgentProvider,
+  revalidatePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
 import {
   allocatePrivateRootChildOwner,
+  claimPrivateNativeSession,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
   type PrivateRootChildOwnerLifecycle,
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
-  claimPrivateNativeSession,
   savePrivateNativeSession,
 } from './activation-admission-store.js'
 import {
   collectPrivateCodexSession,
+  type PrivateCodexSessionState,
+  PrivateNativeHistoryUnavailable,
+  type PrivateNativeSessionRequest,
   parsePrivateNativeSessionRequest,
   privateCodexSessionBootstrap,
   privateCodexSessionSecrets,
-  PrivateNativeHistoryUnavailable,
   validatePrivateCodexSession,
-  type PrivateCodexSessionState,
-  type PrivateNativeSessionRequest,
 } from './codex-session-state.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import { PrivateFiniteAcpPolicyError } from './finite-acp-policy.js'
+import {
+  PRIVATE_FINITE_ACP_CHANNELS,
+  type PrivateFiniteAcpEndpoints,
+  runPrivateFiniteAcpResource,
+} from './finite-acp-resource.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -70,13 +76,8 @@ import {
   planPrivateLinuxOwnerStateAllocation,
   releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
-import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
-import {
-  PRIVATE_FINITE_ACP_CHANNELS,
-  type PrivateFiniteAcpEndpoints,
-  runPrivateFiniteAcpResource,
-} from './finite-acp-resource.js'
+import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 
 const ALLOCATION_KIND = 'private-root-agent-owner-allocation/1'
 const SANDBOX_KIND = 'private-root-agent-sandbox/1'
@@ -109,7 +110,7 @@ interface AcpCleanup {
 }
 
 interface AcpRecoveryInput extends PrivateInvocationContext {
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
@@ -437,6 +438,7 @@ async function executeOwnedProvider(
     } catch (error) {
       // Descriptor release is owned cleanup. A failure here must not mask a
       // fatal fence failure with an ordinary, catchable operation exception.
+      // biome-ignore lint/correctness/noUnsafeFinally: Owned cleanup failure must remain fatal to the Run.
       throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
     }
   }
