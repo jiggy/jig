@@ -1,6 +1,10 @@
 import { createRequire } from 'node:module'
 import type { Socket } from 'node:net'
 import { release } from 'node:os'
+import {
+  type PrivateMacosRecoveryOwner,
+  requirePrivateMacosRecoveryOwner,
+} from './macos-owner-state.js'
 
 // Private Darwin 23 ABI. Qualification of another kernel is a separate change.
 const PROC_PIDUNIQIDENTIFIERINFO = 17
@@ -17,8 +21,10 @@ type NativeSymbol =
   | 'proc_signal_with_audittoken'
   | 'sysctlbyname'
   | 'getsockopt'
+  | '__error'
 interface Native {
   ptr(bytes: Uint8Array): number
+  read: { i32(pointer: number): number }
   symbols: Record<NativeSymbol, NativeFunction>
 }
 let native: Native | undefined
@@ -30,6 +36,7 @@ function calls(): Native {
     throw new Error('macOS process controls are not qualified on this kernel')
   const ffi = createRequire(import.meta.url)('bun:ffi') as {
     ptr(bytes: Uint8Array): number
+    read: { i32(pointer: number): number }
     dlopen(
       path: string,
       declarations: Record<string, { args: string[]; returns: string }>,
@@ -43,8 +50,9 @@ function calls(): Native {
     proc_signal_with_audittoken: { args: ['ptr', 'i32'], returns: 'i32' },
     sysctlbyname: { args: ['ptr', 'ptr', 'ptr', 'ptr', 'u64'], returns: 'i32' },
     getsockopt: { args: ['i32', 'i32', 'i32', 'ptr', 'ptr'], returns: 'i32' },
+    __error: { args: [], returns: 'ptr' },
   })
-  const opened = { ptr: ffi.ptr, symbols: library.symbols }
+  const opened = { ptr: ffi.ptr, read: ffi.read, symbols: library.symbols }
   if (kernelString(opened, 'kern.osversion') !== '23E224')
     throw new Error('macOS process controls are not qualified on this kernel build')
   native = opened
@@ -111,16 +119,83 @@ function bootIdentity(): string {
   return result.toLowerCase()
 }
 
-function usage(coalition: bigint): { active: bigint; cpuNanoseconds: bigint } {
-  const { ptr, symbols } = calls()
+function usage(
+  coalition: bigint,
+  absentIsEmpty = false,
+): { active: bigint; cpuNanoseconds: bigint } {
+  const { ptr, read, symbols } = calls()
   const bytes = Buffer.alloc(RESOURCE_USAGE_BYTES)
   // The third size argument is mandatory, including when only reading a prefix.
-  if (symbols.coalition_info_resource_usage(coalition, ptr(bytes), bytes.length) !== 0)
+  if (symbols.coalition_info_resource_usage(coalition, ptr(bytes), bytes.length) !== 0) {
+    if (read.i32(symbols.__error()) === 3 && absentIsEmpty)
+      return { active: 0n, cpuNanoseconds: 0n }
     throw new Error('macOS coalition accounting is unavailable')
+  }
   const started = bytes.readBigUInt64LE(0)
   const exited = bytes.readBigUInt64LE(8)
   if (started < exited) throw new Error('macOS coalition accounting is invalid')
   return { active: started - exited, cpuNanoseconds: bytes.readBigUInt64LE(24) }
+}
+
+function coalitionMembers(coalition: bigint, exclude: number): { pid: number; version: number }[] {
+  const { ptr, symbols } = calls()
+  const bytes = Buffer.alloc(MAX_PROCESSES * 4)
+  const count = symbols.proc_listallpids(ptr(bytes), bytes.length)
+  if (count < 1 || count >= MAX_PROCESSES)
+    throw new Error('macOS process enumeration is incomplete')
+  const result: { pid: number; version: number }[] = []
+  for (let index = 0; index < count; index++) {
+    const candidate = bytes.readInt32LE(index * 4)
+    if (candidate <= 1 || candidate === exclude) continue
+    const observed = processIdentity(candidate)
+    if (observed?.coalition === coalition)
+      result.push({ pid: candidate, version: observed.version })
+  }
+  return result
+}
+
+function signalMembers(
+  members: { pid: number; version: number }[],
+  signal: keyof typeof signals,
+): number {
+  if (!Object.hasOwn(signals, signal)) throw new TypeError('invalid macOS ownership signal')
+  const { ptr, symbols } = calls()
+  let count = 0
+  for (const member of members) {
+    const token = Buffer.alloc(32)
+    token.writeUInt32LE(member.pid, 20)
+    token.writeUInt32LE(member.version, 28)
+    const result = symbols.proc_signal_with_audittoken(ptr(token), signals[signal])
+    if (result !== 0 && result !== 3) throw new Error('macOS owned process signaling failed')
+    if (result === 0) count++
+  }
+  return count
+}
+
+/** Fresh recovery accepts only authenticated durable ownership, on its recorded boot. */
+export async function recoverPrivateMacosCoalition(
+  handle: PrivateMacosRecoveryOwner,
+  timeoutMs: number,
+): Promise<void> {
+  const identity = requirePrivateMacosRecoveryOwner(handle)
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000)
+    throw new TypeError('invalid macOS recovery deadline')
+  if (identity.bootId !== bootIdentity()) throw new Error('macOS recovery boot does not match')
+  const coalition = BigInt(identity.coalition)
+  const own = processIdentity(process.pid)
+  if (own === undefined || own.coalition === coalition)
+    throw new Error('macOS recovery must run outside its former owner')
+  const guardian = processIdentity(identity.guardianPid)
+  if (guardian?.version === identity.guardianVersion)
+    throw new Error('macOS recovery guardian is still alive')
+  const end = performance.now() + timeoutMs
+  // XNU allocates monotonically increasing coalition IDs within one boot.
+  // Only ESRCH for this authenticated ID means the kernel has already reaped it.
+  while (usage(coalition, true).active !== 0n) {
+    signalMembers(coalitionMembers(coalition, process.pid), 'kill')
+    if (performance.now() >= end) throw new Error('macOS recovery fencing is unconfirmed')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
 }
 
 export interface PrivateMacosProcessSample {
@@ -182,20 +257,7 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
   }
   const members = () => {
     validateOwner()
-    const { ptr, symbols } = calls()
-    const bytes = Buffer.alloc(MAX_PROCESSES * 4)
-    const count = symbols.proc_listallpids(ptr(bytes), bytes.length)
-    if (count < 1 || count >= MAX_PROCESSES)
-      throw new Error('macOS process enumeration is incomplete')
-    const result: { pid: number; version: number }[] = []
-    for (let index = 0; index < count; index++) {
-      const candidate = bytes.readInt32LE(index * 4)
-      if (candidate <= 1 || candidate === pid) continue
-      const observed = processIdentity(candidate)
-      if (observed?.coalition === owner.coalition)
-        result.push({ pid: candidate, version: observed.version })
-    }
-    return result
+    return coalitionMembers(owner.coalition, pid)
   }
   const control: PrivateMacosCoalitionControl = Object.freeze({
     identity,
@@ -244,20 +306,7 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
       })
     },
     signalMembers(signal: keyof typeof signals) {
-      if (!Object.hasOwn(signals, signal)) throw new TypeError('invalid macOS ownership signal')
-      const { ptr, symbols } = calls()
-      let count = 0
-      for (const member of members()) {
-        const token = Buffer.alloc(32)
-        token.writeUInt32LE(member.pid, 20)
-        token.writeUInt32LE(member.version, 28)
-        const result = symbols.proc_signal_with_audittoken(ptr(token), signals[signal])
-        if (result !== 0 && result !== 3)
-          // ESRCH: the exact process already exited.
-          throw new Error('macOS owned process signaling failed')
-        if (result === 0) count++
-      }
-      return count
+      return signalMembers(members(), signal)
     },
     empty() {
       validateOwner()

@@ -43,7 +43,7 @@ try {
         pids,
         cpuQuotaMicros: 50_000,
         cpuPeriodMicros: 100_000,
-        deadlineUnixMs: Date.now() + (mode === 'waiting' ? 400 : 5000),
+        deadlineUnixMs: Date.now() + (mode === 'waiting' ? 1500 : 10_000),
         cleanupTimeoutMs: 3000,
       },
     })

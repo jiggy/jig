@@ -61,6 +61,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   cleanup. Only the kernel's remaining guardian count establishes emptiness.
   Unix control peer UID, PID and PID version come from `LOCAL_PEERTOKEN`, never
   claimed message fields; unavailable native socket identity fails closed.
+- `macos-owner-state.ts` writes the guardian's authenticated boot, coalition and
+  PID-version journal before descendants exist. Its per-allocation token stays
+  in protected coordinator state, never arguments, payloads or the journal.
+  Recovery accepts only a capability minted from the bounded private journal;
+  reject aliases, tampering, wrong boots and a still-live guardian. A fresh
+  process fences that exact coalition and confirms zero remaining tasks or the
+  kernel's reaped-coalition response. Keep evidence when settlement is uncertain.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
   Reject overlap between host control, immutable inputs and writable trees;
   keep the narrow sysctl/process-information rules. Only explicit network

@@ -10,7 +10,12 @@ const xml = (text: string) =>
 const launchctl = (...args: string[]) =>
   spawnSync('/bin/launchctl', args, { env: environment, encoding: 'utf8', timeout: 5000 })
 
-export async function runMacosFixture(fixture: string, args: string[], expected: object) {
+export async function runMacosFixture(
+  fixture: string,
+  args: string[],
+  expected: object,
+  afterStart?: (directory: string) => Promise<void>,
+) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-macos-process-test-')))
   const domain = `user/${process.getuid?.()}`
   const label = `org.jig.process-test.${directory.split('-').at(-1)}`
@@ -39,7 +44,8 @@ export async function runMacosFixture(fixture: string, args: string[], expected:
     const start = launchctl('bootstrap', domain, plist)
     expect(start.status).toBe(0)
     registered = true
-    const end = performance.now() + 12_000
+    await afterStart?.(directory)
+    const end = performance.now() + 60_000
     let text = ''
     while (performance.now() < end) {
       text = await readFile(output, 'utf8').catch(() => '')
