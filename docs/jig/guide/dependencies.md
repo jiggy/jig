@@ -86,6 +86,12 @@ The Flow's dependency is ordinary Bun configuration:
 { "dependencies": { "my-library": "workspace:*" } }
 ```
 
+An exact version such as `"my-library": "0.1.0-alpha.3"` also selects a
+same-name local workspace member at that version. Jig captures the declared
+ancestor workspace for either form; outside one, the exact version follows the
+registry dependency path. This lets a downloaded example retain its public
+package version while a checkout tests matching local candidates.
+
 Run `bun install` at the workspace root and build libraries whose exports
 point to generated files. Then run `jig review` from the Jig application.
 No publication, copied library, or per-Flow installation is needed.

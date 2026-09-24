@@ -73,7 +73,12 @@ test.each([
   },
 )
 
-async function fixture(versions = false, rootApplication = false, rootDependency = 'workspace:*') {
+async function fixture(
+  versions = false,
+  rootApplication = false,
+  rootDependency = 'workspace:*',
+  memberDependency = 'workspace:*',
+) {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-'))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(root, path)), { recursive: true })
@@ -88,7 +93,7 @@ async function fixture(versions = false, rootApplication = false, rootDependency
   await put(`${target}/package.json`, {
     name: 'work-flow',
     type: 'module',
-    dependencies: { helper: 'workspace:*', ...(versions ? { semver: '7.7.2' } : {}) },
+    dependencies: { helper: memberDependency, ...(versions ? { semver: '7.7.2' } : {}) },
   })
   await put(`${target}/FLOW.meta.json`, { name: 'work', description: 'Workspace fixture.' })
   await put(
@@ -178,6 +183,34 @@ test('workspace capture follows declared transitive members, not installation li
     } finally {
       await captured.captured.dispose()
     }
+  } finally {
+    await value.dispose()
+  }
+})
+
+test('exact matching versions select local members in a declared ancestor workspace', async () => {
+  const value = await fixture(false, false, 'workspace:*', '0.1.0')
+  try {
+    const captured = await value.capture()
+    expect(captured).toBeDefined()
+    if (captured === undefined) throw new Error('matching workspace was not captured')
+    try {
+      expect(captured.target).toBe(target)
+      expect(captured.selected).toEqual([target, 'libs/helper', 'libs/leaf'])
+      expect(captured.captured.files.map(({ path }) => path)).toContain('libs/helper/dist/index.js')
+    } finally {
+      await captured.captured.dispose()
+    }
+  } finally {
+    await value.dispose()
+  }
+})
+
+test('an exact dependency outside a declared ancestor workspace stays standalone', async () => {
+  const value = await fixture(false, false, 'workspace:*', '0.1.0')
+  try {
+    await value.put('package.json', { private: true })
+    expect(await value.capture()).toBeUndefined()
   } finally {
     await value.dispose()
   }
@@ -365,6 +398,7 @@ test.each([
   'root',
   'root-pinned',
   'root-stale',
+  'member-pinned',
 ] as const)(
   'Bun prepares a self-contained workspace tree: %s',
   async (mode) => {
@@ -374,6 +408,7 @@ test.each([
       mode === 'versions' || patchMode,
       rootApplication,
       mode === 'root-pinned' ? '0.1.0' : 'workspace:*',
+      mode === 'member-pinned' ? '0.1.0' : 'workspace:*',
     )
     let captured: Awaited<ReturnType<typeof value.capture>>
     try {

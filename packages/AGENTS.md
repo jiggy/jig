@@ -22,8 +22,8 @@ and optional contract authoring toolchain.
 - Run `bun install` at the repository root to install all package workspaces.
   Keep Bun's isolated workspace layout; clean installs regenerate the lock
   from manifests. Do not restore per-workspace Bun locks. Example applications
-  and their Flows are workspace members. Publicly copyable examples pin matching
-  SDK versions so Bun can substitute the local workspaces; application-only
+  and their Flows are workspace members. Examples pin matching SDK versions so
+  Bun can substitute the local workspaces; application-only
   method packages may use `workspace:*` for explicit source composition.
 - Use the root Just modules (`just flow::build`, `just jig::build`) or run
   package recipes locally. `pack` builds explicitly; manifests have no build

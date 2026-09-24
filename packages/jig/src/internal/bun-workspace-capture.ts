@@ -54,13 +54,12 @@ export async function capturePrivateBunWorkspace(input: {
   const manifestBytes = await input.captured.read('package.json', MANIFEST_BYTES)
   const manifest = parseManifest(manifestBytes)
   const dependencies = runtimeDependencies(manifest)
-  if (
-    manifest.workspaces === undefined &&
-    !Object.values(dependencies).some(
+  const requiresWorkspace =
+    manifest.workspaces !== undefined ||
+    Object.values(dependencies).some(
       (value) => typeof value === 'string' && value.startsWith('workspace:'),
     )
-  )
-    return undefined
+  if (!requiresWorkspace && Object.keys(dependencies).length === 0) return undefined
   const physical = resolve(input.projectRoot.requestedPath, input.packagePath)
   for (let path = physical, depth = 0; depth < MAX_DEPTH; depth++, path = dirname(path)) {
     input.signal.throwIfAborted()
@@ -104,10 +103,12 @@ export async function capturePrivateBunWorkspace(input: {
     }
     if (dirname(path) === path) break
   }
-  fail(
-    'PACKAGE_BUN_WORKSPACE_MISSING',
-    'workspace dependencies require membership in a declared ancestor workspace',
-  )
+  if (requiresWorkspace)
+    fail(
+      'PACKAGE_BUN_WORKSPACE_MISSING',
+      'workspace dependencies require membership in a declared ancestor workspace',
+    )
+  return undefined
 }
 
 async function capture(

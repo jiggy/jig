@@ -168,10 +168,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   infer it from project input, `--yes`, or an earlier review. Validate the
   generated graph before frozen installation; retain its exact bytes privately.
 - Workspace capture supports root applications and declared ancestor members,
-  reading root metadata and selected dependency
-  source, never installed links. Recheck metadata, retain exact regular files,
-  and recapture on review even when the Flow is unchanged. Preserve the pinned
-  hoisted install's workspace-relative paths and dependency scopes. Retain only
+  reading root metadata and selected dependency source, never installed links.
+  Discover an ancestor workspace for exact versions as well as `workspace:`
+  declarations; matching local members use Bun's normal substitution, while
+  exact dependencies outside a declared workspace remain standalone. Recheck
+  metadata, retain exact regular files, and recapture on review even when the
+  Flow is unchanged. Preserve the pinned hoisted install's workspace-relative
+  paths and dependency scopes. Retain only
   exact installer aliases to selected member roots. Bun preparation owns member
   and dependency semantics; admission carries bytes and layout as one execution
   artifact. Recipes derive the launch command. Materialization receives only
