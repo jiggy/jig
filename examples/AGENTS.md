@@ -28,10 +28,11 @@ authored examples, not independent consumer evidence or promoted Starters.
   against the current SDK without waiting for npm publication; do not preserve
   superseded APIs, release-order warnings, or compatibility branches.
 - Examples remain ordinary editable source projects with declared dependencies.
-  Publicly copyable applications use pinned registry versions that match the
-  current SDK manifests; Bun may substitute matching local workspace packages
-  during repository development. Root installation and ordinary SDK builds
-  prepare development; Jig captures runtime dependencies during review. Use the
+  Every example pins published Jig packages to exact current manifest versions;
+  application-local package links use `workspace:*`. `just test-tooling` checks
+  the pins, and Bun may substitute matching local packages during repository
+  development. Root installation and ordinary SDK builds prepare development;
+  Jig captures runtime dependencies during review. Use the
   same dependency preparation as other consumers, not specially bundled
   application archives or per-Flow setup loops. Test unpublished SDK candidates
   separately from claims about registry availability.

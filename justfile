@@ -54,9 +54,9 @@ build: flow::build jig::build authoring::build
 @test-baseline:
     bun scripts/test-operational-baseline.ts
 
-# Run development-shell, worktree, task-runner, and baseline harness tests
+# Run development-shell, worktree, task-runner, example dependency, and baseline harness tests
 @test-tooling:
-    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/agent-candidate.test.ts scripts/operational-baseline-checks.test.ts
+    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/example-dependency-versions.test.ts scripts/agent-candidate.test.ts scripts/operational-baseline-checks.test.ts
 
 # Run the unprivileged release gate; requires FLOW_NODE and Python
 @test-release:

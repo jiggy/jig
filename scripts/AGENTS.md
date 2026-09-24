@@ -101,9 +101,9 @@ operational baselines, and public-site assembly.
   verify link ownership, shared environment updates, separate indexes, and
   refusals that preserve existing work and workspace state.
 - `just test-tooling` also checks recipe parsing, argument and working-directory
-  handling, explicit packing, and build-tool refusal before cleanup or site
-  staging. Its no-package-scripts rule covers repository tasks, not imported
-  skill toolchains.
+  handling, example dependency versions against public package manifests,
+  explicit packing, and build-tool refusal before cleanup or site staging. Its
+  no-package-scripts rule covers repository tasks, not imported skill toolchains.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
 

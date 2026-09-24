@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jigging/flow": "workspace:*",
-    "@jigging/agent-method": "workspace:*"
+    "@jigging/flow": "0.1.0-alpha.12",
+    "@jigging/agent-method": "0.1.0-alpha.3"
   }
 }

@@ -51,7 +51,8 @@ only after executed checks and independent acceptance.
 
 - Keep project-specific policy here and operator choices on the host.
 - Preserve evidence checks and source bounds when simplifying the teaching path.
-- Use ordinary public SDK calls and workspace dependencies, with self-contained Flows.
+- Use ordinary public SDK calls and self-contained Flows. Keep application-local
+  Flow dependencies as workspace references within a downloaded copy.
 
 ## Verification
 

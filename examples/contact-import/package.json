@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@jigging/flow": "workspace:*",
+    "@jigging/flow": "0.1.0-alpha.12",
     "csv-parse": "6.1.0"
   },
   "dependencies": {
-    "@jigging/agent-acp": "workspace:*"
+    "@jigging/agent-acp": "0.1.0-alpha.3"
   }
 }
