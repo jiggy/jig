@@ -1,0 +1,15 @@
+{
+  "name": "factory-repair",
+  "description": "Propose a bounded multi-file repair and check the exact candidate through reviewed Bun commands.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    },
+    "tests": {
+      "contract": "./contracts/project-command/contract.json"
+    },
+    "cli": {
+      "contract": "./contracts/project-command/contract.json"
+    }
+  }
+}

@@ -6,15 +6,14 @@ title: Run a small software factory
 
 Turn a fixed set of one or two authorized issues into separate tested patch
 packets. A reusable Semantic Router selects a reviewed repair configuration from
-the issue and its work preferences, or abstains. Each worker uses the [tested-patch method](./tested-patch.md): reproduce
-the defect, request bounded source replacements, execute reviewed commands, and
-check unchanged acceptance cases. You still decide whether any patch should be
+the issue and its work preferences, or abstains. Each factory-owned worker reproduces
+the defect, requests bounded source replacements, executes reviewed commands, and
+checks unchanged acceptance cases. You still decide whether any patch should be
 combined, merged, or released.
 
 Use the [small software factory source](https://github.com/jiggy/jig/tree/main/examples/software-factory).
-This is an implemented source application. It reuses the sibling tested-patch
-repair Flow through an ordinary local workspace dependency, so its own setup
-still follows the repository workspace instructions. Its external Agent and
+This is an implemented, self-contained source application. Its local repair Flow
+and Semantic Router use ordinary workspace dependencies. Its external Agent and
 FLOW dependencies are published alphas; the comparison below used source
 candidates and does not establish a public-only factory installation. The
 Semantic Router below is a separate ordinary Flow package; its deterministic
@@ -22,7 +21,7 @@ tests do not establish a live installed factory run.
 
 ## Run the supplied batch
 
-After repository workspace setup, inspect `batch.json`, the Agent, single-pass and checked-correction
+After `bun install` in the project, inspect `batch.json`, the Agent, single-pass and checked-correction
 Bindings, and both named case files. Select and authenticate your Agent, then:
 
 ```sh

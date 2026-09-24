@@ -9,11 +9,12 @@ patch authority and every merge decision stays with a person.
 ## Ownership
 
 - `flows/factory/` owns bounded batch validation, candidate-to-slot policy,
-  independent routing-result validation, parallel job dispatch, checkpoint
-  aggregation, conflict detection, and final summaries.
+  source capture, independent evidence and routing-result validation, parallel
+  job dispatch, checkpoint aggregation, conflict detection, and final summaries.
 - `flows/router/` owns the portable decision Flow, separately governed below.
+- `flows/repair/` owns the factory's independently editable repair specialist.
 - `bindings/` composes one-proposal and checked-correction configurations of
-  tested-patch with one ordinary Agent and fixed Bun test/CLI grants.
+  that specialist with one ordinary Agent and fixed Bun test/CLI grants.
 - `batch.json` and the named case files own the selected issues and acceptance
   policy. `fixtures/` owns the synthetic comparison projects.
 - `test/` owns deterministic batch, failure-isolation, and recovery checks.
@@ -45,8 +46,9 @@ patch authority and every merge decision stays with a person.
 
 ## Work Guidance
 
-- Reuse the tested-patch repair and evidence packages through ordinary Flow
-  package dependencies. Keep project-specific issue and check data here.
+- Keep the repair, capture, and evidence code inside this project. Its worker
+  uses the ordinary Flow and Agent packages; factory issues and acceptance cases
+  remain application-owned.
 - A comparison result limits only the measured claim. Preserve tied,
   unfavorable, and failed evidence.
 
@@ -60,5 +62,7 @@ patch authority and every merge decision stays with a person.
 
 ## Child DOX Index
 
+- [flows/repair/AGENTS.md](flows/repair/AGENTS.md) — Factory-owned repair
+  proposals and execution checks behind both reviewed configurations.
 - [flows/router/AGENTS.md](flows/router/AGENTS.md) — Reusable finite semantic
   choice and public boundary validation, independent of factory policy.

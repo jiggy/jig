@@ -4,10 +4,13 @@
   "type": "module",
   "dependencies": {
     "@jigging/agent-acp": "0.1.0-alpha.3",
-    "tested-patch-repair-flow": "workspace:*"
+    "factory-repair-flow": "workspace:*"
   },
   "devDependencies": {
     "@jigging/flow": "0.1.0-alpha.12",
     "semantic-router-flow": "workspace:*"
-  }
+  },
+  "workspaces": [
+    "flows/*"
+  ]
 }

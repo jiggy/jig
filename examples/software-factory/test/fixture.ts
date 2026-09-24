@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { digest, type RepairInput, sha256 } from 'tested-patch-repair-flow/policy'
-import { repair } from 'tested-patch-repair-flow/repair'
 import cases from '../flows/factory/logs-cases.json'
+import { digest, type RepairInput, sha256 } from '../flows/repair/policy.ts'
+import { repair } from '../flows/repair/repair.ts'
 
 export const input: RepairInput = {
   issue: 'Reject fractional and out-of-range HTTP status codes. Count 4xx separately from 5xx.',
@@ -78,12 +78,12 @@ function recorded(
   }
 }
 
-export async function syntheticRepair() {
+export async function syntheticRepair(maxProposals: 1 | 2 = 2, failFirstProposal = false) {
   let agents = 0
   const result = await repair({
     input,
+    settings: { maxProposals },
     signal: new AbortController().signal,
-    channels: {},
     call: async (call) => {
       if (call.slot === 'agent') {
         agents++
@@ -96,9 +96,15 @@ export async function syntheticRepair() {
       }
       return {
         outcome: 'done',
-        output: recorded(call.slot, value.files, value.args, value.stdin, agents > 0),
+        output: recorded(
+          call.slot,
+          value.files,
+          value.args,
+          value.stdin,
+          agents > 0 && (!failFirstProposal || agents > 1),
+        ),
       }
     },
   })
-  return { result }
+  return { result, agents }
 }

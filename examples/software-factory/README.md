@@ -3,13 +3,13 @@
 This application takes one or two preselected Bun-project issues and produces
 separate tested patch packets for human review. A reusable Semantic Router chooses
 one checked proposal or up to two proposals with corrective feedback according to
-the issue and work preferences. It can also abstain. It composes the repair and
-independent evidence methods from `tested-patch`; it does not edit the originals,
-merge patches, operate Git or CI, or decide that a change should ship.
+the issue and work preferences. It can also abstain. The project owns its repair
+method and evidence checks. Original projects stay read-only; a person decides
+whether to apply, merge, or release any patch.
 
 ## Run the supplied issue set
 
-Complete the repository workspace setup, select and authenticate an Agent in
+Run `bun install` in this project, select and authenticate an Agent in
 `bindings/agent.ts`, then inspect `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
 the two named case files under `flows/factory/`. From this directory:
 

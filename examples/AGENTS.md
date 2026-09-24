@@ -21,6 +21,11 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 - Keep each Flow self-contained and invoke collaborators only through the
   public FLOW SDK. Do not import sibling package source or host internals.
+- Each example project stands on its own: its Flows, Bindings, helpers, and tests
+  must not import or bind packages under another `examples/<project>/` directory.
+  Keep the methods it exercises inside that example or depend on a separately
+  owned public package. A root workspace link does not make a sibling example
+  part of the project's own source.
 - Use `run.call()` for every declared slot and inspect the complete `RunResult`.
   Copy named native contract bundles with their descriptor-relative channel
   paths intact; declarations never substitute for native host authority.

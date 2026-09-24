@@ -2,14 +2,14 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 import { checkRoutingResult } from 'semantic-router-flow/decision'
-import { checkName, loadChecks } from 'tested-patch-project-flow/checks'
+import { checkName, loadChecks } from './checks.ts'
 import {
   identity,
   inspect,
   readRepairInput,
   repairDeliverables,
   writeRepairDeliverables,
-} from 'tested-patch-project-flow/files'
+} from './files.ts'
 import { candidates, methods } from './methods.ts'
 
 interface Job {

@@ -36,6 +36,22 @@ test('patch overlap is reported, never silently combined', () => {
   ).toEqual([{ path: 'project/src/a.ts', jobs: ['a', 'b'], conflicting: true }])
 })
 
+test('factory-owned repair configurations keep the same checks and a distinct proposal budget', async () => {
+  const single = await syntheticRepair(1, true)
+  const correction = await syntheticRepair(2, true)
+  type Evidence = { attempts: { evaluation?: { accepted: boolean } }[] }
+  const singleEvidence = single.result.output as Evidence
+  const correctedEvidence = correction.result.output as Evidence
+  expect(single.agents).toBe(1)
+  expect(single.result.outcome).toBe('blocked')
+  expect(singleEvidence.attempts).toHaveLength(1)
+  expect(correction.agents).toBe(2)
+  expect(correction.result.outcome).toBe('done')
+  expect(correctedEvidence.attempts).toHaveLength(2)
+  expect(correctedEvidence.attempts[0]?.evaluation?.accepted).toBe(false)
+  expect(correctedEvidence.attempts[1]?.evaluation?.accepted).toBe(true)
+})
+
 test('a missing second check set prevents every worker dispatch', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-batch-checks-'))
   try {
