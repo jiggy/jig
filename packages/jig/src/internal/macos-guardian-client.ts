@@ -1,15 +1,29 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtemp, rmdir, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, rmdir, writeFile } from 'node:fs/promises'
 import { createServer, type Server, type Socket } from 'node:net'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { privateMacosBefore, privateMacosControlChannel } from './macos-control-channel.js'
-import type { PrivateMacosGuardianStart } from './macos-native-supervisor.js'
 import {
+  createPrivateMacosDescriptorReceiver,
+  type PrivateMacosReceivedDescriptors,
+} from './macos-descriptor-handoff.js'
+import {
+  allocatePrivateMacosGuardianStorage,
+  requirePrivateMacosGuardianStorage,
+} from './macos-guardian-storage.js'
+import type {
+  PrivateMacosGuardianConfiguration,
+  PrivateMacosGuardianStart,
+} from './macos-native-supervisor.js'
+import {
+  privateMacosStorageRecoveryToken,
   readPrivateMacosOwner,
   recordPrivateMacosSockets,
   removePrivateMacosSockets,
   requirePrivateMacosOwnerDirectory,
+  resetPrivateMacosRecoveryState,
 } from './macos-owner-state.js'
 import {
   privateMacosCurrentProcessIdentity,
@@ -38,9 +52,30 @@ export async function recoverPrivateMacosGuardian(
   ownerDirectory: string,
   ownerToken: string,
   cleanupTimeoutMs: number,
+  runtime: Readonly<{ bun: string; supervisor: string }> = {
+    bun: process.execPath,
+    supervisor: fileURLToPath(
+      new URL(
+        import.meta.url.endsWith('.ts')
+          ? './macos-native-supervisor.ts'
+          : './macos-native-supervisor.js',
+        import.meta.url,
+      ),
+    ),
+  },
+): Promise<void> {
+  await fenceDeadGuardian(ownerDirectory, ownerToken, cleanupTimeoutMs)
+  await recoverStorageWithGuardian(ownerDirectory, ownerToken, runtime)
+}
+
+async function fenceDeadGuardian(
+  ownerDirectory: string,
+  ownerToken: string,
+  cleanupTimeoutMs: number,
 ): Promise<void> {
   const owner = readPrivateMacosOwner(ownerDirectory, ownerToken)
-  const end = performance.now() + 16_000
+  // A live guardian may be finishing bounded image-tool cleanup after fencing.
+  const end = performance.now() + 90_000
   for (;;) {
     try {
       await recoverPrivateMacosCoalition(owner, cleanupTimeoutMs)
@@ -58,6 +93,59 @@ export async function recoverPrivateMacosGuardian(
   removeJob(`user/${process.getuid?.()}/${jobLabel(ownerToken)}`)
   removePrivateMacosSockets(ownerDirectory, ownerToken)
 }
+
+async function present(path: string): Promise<boolean> {
+  try {
+    await lstat(path)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+}
+
+/** A fixed, restartable cleanup slot owns image tools independently of this caller. */
+async function recoverStorageWithGuardian(
+  targetDirectory: string,
+  targetToken: string,
+  runtime: Readonly<{ bun: string; supervisor: string }>,
+): Promise<void> {
+  if (!(await present(join(targetDirectory, 'storage')))) return
+  requirePrivateMacosOwnerDirectory(targetDirectory)
+  const ownerDirectory = join(targetDirectory, 'recovery')
+  const ownerToken = privateMacosStorageRecoveryToken(targetToken)
+  await mkdir(ownerDirectory, { mode: 0o700 }).catch((error) => {
+    if (error.code !== 'EEXIST') throw error
+  })
+  requirePrivateMacosOwnerDirectory(ownerDirectory)
+  if (await present(join(ownerDirectory, 'owner.json')))
+    await fenceDeadGuardian(ownerDirectory, ownerToken, 5000)
+  else {
+    // A job without its first journal cannot yet have created a child. Remove
+    // it before replacing setup records so it can never become a late owner.
+    removeJob(`user/${process.getuid?.()}/${jobLabel(ownerToken)}`)
+    if (await present(join(ownerDirectory, 'sockets.json')))
+      removePrivateMacosSockets(ownerDirectory, ownerToken)
+  }
+  resetPrivateMacosRecoveryState(ownerDirectory)
+  const recovery = await prepareGuardian({
+    ...runtime,
+    configuration: {
+      type: 'recover-storage',
+      ownerDirectory,
+      ownerToken,
+      targetDirectory,
+      targetToken,
+      deadlineUnixMs: Date.now() + 30_000,
+    },
+  })
+  recovery.stdout.resume()
+  recovery.stderr.resume()
+  void recovery.admit().catch(() => undefined) // Recovery has no payload readiness gate.
+  const result = await recovery.completion
+  if (result.recovered || result.outputLost || result.result !== null)
+    throw new Error('macOS storage recovery is unconfirmed')
+}
 export interface PrivateMacosGuardianResult {
   readonly result: PrivateMacosScopeResult | null
   readonly outputLost: boolean
@@ -70,6 +158,10 @@ export interface PrivateMacosGuardian {
   readonly stdout: Socket
   readonly stderr: Socket
   readonly completion: Promise<PrivateMacosGuardianResult>
+  /** Fencing precedes collection; completion also proves storage cleanup. */
+  readonly fenced: Promise<PrivateMacosGuardianResult & { readonly outputFd?: number }>
+  /** Close the borrowed collector after reading and before awaiting completion. */
+  release(): void
   admit(): Promise<Readonly<{ pid: number; version: number }>>
   continue(): void
   cancel(): void
@@ -81,8 +173,19 @@ export async function preparePrivateMacosGuardian(input: {
   readonly supervisor: string
   readonly configuration: PrivateMacosGuardianStart
 }): Promise<PrivateMacosGuardian> {
+  return prepareGuardian(input)
+}
+
+async function prepareGuardian(input: {
+  readonly bun: string
+  readonly supervisor: string
+  readonly configuration: PrivateMacosGuardianConfiguration
+}): Promise<PrivateMacosGuardian> {
   const coordinator = privateMacosCurrentProcessIdentity()
   const configuration = structuredClone(input.configuration)
+  const storage = configuration.type === 'start' ? configuration.storage : undefined
+  const cleanupTimeoutMs =
+    configuration.type === 'start' ? configuration.limits.cleanupTimeoutMs : 5000
   requirePrivateMacosOwnerDirectory(configuration.ownerDirectory)
   if (
     !/^[0-9a-f]{64}$/.test(configuration.ownerToken) ||
@@ -102,8 +205,16 @@ export async function preparePrivateMacosGuardian(input: {
   let registered = false
   let socketsRecorded = false
   let control: Socket | undefined
+  let descriptorReceiver:
+    | Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>>
+    | undefined
+  let received: PrivateMacosReceivedDescriptors | undefined
+  let collectionTimer: ReturnType<typeof setTimeout> | undefined
+  let collectionLost = false
+  let storageAllocated = false
+  const transferCancellation = new AbortController()
   let finished = false
-  let phase: 'prepared' | 'admitted' | 'ready' | 'running' | 'terminal' = 'prepared'
+  let phase: 'prepared' | 'admitted' | 'ready' | 'running' | 'collecting' | 'terminal' = 'prepared'
   const currentPhase = (): string => phase
   const endpoint = async (suffix: string): Promise<{ accepted: Promise<Socket> }> => {
     const server = createServer()
@@ -150,34 +261,53 @@ export async function preparePrivateMacosGuardian(input: {
       removeJob(target)
     }
     for (const server of servers) server.close()
+    await descriptorReceiver?.close()
     if (socketsRecorded)
       removePrivateMacosSockets(configuration.ownerDirectory, configuration.ownerToken)
     else await rmdir(directory)
     finished = true
   }
   const recover = async (): Promise<PrivateMacosGuardianResult> => {
+    transferCancellation.abort()
+    clearTimeout(collectionTimer)
+    received?.close()
+    received = undefined
+    await descriptorReceiver?.close()
     control?.destroy()
     for (const socket of sockets) socket.destroy()
     for (const server of servers) server.close()
     await recoverPrivateMacosGuardian(
       configuration.ownerDirectory,
       configuration.ownerToken,
-      configuration.limits.cleanupTimeoutMs,
+      cleanupTimeoutMs,
+      input,
     )
     finished = true
     return Object.freeze({ result: null, outputLost: true, recovered: true, fenced: true })
   }
   try {
-    privateMacosSandboxProfile({
-      ...configuration.files,
-      protectedRoots: [
-        ...configuration.files.protectedRoots,
+    if (configuration.type === 'start')
+      privateMacosSandboxProfile({
+        ...configuration.files,
+        protectedRoots: [
+          ...configuration.files.protectedRoots,
+          configuration.ownerDirectory,
+          directory,
+        ],
+      })
+    if (configuration.type === 'start' && storage !== undefined) {
+      requirePrivateMacosGuardianStorage(storage, configuration.files, configuration.cwd)
+      await allocatePrivateMacosGuardianStorage(
         configuration.ownerDirectory,
-        directory,
-      ],
-    })
+        configuration.ownerToken,
+        storage,
+      )
+      storageAllocated = true
+    }
     recordPrivateMacosSockets(configuration.ownerDirectory, configuration.ownerToken, directory)
     socketsRecorded = true
+    if (storage?.collect !== undefined && storage.collect !== null)
+      descriptorReceiver = await createPrivateMacosDescriptorReceiver(directory, 'output')
     const controlEndpoint = await endpoint('')
     const stdinEndpoint = await endpoint('.in')
     const stdoutEndpoint = await endpoint('.out')
@@ -231,6 +361,28 @@ export async function preparePrivateMacosGuardian(input: {
       rejectReady = reject
     })
     void ready.catch(() => undefined)
+    let resolveFenced: (
+      value: PrivateMacosGuardianResult & { readonly outputFd?: number },
+    ) => void = () => {}
+    let rejectFenced: (error: unknown) => void = () => {}
+    const fenced = new Promise<PrivateMacosGuardianResult & { readonly outputFd?: number }>(
+      (resolve, reject) => {
+        resolveFenced = resolve
+        rejectFenced = reject
+      },
+    )
+    void fenced.catch(() => undefined)
+    const closeCollector = () => {
+      clearTimeout(collectionTimer)
+      received?.close()
+      received = undefined
+    }
+    const release = () => {
+      if (phase !== 'collecting' || received === undefined)
+        throw new Error('macOS collector is not available')
+      closeCollector()
+      channel.send({ type: 'release' })
+    }
     const completion = (async (): Promise<PrivateMacosGuardianResult> => {
       try {
         for (;;) {
@@ -247,6 +399,53 @@ export async function preparePrivateMacosGuardian(input: {
             phase = 'ready'
             resolveReady({ pid: message.pid as number, version: message.version as number })
           } else if (
+            message?.type === 'fenced' &&
+            storage !== undefined &&
+            ['ready', 'running'].includes(currentPhase()) &&
+            Object.keys(message).sort().join() === 'collect,outputLost,result,type' &&
+            typeof message.collect === 'boolean' &&
+            typeof message.outputLost === 'boolean'
+          ) {
+            const result = normalizePrivateMacosScopeResult(message.result)
+            phase = 'collecting'
+            if (message.collect) {
+              if (
+                descriptorReceiver === undefined ||
+                result.exitCode !== 0 ||
+                result.reason !== 'payload_exit' ||
+                message.outputLost
+              )
+                throw new Error('macOS collector has no successful fenced owner')
+              received = await descriptorReceiver.receive(
+                guardian!,
+                5000,
+                transferCancellation.signal,
+              )
+              transferCancellation.signal.throwIfAborted()
+              if (received.descriptors.length !== 1)
+                throw new Error('macOS collector descriptor count changed')
+              collectionTimer = setTimeout(() => {
+                collectionLost = true
+                closeCollector()
+                if (phase === 'collecting') {
+                  try {
+                    channel.send({ type: 'cancel' })
+                  } catch {
+                    control?.destroy()
+                  }
+                }
+              }, 20_000)
+            }
+            resolveFenced(
+              Object.freeze({
+                result,
+                outputLost: message.outputLost,
+                recovered: false,
+                fenced: true,
+                ...(received === undefined ? {} : { outputFd: received.descriptors[0]! }),
+              }),
+            )
+          } else if (
             message?.type === 'terminal' &&
             Object.keys(message).sort().join() === 'outputLost,result,type' &&
             typeof message.outputLost === 'boolean' &&
@@ -256,22 +455,32 @@ export async function preparePrivateMacosGuardian(input: {
           ) {
             phase = 'terminal'
             rejectReady(new Error('macOS guardian ended before readiness'))
+            closeCollector()
             await cleanup()
             control?.destroy()
             stdin.destroy()
-            return Object.freeze({
+            const terminal = Object.freeze({
               result:
                 message.result === null ? null : normalizePrivateMacosScopeResult(message.result),
-              outputLost: message.outputLost,
+              outputLost: message.outputLost || collectionLost,
               recovered: false,
-              fenced: true,
+              fenced: true as const,
             })
+            resolveFenced(terminal)
+            return terminal
           } else throw new Error('invalid macOS guardian response')
         }
       } catch {
         phase = 'terminal'
         rejectReady(new Error('macOS guardian connection lost'))
-        return await recover()
+        try {
+          const result = await recover()
+          resolveFenced(result)
+          return result
+        } catch (error) {
+          rejectFenced(error)
+          throw error
+        }
       }
     })()
     void completion.catch(() => undefined)
@@ -281,6 +490,8 @@ export async function preparePrivateMacosGuardian(input: {
       stdout,
       stderr,
       completion,
+      fenced,
+      release,
       admit() {
         if (phase !== 'prepared') throw new Error('macOS guardian is not prepared')
         phase = 'admitted'
@@ -293,6 +504,8 @@ export async function preparePrivateMacosGuardian(input: {
         channel.send({ type: 'continue' })
       },
       cancel() {
+        transferCancellation.abort()
+        closeCollector()
         if (phase !== 'terminal') channel.send({ type: 'cancel' })
       },
     })
@@ -300,6 +513,12 @@ export async function preparePrivateMacosGuardian(input: {
     for (const socket of sockets) socket.destroy()
     // This function has not exposed admission yet: no payload can have started.
     await cleanup()
+    if (storageAllocated)
+      await recoverStorageWithGuardian(
+        configuration.ownerDirectory,
+        configuration.ownerToken,
+        input,
+      )
     throw error
   }
 }

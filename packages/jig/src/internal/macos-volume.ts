@@ -185,7 +185,9 @@ function systemTool(
   tool: '/usr/bin/hdiutil' | '/usr/bin/plutil',
   args: string[],
   input?: Buffer,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
+  signal?.throwIfAborted()
   return new Promise((resolve, reject) => {
     const child = execFile(
       tool,
@@ -197,6 +199,7 @@ function systemTool(
         timeout: 30_000,
         killSignal: 'SIGKILL',
         maxBuffer: MIB,
+        signal,
       },
       (error, stdout) => {
         if (error) reject(new Error('macOS volume system operation failed', { cause: error }))
@@ -208,9 +211,14 @@ function systemTool(
   })
 }
 
-async function information(): Promise<Record<string, unknown>[]> {
-  const plist = await systemTool('/usr/bin/hdiutil', ['info', '-plist'])
-  const json = await systemTool('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], plist)
+async function information(signal?: AbortSignal): Promise<Record<string, unknown>[]> {
+  const plist = await systemTool('/usr/bin/hdiutil', ['info', '-plist'], undefined, signal)
+  const json = await systemTool(
+    '/usr/bin/plutil',
+    ['-convert', 'json', '-o', '-', '-'],
+    plist,
+    signal,
+  )
   const parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(json))
   if (
     !Array.isArray(parsed?.images) ||
@@ -222,9 +230,13 @@ async function information(): Promise<Record<string, unknown>[]> {
 }
 
 /** No saved disk number grants detach authority: derive it from the live exact image. */
-async function attached(controlPath: string, allocation: Allocation): Promise<string | undefined> {
+async function attached(
+  controlPath: string,
+  allocation: Allocation,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
   const imagePath = join(controlPath, IMAGE)
-  const images = await information()
+  const images = await information(signal)
   const candidates = images.filter((value) => value['image-path'] === imagePath)
   if (candidates.length === 0) return undefined
   const item = candidates[0]!
@@ -310,6 +322,17 @@ export async function createPrivateMacosVolume(
   mountPath: string,
   bytes: number,
 ): Promise<Readonly<{ path: string; directory: FileHandle; capacityBytes: number }>> {
+  await allocatePrivateMacosVolume(controlPath, token, mountPath, bytes)
+  return attachPrivateMacosVolume(controlPath, token)
+}
+
+/** Durable allocation only: no subprocess or mount, safe before guardian admission. */
+export async function allocatePrivateMacosVolume(
+  controlPath: string,
+  token: string,
+  mountPath: string,
+  bytes: number,
+): Promise<void> {
   capacity(bytes)
   if (!HEX.test(token)) throw new TypeError('invalid macOS volume ownership token')
   canonical(controlPath)
@@ -321,7 +344,6 @@ export async function createPrivateMacosVolume(
   )
     throw new Error('macOS volume data overlaps control')
   const parent = await privateDirectory(controlPath)
-  let mounted: FileHandle | undefined
   try {
     for await (const _ of privateMacosDirectory(parent.fd))
       throw new Error('macOS volume control allocation is not empty')
@@ -341,23 +363,55 @@ export async function createPrivateMacosVolume(
     } finally {
       await mount.close()
     }
-    const allocationMac = await writeRecord(parent, INTENT, token, allocation)
+    await writeRecord(parent, INTENT, token, allocation)
+  } finally {
+    await parent.close()
+  }
+}
+
+/** Run only inside the admitted finite guardian; never retry a partial creation. */
+export async function attachPrivateMacosVolume(
+  controlPath: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<Readonly<{ path: string; directory: FileHandle; capacityBytes: number }>> {
+  const parent = await privateDirectory(controlPath)
+  let mounted: FileHandle | undefined
+  try {
+    signal?.throwIfAborted()
+    const intent = await readRecord(parent, INTENT, token)
+    const allocation = validateAllocation(intent.value)
+    const allocationMac = intent.mac
+    const bytes = allocation.bytes,
+      mountPath = allocation.mount.path
+    if (!matches(await parent.stat({ bigint: true }), allocation.control))
+      throw new Error('macOS volume control directory changed')
+    // Refuse a replay before starting tools, including an incomplete image.
+    for await (const entry of privateMacosDirectory(parent.fd))
+      if (entry.name.toString('utf8') !== INTENT)
+        throw new Error('macOS volume allocation has already been used')
+    await sameDirectory(mountPath, allocation.mount)
     await sameDirectory(controlPath, allocation.control)
-    await systemTool('/usr/bin/hdiutil', [
-      'create',
-      '-sectors',
-      String(bytes / 512),
-      '-fs',
-      'Case-sensitive HFS+',
-      '-volname',
-      'Jig',
-      '-type',
-      'UDIF',
-      '-layout',
-      'NONE',
-      '-nospotlight',
-      join(controlPath, IMAGE),
-    ])
+    await systemTool(
+      '/usr/bin/hdiutil',
+      [
+        'create',
+        '-sectors',
+        String(bytes / 512),
+        '-fs',
+        'Case-sensitive HFS+',
+        '-volname',
+        'Jig',
+        '-type',
+        'UDIF',
+        '-layout',
+        'NONE',
+        '-nospotlight',
+        join(controlPath, IMAGE),
+      ],
+      undefined,
+      signal,
+    )
     const image = await imageFile(parent, bytes)
     let recordedImage: ImageIdentity
     try {
@@ -373,22 +427,27 @@ export async function createPrivateMacosVolume(
     await sameDirectory(controlPath, allocation.control)
     await sameDirectory(mountPath, allocation.mount)
     // In-kernel fixed image: no per-image userspace helper or sparse growth.
-    await systemTool('/usr/bin/hdiutil', [
-      'attach',
-      '-kernel',
-      '-nobrowse',
-      '-noautoopen',
-      '-noautofsck',
-      '-owners',
-      'on',
-      '-mountpoint',
-      mountPath,
-      '-mount',
-      'required',
-      '-plist',
-      join(controlPath, IMAGE),
-    ])
-    const device = await attached(controlPath, allocation)
+    await systemTool(
+      '/usr/bin/hdiutil',
+      [
+        'attach',
+        '-kernel',
+        '-nobrowse',
+        '-noautoopen',
+        '-noautofsck',
+        '-owners',
+        'on',
+        '-mountpoint',
+        mountPath,
+        '-mount',
+        'required',
+        '-plist',
+        join(controlPath, IMAGE),
+      ],
+      undefined,
+      signal,
+    )
+    const device = await attached(controlPath, allocation, signal)
     const checkedImage = await imageFile(parent, bytes, recordedImage)
     await checkedImage.close()
     await sameDirectory(controlPath, allocation.control)
@@ -428,7 +487,12 @@ export async function createPrivateMacosVolume(
  * collector descriptors closed. Authentication authorizes this exact storage,
  * never process fencing. Keep journals until the enclosing owner is released.
  */
-export async function recoverPrivateMacosVolume(controlPath: string, token: string): Promise<void> {
+export async function recoverPrivateMacosVolume(
+  controlPath: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted()
   const parent = await privateDirectory(controlPath)
   try {
     const intent = await readRecord(parent, INTENT, token)
@@ -456,15 +520,15 @@ export async function recoverPrivateMacosVolume(controlPath: string, token: stri
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
-      const device = await attached(controlPath, allocation)
+      const device = await attached(controlPath, allocation, signal)
       if (device !== undefined) {
         if (recordedImage === undefined || image === undefined)
           throw new Error('macOS attached image has no authenticated backing')
         await sameDirectory(controlPath, allocation.control)
         if (!matches(privateMacosStatAt(parent.fd, IMAGE), recordedImage))
           throw new Error('macOS volume backing changed before detach')
-        await systemTool('/usr/bin/hdiutil', ['detach', device])
-        if ((await attached(controlPath, allocation)) !== undefined)
+        await systemTool('/usr/bin/hdiutil', ['detach', device], undefined, signal)
+        if ((await attached(controlPath, allocation, signal)) !== undefined)
           throw new Error('macOS volume detachment is unconfirmed')
       }
       try {

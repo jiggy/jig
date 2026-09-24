@@ -18,5 +18,9 @@ while (
 )
   await Bun.sleep(10)
 await access(marker)
+if (input.fixturePhase === 'collecting') {
+  const result = await owner.fenced
+  if (result.outputFd === undefined) throw new Error('fixture collector was not handed off')
+}
 console.log('coordinator-exiting')
 process.exit(0)

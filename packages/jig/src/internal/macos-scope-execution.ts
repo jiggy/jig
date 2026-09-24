@@ -111,6 +111,25 @@ export function normalizePrivateMacosScopeResult(value: unknown): PrivateMacosSc
   }) as unknown as PrivateMacosScopeResult
 }
 
+export function requirePrivateMacosScopeLimits(
+  value: PrivateMacosScopeLimits,
+): Readonly<PrivateMacosScopeLimits> {
+  const limits = Object.freeze({ ...value })
+  if (
+    Object.keys(limits).sort().join() !==
+      'cleanupTimeoutMs,cpuPeriodMicros,cpuQuotaMicros,deadlineUnixMs,memoryBytes,pids' ||
+    Object.values(limits).some((value) => !Number.isSafeInteger(value) || value <= 0) ||
+    limits.memoryBytes > 512 * 1024 * 1024 ||
+    limits.pids > 128 ||
+    limits.cpuQuotaMicros > limits.cpuPeriodMicros ||
+    limits.cpuPeriodMicros !== 100_000 ||
+    limits.cleanupTimeoutMs > 5000 ||
+    limits.deadlineUnixMs - Date.now() > 86_400_000
+  )
+    throw new TypeError('invalid macOS scope limits')
+  return limits
+}
+
 /**
  * Guardian-local execution, never a coordinator or application entrypoint.
  * Durable ownership must exist before calling this function. The returned gate
@@ -127,17 +146,7 @@ export async function preparePrivateMacosScope(input: {
 }): Promise<PrivateMacosScopeExecution> {
   const owner = requirePrivateMacosCoalition(input.owner)
   if (!owner.empty()) throw new Error('macOS scope is not initially empty')
-  const limits = Object.freeze({ ...input.limits })
-  if (
-    Object.values(limits).some((value) => !Number.isSafeInteger(value) || value <= 0) ||
-    limits.memoryBytes > 512 * 1024 * 1024 ||
-    limits.pids > 128 ||
-    limits.cpuQuotaMicros > limits.cpuPeriodMicros ||
-    limits.cpuPeriodMicros !== 100_000 ||
-    limits.cleanupTimeoutMs > 5000 ||
-    limits.deadlineUnixMs - Date.now() > 86_400_000
-  )
-    throw new TypeError('invalid macOS scope limits')
+  const limits = requirePrivateMacosScopeLimits(input.limits)
   const command = [...input.command]
   const environment = { ...input.environment }
   if (

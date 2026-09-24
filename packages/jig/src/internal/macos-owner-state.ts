@@ -14,6 +14,11 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import {
+  privateMacosDirectory,
+  privateMacosStatAt,
+  privateMacosUnlinkAt,
+} from './macos-descriptor-files.js'
+import {
   type PrivateMacosCoalitionControl,
   requirePrivateMacosCoalition,
 } from './macos-process-controls.js'
@@ -22,6 +27,49 @@ const O_NOFOLLOW_ANY = 0x20000000
 const O_CLOEXEC = 0x01000000
 const handles = new WeakMap<object, PrivateMacosCoalitionControl['identity']>()
 const tokenPattern = /^[0-9a-f]{64}$/
+
+export function privateMacosStorageRecoveryToken(token: string): string {
+  if (!tokenPattern.test(token)) throw new TypeError('invalid macOS ownership token')
+  return createHmac('sha256', Buffer.from(token, 'hex'))
+    .update('jig-macos-storage-recovery')
+    .digest('hex')
+}
+
+/** After authenticated fencing, job removal and socket cleanup, reuse only this
+ * fixed private recovery slot. No old journal is erased while a job can run. */
+export function resetPrivateMacosRecoveryState(directory: string): void {
+  if (!directory.endsWith('/recovery')) throw new Error('invalid macOS recovery slot')
+  const fd = privateDirectory(directory)
+  try {
+    const entries = privateMacosDirectory(fd)
+    const names: string[] = []
+    try {
+      for (;;) {
+        const entry = entries.readSync()
+        if (entry === null) break
+        const name = new TextDecoder('utf-8', { fatal: true }).decode(entry.name)
+        if (!['owner.json', 'sockets.json', 'guardian.plist'].includes(name))
+          throw new Error('macOS recovery slot contains unexpected state')
+        const info = privateMacosStatAt(fd, name)
+        if (
+          !info.isFile() ||
+          info.uid !== BigInt(process.getuid!()) ||
+          info.nlink !== 1n ||
+          (info.mode & 0o777n) !== 0o600n ||
+          info.size > 16_384n
+        )
+          throw new Error('macOS recovery slot is unsafe')
+        names.push(name)
+      }
+    } finally {
+      entries.closeSync()
+    }
+    for (const name of names) privateMacosUnlinkAt(fd, name)
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
 
 /** Minted only by authenticating a protected durable journal, never by decoding JSON. */
 export interface PrivateMacosRecoveryOwner {
@@ -240,7 +288,7 @@ export function removePrivateMacosSockets(ownerDirectory: string, token: string)
     const stat = fstatSync(fd, { bigint: true })
     if (String(stat.dev) !== identity.device || String(stat.ino) !== identity.inode)
       throw new Error('macOS control allocation identity changed')
-    for (const name of ['c', 'c.in', 'c.out', 'c.err']) {
+    for (const name of ['c', 'c.in', 'c.out', 'c.err', 'fd-output']) {
       const path = join(identity.directory, name)
       try {
         const entry = lstatSync(path)

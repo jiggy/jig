@@ -126,6 +126,20 @@ child calls, project commands, delegated HTTP, and Agent providers.
   detach, then remove only its original empty mount directory and backing file.
   Retain authenticated journals until the enclosing owner is released. Storage
   ownership alone does not establish process fencing or installed Mac support.
+- `macos-guardian-storage.ts` records bounded volume intent before job creation
+  and attaches only after admission inside the guardian. Work, temporary and
+  output roots share that fixed capacity; their parent stays host-owned. After
+  payload fencing, an authenticated descriptor handoff permits at most 20 seconds
+  of collection. Close the borrowed collector and release it before awaiting
+  full completion. Fencing alone is not storage-cleanup evidence; final publication
+  also requires successful completion. Cancellation, expiry and connection loss
+  terminate collection and retain cleanup responsibility.
+  Fresh storage recovery runs fixed image tools in a separate finite guardian,
+  with a derived token and authenticated journal in the owner's `recovery` slot.
+  Fence the preceding attempt, remove its exact job and sockets, then reset only
+  the slot's known private records before reuse. Never erase a live attempt's
+  journal or recursively delete a recovery path. Recovery tool admission has a
+  separate 30-second deadline; uncertain cleanup preserves the allocation.
 - `macos-owner-state.ts` writes the guardian's authenticated boot, coalition and
   PID-version journal before descendants exist. Its per-allocation token stays
   in protected coordinator state, never arguments, payloads or the journal.
@@ -579,6 +593,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   case aliases and copied/closed capture handles; the volume test also rejects
   selected descendants crossing mounts. Linux filesystem and Nix loader cases
   remain Linux-only and require their own runner.
+  `macos-guardian-storage.test.ts` qualifies journal-before-tool admission,
+  descriptor collection after detached-descendant fencing, collection lifetime,
+  interrupted creation, coordinator/guardian loss and a failed recovery guardian.
+  Every cleanup attempt keeps its exact journals until fencing is confirmed.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
