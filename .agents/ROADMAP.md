@@ -46,23 +46,25 @@ foundations do not need to be rebuilt.
 
 ## Next milestones
 
-The current foundation includes exact Flow composition, contained project
-commands, channels, root file delivery, checkpoints, ordinary HTTP and ACP Agent
-Flows, continuing conversations, optional native restoration, and an
-application-owned handoff. These are available paths with different levels of
-qualification, not milestones to rebuild.
+The current foundation includes published FLOW, Jig, and ordinary Agent alphas;
+same-revision source and complete host gates with retained release archives;
+and independently provisioned host shards that shorten the release path.
+Exact composition, contained commands, files, checkpoints, conversations,
+optional native restoration, and an application-owned handoff are implemented
+with different levels of installed and independent qualification. Tied or
+unfavorable factory comparisons remain completed experiments, not proof of an
+advantage and not a reason to rebuild those foundations.
 
-### 1. Deliver a coherent installed alpha
+### 1. Keep the installed alpha coherent and reliable
 
-Bring the published FLOW, Jig, and ordinary Agent packages into alignment with
-their current source and public guidance. Use the existing candidate, release,
-and host-conformance gates; qualify each advertised native-client behavior with
-installed artifacts rather than protocol fixtures alone.
+Release the corrected input projection and keep source, tested archives,
+registry versions, tags, and public guidance aligned. Preserve monotonic
+publication when a newer revision finishes first. Qualify advertised native
+behavior with installed clients on supported hosts, separate from fixtures.
 
-Finish when a new installation can follow the public quickstart, admit an
-ordinary Agent package, run a useful Flow, inspect its evidence, and cancel it.
-Published package identities and claims must match the tested artifacts. A
-source-only demonstration is not completion.
+Finish when a fresh installation can run the corrected project inputs and
+supported Agent paths, inspect evidence, and stop owned work with confirmed
+cleanup. Source-only fixes and a protocol fixture do not establish that result.
 
 ### 2. Make project repair independently usable
 
@@ -77,17 +79,17 @@ without private instructions or platform edits. Correct friction at its owning
 product or application layer. This tests adoption and reuse, not a claim that
 the method outperforms every coding Agent.
 
-### 3. Deliver a small software factory
+### 3. Make the small software factory independently useful
 
-Compose the proven repair and checking methods for several authorized issues.
-Keep bounded attempts, inspectable patches, honest unsuccessful outcomes, and a
-human merge gate. Let a second builder adapt the application through its
-intended configuration.
+Use the bounded factory's explicit repair methods and optional semantic choice
+for several authorized issues. Keep inspectable patches, honest unsuccessful
+outcomes, retained healthy-peer evidence, and a human merge gate. Let a fresh
+builder adapt it through its intended public configuration.
 
-Finish with a useful application and a bounded comparison against one capable
-coding Agent plus tests and human review. Select the claimed advantage and
-metric beforehand; a tied or unfavorable result limits the claim, not further
-useful product work.
+Finish with useful independently reproduced output. A new comparison against
+one capable coding Agent plus tests and human review requires a new
+decision-relevant question and metric selected beforehand; no advantage is
+claimed from the completed ties.
 
 ## Work alongside the milestones
 
