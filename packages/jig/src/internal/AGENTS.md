@@ -193,6 +193,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Authenticate the temporary socket directory's device/inode separately; after
   fencing, remove only its exact socket names and empty directory. Never perform
   recursive deletion using a decoded recovery path.
+- `macos-owner-lock.ts` holds an exclusive, nonblocking kernel file lock through
+  native admission and settlement, or through recovery. Bind its original inode
+  into durable state and revalidate the held directory and named lock; process
+  death releases the lock but does not prove payload fencing. A competing live
+  coordinator must remain a refusal, never permission to cancel its ownership.
+  `macos-backend-state.ts` authenticates bounded, atomically committed allocation,
+  sealing, admission, cancellation and final-receipt records. Interrupted staging
+  never authorizes dispatch; retain the last authenticated commit. Reopening a
+  cancelled or finished allocation cannot admit work. The backend must validate
+  sealed identities and cleanup receipts independently; ledger JSON alone is
+  neither execution nor fencing authority.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
   Reject overlap between host control, immutable inputs and writable trees;
   keep the narrow sysctl/process-information rules. Only explicit network
@@ -662,6 +673,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   immutable output transfer, cooperative interruption, forced escalation and
   coordinator loss during staging. Stopped fixtures explicitly ignore SIGTERM
   so both kernels exercise escalation; use exact owned fixture PIDs only.
+  `macos-owner-lock.test.ts` checks independent-process exclusion, release on
+  coordinator death and lock replacement. `macos-backend-state.test.ts` checks
+  fresh-process recovery of committed state, cancelled admission, exact final
+  receipt retention, interrupted writes and authentication failures. Synthetic
+  ledger receipts do not qualify backend cleanup or installed execution.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
