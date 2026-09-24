@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { main, privateCliRequiresHost } from '../src/cli.js'
 import { importContract } from '../src/internal/contract-import.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
-import { main, privateCliRequiresHost } from '../src/cli.js'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -40,7 +40,7 @@ test('imports an exact complete closure from an installed-style symlink without 
     join(root, 'installed/FLOW.contract.json'),
     join(root, 'copied'),
   )
-  expect(await readdir(join(root, 'copied'))).toEqual(['FLOW.contract.json', 'contracts'])
+  expect((await readdir(join(root, 'copied'))).sort()).toEqual(['FLOW.contract.json', 'contracts'])
   expect(await readFile(join(root, 'copied/FLOW.contract.json'), 'utf8')).toBe(descriptor)
   expect(await readFile(join(root, 'copied/contracts/events.json'), 'utf8')).toBe(agreement)
   expect(result).toMatchObject({

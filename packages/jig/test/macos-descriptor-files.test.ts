@@ -15,6 +15,7 @@ import {
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  privateMacosDescriptorPath,
   privateMacosDirectory,
   privateMacosDuplicate,
   privateMacosMkdirAt,
@@ -58,9 +59,14 @@ native(
         { encoding: 'utf8', timeout: 15_000 },
       )
       expect({ code: compiled.status, err: compiled.stderr }).toEqual({ code: 0, err: '' })
-      expect(spawnSync(abi, [], { encoding: 'utf8', timeout: 2000 }).stdout).toBe(
-        '{"statBytes":144,"directoryNameOffset":21}\n',
-      )
+      const executed = spawnSync(abi, [], { encoding: 'utf8', timeout: 10_000 })
+      expect({
+        status: executed.status,
+        signal: executed.signal,
+        error: executed.error,
+        stderr: executed.stderr,
+      }).toEqual({ status: 0, signal: null, error: undefined, stderr: '' })
+      expect(executed.stdout).toBe('{"statBytes":144,"directoryNameOffset":21}\n')
       const actual = await lstat(join(path, 'é.txt'), { bigint: true })
       const anchored = privateMacosStatAt(directory.fd, 'é.txt')
       for (const key of [
@@ -83,6 +89,7 @@ native(
       expect(anchored.isFile()).toBe(true)
       await rename(path, moved)
       await symlink(unrelated, path)
+      expect(privateMacosDescriptorPath(directory.fd)).toBe(moved)
       const copy = await privateMacosDuplicate(directory.fd)
       await directory.close()
       try {
@@ -132,5 +139,5 @@ native(
       await rm(root, { recursive: true, force: true })
     }
   },
-  20_000,
+  30_000,
 )

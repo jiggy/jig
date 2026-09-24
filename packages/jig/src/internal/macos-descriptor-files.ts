@@ -39,7 +39,7 @@ function calls(): Native {
   const ffi = createRequire(import.meta.url)('bun:ffi')
   const { symbols } = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
     openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
-    fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
+    fcntl: { args: ['i32', 'i32', 'u64'], returns: 'i32' },
     fstatat$INODE64: { args: ['i32', 'ptr', 'ptr', 'i32'], returns: 'i32' },
     fdopendir$INODE64: { args: ['i32'], returns: 'ptr' },
     readdir$INODE64: { args: ['ptr'], returns: 'ptr' },
@@ -129,6 +129,16 @@ export async function privateMacosDuplicate(fd: number): Promise<FileHandle> {
     closeSync(duplicate)
     throw error
   }
+}
+
+/** Observation only; never reopen this path in place of a held descriptor. */
+export function privateMacosDescriptorPath(fd: number): string {
+  const { ptr, symbols } = calls()
+  const bytes = Buffer.alloc(1024)
+  checked(symbols.fcntl(fd, 50, ptr(bytes))) // F_GETPATH, MAXPATHLEN in SDK 14.4.
+  const end = bytes.indexOf(0)
+  if (end <= 0) throw new Error('macOS descriptor pathname is unavailable')
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, end))
 }
 
 /** The reader remains private until its sole writer is closed by the capture owner. */

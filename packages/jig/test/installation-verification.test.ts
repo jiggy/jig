@@ -7,6 +7,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   symlink,
@@ -25,7 +26,6 @@ import {
   privateInstallationFileDigest,
   withPrivateInstallationVerification,
 } from '../src/internal/installation-verification.js'
-import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 async function fixture(work: (f: Awaited<ReturnType<typeof createFixture>>) => Promise<void>) {
   const f = await createFixture()
@@ -36,7 +36,7 @@ async function fixture(work: (f: Awaited<ReturnType<typeof createFixture>>) => P
   }
 }
 async function createFixture() {
-  const root = await mkdtemp(join(tmpdir(), 'jig-verification-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-verification-')))
   const project = join(root, 'project')
   const source = join(root, 'tool')
   const cache = join(root, 'cache')
@@ -271,6 +271,7 @@ test('cached provider launch rejects changed bytes; fast still rejects lost exec
 })
 
 test('installed invalid verification is actionable and safe; help remains usable', async () => {
+  const { installedBunLocation } = await import('./fixtures/installed-bun-location.js')
   for (const args of [
     ['run', 'flow:flows/hello'],
     ['inspect'],
@@ -303,6 +304,7 @@ test('installed invalid verification is actionable and safe; help remains usable
 })
 
 test('installed verification argument overrides even an invalid environment preference', async () => {
+  const { installedBunLocation } = await import('./fixtures/installed-bun-location.js')
   await fixture(async (f) => {
     for (const mode of ['cached', 'strict', 'fast']) {
       const child = Bun.spawn(

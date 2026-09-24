@@ -1,10 +1,21 @@
+import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { type FileHandle, mkdir, mkdtemp, open, realpath, rm } from 'node:fs/promises'
+import { type FileHandle, open, realpath } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
-import { captureOpenedPackageDirectory, type CapturedPackage } from '../package/capture.js'
-import { privateFilePath, privatePublishDirectory } from './linux-file-input.js'
+import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
+import {
+  mkdirPrivateFile,
+  openPrivateFile,
+  type PrivateChildLocation,
+  privateChildLocation,
+  privateDirectoryEntries,
+  publishPrivateDirectory,
+  rmdirPrivateFile,
+  unlinkPrivateFile,
+} from './descriptor-files.js'
+import { privateFilePath } from './linux-file-input.js'
 
 /** Explicit inert authoring: copy one validated offline closure, never package code. */
 export async function importContract(
@@ -14,7 +25,7 @@ export async function importContract(
 ): Promise<{ descriptor: string; files: number; digest: string }> {
   let root: FileHandle | undefined
   let parent: FileHandle | undefined
-  let staged: string | undefined
+  let staged: PrivateChildLocation | undefined
   let captured: CapturedPackage | undefined
   let phase: 'source' | 'destination' = 'source'
   try {
@@ -56,9 +67,13 @@ export async function importContract(
       await realpath(dirname(target)),
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     )
-    const parentPath = `/proc/self/fd/${parent.fd}`
-    staged = await mkdtemp(`${parentPath}/.jig-contract-`)
-    const stage = await open(
+    const allocation = privateChildLocation(
+      parent,
+      `.jig-contract-${randomBytes(16).toString('hex')}`,
+    )
+    await mkdirPrivateFile(allocation)
+    staged = allocation
+    const stage = await openPrivateFile(
       staged,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     )
@@ -70,7 +85,7 @@ export async function importContract(
       signal?.throwIfAborted()
       // No replacement, including empty directories and symlinks. Until this point
       // the destination is absent. This is publication, not Run admission.
-      privatePublishDirectory(parent.fd, basename(staged), leaf)
+      await publishPrivateDirectory(parent, staged.name, leaf)
       staged = undefined
     } finally {
       await stage.close()
@@ -93,7 +108,7 @@ export async function importContract(
     )
   } finally {
     try {
-      if (staged !== undefined) await rm(staged, { recursive: true, force: true })
+      if (staged !== undefined) await removeStage(staged)
     } finally {
       await captured?.dispose()
       await parent?.close()
@@ -108,18 +123,18 @@ async function writeCaptured(root: FileHandle, path: string, bytes: Uint8Array):
   let parent = root
   try {
     for (const part of parts.slice(0, -1)) {
-      const directory = `/proc/self/fd/${parent.fd}/${part}`
-      await mkdir(directory, { mode: 0o700 }).catch((error) => {
+      const directory = privateChildLocation(parent, part)
+      await mkdirPrivateFile(directory).catch((error) => {
         if (error.code !== 'EEXIST') throw error
       })
-      parent = await open(
+      parent = await openPrivateFile(
         directory,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       )
       handles.push(parent)
     }
-    const file = await open(
-      `/proc/self/fd/${parent.fd}/${parts.at(-1)}`,
+    const file = await openPrivateFile(
+      privateChildLocation(parent, parts.at(-1)!),
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
       0o600,
     )
@@ -131,4 +146,28 @@ async function writeCaptured(root: FileHandle, path: string, bytes: Uint8Array):
   } finally {
     for (const handle of handles.reverse()) await handle.close()
   }
+}
+
+/** Remove only the exact unexposed staging tree, never a decoded absolute path. */
+async function removeStage(location: PrivateChildLocation): Promise<void> {
+  let entries = 0
+  const visit = async (current: PrivateChildLocation, depth: number): Promise<void> => {
+    if (depth > 512) throw new Error('contract staging cleanup exceeds its depth bound')
+    const directory = await openPrivateFile(
+      current,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    )
+    try {
+      for await (const entry of privateDirectoryEntries(directory)) {
+        if (++entries > 65536) throw new Error('contract staging cleanup exceeds its entry bound')
+        const child = privateChildLocation(directory, entry.name)
+        if (entry.isDirectory()) await visit(child, depth + 1)
+        else await unlinkPrivateFile(child)
+      }
+    } finally {
+      await directory.close()
+    }
+    await rmdirPrivateFile(current)
+  }
+  await visit(location, 0)
 }

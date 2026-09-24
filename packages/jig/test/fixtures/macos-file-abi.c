@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 _Static_assert(sizeof(struct stat) == 144, "stat ABI changed");
+_Static_assert(F_GETPATH == 50, "descriptor path command changed");
 _Static_assert(offsetof(struct stat, st_mode) == 4, "stat mode ABI changed");
 _Static_assert(offsetof(struct stat, st_ino) == 8, "stat inode ABI changed");
 _Static_assert(offsetof(struct stat, st_atimespec) == 32, "stat time ABI changed");

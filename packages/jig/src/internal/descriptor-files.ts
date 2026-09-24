@@ -7,12 +7,14 @@ import {
   open,
   opendir,
   readlink,
+  realpath,
   rename,
   rmdir,
   symlink,
   unlink,
 } from 'node:fs/promises'
 import {
+  privateMacosDescriptorPath,
   privateMacosDirectory,
   privateMacosDuplicate,
   privateMacosLinkAt,
@@ -113,6 +115,13 @@ export async function duplicatePrivateDirectory(directory: FileHandle): Promise<
   )
 }
 
+/** Cache-location observation, not a pathname capability or permission to reopen. */
+export async function observePrivateDescriptorPath(directory: FileHandle): Promise<string> {
+  if (process.platform === 'darwin') return privateMacosDescriptorPath(directory.fd)
+  requireLinux()
+  return realpath(`/proc/self/fd/${directory.fd}`)
+}
+
 export async function renamePrivateFile(
   from: PrivateChildLocation,
   to: PrivateChildLocation,
@@ -122,6 +131,20 @@ export async function renamePrivateFile(
   if (process.platform === 'darwin')
     return privateMacosRenameAt(source.parent.fd, source.name, target.parent.fd, target.name)
   return rename(linuxPath(from), linuxPath(to))
+}
+
+export async function publishPrivateDirectory(
+  parent: FileHandle,
+  staged: string,
+  destination: string,
+): Promise<void> {
+  requireLeaf(staged)
+  requireLeaf(destination)
+  if (process.platform === 'darwin')
+    return privateMacosRenameAt(parent.fd, staged, parent.fd, destination, true)
+  requireLinux()
+  const { privatePublishDirectory } = await import('./linux-file-input.js')
+  privatePublishDirectory(parent.fd, staged, destination)
 }
 
 export async function linkPrivateFile(

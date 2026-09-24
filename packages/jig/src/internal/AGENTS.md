@@ -12,6 +12,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   the descriptor and exact offline channel closure, validate before writing,
   and publish a new directory without replacement. Source package code,
   unrelated files, network access and Run approval stay outside this operation.
+  Native publication uses exclusive directory rename from a newly owned staging
+  leaf. Cleanup walks held descriptors with finite entry/depth bounds; a failed
+  allocation must never authorize removal of an existing name.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
@@ -84,7 +87,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   descriptor. The pinned Bun FileHandle adoption seam and SDK stat/dirent layouts
   require native qualification. Use matching INODE64 entrypoints, independent
   enumeration offsets, and O_NOFOLLOW_ANY without the conflicting O_NOFOLLOW.
-  Anonymous readers remain private until their only writer has closed.
+  Anonymous readers remain private until their only writer has closed. F_GETPATH
+  may observe a cache directory's current location for project exclusion; file
+  access must still use the held descriptor, never reopen the observed path.
 - `macos-process-controls.ts` owns the qualified Darwin process ABI: acquire
   only the guardian's initially exclusive resource coalition, observe kernel
   accounting, and signal matching PID versions. Sampled footprint and process

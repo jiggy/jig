@@ -1,14 +1,21 @@
+import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { type FileHandle, mkdir, open, rename, unlink } from 'node:fs/promises'
-import { randomUUID, createHash } from 'node:crypto'
-import { invalid, unavailable } from '../diagnostics.js'
-import { decodeJson1 } from '../json.js'
-import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
+import type { FileHandle } from 'node:fs/promises'
+import { assertResponseSchema } from '@jigging/agent-method'
 import { parseChannelContract, requireChannelReference } from '../channel-contract.js'
+import { invalid, unavailable } from '../diagnostics.js'
+import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
+import { decodeJson1 } from '../json.js'
 import type { PrepareCapturedFlow } from '../project/flow-source.js'
 import type { PrivateProjectRoot } from '../project/root.js'
-import { assertResponseSchema } from '@jigging/agent-method'
-import { generateContract, type GeneratedContract } from './contract-authoring-client.js'
+import { type GeneratedContract, generateContract } from './contract-authoring-client.js'
+import {
+  mkdirPrivateFile,
+  openPrivateFile as open,
+  privateChildLocation as pathOf,
+  renamePrivateFile as rename,
+  unlinkPrivateFile as unlink,
+} from './descriptor-files.js'
 
 const SOURCE = 'FLOW.contract.tsp'
 const DESCRIPTOR = 'FLOW.contract.json'
@@ -25,7 +32,6 @@ interface Journal {
   next: Generation | null
 }
 const hash = (s: string) => createHash('sha256').update(s).digest('hex')
-const pathOf = (directory: FileHandle, name: string) => `/proc/self/fd/${directory.fd}/${name}`
 const conflict = (name: string): never =>
   invalid(
     'AUTHORING_CONFLICT',
@@ -102,7 +108,7 @@ async function directory(
   create: boolean,
 ): Promise<FileHandle | undefined> {
   if (create)
-    await mkdir(pathOf(parent, name), { mode: 0o700 }).catch((error) => {
+    await mkdirPrivateFile(pathOf(parent, name)).catch((error) => {
       if (error.code !== 'EEXIST') throw error
     })
   try {
