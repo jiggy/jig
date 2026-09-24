@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync, fstatSync } from 'node:fs'
+import { type FileHandle, open } from 'node:fs/promises'
 import { connect, createServer, type Socket } from 'node:net'
 import { privateCliStderrDiagnostic } from '../cli-presentation.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
@@ -102,10 +103,11 @@ export async function privateOwnFileCommand(
           if (request.type === 'prepare') {
             if (typeof request.destination !== 'string' || !Array.isArray(request.roots))
               throw new Error('invalid delivery preparation')
-            await owner.prepare(
-              request.destination,
-              request.pid as number,
-              request.roots as number[],
+            await withLinuxDirectories(request.pid, request.roots, 8, (roots) =>
+              owner.prepare(
+                request.destination as string,
+                roots.map((root) => root.fd),
+              ),
             )
             prepared = true
             send(socket, { ok: true })
@@ -153,15 +155,21 @@ export async function privateOwnFileCommand(
               typeof record === 'object' &&
               !Array.isArray(record) &&
               !Object.hasOwn(record, 'cleanup')
-            publication = owner
-              .publish(
-                record,
-                request.pid as number,
-                request.outputFd === null ? undefined : (request.outputFd as number),
-                checkpoints?.latest,
-                checkpoints !== undefined || interruptedRecord,
-                coordinatorLost.signal,
-              )
+            publication = withLinuxDirectories(
+              request.pid,
+              request.outputFd === null ? [] : [request.outputFd],
+              1,
+              (outputs) =>
+                owner.publish(
+                  record,
+                  outputs[0] === undefined
+                    ? undefined
+                    : { kind: 'linux-directory', fd: outputs[0].fd },
+                  checkpoints?.latest,
+                  checkpoints !== undefined || interruptedRecord,
+                  coordinatorLost.signal,
+                ),
+            )
               .then((receipt) => {
                 send(socket, {
                   ok: true,
@@ -242,13 +250,7 @@ export async function privateOwnFileCommand(
           { ...recovered, ...checkpoints.identity } as JsonValue,
           checkpoints,
         )
-        const receipt = await owner.publish(
-          record,
-          process.pid,
-          undefined,
-          checkpoints.latest,
-          true,
-        )
+        const receipt = await owner.publish(record, undefined, checkpoints.latest, true)
         process.stdout.write(
           `${Buffer.from(canonicalJson({ ...(record as Record<string, JsonValue>), delivery: receipt } as unknown as JsonValue)).toString()}\n`,
         )
@@ -459,4 +461,43 @@ async function* messages(socket: Socket): AsyncGenerator<JsonValue> {
     }
   }
   if (size !== 0) throw new Error('truncated file-owner message')
+}
+
+/** Linux transport imports remote descriptors before handing local capabilities to delivery. */
+async function withLinuxDirectories<T>(
+  pid: unknown,
+  descriptors: readonly unknown[],
+  maximum: number,
+  work: (directories: readonly FileHandle[]) => Promise<T>,
+): Promise<T> {
+  if (
+    process.platform !== 'linux' ||
+    !Number.isSafeInteger(pid) ||
+    Number(pid) < 1 ||
+    descriptors.length > maximum ||
+    descriptors.some((fd) => !Number.isSafeInteger(fd) || Number(fd) < 0)
+  )
+    throw new TypeError('invalid Linux file transfer')
+  const directories: FileHandle[] = []
+  const errors: unknown[] = []
+  let result: T | undefined
+  try {
+    for (const fd of descriptors) {
+      const directory = await open(`/proc/${pid}/fd/${fd}`, 0x10000)
+      directories.push(directory)
+      if (!(await directory.stat()).isDirectory())
+        throw new TypeError('file transfer requires directories')
+    }
+    result = await work(directories)
+  } catch (error) {
+    errors.push(error)
+  } finally {
+    const results = await Promise.allSettled(directories.map((directory) => directory.close()))
+    errors.push(
+      ...results.filter((result) => result.status === 'rejected').map((result) => result.reason),
+    )
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length) throw new AggregateError(errors, 'file transfer failed')
+  return result as T
 }

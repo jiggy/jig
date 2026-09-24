@@ -100,6 +100,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Keep capture/profile failures distinct from execution and cleanup evidence.
   The snapshot may outlive a detached native volume; its descriptors and bytes
   remain command-owned and cannot be recreated from serialized metadata.
+- `file-delivery.ts` accepts local held input roots and bounded output snapshots
+  or Linux anonymous directory descriptors. Remote descriptor acquisition belongs
+  to the authenticated command transport, never a decoded pathname in publication.
+  Staging writes and bounded cleanup use held directories on both platforms.
+  Recheck the selected parent and exact staging identity before exclusive
+  publication; a moved parent cannot redirect writes or cleanup. Invalid final
+  files retain the known execution terminal and never authorize replay.
 - `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
   file operations, raw directory enumeration and anonymous streaming backings.
   Do not substitute F_GETPATH followed by a pathname reopen for a held
@@ -623,6 +630,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   readers, purpose separation, aggregate bounds, invalid trees and cancellation.
   The native input/guardian test also verifies an output snapshot after its
   original filesystem image and collector have been released.
+  Portable `file-delivery.test.ts` cases cover post-source-removal binary output,
+  forged/closed snapshots, cancelled retention, collisions, parent replacement
+  and complete staging cleanup. Independent command transport cases additionally
+  require their platform's qualified process ownership and descriptor transfer.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,

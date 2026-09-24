@@ -106,11 +106,17 @@ export async function symlinkPrivateFile(
 }
 
 export async function duplicatePrivateDirectory(directory: FileHandle): Promise<FileHandle> {
-  if (process.platform === 'darwin') return privateMacosDuplicate(directory.fd)
+  return duplicatePrivateDirectoryDescriptor(directory.fd)
+}
+
+/** Duplicate a borrowed local descriptor; never interpret a remote descriptor number here. */
+export async function duplicatePrivateDirectoryDescriptor(fd: number): Promise<FileHandle> {
+  if (!Number.isSafeInteger(fd) || fd < 0) throw new TypeError('invalid directory descriptor')
+  if (process.platform === 'darwin') return privateMacosDuplicate(fd)
   requireLinux()
   const { constants } = await import('node:fs')
   return open(
-    `/proc/self/fd/${directory.fd}`,
+    `/proc/self/fd/${fd}`,
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK,
   )
 }
