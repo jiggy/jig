@@ -259,6 +259,11 @@ integration; synchronize any promoted host contract with specifications,
 implementation and tests. This design direction does not declare macOS supported
 or change the existing Linux contract. A constrained workload model or VM
 requirement still needs owner direction, not selection as a routine fallback.
+Prefer a macOS experience with no sudo, privileged helper installation or managed
+execution accounts. A privileged installation model requires a demonstrated,
+material tradeoff and explicit owner direction; temporary privileged probes do
+not select that product model. Investigate restrictive unprivileged profiles
+before adding installation authority or weakening confidentiality.
 
 ### Composition
 
