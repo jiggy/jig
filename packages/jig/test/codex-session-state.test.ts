@@ -1,19 +1,52 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, mkdir, open, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { dirname, join } from 'node:path'
+import { capturePrivateOutput } from '../src/internal/captured-output.js'
 import { codexStartupFeatures } from '../src/internal/codex-agent-launcher.js'
-import { settleTestCommand } from './fixtures/bounded-command.js'
 import {
   collectPrivateCodexSession,
+  PrivateNativeHistoryUnavailable,
   parsePrivateNativeSessionRequest,
   privateCodexSessionBootstrap,
   privateCodexSessionSecrets,
-  PrivateNativeHistoryUnavailable,
   validatePrivateCodexSession,
 } from '../src/internal/codex-session-state.js'
+import { settleTestCommand } from './fixtures/bounded-command.js'
 
 const nativeId = '01a0a189-e9a2-76c3-a8ca-964e885f05e6'
+test('immutable history snapshots retain validation after their execution storage disappears', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-history-snapshot-'))
+  const output = await open(root, 'r')
+  try {
+    await mkdir(dirname(join(root, rolloutPath)), { recursive: true })
+    await writeFile(join(root, rolloutPath), state().bytes)
+    const captured = capturePrivateOutput(output.fd)
+    try {
+      await mkdir(join(root, 'unexpected-empty'))
+      const invalid = capturePrivateOutput(output.fd)
+      try {
+        expect(() => collectPrivateCodexSession(invalid, nativeId, [])).toThrow(
+          PrivateNativeHistoryUnavailable,
+        )
+      } finally {
+        invalid.close()
+      }
+      await rm(root, { recursive: true })
+      expect(collectPrivateCodexSession(captured, nativeId, []).bytes).toEqual(state().bytes)
+      expect(() => collectPrivateCodexSession({ ...captured }, nativeId, [])).toThrow(
+        'not authentic',
+      )
+      captured.close()
+      expect(() => collectPrivateCodexSession(captured, nativeId, [])).toThrow('not active')
+    } finally {
+      captured.close()
+    }
+  } finally {
+    await output.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
 test('only known collected-file profile violations become optional retention loss', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-history-error-evidence-'))
   const child = Bun.spawn(

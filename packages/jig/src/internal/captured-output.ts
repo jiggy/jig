@@ -8,6 +8,7 @@ import {
 import {
   PRIVATE_DIRECTORY_OPEN_FLAGS,
   PRIVATE_FILE_LIMITS,
+  PrivateFileInputError,
   privateFilePath,
   privateInputDirectory,
   privateOpenAt,
@@ -34,8 +35,8 @@ const authentic = new WeakMap<object, PrivateCapturedBytes<'output'>>()
 
 /** A content-profile refusal, distinct from a descriptor or I/O failure. */
 export class PrivateOutputProfileError extends Error {
-  constructor() {
-    super('output exceeds its finite file profile')
+  constructor(cause?: unknown) {
+    super('output exceeds its finite file profile', { cause })
   }
 }
 
@@ -133,6 +134,13 @@ export function capturePrivateOutput(
     })
     authentic.set(output, backing)
     return output
+  } catch (error) {
+    if (
+      error instanceof PrivateFileInputError &&
+      ['bytes', 'files', 'entries', 'path', 'symlink', 'linked', 'regular'].includes(error.reason)
+    )
+      throw new PrivateOutputProfileError(error)
+    throw error
   } finally {
     for (const file of contents) file.data.fill(0)
   }

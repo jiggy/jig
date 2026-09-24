@@ -311,7 +311,7 @@ async function startOrResumeCurrentExecution(
       // delivery and the helper's absolute timer owns the hard fence after
       // grace; aborting the Backend signal here would skip that protocol.
       stop.releaseStartupEnforcement()
-      input.files?.retainOutput(component.outputDirectory)
+      input.files?.retainOutput(component.output)
       const parent = work
       const dispatcher = operationDispatcher(
         input,

@@ -16,6 +16,7 @@ import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
 } from '../src/internal/macos-guardian-client.js'
+import { retainPrivateMacosGuardianOutput } from '../src/internal/macos-guardian-output.js'
 import { normalizePrivateMacosInputs } from '../src/internal/macos-input-projection.js'
 import type { PrivateMacosGuardianStart } from '../src/internal/macos-native-supervisor.js'
 
@@ -150,6 +151,7 @@ console.log('native-input-complete')
         }
         let owner: Awaited<ReturnType<typeof preparePrivateMacosGuardian>> | undefined
         let capturedOutput: PrivateCapturedOutput | undefined
+        let outputOwner: ReturnType<typeof retainPrivateMacosGuardianOutput> | undefined
         let settled = false
         try {
           if (mode === 'manifest-mismatch') {
@@ -160,6 +162,7 @@ console.log('native-input-complete')
             continue
           }
           owner = await preparePrivateMacosGuardian(input)
+          if (mode === 'complete') outputOwner = retainPrivateMacosGuardianOutput(owner)
           let stdout = '',
             stderr = ''
           owner.stdout.on('data', (bytes) => {
@@ -181,16 +184,19 @@ console.log('native-input-complete')
             const fenced = await owner.fenced
             expect({ exit: fenced.result?.exitCode, stderr }).toEqual({ exit: 0, stderr: '' })
             expect(stdout).toBe('native-input-complete\n')
-            expect(
-              JSON.parse(privateReadRegularFile(fenced.outputFd!, 'result.json', 4096).toString()),
-            ).toEqual({
+            if (outputOwner !== undefined) capturedOutput = await outputOwner.output.ready
+            const bytes =
+              capturedOutput === undefined
+                ? privateReadRegularFile(fenced.outputFd!, 'result.json', 4096)
+                : readPrivateCapturedOutput(capturedOutput)[0]!.contents
+            expect(JSON.parse(bytes.toString())).toEqual({
               answer: 42,
               writable: false,
               privateVisible: false,
               bytes: [0, 255, 128],
               empty: 0,
             })
-            capturedOutput = capturePrivateOutput(fenced.outputFd!)
+            capturedOutput ??= capturePrivateOutput(fenced.outputFd!)
             if (mode === 'guardian-loss') {
               const ffi = createRequire(import.meta.url)('bun:ffi')
               const api = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
@@ -204,7 +210,7 @@ console.log('native-input-complete')
               } finally {
                 api.close()
               }
-            } else owner.release()
+            } else if (outputOwner === undefined) owner.release()
           }
           const terminal = await owner.completion
           expect(terminal.recovered).toBe(mode === 'guardian-loss')

@@ -1,4 +1,3 @@
-import type { FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
@@ -27,6 +26,7 @@ import {
   recordPrivateRootChildSandbox,
   savePrivateNativeSession,
 } from './activation-admission-store.js'
+import { PrivateOutputProfileError } from './captured-output.js'
 import {
   collectPrivateCodexSession,
   type PrivateCodexSessionState,
@@ -43,6 +43,11 @@ import {
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import {
+  closePrivateExecutionOutput,
+  type PrivateExecutionOutput,
+  resolvePrivateExecutionOutput,
+} from './execution-output.js'
 import { PrivateFiniteAcpPolicyError } from './finite-acp-policy.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
@@ -301,7 +306,7 @@ async function executeOwnedProvider(
 
   let attemptedDispatch = false
   let execution: ProviderExecution
-  let output: FileHandle | undefined
+  let output: PrivateExecutionOutput | undefined
   let retained: PrivateCodexSessionState | undefined
   let lifetime =
     operation.session !== undefined && 'retain' in operation.session
@@ -361,7 +366,7 @@ async function executeOwnedProvider(
     })
     attemptedDispatch = true
     const component = await sealed.admit(input.signal)
-    output = component.outputDirectory
+    output = component.output
     execution = await runPrivateFiniteAcpResource(
       component,
       runtime,
@@ -389,10 +394,16 @@ async function executeOwnedProvider(
       if (output === undefined || execution.sessionId === undefined)
         throw new Error('Clean native retention lacks owned output or session identity')
       try {
-        retained = collectPrivateCodexSession(output, execution.sessionId, secrets)
+        retained = collectPrivateCodexSession(
+          await resolvePrivateExecutionOutput(output),
+          execution.sessionId,
+          secrets,
+        )
       } catch (error) {
-        if (!(error instanceof PrivateNativeHistoryUnavailable)) throw error
-        unavailableReason = error.reason
+        if (error instanceof PrivateNativeHistoryUnavailable) unavailableReason = error.reason
+        else if (error instanceof PrivateOutputProfileError)
+          unavailableReason = 'unsupported-history'
+        else throw error
       }
     }
     await releaseKnownAcp(input, lifecycle, execution.fence)
@@ -434,7 +445,7 @@ async function executeOwnedProvider(
   } finally {
     credentialBootstrap?.fill(0)
     try {
-      await output?.close()
+      await closePrivateExecutionOutput(output)
     } catch (error) {
       // Descriptor release is owned cleanup. A failure here must not mask a
       // fatal fence failure with an ordinary, catchable operation exception.

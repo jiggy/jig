@@ -1,7 +1,7 @@
-import type { FileHandle } from 'node:fs/promises'
 import { posix } from 'node:path'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import type { PrivateActivationRequest } from '../project/package-resolution.js'
+import { closePrivateExecutionOutput, type PrivateExecutionOutput } from './execution-output.js'
 import type { PrivateDeliveryConnection } from './file-delivery.js'
 import {
   PRIVATE_FILE_LIMITS,
@@ -130,7 +130,7 @@ export function requirePrivateRootFileMapping(
 export class PrivateRootRunFiles {
   readonly identity: PrivateRunFileIdentity
   #runId: string | undefined
-  #output: FileHandle | undefined
+  #output: PrivateExecutionOutput | undefined
   #checkpointBound = false
   #method:
     | {
@@ -231,11 +231,11 @@ export class PrivateRootRunFiles {
       ),
     })
   }
-  retainOutput(handle: FileHandle | undefined): void {
+  retainOutput(handle: PrivateExecutionOutput | undefined): void {
     if (this.#output !== undefined) throw new Error('output already has an owner')
     this.#output = handle
   }
-  get outputDirectory(): FileHandle | undefined {
+  get output(): PrivateExecutionOutput | undefined {
     return this.#output
   }
   get method() {
@@ -282,7 +282,7 @@ export class PrivateRootRunFiles {
     return await this.delivery.saveCheckpoint(parseRunCheckpointInput(value))
   }
   async close(): Promise<void> {
-    await this.#output?.close()
+    await closePrivateExecutionOutput(this.#output)
     this.#output = undefined
   }
 }

@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { capturePrivateBytes } from '../src/internal/captured-bytes.js'
 import {
   capturePrivateOutput,
+  PrivateOutputProfileError,
   readPrivateCapturedOutput,
   requirePrivateCapturedOutput,
 } from '../src/internal/captured-output.js'
@@ -77,20 +78,20 @@ test('output and invocation captures have separate authority and byte bounds', a
       captured.close()
     }
     await writeFile(join(root, 'excess'), Buffer.alloc(8 * 1024 * 1024))
-    expect(() => capturePrivateOutput(fd)).toThrow('input budget')
+    expect(() => capturePrivateOutput(fd)).toThrow(PrivateOutputProfileError)
   }))
 
 test('output capture refuses links, protected names, excess entries and cancellation', async () =>
   fixture(async (root, fd) => {
     await writeFile(join(root, 'original'), 'bytes')
     await symlink('original', join(root, 'alias'))
-    expect(() => capturePrivateOutput(fd)).toThrow('symbolic link')
+    expect(() => capturePrivateOutput(fd)).toThrow(PrivateOutputProfileError)
     await rm(join(root, 'alias'))
     await link(join(root, 'original'), join(root, 'hard'))
-    expect(() => capturePrivateOutput(fd)).toThrow('singly linked')
+    expect(() => capturePrivateOutput(fd)).toThrow(PrivateOutputProfileError)
     await rm(join(root, 'hard'))
     await mkdir(join(root, '.jig'))
-    expect(() => capturePrivateOutput(fd)).toThrow('relative path')
+    expect(() => capturePrivateOutput(fd)).toThrow(PrivateOutputProfileError)
     await rmdir(join(root, '.jig'))
     for (let index = 0; index < 65; index++) await writeFile(join(root, `file-${index}`), '')
     expect(() => capturePrivateOutput(fd)).toThrow('finite file profile')

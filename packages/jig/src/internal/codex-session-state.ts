@@ -3,6 +3,11 @@ import type { FileHandle } from 'node:fs/promises'
 import { decodeJson1, Json1Error, type JsonObject } from '../json.js'
 import type { PrivateAcpAgentRuntime } from './acp-agent-provider.js'
 import {
+  type PrivateCapturedOutput,
+  readPrivateCapturedOutput,
+  requirePrivateCapturedOutput,
+} from './captured-output.js'
+import {
   PRIVATE_DIRECTORY_OPEN_FLAGS,
   PrivateFileInputError,
   privateInputDirectory,
@@ -214,10 +219,31 @@ function supportedSandboxPolicy(policy: JsonObject): boolean {
 
 /** Read only the one owned rollout through the already-fenced anonymous output descriptor. */
 export function collectPrivateCodexSession(
-  output: FileHandle,
+  output: FileHandle | PrivateCapturedOutput,
   nativeId: string,
   secrets: readonly string[],
 ): PrivateCodexSessionState {
+  if (!('fd' in output)) {
+    // Authenticate before interpreting metadata, including empty-directory evidence.
+    const captured = requirePrivateCapturedOutput(output)
+    if (
+      captured.files.length + captured.directories.length > 16 ||
+      captured.directories.some(
+        (path) => !/^sessions(?:\/\d{4}(?:\/\d{2}(?:\/\d{2})?)?)?$/.test(path),
+      ) ||
+      captured.files.length > 1 ||
+      captured.files.some(
+        (file) =>
+          PATH.exec(file.path)?.[1] !== nativeId || file.bytes > PRIVATE_CODEX_SESSION_BYTES,
+      )
+    )
+      invalid()
+    if (captured.files.length === 0) throw new PrivateNativeHistoryUnavailable('missing-history')
+    const file = readPrivateCapturedOutput(output)[0]!
+    const state = { nativeId, rolloutPath: file.path, bytes: file.contents }
+    validatePrivateCodexSession(state, secrets)
+    return state
+  }
   const files: string[] = []
   let entries = 0
   const walk = (relative: string): void => {

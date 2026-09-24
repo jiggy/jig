@@ -315,7 +315,7 @@ type FinalRecord = SupervisorTerminal | RecoveredFinal
 
 export type PrivateLinuxComponentProcess = ExactComponentProcess & {
   /** Read only after enforcement settles. Close after collection, including failure. */
-  readonly outputDirectory?: FileHandle
+  readonly output?: { readonly kind: 'linux-directory'; readonly directory: FileHandle }
   readonly owner: PrivateLinuxPreparedOwnerIdentity
   readonly cgroup: {
     readonly runCgroup: string
@@ -751,7 +751,14 @@ export class PrivateLinuxCgroupBackend {
           }),
       )
       return Object.freeze({
-        ...(outputDirectory === undefined ? {} : { outputDirectory }),
+        ...(outputDirectory === undefined
+          ? {}
+          : {
+              output: Object.freeze({
+                kind: 'linux-directory' as const,
+                directory: outputDirectory,
+              }),
+            }),
         owner: data.prepared,
         cgroup: Object.freeze({
           runCgroup: data.identity.runCgroup,

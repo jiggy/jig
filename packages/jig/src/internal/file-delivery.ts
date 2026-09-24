@@ -18,6 +18,7 @@ import {
   publishPrivateDirectory,
   statPrivateChild,
 } from './descriptor-files.js'
+import type { PrivateExecutionOutput } from './execution-output.js'
 import { removePrivateDeliveryStage, writePrivateDeliveryFile } from './file-delivery-storage.js'
 import {
   PRIVATE_DIRECTORY_OPEN_FLAGS,
@@ -59,7 +60,7 @@ export interface PrivateDeliveryConnection {
   saveCheckpoint?(input: RunCheckpointInput): Promise<RunCheckpointReceipt>
   publish(
     record: JsonValue,
-    outputFd: number | undefined,
+    output: PrivateExecutionOutput | undefined,
     signal?: AbortSignal,
   ): Promise<PrivateDeliveryReceipt>
 }

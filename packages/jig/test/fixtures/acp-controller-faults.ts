@@ -2,19 +2,21 @@
 // This checks the real controller's ordering/scope, not kernel or SQLite behavior.
 import { mock } from 'bun:test'
 import assert from 'node:assert/strict'
-import * as store from '../../src/internal/activation-admission-store.js'
 import * as acp from '../../src/internal/acp-agent-provider.js'
+import * as store from '../../src/internal/activation-admission-store.js'
+import { PrivateOutputProfileError } from '../../src/internal/captured-output.js'
+import * as history from '../../src/internal/codex-session-state.js'
 import * as direct from '../../src/internal/direct-run.js'
+import { privateSnapshotExecutionOutput } from '../../src/internal/execution-output.js'
+import { PrivateFiniteAcpPolicyError } from '../../src/internal/finite-acp-policy.js'
+import * as resource from '../../src/internal/finite-acp-resource.js'
 import * as installed from '../../src/internal/installed-bun-support.js'
 import * as context from '../../src/internal/invocation-context.js'
 import * as linux from '../../src/internal/linux-rootless-backend.js'
-import * as resource from '../../src/internal/finite-acp-resource.js'
-import * as history from '../../src/internal/codex-session-state.js'
-import { PrivateFiniteAcpPolicyError } from '../../src/internal/finite-acp-policy.js'
 import {
+  FINITE_ACP_CONTRACT_DIGEST,
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
-  FINITE_ACP_CONTRACT_DIGEST,
 } from '../../src/internal/private-finite-acp-contract.js'
 
 const digest = (n: number) => `sha256:${n.toString(16).repeat(64)}`
@@ -70,11 +72,24 @@ const backend = {
       identity: owner,
       async admit() {
         step('admit')
+        if (mode === 'snapshot-profile' || mode === 'snapshot-io')
+          return {
+            output: privateSnapshotExecutionOutput(
+              Promise.reject(
+                mode === 'snapshot-profile'
+                  ? new PrivateOutputProfileError()
+                  : new Error('unexpected snapshot I/O failure'),
+              ),
+            ),
+          }
         return {
-          outputDirectory: {
-            async close() {
-              step('descriptor-close')
-              if (mode === 'descriptor') throw new Error('descriptor failed')
+          output: {
+            kind: 'linux-directory',
+            directory: {
+              async close() {
+                step('descriptor-close')
+                if (mode === 'descriptor') throw new Error('descriptor failed')
+              },
             },
           },
         }
@@ -145,11 +160,13 @@ mock.module('../../src/internal/activation-admission-store.js', () => ({
     (row = { ...row, sandbox: { value: value.sandbox, digest: digest(2) } }),
   recordPrivateRootChildFence: async (value: any) => {
     step('fence')
-    return (row = { ...row, fence: { value: value.fence, digest: digest(3) } })
+    row = { ...row, fence: { value: value.fence, digest: digest(3) } }
+    return row
   },
   recordPrivateRootChildCleanup: async (value: any) => {
     step('cleanup')
-    return (row = { ...row, cleanup: { value: value.cleanup, digest: digest(5) } })
+    row = { ...row, cleanup: { value: value.cleanup, digest: digest(5) } }
+    return row
   },
   closePrivateRootChildOwner: async () => {
     step('owner-close')
@@ -308,6 +325,7 @@ before('descriptor-close', 'save')
 for (const [failure, reason] of [
   ['controlled', 'not-cleanly-closed'],
   ['invalid-history', 'unsupported-history'],
+  ['snapshot-profile', 'unsupported-history'],
   ['missing-history', 'missing-history'],
   ['capacity', 'capacity'],
 ]) {
@@ -321,6 +339,7 @@ for (const failure of [
   'startup',
   'native-failure',
   'collection-bug',
+  'snapshot-io',
   'cancel',
   'cleanup',
   'descriptor',

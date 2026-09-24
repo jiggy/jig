@@ -100,6 +100,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Keep capture/profile failures distinct from execution and cleanup evidence.
   The snapshot may outlive a detached native volume; its descriptors and bytes
   remain command-owned and cannot be recreated from serialized metadata.
+- `execution-output.ts` owns the closed Linux directory/native snapshot lifetime
+  used by Run files and native-session collection. `macos-guardian-output.ts`
+  captures only after fencing, releases an available collector, and waits for
+  complete storage cleanup before exposing bytes. Missing collectors need no
+  release. Content-profile rejection remains a delivery or optional-history
+  outcome; unexpected I/O and cleanup failure retain their separate consequences.
+  Closing an unavailable snapshot cannot manufacture a storage-cleanup failure.
 - `file-delivery.ts` accepts local held input roots and bounded output snapshots
   or Linux anonymous directory descriptors. Remote descriptor acquisition belongs
   to the authenticated command transport, never a decoded pathname in publication.
@@ -634,6 +641,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   forged/closed snapshots, cancelled retention, collisions, parent replacement
   and complete staging cleanup. Independent command transport cases additionally
   require their platform's qualified process ownership and descriptor transfer.
+  `execution-output.test.ts` verifies fencing/release/cleanup order, capture
+  refusal, missing collectors and cleanup failure. Native guardian input evidence
+  exercises that same retention path after image removal. Session collectors
+  validate captured empty directories too; controller faults distinguish expected
+  snapshot-profile refusal from unexpected snapshot I/O failure.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,

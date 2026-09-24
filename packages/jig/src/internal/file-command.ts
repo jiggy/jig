@@ -362,14 +362,16 @@ export async function privateConnectFileOwner(): Promise<
       return (await request({ type: 'checkpoint', input: input as unknown as JsonValue }))
         .receipt as unknown as import('./private-run-checkpoint.js').RunCheckpointReceipt
     },
-    async publish(record, outputFd, signal) {
+    async publish(record, output, signal) {
+      if (output !== undefined && output.kind !== 'linux-directory')
+        throw new Error('Linux output transport requires an anonymous directory')
       const cancel = () => send(socket, { type: 'cancel', token: selected.token, pid: process.pid })
       signal?.addEventListener('abort', cancel, { once: true })
       try {
         const reply = await request({
           type: 'publish',
           record,
-          outputFd: outputFd ?? null,
+          outputFd: output?.directory.fd ?? null,
           cancelled: signal?.aborted ?? false,
         })
         if (Object.hasOwn(reply, 'checkpoint'))
