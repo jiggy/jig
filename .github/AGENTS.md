@@ -50,6 +50,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   archive hashes, performs zero-residue verification, and contributes to the
   aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
   prevent that aggregate from succeeding.
+- Each host shard builds the linked workspace packages used by source tests;
+  generated `dist` output is runner-local and is not created by a filtered
+  dependency install. Frozen archives remain the inputs to installed gates.
 - Failed operational-baseline command transcripts are retained for seven days.
   Upload only the explicit transcript files, not consumer trees, admission
   databases, credentials, or retained native state.
