@@ -66,6 +66,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   keep the narrow sysctl/process-information rules. Only explicit network
   authority enables resolver access and the DNS Mach service. Formatting paths
   does not validate their live filesystem identity or authorize execution.
+- `macos-scope-execution.ts` owns guardian-local admission and supervised
+  resources after durable ownership exists. Keep the native execution gate
+  closed until explicit admission; account for exited-task CPU and repeatedly
+  fence the complete coalition before reporting settlement. Sampled memory,
+  task limits and CPU throttling can overshoot; record sampling evidence and
+  fail closed on sustained accounting uncertainty. Native exit status and
+  kernel emptiness are independent requirements, including after crashes.
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
   rights and descriptors, apply the selected profile, report private readiness,
   and wait for admission before execution. Close all child control handoffs

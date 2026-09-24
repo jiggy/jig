@@ -22,6 +22,7 @@ interface Native {
   symbols: Record<NativeSymbol, NativeFunction>
 }
 let native: Native | undefined
+const authenticCoalitions = new WeakSet<object>()
 
 function calls(): Native {
   if (native !== undefined) return native
@@ -143,8 +144,15 @@ export interface PrivateMacosCoalitionControl {
   }>
   sample(): PrivateMacosProcessSample
   signalMembers(signal: keyof typeof signals): number
+  contains(pid: number, version: number): boolean
   /** Only this kernel observation, while the guardian lives, proves emptiness. */
   empty(): boolean
+}
+
+export function requirePrivateMacosCoalition(value: unknown): PrivateMacosCoalitionControl {
+  if (value === null || typeof value !== 'object' || !authenticCoalitions.has(value))
+    throw new TypeError('macOS coalition control is not authentic')
+  return value as PrivateMacosCoalitionControl
 }
 
 /**
@@ -189,8 +197,15 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
     }
     return result
   }
-  return Object.freeze({
+  const control: PrivateMacosCoalitionControl = Object.freeze({
     identity,
+    contains(pid: number, version: number) {
+      validateOwner()
+      if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(version) || version < 0)
+        return false
+      const current = processIdentity(pid)
+      return current?.version === version && current.coalition === owner.coalition
+    },
     sample() {
       const start = performance.now()
       validateOwner()
@@ -249,4 +264,6 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
       return usage(owner.coalition).active === 1n
     },
   })
+  authenticCoalitions.add(control)
+  return control
 }
