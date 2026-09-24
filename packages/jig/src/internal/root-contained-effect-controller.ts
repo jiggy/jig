@@ -1,4 +1,3 @@
-import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
 import {
   canonicalJson,
@@ -20,7 +19,6 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
@@ -28,15 +26,15 @@ import {
 } from './direct-run.js'
 import { httpCredential, type PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
+import { capturePrivateInput } from './input-capture.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   normalizeParentFlow,
+  type PrivateInvocationContext,
   protectedOwnerRoot,
   requireParentFlowOwner,
   requireParentTarget,
-  type PrivateInvocationContext,
 } from './invocation-context.js'
-import { privateSealedBytes, sha256 } from './linux-file-input.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxConfirmedEnforcementReceipt,
@@ -54,13 +52,14 @@ import {
   planPrivateLinuxOwnerStateAllocation,
   releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
+  encodeHttpWorkerInput,
   HTTP_REQUEST_CONTRACT_DIGEST,
+  httpCredentialEcho,
   type PreparedHttpRequest,
   parseHttpRequest,
   parseHttpWorkerResult,
-  encodeHttpWorkerInput,
-  httpCredentialEcho,
 } from './private-http-request.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 import {
@@ -241,10 +240,8 @@ export async function executePrivateContainedEffect(
     )) {
       const bytes = Buffer.from(source)
       files.push({
-        fd: privateSealedBytes(bytes),
+        input: capturePrivateInput(bytes),
         destination: `${ROOT}/${path}`,
-        bytes: bytes.length,
-        digest: sha256(bytes),
       })
     }
     const sealed = await input.backend.seal(
@@ -290,7 +287,7 @@ export async function executePrivateContainedEffect(
           'UNCERTAIN',
           'HTTP worker did not provide a complete result; remote effects may have occurred',
         )
-      let result
+      let result: ReturnType<typeof parseHttpWorkerResult>
       try {
         result = parseHttpWorkerResult(
           decodeJson1(Buffer.from(observed.stdout.text)),
@@ -366,7 +363,7 @@ export async function executePrivateContainedEffect(
         : 'contained operation setup failed before dispatch',
     )
   } finally {
-    for (const file of files) closeSync(file.fd)
+    for (const file of files) file.input.close()
   }
 }
 

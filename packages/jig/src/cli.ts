@@ -24,12 +24,11 @@ import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
 import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
-import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
-import { importContract } from './internal/contract-import.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
+import { importContract } from './internal/contract-import.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -38,7 +37,7 @@ import {
   privateFilePath,
   privateReadOperatorFile,
   sha256,
-} from './internal/linux-file-input.js'
+} from './internal/file-input.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
@@ -50,6 +49,7 @@ import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
+import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
 import { flowSelector, npmPackageName } from './project/package-selector.js'
 import {
   createFlow,

@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { privateCaptureAttachments } from '../src/internal/linux-file-input.js'
+import { privateCaptureAttachments } from '../src/internal/file-input.js'
 import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
 import {
   PrivateLinuxCgroupBackend,

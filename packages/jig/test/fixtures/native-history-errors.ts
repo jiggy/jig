@@ -4,10 +4,10 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import * as files from '../../src/internal/linux-file-input.js'
+import * as files from '../../src/internal/file-input.js'
 
 let readFailure: Error
-mock.module('../../src/internal/linux-file-input.js', () => ({
+mock.module('../../src/internal/file-input.js', () => ({
   ...files,
   privateReadRegularFile: () => {
     throw readFailure

@@ -9,7 +9,7 @@ import {
   type PrivateDeliveryReceipt,
   PrivateFileDeliveryOwner,
 } from './file-delivery.js'
-import { privateOpenFileRoot } from './linux-file-input.js'
+import { privateOpenFileRoot } from './file-input.js'
 import {
   PrivateCheckpointRejected,
   PrivateRunCheckpoints,

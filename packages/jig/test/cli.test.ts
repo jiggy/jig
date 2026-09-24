@@ -6,6 +6,7 @@ import {
   open,
   readdir,
   readFile,
+  realpath,
   rm,
   rmdir,
   symlink,
@@ -34,11 +35,11 @@ import {
   privateCliRequiresHost,
   privateCliVerification,
 } from '../src/cli.js'
-import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
-import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
-import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
 import { CheckError } from '../src/diagnostics.js'
 import { projectError as projectFailure } from '../src/internal/project-session-controller.js'
+import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
+import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
+import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
 
@@ -1652,9 +1653,13 @@ describe('finite Jig project commands', () => {
     expect(
       await main(['run', 'flow:flows/work', '--attach', 'source=/proc'], unsupported.options),
     ).toBe(1)
-    expect(unsupported.error).toContain('ext4, XFS, Btrfs, or tmpfs')
+    expect(unsupported.error).toContain(
+      process.platform === 'darwin'
+        ? 'Jig state and host control files cannot be selected'
+        : 'ext4, XFS, Btrfs, or tmpfs',
+    )
     expect(unsupported.error).not.toContain('/proc')
-    const root = await mkdtemp(join(tmpdir(), 'jig-cli-file-limit-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-cli-file-limit-')))
     try {
       await writeFile(join(root, 'large'), Buffer.alloc(8 * 1024 * 1024 + 1))
       const bounded = commandInvocation(unusedHost())

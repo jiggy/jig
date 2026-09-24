@@ -25,13 +25,11 @@ import { types as utilTypes } from 'node:util'
 
 import type { JsonValue } from '../json.js'
 import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
+import { PRIVATE_FILE_LIMITS } from './file-input-policy.js'
 import { privateDomainDigest } from './identity.js'
+import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
-import {
-  PRIVATE_FILE_LIMITS,
-  privateDuplicateInputForStdio,
-  privateVerifySealedFile,
-} from './linux-file-input.js'
+import { privateDuplicateInputForStdio, privateVerifyLinuxSealedFile } from './linux-file-input.js'
 import {
   acquirePrivateRootlessLinux,
   inspectPrivateRootlessLinuxSupport,
@@ -73,6 +71,10 @@ export interface PrivateLinuxReadOnlyMount {
 }
 
 export interface PrivateLinuxCapturedInput {
+  readonly input: PrivateCapturedInput
+  readonly destination: string
+}
+interface SealedInput {
   readonly fd: number
   readonly destination: string
   readonly bytes: number
@@ -101,14 +103,17 @@ export interface PrivateLinuxLaunchPlan {
 }
 
 interface SealedLaunchPlan
-  extends Omit<PrivateLinuxLaunchPlan, 'limits' | 'readOnlyMounts' | 'environment' | 'network'> {
+  extends Omit<
+    PrivateLinuxLaunchPlan,
+    'limits' | 'readOnlyMounts' | 'environment' | 'network' | 'capturedInputs'
+  > {
   readonly limits: Required<PrivateLinuxCgroupLimits>
   readonly readOnlyMounts: readonly SealedMount[]
   readonly environment: Readonly<Record<string, string>>
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
   readonly output: boolean
-  readonly capturedInputs: readonly PrivateLinuxCapturedInput[]
+  readonly capturedInputs: readonly SealedInput[]
   readonly inputDirectories: readonly string[]
 }
 
@@ -593,7 +598,7 @@ export class PrivateLinuxCgroupBackend {
     const data = requireSealedOwner(sealedOwner, this, plan)
     await requireSealedMounts(data.sealedPlan.readOnlyMounts)
     for (const file of data.sealedPlan.capturedInputs)
-      privateVerifySealedFile(file.fd, file.bytes, file.digest)
+      privateVerifyLinuxSealedFile(file.fd, file.bytes, file.digest)
     const currentMechanism = await this.#observeMechanism()
     requirePrivateLinuxMechanismUnchanged(data.mechanism, currentMechanism)
     await requireOwnerState(data.identity)
@@ -1563,8 +1568,7 @@ function requireSealedOwner(
   return data
 }
 
-async function sealPlan(plan: PrivateLinuxLaunchPlan): Promise<SealedLaunchPlan> {
-  const snapshot = snapshotPlan(plan)
+async function sealPlan(snapshot: SealedLaunchPlan): Promise<SealedLaunchPlan> {
   const mounts: SealedMount[] = []
   for (const mount of snapshot.readOnlyMounts) {
     const source = await realpath(mount.source)
@@ -1684,7 +1688,10 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
   ) {
     throw new TypeError('rootless Linux output projection is invalid')
   }
-  const capturedInputs = [...(value.capturedInputs ?? [])]
+  const capturedInputs = [...(value.capturedInputs ?? [])].map((file) => ({
+    ...requirePrivateCapturedInput(file.input),
+    destination: file.destination,
+  }))
   const inputDirectories = [...(value.inputDirectories ?? [])]
   if (
     capturedInputs.length > PRIVATE_FILE_LIMITS.files ||
@@ -1711,7 +1718,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     ) {
       throw new TypeError('invalid captured input destination')
     }
-    privateVerifySealedFile(file.fd, file.bytes, file.digest)
+    privateVerifyLinuxSealedFile(file.fd, file.bytes, file.digest)
   }
   return Object.freeze({
     runId: value.runId,

@@ -15,7 +15,7 @@ import {
   rmdirPrivateFile,
   unlinkPrivateFile,
 } from './descriptor-files.js'
-import { privateFilePath } from './linux-file-input.js'
+import { privateFilePath } from './file-input.js'
 
 /** Explicit inert authoring: copy one validated offline closure, never package code. */
 export async function importContract(

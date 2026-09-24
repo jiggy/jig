@@ -1,6 +1,6 @@
 import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonValue } from '../json.js'
-import { privateFilePath, sha256 } from './linux-file-input.js'
+import { privateFilePath, sha256 } from './file-input.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const RUN_CHECKPOINT_CONTRACT_ID = 'https://jig.md/contracts/run-checkpoint'

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { closeSync } from 'node:fs'
 import {
   access,
   link,
@@ -14,6 +15,11 @@ import {
 } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  privateCaptureAttachments,
+  privateOpenFileRoot,
+  privateReadRegularFile,
+} from '../src/internal/file-input.js'
 import { privateMacosFilesystem } from '../src/internal/macos-descriptor-files.js'
 import { preparePrivateMacosGuardian } from '../src/internal/macos-guardian-client.js'
 import {
@@ -51,6 +57,21 @@ native(
       await writeFile(join(mount, 'README'), 'lower', { flag: 'wx' })
       expect(await readFile(join(mount, 'Readme'), 'utf8')).toBe('upper')
       expect(await readFile(join(mount, 'README'), 'utf8')).toBe('lower')
+      const captured = privateCaptureAttachments([{ name: 'data', directory: mount, select: [] }])
+      try {
+        expect(captured.attachments[0]!.files.map((file) => file.path)).toEqual([
+          'README',
+          'Readme',
+        ])
+      } finally {
+        captured.close()
+      }
+      const parent = privateOpenFileRoot(root)
+      try {
+        expect(() => privateReadRegularFile(parent, 'mount/Readme', 32)).toThrow('mount boundary')
+      } finally {
+        closeSync(parent)
+      }
 
       await expect(recoverPrivateMacosVolume(control, 'f'.repeat(64))).rejects.toThrow(
         'authentication',

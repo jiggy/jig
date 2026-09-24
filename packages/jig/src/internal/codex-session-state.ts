@@ -1,8 +1,14 @@
-import { closeSync, opendirSync } from 'node:fs'
+import { closeSync } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
 import { decodeJson1, Json1Error, type JsonObject } from '../json.js'
-import { PrivateFileInputError, privateOpenAt, privateReadRegularFile } from './linux-file-input.js'
 import type { PrivateAcpAgentRuntime } from './acp-agent-provider.js'
+import {
+  PRIVATE_DIRECTORY_OPEN_FLAGS,
+  PrivateFileInputError,
+  privateInputDirectory,
+  privateOpenAt,
+  privateReadRegularFile,
+} from './file-input.js'
 
 export const PRIVATE_CODEX_SESSION_BYTES = 8 * 1024 * 1024
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])/
@@ -215,10 +221,11 @@ export function collectPrivateCodexSession(
   const files: string[] = []
   let entries = 0
   const walk = (relative: string): void => {
-    const fd = relative === '' ? output.fd : privateOpenAt(output.fd, relative, 0x10000)
-    let directory: ReturnType<typeof opendirSync> | undefined
+    const fd =
+      relative === '' ? output.fd : privateOpenAt(output.fd, relative, PRIVATE_DIRECTORY_OPEN_FLAGS)
+    let directory: ReturnType<typeof privateInputDirectory> | undefined
     try {
-      directory = opendirSync(`/proc/self/fd/${fd}`)
+      directory = privateInputDirectory(fd)
       for (;;) {
         const entry = directory.readSync()
         if (entry === null) break

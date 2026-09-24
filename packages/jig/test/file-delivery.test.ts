@@ -8,7 +8,7 @@ import {
   privateOwnFileCommand,
 } from '../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
-import { privateOpenFileRoot } from '../src/internal/linux-file-input.js'
+import { privateOpenFileRoot } from '../src/internal/file-input.js'
 import { PrivateRunCheckpoints } from '../src/internal/private-run-checkpoint.js'
 
 async function fixture(work: (root: string) => Promise<void>) {

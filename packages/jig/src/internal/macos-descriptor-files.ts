@@ -103,10 +103,26 @@ export async function privateMacosOpenAt(
   mode = 0o600,
 ): Promise<FileHandle> {
   const Constructor = await handleConstructor()
+  const fd = privateMacosOpenFdAt(parent, name, flags, mode)
+  try {
+    return new Constructor(fd)
+  } catch (error) {
+    closeSync(fd)
+    throw error
+  }
+}
+
+/** Synchronous ownership for bounded invocation-file capture. */
+export function privateMacosOpenFdAt(
+  parent: number,
+  name: string | Uint8Array,
+  flags: number,
+  mode = 0o600,
+): number {
   const { ptr, symbols } = calls()
   const path = nameBytes(name)
   // Darwin rejects combining O_NOFOLLOW with its stronger O_NOFOLLOW_ANY.
-  const fd = checked(
+  return checked(
     symbols.openat(
       parent,
       ptr(path),
@@ -114,12 +130,20 @@ export async function privateMacosOpenAt(
       mode,
     ),
   )
-  try {
-    return new Constructor(fd)
-  } catch (error) {
-    closeSync(fd)
-    throw error
-  }
+}
+
+/** Only trusted ancestry walks may select the current or parent directory. */
+export function privateMacosOpenAncestryDirectory(parent: number, upwards: boolean): number {
+  const { ptr, symbols } = calls()
+  const name = Buffer.from(upwards ? '..\0' : '.\0')
+  return checked(
+    symbols.openat(
+      parent,
+      ptr(name),
+      constants.O_RDONLY | constants.O_DIRECTORY | CLOEXEC | NOFOLLOW_ANY,
+      0,
+    ),
+  )
 }
 
 export async function privateMacosDuplicate(fd: number): Promise<FileHandle> {

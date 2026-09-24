@@ -1,18 +1,20 @@
 import { randomBytes } from 'node:crypto'
-import { closeSync, fstatSync, lstatSync, mkdirSync, opendirSync } from 'node:fs'
+import { closeSync, fstatSync, lstatSync, mkdirSync } from 'node:fs'
 import { mkdir, open, rm, statfs } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import type { JsonValue } from '../json.js'
 import { canonicalJson } from '../json.js'
 import {
+  PRIVATE_DIRECTORY_OPEN_FLAGS,
   PRIVATE_FILE_LIMITS,
   privateFilePath,
+  privateInputDirectory,
   privateOpenAt,
   privateOpenFileRoot,
   privatePublishDirectory,
   privateReadRegularFile,
   sha256,
-} from './linux-file-input.js'
+} from './file-input.js'
 import type {
   RetainedRunCheckpoint,
   RunCheckpointIdentity,
@@ -179,8 +181,8 @@ export class PrivateFileDeliveryOwner {
           const fd =
             relative === ''
               ? output!.fd
-              : privateOpenAt(output!.fd, privateFilePath(relative), 0x10000)
-          const directory = opendirSync(`/proc/self/fd/${fd}`)
+              : privateOpenAt(output!.fd, privateFilePath(relative), PRIVATE_DIRECTORY_OPEN_FLAGS)
+          const directory = privateInputDirectory(fd)
           try {
             for (;;) {
               checkTime()
@@ -326,12 +328,12 @@ function requireAbsent(parent: number, leaf: string): void {
 }
 function directoryContains(root: number, candidate: number): boolean {
   const expected = fstatSync(root, { bigint: true })
-  let current = privateOpenAt(candidate, '.', 0x200000 | 0x10000, false)
+  let current = privateOpenAt(candidate, '.', PRIVATE_DIRECTORY_OPEN_FLAGS, false)
   try {
     for (let depth = 0; depth < 256; depth++) {
       const info = fstatSync(current, { bigint: true })
       if (info.dev === expected.dev && info.ino === expected.ino) return true
-      const next = privateOpenAt(current, '..', 0x200000 | 0x10000, false)
+      const next = privateOpenAt(current, '..', PRIVATE_DIRECTORY_OPEN_FLAGS, false)
       const parent = fstatSync(next, { bigint: true })
       closeSync(current)
       current = next

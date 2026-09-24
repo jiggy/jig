@@ -143,7 +143,7 @@ export async function publishPrivateDirectory(
   if (process.platform === 'darwin')
     return privateMacosRenameAt(parent.fd, staged, parent.fd, destination, true)
   requireLinux()
-  const { privatePublishDirectory } = await import('./linux-file-input.js')
+  const { privatePublishDirectory } = await import('./file-input.js')
   privatePublishDirectory(parent.fd, staged, destination)
 }
 

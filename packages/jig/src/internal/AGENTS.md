@@ -74,6 +74,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   before/after publication and interrupted-batch recovery without rewriting them.
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
+- `file-input.ts` owns common bounded selection, raw-name validation and regular
+  reads; `file-input-policy.ts` owns limits and closed diagnostics. Linux uses
+  openat2 and sealed memfds; qualified Darwin walks held descriptors without
+  links or mount crossings and excludes case variants of private Jig state.
+  `input-capture.ts` returns live immutable-byte capabilities, not serializable
+  descriptor authority. Retained attachments, command inputs and invocation
+  projections keep these capabilities through launch and close them afterward.
+  Directory ancestry may use only the closed `.`/`..` operation; observed
+  filesystem paths never authorize reopening. These adapters do not by themselves
+  qualify native execution or output delivery.
 - `macos-captured-input.ts` owns private, capability-backed macOS input captures.
   Mint a handle only after unlinking the only pathname and closing the only
   writable descriptor. Allocate its directory outside every payload file grant;
@@ -564,6 +574,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   assert socket/message layouts, split and malformed frames, rights cleanup and
   rejection of writable files. It also verifies anonymous capture, renamed
   directory identity, kernel peer versions, cancellation and endpoint collisions.
+  `file-input.test.ts` and `bound-attachments.test.ts` exercise shared capture and
+  retained resources on Linux and qualified Mac. Mac cases reject private-state
+  case aliases and copied/closed capture handles; the volume test also rejects
+  selected descendants crossing mounts. Linux filesystem and Nix loader cases
+  remain Linux-only and require their own runner.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
