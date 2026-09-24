@@ -57,6 +57,10 @@ admitted FLOW packages.
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
   `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated.
+- `support/macos-exec.c` and the private Mac capture/process controls supply
+  native-host development boundaries; their ownership and native qualification
+  procedure live in `src/internal/AGENTS.md`. They do not change the installed
+  package's supported platforms or require a consumer compiler or administrator.
 - Root licensing and pricing are canonical; the build copies their retained
   texts. Source delivery belongs to the matching GitHub release and its tagged
   repository archive. Never embed source archives or add source-assembly
@@ -288,6 +292,8 @@ admitted FLOW packages.
 
 ## Child DOX Index
 
+- [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
+  Mac pre-exec boundary; installed-platform promotion remains package-owned.
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,
   containment, execution, durable state, and Agent-provider boundary.
 - [test/fixtures/channel-conversation/AGENTS.md](test/fixtures/channel-conversation/AGENTS.md) —

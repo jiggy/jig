@@ -47,6 +47,25 @@ child calls, project commands, delegated HTTP, and Agent providers.
   before/after publication and interrupted-batch recovery without rewriting them.
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
+- `macos-captured-input.ts` owns private, capability-backed macOS input captures.
+  Mint a handle only after unlinking the only pathname and closing the only
+  writable descriptor. Allocate its directory outside every payload file grant;
+  same-UID permissions alone are insufficient. Revalidation requires the original
+  live capability and exact bytes; serialized metadata cannot mint authority.
+  Transfer descriptors only through an authenticated trusted handoff. This
+  primitive does not by itself qualify or enable an installed macOS host.
+- `macos-process-controls.ts` owns the qualified Darwin process ABI: acquire
+  only the guardian's initially exclusive resource coalition, observe kernel
+  accounting, and signal matching PID versions. Sampled footprint and process
+  discovery are not hard quotas; incomplete samples cannot prove a limit or
+  cleanup. Only the kernel's remaining guardian count establishes emptiness.
+- [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
+  rights and descriptors, apply the selected profile, report private readiness,
+  and wait for admission before execution. Close all child control handoffs
+  before exec; the trusted parent reports actual waitpid evidence separately
+  from payload output. It does not own admission storage, resource supervision,
+  recovery, or installation authority. These private components do not enable
+  the installed macOS host independently.
 - Installed Bun authentication, rootless acquisition, delegation,
   containment, supervision, and execution.
 - Native client launchers, reviewed runtime policy, private authentication and
@@ -407,6 +426,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.
+- On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables
+  `macos-process-controls.test.ts` and `macos-execution.test.ts` with the
+  candidate native runtime outside an enclosing sandbox. They use finite
+  user-domain launchd jobs, exact cleanup and an unrelated-process sentinel;
+  the execution test compiles its native fixture with the local Apple toolchain.
+  `macos-captured-input.test.ts` covers anonymous read-only capture on macOS.
+  These checks are primitive evidence, not installed-host conformance.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
