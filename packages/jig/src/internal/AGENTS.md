@@ -179,6 +179,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   handle recorded aliases without following them. Package/0 stays
   regular-file-only. Runs receive no live workspace authority. Bun owns
   installation, not a parallel Jig resolver.
+  A Bun lock may record `workspace:*` when an exact manifest version selects a
+  same-name local member at that exact version. Treat that as fresh only when
+  the validated lock resolution names the captured member and its version equals
+  the exact request; ranges and mismatches remain stale.
   Reuse workspace preparation only from this Jig project's active admission:
   match freshly captured complete workspace inputs to the artifact's retained
   preparation fingerprint and reproduce its recipe/observation. Never share
@@ -271,7 +275,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   recovery must not create duplicate owners or official Runs.
 - Root attachments use invocation-owned descriptors and canonical file identity;
   hashes alone never grant file access. Per-run captured bytes are not retained
-  artifacts. Child and Agent contexts receive no attachment or destination authority.
+  artifacts. Before package code starts, the trusted inner launcher rechecks
+  every projected file's byte count and digest against the admitted identity.
+  Child and Agent contexts receive no attachment or destination authority.
 - Reviewed Binding read selections reuse the bounded file capture controls and
   retained artifact store. Bind source, manifest and tree identity to the exact
   configuration; revalidate at admission and project retained bytes at execution,

@@ -15,6 +15,7 @@ Jig public sites.
   `llms.txt` link it, and site assembly checks the route. Jig introduces
   composition at `/guide/request-triage`; its navigation, generated index, and
   assembly gate keep that walkthrough reachable.
+  The bounded factory walkthrough is published at `/guide/software-factory`.
 - `theme/` owns the shared default-theme extension; `landing.css` owns shared
   landing and reading presentation. Both deployment triggers include these inputs.
 - `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns

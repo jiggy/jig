@@ -98,7 +98,8 @@ You have now created, run, and adapted a method. Next,
 [one caller use code, an Agent, or both](./request-triage.md). The method boundary
 stays consistent as the implementation changes. Read [how Jig works](./understand.md)
 for the architecture behind it, or try [a tested patch](./tested-patch.md)
-for a larger application.
+for one repair or [a small software factory](./software-factory.md) for a fixed
+two-issue set.
 
 ## Review, run, improve
 
@@ -168,7 +169,8 @@ needed, as described in [dependencies](./dependencies.md).
 - [Configure Jig](./configuration.md) for terminal appearance, startup verification, and operator settings.
 - [Manage dependencies](./dependencies.md) for reusable Flow packages.
 - [Author contracts once](./contracts.md) to generate validation and editor types together.
-- [Repair a project](./tested-patch.md) or [handle a disputed charge](./support-case.md).
+- [Repair a project](./tested-patch.md), run a [small software factory](./software-factory.md),
+  or [handle a disputed charge](./support-case.md).
 - [Choose a workflow structure](./workflow-design.md) for your application.
 
 ## Supported host

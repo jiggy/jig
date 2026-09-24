@@ -68,7 +68,7 @@ JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
 sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
-for application in tested-patch request-triage support-case contact-import incident-brief; do
+for application in tested-patch software-factory request-triage support-case contact-import incident-brief; do
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
   cp "examples/$application/package.json" "$application_copy/"
@@ -83,6 +83,11 @@ for application in tested-patch request-triage support-case contact-import incid
       ' "examples/$application/$member" "$application_copy/$member"
     fi
   done
+  if [ "$application" = software-factory ]; then
+    mkdir -p "$application_copy/methods"
+    cp -R examples/tested-patch/flows/project "$application_copy/methods/project"
+    cp -R examples/tested-patch/flows/repair "$application_copy/methods/repair"
+  fi
   bun -e '
     import { readdir } from "node:fs/promises";
     import { dirname, join } from "node:path";
@@ -93,21 +98,31 @@ for application in tested-patch request-triage support-case contact-import incid
       "@jigging/agent-acp": Bun.argv[4],
     };
     const manifests = [path];
-    const flows = join(dirname(path), "flows");
-    for (const entry of await readdir(flows, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const child = join(flows, entry.name, "package.json");
-      if (await Bun.file(child).exists()) manifests.push(child);
+    for (const directory of ["flows", "methods"]) {
+      const members = join(dirname(path), directory);
+      if (!(await Bun.file(members).exists())) continue;
+      for (const entry of await readdir(members, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const child = join(members, entry.name, "package.json");
+        if (await Bun.file(child).exists()) manifests.push(child);
+      }
+    }
+    const local = new Set();
+    for (const current of manifests) {
+      const manifest = await Bun.file(current).json();
+      if (typeof manifest.name === "string") local.add(manifest.name);
     }
     for (const current of manifests) {
       const manifest = await Bun.file(current).json();
       // Preserve the application plus Flow-member relationship from the source
       // repository workspace. Resolve each owning declaration, not ambient deps.
-      if (current === path) manifest.workspaces = ["flows/*"];
+      if (current === path)
+        manifest.workspaces = manifests.some(current => current.includes("/methods/"))
+          ? ["flows/*", "methods/*"] : ["flows/*"];
       for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
         for (const [name, version] of Object.entries(manifest[section] ?? {})) {
           if (candidates[name]) manifest[section][name] = `file:${candidates[name]}`;
-          else if (typeof version === "string" && version.startsWith("workspace:"))
+          else if (typeof version === "string" && version.startsWith("workspace:") && !local.has(name))
             throw new Error(`No frozen candidate for declared workspace dependency ${name}`);
         }
       }

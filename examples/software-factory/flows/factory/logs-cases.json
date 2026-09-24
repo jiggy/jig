@@ -1,0 +1,34 @@
+[
+  {
+    "id": "client-and-server-errors",
+    "args": [],
+    "stdin": "{\"path\":\"/\",\"status\":200}\n{\"path\":\"/missing\",\"status\":404}\n{\"path\":\"/api\",\"status\":503}\n",
+    "stdout": "{\"requests\":3,\"clientErrors\":1,\"serverErrors\":1}\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  {
+    "id": "empty-input",
+    "args": [],
+    "stdin": "",
+    "stdout": "{\"requests\":0,\"clientErrors\":0,\"serverErrors\":0}\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  {
+    "id": "out-of-range-status",
+    "args": [],
+    "stdin": "{\"path\":\"/\",\"status\":600}\n",
+    "stdout": "",
+    "stderr": "Invalid log\n",
+    "exitCode": 2
+  },
+  {
+    "id": "fractional-status",
+    "args": [],
+    "stdin": "{\"path\":\"/\",\"status\":200.5}\n",
+    "stdout": "",
+    "stderr": "Invalid log\n",
+    "exitCode": 2
+  }
+]

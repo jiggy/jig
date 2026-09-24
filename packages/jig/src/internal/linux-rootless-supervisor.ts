@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { closeSync, readFileSync, readSync, statSync, writeSync } from 'node:fs'
 import {
   type FileHandle,
@@ -60,7 +60,12 @@ interface Configuration {
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
   readonly output: boolean
-  readonly capturedInputs: readonly { readonly fd: number; readonly destination: string }[]
+  readonly capturedInputs: readonly {
+    readonly fd: number
+    readonly destination: string
+    readonly bytes: number
+    readonly digest: string
+  }[]
   readonly inputDirectories: readonly string[]
   readonly bunPath: string
   readonly bunHostLibraryPath: string
@@ -388,7 +393,15 @@ async function enterMain(arguments_: readonly string[]): Promise<void> {
   process.exitCode = exit.code ?? 1
 }
 
-async function innerMain(command: readonly string[], output = false): Promise<void> {
+async function innerMain(
+  command: readonly string[],
+  output: boolean,
+  capturedInputs: readonly {
+    readonly path: string
+    readonly bytes: number
+    readonly digest: string
+  }[],
+): Promise<void> {
   if (command.length === 0 || !absolute(command[0]!))
     throw new Error('invalid rootless inner command')
   const nullDevice = statSync('/dev/null')
@@ -400,6 +413,14 @@ async function innerMain(command: readonly string[], output = false): Promise<vo
     (entropyDevice.mode & 0o777) !== 0o666
   ) {
     throw new Error('rootless private devices do not satisfy the required projection')
+  }
+  for (const file of capturedInputs) {
+    const bytes = readFileSync(file.path)
+    if (
+      bytes.byteLength !== file.bytes ||
+      `sha256:${createHash('sha256').update(bytes).digest('hex')}` !== file.digest
+    )
+      throw new Error('captured input projection does not match its admitted identity')
   }
   if (output) {
     writeSync(4, Buffer.from([1]))
@@ -538,6 +559,13 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     ...POLICY,
     MODULE_DESTINATION,
     configuration.output ? '--inner-output' : '--inner',
+    JSON.stringify(
+      configuration.capturedInputs.map(({ destination, bytes, digest }) => ({
+        path: destination,
+        bytes,
+        digest,
+      })),
+    ),
     '--',
     ...configuration.command,
   )
@@ -727,6 +755,10 @@ function requireStart(value: unknown): Configuration {
         typeof file !== 'object' ||
         file.fd !== 6 + index ||
         !absolute(file.destination) ||
+        !Number.isSafeInteger(file.bytes) ||
+        file.bytes < 0 ||
+        typeof file.digest !== 'string' ||
+        !DIGEST.test(file.digest) ||
         !configuration.inputDirectories.some((path) => file.destination.startsWith(`${path}/`)),
     ) ||
     !positiveInteger(configuration.payloadUid) ||
@@ -1068,8 +1100,31 @@ async function main(): Promise<void> {
   }
   if (mode === '--enter') return await enterMain(arguments_)
   if (mode === '--inner' || mode === '--inner-output') {
-    if (arguments_[0] !== '--') throw new Error('invalid rootless inner separator')
-    return await innerMain(arguments_.slice(1), mode === '--inner-output')
+    if (arguments_[1] !== '--') throw new Error('invalid rootless inner separator')
+    let capturedInputs: { path: string; bytes: number; digest: string }[]
+    try {
+      capturedInputs = JSON.parse(arguments_[0]!)
+    } catch {
+      throw new Error('invalid rootless captured input identity')
+    }
+    if (
+      !Array.isArray(capturedInputs) ||
+      capturedInputs.length > 64 ||
+      capturedInputs.some(
+        (file) =>
+          file === null ||
+          typeof file !== 'object' ||
+          Object.keys(file).sort().join(',') !== 'bytes,digest,path' ||
+          typeof file.path !== 'string' ||
+          !file.path.startsWith('/jig-input/') ||
+          !Number.isSafeInteger(file.bytes) ||
+          file.bytes < 0 ||
+          typeof file.digest !== 'string' ||
+          !DIGEST.test(file.digest),
+      )
+    )
+      throw new Error('invalid rootless captured input identity')
+    return await innerMain(arguments_.slice(2), mode === '--inner-output', capturedInputs)
   }
   throw new Error('invalid rootless supervisor mode')
 }

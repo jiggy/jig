@@ -1503,6 +1503,8 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     capturedInputs: data.sealedPlan.capturedInputs.map((file, index) => ({
       fd: 6 + index,
       destination: file.destination,
+      bytes: file.bytes,
+      digest: file.digest,
     })),
     inputDirectories: data.sealedPlan.inputDirectories,
     bunPath: data.mechanism.support.trustedCoordinatorBunPath,

@@ -37,6 +37,8 @@ only after executed checks and independent acceptance.
   helpers without making the public walkthrough a batch application.
 - Reproduce an independent baseline mismatch before an Agent call. Permit at most
   one correction; every proposal and evaluation uses the original files and cases.
+- Read attachment files from explicit offsets, require every stat-sized file to
+  be read completely, and reject wholly empty captured projects before dispatch.
 - Repository tests can be interfered with by candidate code. Independent assertions
   compare collected CLI output and exit without importing code or trusting pass flags.
 - Validate base/candidate and command identities before constructing patches from

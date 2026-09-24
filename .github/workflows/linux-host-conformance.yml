@@ -12,6 +12,7 @@ on:
       - "packages/flow-sdk/**"
       - "docs/jig/spec/**"
       - "examples/tested-patch/**"
+      - "examples/software-factory/**"
       - "package.json"
       - "LICENSE.md"
       - "PRICING.md"

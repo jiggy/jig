@@ -41,7 +41,7 @@ Named methods such as Gauntlet and Independent Jury are explained in
 A software factory turns an authorized issue into a tested patch through
 bounded planning, coding, checking, and human approval.
 
-*Research idea · Starts with one Agent · Complete application*
+*Demonstrated alpha slice · Two bounded repair workers · Human merge gate*
 
 - **What the user gets:** A maintainer turns an authorized issue into a tested,
   reviewable patch bundle while seeing its state and retaining merge and
@@ -49,12 +49,14 @@ bounded planning, coding, checking, and human approval.
 - **Why Jig:** Independently admitted procedures, bounded workspaces, exact
   gates, and separated implementation and review authority remain inspectable
   across a long-running lifecycle.
-- **Simplest version:** Start with one coding Agent and exact tests. Add planning,
+- **Simplest version:** The [small software factory](./guide/software-factory.md)
+  composes two checked repair workers and retains separate patch packets. Start
+  with one coding Agent and exact tests. Add planning,
   review, or security roles only when they receive different skills,
   workspaces, evidence, or approval authority. Semantic choice is optional;
   explicit routes should work first.
-- **What it needs:** The earliest bounded slice is one root coding Agent
-  plus exact in-package gates. The complete case is blocked on workspace
+- **What it needs:** The bounded source slice is implemented. Public-only use
+  still depends on registry convergence. A complete factory remains blocked on workspace
   authority, Agent-bearing component composition, durable issue facts, and
   explicit Git/CI adapters. Kanban, branch policy, repository credentials,
   and the interface are application responsibilities.

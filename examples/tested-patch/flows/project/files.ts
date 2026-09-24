@@ -78,11 +78,15 @@ export async function readRepairInput(
         const buffer = Buffer.alloc(remaining + 1)
         let used = 0
         while (used < buffer.length) {
-          const { bytesRead } = await file.read(buffer, used, buffer.length - used, null)
+          // Host attachments can be backed by inherited file descriptions. Read from
+          // an explicit position instead of trusting their ambient cursor.
+          const { bytesRead } = await file.read(buffer, used, buffer.length - used, used)
           if (bytesRead === 0) break
           used += bytesRead
         }
         if (used > remaining) throw new TypeError('Source exceeds 64 KiB.')
+        if (used !== info.size)
+          throw new TypeError('Source changed or could not be read completely.')
         remaining -= used
         const content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
           buffer.subarray(0, used),
@@ -95,6 +99,8 @@ export async function readRepairInput(
     }
   }
   await walk('')
+  if (!Object.values(files).some((content) => content.length > 0))
+    throw new TypeError('Expected source files with captured content.')
   if (
     request.editPaths.some(
       (p) =>

@@ -36,6 +36,7 @@ const sidebar = [
       { text: 'One caller, three implementations', link: '/guide/request-triage' },
       { text: 'Handle a disputed charge', link: '/guide/support-case' },
       { text: 'An issue becomes a tested patch', link: '/guide/tested-patch' },
+      { text: 'Run a small software factory', link: '/guide/software-factory' },
     ],
   },
   {

@@ -22,6 +22,7 @@ your application while keeping authority and consequences explicit.
 | --- | --- |
 | Compose code and Agent work through one caller | [Request triage](./request-triage.md) |
 | Produce a patch with executed checks | [Tested patch](./tested-patch.md) |
+| Run a fixed set of checked repairs | [Small software factory](./software-factory.md) |
 | Check whether my host can run Jig | [Supported hosts](./index.md#supported-host) |
 | Adjust startup verification, terminal appearance, or other settings | [Settings and configuration](./configuration.md) |
 | Choose a model, API, or native client | [Choose an Agent](./agents.md) |

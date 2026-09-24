@@ -1,0 +1,10 @@
+{
+  "name": "small-software-factory",
+  "description": "Turn one or two authorized issues into separately checked patch packets for human review.",
+  "uses": {
+    "progress": {
+      "contract": "./contracts/run-checkpoint/contract.json"
+    },
+    "repair": {}
+  }
+}

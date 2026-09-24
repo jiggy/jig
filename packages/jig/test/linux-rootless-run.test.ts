@@ -288,6 +288,52 @@ delegatedDescribe('private rootless Linux Run', () => {
     }
   })
 
+  test('projects every captured file at the supported descriptor width', async () => {
+    const host = await hostConfiguration()
+    const path = (index: number) =>
+      `group-${Math.floor(index / 6)}/file-${String(index).padStart(2, '0')}.txt`
+    const fixture = await createFixture(`
+      import { readFileSync } from 'node:fs';
+      console.log(JSON.stringify(Array.from({ length: 24 }, (_, index) =>
+        readFileSync('/jig-input/source/group-' + Math.floor(index / 6) + '/file-' + String(index).padStart(2, '0') + '.txt', 'utf8')
+      )));
+    `)
+    for (let index = 0; index < 4; index++) await mkdir(join(fixture, `group-${index}`))
+    for (let index = 0; index < 24; index++)
+      await writeFile(join(fixture, path(index)), `value-${index}`)
+    const capture = privateCaptureAttachments([
+      {
+        name: 'source',
+        directory: fixture,
+        select: Array.from({ length: 24 }, (_, index) => path(index)),
+      },
+    ])
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      component = await host.backend.launch({
+        ...plan(host, fixture, 'captured-input-width'),
+        output: true,
+        inputDirectories: ['/jig-input/source'],
+        capturedInputs: capture.attachments[0]!.files.map((file) => ({
+          ...file,
+          destination: `/jig-input/source/${file.path}`,
+        })),
+      })
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect(stderr).toBe('')
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true })
+      expect(JSON.parse(stdout)).toEqual(Array.from({ length: 24 }, (_, index) => `value-${index}`))
+    } finally {
+      await component?.outputDirectory?.close()
+      capture.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+
   test('retains bounded binary output after the complete payload tree is fenced', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture(`

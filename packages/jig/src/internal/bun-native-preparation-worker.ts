@@ -191,6 +191,7 @@ async function requireSupportedLock(
         'workspace patch declarations and bun.lock disagree; update the workspace lock explicitly',
       )
     const locked = (value as { workspaces: Record<string, Record<string, unknown>> }).workspaces
+    const packages = (value as { packages: Record<string, unknown> }).packages
     for (const path of ['', ...workspace.members]) {
       const manifest = JSON.parse(await readFile(join(PACKAGE_ROOT, path, 'package.json'), 'utf8'))
       const entry = locked[path]
@@ -205,7 +206,13 @@ async function requireSupportedLock(
           ? 'workspace entry'
           : (['name', 'version'].find((field) => manifest[field] !== entry[field]) ??
             dependencyFields.find(
-              (field) => canonical(manifest[field] ?? {}) !== canonical(entry[field] ?? {}),
+              (field) =>
+                !workspaceDependencyMapMatches(
+                  manifest[field] ?? {},
+                  entry[field] ?? {},
+                  locked,
+                  packages,
+                ),
             ))
       if (field !== undefined)
         throw new WorkerFailure(
@@ -218,6 +225,42 @@ async function requireSupportedLock(
         )
     }
   }
+}
+
+/** Bun records a matching local workspace even when an author pins its public version. */
+function workspaceDependencyMapMatches(
+  manifestValue: unknown,
+  lockValue: unknown,
+  workspaces: Record<string, Record<string, unknown>>,
+  packages: Record<string, unknown>,
+): boolean {
+  if (canonical(manifestValue) === canonical(lockValue)) return true
+  const manifest = ordinaryRecord(manifestValue)
+  const locked = ordinaryRecord(lockValue)
+  if (manifest === undefined || locked === undefined) return false
+  const names = Object.keys(manifest)
+  if (names.length !== Object.keys(locked).length || names.some((name) => !(name in locked)))
+    return false
+  return names.every((name) => {
+    const request = manifest[name]
+    if (request === locked[name]) return true
+    if (
+      typeof request !== 'string' ||
+      !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+        request,
+      ) ||
+      typeof locked[name] !== 'string' ||
+      !locked[name].startsWith('workspace:')
+    )
+      return false
+    const resolution = packages[name]
+    if (!Array.isArray(resolution) || resolution.length !== 1 || typeof resolution[0] !== 'string')
+      return false
+    const prefix = `${name}@workspace:`
+    if (!resolution[0].startsWith(prefix)) return false
+    const member = workspaces[resolution[0].slice(prefix.length)]
+    return member?.name === name && member.version === request
+  })
 }
 
 function canonical(value: unknown): string {

@@ -1,0 +1,9 @@
+{
+  "name": "software-factory-root-flow",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "0.1.0-alpha.12",
+    "tested-patch-project-flow": "workspace:*"
+  }
+}

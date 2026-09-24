@@ -73,7 +73,7 @@ test.each([
   },
 )
 
-async function fixture(versions = false, rootApplication = false) {
+async function fixture(versions = false, rootApplication = false, rootDependency = 'workspace:*') {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-'))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(root, path)), { recursive: true })
@@ -83,7 +83,7 @@ async function fixture(versions = false, rootApplication = false) {
     private: true,
     workspaces: ['apps/*/flows/*', 'libs/*'],
     ...(versions ? { dependencies: { semver: '6.3.1' } } : {}),
-    ...(rootApplication ? { name: 'root-app', dependencies: { helper: 'workspace:*' } } : {}),
+    ...(rootApplication ? { name: 'root-app', dependencies: { helper: rootDependency } } : {}),
   })
   await put(`${target}/package.json`, {
     name: 'work-flow',
@@ -363,13 +363,18 @@ test.each([
   'patch-missing',
   'patch-invalid',
   'root',
+  'root-pinned',
   'root-stale',
 ] as const)(
   'Bun prepares a self-contained workspace tree: %s',
   async (mode) => {
     const patchMode = mode === 'patched' || mode.startsWith('patch-')
-    const rootApplication = mode === 'root' || mode === 'root-stale'
-    const value = await fixture(mode === 'versions' || patchMode, rootApplication)
+    const rootApplication = mode === 'root' || mode === 'root-pinned' || mode === 'root-stale'
+    const value = await fixture(
+      mode === 'versions' || patchMode,
+      rootApplication,
+      mode === 'root-pinned' ? '0.1.0' : 'workspace:*',
+    )
     let captured: Awaited<ReturnType<typeof value.capture>>
     try {
       if (patchMode) {
