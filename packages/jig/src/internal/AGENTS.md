@@ -32,6 +32,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and HTTP controllers use these checks; resource ownership must not import Agent
   execution logic. Parent descriptors retain the exact bounded ancestry.
 - Package artifact retention, materialization, and preparation.
+- `descriptor-files.ts` selects closed Linux or qualified Darwin operations for
+  held-directory children. Its live references cannot be reconstructed from
+  decoded data; callers own descriptor lifetime and entry identity checks.
+  Never convert these references to visible paths to regain file authority.
+  Package publication serializes by store device/inode, publishes by exclusive
+  hard link, and reacquires verified anonymous snapshots. Store enumeration
+  retains and rechecks directory descriptors instead of following child paths.
 - `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
   contained Bun preparation. It inspects a regular-file package view and retains
   the original dependency lookup layout with that package as the execution root.

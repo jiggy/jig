@@ -16,6 +16,10 @@ admitted FLOW packages.
   the only pathname, and closes the writer before exposing streamed bytes.
   Source renames cannot redirect opened-directory capture. This source adapter
   does not independently qualify the installed Mac execution host.
+- Project source, declaration and static author-module capture use the same
+  closed descriptor operations on Linux and qualified Darwin. Workspace capture
+  preserves declared source/dependency selection and raw-name validation;
+  filesystem capture does not independently qualify Bun installation or execution.
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking, retained-lock decoding and dispatch. Dispatch
   caches longest paths per immutable candidate; repeated routes must not expand

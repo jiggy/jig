@@ -1,23 +1,34 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { constants, type BigIntStats } from 'node:fs'
-import { link, lstat, mkdir, open, opendir, unlink, type FileHandle } from 'node:fs/promises'
+import { type BigIntStats, constants } from 'node:fs'
+import { type FileHandle, open } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import {
-  createCapturedPackage,
   type CapturedFile,
   type CapturedPackage,
   type CapturedPackageBacking,
+  createCapturedPackage,
 } from '../package/capture.js'
-import { encodePackage1, packageDigest, PACKAGE_1_LIMITS } from '../package/digest.js'
+import { encodePackage1, PACKAGE_1_LIMITS, packageDigest } from '../package/digest.js'
 import {
   assertNoPathCollisions,
   comparePathBytes,
   PACKAGE_1_MAX_PATH_BYTES,
   validateLogicalPath,
 } from '../package/paths.js'
+import {
+  linkPrivateFile as link,
+  mkdirPrivateFile,
+  openPrivateFile as openFile,
+  type PrivateChildLocation,
+  type PrivateFileLocation,
+  privateChildLocation,
+  privateDirectoryEntries,
+  statPrivateFile as statFile,
+  unlinkPrivateFile as unlink,
+} from './descriptor-files.js'
+import { privateMacosAnonymousBacking } from './macos-descriptor-files.js'
 
 const ARTIFACT_KIND = 'flow-package/0'
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/
@@ -31,6 +42,8 @@ export const PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS = Object.freeze({
   artifactBytes: 64 * MIB,
   storeBytes: 1024 * MIB,
 })
+
+const snapshotReaders = new WeakMap<FileHandle, FileHandle>()
 
 const publicationTurns = new Map<string, Promise<void>>()
 
@@ -51,10 +64,11 @@ export interface PackageArtifactRef {
  * The source capture remains owned by the caller.
  */
 export async function publishCapturedPackage(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   captured: CapturedPackage,
 ): Promise<PackageArtifactRef> {
-  const key = resolve(storeRoot)
+  const identity = await statFile(storeRoot)
+  const key = `${identity.dev}:${identity.ino}`
   const prior = publicationTurns.get(key)
   let release!: () => void
   const turn = new Promise<void>((resolveTurn) => {
@@ -71,7 +85,7 @@ export async function publishCapturedPackage(
 }
 
 async function publishCapturedPackageExclusive(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   captured: CapturedPackage,
 ): Promise<PackageArtifactRef> {
   const digest = parsePackageDigest(captured.digest)
@@ -83,7 +97,7 @@ async function publishCapturedPackageExclusive(
     )
   }
   const location = await openArtifactShard(storeRoot, digest, true)
-  const stage = `${location.directoryPath}/.stage-${process.pid}-${randomUUID()}`
+  const stage = privateChildLocation(location.directory, `.stage-${process.pid}-${randomUUID()}`)
   let stageHandle: FileHandle | undefined
   let stageExists = false
   let result: PackageArtifactRef | undefined
@@ -116,7 +130,7 @@ async function publishCapturedPackageExclusive(
       )
     }
 
-    stageHandle = await open(
+    stageHandle = await openFile(
       stage,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
       0o600,
@@ -210,6 +224,7 @@ async function publishCapturedPackageExclusive(
     }
     if (cleanupFailures.length > 0) {
       if (failure !== undefined) cleanupFailures.unshift(failure)
+      // biome-ignore lint/correctness/noUnsafeFinally: Publication is not complete when owned cleanup fails.
       throw new AggregateError(cleanupFailures, 'Package/0 publication cleanup did not complete')
     }
   }
@@ -243,7 +258,7 @@ export function privatePackageArtifactArchiveBytes(
 
 /** Acquire a newly verified invocation-local capture of one retained package. */
 export async function captureStoredPackage(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   reference: PackageArtifactRef,
 ): Promise<CapturedPackage> {
   const digest = parsePackageArtifactRef(reference)
@@ -277,6 +292,7 @@ export async function captureStoredPackage(
         await location.directory.close()
       } catch (error) {
         await captured?.dispose()
+        // biome-ignore lint/correctness/noUnsafeFinally: Do not expose a capture when its shard failed to close.
         throw error
       }
     }
@@ -341,13 +357,12 @@ function parsePackageDigest(value: unknown): PackageDigest {
 
 interface ArtifactShard {
   readonly directory: FileHandle
-  readonly directoryPath: string
-  readonly finalPath: string
+  readonly finalPath: PrivateChildLocation
   readonly ownerUid: bigint
 }
 
 async function openArtifactShard(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   digest: PackageDigest,
   create: boolean,
 ): Promise<ArtifactShard> {
@@ -355,15 +370,15 @@ async function openArtifactShard(
   let parent = await openStoreRoot(storeRoot)
   try {
     for (const segment of ['packages', 'v1', 'sha256', hexadecimal.slice(0, 2)]) {
-      const childPath = `${descriptorPath(parent.handle)}/${segment}`
+      const childPath = privateChildLocation(parent.handle, segment)
       if (create) {
         try {
-          await mkdir(childPath, { mode: 0o700 })
+          await mkdirPrivateFile(childPath)
         } catch (error) {
           if (!hasCode(error, 'EEXIST')) throw error
         }
       }
-      const child = await open(
+      const child = await openFile(
         childPath,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
       )
@@ -391,11 +406,9 @@ async function openArtifactShard(
       parent = { handle: child, ownerUid }
     }
     const directory = parent.handle
-    const directoryPath = descriptorPath(directory)
     return {
       directory,
-      directoryPath,
-      finalPath: `${directoryPath}/${hexadecimal.slice(2)}.pkg`,
+      finalPath: privateChildLocation(directory, `${hexadecimal.slice(2)}.pkg`),
       ownerUid: parent.ownerUid,
     }
   } catch (error) {
@@ -409,25 +422,30 @@ interface OpenStoreDirectory {
   readonly ownerUid: bigint
 }
 
-async function openStoreRoot(storeRoot: string): Promise<OpenStoreDirectory> {
-  const path = resolve(storeRoot)
+async function openStoreRoot(storeRoot: PrivateFileLocation): Promise<OpenStoreDirectory> {
+  const path = typeof storeRoot === 'string' ? resolve(storeRoot) : storeRoot
+  const displayPath = typeof path === 'string' ? path : undefined
   let observed: BigIntStats
   try {
-    observed = await lstat(path, { bigint: true })
+    observed = await statFile(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT')) {
       unavailable(
         'PACKAGE_ARTIFACT_STORE_MISSING',
         'protected Package/0 store root does not exist',
-        path,
+        displayPath,
       )
     }
     throw error
   }
   if (observed.isSymbolicLink()) {
-    invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/0 store root must not be a symlink', path)
+    invalid(
+      'PACKAGE_ARTIFACT_STORE',
+      'protected Package/0 store root must not be a symlink',
+      displayPath,
+    )
   }
-  const handle = await open(
+  const handle = await openFile(
     path,
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   )
@@ -437,7 +455,7 @@ async function openStoreRoot(storeRoot: string): Promise<OpenStoreDirectory> {
       unavailable(
         'PACKAGE_ARTIFACT_STORE_CHANGED',
         'protected Package/0 store root changed while opening',
-        path,
+        displayPath,
       )
     }
     if (typeof process.geteuid !== 'function') {
@@ -476,12 +494,8 @@ function requireProtectedDirectory(
   }
 }
 
-function descriptorPath(handle: FileHandle): string {
-  return `/proc/self/fd/${handle.fd}`
-}
-
 async function tryCapturePackageArtifactFile(
-  path: string,
+  path: PrivateFileLocation,
   expectedDigest: PackageDigest,
   sourceLabel: string,
   expectedOwnerUid: bigint,
@@ -494,41 +508,62 @@ async function tryCapturePackageArtifactFile(
   }
 }
 
-async function retainedStoreBytes(storeRoot: string, expectedOwnerUid: bigint): Promise<number> {
+async function retainedStoreBytes(
+  storeRoot: PrivateFileLocation,
+  expectedOwnerUid: bigint,
+): Promise<number> {
   let total = 0n
   const maximum = BigInt(PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes)
 
-  async function visit(path: string): Promise<void> {
-    const directory = await opendir(path)
-    for await (const entry of directory) {
-      const childPath = `${path}/${entry.name}`
-      const information = await lstat(childPath, { bigint: true })
-      if (information.isSymbolicLink()) {
+  async function visit(directory: FileHandle): Promise<void> {
+    for await (const entry of privateDirectoryEntries(directory)) {
+      const childPath = privateChildLocation(directory, entry.name)
+      const information = await statFile(childPath)
+      if (information.isSymbolicLink())
         invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/0 store contains a symlink')
-      }
       if (information.isDirectory()) {
         requireProtectedDirectory(
           information,
           'protected Package/0 store directory',
           expectedOwnerUid,
         )
-        await visit(childPath)
+        const child = await openFile(
+          childPath,
+          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+        )
+        try {
+          const opened = await child.stat({ bigint: true })
+          requireProtectedDirectory(opened, 'protected Package/0 store directory', expectedOwnerUid)
+          if (!sameIdentity(information, opened))
+            unavailable(
+              'PACKAGE_ARTIFACT_STORE_CHANGED',
+              'protected store directory changed during enumeration',
+            )
+          await visit(child)
+        } finally {
+          await child.close()
+        }
+        if (total > maximum) return
         continue
       }
-      if (!information.isFile() || information.uid !== expectedOwnerUid || information.nlink < 1n) {
+      if (!information.isFile() || information.uid !== expectedOwnerUid || information.nlink < 1n)
         invalid('PACKAGE_ARTIFACT_STORE', 'protected Package/0 store contains an unsafe entry')
-      }
       total += information.size
       if (total > maximum) return
     }
   }
 
-  await visit(resolve(storeRoot))
+  const root = await openStoreRoot(storeRoot)
+  try {
+    await visit(root.handle)
+  } finally {
+    await root.handle.close()
+  }
   return total > BigInt(Number.MAX_SAFE_INTEGER) ? Number.MAX_SAFE_INTEGER : Number(total)
 }
 
 async function capturePackageArtifactFile(
-  path: string,
+  path: PrivateFileLocation,
   expectedDigest: PackageDigest,
   sourceLabel: string,
   expectedOwnerUid: bigint,
@@ -536,7 +571,7 @@ async function capturePackageArtifactFile(
   let handle: FileHandle | undefined
   let snapshot: FileHandle | undefined
   try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    handle = await openFile(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
     const before = await handle.stat({ bigint: true })
     requireArtifactFile(before, sourceLabel, expectedOwnerUid)
     if (before.size > BigInt(PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes)) {
@@ -565,6 +600,13 @@ async function capturePackageArtifactFile(
     )
   } finally {
     await handle?.close().catch(() => undefined)
+    if (snapshot !== undefined) {
+      await snapshotReaders
+        .get(snapshot)
+        ?.close()
+        .catch(() => undefined)
+      snapshotReaders.delete(snapshot)
+    }
     await snapshot?.close().catch(() => undefined)
   }
 }
@@ -698,6 +740,11 @@ function archiveBacking(
 
 async function openAnonymousArchiveSnapshot(): Promise<FileHandle> {
   try {
+    if (process.platform === 'darwin') {
+      const { writer, reader } = await privateMacosAnonymousBacking()
+      snapshotReaders.set(writer, reader)
+      return writer
+    }
     return await open(tmpdir(), constants.O_RDWR | constants.O_EXCL | O_TMPFILE, 0o600)
   } catch (error) {
     if (isResourceError(error)) throw error
@@ -716,13 +763,18 @@ async function sealArchiveSnapshot(
   let readonly: FileHandle | undefined
   try {
     const before = await writable.stat({ bigint: true })
-    if (!before.isFile() || before.size !== BigInt(expectedSize)) {
+    if (!before.isFile() || before.nlink !== 0n || before.size !== BigInt(expectedSize)) {
       artifactCorrupt('anonymous Package/0 snapshot has the wrong size')
     }
     await writable.chmod(0o400)
-    readonly = await open(`/proc/self/fd/${writable.fd}`, constants.O_RDONLY)
+    if (process.platform === 'darwin') {
+      readonly = snapshotReaders.get(writable)
+      snapshotReaders.delete(writable)
+      if (readonly === undefined)
+        artifactCorrupt('anonymous Package/0 snapshot lost its private reader')
+    } else readonly = await open(`/proc/self/fd/${writable.fd}`, constants.O_RDONLY)
     const after = await readonly.stat({ bigint: true })
-    if (!sameIdentity(before, after) || after.size !== BigInt(expectedSize)) {
+    if (!sameIdentity(before, after) || after.nlink !== 0n || after.size !== BigInt(expectedSize)) {
       artifactCorrupt('anonymous Package/0 snapshot changed while sealing')
     }
     await writable.close()
@@ -837,11 +889,11 @@ async function writeAll(handle: FileHandle, bytes: Uint8Array): Promise<void> {
   }
 }
 
-async function requireSameFile(left: string, right: string): Promise<void> {
-  const [first, second] = await Promise.all([
-    lstat(left, { bigint: true }),
-    lstat(right, { bigint: true }),
-  ])
+async function requireSameFile(
+  left: PrivateFileLocation,
+  right: PrivateFileLocation,
+): Promise<void> {
+  const [first, second] = await Promise.all([statFile(left), statFile(right)])
   if (!sameIdentity(first, second) || !first.isFile() || !second.isFile()) {
     unavailable(
       'PACKAGE_ARTIFACT_PUBLISH_RACE',
@@ -851,13 +903,13 @@ async function requireSameFile(left: string, right: string): Promise<void> {
 }
 
 async function requirePathIdentity(
-  path: string,
+  path: PrivateFileLocation,
   opened: BigIntStats,
   label: string,
 ): Promise<void> {
   let observed: BigIntStats
   try {
-    observed = await lstat(path, { bigint: true })
+    observed = await statFile(path)
   } catch (error) {
     artifactCorrupt(`${label} pathname disappeared while it was verified: ${errorText(error)}`)
   }

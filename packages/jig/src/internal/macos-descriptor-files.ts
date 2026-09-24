@@ -16,6 +16,7 @@ type NativeSymbol =
   | 'renameatx_np'
   | 'readlinkat'
   | 'symlinkat'
+  | 'linkat'
   | '__error'
 type Call = (...args: (number | bigint)[]) => number
 interface Native {
@@ -48,6 +49,7 @@ function calls(): Native {
     renameatx_np: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
     readlinkat: { args: ['i32', 'ptr', 'ptr', 'u64'], returns: 'i64' },
     symlinkat: { args: ['ptr', 'i32', 'ptr'], returns: 'i32' },
+    linkat: { args: ['i32', 'ptr', 'i32', 'ptr', 'i32'], returns: 'i32' },
     __error: { args: [], returns: 'ptr' },
   })
   native = { ptr: ffi.ptr, toArrayBuffer: ffi.toArrayBuffer, symbols }
@@ -336,6 +338,13 @@ export function privateMacosReadlinkAt(parent: number, name: string): Buffer {
   const length = checked(Number(symbols.readlinkat(parent, ptr(path), ptr(bytes), bytes.length)))
   if (length >= bytes.length) throw new Error('macOS link target exceeds its bound')
   return bytes.subarray(0, length)
+}
+
+export function privateMacosLinkAt(source: number, from: string, target: number, to: string): void {
+  const { ptr, symbols } = calls(),
+    old = nameBytes(from),
+    next = nameBytes(to)
+  checked(symbols.linkat(source, ptr(old), target, ptr(next), 0))
 }
 export function privateMacosSymlinkAt(parent: number, name: string, target: string): void {
   const { ptr, symbols } = calls(),

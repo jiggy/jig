@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
+import { constants } from 'node:fs'
 import {
   appendFile,
   chmod,
@@ -9,6 +10,7 @@ import {
   open,
   readdir,
   readFile,
+  rename,
   rm,
   symlink,
   truncate,
@@ -17,6 +19,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { openPrivateFile, privateChildLocation } from '../src/internal/descriptor-files.js'
 
 import {
   captureStoredPackage,
@@ -30,6 +33,41 @@ import { type CapturedPackage, capturePackageDirectory } from '../src/package/ca
 const metadata = '---\nname: retained\ndescription: Retained fixture.\n---\n'
 
 describe('private Package/0 artifact store', () => {
+  test('retains through an opened parent after its pathname is replaced', async () => {
+    await withStoreAndSource(async (root, source) => {
+      const visible = join(root, 'parent'),
+        held = join(root, 'held'),
+        unrelated = join(root, 'unrelated')
+      await mkdir(visible)
+      await mkdir(join(visible, 'store'), { mode: 0o700 })
+      await mkdir(unrelated)
+      await writeFile(join(unrelated, 'canary'), 'untouched')
+      await writeFile(join(source, 'FLOW.md'), metadata)
+      const parent = await open(visible, constants.O_RDONLY | constants.O_DIRECTORY)
+      const captured = await capturePackageDirectory(source)
+      try {
+        const location = privateChildLocation(parent, 'store')
+        await rename(visible, held)
+        await symlink(unrelated, visible)
+        const reference = await publishCapturedPackage(location, captured)
+        const retained = await captureStoredPackage(location, reference)
+        try {
+          expect(Buffer.from(await retained.read('FLOW.md')).toString()).toBe(metadata)
+        } finally {
+          await retained.dispose()
+        }
+        expect(await readdir(unrelated)).toEqual(['canary'])
+        expect(await readFile(join(unrelated, 'canary'), 'utf8')).toBe('untouched')
+        await expect(openPrivateFile({ ...location }, constants.O_RDONLY)).rejects.toThrow(
+          'not captured',
+        )
+        expect(() => privateChildLocation(parent, '../escape')).toThrow('one leaf')
+      } finally {
+        await captured.dispose()
+        await parent.close()
+      }
+    })
+  })
   test('publishes canonical bytes and reacquires them after source disposal', async () => {
     await withStoreAndSource(async (store, source) => {
       await writeTree(source, {
