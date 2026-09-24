@@ -68,6 +68,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   reject aliases, tampering, wrong boots and a still-live guardian. A fresh
   process fences that exact coalition and confirms zero remaining tasks or the
   kernel's reaped-coalition response. Keep evidence when settlement is uncertain.
+  Authenticate the temporary socket directory's device/inode separately; after
+  fencing, remove only its exact socket names and empty directory. Never perform
+  recursive deletion using a decoded recovery path.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
   Reject overlap between host control, immutable inputs and writable trees;
   keep the narrow sysctl/process-information rules. Only explicit network
@@ -80,6 +83,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   task limits and CPU throttling can overshoot; record sampling evidence and
   fail closed on sustained accounting uncertainty. Native exit status and
   kernel emptiness are independent requirements, including after crashes.
+- `macos-native-supervisor.ts` and `macos-guardian-client.ts` own finite,
+  unprivileged user-domain jobs. Keep control, stdin, stdout and stderr separate;
+  kernel UID/PID/version bind every connection to its peer. Journal before
+  admission, apply the native profile before continuation, and retain cleanup
+  ownership through cancellation, coordinator loss and blocked output. Bound
+  aggregate output before forwarding it. Recovery removes the authenticated
+  job and socket allocation only after kernel fencing. `macos-control-channel.ts`
+  bounds private frames and queued messages; none of these modules is a public
+  backend extension point or an installed-support claim.
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
   rights and descriptors, apply the selected profile, report private readiness,
   and wait for admission before execution. Close all child control handoffs
@@ -453,6 +465,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   user-domain launchd jobs, exact cleanup and an unrelated-process sentinel;
   the execution test compiles its native fixture with the local Apple toolchain.
   `macos-captured-input.test.ts` covers anonymous read-only capture on macOS.
+  `macos-guardian.test.ts` qualifies the complete private guardian connection,
+  gated native streams, cancellation, blocked output, and both coordinator and
+  guardian loss. Portable framing cases live in `macos-control-channel.test.ts`.
   These checks are primitive evidence, not installed-host conformance.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.

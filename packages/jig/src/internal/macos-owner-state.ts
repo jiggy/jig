@@ -4,9 +4,12 @@ import {
   constants,
   fstatSync,
   fsyncSync,
+  lstatSync,
   openSync,
   readSync,
   realpathSync,
+  rmdirSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
@@ -37,10 +40,14 @@ function privateDirectory(path: string): number {
   return fd
 }
 
-function signature(token: string, identity: PrivateMacosCoalitionControl['identity']): Buffer {
+export function requirePrivateMacosOwnerDirectory(path: string): void {
+  closeSync(privateDirectory(path))
+}
+
+function signature(token: string, identity: unknown, domain = 'jig-macos-owner'): Buffer {
   if (!tokenPattern.test(token)) throw new TypeError('invalid macOS ownership token')
   return createHmac('sha256', Buffer.from(token, 'hex'))
-    .update('jig-macos-owner\0')
+    .update(`${domain}\0`)
     .update(JSON.stringify(identity))
     .digest()
 }
@@ -73,12 +80,14 @@ export function recordPrivateMacosOwner(
   return readPrivateMacosOwner(directory, token)
 }
 
-export function readPrivateMacosOwner(directory: string, token: string): PrivateMacosRecoveryOwner {
-  if (!tokenPattern.test(token)) throw new TypeError('invalid macOS ownership token')
+function readRecord(
+  directory: string,
+  name: 'owner.json' | 'sockets.json',
+): Record<string, unknown> {
   const parent = privateDirectory(directory)
   let fd: number | undefined
   try {
-    fd = openSync(join(directory, 'owner.json'), constants.O_RDONLY | O_NOFOLLOW_ANY | O_CLOEXEC)
+    fd = openSync(join(directory, name), constants.O_RDONLY | O_NOFOLLOW_ANY | O_CLOEXEC)
     const before = fstatSync(fd, { bigint: true })
     if (
       !before.isFile() ||
@@ -113,41 +122,47 @@ export function readPrivateMacosOwner(directory: string, token: string): Private
       Object.keys(record).sort().join() !== 'identity,mac'
     )
       throw new Error('invalid macOS ownership journal')
-    const raw = record.identity as Record<string, unknown>
-    if (
-      raw === null ||
-      typeof raw !== 'object' ||
-      Object.keys(raw).sort().join() !== 'bootId,coalition,guardianPid,guardianVersion' ||
-      typeof raw.bootId !== 'string' ||
-      !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(raw.bootId) ||
-      typeof raw.coalition !== 'string' ||
-      !/^[1-9][0-9]{0,19}$/.test(raw.coalition) ||
-      BigInt(raw.coalition) > 0xffffffffffffffffn ||
-      !Number.isSafeInteger(raw.guardianPid) ||
-      (raw.guardianPid as number) <= 1 ||
-      (raw.guardianPid as number) > 0x7fffffff ||
-      !Number.isSafeInteger(raw.guardianVersion) ||
-      (raw.guardianVersion as number) < 0 ||
-      (raw.guardianVersion as number) > 0xffffffff ||
-      typeof record.mac !== 'string' ||
-      !tokenPattern.test(record.mac)
-    )
-      throw new Error('invalid macOS ownership identity')
-    const identity = Object.freeze({
-      bootId: raw.bootId,
-      coalition: raw.coalition,
-      guardianPid: raw.guardianPid as number,
-      guardianVersion: raw.guardianVersion as number,
-    })
-    if (!timingSafeEqual(signature(token, identity), Buffer.from(record.mac, 'hex')))
-      throw new Error('macOS ownership authentication failed')
-    const handle = Object.freeze({ identity })
-    handles.set(handle, identity)
-    return handle
+    return record
   } finally {
     if (fd !== undefined) closeSync(fd)
     closeSync(parent)
   }
+}
+
+export function readPrivateMacosOwner(directory: string, token: string): PrivateMacosRecoveryOwner {
+  if (!tokenPattern.test(token)) throw new TypeError('invalid macOS ownership token')
+  const record = readRecord(directory, 'owner.json')
+  const raw = record.identity as Record<string, unknown>
+  if (
+    raw === null ||
+    typeof raw !== 'object' ||
+    Object.keys(raw).sort().join() !== 'bootId,coalition,guardianPid,guardianVersion' ||
+    typeof raw.bootId !== 'string' ||
+    !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(raw.bootId) ||
+    typeof raw.coalition !== 'string' ||
+    !/^[1-9][0-9]{0,19}$/.test(raw.coalition) ||
+    BigInt(raw.coalition) > 0xffffffffffffffffn ||
+    !Number.isSafeInteger(raw.guardianPid) ||
+    (raw.guardianPid as number) <= 1 ||
+    (raw.guardianPid as number) > 0x7fffffff ||
+    !Number.isSafeInteger(raw.guardianVersion) ||
+    (raw.guardianVersion as number) < 0 ||
+    (raw.guardianVersion as number) > 0xffffffff ||
+    typeof record.mac !== 'string' ||
+    !tokenPattern.test(record.mac)
+  )
+    throw new Error('invalid macOS ownership identity')
+  const identity = Object.freeze({
+    bootId: raw.bootId,
+    coalition: raw.coalition,
+    guardianPid: raw.guardianPid as number,
+    guardianVersion: raw.guardianVersion as number,
+  })
+  if (!timingSafeEqual(signature(token, identity), Buffer.from(record.mac, 'hex')))
+    throw new Error('macOS ownership authentication failed')
+  const handle = Object.freeze({ identity })
+  handles.set(handle, identity)
+  return handle
 }
 
 export function requirePrivateMacosRecoveryOwner(
@@ -156,4 +171,88 @@ export function requirePrivateMacosRecoveryOwner(
   const identity = value !== null && typeof value === 'object' ? handles.get(value) : undefined
   if (identity === undefined) throw new TypeError('macOS recovery ownership is not authentic')
   return identity
+}
+
+/** Bind ephemeral control paths to their allocation before registering the job. */
+export function recordPrivateMacosSockets(
+  ownerDirectory: string,
+  token: string,
+  directory: string,
+): void {
+  const sockets = privateDirectory(directory)
+  const parent = privateDirectory(ownerDirectory)
+  let fd: number | undefined
+  try {
+    if (!/^\/private\/tmp\/jig-native-[A-Za-z0-9]{6}$/.test(directory))
+      throw new Error('invalid macOS control allocation')
+    const stat = fstatSync(sockets, { bigint: true })
+    const identity = { directory, device: String(stat.dev), inode: String(stat.ino) }
+    const mac = signature(token, identity, 'jig-macos-sockets').toString('hex')
+    fd = openSync(
+      join(ownerDirectory, 'sockets.json'),
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW_ANY | O_CLOEXEC,
+      0o600,
+    )
+    writeFileSync(fd, `${JSON.stringify({ identity, mac })}\n`)
+    fsyncSync(fd)
+    fsyncSync(parent)
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+    closeSync(parent)
+    closeSync(sockets)
+  }
+}
+
+/** Call only after kernel fencing; remove exact socket names, never a decoded tree recursively. */
+export function removePrivateMacosSockets(ownerDirectory: string, token: string): void {
+  const record = readRecord(ownerDirectory, 'sockets.json')
+  const raw = record.identity as Record<string, unknown>
+  if (
+    raw === null ||
+    typeof raw !== 'object' ||
+    Object.keys(raw).sort().join() !== 'device,directory,inode' ||
+    typeof raw.directory !== 'string' ||
+    !/^\/private\/tmp\/jig-native-[A-Za-z0-9]{6}$/.test(raw.directory) ||
+    typeof raw.device !== 'string' ||
+    !/^[0-9]{1,20}$/.test(raw.device) ||
+    typeof raw.inode !== 'string' ||
+    !/^[1-9][0-9]{0,19}$/.test(raw.inode) ||
+    typeof record.mac !== 'string' ||
+    !tokenPattern.test(record.mac)
+  )
+    throw new Error('invalid macOS control allocation')
+  const identity = { directory: raw.directory, device: raw.device, inode: raw.inode }
+  if (
+    !timingSafeEqual(
+      signature(token, identity, 'jig-macos-sockets'),
+      Buffer.from(record.mac, 'hex'),
+    )
+  )
+    throw new Error('macOS control allocation authentication failed')
+  let fd: number
+  try {
+    fd = privateDirectory(identity.directory)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  try {
+    const stat = fstatSync(fd, { bigint: true })
+    if (String(stat.dev) !== identity.device || String(stat.ino) !== identity.inode)
+      throw new Error('macOS control allocation identity changed')
+    for (const name of ['c', 'c.in', 'c.out', 'c.err']) {
+      const path = join(identity.directory, name)
+      try {
+        const entry = lstatSync(path)
+        if (!entry.isSocket() || entry.uid !== process.getuid?.() || entry.nlink !== 1)
+          throw new Error('macOS control allocation contains an unexpected entry')
+        unlinkSync(path)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+    }
+    rmdirSync(identity.directory)
+  } finally {
+    closeSync(fd)
+  }
 }

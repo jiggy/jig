@@ -119,6 +119,19 @@ function bootIdentity(): string {
   return result.toLowerCase()
 }
 
+/** Inert identity for binding a guardian's private control connection. */
+export function privateMacosCurrentProcessIdentity(): Readonly<{
+  uid: number
+  pid: number
+  version: number
+}> {
+  const identity = processIdentity(process.pid)
+  const uid = process.getuid?.()
+  if (identity === undefined || uid === undefined || uid === 0)
+    throw new Error('macOS coordinator identity is unavailable')
+  return Object.freeze({ uid, pid: process.pid, version: identity.version })
+}
+
 function usage(
   coalition: bigint,
   absentIsEmpty = false,

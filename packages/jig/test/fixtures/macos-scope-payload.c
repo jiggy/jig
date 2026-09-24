@@ -13,6 +13,17 @@ int main(int argc, char **argv) {
   int marker = open(argv[2], O_CREAT | O_EXCL | O_WRONLY, 0600);
   if (marker < 0) return 2;
   close(marker);
+  if (!strcmp(argv[1], "echo")) {
+    char bytes[4096];ssize_t n=read(STDIN_FILENO,bytes,sizeof(bytes));
+    if(n<=0||write(STDOUT_FILENO,bytes,(size_t)n)!=n)return 6;
+    if(write(STDERR_FILENO,"native-stderr\n",14)!=14)return 7;
+    return 0;
+  }
+  if (!strcmp(argv[1], "flood")) {
+    char bytes[4096];memset(bytes,'x',sizeof(bytes));
+    for(int i=0;i<512;i++)if(write(STDOUT_FILENO,bytes,sizeof(bytes))<0)return 5;
+    sleep(3);return 0;
+  }
   if (!strcmp(argv[1], "cpu")) {
     double start = cpu();volatile unsigned long long v=1;
     while(cpu()-start < .4) for(int i=0;i<10000;i++) v=v*6364136223846793005ULL+1;

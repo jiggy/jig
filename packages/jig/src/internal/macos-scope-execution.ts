@@ -54,6 +54,63 @@ export interface PrivateMacosScopeExecution {
   stop(reason: 'cancelled' | 'coordinator_lost'): void
 }
 
+/** Inert result decoding; only an authenticated guardian can supply enforcement evidence. */
+export function normalizePrivateMacosScopeResult(value: unknown): PrivateMacosScopeResult {
+  const result = value as Record<string, unknown>
+  if (
+    result === null ||
+    typeof result !== 'object' ||
+    Object.keys(result).sort().join() !== 'evidence,exitCode,fenced,reason,signal' ||
+    result.fenced !== true ||
+    typeof result.reason !== 'string' ||
+    ![
+      'payload_exit',
+      'cancelled',
+      'coordinator_lost',
+      'deadline',
+      'setup_failed',
+      'memory_limit',
+      'process_limit',
+      'cpu_limit',
+      'accounting_failed',
+    ].includes(result.reason)
+  )
+    throw new Error('invalid macOS scope result')
+  const integer = (n: unknown, min: number, max: number) =>
+    Number.isSafeInteger(n) && (n as number) >= min && (n as number) <= max
+  if (
+    (result.exitCode !== null && !integer(result.exitCode, 0, 255)) ||
+    (result.signal !== null && !integer(result.signal, 1, 31)) ||
+    (result.exitCode !== null && result.signal !== null) ||
+    (result.reason === 'payload_exit' && result.exitCode === null && result.signal === null)
+  )
+    throw new Error('invalid macOS termination result')
+  const evidence = result.evidence as Record<string, unknown>
+  if (
+    evidence === null ||
+    typeof evidence !== 'object' ||
+    Object.keys(evidence).sort().join() !==
+      'cpuNanoseconds,incompleteSamples,maxSampleMilliseconds,pauses,peakFootprintBytes,peakTasks,samples' ||
+    ['cpuNanoseconds', 'peakFootprintBytes'].some(
+      (key) =>
+        typeof evidence[key] !== 'string' ||
+        !/^(?:0|[1-9][0-9]{0,19})$/.test(evidence[key] as string) ||
+        BigInt(evidence[key] as string) > 0xffffffffffffffffn,
+    ) ||
+    ['incompleteSamples', 'pauses', 'peakTasks', 'samples'].some(
+      (key) => !integer(evidence[key], 0, Number.MAX_SAFE_INTEGER),
+    ) ||
+    typeof evidence.maxSampleMilliseconds !== 'number' ||
+    !Number.isFinite(evidence.maxSampleMilliseconds) ||
+    evidence.maxSampleMilliseconds < 0
+  )
+    throw new Error('invalid macOS resource evidence')
+  return Object.freeze({
+    ...result,
+    evidence: Object.freeze({ ...evidence }),
+  }) as unknown as PrivateMacosScopeResult
+}
+
 /**
  * Guardian-local execution, never a coordinator or application entrypoint.
  * Durable ownership must exist before calling this function. The returned gate
@@ -92,7 +149,7 @@ export async function preparePrivateMacosScope(input: {
     Buffer.byteLength(command.join('\0')) > 16_384 ||
     Object.entries(environment).some(
       ([name, value]) =>
-        !/^[A-Z_][A-Z0-9_]*$/.test(name) ||
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ||
         /^(?:_?DYLD_|LD_)/.test(name) ||
         typeof value !== 'string' ||
         value.includes('\0'),
