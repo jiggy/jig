@@ -341,6 +341,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Reject unsupported or project-selected dependencies; never mount a
   whole installation/store or import ambient loader variables. Each native
   launcher removes Bun's private loader override before starting its client.
+- `macos-agent-runtime.ts` supplies the candidate native Mac installation
+  inspector: bounded baseline x86-64 Mach-O and universal slices, exact third-party
+  libraries, loader/executable-relative paths and inherited run paths. Consult
+  the active OS dyld cache for system libraries; never fabricate file identities
+  for cache-only images or load selected libraries into the coordinator. Reject
+  embedded loader variables, ambiguous identities, unsupported commands and
+  project routes. Provider construction must compare the inspection interval,
+  and launch must revalidate files and the qualified OS mechanism. This private
+  inspector does not independently enable installed Mac providers.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
@@ -538,6 +547,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   checks ignored install scripts, production dependency selection, source-write
   and private-file denial, and complete cleanup. Project workspace preparation
   tests use the worker's real working-directory interface without source rewriting.
+  `macos-agent-runtime.test.ts` checks malformed and universal Mach-O metadata,
+  project-excluded transitive lookup, cache membership and changed support bytes.
+  Its opted-in SDK-linked fixture proves that inspection does not invoke library
+  constructors. ELF metadata fixtures retain their separate Linux-format coverage.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
