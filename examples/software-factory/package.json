@@ -3,8 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jigging/agent-acp": "0.1.0-alpha.3",
-    "factory-repair-flow": "workspace:*"
+    "@jigging/agent-acp": "0.1.0-alpha.3"
   },
   "devDependencies": {
     "@jigging/flow": "0.1.0-alpha.12",

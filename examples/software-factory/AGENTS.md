@@ -49,6 +49,8 @@ patch authority and every merge decision stays with a person.
 - Keep the repair, capture, and evidence code inside this project. Its worker
   uses the ordinary Flow and Agent packages; factory issues and acceptance cases
   remain application-owned.
+- Bind the factory-owned specialist by its project path `flows/repair`. The
+  `npm:` selector is for a declared package dependency, not this local Flow.
 - A comparison result limits only the measured claim. Preserve tied,
   unfavorable, and failed evidence.
 

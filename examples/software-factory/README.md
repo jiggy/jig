@@ -44,6 +44,8 @@ all owned work. Keep acceptance policy outside editable source and never relax
 it after seeing a candidate. An incomplete or wholly empty source read fails
 before any worker is dispatched.
 
+Both repair Bindings select the local `flows/repair` package by project path.
+`npm:` is for a Flow selected from a declared project dependency.
 
 ## Adapt the method choice
 
