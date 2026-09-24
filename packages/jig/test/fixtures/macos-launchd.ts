@@ -29,6 +29,7 @@ export async function runMacosFixture(fixture: string, args: string[], expected:
 <key>Label</key><string>${xml(label)}</string>
 <key>ProgramArguments</key><array>${[process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', fixture, ...args, directory].map((value) => `<string>${xml(value)}</string>`).join('')}</array>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><false/>
+<key>EnvironmentVariables</key><dict><key>JIG_MACOS_TEST_CANARY</key><string>owned-synthetic-canary</string></dict>
 <key>LimitLoadToSessionType</key><string>Background</string>
 <key>StandardOutPath</key><string>${xml(output)}</string>
 <key>StandardErrorPath</key><string>${xml(errorOutput)}</string>

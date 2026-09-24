@@ -59,6 +59,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   accounting, and signal matching PID versions. Sampled footprint and process
   discovery are not hard quotas; incomplete samples cannot prove a limit or
   cleanup. Only the kernel's remaining guardian count establishes emptiness.
+  Unix control peer UID, PID and PID version come from `LOCAL_PEERTOKEN`, never
+  claimed message fields; unavailable native socket identity fails closed.
+- `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
+  Reject overlap between host control, immutable inputs and writable trees;
+  keep the narrow sysctl/process-information rules. Only explicit network
+  authority enables resolver access and the DNS Mach service. Formatting paths
+  does not validate their live filesystem identity or authorize execution.
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
   rights and descriptors, apply the selected profile, report private readiness,
   and wait for admission before execution. Close all child control handoffs

@@ -4,7 +4,9 @@
 #include <mach/mach.h>
 #include <stdio.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
@@ -13,7 +15,20 @@ int main(int argc, char **argv) {
     return read(200, value, 23) == 23 && !memcmp(value, "synthetic-private-value", 23) ? 0 : 10;
   }
   if (argc == 2 && !strcmp(argv[1], "--crash-control")) { raise(SIGABRT); return 11; }
-  if (argc != 3) return 1;
+  if (argc == 3 && !strcmp(argv[1], "--environment-control")) {
+    char data[131072] = {0};size_t length = sizeof(data);
+    int mib[3] = {CTL_KERN, KERN_PROCARGS2, atoi(argv[2])};
+    const char *canary = "JIG_MACOS_TEST_CANARY=owned-synthetic-canary";
+    int result = sysctl(mib, 3, data, &length, NULL, 0);
+    int present = result == 0 && memmem(data, length, canary, strlen(canary)) != NULL;
+    memset(data, 0, sizeof(data));return present ? 0 : 14;
+  }
+  if (argc != 4) return 1;
+  char data[131072] = {0};size_t length = sizeof(data);
+  int mib[3] = {CTL_KERN, KERN_PROCARGS2, atoi(argv[3])};
+  int result = sysctl(mib, 3, data, &length, NULL, 0);
+  memset(data, 0, sizeof(data));
+  if (result != -1 || errno != EPERM) return 15;
   for (int fd = 3; fd <= 5; fd++)
     if (fcntl(fd, F_GETFD) != -1 || errno != EBADF) return 2;
   if (fcntl(200, F_GETFD) != -1 || errno != EBADF) return 3;

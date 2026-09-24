@@ -1,24 +1,31 @@
 import { type StdioOptions, spawn, spawnSync } from 'node:child_process'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { acquirePrivateMacosCoalition } from '../../src/internal/macos-process-controls.js'
+import { privateMacosSandboxProfile } from '../../src/internal/macos-sandbox-profile.js'
 
 const [launcher, payload, directory] = process.argv.slice(2) as [string, string, string]
 const owner = acquirePrivateMacosCoalition()
-const scratch = join(directory, 'scratch')
-mkdirSync(scratch)
+const scratch = realpathSync(mkdtempSync(`${directory}-data-`))
 const forbidden = join(directory, 'host-only')
 writeFileSync(forbidden, 'synthetic-private-value')
-const quote = (value: string) => JSON.stringify(value)
-const profile = `(version 1)(deny default)
-(deny process-info* (require-not (target self)))
-(allow process-exec)
-(allow sysctl-read (sysctl-name-regex #"^hw[.]") (sysctl-name "kern.osrelease") (sysctl-name "kern.osversion") (sysctl-name "kern.ostype"))
-(allow file-read-data (literal "/"))
-(allow file-read* file-map-executable (subpath "/usr/lib") (subpath "/System/Library") (literal ${quote(payload)}))
-(allow file-read-metadata (literal "/") (literal "/private") (literal "/private/tmp"))
-(allow file-read* file-write* (subpath ${quote(scratch)}))`
+const { text: profile, bootstrap } = privateMacosSandboxProfile({
+  readOnlyFiles: [payload],
+  readOnlyTrees: [],
+  writableTrees: [scratch],
+  protectedRoots: [directory],
+  network: 'isolated',
+})
 let failed: unknown
 try {
   const inherited = openSync(forbidden, 'r')
@@ -34,6 +41,12 @@ try {
   } finally {
     closeSync(inherited)
   }
+  const environmentControl = spawnSync(payload, ['--environment-control', String(process.pid)], {
+    env: {},
+    stdio: 'ignore',
+    timeout: 2000,
+  })
+  if (environmentControl.status !== 0) throw new Error('environment positive control failed')
   for (const mode of ['refused', 'admitted', 'crash']) {
     const admitted = mode !== 'refused'
     const marker = join(scratch, mode)
@@ -47,9 +60,9 @@ try {
         '--launch',
         String(Buffer.byteLength(profile)),
         scratch,
-        'closed',
+        bootstrap,
         payload,
-        ...(mode === 'crash' ? ['--crash-control'] : [marker, forbidden]),
+        ...(mode === 'crash' ? ['--crash-control'] : [marker, forbidden, String(process.pid)]),
       ],
       {
         env: {},
@@ -130,5 +143,6 @@ if (!owner.empty()) {
   )
   throw new Error('owned cleanup is unconfirmed')
 }
+rmSync(scratch, { recursive: true })
 console.log(JSON.stringify({ empty: true, passed: failed === undefined }))
 if (failed !== undefined) throw failed

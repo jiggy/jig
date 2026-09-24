@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module'
+import type { Socket } from 'node:net'
 import { release } from 'node:os'
 
 // Private Darwin 23 ABI. Qualification of another kernel is a separate change.
@@ -15,6 +16,7 @@ type NativeSymbol =
   | 'proc_pid_rusage'
   | 'proc_signal_with_audittoken'
   | 'sysctlbyname'
+  | 'getsockopt'
 interface Native {
   ptr(bytes: Uint8Array): number
   symbols: Record<NativeSymbol, NativeFunction>
@@ -39,12 +41,38 @@ function calls(): Native {
     proc_pid_rusage: { args: ['i32', 'i32', 'ptr'], returns: 'i32' },
     proc_signal_with_audittoken: { args: ['ptr', 'i32'], returns: 'i32' },
     sysctlbyname: { args: ['ptr', 'ptr', 'ptr', 'ptr', 'u64'], returns: 'i32' },
+    getsockopt: { args: ['i32', 'i32', 'i32', 'ptr', 'ptr'], returns: 'i32' },
   })
   const opened = { ptr: ffi.ptr, symbols: library.symbols }
   if (kernelString(opened, 'kern.osversion') !== '23E224')
     throw new Error('macOS process controls are not qualified on this kernel build')
   native = opened
   return native
+}
+
+/** Kernel identity of the connected Unix peer, never a field from its message. */
+export function privateMacosPeerIdentity(socket: Socket): Readonly<{
+  uid: number
+  realUid: number
+  pid: number
+  version: number
+}> {
+  // Private, pinned Bun Node-compatibility handle; absence is a hard refusal.
+  const fd = (socket as unknown as { _handle?: { fd?: number } })._handle?.fd
+  if (socket.destroyed || fd === undefined || !Number.isSafeInteger(fd) || fd < 0)
+    throw new Error('macOS control socket descriptor is unavailable')
+  const { ptr, symbols } = calls()
+  const token = Buffer.alloc(32)
+  const length = Buffer.alloc(4)
+  length.writeUInt32LE(token.length)
+  if (symbols.getsockopt(fd, 0, 6, ptr(token), ptr(length)) !== 0 || length.readUInt32LE() !== 32)
+    throw new Error('macOS control peer identity is unavailable')
+  return Object.freeze({
+    uid: token.readUInt32LE(4),
+    realUid: token.readUInt32LE(12),
+    pid: token.readUInt32LE(20),
+    version: token.readUInt32LE(28),
+  })
 }
 
 function kernelString(native: Native, key: string): string {
