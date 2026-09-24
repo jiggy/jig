@@ -15,6 +15,10 @@ import tempfile
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
+# Keep unchanged package bytes identical across full-history and shallow CI
+# checkouts. This is the source timestamp used for the published 0.1.0a7 pair;
+# archive contents still change when the package's files change.
+REPRODUCIBLE_EPOCH = 1790201452
 
 
 def main() -> None:
@@ -45,13 +49,7 @@ def main() -> None:
                             ignore=shutil.ignore_patterns("__pycache__", "dist", "build", "*.egg-info"))
         version = tomllib.loads((source / "pyproject.toml").read_text())["project"]["version"]
         dist = temporary / "dist"
-        # Stable package-source time also permits unchanged packages to converge
-        # on later repository commits without replacing immutable registry bytes.
-        epoch = int(subprocess.check_output(
-            ["git", "log", "-1", "--format=%ct", revision, "--",
-             *[f"packages/jiggy-flow/{name}" for name in
-               ("pyproject.toml", "MANIFEST.in", "README.md", "LICENSE", "src", "tests")]],
-            cwd=ROOT, text=True).strip())
+        epoch = REPRODUCIBLE_EPOCH
         build_env = dict(os.environ, SOURCE_DATE_EPOCH=str(epoch))
         subprocess.run([sys.executable, "-m", "build", "--outdir", str(dist), str(source)], check=True, env=build_env)
         # setuptools' sdist gzip/tar timestamps are otherwise wall-clock/source

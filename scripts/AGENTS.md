@@ -42,7 +42,9 @@ operational baselines, and public-site assembly.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
-  requires clean Git source and records exact revision and artifact hashes.
+  requires clean Git source and records exact revision and artifact hashes. It
+  uses one fixed archive timestamp so shallow CI checkouts and full-history
+  checkouts produce the same bytes for unchanged package source.
 - `build-agent-candidate.ts` builds ordinary HTTP/ACP Agent packages from clean
   archived source with normal Bun packing, then checks exact installed bytes
   and records inventory, revision and hashes. It grants no native or model work.
