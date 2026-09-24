@@ -4,10 +4,20 @@
 - **Recorded:** 2026-09-24 UTC
 - **Recorder:** Primary Codex maintainer; session/thread
   `01a0d06c-bf2e-7f21-b166-20f1a697ae80`
-- **Evidence window:** Repository history through `c69548dd345b1abc19862385fc966fe912d96d37`
+- **Evidence window:** Pushed history through
+  `ab254db3054f8ed9356d4f0cb95a77a391aafbfc`, including the alpha.21 candidate
+  work through `36da2a95003c515559cd6feb733a08218f5ac368`
 - **Scope:** Product intent, failure patterns, and return-to-project guidance
-  drawn from the installed-alpha, release-latency, repair, and software-factory
-  work of 2026-09-23–24
+  drawn from the installed-alpha, release-latency, repair, software-factory,
+  release-supersession, and installed-client work of 2026-09-23–24
+
+The alpha.21 candidate was qualified at `36da2a95` before that work went
+through the protected release path. Commits `d8ee4248` and `ab254db3` later
+clarified npm publisher messages and aligned the release-graph test with its
+two-phase full-set preflight and ordered publish pass. Controlled assertions
+cover missing, older, and newer channel tags. A retained candidate from the
+earlier revision does not by itself qualify a later revision's archive.
+Recheck current runs and registry state before relying on release results.
 
 This note collects first-person judgment and causal lessons from one period of
 work. It is deliberately not a second project guide. The
@@ -146,6 +156,13 @@ Trace friction to its owner before fixing it. Prefer ordinary ecosystem
 mechanisms and a small correction at that layer; do not turn a product gap
 into an example-only workaround.
 
+Exact version strings in published examples are not inherently stale design:
+they are the reproducible public dependency a consumer will install. The
+examples now have a test that compares their `@jigging/*` versions to package
+manifests. Keep `workspace:*` for app-local unpublished workspace packages;
+do not use it to mask a missing registry dependency. When a published version
+advances, let the dependency check reveal every consumer that needs an update.
+
 ### One evidence layer was mistaken for another
 
 Source success was sometimes allowed to sound like installed support; a
@@ -172,6 +189,27 @@ inferring availability from a successful build or Git tag. New package names
 also need their own trusted-publisher setup. Protected publication authority
 and immutable-version rules are part of the release contract, not friction to
 bypass.
+
+A later Jig source change required advancing alpha.20 to alpha.21 rather than
+replacing immutable bytes. The retained alpha.21 candidate was built from
+local commit `36da2a95` and passed its package, operational, installed-hostile,
+and CLI gates. At the time, npm still served alpha.20 and the new commits had
+not run through protected publication. Treat this as dated candidate
+qualification, not a release claim.
+
+The publisher had a separate ordering defect: source and host gates for two
+revisions can finish out of order. A delayed older version could move the
+`alpha` tag backward, while retrying an already-published older version could
+wait for its version to become the newest tag. Controlled tests now cover
+numeric prerelease ordering, older absent versions, prompt verification of
+older exact versions, partial publication, missing tags, and byte mismatch
+before mutation. Publication still uses retained archives and protected
+authority. A missing or lagging dist-tag on an existing immutable archive
+cannot be repaired by the documented npm trusted-publisher OIDC path; do not
+add credentials or mutate tags outside release authority to hide that limit.
+The controlled tests do not qualify the real protected publisher. Use the
+same-revision run and its retained candidate receipt before making a release
+claim.
 
 ### Verification consumed too much time without enough user-visible pacing
 
@@ -209,6 +247,24 @@ time. Retained candidate bytes, authorization waits, queue delay, registry
 visibility, and tag/release completion belong in the end-to-end account. See
 [`delivery-latency-evidence.md`](../../.tmp/delivery-latency-evidence.md).
 
+The later pushed checkpoint `c69548dd` completed the full host gate in 362
+seconds against the same 966-second baseline. CI wall time changed only from
+449 to 438 seconds, and CI runner time rose from 738 to 1,064 seconds. Host
+runner time fell slightly from 962 to 935 seconds; combined CI-plus-host runner
+time therefore rose from 1,700 to 1,999 seconds. This is a measured latency
+versus compute tradeoff: the host path improved, aggregate compute did not.
+One observed trigger-to-npm completion was 10 minutes 43 seconds; another run
+waited 8.5 hours in GitHub's queue. The earlier 446-second host result above
+was an intermediate stage, not the later checkpoint result. Parallelism alone
+does not guarantee push-to-install time.
+
+Workflow splitting also exposed a source-test dependency-closure failure:
+tests imported `@jigging/agent-method` before its workspace runtime closure had
+been built. Build the source closure before source tests, while keeping packed
+candidate and installed checks as separate gates. A source workspace that
+imports correctly does not prove the tarball contains or resolves its declared
+dependencies.
+
 ### Public installation proved useful paths, with a native limit
 
 A fresh npm install outside the repository ran the public greeting Flow and
@@ -240,17 +296,73 @@ supports a predefined evidence packet and healthy-peer retention when one
 worker fails, not better patch quality or lower operator effort.
 
 A later independent builder adapted the application to two different Bun
-projects. That run produced no review-ready patch: one native request failed,
-and another child saw empty files despite the root's nonempty captured
-manifest. A guard was added so the same mismatched projection fails before
-worker dispatch; a separate nested projection test passed, so the root cause
-was not generalized. Subsequent source commits changed the factory's
-composition and delivery path. The recorded failed adaptation is important
-negative evidence, but it does not describe every later implementation or
-qualify current public-package use. Revisit the current application and its
-independent evidence before making a present claim. Reports:
+projects. The first run produced no review-ready patch: one native request
+failed, and another child saw empty files despite the root's nonempty captured
+manifest. A size/digest guard correctly prevented that child from running,
+but detection alone did not complete the user's task. A deterministic Flow
+reproduced the exact 24-file case and traced the divergence to descriptor
+remapping: initial child stdio targets 6 onward collided with sealed input file
+descriptors in those same slots. The host now duplicates sealed inputs above
+the child-target range before spawn, then closes them after use. The
+inner-launcher identity guard remains. The example-specific read-offset
+workarounds were removed; ordinary `FileHandle.readFile()` now works. The exact
+replay returned all 24 expected digests and sizes, and a scrambled
+descriptor-order regression exercises the collision.
+
+The same builder reran its frozen invoice-total and word-frequency issues on
+the local alpha.21 candidate. Both real defects were reproduced; each first
+proposal passed its repository tests and all four independent cases, then
+passed again in separate disposable copies. The original 24 files remained
+unchanged. A separate selected cancellation recorded a cancelled invoice
+without a patch and preserved the healthy word-frequency patch. This is a
+bounded candidate-consumer success, not proof of public registry alpha.21,
+broad repair quality, or comparative advantage. The builder report is
+`/tmp/jig-factory-builder.oEiFm1/BUILDER-REPORT.md`; verify its archive,
+receipts, and registry state before making a current claim.
+
+Factory jobs also gained an explicit method preference. `single-pass` and
+`checked-correction` dispatch directly; omission uses checked correction; only
+`auto` invokes the semantic router. Tests establish that known choices make
+zero router calls and invalid input prevents dispatch. That moved budget choice
+to the application input without creating host selection policy. The earlier
+direct-Agent comparison and later routed comparison remain tied or
+unfavorable on their selected measures. Twelve frozen router calls chose the
+expected candidate set 10/12 times. A two-issue routed factory and fixed-method
+baseline each accepted two patches, but took about 128 and 96 seconds. In the
+earlier direct-Agent comparison, after excluding a direct-arm CLI typo, the
+preselected operator-action measure tied while the direct Agent accepted 2/2
+patches versus the factory's 1/2. These are completed results, not experiments
+to tune until they favor the factory. Reports:
 [`software-factory-comparison.md`](../../.tmp/software-factory-comparison.md)
 and [`software-factory-builder.md`](../../.tmp/software-factory-builder.md).
+
+### Installed native behavior and FLOW independence remain bounded
+
+Follow-up probes using public Jig alpha.20, Agent ACP alpha.3, and installed
+Codex on a rootless Nix development host completed a one-shot task, a
+two-turn conversation, and a separate retained-state restore. These are
+distinct successes; none proves that every client or supported deployment
+behaves the same.
+
+An interrupt immediately after prompt acceptance still produced uncertain
+unfinished-turn diagnostics. Repeating after a 1.5-second delay produced a
+clean cancelled turn and settlement. The startup-race cause was not assigned
+confidently to helper, client, or host, so no retry workaround was added. The
+Nix host is not the documented supported Ubuntu environment. Existing Ubuntu
+CI lifecycle tests lack live Codex subscription authentication. Keep this host
+limit and early-interrupt uncertainty visible until a bounded installed-client
+run on an authorized supported host addresses them.
+
+A separate probe built a small Node/Bun host around published
+`@jigging/flow@0.1.0-alpha.12` and six unchanged files from an existing Flow.
+It invoked the package through public Package/0, Run/0, and JSON/0 contracts,
+classified three valid inputs, and rejected malformed and duplicate-member
+JSON. It imported no Jig implementation. The copied source directory had an
+ambient `node_modules` symlink, so the probe staged only the six regular files
+byte-for-byte. This establishes bounded outside-Jig consumption, not full host
+conformance, channels/attachments, containment, or production readiness.
+Tool-level isolation from the repository was unavailable even though the
+probe was given public-only inputs; preserve that qualification.
 
 ## Pre-mortem: ways the next delivery could go wrong
 
@@ -275,7 +387,8 @@ replace current gates or grant permission to broaden scope.
 - **An example works only in the repository workspace.** `workspace:*`, local
   package links, or private tools can hide a missing published dependency or
   setup step. Repeat the public path from a clean external project using
-  documented packages and ordinary instructions; state clearly if the example
+  documented packages and ordinary instructions. Keep public pins exact and
+  compare them mechanically to package manifests; state clearly if an example
   remains source-workspace-only.
 - **A feature declaration gets promoted into a user promise.** Imports,
   fixtures, and protocol conformance do not prove an installed live-client
@@ -321,6 +434,9 @@ When coming back after time away, use this order to rebuild context quickly:
    installed packages. For repair, inspect the current interfaces in
    `examples/tested-patch/` and `docs/jig/guide/tested-patch.md`; for factory
    work, inspect its current application contract and independent evidence.
+   If present, read `.tmp/handoff-tasks-reply.md` for the most recent execution
+   summary, then verify its claims from current run receipts, packages, and
+   registry state. `.tmp` is transient and is not an authority source.
 5. State the user outcome, the particular evidence needed, the expected
    duration of sustained checks, and what result would change the next action.
    Record dated execution detail in `.tmp/`; keep only stable causal lessons
