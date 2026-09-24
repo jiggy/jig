@@ -70,6 +70,18 @@ export function privateMacosPeerIdentity(socket: Socket): Readonly<{
   const fd = (socket as unknown as { _handle?: { fd?: number } })._handle?.fd
   if (socket.destroyed || fd === undefined || !Number.isSafeInteger(fd) || fd < 0)
     throw new Error('macOS control socket descriptor is unavailable')
+  return privateMacosDescriptorPeerIdentity(fd)
+}
+
+/** Kernel credentials for a privately owned native Unix socket. */
+export function privateMacosDescriptorPeerIdentity(fd: number): Readonly<{
+  uid: number
+  realUid: number
+  pid: number
+  version: number
+}> {
+  if (!Number.isSafeInteger(fd) || fd < 0)
+    throw new Error('macOS control socket descriptor is unavailable')
   const { ptr, symbols } = calls()
   const token = Buffer.alloc(32)
   const length = Buffer.alloc(4)

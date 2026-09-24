@@ -97,6 +97,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   cleanup. Only the kernel's remaining guardian count establishes emptiness.
   Unix control peer UID, PID and PID version come from `LOCAL_PEERTOKEN`, never
   claimed message fields; unavailable native socket identity fails closed.
+- `macos-descriptor-handoff.ts` passes at most 64 read-only file/directory
+  descriptors between kernel-authenticated trusted peers. Keep the socket owner
+  outside payload grants, bound waits and framing, set close-on-exec immediately,
+  and close every received right on refusal. Receive storage must fit a complete
+  qualified kernel control mbuf even when rejecting an oversized protocol bundle;
+  Darwin externalizes rights before copying ancillary bytes. A receipt proves
+  transfer from that peer, not immutable capture, exact file identity or writer
+  fencing. Those remain the owning protocol's obligations. Sender originals stay
+  held through transfer; the received bundle owns its duplicates until closed.
 - `macos-volume.ts` owns fixed, case-sensitive native filesystem images for
   bounded writable projections. Authenticate the allocation and backing inode
   before attachment; keep control files outside payload grants. Use in-kernel
@@ -551,6 +560,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   project-excluded transitive lookup, cache membership and changed support bytes.
   Its opted-in SDK-linked fixture proves that inspection does not invoke library
   constructors. ELF metadata fixtures retain their separate Linux-format coverage.
+  `macos-descriptor-handoff.test.ts` uses an independent SDK-native sender to
+  assert socket/message layouts, split and malformed frames, rights cleanup and
+  rejection of writable files. It also verifies anonymous capture, renamed
+  directory identity, kernel peer versions, cancellation and endpoint collisions.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
