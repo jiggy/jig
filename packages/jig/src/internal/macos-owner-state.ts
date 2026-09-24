@@ -288,7 +288,7 @@ export function removePrivateMacosSockets(ownerDirectory: string, token: string)
     const stat = fstatSync(fd, { bigint: true })
     if (String(stat.dev) !== identity.device || String(stat.ino) !== identity.inode)
       throw new Error('macOS control allocation identity changed')
-    for (const name of ['c', 'c.in', 'c.out', 'c.err', 'fd-output']) {
+    for (const name of ['c', 'c.in', 'c.out', 'c.err', 'fd-output', 'fd-inputs']) {
       const path = join(identity.directory, name)
       try {
         const entry = lstatSync(path)

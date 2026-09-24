@@ -140,6 +140,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   the slot's known private records before reuse. Never erase a live attempt's
   journal or recursively delete a recovery path. Recovery tool admission has a
   separate 30-second deadline; uncertain cleanup preserves the allocation.
+- `macos-input-projection.ts` validates the admitted input manifest and copies
+  authenticated anonymous readers through the held volume descriptor before
+  payload creation. Recheck original capture capabilities before admission,
+  kernel-authenticate both transfer peers, and verify byte counts and hashes
+  again in the guardian. Keep immutable inputs separate from writable roots;
+  close every writer and transferred descriptor before native execution. Input
+  names, aggregate bytes, directory entries and file count retain common bounds.
+  Recovery receives only its own fixed configuration, never stale input handles
+  or other payload launch fields from the failed attempt.
 - `macos-owner-state.ts` writes the guardian's authenticated boot, coalition and
   PID-version journal before descendants exist. Its per-allocation token stays
   in protected coordinator state, never arguments, payloads or the journal.
@@ -597,6 +606,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   descriptor collection after detached-descendant fencing, collection lifetime,
   interrupted creation, coordinator/guardian loss and a failed recovery guardian.
   Every cleanup attempt keeps its exact journals until fencing is confirmed.
+  `macos-guardian-input.test.ts` runs ordinary TypeScript relative imports and
+  binary/empty reads from the immutable projection, denies source writes and
+  private data, refuses changed/closed captures before execution, and recovers
+  after source handles have already closed.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,

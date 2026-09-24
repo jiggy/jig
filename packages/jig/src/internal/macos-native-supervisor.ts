@@ -3,13 +3,22 @@ import { connect, type Socket } from 'node:net'
 import { dirname, join } from 'node:path'
 import { Transform } from 'node:stream'
 import { privateMacosBefore, privateMacosControlChannel } from './macos-control-channel.js'
-import { sendPrivateMacosDescriptors } from './macos-descriptor-handoff.js'
+import {
+  createPrivateMacosDescriptorReceiver,
+  type PrivateMacosReceivedDescriptors,
+  sendPrivateMacosDescriptors,
+} from './macos-descriptor-handoff.js'
 import {
   type PrivateMacosGuardianStorage,
   preparePrivateMacosGuardianStorage,
   recoverPrivateMacosGuardianStorage,
   requirePrivateMacosGuardianStorage,
 } from './macos-guardian-storage.js'
+import {
+  normalizePrivateMacosInputs,
+  type PrivateMacosInputIdentity,
+  projectPrivateMacosInputs,
+} from './macos-input-projection.js'
 import {
   privateMacosStorageRecoveryToken,
   recordPrivateMacosOwner,
@@ -38,6 +47,7 @@ export interface PrivateMacosGuardianStart {
   readonly limits: PrivateMacosScopeLimits
   readonly maxOutputBytes: number
   readonly storage?: PrivateMacosGuardianStorage
+  readonly inputs?: readonly PrivateMacosInputIdentity[]
 }
 export interface PrivateMacosGuardianRecovery {
   readonly type: 'recover-storage'
@@ -84,7 +94,13 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
   }
   const record = object(
     value,
-    `type,ownerDirectory,ownerToken,launcher,cwd,command,environment,files,limits,maxOutputBytes${value !== null && typeof value === 'object' && Object.hasOwn(value, 'storage') ? ',storage' : ''}`,
+    `type,ownerDirectory,ownerToken,launcher,cwd,command,environment,files,limits,maxOutputBytes${[
+      'storage',
+      'inputs',
+    ]
+      .filter((key) => value !== null && typeof value === 'object' && Object.hasOwn(value, key))
+      .map((key) => `,${key}`)
+      .join('')}`,
   )
   if (
     record.type !== 'start' ||
@@ -115,6 +131,16 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
       record.files as unknown as PrivateMacosSandboxFiles,
       record.cwd,
     )
+  if (record.inputs !== undefined) {
+    normalizePrivateMacosInputs(record.inputs)
+    if (
+      record.storage === undefined ||
+      !(record.files as unknown as PrivateMacosSandboxFiles).readOnlyTrees.includes(
+        join((record.storage as PrivateMacosGuardianStorage).mountPath, 'inputs'),
+      )
+    )
+      throw new Error('macOS inputs require an immutable bounded projection')
+  }
   // preparePrivateMacosScope independently validates every executable grant and limit.
   return record as unknown as PrivateMacosGuardianStart
 }
@@ -156,6 +182,9 @@ async function supervise(
   const streams: Socket[] = []
   let execution: PrivateMacosScopeExecution | undefined
   let collector: FileHandle | undefined
+  let storageRoot: FileHandle | undefined
+  let inputReceiver: Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>> | undefined
+  let inputBundle: PrivateMacosReceivedDescriptors | undefined
   let configuration: PrivateMacosGuardianConfiguration | undefined
   const cancellation = new AbortController()
   let releaseCollection: () => void = () => {}
@@ -194,6 +223,8 @@ async function supervise(
     configuration = startMessage(await privateMacosBefore(channel.receive(), 10_000))
     if (stopped !== undefined) throw new Error('macOS guardian coordinator lost during setup')
     recordPrivateMacosOwner(configuration.ownerDirectory, configuration.ownerToken, owner)
+    if (configuration.type === 'start' && (configuration.inputs?.length ?? 0) > 0)
+      inputReceiver = await createPrivateMacosDescriptorReceiver(dirname(path), 'inputs')
     for (const suffix of ['.in', '.out', '.err']) {
       const stream = await connected(`${path}${suffix}`, coordinatorPid, coordinatorVersion)
       stream.on('error', () => stop('coordinator_lost'))
@@ -256,13 +287,36 @@ async function supervise(
       await privateMacosBefore(new Promise<void>((resolve) => control.end(resolve)), 1000)
       return
     }
-    if (configuration.storage !== undefined)
-      collector = await preparePrivateMacosGuardianStorage(
+    if (inputReceiver !== undefined) {
+      inputBundle = await inputReceiver.receive(
+        { pid: coordinatorPid, version: coordinatorVersion },
+        5000,
+        cancellation.signal,
+      )
+      await inputReceiver.close()
+    }
+    if (configuration.storage !== undefined) {
+      const storage = await preparePrivateMacosGuardianStorage(
         configuration.ownerDirectory,
         configuration.ownerToken,
         configuration.storage,
         cancellation.signal,
       )
+      collector = storage.collector
+      storageRoot = storage.directory
+    }
+    if (inputBundle !== undefined) {
+      await projectPrivateMacosInputs(
+        storageRoot!,
+        configuration.inputs!,
+        inputBundle,
+        cancellation.signal,
+      )
+      inputBundle.close()
+      inputBundle = undefined
+    }
+    await storageRoot?.close()
+    storageRoot = undefined
     cancellation.signal.throwIfAborted()
     execution = await preparePrivateMacosScope({
       ...configuration,
@@ -384,6 +438,8 @@ async function supervise(
       await new Promise((resolve) => setTimeout(resolve, 20))
     }
     if (!owner.empty()) throw new Error('macOS guardian cleanup is unconfirmed')
+    await storageRoot?.close()
+    storageRoot = undefined
     await collector?.close()
     collector = undefined
     if (configuration?.type === 'start' && configuration.storage !== undefined)
@@ -402,6 +458,9 @@ async function supervise(
     if (stopped === undefined) throw error
   } finally {
     clearTimeout(timer)
+    inputBundle?.close()
+    await inputReceiver?.close()
+    await storageRoot?.close()
     await collector?.close()
     for (const socket of streams) socket.destroy()
     channel.close()

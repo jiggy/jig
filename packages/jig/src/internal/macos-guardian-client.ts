@@ -4,15 +4,18 @@ import { lstat, mkdir, mkdtemp, rmdir, writeFile } from 'node:fs/promises'
 import { createServer, type Server, type Socket } from 'node:net'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateMacosBefore, privateMacosControlChannel } from './macos-control-channel.js'
 import {
   createPrivateMacosDescriptorReceiver,
   type PrivateMacosReceivedDescriptors,
+  sendPrivateMacosDescriptors,
 } from './macos-descriptor-handoff.js'
 import {
   allocatePrivateMacosGuardianStorage,
   requirePrivateMacosGuardianStorage,
 } from './macos-guardian-storage.js'
+import { normalizePrivateMacosInputs } from './macos-input-projection.js'
 import type {
   PrivateMacosGuardianConfiguration,
   PrivateMacosGuardianStart,
@@ -129,7 +132,8 @@ async function recoverStorageWithGuardian(
   }
   resetPrivateMacosRecoveryState(ownerDirectory)
   const recovery = await prepareGuardian({
-    ...runtime,
+    bun: runtime.bun,
+    supervisor: runtime.supervisor,
     configuration: {
       type: 'recover-storage',
       ownerDirectory,
@@ -166,12 +170,17 @@ export interface PrivateMacosGuardian {
   continue(): void
   cancel(): void
 }
+export interface PrivateMacosGuardianCapturedInput {
+  readonly path: string
+  readonly input: PrivateCapturedInput
+}
 
 /** Finite user-domain job. Installed-support sealing and admission remain caller responsibilities. */
 export async function preparePrivateMacosGuardian(input: {
   readonly bun: string
   readonly supervisor: string
   readonly configuration: PrivateMacosGuardianStart
+  readonly capturedInputs?: readonly PrivateMacosGuardianCapturedInput[]
 }): Promise<PrivateMacosGuardian> {
   return prepareGuardian(input)
 }
@@ -180,9 +189,29 @@ async function prepareGuardian(input: {
   readonly bun: string
   readonly supervisor: string
   readonly configuration: PrivateMacosGuardianConfiguration
+  readonly capturedInputs?: readonly PrivateMacosGuardianCapturedInput[]
 }): Promise<PrivateMacosGuardian> {
   const coordinator = privateMacosCurrentProcessIdentity()
   const configuration = structuredClone(input.configuration)
+  const captures = (input.capturedInputs ?? []).map((file) =>
+    Object.freeze({ path: file.path, input: file.input }),
+  )
+  const identities = normalizePrivateMacosInputs(
+    configuration.type === 'start' ? (configuration.inputs ?? []) : [],
+  )
+  const descriptors = () => {
+    const held = captures.map((file) => ({
+      path: file.path,
+      ...requirePrivateCapturedInput(file.input),
+    }))
+    const observed = normalizePrivateMacosInputs(
+      held.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+    )
+    if (JSON.stringify(observed) !== JSON.stringify(identities))
+      throw new Error('macOS input captures do not match the admitted manifest')
+    return held.map((file) => file.fd)
+  }
+  descriptors()
   const storage = configuration.type === 'start' ? configuration.storage : undefined
   const cleanupTimeoutMs =
     configuration.type === 'start' ? configuration.limits.cleanupTimeoutMs : 5000
@@ -492,11 +521,32 @@ async function prepareGuardian(input: {
       completion,
       fenced,
       release,
-      admit() {
+      async admit() {
         if (phase !== 'prepared') throw new Error('macOS guardian is not prepared')
-        phase = 'admitted'
-        channel.send({ type: 'admit' })
-        return ready
+        try {
+          const fds = descriptors()
+          phase = 'admitted'
+          channel.send({ type: 'admit' })
+          if (fds.length)
+            await sendPrivateMacosDescriptors(
+              join(directory, 'fd-inputs'),
+              guardian!,
+              fds,
+              5000,
+              transferCancellation.signal,
+            )
+          return await ready
+        } catch (error) {
+          if (currentPhase() !== 'terminal') {
+            try {
+              channel.send({ type: 'cancel' })
+            } catch {
+              control?.destroy()
+            }
+          }
+          await completion
+          throw error
+        }
       },
       continue() {
         if (phase !== 'ready') throw new Error('macOS guardian is not ready')

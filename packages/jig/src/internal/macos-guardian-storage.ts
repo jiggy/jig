@@ -67,19 +67,22 @@ export async function preparePrivateMacosGuardianStorage(
   token: string,
   storage: PrivateMacosGuardianStorage,
   signal: AbortSignal,
-): Promise<FileHandle | undefined> {
+): Promise<Readonly<{ directory: FileHandle; collector: FileHandle | undefined }>> {
   const volume = await attachPrivateMacosVolume(controlPath(owner), token, signal)
   try {
     signal.throwIfAborted()
     if (volume.path !== storage.mountPath || volume.capacityBytes > storage.bytes)
       throw new Error('macOS guardian storage allocation changed')
-    for (const name of ['work', 'tmp', 'output'])
+    for (const name of ['work', 'tmp', 'output', 'inputs'])
       privateMacosMkdirAt(volume.directory.fd, name, 0o700)
-    if (storage.collect !== null)
-      return await privateMacosOpenAt(volume.directory.fd, storage.collect, DIRECTORY)
-    return undefined
-  } finally {
+    const collector =
+      storage.collect === null
+        ? undefined
+        : await privateMacosOpenAt(volume.directory.fd, storage.collect, DIRECTORY)
+    return Object.freeze({ directory: volume.directory, collector })
+  } catch (error) {
     await volume.directory.close()
+    throw error
   }
 }
 
