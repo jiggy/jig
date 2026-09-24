@@ -89,7 +89,7 @@ for application in tested-patch software-factory request-triage support-case con
     cp -R examples/tested-patch/flows/repair "$application_copy/methods/repair"
   fi
   bun -e '
-    import { readdir } from "node:fs/promises";
+    import { readdir, stat } from "node:fs/promises";
     import { dirname, join } from "node:path";
     const path = Bun.argv[1];
     const candidates = {
@@ -100,7 +100,8 @@ for application in tested-patch software-factory request-triage support-case con
     const manifests = [path];
     for (const directory of ["flows", "methods"]) {
       const members = join(dirname(path), directory);
-      if (!(await Bun.file(members).exists())) continue;
+      const memberInfo = await stat(members).catch(() => undefined);
+      if (!memberInfo?.isDirectory()) continue;
       for (const entry of await readdir(members, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
         const child = join(members, entry.name, "package.json");
