@@ -75,15 +75,8 @@ export async function readRepairInput(
         const info = await file.stat()
         if (!info.isFile() || info.size > remaining)
           throw new TypeError('Expected regular text files totaling at most 64 KiB.')
-        const buffer = Buffer.alloc(remaining + 1)
-        let used = 0
-        while (used < buffer.length) {
-          // Host attachments can be backed by inherited file descriptions. Read from
-          // an explicit position instead of trusting their ambient cursor.
-          const { bytesRead } = await file.read(buffer, used, buffer.length - used, used)
-          if (bytesRead === 0) break
-          used += bytesRead
-        }
+        const buffer = await file.readFile()
+        const used = buffer.byteLength
         if (used > remaining) throw new TypeError('Source exceeds 64 KiB.')
         if (used !== info.size)
           throw new TypeError('Source changed or could not be read completely.')

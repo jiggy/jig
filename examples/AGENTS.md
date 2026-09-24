@@ -91,8 +91,8 @@ authored examples, not independent consumer evidence or promoted Starters.
 - [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
   repair with contained commands and independently checked patch evidence.
 - [software-factory/AGENTS.md](software-factory/AGENTS.md) — A bounded two-issue
-  factory selecting reviewed repair configurations through a reusable Semantic Router,
-  with checkpoints and a human merge gate.
+  factory selecting reviewed repair configurations directly or through an optional
+  Semantic Router, with checkpoints and a human merge gate.
 - [contact-import/AGENTS.md](contact-import/AGENTS.md) — A CSV preview with
   interchangeable code, Agent, and mixed column-mapping methods.
 - [incident-brief/AGENTS.md](incident-brief/AGENTS.md) — Internal drafting with

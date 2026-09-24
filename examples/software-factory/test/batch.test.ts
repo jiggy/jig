@@ -12,6 +12,7 @@ const job = {
   checks: 'logs',
   issue: 'Repair both defects.',
   editPaths: ['src/parse.ts', 'src/report.ts'],
+  method: 'auto',
 }
 test('batch validates its paths, identity, check policy, and bounded size before dispatch', () => {
   expect(batchJobs({ jobs: [job] })).toEqual([job])
@@ -23,6 +24,7 @@ test('batch validates its paths, identity, check policy, and bounded size before
     { jobs: [{ ...job, directory: '/tmp' }] },
     { jobs: [{ ...job, checks: '../invented' }] },
     { jobs: [{ ...job, cancelAfterMs: 0 }] },
+    { jobs: [{ ...job, method: 'unreviewed' }] },
     { jobs: [{ ...job, id: '../out' }] },
   ])
     expect(() => batchJobs(input)).toThrow()
@@ -298,6 +300,63 @@ async function batchFixture(check: (run: RunContext, out: string) => Promise<voi
   }
 }
 
+test('explicit and omitted methods dispatch without a router call and retain selection evidence', async () => {
+  await batchFixture(async (run, out) => {
+    const { result } = await syntheticRepair()
+    const slots: string[] = []
+    const checkpoints: any[] = []
+    const actual = await repairBatch({
+      ...run,
+      input: {
+        jobs: [
+          { ...job, method: 'single-pass' },
+          { ...job, id: 'second', method: undefined },
+        ],
+      },
+      call: async (call) => {
+        if (call.slot === 'router') throw new Error('direct selection must not route')
+        if (call.slot === 'progress') {
+          checkpoints.push(structuredClone(call.input))
+          return { outcome: 'done', output: null }
+        }
+        slots.push(call.slot)
+        return result
+      },
+    } as unknown as RunContext)
+    expect(slots.sort()).toEqual(['checked-correction', 'single-pass'])
+    expect((actual.output as any).jobs.map((value: any) => value.selection)).toEqual([
+      { source: 'explicit', method: 'single-pass' },
+      { source: 'default', method: 'checked-correction' },
+    ])
+    expect(
+      checkpoints
+        .at(-1)
+        .evidence.jobs.map((value: any) => value.selection.source)
+        .sort(),
+    ).toEqual(['default', 'explicit'])
+    expect(await readFile(join(out, 'summary.txt'), 'utf8')).toContain(
+      'selection: default → checked-correction',
+    )
+  })
+})
+
+test('unknown method rejects the complete batch before routing or repair', async () => {
+  await batchFixture(async (run) => {
+    let calls = 0
+    await expect(
+      repairBatch({
+        ...run,
+        input: { jobs: [job, { ...job, id: 'second', method: 'unreviewed' }] },
+        call: async () => {
+          calls++
+          throw new Error('must not dispatch')
+        },
+      } as unknown as RunContext),
+    ).rejects.toThrow('Choose single-pass')
+    expect(calls).toBe(0)
+  })
+})
+
 test('factory validates exact routing, dispatches distinct slots and checkpoints decision context', async () => {
   await batchFixture(async (run, out) => {
     const { result } = await syntheticRepair()
@@ -331,14 +390,17 @@ test('factory validates exact routing, dispatches distinct slots and checkpoints
     expect(
       saves
         .at(-1)
-        .evidence.jobs.map((j: any) => j.routing.slot)
+        .evidence.jobs.map((j: any) => j.selection.method)
         .sort(),
     ).toEqual(workers)
-    expect((actual.output as any).jobs[0].routing).toMatchObject({
-      input: { task: job.issue },
-      result: { output: { candidateId: 'p1' } },
+    expect((actual.output as any).jobs[0].selection).toMatchObject({
+      source: 'auto',
+      method: 'single-pass',
+      routing: { input: { task: job.issue }, result: { output: { candidateId: 'p1' } } },
     })
-    expect(await readFile(join(out, 'summary.txt'), 'utf8')).toContain('routing: single-pass')
+    expect(await readFile(join(out, 'summary.txt'), 'utf8')).toContain(
+      'selection: auto → single-pass',
+    )
   })
 })
 
@@ -445,7 +507,7 @@ test('failed or forged worker evidence cannot become a patch after a valid route
       expect((actual.output as any).jobs[0]).toMatchObject({
         status: 'failed',
         code: fail === 'uncertain' ? 'UNCERTAIN' : 'INVALID_RESULT',
-        routing: { slot: 'single-pass' },
+        selection: { source: 'auto', method: 'single-pass' },
       })
       expect((actual.output as any).jobs[1]).toMatchObject({ ready: true })
       expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])

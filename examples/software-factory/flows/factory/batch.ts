@@ -18,6 +18,7 @@ interface Job {
   checks: string
   issue: string
   editPaths: string[]
+  method?: 'single-pass' | 'checked-correction' | 'auto'
   cancelAfterMs?: number
 }
 export function batchJobs(value: unknown): Job[] {
@@ -32,9 +33,18 @@ export function batchJobs(value: unknown): Job[] {
     throw new TypeError('Supply one or two jobs.')
   for (const job of input.jobs) {
     if (
+      job?.method !== undefined &&
+      job.method !== 'auto' &&
+      !methods.some((method) => method.slot === job.method)
+    )
+      throw new TypeError('Choose single-pass, checked-correction, or auto for method.')
+    if (
       !job ||
       Object.keys(job).some(
-        (k) => !['id', 'directory', 'checks', 'issue', 'editPaths', 'cancelAfterMs'].includes(k),
+        (k) =>
+          !['id', 'directory', 'checks', 'issue', 'editPaths', 'method', 'cancelAfterMs'].includes(
+            k,
+          ),
       ) ||
       typeof job.id !== 'string' ||
       !/^[a-z][a-z0-9-]{0,31}$/.test(job.id) ||
@@ -95,14 +105,16 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
   const results = await Promise.all(
     prepared
       .map(async ({ job, input }) => {
-        const routingInput = { task: input.issue, candidates }
-        const routing: Record<string, JsonValue> = { input: routingInput }
+        const selection: Record<string, JsonValue> = {
+          source:
+            job.method === undefined ? 'default' : job.method === 'auto' ? 'auto' : 'explicit',
+        }
         const captured = {
           id: job.id,
           directory: job.directory,
           baseDigest: identity(input.files),
           acceptanceDigest: identity(input.cases),
-          routing,
+          selection,
         }
         const selected = new AbortController()
         const timer =
@@ -112,29 +124,36 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
         let result: RunResult
         try {
           run.signal.throwIfAborted()
-          const decision = await run.call(
-            { operationId: `route:${job.id}`, slot: 'router', input: routingInput },
-            { signal: selected.signal },
+          let method = methods.find(
+            (candidate) => candidate.slot === (job.method ?? 'checked-correction'),
           )
-          run.signal.throwIfAborted()
-          // A replacement router has no more authority than the ordinary router.
-          let route: ReturnType<typeof checkRoutingResult>
-          try {
-            route = checkRoutingResult(decision, candidates)
-          } catch {
-            throw new OperationError('INVALID_RESULT', 'Router returned an invalid decision.')
+          if (job.method === 'auto') {
+            const routingInput = { task: input.issue, candidates }
+            const routing: Record<string, JsonValue> = { input: routingInput }
+            selection.routing = routing
+            const decision = await run.call(
+              { operationId: `route:${job.id}`, slot: 'router', input: routingInput },
+              { signal: selected.signal },
+            )
+            run.signal.throwIfAborted()
+            // A replacement router has no more authority than the ordinary router.
+            let route: ReturnType<typeof checkRoutingResult>
+            try {
+              route = checkRoutingResult(decision, candidates)
+            } catch {
+              throw new OperationError('INVALID_RESULT', 'Router returned an invalid decision.')
+            }
+            routing.result = route
+            if (route.outcome !== 'done' || route.output.candidateId === null)
+              return { ...captured, status: 'unrouted' }
+            method = methods.find((candidate) => candidate.id === route.output.candidateId)
           }
-          routing.result = route
-          if (route.outcome !== 'done' || route.output.candidateId === null)
-            return { ...captured, status: 'unrouted' }
-          const candidateId = route.output.candidateId
-          const method = methods.find((candidate) => candidate.id === candidateId)
           if (!method)
             throw new OperationError('INVALID_RESULT', 'The selected method has no reviewed slot.')
-          routing.slot = method.slot
+          selection.method = method.slot
           // Do not reset the job budget after routing, including between calls.
           if (selected.signal.aborted)
-            throw new OperationError('CANCELLED', 'The routing and repair interval expired.')
+            throw new OperationError('CANCELLED', 'The job interval expired.')
           result = await run.call(
             { operationId: `repair:${job.id}`, slot: method.slot, input },
             { signal: selected.signal },
@@ -147,7 +166,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
             ...captured,
             status: 'failed',
             code: value.code ?? 'EXECUTION_FAILED',
-            message: value.message ?? 'Routing or repair failed.',
+            message: value.message ?? 'Selection or repair failed.',
             ...(value.details === undefined ? {} : { details: value.details }),
           }
         } finally {
@@ -247,13 +266,16 @@ function summary(value: JsonValue): string {
     id: string
     ready?: boolean
     code?: string
-    routing: {
-      slot?: string
-      result?: { outcome: string; output: { candidateId?: string | null; reason: string } }
+    selection: {
+      source: string
+      method?: string
+      routing?: {
+        result?: { outcome: string; output: { candidateId?: string | null; reason: string } }
+      }
     }
   }
-  const route = job.routing.result
-  const selection =
-    job.routing.slot ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
-  return `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing: ${selection}${job.code ? `; ${job.code}` : ''}${route ? `; ${route.output.reason.replace(/[\r\n]+/g, ' ')}` : ''}`
+  const route = job.selection.routing?.result
+  const chosen =
+    job.selection.method ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
+  return `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; selection: ${job.selection.source} → ${chosen}${job.code ? `; ${job.code}` : ''}${route ? `; ${route.output.reason.replace(/[\r\n]+/g, ' ')}` : ''}`
 }

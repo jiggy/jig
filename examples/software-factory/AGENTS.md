@@ -2,14 +2,14 @@
 
 ## Purpose
 
-Show bounded semantic dispatch over a fixed two-issue set: reusable Agent
-judgment chooses a reviewed repair configuration, while application checks retain
-patch authority and every merge decision stays with a person.
+Show bounded repair composition over a fixed two-issue set: explicit application
+choice normally selects a reviewed repair configuration, optional Agent routing
+can choose from the same finite set, and every merge decision stays with a person.
 
 ## Ownership
 
-- `flows/factory/` owns bounded batch validation, candidate-to-slot policy,
-  source capture, independent evidence and routing-result validation, parallel
+- `flows/factory/` owns bounded batch validation, method-to-slot policy,
+  source capture, independent evidence and optional routing-result validation, parallel
   job dispatch, checkpoint aggregation, conflict detection, and final summaries.
 - `flows/router/` owns the portable decision Flow, separately governed below.
 - `flows/repair/` owns the factory's independently editable repair specialist.
@@ -29,10 +29,14 @@ patch authority and every merge decision stays with a person.
   independently; preserve a healthy result when its peer fails or is cancelled.
   Reject incomplete or wholly empty project reads instead of evaluating invented
   empty candidates.
-- Route only after all inputs are captured. Validate complete router results and
-  exact membership before dispatch; abstention, blocked/limit, invalid results and
-  failures never silently choose a default. Retain context, candidates and decision
-  with settled job evidence. `cancelAfterMs` covers routing and repair together.
+- Each job may select `single-pass`, `checked-correction`, or `auto`; omission
+  uses checked correction. Validate every selection before paid work. Explicit
+  and default choices dispatch directly. Route `auto` only after all inputs are
+  captured; validate complete router results and exact membership before
+  dispatch. Abstention, blocked/limit, invalid results and failures never
+  silently choose a default. Retain the selection source, chosen method, and
+  any routing context and decision with settled job evidence. `cancelAfterMs`
+  covers the complete selection-and-repair interval.
 - Router and worker execute sequentially within each job, keeping two concurrent
   branches within the existing two-level-plus-effect resource reservations.
 - Both configurations use identical acceptance policy; one stops after its first
