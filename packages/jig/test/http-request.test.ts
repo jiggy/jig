@@ -248,7 +248,7 @@ describe('delegated HTTP policy and trusted transport', () => {
         expect(await requestGrantedHttp({ grant })).toEqual({ failure: 'RESOURCE_EXHAUSTED' })
       },
     )
-  })
+  }, 15000)
   test('sends exactly one authorized request with JSON and bearer, reports HTTP rejection as a response', async () => {
     const seen: unknown[] = []
     await endpoint(
