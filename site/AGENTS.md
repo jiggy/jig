@@ -11,6 +11,10 @@ Jig public sites.
 - `flow/` and `jig/` own their site-specific navigation, styles, and public-root
   files. Each site's `diagrams.css` fits guide SVGs to the reading column;
   source diagrams remain with their owning guide under `docs/`.
+- Each site's `public/mark.svg` is its selected monochrome emblem. Keep its
+  path geometry identical in `mark-light.svg` and `favicon.svg`; those files
+  provide the light-on-dark and browser-icon treatments. Jig uses the striped
+  switch mark; FLOW uses its filled counterpart.
 - FLOW publishes the Python SDK guide at `/guide/python`; navigation and
   `llms.txt` link it, and site assembly checks the route. Jig introduces
   composition at `/guide/request-triage`; its navigation, generated index, and

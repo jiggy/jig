@@ -104,6 +104,10 @@ export default defineConfig({
   title: 'Jig',
   description: 'Reusable methods. Your Agents. Power under control.',
   icon: new URL('./public/favicon.svg', import.meta.url).href,
+  logo: {
+    light: '/mark.svg',
+    dark: '/mark-light.svg',
+  },
   logoText: 'Jig',
   builderConfig: {
     output: { cleanDistPath: false },

@@ -56,6 +56,10 @@ export default defineConfig({
   title: 'FLOW',
   description: 'An independent standard for sharing executable know-how.',
   icon: new URL('./public/favicon.svg', import.meta.url).href,
+  logo: {
+    light: '/mark.svg',
+    dark: '/mark-light.svg',
+  },
   logoText: 'FLOW',
   builderConfig: {
     output: { cleanDistPath: false },
