@@ -7,5 +7,27 @@
   "attachments": {
     "source": "read",
     "deliverables": "read-write"
+  },
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "required": false,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": ["baseline", "proposal", "check", "finished"]
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        },
+        "required": ["phase", "attempt"],
+        "additionalProperties": false
+      }
+    }
   }
 }

@@ -29,6 +29,11 @@ jig review --allow-resolution-network
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
+Add `--receive progress` to see the repair specialist's phase and attempt
+while the Run is active. Redirected stdout then uses NDJSON records; only the
+terminal record establishes the outcome. Phase records do not include Agent
+text or guarantee that a candidate passed its checks.
+
 The synthetic fixture is an HTTP log reporter with defects in parsing and
 aggregation. Open `repair-result/files/summary.txt`. A passing repair produces
 `review.patch`; valid unsuccessful proposals remain `proposal-N.patch`.
@@ -54,7 +59,8 @@ Its leaf receives JSON and uses Agent and Project Command capabilities, with no
 attachments or child Flows. Source selection and delivery belong to the root.
 
 The output destination must be new. Ctrl-C cancels owned work. This example
-publishes final results only; an interrupted Run does not preserve partial patches.
+publishes patches only at completion; an interrupted Run does not preserve
+partial patches. Optional progress is transient.
 Selected source reaches the configured provider.
 
 ## Make it your own

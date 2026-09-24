@@ -31,10 +31,11 @@ only after executed checks and independent acceptance.
   Retention needs a separate grant; unavailability blocks a needed correction,
   never triggers replay or a fresh-call fallback. Evidence receipts are not
   cross-Run continuation handles.
-- The reusable leaf can publish optional phase records for other consumers.
-  This introductory root connects no monitoring channels. Batch and observation
-  checks live in Jig's private repair fixture; they reuse this leaf and evidence
-  helpers without making the public walkthrough a batch application.
+- The reusable leaf can publish optional phase records. The root forwards an
+  explicitly requested progress writer to it without interpreting progress as
+  acceptance, retaining messages, or publishing partial patches. The leaf
+  explicitly closes that writer on normal completion. Batch and
+  observation checks live in Jig's private repair fixture.
 - Reproduce an independent baseline mismatch before an Agent call. The reviewed
   `maxProposals` setting is 1 or 2 (default 2); 1 stops after its first checked
   proposal, while 2 permits one correction. Both use identical acceptance rules;

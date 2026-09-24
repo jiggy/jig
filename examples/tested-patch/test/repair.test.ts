@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { OperationError } from '@jigging/flow'
+import { OperationError, type RunContext } from '@jigging/flow'
 import { evaluate } from '../flows/repair/evidence.ts'
 import { candidate, digest, parseInput, parseProposal } from '../flows/repair/policy.ts'
 import { input, proposal, recorded, syntheticRepair } from './fixture.ts'
@@ -15,6 +15,30 @@ test('multi-file repair delegates Agent work and retains independent command evi
   expect(candidate(input, proposal)['test/project.test.ts']).toBe(
     input.files['test/project.test.ts'],
   )
+})
+
+test('successful progress publishes its final phase and closes the transferred writer', async () => {
+  const phases: unknown[] = []
+  let closed = false
+  const progress = {
+    direction: 'send' as const,
+    send: async (phase: unknown) => {
+      expect(closed).toBe(false)
+      phases.push(phase)
+    },
+    close: async () => {
+      closed = true
+    },
+  } as unknown as NonNullable<RunContext['channels']['progress']>
+  const { result } = await syntheticRepair({ channels: { progress } })
+  expect(result.outcome).toBe('done')
+  expect(phases).toEqual([
+    { phase: 'baseline', attempt: 0 },
+    { phase: 'proposal', attempt: 1 },
+    { phase: 'check', attempt: 1 },
+    { phase: 'finished', attempt: 1 },
+  ])
+  expect(closed).toBe(true)
 })
 test('unsuccessful repairs retain both proposals against the original', async () => {
   const { result, agents } = await syntheticRepair({ success: false })

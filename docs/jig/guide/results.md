@@ -87,6 +87,14 @@ whether the Flow started. The public result contains no more specific cause;
 keep the command and diagnostic code for investigation and inspect any effects
 before starting new work.
 
+A `DEADLINE_EXCEEDED` result for a contained HTTP request or Project Command may
+name the worker phase and which configured limit capped its effective deadline:
+the root Run, parent Flow, HTTP grant, or Project Command limit. This identifies
+the work and budget involved; it does not prove whether a remote request was
+accepted or whether a command had side effects. Inspect retained evidence before
+starting a new Run. Increasing `--timeout` helps only when the root Run was the
+limiting budget and the work can finish within the other limits.
+
 A protocol error means the Flow did not complete Run/0 correctly. Check its
 SDK revision and stdout use, then inspect the result and any effects before
 running again. After changing source or dependencies, review the changes first.

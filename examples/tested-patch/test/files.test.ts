@@ -103,6 +103,7 @@ for (const success of [true, false]) {
     const run = {
       input: { issue: input.issue, editPaths: input.editPaths },
       signal: new AbortController().signal,
+      channels: {},
       attachments: {
         source: { access: 'read', path: join(import.meta.dir, '../fixtures/log-report') },
         deliverables: { access: 'read-write', path: destination },
@@ -123,6 +124,32 @@ for (const success of [true, false]) {
   })
 }
 
+test('the root passes a requested progress writer to the repair specialist', async () => {
+  const destination = await directory()
+  const { result } = await syntheticRepair()
+  const progress = { direction: 'send', send: async () => {} }
+  let observed: unknown
+  const run = {
+    input: { issue: input.issue, editPaths: input.editPaths },
+    signal: new AbortController().signal,
+    channels: { progress },
+    attachments: {
+      source: { access: 'read', path: join(import.meta.dir, '../fixtures/log-report') },
+      deliverables: { access: 'read-write', path: destination },
+    },
+    call: async (request: unknown) => {
+      observed = request
+      return result
+    },
+  } as unknown as RunContext
+  expect(await repairFiles(run)).toEqual(result)
+  expect(observed).toMatchObject({
+    operationId: 'repair',
+    slot: 'repair',
+    channels: { progress },
+  })
+})
+
 for (const mode of ['uncertain', 'cancelled', 'invalid-evidence']) {
   test(`${mode} work cannot publish a final patch or trigger replay`, async () => {
     const destination = await directory()
@@ -133,6 +160,7 @@ for (const mode of ['uncertain', 'cancelled', 'invalid-evidence']) {
     const run = {
       input: { issue: input.issue, editPaths: input.editPaths },
       signal: controller.signal,
+      channels: {},
       attachments: {
         source: { access: 'read', path: join(import.meta.dir, '../fixtures/log-report') },
         deliverables: { access: 'read-write', path: destination },

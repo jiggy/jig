@@ -156,13 +156,19 @@ export async function executePrivateContainedEffect(
   } catch {
     return failed('UNAVAILABLE', 'the admitted contained-operation runtime cannot be reproduced')
   }
+  const ownDeadlineUnixMs =
+    Date.now() +
+    (prepared.kind === 'http' ? prepared.value.grant.timeoutMs : PROJECT_COMMAND_LIMITS.timeoutMs)
   const deadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
-    Date.now() +
-      (prepared.kind === 'http'
-        ? prepared.value.grant.timeoutMs
-        : PROJECT_COMMAND_LIMITS.timeoutMs),
+    ownDeadlineUnixMs,
+  )
+  const deadlineLimit = privateContainedDeadlineLimit(
+    prepared.kind,
+    input.parent.intent.deadlineUnixMs,
+    input.parentDeadlineUnixMs,
+    ownDeadlineUnixMs,
   )
   if (deadlineUnixMs <= Date.now())
     return failed('DEADLINE_EXCEEDED', 'the operation deadline elapsed before dispatch')
@@ -228,6 +234,7 @@ export async function executePrivateContainedEffect(
   }
   const files: PrivateLinuxCapturedInput[] = []
   let attempted = false
+  let phase = 'preparing input'
   try {
     for (const [path, source] of Object.entries(
       prepared.kind === 'command' ? prepared.value.input.files : {},
@@ -252,14 +259,18 @@ export async function executePrivateContainedEffect(
       sandbox: sealed.identity as unknown as JsonValue,
     })
     attempted = true
+    phase = 'starting the worker'
     const component = await sealed.admit(input.signal)
     const stdin = prepared.kind === 'command' ? (prepared.value.input.stdin ?? '') : httpInput!
+    phase = 'collecting the worker result'
     const observed = await collectEffect(
       component,
       stdin,
       prepared.kind === 'http' ? JSON_1_LIMITS.bytes : PROJECT_COMMAND_LIMITS.streamBytes,
     )
+    phase = 'fencing and cleanup'
     await releaseEffect(input, lifecycle, observed.fence)
+    phase = 'checking the collected result'
     const reason = observed.fence.stopReason
     if (!['payload_exit', 'cancelled', 'deadline'].includes(reason))
       return failed(
@@ -346,7 +357,7 @@ export async function executePrivateContainedEffect(
     if (Date.now() >= deadlineUnixMs)
       return failed(
         'DEADLINE_EXCEEDED',
-        'the contained operation deadline elapsed; effects may have occurred',
+        privateContainedDeadlineMessage(prepared.kind, deadlineLimit, phase),
       )
     return failed(
       attempted ? 'UNCERTAIN' : 'EXECUTION_FAILED',
@@ -357,6 +368,27 @@ export async function executePrivateContainedEffect(
   } finally {
     for (const file of files) closeSync(file.fd)
   }
+}
+
+/** Static diagnostic facts; budget ties favor the root Run's outer authority. */
+export function privateContainedDeadlineLimit(
+  kind: 'command' | 'http',
+  rootDeadlineUnixMs: number,
+  parentDeadlineUnixMs: number,
+  ownDeadlineUnixMs: number,
+): 'root Run' | 'parent Flow' | 'HTTP grant' | 'project command' {
+  const deadline = Math.min(rootDeadlineUnixMs, parentDeadlineUnixMs, ownDeadlineUnixMs)
+  if (deadline === rootDeadlineUnixMs) return 'root Run'
+  if (deadline === parentDeadlineUnixMs) return 'parent Flow'
+  return kind === 'http' ? 'HTTP grant' : 'project command'
+}
+
+export function privateContainedDeadlineMessage(
+  kind: 'command' | 'http',
+  limit: ReturnType<typeof privateContainedDeadlineLimit>,
+  phase: string,
+): string {
+  return `the ${kind === 'http' ? 'HTTP request' : 'project command'} did not return a proved result by its effective deadline (limited by ${limit}) while ${phase}; effects may have occurred`
 }
 
 function httpPlan(

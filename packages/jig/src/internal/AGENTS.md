@@ -99,6 +99,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
 - Command and HTTP effects share the contained-effect owner and recovery path.
+  Deadline failures that lack a proved result identify the static effect type,
+  observed phase, and effective limiting budget without exposing worker errors,
+  asserting remote non-delivery, or changing uncertainty and cleanup semantics.
   HTTP, command and finite ACP grants resolve at Binding slots and are pinned in
   review and recipe identity. Optional catalog files are captured project proposals. The
   apply boundary checks explicit authority approval for new/changed recipients

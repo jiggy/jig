@@ -34,6 +34,12 @@ jig review --allow-resolution-network
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
+Add `--receive progress` to observe the current phase (`baseline`, `proposal`,
+`check`, or `finished`) and proposal number. Redirected stdout then contains
+NDJSON. A phase message reports activity; the terminal record and command
+evidence establish the result. Progress is transient and does not preserve
+partial patches.
+
 Open `repair-result/files/summary.txt`. A `review.patch` appears beside it
 only when the repair passed the checks. The destination must be new and
 outside the selected source. Candidate commands do not install dependencies.
@@ -92,7 +98,7 @@ A completed evaluation includes `commands`, `acceptance`,
 not execution evidence.
 
 Cancellation, deadlines, uncertain execution, and unavailable support never
-trigger a correction or automatic replay. This example delivers final results
+trigger a correction or automatic replay. This example delivers final patches
 only; interruption does not retain unfinished patches. File delivery is separate
 from execution: inspect an existing destination after a lost acknowledgement
 instead of blindly starting another Run. See [working with files](./files.md).

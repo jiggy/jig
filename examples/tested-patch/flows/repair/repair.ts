@@ -68,6 +68,24 @@ export async function repair(
   const finish = async (outcome: string, reason: string): Promise<RunResult> => {
     run.signal.throwIfAborted()
     await publish('finished', attempts.length)
+    if (progress) {
+      try {
+        await progress.close()
+      } catch (error) {
+        run.signal.throwIfAborted()
+        if (
+          !(error instanceof OperationError) ||
+          ![
+            'LAGGED',
+            'DISCONNECTED',
+            'RESOURCE_EXHAUSTED',
+            'INVALID_INPUT',
+            'INVALID_RESULT',
+          ].includes(error.code)
+        )
+          throw error
+      }
+    }
     return {
       outcome,
       output: {

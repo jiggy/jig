@@ -258,7 +258,13 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
     throw new TypeError('Supply source and deliverables attachments.')
   const input = await readRepairInput(run.input, source.path)
   run.signal.throwIfAborted()
-  const result = await run.call({ operationId: 'repair', slot: 'repair', input })
+  const progress = run.channels.progress
+  const result = await run.call({
+    operationId: 'repair',
+    slot: 'repair',
+    input,
+    ...(progress === undefined ? {} : { channels: { progress } }),
+  })
   run.signal.throwIfAborted()
   await writeRepairDeliverables(deliverables.path, input, result)
   return result
