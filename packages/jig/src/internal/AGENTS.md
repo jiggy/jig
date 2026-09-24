@@ -97,6 +97,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   cleanup. Only the kernel's remaining guardian count establishes emptiness.
   Unix control peer UID, PID and PID version come from `LOCAL_PEERTOKEN`, never
   claimed message fields; unavailable native socket identity fails closed.
+- `macos-volume.ts` owns fixed, case-sensitive native filesystem images for
+  bounded writable projections. Authenticate the allocation and backing inode
+  before attachment; keep control files outside payload grants. Use in-kernel
+  images, fixed system tools and finite command/output bounds. Mount evidence
+  comes from the held directory's qualified `fstatfs` ABI. After complete tool
+  and payload fencing and collector closure, derive detach authority from the
+  live exact image mapping, never a saved disk number. Recheck the allocation,
+  detach, then remove only its original empty mount directory and backing file.
+  Retain authenticated journals until the enclosing owner is released. Storage
+  ownership alone does not establish process fencing or installed Mac support.
 - `macos-owner-state.ts` writes the guardian's authenticated boot, coalition and
   PID-version journal before descendants exist. Its per-allocation token stays
   in protected coordinator state, never arguments, payloads or the journal.
@@ -513,6 +523,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `activation-admission-store.test.ts` exercises real SQLite durability and
   recovery on both hosts. `package-materialization.test.ts` includes fresh-process
   reacquisition, interrupted cleanup and the Darwin chmod-before-rename window.
+  `macos-volume.test.ts` covers bounded shared capacity with sandboxed native
+  writers, backing-file denial, journal and inode forgery refusal, case-sensitive
+  names, fresh-process recovery, and repeated exact cleanup without administrator
+  access. It preserves failed allocations when recovery cannot be confirmed.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,

@@ -8,6 +8,7 @@ type NativeSymbol =
   | 'openat'
   | 'fcntl'
   | 'fstatat$INODE64'
+  | 'fstatfs$INODE64'
   | 'fdopendir$INODE64'
   | 'readdir$INODE64'
   | 'closedir'
@@ -41,6 +42,7 @@ function calls(): Native {
     openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
     fcntl: { args: ['i32', 'i32', 'u64'], returns: 'i32' },
     fstatat$INODE64: { args: ['i32', 'ptr', 'ptr', 'i32'], returns: 'i32' },
+    fstatfs$INODE64: { args: ['i32', 'ptr'], returns: 'i32' },
     fdopendir$INODE64: { args: ['i32'], returns: 'ptr' },
     readdir$INODE64: { args: ['ptr'], returns: 'ptr' },
     closedir: { args: ['ptr'], returns: 'i32' },
@@ -139,6 +141,28 @@ export function privateMacosDescriptorPath(fd: number): string {
   const end = bytes.indexOf(0)
   if (end <= 0) throw new Error('macOS descriptor pathname is unavailable')
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, end))
+}
+
+/** Native mount evidence from the held directory, not a visible pathname lookup. */
+export function privateMacosFilesystem(fd: number) {
+  const { ptr, symbols } = calls()
+  const bytes = Buffer.alloc(2168)
+  checked(symbols.fstatfs$INODE64(fd, ptr(bytes)))
+  const string = (start: number, size: number): string => {
+    const value = bytes.subarray(start, start + size)
+    const end = value.indexOf(0)
+    if (end < 0) throw new Error('macOS filesystem identity is invalid')
+    return new TextDecoder('utf-8', { fatal: true }).decode(value.subarray(0, end))
+  }
+  return Object.freeze({
+    capacityBytes: BigInt(bytes.readUInt32LE(0)) * bytes.readBigUInt64LE(8),
+    owner: bytes.readUInt32LE(56),
+    flags: bytes.readUInt32LE(64),
+    subtype: bytes.readUInt32LE(68),
+    type: string(72, 16),
+    mountpoint: string(88, 1024),
+    device: string(1112, 1024),
+  })
 }
 
 /** The reader remains private until its sole writer is closed by the capture owner. */
