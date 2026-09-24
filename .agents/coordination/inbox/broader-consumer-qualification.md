@@ -22,5 +22,5 @@ This task does not defer existing source/release gates, applicable host
 conformance or supported active-child cancellation guarantees. It does not
 authorize a provider search, spending or another comparative benchmark.
 
-Owners: `.agents/ROADMAP.md` determines the next outcome; `.tmp/` retains its
-bounded execution plan and evidence.
+Owners: `.agents/coordination/ROADMAP.md` determines the next outcome; `.tmp/`
+retains its bounded execution plan and evidence.

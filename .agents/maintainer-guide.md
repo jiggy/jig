@@ -496,15 +496,25 @@ concepts or choosing between genuinely different product directions.
 An owner-actionable blocker must name the unavailable prerequisite or decision,
 the safe alternatives already exhausted, and the specific owner action that
 unlocks the affected work. A fixable harness error, failed experiment, or
-agent-chosen freeze is not such a blocker. Preserve the old evidence, correct
-the agent-owned problem in a separately recorded run within existing authority
-and budgets, and continue. Escalate a real budget increase or missing permission,
-not the ordinary engineering work needed to use what is already authorized.
+agent-chosen freeze is not such a blocker. Resolve agent-solvable obstacles
+within existing authority and budgets; preserve old evidence and record a
+separate run when retrying. Escalate a real budget increase or missing
+permission, not the ordinary engineering work needed to use what is already
+authorized.
 
-When several independent outcomes are authorized, a blocker in one does not
-stop the others. Commit its stable in-scope work, retain unstable evidence on
-a separate experimental branch only when worth keeping, record owner-actionable
-blockers in `.tmp/current-blockers`, and continue the other authorized work.
+When working on multiple tasks or outcomes, continue available in-scope work
+until each task is complete or owner-actionably blocked. A blocker pauses only
+the affected task; keep working on every other task that can progress. Commit
+stable in-scope work and retain unstable evidence on a separate experimental
+branch only when worth keeping.
+
+For a blocker requiring owner help, first record it in
+`.tmp/current-blockers.md`, including the missing prerequisite or decision,
+alternatives already exhausted, and the specific owner action. Then continue
+with other available tasks. Report recorded blockers to the owner only when no
+remaining task can be advanced without owner help. Do not report an obstacle
+that can be resolved within existing authority and budgets; resolve it and
+continue.
 
 Treat legal, commercial, infrastructure, and security questions in proportion
 to specific evidence. Do not create a product subsystem to answer an
@@ -519,10 +529,14 @@ alternative to automatic agreement, and stop polishing a vertical once its
 first-release proof is sufficient.
 
 Completing a phase proves its bounded outcome; it does not select the next
-phase. The long-term ordering lives in [`ROADMAP.md`](ROADMAP.md). Current
-execution tasks and blockers are disposable operational state, not additions to
-this guide. Preserve postponed product work as standalone Markdown tasks in
-[`management/inbox`](../management/inbox/).
+phase. The roadmap in
+[`coordination/ROADMAP.md`](coordination/ROADMAP.md) gives a compact,
+high-level view of outcome order and the next steps. Keep it small and direct;
+do not expand it to enumerate every upcoming task. Current execution tasks and
+blockers are disposable operational state, not additions to this guide. When
+postponing work, add a concise note to
+[`coordination/inbox/`](coordination/inbox/). That inbox holds untriaged tasks;
+placement records deferral, not triage, priority, or authorization.
 
 ### Proportionate claims
 
@@ -573,7 +587,8 @@ outcome order, and current evidence.
 | What is the security boundary? | [`SECURITY.md`](../SECURITY.md) and the nearest implementation `AGENTS.md` |
 | How is a release built and published? | [`RELEASING.md`](../RELEASING.md), manifests, and [`.github/AGENTS.md`](../.github/AGENTS.md) |
 | How do I install development dependencies and use the checkout's CLI? | [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-shell) and `shell.nix`; Bun generates the ignored workspace lock, never hand-maintained |
-| What outcomes come later? | [`ROADMAP.md`](ROADMAP.md) |
+| What outcomes come later? | [`coordination/ROADMAP.md`](coordination/ROADMAP.md) |
+| Where do postponed, untriaged tasks go? | [`coordination/inbox/`](coordination/inbox/) |
 | Where can deleted proof work be recovered? | [`suspended-experiments.md`](suspended-experiments.md) |
 | Where is optional first-person historical context? | [`field-notes/`](field-notes/) |
 | What is happening right now? | Git, current automation, and disposable `.tmp/` notes |

@@ -36,9 +36,10 @@ previously issued grants and separately licensed FLOW and third-party material.
 
 Follow the [maintainer guide](.agents/maintainer-guide.md) for repository-wide
 engineering workflow rules and use the
-[roadmap](.agents/ROADMAP.md) for outcome order. Inspect Git, relevant package
-registries, and current automation before asserting present implementation or
-release state. Transient task lists and reports belong in `.tmp/`.
+[roadmap](.agents/coordination/ROADMAP.md) for outcome order. Inspect Git,
+relevant package registries, and current automation before asserting present
+implementation or release state. Transient task lists and reports belong in
+`.tmp/`.
 
 If a lower-level proposal or existing contract conflicts with a higher-level
 commitment, do not implement the conflict or silently reinterpret either side.
@@ -190,7 +191,8 @@ Default section order:
 ## Child DOX Index
 
 - [.agents/AGENTS.md](.agents/AGENTS.md) — Internal product compass and doctrine,
-  recovery, planning, optional field notes, and repository-native agent skills.
+  project coordination and recovery, optional field notes, and repository-native
+  agent skills.
 - [.github/AGENTS.md](.github/AGENTS.md) — Continuous integration, release,
   host-conformance, and public-site automation.
 - [conformance/AGENTS.md](conformance/AGENTS.md) — Implementation-independent
@@ -199,8 +201,6 @@ Default section order:
   guidance, and research catalogues.
 - [examples/AGENTS.md](examples/AGENTS.md) — Authored applications exercising
   documented composition, with their own fixtures and checks.
-- [management/AGENTS.md](management/AGENTS.md) — Deferred product tasks in
-  `management/inbox`, with scope and completion criteria.
 - [packages/AGENTS.md](packages/AGENTS.md) — Publishable SDK and Jig host
   implementations, with their package-local tests and artifacts.
 - [scripts/AGENTS.md](scripts/AGENTS.md) — Build, verification,

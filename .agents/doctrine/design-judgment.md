@@ -300,5 +300,5 @@ public activation mechanism remains unselected.
 Likewise, comparisons with other systems are sources of questions rather than
 compatibility or roadmap commitments. Complete applications, independent
 implementers, and conformance failures should reveal the needed boundaries.
-The [roadmap](../ROADMAP.md) owns their order; these questions authorize no
-new subsystem on their own.
+The [roadmap](../coordination/ROADMAP.md) owns their order; these questions
+authorize no new subsystem on their own.

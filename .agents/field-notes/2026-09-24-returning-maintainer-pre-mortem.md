@@ -421,8 +421,9 @@ When coming back after time away, use this order to rebuild context quickly:
    [shared purpose](../doctrine/purpose.md), relevant FLOW and Jig doctrine,
    [design judgment](../doctrine/design-judgment.md),
    [maintainer guide](../maintainer-guide.md), and
-   [roadmap](../ROADMAP.md). Then read every applicable subtree `AGENTS.md`
-   and the owning current specification before changing a contract or claim.
+   [roadmap](../coordination/ROADMAP.md). Then read every applicable subtree
+   `AGENTS.md` and the owning current specification before changing a contract
+   or claim.
 3. For release work, inspect `RELEASING.md`, `.github/AGENTS.md`, the
    workflows, package manifests, registry dist-tags, immutable archive hashes,
    exact CI and host run conclusions, retained candidate receipts, and source

@@ -125,9 +125,9 @@ market understanding and wording evolve without silently changing doctrine.
 
 Specifications define exact public contracts within this doctrine.
 The [maintainer guide](maintainer-guide.md) teaches the engineering model;
-the [roadmap](ROADMAP.md) orders outcomes; implementation and conformance
-evidence show what works. These lower layers realize the principles above,
-rather than redefining them.
+the [roadmap](coordination/ROADMAP.md) orders outcomes; implementation and
+conformance evidence show what works. These lower layers realize the principles
+above, rather than redefining them.
 
 Chosen values, testable product hypotheses, and revisable design commitments
 have different evidence needs. That distinction does not change their order

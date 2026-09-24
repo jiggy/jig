@@ -19,8 +19,9 @@ for external libraries.
   and public editorial judgment, drawing on the audience and doctrine.
 - `maintainer-guide.md` introduces the engineering model, its governing
   principles, operational invariants, holistic product/UX review, and working method.
-- `ROADMAP.md` orders outcome gates and the next concrete development steps
-  without becoming a task tracker.
+- `coordination/` owns project coordination records. Its
+  `ROADMAP.md` gives a compact, high-level view of outcome order and the next
+  steps; its `inbox/` holds postponed tasks that have not yet been triaged.
 - `suspended-experiments.md` points to deleted experiments only when their
   evidence may be useful under an explicit reconsideration gate.
 - `field-notes/` preserves selected first-person causal evidence without making
@@ -73,11 +74,11 @@ for external libraries.
 - Teach concepts without assuming project history. Keep the maintainer guide
   efficient to load. Split out a subject only when it
   acquires a distinct durable owner or verification contract.
-- Keep the roadmap tied to the doctrine, with user outcomes followed by a
-  short development sequence. Each step names the work and its completion
-  condition. Deferred product tasks belong in `management/inbox/*.md`;
-  release status, active execution plans and blockers remain in `.tmp/`.
-  Do not turn the roadmap into a subsystem inventory.
+- Keep the roadmap tied to the doctrine and limited to a small, direct overview
+  of outcomes and the next steps. Do not expand it into a complete task list or
+  subsystem inventory. Put postponed, untriaged tasks in
+  `coordination/inbox/*.md`; release status, active execution plans and
+  blockers remain in `.tmp/`.
 
 ## Verification
 
@@ -87,6 +88,8 @@ for external libraries.
 
 - [doctrine/AGENTS.md](doctrine/AGENTS.md) — Product purpose, FLOW and Jig
   reasoning, and cross-product judgment; the compass remains the entrypoint.
+- [coordination/AGENTS.md](coordination/AGENTS.md) — Project roadmap and
+  untriaged postponed-task inbox.
 - [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative
   engineering retrospectives and historical causal evidence.
 - [marketing/AGENTS.md](marketing/AGENTS.md) — Promotional materials, demonstration
