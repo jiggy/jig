@@ -2,7 +2,10 @@ import { constants, fstatSync, readSync } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
 import { PRIVATE_FILE_LIMITS, privateFilePath, sha256 } from './file-input-policy.js'
 import { privateMacosMkdirAt, privateMacosOpenAt } from './macos-descriptor-files.js'
-import type { PrivateMacosReceivedDescriptors } from './macos-descriptor-handoff.js'
+import {
+  type PrivateMacosReceivedDescriptors,
+  requirePrivateMacosReceivedDescriptors,
+} from './macos-descriptor-handoff.js'
 
 export interface PrivateMacosInputIdentity {
   readonly path: string
@@ -57,15 +60,15 @@ export async function projectPrivateMacosInputs(
   signal: AbortSignal,
 ): Promise<void> {
   const files = normalizePrivateMacosInputs(manifest)
-  if (files.length !== bundle.descriptors.length)
-    throw new Error('macOS input handoff count changed')
+  const descriptors = requirePrivateMacosReceivedDescriptors(bundle)
+  if (files.length !== descriptors.length) throw new Error('macOS input handoff count changed')
   const root = await privateMacosOpenAt(volume.fd, 'inputs', DIRECTORY)
   const directories = new Map<string, FileHandle>([['', root]])
   const failures: unknown[] = []
   try {
     for (const [index, file] of files.entries()) {
       signal.throwIfAborted()
-      const fd = bundle.descriptors[index]!
+      const fd = descriptors[index]!
       const before = fstatSync(fd, { bigint: true })
       if (!before.isFile() || before.nlink !== 0n || before.size !== BigInt(file.bytes))
         throw new Error('macOS transferred input is not the declared anonymous file')

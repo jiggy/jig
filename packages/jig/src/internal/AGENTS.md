@@ -114,6 +114,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Recheck the selected parent and exact staging identity before exclusive
   publication; a moved parent cannot redirect writes or cleanup. Invalid final
   files retain the known execution terminal and never authorize replay.
+- `macos-file-command.ts` supplies private filesystem sockets for the independent
+  command owner. Bind the control connection to its directly spawned coordinator
+  and bind descriptor transfers to that connection's kernel PID version; the
+  coordinator authenticates the parent's expected kernel identity too. Mac
+  messages carry counts and inert manifests, never PID/FD claims as authority.
+  Keep command cancellation, settlement grace and final escalation unchanged.
+  Remove only exact private endpoints after the coordinator and publication settle.
+  Reconstruct transferred output into a fresh immutable backing only after
+  authenticating the live received bundle and validating its complete bounded
+  manifest, anonymous-file identity, offsets and hashes. Include empty-directory
+  evidence. Copied or closed bundle objects cannot supply descriptor authority.
 - `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
   file operations, raw directory enumeration and anonymous streaming backings.
   Do not substitute F_GETPATH followed by a pathname reopen for a held
@@ -646,6 +657,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   exercises that same retention path after image removal. Session collectors
   validate captured empty directories too; controller faults distinguish expected
   snapshot-profile refusal from unexpected snapshot I/O failure.
+  The complete file-delivery suite also runs on qualified Mac: it covers the
+  independent process, authenticated parent rejection, renamed input roots,
+  immutable output transfer, cooperative interruption, forced escalation and
+  coordinator loss during staging. Stopped fixtures explicitly ignore SIGTERM
+  so both kernels exercise escalation; use exact owned fixture PIDs only.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,

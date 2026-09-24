@@ -143,6 +143,18 @@ export interface PrivateMacosReceivedDescriptors {
   readonly descriptors: readonly number[]
   close(): void
 }
+const receivedBundles = new WeakMap<object, { descriptors: readonly number[]; closed: boolean }>()
+
+/** Only the live result of this kernel-authenticated receiver can supply rights. */
+export function requirePrivateMacosReceivedDescriptors(
+  bundle: PrivateMacosReceivedDescriptors,
+): readonly number[] {
+  const record =
+    bundle !== null && typeof bundle === 'object' ? receivedBundles.get(bundle) : undefined
+  if (record === undefined || record.closed)
+    throw new Error('macOS descriptor bundle is not active')
+  return record.descriptors
+}
 
 /** Receive exactly one bundle from the kernel-authenticated trusted sender.
  * The caller owns the canonical private directory, outside all payload grants.
@@ -330,15 +342,25 @@ async function receive(
     const ack = Buffer.from('A')
     if (checked(Number(symbols.send!(fd, ptr(ack), 1, 0x80000))) !== 1)
       throw new Error('macOS descriptor acknowledgement failed')
-    let closed = false
+    const record = { descriptors: Object.freeze([...descriptors]), closed: false }
     const result = Object.freeze({
-      descriptors: Object.freeze([...descriptors]),
+      descriptors: record.descriptors,
       close() {
-        if (closed) return
-        closed = true
-        for (const descriptor of descriptors.splice(0)) closeSync(descriptor)
+        if (record.closed) return
+        record.closed = true
+        const errors = []
+        for (const descriptor of descriptors.splice(0)) {
+          try {
+            closeSync(descriptor)
+          } catch (error) {
+            errors.push(error)
+          }
+        }
+        if (errors.length)
+          throw new AggregateError(errors, 'macOS transferred descriptor closure failed')
       },
     })
+    receivedBundles.set(result, record)
     delivered = true
     return result
   } finally {

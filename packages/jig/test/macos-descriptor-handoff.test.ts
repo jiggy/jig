@@ -5,6 +5,12 @@ import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, writeFile } from '
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  capturePrivateOutput,
+  capturePrivateTransferredOutput,
+  readPrivateCapturedOutput,
+  requirePrivateCapturedOutput,
+} from '../src/internal/captured-output.js'
+import {
   capturePrivateMacosBytes,
   requirePrivateMacosCapturedBytes,
 } from '../src/internal/macos-captured-bytes.js'
@@ -18,6 +24,55 @@ import { privateMacosCurrentProcessIdentity } from '../src/internal/macos-proces
 
 const native = test.skipIf(
   process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1',
+)
+
+native(
+  'output import requires a live authenticated bundle and an exact bounded tree manifest',
+  async () => {
+    const root = await mkdtemp('/private/tmp/jig-output-transfer-')
+    const source = join(root, 'source')
+    await mkdir(join(source, 'nested'), { recursive: true })
+    await mkdir(join(source, 'empty-directory'))
+    await writeFile(join(source, 'nested/binary'), Buffer.from([0, 255, 128]))
+    const directory = await open(source, 'r')
+    const original = capturePrivateOutput(directory.fd)
+    await directory.close()
+    const { fd, ...manifest } = requirePrivateCapturedOutput(original)
+    const receiver = await createPrivateMacosDescriptorReceiver(root, 'output')
+    let bundle: PrivateMacosReceivedDescriptors | undefined
+    let imported: ReturnType<typeof capturePrivateTransferredOutput> | undefined
+    try {
+      const peer = privateMacosCurrentProcessIdentity()
+      ;[bundle] = await Promise.all([
+        receiver.receive(peer, 2000),
+        sendPrivateMacosDescriptors(receiver.path, peer, [fd], 2000),
+      ])
+      original.close()
+      imported = capturePrivateTransferredOutput(bundle, manifest)
+      expect(imported.directories).toEqual(['empty-directory', 'nested'])
+      for (const invalid of [
+        { ...manifest, extra: true },
+        { ...manifest, bytes: 16 * 1024 * 1024 + 1 },
+        { ...manifest, directories: ['empty-directory'] },
+        { ...manifest, directories: ['nested', 'empty-directory'] },
+        { ...manifest, files: [...manifest.files, ...manifest.files] },
+        { ...manifest, digest: `sha256:${'0'.repeat(64)}` },
+        { ...manifest, files: [{ ...manifest.files[0], offset: 1 }] },
+        { ...manifest, files: [{ ...manifest.files[0], digest: `sha256:${'0'.repeat(64)}` }] },
+      ])
+        expect(() => capturePrivateTransferredOutput(bundle!, invalid)).toThrow()
+      expect(() => capturePrivateTransferredOutput({ ...bundle }, manifest)).toThrow('not active')
+      bundle.close()
+      expect(() => capturePrivateTransferredOutput(bundle!, manifest)).toThrow('not active')
+      expect([...readPrivateCapturedOutput(imported)[0]!.contents]).toEqual([0, 255, 128])
+    } finally {
+      imported?.close()
+      bundle?.close()
+      original.close()
+      await receiver.close()
+      await rm(root, { recursive: true })
+    }
+  },
 )
 
 native(

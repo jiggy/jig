@@ -1,4 +1,4 @@
-import { closeSync, fstatSync } from 'node:fs'
+import { closeSync, fstatSync, readSync } from 'node:fs'
 import {
   capturePrivateBytes,
   type PrivateCapturedBytes,
@@ -16,6 +16,10 @@ import {
   sha256,
 } from './file-input.js'
 import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
+import {
+  type PrivateMacosReceivedDescriptors,
+  requirePrivateMacosReceivedDescriptors,
+} from './macos-descriptor-handoff.js'
 
 export interface PrivateOutputFile {
   readonly path: string
@@ -125,15 +129,7 @@ export function capturePrivateOutput(
       backing.close()
       throw error
     }
-    const output: PrivateCapturedOutput = Object.freeze({
-      files,
-      directories: Object.freeze(directories),
-      bytes: backing.bytes,
-      digest: backing.digest,
-      close: () => backing.close(),
-    })
-    authentic.set(output, backing)
-    return output
+    return mint(backing, files, Object.freeze(directories))
   } catch (error) {
     if (
       error instanceof PrivateFileInputError &&
@@ -143,6 +139,117 @@ export function capturePrivateOutput(
     throw error
   } finally {
     for (const file of contents) file.data.fill(0)
+  }
+}
+
+function mint(
+  backing: PrivateCapturedBytes<'output'>,
+  files: readonly PrivateOutputFile[],
+  directories: readonly string[],
+): PrivateCapturedOutput {
+  const output = Object.freeze({
+    files,
+    directories,
+    bytes: backing.bytes,
+    digest: backing.digest,
+    close: () => backing.close(),
+  })
+  authentic.set(output, backing)
+  return output
+}
+
+/** Recreate private immutable bytes only from a live authenticated native transfer.
+ * The trusted command protocol separately owns terminal and cleanup admission. */
+export function capturePrivateTransferredOutput(
+  bundle: PrivateMacosReceivedDescriptors,
+  value: unknown,
+): PrivateCapturedOutput {
+  const descriptors = requirePrivateMacosReceivedDescriptors(bundle)
+  const identity = value as PrivateCapturedOutput
+  if (
+    descriptors.length !== 1 ||
+    identity === null ||
+    typeof identity !== 'object' ||
+    Object.keys(identity).sort().join() !== 'bytes,digest,directories,files' ||
+    !Number.isSafeInteger(identity.bytes) ||
+    identity.bytes < 0 ||
+    identity.bytes > PRIVATE_CAPTURE_LIMITS.output ||
+    typeof identity.digest !== 'string' ||
+    !/^sha256:[0-9a-f]{64}$/.test(identity.digest) ||
+    !Array.isArray(identity.files) ||
+    identity.files.length > PRIVATE_FILE_LIMITS.files ||
+    !Array.isArray(identity.directories) ||
+    identity.files.length + identity.directories.length > PRIVATE_FILE_LIMITS.entries
+  )
+    throw new TypeError('invalid transferred output manifest')
+  let offset = 0
+  const files = identity.files.map((file) => {
+    if (
+      file === null ||
+      typeof file !== 'object' ||
+      Object.keys(file).sort().join() !== 'bytes,digest,offset,path' ||
+      !Number.isSafeInteger(file.bytes) ||
+      file.bytes < 0 ||
+      file.offset !== offset ||
+      typeof file.digest !== 'string' ||
+      !/^sha256:[0-9a-f]{64}$/.test(file.digest)
+    )
+      throw new TypeError('invalid transferred output file')
+    const path = privateFilePath(file.path)
+    offset += file.bytes
+    if (offset > identity.bytes)
+      throw new TypeError('transferred output offsets exceed its backing')
+    return Object.freeze({ path, offset: file.offset, bytes: file.bytes, digest: file.digest })
+  })
+  const directories = identity.directories.map(privateFilePath)
+  const ordered = (names: readonly string[]) =>
+    names.every((name, index) => index === 0 || names[index - 1]! < name)
+  const directorySet = new Set(directories)
+  if (
+    offset !== identity.bytes ||
+    !ordered(files.map((file) => file.path)) ||
+    !ordered(directories) ||
+    files.some((file) => directorySet.has(file.path))
+  )
+    throw new TypeError('transferred output paths conflict')
+  for (const path of [...directories, ...files.map((file) => file.path)]) {
+    const parts = path.split('/')
+    for (let count = 1; count < parts.length; count++)
+      if (!directorySet.has(parts.slice(0, count).join('/')))
+        throw new TypeError('transferred output parent is absent')
+  }
+  const fd = descriptors[0]!
+  const before = fstatSync(fd, { bigint: true })
+  if (!before.isFile() || before.nlink !== 0n || before.size !== BigInt(identity.bytes))
+    throw new Error('transferred output is not the declared anonymous file')
+  const bytes = Buffer.alloc(identity.bytes)
+  try {
+    for (let offset = 0; offset < bytes.length; ) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, offset)
+      if (!count) throw new Error('transferred output ended early')
+      offset += count
+    }
+    const after = fstatSync(fd, { bigint: true })
+    if (
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      after.nlink !== 0n ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs ||
+      sha256(bytes) !== identity.digest ||
+      files.some(
+        (file) => sha256(bytes.subarray(file.offset, file.offset + file.bytes)) !== file.digest,
+      )
+    )
+      throw new Error('transferred output identity changed')
+    return mint(
+      capturePrivateBytes(bytes, 'output'),
+      Object.freeze(files),
+      Object.freeze(directories),
+    )
+  } finally {
+    bytes.fill(0)
   }
 }
 

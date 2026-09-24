@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from 'bun:test'
+import { spawnSync } from 'node:child_process'
 import { closeSync } from 'node:fs'
 import {
   mkdir,
@@ -31,6 +32,48 @@ async function fixture(work: (root: string) => Promise<void>) {
   }
 }
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
+
+test.skipIf(process.platform !== 'darwin')(
+  'native command authenticates its parent and transfers renamed input roots and immutable final output',
+  async () =>
+    fixture(async (root) => {
+      const before = (await readdir('/private/tmp'))
+        .filter((name) => name.startsWith('jig-file-owner-'))
+        .sort()
+      for (const mode of ['snapshot', 'wrong-parent']) {
+        const destination = join(root, mode)
+        const exit = await privateOwnFileCommand(
+          [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+          ],
+          [destination, join(root, `${mode}.pid`), mode],
+          undefined,
+          10_000,
+        )
+        if (mode === 'snapshot') {
+          expect(exit).toEqual({ exitCode: 0, signal: null })
+          expect([...(await readFile(join(destination, 'files/nested/binary')))]).toEqual([
+            0, 255, 128,
+          ])
+          expect((await readFile(join(destination, 'files/empty'))).length).toBe(0)
+          expect(
+            JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).delivery.source,
+          ).toBe('final')
+        } else {
+          expect(exit.exitCode).not.toBe(0)
+          await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+        }
+      }
+      expect(
+        (await readdir('/private/tmp')).filter((name) => name.startsWith('jig-file-owner-')).sort(),
+      ).toEqual(before)
+    }),
+  25_000,
+)
 
 test('publishes immutable binary and empty output after its source storage is removed', async () =>
   fixture(async (root) => {
@@ -250,7 +293,13 @@ test('accepted checkpoints never make final-file capture survive cancellation', 
 async function waitUntilStopped(pid: number): Promise<void> {
   const deadline = performance.now() + 1500
   while (performance.now() < deadline) {
-    if (/^State:\s+T/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))) return
+    if (process.platform === 'darwin') {
+      const result = spawnSync('/bin/ps', ['-o', 'state=', '-p', String(pid)], {
+        encoding: 'utf8',
+        timeout: 1000,
+      })
+      if (result.status === 0 && result.stdout.trim().startsWith('T')) return
+    } else if (/^State:\s+T/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))) return
     await Bun.sleep(5)
   }
   throw new Error('owned fixture did not stop')

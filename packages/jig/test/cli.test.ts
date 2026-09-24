@@ -2028,14 +2028,14 @@ describe('finite Jig project commands', () => {
           {
             delivery: {
               async prepare() {},
-              async publish(record, outputFd, signal) {
+              async publish(record, retainedOutput, signal) {
                 expect(events).toContain('close')
                 expect(record).toMatchObject({ status: 'succeeded' })
                 if (interruptAt === 'settlement') {
                   expect(record).toMatchObject({ command: { status: 'interrupted' } })
-                  expect(outputFd).toBeUndefined()
+                  expect(retainedOutput).toBeUndefined()
                 } else {
-                  expect(outputFd).toBe(output.fd)
+                  expect(retainedOutput).toEqual({ kind: 'linux-directory', directory: output })
                   controller.abort()
                 }
                 expect(signal?.aborted).toBe(true)
@@ -2051,7 +2051,7 @@ describe('finite Jig project commands', () => {
               },
             },
             async acquire(_project, options) {
-              options!.files!.retainOutput(output)
+              options!.files!.retainOutput({ kind: 'linux-directory', directory: output })
               return {
                 ...session,
                 async close() {
