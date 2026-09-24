@@ -14,10 +14,9 @@ combined, merged, or released.
 Use the [small software factory source](https://github.com/jiggy/jig/tree/main/examples/software-factory).
 This is an implemented, self-contained source application. Its local repair Flow
 and Semantic Router use ordinary workspace dependencies. Its external Agent and
-FLOW dependencies are published alphas; the comparison below used source
-candidates and does not establish a public-only factory installation. The
-Semantic Router below is a separate ordinary Flow package; its deterministic
-tests do not establish a live installed factory run.
+FLOW dependencies are published alphas. The live comparison below used a fresh
+maintainer-authored copy, public dependencies, and the source Jig host. It does
+not establish an installed npm Jig run or independent consumer adoption.
 
 ## Run the supplied batch
 
@@ -105,6 +104,28 @@ independent patch inspection. Reusing the router for a different domain changes
 only candidate data and project wiring. This is bounded semantic dispatch, not
 catalogue discovery or installation. Membership checks enforce the finite set;
 they cannot guarantee an appropriate choice within it.
+
+## Bounded live source evidence
+
+In a fresh copy with an operator-selected OpenRouter Mistral BYOK Agent, twelve
+frozen direct router Runs tested repair preferences, abstention, adversarial text,
+and an unrelated prose-method set. With `mistralai/mistral-small-2603`, ten of
+twelve choices matched the expected sets. It selected a repair method instead
+of abstaining on an underspecified request and on contradictory mandatory
+preferences. A lighter `mistralai/ministral-8b-2512` run matched nine of twelve,
+also missing the no-preference default. All twenty-four Runs settled; this
+small synthetic set is evidence of behavior, not a general accuracy estimate.
+
+The same source factory then routed the supplied two issues to different reviewed
+configurations. Both workers reproduced their defects, passed their fixed Bun
+tests and every independent case after one proposal, and delivered separate
+review patches. A fixed two-proposal baseline on the same inputs also completed
+both patches. Approximate command wall time was 128 seconds routed versus 96
+seconds fixed; this trial demonstrates method selection and evidence retention,
+not a completion or speed advantage. Original fixture bytes were unchanged,
+and both root Runs retained confirmed fencing and release. The provider did not
+expose per-call cost through these Jig results, so no factory cost comparison is
+claimed.
 
 ## Earlier factory evidence
 
