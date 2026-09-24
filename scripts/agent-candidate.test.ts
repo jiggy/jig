@@ -51,12 +51,16 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
   expect(download.with['github-token']).toBe('${{ github.token }}')
   const script = publish.steps.find((step: any) => step.id === 'release').run
   const calls = script.split('\n').filter((line: string) => /^publish_candidate /.test(line))
-  expect(calls).toEqual([
-    'publish_candidate flow @jigging/flow',
+  const firstPackage = 'publish_candidate flow @jigging/flow'
+  const orderedPackages = [
+    firstPackage,
     'publish_candidate agent @jigging/agent-method',
     'publish_candidate acp @jigging/agent-acp',
     'publish_candidate jig @jigging/jig',
-  ])
+  ]
+  expect(calls).toEqual([...orderedPackages, ...orderedPackages])
+  expect(script.indexOf('PREFLIGHT=true')).toBeLessThan(script.indexOf(firstPackage))
+  expect(script.indexOf('PREFLIGHT=false')).toBeLessThan(script.lastIndexOf(firstPackage))
   expect(script).toContain('registry bytes differ')
   expect(script).toContain('success.commit !== process.env.SOURCE_REVISION')
   expect(tag.permissions).toEqual({ contents: 'write' })
