@@ -17,6 +17,8 @@ for external libraries.
   participant needs, and adoption hypotheses.
 - `communication.md` owns positioning, narrative progression, vocabulary,
   and public editorial judgment, drawing on the audience and doctrine.
+- `brand.md` owns the selected Jig and FLOW names, emblems, wordmarks, colors,
+  proportions, and implementation asset map.
 - `maintainer-guide.md` introduces the engineering model, its governing
   principles, operational invariants, holistic product/UX review, and working method.
 - `coordination/` owns project coordination records. Its
@@ -51,6 +53,8 @@ for external libraries.
   and editorial choices do not define product purpose or public contracts.
   Audience strategy owns the opportunity of bringing Agents into production
   software; communication explains the design conviction and its benefits.
+- Keep product identity decisions in `brand.md`; public communication follows
+  that system without adding publisher names to product marks.
 - Keep the compass a concise entrypoint and the doctrine the home of detailed
   product reasoning. Current behavior, implementation mechanics, roadmap
   order, and research catalogues retain their existing owners.
@@ -86,6 +90,8 @@ for external libraries.
 
 ## Child DOX Index
 
+- [brand.md](brand.md) — Selected Jig and FLOW product identity and visual
+  system.
 - [doctrine/AGENTS.md](doctrine/AGENTS.md) — Product purpose, FLOW and Jig
   reasoning, and cross-product judgment; the compass remains the entrypoint.
 - [coordination/AGENTS.md](coordination/AGENTS.md) — Project roadmap and
