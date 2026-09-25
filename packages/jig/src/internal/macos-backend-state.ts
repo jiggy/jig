@@ -484,7 +484,7 @@ export async function openPrivateMacosBackendState(
       await write({ ...fixed, phase: 'allocated', sealed: null, final: null })
     let changing = false
     const change = async (
-      operation: 'seal' | 'admit' | 'cancel' | 'finish',
+      operation: 'seal' | 'admit' | 'cancel' | 'finish' | 'recover',
       payload?: JsonObject,
     ) => {
       if (changing) throw new Error('native execution state change already in progress')
@@ -500,6 +500,12 @@ export async function openPrivateMacosBackendState(
         else if (operation === 'cancel' && ['allocated', 'sealed'].includes(current.phase))
           await write({ ...current, phase: 'cancelled' })
         else if (operation === 'finish' && current.phase === 'active' && jsonObject(payload))
+          await write({ ...current, phase: 'finished', final: payload })
+        else if (
+          operation === 'recover' &&
+          ['sealed', 'active'].includes(current.phase) &&
+          jsonObject(payload)
+        )
           await write({ ...current, phase: 'finished', final: payload })
         else if (operation === 'cancel' && current.phase === 'cancelled') return
         else if (
@@ -528,6 +534,7 @@ export async function openPrivateMacosBackendState(
       admit: () => change('admit'),
       cancel: () => change('cancel'),
       finish: (receipt: JsonObject) => change('finish', receipt),
+      recover: (receipt: JsonObject) => change('recover', receipt),
       beginRelease,
     })
   } catch (error) {

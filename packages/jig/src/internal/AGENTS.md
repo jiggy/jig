@@ -217,6 +217,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   block reuse of its owner name until exact release completes. The backend must validate
   sealed identities and cleanup receipts independently; ledger JSON alone is
   neither execution nor fencing authority.
+- `macos-native-backend.ts` binds the qualified Darwin mechanism, immutable path
+  identities, bounded native storage and live input capabilities into one sealed
+  owner. Keep its coordinator lock through guardian admission, complete cleanup
+  and the authenticated final receipt. Durable active state precedes the guardian's
+  payload gate. Recovery must exclude a live coordinator, revalidate the cleanup
+  runtime before launching recovery tools, handle both pre-admission and active
+  coordinator loss, and retire guardian journals before recording completion.
+  Report supervised sampling and possible resource overshoot explicitly; never
+  project Linux cgroup or hard-quota claims. This private backend remains disabled
+  in the installed host until the shared controllers and consumer path qualify it.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
   Reject overlap between host control, immutable inputs and writable trees;
   keep the narrow sysctl/process-information rules. Only explicit network
@@ -689,8 +699,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `macos-owner-lock.test.ts` checks independent-process exclusion, release on
   coordinator death and lock replacement. `macos-backend-state.test.ts` checks
   fresh-process recovery of committed state, cancelled admission, exact final
-  receipt retention, interrupted writes, atomic release recovery and authentication failures. Synthetic
-  ledger receipts do not qualify backend cleanup or installed execution.
+  receipt retention, interrupted writes, atomic release recovery and authentication
+  failures. Synthetic ledger receipts do not qualify backend cleanup or installed
+  execution. `macos-native-backend.test.ts` qualifies sealing, immutable-path
+  binding, prepared and active admission, bounded output after storage removal,
+  durable final receipts, unused-owner recovery, prepared/active coordinator-loss
+  recovery and exact owner release. It is backend integration evidence, not
+  installed-host conformance.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,

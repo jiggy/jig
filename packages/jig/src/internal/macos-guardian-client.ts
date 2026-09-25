@@ -69,7 +69,15 @@ export async function recoverPrivateMacosGuardian(
     ),
   },
 ): Promise<void> {
-  await fenceDeadGuardian(ownerDirectory, ownerToken, cleanupTimeoutMs)
+  if (await present(join(ownerDirectory, 'owner.json')))
+    await fenceDeadGuardian(ownerDirectory, ownerToken, cleanupTimeoutMs)
+  else {
+    // Without the first owner journal the admission gate was never opened. Stop
+    // the exact job before it can become a late guardian, then retire its sockets.
+    removeJob(`user/${process.getuid?.()}/${jobLabel(ownerToken)}`)
+    if (await present(join(ownerDirectory, 'sockets.json')))
+      removePrivateMacosSockets(ownerDirectory, ownerToken)
+  }
   await recoverStorageWithGuardian(ownerDirectory, ownerToken, runtime)
 }
 
