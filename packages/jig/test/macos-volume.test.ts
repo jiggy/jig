@@ -25,6 +25,7 @@ import { preparePrivateMacosGuardian } from '../src/internal/macos-guardian-clie
 import {
   createPrivateMacosVolume,
   recoverPrivateMacosVolume,
+  releasePrivateMacosVolume,
 } from '../src/internal/macos-volume.js'
 
 const native = test.skipIf(
@@ -179,6 +180,9 @@ native(
       await recoverPrivateMacosVolume(control, token)
       await expect(access(mount)).rejects.toMatchObject({ code: 'ENOENT' })
       await expect(access(join(control, 'volume.dmg'))).rejects.toMatchObject({ code: 'ENOENT' })
+      await releasePrivateMacosVolume(control, token)
+      await releasePrivateMacosVolume(control, token)
+      await expect(access(control)).rejects.toMatchObject({ code: 'ENOENT' })
       await rm(root, { recursive: true })
     }
   },

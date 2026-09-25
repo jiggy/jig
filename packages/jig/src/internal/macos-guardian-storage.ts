@@ -7,6 +7,7 @@ import {
   allocatePrivateMacosVolume,
   attachPrivateMacosVolume,
   recoverPrivateMacosVolume,
+  releasePrivateMacosVolume,
 } from './macos-volume.js'
 
 export interface PrivateMacosGuardianStorage {
@@ -99,4 +100,19 @@ export async function recoverPrivateMacosGuardianStorage(
     throw error
   }
   await recoverPrivateMacosVolume(controlPath(owner), token, signal)
+}
+
+/** Journal retirement is separate from recovery so uncertain cleanup retains evidence. */
+export async function releasePrivateMacosGuardianStorage(
+  owner: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    await lstat(controlPath(owner))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  await releasePrivateMacosVolume(controlPath(owner), token, signal)
 }

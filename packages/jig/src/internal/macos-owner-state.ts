@@ -12,7 +12,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import {
   privateMacosDirectory,
   privateMacosStatAt,
@@ -302,5 +302,69 @@ export function removePrivateMacosSockets(ownerDirectory: string, token: string)
     rmdirSync(identity.directory)
   } finally {
     closeSync(fd)
+  }
+}
+
+/** Retire only fixed guardian journals after the caller has independently proved
+ * job removal, coalition fencing and storage cleanup. A missing owner journal is
+ * accepted only for setup that failed before the guardian recorded descendants. */
+export function releasePrivateMacosGuardianRecords(directory: string, token: string): void {
+  let fd: number
+  try {
+    fd = privateDirectory(directory)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  let identity: Readonly<{ device: string; inode: string }>
+  try {
+    const info = fstatSync(fd, { bigint: true })
+    identity = Object.freeze({ device: String(info.dev), inode: String(info.ino) })
+    const entries = privateMacosDirectory(fd)
+    const names: string[] = []
+    try {
+      for (;;) {
+        const entry = entries.readSync()
+        if (entry === null) break
+        names.push(new TextDecoder('utf-8', { fatal: true }).decode(entry.name))
+      }
+    } finally {
+      entries.closeSync()
+    }
+    if (!names.every((name) => ['owner.json', 'sockets.json', 'guardian.plist'].includes(name)))
+      throw new Error('macOS guardian contains unexpected state')
+    if (names.includes('owner.json')) readPrivateMacosOwner(directory, token)
+    if (names.includes('sockets.json')) {
+      removePrivateMacosSockets(directory, token)
+      privateMacosUnlinkAt(fd, 'sockets.json')
+    }
+    if (names.includes('guardian.plist')) {
+      const plist = privateMacosStatAt(fd, 'guardian.plist')
+      if (
+        !plist.isFile() ||
+        plist.uid !== BigInt(process.getuid!()) ||
+        plist.nlink !== 1n ||
+        (plist.mode & 0o777n) !== 0o600n ||
+        plist.size < 1n ||
+        plist.size > 16_384n
+      )
+        throw new Error('macOS guardian launch record is unsafe')
+      privateMacosUnlinkAt(fd, 'guardian.plist')
+    }
+    if (names.includes('owner.json')) privateMacosUnlinkAt(fd, 'owner.json')
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+  const parent = privateDirectory(dirname(directory))
+  try {
+    const name = posix.basename(directory)
+    const current = privateMacosStatAt(parent, name)
+    if (String(current.dev) !== identity!.device || String(current.ino) !== identity!.inode)
+      throw new Error('macOS guardian directory changed before release')
+    privateMacosUnlinkAt(parent, name, true)
+    fsyncSync(parent)
+  } finally {
+    closeSync(parent)
   }
 }

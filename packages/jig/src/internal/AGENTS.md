@@ -174,6 +174,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   the slot's known private records before reuse. Never erase a live attempt's
   journal or recursively delete a recovery path. Recovery tool admission has a
   separate 30-second deadline; uncertain cleanup preserves the allocation.
+  After authentic guardian completion or recovery proves fencing and storage
+  cleanup, retire the volume and guardian journals through their authenticated
+  fixed entry sets. Journal release is separate from recovery: detach/backing or
+  job uncertainty must retain evidence. Remove each exact guardian directory only
+  after its main and recovery jobs are absent; never replace this with recursive
+  deletion.
 - `macos-input-projection.ts` validates the admitted input manifest and copies
   authenticated anonymous readers through the held volume descriptor before
   payload creation. Recheck original capture capabilities before admission,

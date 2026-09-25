@@ -13,6 +13,7 @@ import {
 } from './macos-descriptor-handoff.js'
 import {
   allocatePrivateMacosGuardianStorage,
+  releasePrivateMacosGuardianStorage,
   requirePrivateMacosGuardianStorage,
 } from './macos-guardian-storage.js'
 import { normalizePrivateMacosInputs } from './macos-input-projection.js'
@@ -24,6 +25,7 @@ import {
   privateMacosStorageRecoveryToken,
   readPrivateMacosOwner,
   recordPrivateMacosSockets,
+  releasePrivateMacosGuardianRecords,
   removePrivateMacosSockets,
   requirePrivateMacosOwnerDirectory,
   resetPrivateMacosRecoveryState,
@@ -69,6 +71,26 @@ export async function recoverPrivateMacosGuardian(
 ): Promise<void> {
   await fenceDeadGuardian(ownerDirectory, ownerToken, cleanupTimeoutMs)
   await recoverStorageWithGuardian(ownerDirectory, ownerToken, runtime)
+}
+
+/** Retire authenticated guardian and volume journals only after an authentic
+ * guardian completion or successful recovery has proved fencing and cleanup. */
+export async function releasePrivateMacosGuardian(
+  ownerDirectory: string,
+  ownerToken: string,
+): Promise<void> {
+  const uid = process.getuid?.()
+  if (launchctl('print', `user/${uid}/${jobLabel(ownerToken)}`).status !== 113)
+    throw new Error('macOS guardian job is still present')
+  await releasePrivateMacosGuardianStorage(ownerDirectory, ownerToken)
+  const recovery = join(ownerDirectory, 'recovery')
+  if (await present(recovery)) {
+    const recoveryToken = privateMacosStorageRecoveryToken(ownerToken)
+    if (launchctl('print', `user/${uid}/${jobLabel(recoveryToken)}`).status !== 113)
+      throw new Error('macOS storage recovery guardian job is still present')
+    releasePrivateMacosGuardianRecords(recovery, recoveryToken)
+  }
+  releasePrivateMacosGuardianRecords(ownerDirectory, ownerToken)
 }
 
 async function fenceDeadGuardian(

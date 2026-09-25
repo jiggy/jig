@@ -11,6 +11,7 @@ import { privateMacosFilesystem } from '../src/internal/macos-descriptor-files.j
 import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
+  releasePrivateMacosGuardian,
 } from '../src/internal/macos-guardian-client.js'
 import type { PrivateMacosGuardianStart } from '../src/internal/macos-native-supervisor.js'
 import {
@@ -258,6 +259,8 @@ native(
           expect(
             JSON.parse(await readFile(join(ownerDirectory, 'storage/volume.json'), 'utf8')).mac,
           ).toHaveLength(64)
+          await releasePrivateMacosGuardian(ownerDirectory, token)
+          expect(await exists(ownerDirectory)).toBe(false)
         } finally {
           if (!settled && owner !== undefined) {
             owner.cancel()
