@@ -73,6 +73,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - The ordinary ACP package imports this same method. `checkAgentResult` lets
   consumers independently check any selected
   Agent's dynamic structured result; it grants no authority or provenance.
+  Its validated `AgentResult` is assignable to portable FLOW JSON without a
+  cast; arbitrary exceptions and non-JSON values are not.
 
 ## Work Guidance
 
