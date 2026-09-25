@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  cancelPrivateMacosOwnerStateAllocation,
   normalizePrivateMacosOwnerStateAllocationIdentity,
   openPrivateMacosBackendState,
   planPrivateMacosOwnerStateAllocation,
+  releasePrivateMacosOwnerState,
 } from '../src/internal/macos-backend-state.js'
 
 const native = test.skipIf(
@@ -53,6 +55,12 @@ native(
       } finally {
         await reopened.close()
       }
+      const cancellation = await cancelPrivateMacosOwnerStateAllocation(allocation)
+      const released = await releasePrivateMacosOwnerState(allocation, cancellation)
+      expect((await releasePrivateMacosOwnerState(allocation, cancellation)).digest).toBe(
+        released.digest,
+      )
+      await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow()
     }),
   10_000,
 )
@@ -68,6 +76,31 @@ native('released native allocation authority cannot recreate its owner directory
     expect(await readdir(root)).toEqual([])
   })
 })
+
+native(
+  'native release preserves unexpected state and resumes only after exact repair',
+  async () => {
+    await fixture(async (root) => {
+      const allocation = await planPrivateMacosOwnerStateAllocation({
+        parent: root,
+        name: 'blocked',
+      })
+      const cancellation = await cancelPrivateMacosOwnerStateAllocation(allocation)
+      await mkdir(join(allocation.directory, 'unexpected'))
+      await expect(releasePrivateMacosOwnerState(allocation, cancellation)).rejects.toThrow(
+        'unexpected state',
+      )
+      const staged = join(root, '.blocked.release')
+      expect(await readdir(root)).toEqual(['.blocked.release'])
+      await expect(
+        planPrivateMacosOwnerStateAllocation({ parent: root, name: 'blocked' }),
+      ).rejects.toThrow('release is incomplete')
+      await rm(join(staged, 'unexpected'), { recursive: true })
+      await releasePrivateMacosOwnerState(allocation, cancellation)
+      expect(await readdir(root)).toEqual([])
+    })
+  },
+)
 
 native(
   'fresh native recovery sees committed active state after coordinator death and retains one final receipt',
@@ -117,6 +150,11 @@ native(
         const observer = Bun.spawn(command, { stdout: 'pipe', stderr: 'pipe' })
         expect(await observer.exited).toBe(0)
         expect(await new Response(observer.stdout).text()).toBe('finished\n')
+        await releasePrivateMacosOwnerState(allocation, {
+          fenced: true,
+          fixture: 'separate backend proof required',
+        })
+        await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow()
       } finally {
         child.kill('SIGKILL')
         await child.exited

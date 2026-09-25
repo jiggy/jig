@@ -52,6 +52,22 @@ export interface PrivateMacosBackendState {
   readonly sealed: JsonObject | null
   readonly final: JsonObject | null
 }
+export interface PrivateMacosOwnerStateCancellation {
+  readonly kind: 'private-macos-owner-state-cancellation/1'
+  readonly digest: string
+  readonly allocationDigest: string
+  readonly directoryDevice: string
+  readonly directoryInode: string
+  readonly state: 'cancelled'
+}
+export interface PrivateMacosOwnerStateReleaseReceipt {
+  readonly kind: 'private-macos-owner-state-release/1'
+  readonly digest: string
+  readonly allocationDigest: string
+  readonly directoryDevice: string
+  readonly directoryInode: string
+  readonly released: true
+}
 function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (
     value === null ||
@@ -71,6 +87,14 @@ function signature(token: string, value: unknown): Buffer {
     .update(encoded(value))
     .digest()
 }
+function releaseSignature(token: string, value: unknown): Buffer {
+  return createHmac('sha256', Buffer.from(token, 'hex'))
+    .update('jig-macos-backend-release\0')
+    .update(encoded(value))
+    .digest()
+}
+const releaseName = (allocation: PrivateMacosOwnerStateAllocationIdentity) =>
+  `.${allocation.name}.release`
 function privateDirectory(info: Awaited<ReturnType<FileHandle['stat']>>) {
   if (
     !info.isDirectory() ||
@@ -113,6 +137,12 @@ export async function planPrivateMacosOwnerStateAllocation(location: {
   try {
     const info = await parent.stat({ bigint: true })
     privateDirectory(info)
+    try {
+      await statPrivateChild(parent, `.${location.name}.release`)
+      throw new Error('native execution allocation release is incomplete')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
     await mkdirPrivateFile(privateChildLocation(parent, location.name))
     created = true
     root = await openPrivateChild(parent, location.name, DIRECTORY)
@@ -412,6 +442,32 @@ export async function openPrivateMacosBackendState(
       privateMacosRenameAt(control!.fd, 'state.pending', control!.fd, 'state.json')
       await control!.sync()
     }
+    const beginRelease = async (receipt: PrivateMacosOwnerStateReleaseReceipt) => {
+      await verify()
+      const marker = encoded({
+        receipt,
+        mac: releaseSignature(allocation.ownerToken, receipt).toString('hex'),
+      })
+      let existing = await readFileFrom(root!, 'release.json')
+      if (existing === undefined) {
+        const file = await openPrivateChild(
+          root!,
+          'release.json',
+          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+        )
+        try {
+          await file.writeFile(marker)
+          await file.sync()
+        } finally {
+          await file.close()
+        }
+        await root!.sync()
+        existing = marker
+      }
+      if (!existing.equals(marker)) throw new Error('native execution release marker conflicts')
+      privateMacosRenameAt(parent.fd, allocation.name, parent.fd, releaseName(allocation), true)
+      await parent.sync()
+    }
     const current = await read()
     if (current === undefined) {
       for await (const entry of privateDirectoryEntries(root))
@@ -472,9 +528,296 @@ export async function openPrivateMacosBackendState(
       admit: () => change('admit'),
       cancel: () => change('cancel'),
       finish: (receipt: JsonObject) => change('finish', receipt),
+      beginRelease,
     })
   } catch (error) {
     await close()
     throw error
   }
+}
+
+async function readFileFrom(parent: FileHandle, name: string): Promise<Buffer | undefined> {
+  let file: FileHandle
+  try {
+    file = await openPrivateChild(parent, name, constants.O_RDONLY)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+  try {
+    const before = await file.stat({ bigint: true })
+    if (
+      !before.isFile() ||
+      before.uid !== BigInt(process.getuid!()) ||
+      before.nlink !== 1n ||
+      (before.mode & 0o7777n) !== 0o600n ||
+      before.size > BigInt(MAX_RECORD_BYTES)
+    )
+      throw new Error('native execution record is unsafe')
+    const bytes = Buffer.alloc(Number(before.size))
+    for (let offset = 0; offset < bytes.length; ) {
+      const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset)
+      if (!bytesRead) throw new Error('native execution record ended early')
+      offset += bytesRead
+    }
+    const after = await file.stat({ bigint: true })
+    if (
+      before.size !== after.size ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs ||
+      after.nlink !== 1n
+    )
+      throw new Error('native execution record changed')
+    return bytes
+  } finally {
+    await file.close()
+  }
+}
+
+function cancellationFor(
+  allocation: PrivateMacosOwnerStateAllocationIdentity,
+): PrivateMacosOwnerStateCancellation {
+  const fields = {
+    kind: 'private-macos-owner-state-cancellation/1' as const,
+    allocationDigest: allocation.digest,
+    directoryDevice: allocation.directoryDevice,
+    directoryInode: allocation.directoryInode,
+    state: 'cancelled' as const,
+  }
+  return Object.freeze({
+    ...fields,
+    digest: privateDomainDigest('JIG-Macos-Owner-Cancellation/1', fields),
+  })
+}
+
+export function normalizePrivateMacosOwnerStateCancellation(
+  value: unknown,
+): PrivateMacosOwnerStateCancellation {
+  const record = object(value, [
+    'kind',
+    'digest',
+    'allocationDigest',
+    'directoryDevice',
+    'directoryInode',
+    'state',
+  ])
+  const fields = {
+    kind: record.kind,
+    allocationDigest: record.allocationDigest,
+    directoryDevice: record.directoryDevice,
+    directoryInode: record.directoryInode,
+    state: record.state,
+  }
+  if (
+    record.kind !== 'private-macos-owner-state-cancellation/1' ||
+    record.state !== 'cancelled' ||
+    typeof record.digest !== 'string' ||
+    !DIGEST.test(record.digest) ||
+    typeof record.allocationDigest !== 'string' ||
+    !DIGEST.test(record.allocationDigest) ||
+    typeof record.directoryDevice !== 'string' ||
+    !NUMBER.test(record.directoryDevice) ||
+    typeof record.directoryInode !== 'string' ||
+    !NUMBER.test(record.directoryInode) ||
+    record.digest !== privateDomainDigest('JIG-Macos-Owner-Cancellation/1', fields as JsonObject)
+  )
+    throw new TypeError('invalid native owner cancellation')
+  return Object.freeze({
+    ...fields,
+    kind: 'private-macos-owner-state-cancellation/1' as const,
+    state: 'cancelled' as const,
+    digest: record.digest,
+  }) as PrivateMacosOwnerStateCancellation
+}
+
+function releaseFor(
+  allocation: PrivateMacosOwnerStateAllocationIdentity,
+): PrivateMacosOwnerStateReleaseReceipt {
+  const fields = {
+    kind: 'private-macos-owner-state-release/1' as const,
+    allocationDigest: allocation.digest,
+    directoryDevice: allocation.directoryDevice,
+    directoryInode: allocation.directoryInode,
+    released: true as const,
+  }
+  return Object.freeze({
+    ...fields,
+    digest: privateDomainDigest('JIG-Macos-Owner-Release/1', fields),
+  })
+}
+
+export function normalizePrivateMacosOwnerStateReleaseReceipt(
+  value: unknown,
+): PrivateMacosOwnerStateReleaseReceipt {
+  const record = object(value, [
+    'kind',
+    'digest',
+    'allocationDigest',
+    'directoryDevice',
+    'directoryInode',
+    'released',
+  ])
+  const fields = {
+    kind: record.kind,
+    allocationDigest: record.allocationDigest,
+    directoryDevice: record.directoryDevice,
+    directoryInode: record.directoryInode,
+    released: record.released,
+  }
+  if (
+    record.kind !== 'private-macos-owner-state-release/1' ||
+    record.released !== true ||
+    typeof record.digest !== 'string' ||
+    !DIGEST.test(record.digest) ||
+    typeof record.allocationDigest !== 'string' ||
+    !DIGEST.test(record.allocationDigest) ||
+    typeof record.directoryDevice !== 'string' ||
+    !NUMBER.test(record.directoryDevice) ||
+    typeof record.directoryInode !== 'string' ||
+    !NUMBER.test(record.directoryInode) ||
+    record.digest !== privateDomainDigest('JIG-Macos-Owner-Release/1', fields as JsonObject)
+  )
+    throw new TypeError('invalid native owner release receipt')
+  return Object.freeze({
+    ...fields,
+    kind: 'private-macos-owner-state-release/1' as const,
+    released: true as const,
+    digest: record.digest,
+  }) as PrivateMacosOwnerStateReleaseReceipt
+}
+
+export async function cancelPrivateMacosOwnerStateAllocation(
+  value: unknown,
+): Promise<PrivateMacosOwnerStateCancellation> {
+  const allocation = normalizePrivateMacosOwnerStateAllocationIdentity(value)
+  const state = await openPrivateMacosBackendState(allocation)
+  try {
+    await state.cancel()
+    if ((await state.read()).phase !== 'cancelled')
+      throw new Error('native execution cancellation is unconfirmed')
+    return cancellationFor(allocation)
+  } finally {
+    await state.close()
+  }
+}
+
+export async function releasePrivateMacosOwnerState(
+  value: unknown,
+  proof: PrivateMacosOwnerStateCancellation | JsonObject,
+): Promise<PrivateMacosOwnerStateReleaseReceipt> {
+  const allocation = normalizePrivateMacosOwnerStateAllocationIdentity(value)
+  const receipt = releaseFor(allocation)
+  const parent = await open(allocation.parent, DIRECTORY)
+  try {
+    const info = await parent.stat({ bigint: true })
+    privateDirectory(info)
+    if (String(info.dev) !== allocation.parentDevice || String(info.ino) !== allocation.parentInode)
+      throw new Error('native execution parent changed')
+    let original = true
+    try {
+      await statPrivateChild(parent, allocation.name)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      original = false
+    }
+    if (original) {
+      const state = await openPrivateMacosBackendState(allocation)
+      try {
+        const current = await state.read()
+        if (current.phase === 'cancelled') {
+          const cancellation = normalizePrivateMacosOwnerStateCancellation(proof)
+          if (
+            cancellation.allocationDigest !== allocation.digest ||
+            cancellation.directoryDevice !== allocation.directoryDevice ||
+            cancellation.directoryInode !== allocation.directoryInode
+          )
+            throw new TypeError('native cancellation does not match allocation')
+        } else if (
+          current.phase !== 'finished' ||
+          current.final === null ||
+          !jsonObject(proof) ||
+          !encoded(current.final).equals(encoded(proof))
+        ) {
+          throw new Error('native execution owner is not releasable')
+        }
+        await state.beginRelease(receipt)
+      } finally {
+        await state.close()
+      }
+    }
+    await cleanupRelease(parent, allocation, receipt)
+    return receipt
+  } finally {
+    await parent.close()
+  }
+}
+
+async function cleanupRelease(
+  parent: FileHandle,
+  allocation: PrivateMacosOwnerStateAllocationIdentity,
+  receipt: PrivateMacosOwnerStateReleaseReceipt,
+) {
+  let root: FileHandle
+  try {
+    root = await openPrivateChild(parent, releaseName(allocation), DIRECTORY)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  try {
+    const info = await root.stat({ bigint: true })
+    privateDirectory(info)
+    if (
+      String(info.dev) !== allocation.directoryDevice ||
+      String(info.ino) !== allocation.directoryInode
+    )
+      throw new Error('native release allocation changed')
+    const rootEntries = []
+    for await (const entry of privateDirectoryEntries(root)) rootEntries.push(entry.name)
+    const marker = await readFileFrom(root, 'release.json')
+    if (marker === undefined) {
+      if (rootEntries.length !== 0) throw new Error('native release marker disappeared')
+    } else {
+      const envelope = object(JSON.parse(marker.toString('utf8')), ['receipt', 'mac'])
+      const recorded = normalizePrivateMacosOwnerStateReleaseReceipt(envelope.receipt)
+      if (
+        !encoded(recorded).equals(encoded(receipt)) ||
+        typeof envelope.mac !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(envelope.mac) ||
+        !timingSafeEqual(
+          releaseSignature(allocation.ownerToken, recorded),
+          Buffer.from(envelope.mac, 'hex'),
+        )
+      )
+        throw new Error('native release marker authentication failed')
+      if (!rootEntries.every((name) => ['control', 'release.json'].includes(name)))
+        throw new Error('native release contains unexpected state')
+      if (rootEntries.includes('control')) {
+        const control = await openPrivateChild(root, 'control', DIRECTORY)
+        try {
+          const controlInfo = await control.stat({ bigint: true })
+          privateDirectory(controlInfo)
+          if (
+            String(controlInfo.dev) !== allocation.controlDevice ||
+            String(controlInfo.ino) !== allocation.controlInode
+          )
+            throw new Error('native release control changed')
+          const names = []
+          for await (const entry of privateDirectoryEntries(control)) names.push(entry.name)
+          if (!names.every((name) => ['coordinator.lock', 'state.json'].includes(name)))
+            throw new Error('native release control contains unexpected state')
+          for (const name of names) await unlinkPrivateFile(privateChildLocation(control, name))
+        } finally {
+          await control.close()
+        }
+        await rmdirPrivateFile(privateChildLocation(root, 'control'))
+      }
+      await unlinkPrivateFile(privateChildLocation(root, 'release.json'))
+      await root.sync()
+    }
+  } finally {
+    await root.close()
+  }
+  await rmdirPrivateFile(privateChildLocation(parent, releaseName(allocation)))
+  await parent.sync()
 }

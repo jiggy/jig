@@ -204,7 +204,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   cancelled or finished allocation cannot admit work. Planning creates and binds
   the exact allocation, control directory and lock inodes; opening state must never
   recreate a missing allocation, because removal permanently revokes every stale
-  copy of its capability. The backend must validate
+  copy of its capability. Cancellation and final receipts authorize release only
+  for the same allocation. Rename a releasable allocation out of its executable
+  name while still holding the lock, authenticate its release marker, and remove
+  only the closed known entry set. Preserve unexpected or partially cleaned state;
+  block reuse of its owner name until exact release completes. The backend must validate
   sealed identities and cleanup receipts independently; ledger JSON alone is
   neither execution nor fencing authority.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
@@ -679,7 +683,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `macos-owner-lock.test.ts` checks independent-process exclusion, release on
   coordinator death and lock replacement. `macos-backend-state.test.ts` checks
   fresh-process recovery of committed state, cancelled admission, exact final
-  receipt retention, interrupted writes and authentication failures. Synthetic
+  receipt retention, interrupted writes, atomic release recovery and authentication failures. Synthetic
   ledger receipts do not qualify backend cleanup or installed execution.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
