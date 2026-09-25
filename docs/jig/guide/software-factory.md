@@ -15,7 +15,8 @@ patch for you.
 In a copy of the example, run `bun install`, inspect `batch.json`, the Agent
 Binding, and the two named case files. The supplied Binding selects native
 Codex through ACP. To use an HTTP Agent method instead, follow the package and
-Binding setup in [Reuse the Agent method](agent-method.md#invoke-the-ordinary-flow).
+Binding setup in [Reuse the Agent method](agent-method.md#invoke-the-ordinary-flow),
+including its optional [OpenAI-compatible gateway route](agent-method.md#use-an-openai-compatible-gateway).
 Then authenticate the selected Agent:
 
 ```sh

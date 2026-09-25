@@ -122,6 +122,29 @@ host execution status. Tool requests, malformed data and non-200 HTTP statuses
 remain failures. Nothing is retried automatically. A refused answer is `blocked`;
 token exhaustion is `limit`.
 
+### Use an OpenAI-compatible gateway
+
+The same Flow can call an OpenAI-compatible gateway by changing its model,
+endpoint URL, and operator credential. For example, OpenRouter documents a
+Chat Completions endpoint and a dynamic free-model route:
+
+```ts
+settings: { model: 'openrouter/free', maxCompletionTokens: 4096 },
+slots: {
+  http: {
+    kind: 'http', method: 'POST',
+    url: 'https://openrouter.ai/api/v1/chat/completions',
+    bearerEnv: 'OPENROUTER_API_KEY',
+  },
+},
+```
+
+See [OpenRouter's API instructions](https://openrouter.ai/openrouter/free/apps)
+and [route details](https://openrouter.ai/openrouter/free). The route selects
+from the provider's currently available free models; availability, data policy,
+and model quality are provider-controlled and may change. This is a development
+configuration, not a stable model choice or a quality guarantee.
+
 `maxCompletionTokens` defaults to 4096, within 1–65536. Model and token settings
 guide the admitted method. To enforce them against malicious method code, add
 matching constraints in the HTTP grant's `bodySchema`. The endpoint still owns
