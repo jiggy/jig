@@ -35,6 +35,11 @@ operational baselines, and public-site assembly.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
   containment and binary-safe file Runs, invalid output, resource limits,
   failure suppression, publication collisions and execution-residue checks.
+- `profile-installed-startup.ts` is an opt-in, manual Ubuntu 24.04 x86-64
+  diagnostic using the exact frozen Jig and FLOW SDK archives and a deterministic
+  three-Flow conversation. It excludes package/fixture setup, records one warmup
+  plus five fresh-project trials, and preserves bounded failure evidence. It
+  makes no provider calls and is not a performance claim or release threshold.
 - `test-operational-baseline.ts` retains failed fixtures and private command
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed; residue or
@@ -80,6 +85,12 @@ operational baselines, and public-site assembly.
 - State test claims narrowly. `test-release.sh` is not a Linux proof-host or
   publication-readiness claim.
 - Do not hide a weaker fallback behind a successful command.
+- Startup-profile subprocesses receive an explicit non-credential environment,
+  run only frozen/local package inputs, and have a 30-minute aggregate child
+  budget plus bounded per-command time and output. Keep raw source and full
+  command output out of retained profile artifacts. The supported-host
+  workflow's final residue assertion remains mandatory even when the optional
+  diagnostic itself is non-gating.
 
 ## Work Guidance
 
@@ -97,6 +108,9 @@ operational baselines, and public-site assembly.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
+- `profile-installed-startup.ts` deliberately refuses non-GitHub, non-Ubuntu
+  24.04 x86-64 hosts; validate that refusal locally and obtain actual timing
+  evidence only from its opt-in provisioned-host workflow step.
 - `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
   partial retries, registry failures, and immutable candidate/registry bytes.
 - `bun test scripts/npm-publish.test.ts` exercises the protected workflow's

@@ -38,6 +38,7 @@ import {
   type PrivateRootlessLinuxAcquisitionObservation,
   revalidatePrivateRootlessLinux,
 } from './linux-rootless-acquisition.js'
+import { privateProfileSpan } from './private-profile.js'
 
 const RUN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 const OWNER_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/
@@ -453,7 +454,9 @@ export class PrivateLinuxCgroupBackend {
           fields as unknown as JsonValue,
         ),
       })
-      await initializeOwnerState(identity)
+      await privateProfileSpan('linux-owner-state-initialization', () =>
+        initializeOwnerState(identity),
+      )
       await requireOwnerUnused(identity)
     } catch (error) {
       if (allocated.automaticParent !== undefined) {

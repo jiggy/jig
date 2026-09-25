@@ -114,6 +114,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
 ## Local Contracts
 
 - Every `Private*` export remains package-private and is not an extension SPI.
+- The optional installed-startup diagnostic accepts only a private local trace
+  destination, activates after rootless-host acquisition, and removes its
+  selector from operator configuration before opening a project session. It
+  records fixed phase names and monotonic durations in an exclusive mode-0600
+  file with bounded size; it records no source, Flow input, arguments,
+  environment values, provider output, or filesystem paths. Capture failure
+  must not change the Run outcome. This is maintainer-only profiling, not
+  telemetry, a runtime option, or a supported extension point.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
   coordinator. Reuse filesystem identity and retained-artifact verification;

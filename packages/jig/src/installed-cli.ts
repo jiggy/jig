@@ -30,6 +30,12 @@ import {
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
 import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
 import {
+  privateProfileActivate,
+  privateProfileFinish,
+  privateProfileOperatorEnvironment,
+  privateProfileSpan,
+} from './internal/private-profile.js'
+import {
   openPrivateProjectSession,
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
@@ -83,9 +89,9 @@ async function runPrivateInstalledCli(
     verification = privateCliVerification(arguments_)
   } catch {
     // Let the ordinary command parser explain invalid syntax before host work.
-    return runWithEnvironment(arguments_, Object.freeze({ ...process.env }), signal)
+    return runWithEnvironment(arguments_, privateProfileOperatorEnvironment(process.env), signal)
   }
-  const operatorEnvironment = Object.freeze({
+  const operatorEnvironment = privateProfileOperatorEnvironment({
     ...process.env,
     ...(verification === undefined ? {} : { JIG_VERIFICATION: verification }),
   })
@@ -148,6 +154,8 @@ async function runWithEnvironment(
     })
     if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
 
+    privateProfileActivate()
+
     const delivery = await privateConnectFileOwner()
     try {
       const location = Object.freeze({
@@ -158,10 +166,8 @@ async function runWithEnvironment(
 
       if (recovery !== undefined) {
         delete process.env.JIG_PRIVATE_FILE_RECOVERY
-        const installedHost = await openPrivateInstalledBunHost(
-          location,
-          operatorEnvironment,
-          recovery.project,
+        const installedHost = await privateProfileSpan('installed-host-opening', () =>
+          openPrivateInstalledBunHost(location, operatorEnvironment, recovery.project),
         )
         const terminal = await recoverPrivateCheckpointRun(recovery, installedHost)
         process.stdout.write(`${Buffer.from(canonicalJson(publicTerminal(terminal))).toString()}\n`)
@@ -174,38 +180,37 @@ async function runWithEnvironment(
           project: string,
           options?: Parameters<PrivateCliCommandHost['acquire']>[1],
         ) => {
-          const installedHost = await openPrivateInstalledBunHost(
-            location,
-            operatorEnvironment,
-            project,
-            options?.onStage,
+          const installedHost = await privateProfileSpan('installed-host-opening', () =>
+            openPrivateInstalledBunHost(location, operatorEnvironment, project, options?.onStage),
           )
 
           options?.onStage?.('Opening project state and checking recovery')
-          return openPrivateProjectSession({
-            directory: project,
-            host: Object.freeze({
-              ...installedHost,
-              ...(options?.onStage === undefined ? {} : { onStage: options.onStage }),
-              ...(options?.generateContracts ? { generateContracts: true } : {}),
-              ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
-              ...(options?.runTimeoutMs === undefined
-                ? {}
-                : { runTimeoutMs: options.runTimeoutMs }),
-              ...(options?.files === undefined ? {} : { files: options.files }),
-              ...(options?.channelOutput === undefined
-                ? {}
-                : { channelOutput: options.channelOutput }),
-              ...(options?.allowResolutionNetwork !== true
-                ? {}
-                : {
-                    allowResolutionNetwork: true,
-                    ...(options.onResolution === undefined
-                      ? {}
-                      : { onResolution: options.onResolution }),
-                  }),
+          return privateProfileSpan('project-session-opening', () =>
+            openPrivateProjectSession({
+              directory: project,
+              host: Object.freeze({
+                ...installedHost,
+                ...(options?.onStage === undefined ? {} : { onStage: options.onStage }),
+                ...(options?.generateContracts ? { generateContracts: true } : {}),
+                ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
+                ...(options?.runTimeoutMs === undefined
+                  ? {}
+                  : { runTimeoutMs: options.runTimeoutMs }),
+                ...(options?.files === undefined ? {} : { files: options.files }),
+                ...(options?.channelOutput === undefined
+                  ? {}
+                  : { channelOutput: options.channelOutput }),
+                ...(options?.allowResolutionNetwork !== true
+                  ? {}
+                  : {
+                      allowResolutionNetwork: true,
+                      ...(options.onResolution === undefined
+                        ? {}
+                        : { onResolution: options.onResolution }),
+                    }),
+              }),
             }),
-          })
+          )
         },
       })
       const outputStop = new AbortController()
@@ -281,6 +286,7 @@ if (import.meta.main) {
   try {
     outcome = await runPrivateInstalledCli(process.argv.slice(2), controller.signal)
   } finally {
+    privateProfileFinish()
     process.removeListener('SIGINT', interrupt)
     process.removeListener('SIGTERM', interrupt)
   }

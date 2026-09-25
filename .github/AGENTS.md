@@ -30,6 +30,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   exhausted BYOK quota fails instead of using billable OpenRouter capacity.
 - Build, test, publish, and tag the exact triggering source and retained
   candidate bytes. Never rebuild a release during publication.
+- Linux Host Conformance's optional `workflow_dispatch` input
+  `include_startup_profile` runs a bounded startup diagnostic inside the
+  installed-evidence host shard, against the exact frozen archives. It is
+  explicitly non-gating for the `rootless-linux` check; the host's final
+  archive-identity and zero-residue assertions remain mandatory. Retain only
+  its bounded mode-0600 profile artifacts for seven days; it performs no model
+  calls and does not establish a performance claim. Its 60-minute shard allows
+  the 30-minute profile command budget to finish before mandatory cleanup.
 - CI freezes npm and Python candidates while source gates run. The protected
   publication workflows download those exact successful push-run artifacts;
   they do not rebuild or accept artifacts from a different CI run.

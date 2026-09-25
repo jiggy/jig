@@ -1,26 +1,27 @@
 import {
-  RootAdministrationError,
   normalizeRootRunStatusRequest,
   normalizeStartRootRunRequest,
-  snapshotRootAdministrationJson,
   type RootAdministration,
+  RootAdministrationError,
   type RootRunStatus,
   type RootRunStatusRequest,
   type StartRootRunReceipt,
   type StartRootRunRequest,
+  snapshotRootAdministrationJson,
 } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
 import {
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
-  submitPrivateRootRun,
   type PrivateProjectCoordinator,
   type PrivateRootRunSnapshot,
+  submitPrivateRootRun,
 } from './activation-admission-store.js'
+import { privateProfileSpan } from './private-profile.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
-import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
+import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
 
 export interface PrivateRootAdministrationController {
   readonly administration: RootAdministration
@@ -164,22 +165,24 @@ function createController(input: {
       try {
         const request = normalizeStartRootRunRequest(value)
         const deadlineUnixMs = deadlineFromNow(input.runTimeoutMs)
-        const submission = await retryPrivateBusy(() =>
-          submitPrivateRootRun({
-            coordinator: input.coordinator,
-            projectRoot: input.projectRoot,
-            packageStoreRoot: input.packageStoreRoot,
-            submissionId: request.submissionId,
-            target: request.target,
-            input: request.input,
-            ...(input.files === undefined
-              ? {}
-              : {
-                  files: input.files.identity,
-                  identifyFiles: (request) => input.files!.identify(request),
-                }),
-            deadlineUnixMs,
-          }),
+        const submission = await privateProfileSpan('root-submission-persistence', () =>
+          retryPrivateBusy(() =>
+            submitPrivateRootRun({
+              coordinator: input.coordinator,
+              projectRoot: input.projectRoot,
+              packageStoreRoot: input.packageStoreRoot,
+              submissionId: request.submissionId,
+              target: request.target,
+              input: request.input,
+              ...(input.files === undefined
+                ? {}
+                : {
+                    files: input.files.identity,
+                    identifyFiles: (request) => input.files!.identify(request),
+                  }),
+              deadlineUnixMs,
+            }),
+          ),
         )
         return Object.freeze({ runId: submission.run.runId })
       } catch (error) {

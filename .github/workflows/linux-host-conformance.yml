@@ -2,6 +2,12 @@ name: Linux host conformance
 
 on:
   workflow_dispatch:
+    inputs:
+      include_startup_profile:
+        description: Run the bounded five-trial installed startup diagnostic after one warm-up.
+        required: false
+        type: boolean
+        default: false
   pull_request:
     paths:
       - ".github/workflows/linux-host-conformance.yml"
@@ -24,6 +30,7 @@ on:
       - "scripts/test-installed-hostile-baseline.ts"
       - "scripts/test-operational-baseline.ts"
       - "scripts/operational-baseline-checks.ts"
+      - "scripts/profile-installed-startup.ts"
   push:
     branches:
       - main
@@ -91,7 +98,7 @@ jobs:
     name: Linux host — ${{ matrix.suite }}
     needs: host-artifacts
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -265,6 +272,24 @@ jobs:
           env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts
 
+      - name: Profile installed startup with a deterministic conversation
+        id: startup-profile
+        if: matrix.suite == 'installed-evidence' && inputs.include_startup_profile
+        continue-on-error: true
+        env:
+          JIG_STARTUP_PROFILE_DIRECTORY: ${{ runner.temp }}/jig-startup-profile
+        run: |
+          test "$(uname -m)" = x86_64
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host \
+            env "GITHUB_ACTIONS=$GITHUB_ACTIONS" \
+              "RUNNER_OS=$RUNNER_OS" "ImageOS=$ImageOS" \
+              "RUNNER_TEMP=$RUNNER_TEMP" "GITHUB_SHA=$GITHUB_SHA" \
+              "JIG_CI_BUN=$JIG_CI_BUN" \
+              "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
+              "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
+              "JIG_STARTUP_PROFILE_DIRECTORY=$JIG_STARTUP_PROFILE_DIRECTORY" \
+              "$JIG_CI_BUN" scripts/profile-installed-startup.ts
+
       - name: Verify the tested archives are unchanged
         if: always()
         run: cd "$JIG_CI_ARCHIVE_DIRECTORY" && sha256sum --check SHA256SUMS
@@ -272,6 +297,15 @@ jobs:
       - name: Require zero host residue
         if: always() && steps.host.outputs.ready == 'true'
         run: scripts/ci/provision-github-rootless-host.sh assert-clean
+
+      - name: Retain startup profile, including failed trials
+        if: ${{ always() && matrix.suite == 'installed-evidence' && inputs.include_startup_profile }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: startup-profile-${{ github.sha }}
+          path: ${{ runner.temp }}/jig-startup-profile
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain failed operational command transcripts
         if: ${{ always() && matrix.suite == 'installed-evidence' && (steps.operational.outcome == 'failure' || steps.operational.outcome == 'cancelled') }}
