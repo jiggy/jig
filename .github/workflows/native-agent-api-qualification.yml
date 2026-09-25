@@ -1,14 +1,15 @@
 name: Native Agent API qualification
 
-run-name: Native Agent API qualification for ${{ github.event.workflow_run.head_sha }}
+run-name: Native Agent API qualification for ${{ github.event.workflow_run.head_sha || github.sha }}
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: [Linux host conformance]
     types: [completed]
 
 env:
-  SOURCE_REVISION: ${{ github.event.workflow_run.head_sha }}
+  SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
   JIG_NATIVE_API_MODEL: mistralai/ministral-8b-2512
 
 permissions:
@@ -18,10 +19,12 @@ jobs:
   qualification:
     name: ${{ matrix.client }} — Ubuntu 24.04
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: native-agent-api
@@ -81,13 +84,35 @@ jobs:
       - name: Build source-test workspace packages
         run: just --justfile packages/jig/justfile build
 
+      - name: Find successful Linux host run for this source
+        id: host-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$TRIGGER_RUN_ID" ]]; then
+            host_run_id=$TRIGGER_RUN_ID
+          else
+            host_run_id=$(gh api --method GET -f per_page=100 \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/linux-host-conformance.yml/runs" |
+              jq -r --arg revision "$SOURCE_REVISION" \
+                '[.workflow_runs[] | select(.head_sha == $revision and .head_branch == "main" and .conclusion == "success" and .event == "push")] | sort_by(.created_at) | last | .id // empty')
+            if [[ -z "$host_run_id" ]]; then
+              echo "No successful main-push Linux host run exists for $SOURCE_REVISION" >&2
+              exit 1
+            fi
+          fi
+          printf 'run_id=%s\n' "$host_run_id" >> "$GITHUB_OUTPUT"
+
       - name: Download exact Linux host archives
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: linux-host-artifacts-${{ env.SOURCE_REVISION }}
           path: ${{ runner.temp }}/linux-host-artifacts
           github-token: ${{ github.token }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ steps.host-run.outputs.run_id }}
 
       - name: Identify and verify the frozen archives
         id: archives

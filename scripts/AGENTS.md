@@ -43,7 +43,8 @@ operational baselines, and public-site assembly.
   exact publication revision passed the complete Linux host workflow.
 - `require-native-agent-api-qualification.sh` owns the bounded, read-only check
   that the exact main-push revision passed the separate live ACP client check
-  before npm publication.
+  before npm publication; a manually dispatched check qualifies only when it
+  ran on `main` at that same revision.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
   requires clean Git source and records exact revision and artifact hashes. It
   uses one fixed archive timestamp so shallow CI checkouts and full-history

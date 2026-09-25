@@ -183,9 +183,13 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(host.jobs['rootless-linux'].needs).toEqual(['host-artifacts', 'host-suite'])
   expect(trigger.workflows).toEqual(['Linux host conformance'])
   expect(trigger.types).toEqual(['completed'])
+  expect(live['true'].workflow_dispatch).toBeNull()
   expect(live['run-name']).toContain('github.event.workflow_run.head_sha')
+  expect(live['run-name']).toContain('github.sha')
   expect(live.env.JIG_NATIVE_API_MODEL).toBe('mistralai/ministral-8b-2512')
   expect(qualification.if).toContain("github.event.workflow_run.conclusion == 'success'")
+  expect(qualification.if).toContain("github.event_name == 'workflow_dispatch'")
+  expect(qualification.if).toContain("github.ref == 'refs/heads/main'")
   expect(qualification.if).toContain("github.event.workflow_run.event == 'push'")
   expect(qualification.if).toContain("github.event.workflow_run.head_branch == 'main'")
   expect(qualification.if).toContain(
@@ -218,8 +222,11 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   ])
   expect(downloads).toHaveLength(1)
   expect(downloads[0].with.name).toBe('linux-host-artifacts-${{ env.SOURCE_REVISION }}')
-  expect(downloads[0].with['run-id']).toBe('${{ github.event.workflow_run.id }}')
+  expect(downloads[0].with['run-id']).toBe('${{ steps.host-run.outputs.run_id }}')
   expect(downloads[0].with['github-token']).toBe('${{ github.token }}')
+  const hostRun = qualification.steps.find((step: any) => step.id === 'host-run')
+  expect(hostRun.run).toContain('.head_sha == $revision')
+  expect(hostRun.run).toContain('.conclusion == "success"')
   expect(
     qualification.steps.some(
       (step: any) =>
@@ -238,6 +245,62 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
     ),
   ).toBeTrue()
   expect(pypi.includes('require-native-agent-api-qualification.sh')).toBeFalse()
+})
+
+test('manual native qualification selects only a successful main-push host run for its exact revision', async () => {
+  const live = Bun.YAML.parse(
+    await Bun.file(join(root, '.github/workflows/native-agent-api-qualification.yml')).text(),
+  ) as any
+  const script = live.jobs.qualification.steps.find((step: any) => step.id === 'host-run').run
+  const directory = await mkdtemp(join(tmpdir(), 'native-agent-host-run-'))
+  const bin = join(directory, 'bin')
+  const response = join(directory, 'response.json')
+  const output = join(directory, 'output')
+  const revision = 'a'.repeat(40)
+  try {
+    await mkdir(bin)
+    await writeFile(join(bin, 'gh'), '#!/bin/sh\ncat "$MOCK_HOST_RUNS"\n')
+    await chmod(join(bin, 'gh'), 0o755)
+    const run = async (runs: unknown[], trigger = '') => {
+      await writeFile(response, JSON.stringify({ workflow_runs: runs }))
+      await writeFile(output, '')
+      const child = Bun.spawn(['/bin/bash', '-e', '-c', script], {
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          MOCK_HOST_RUNS: response,
+          GITHUB_REPOSITORY: 'jiggy/jig',
+          GITHUB_OUTPUT: output,
+          SOURCE_REVISION: revision,
+          TRIGGER_RUN_ID: trigger,
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const stderr = new Response(child.stderr).text()
+      return {
+        exit: await child.exited,
+        stderr: await stderr,
+        output: await Bun.file(output).text(),
+      }
+    }
+    const matching = {
+      id: 42,
+      head_sha: revision,
+      head_branch: 'main',
+      conclusion: 'success',
+      event: 'push',
+      created_at: '2026-09-25T10:00:00Z',
+    }
+    expect((await run([{ ...matching, head_sha: 'b'.repeat(40) }, matching])).output).toBe(
+      'run_id=42\n',
+    )
+    expect((await run([{ ...matching, conclusion: 'failure' }])).exit).toBe(1)
+    expect((await run([{ ...matching, event: 'pull_request' }])).exit).toBe(1)
+    expect((await run([], '91')).output).toBe('run_id=91\n')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 test('native API publication gate waits for this revision and rejects an exact-revision failure', async () => {
@@ -306,6 +369,35 @@ test('native API publication gate waits for this revision and rejects an exact-r
     const success = await runFixture(otherRevisionRun, exactSuccess)
     expect(success.exit).toBe(0)
     expect(success.stdout).toContain(`succeeded for ${revision}`)
+    expect((await Bun.file(calls).text()).trim().split('\n')).toHaveLength(2)
+
+    await rm(calls, { force: true })
+    await rm(state, { force: true })
+    const manualSuccess = JSON.stringify({
+      workflow_runs: [
+        {
+          conclusion: 'success',
+          created_at: '2026-09-25T10:03:00Z',
+          display_title: `Native Agent API qualification for ${revision}`,
+          event: 'workflow_dispatch',
+          head_branch: 'main',
+          head_sha: revision,
+          html_url: 'https://example.invalid/manual',
+          status: 'completed',
+        },
+      ],
+    })
+    const manual = await runFixture(manualSuccess, manualSuccess)
+    expect(manual.exit).toBe(0)
+    expect(manual.stdout).toContain(`succeeded for ${revision}`)
+
+    await rm(calls, { force: true })
+    await rm(state, { force: true })
+    const wrongManual = JSON.stringify({
+      workflow_runs: [{ ...JSON.parse(manualSuccess).workflow_runs[0], head_sha: otherRevision }],
+    })
+    const wrongManualRun = await runFixture(wrongManual, exactSuccess)
+    expect(wrongManualRun.exit).toBe(0)
     expect((await Bun.file(calls).text()).trim().split('\n')).toHaveLength(2)
 
     await rm(calls, { force: true })

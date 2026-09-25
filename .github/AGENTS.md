@@ -18,7 +18,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Grant each job only the authority it needs; build jobs must not inherit
   publication or Git-write authority.
 - The separate Native Agent API Qualification workflow runs after successful
-  Linux Host Conformance on each `main` push. It qualifies Codex and Claude
+  Linux Host Conformance on each `main` push and can be dispatched manually
+  on `main` against that revision's successful push-run host artifacts. It qualifies Codex and Claude
   Code from `@latest` and the currently supported Pi 0.84.4 standalone profile,
   using one Mistral BYOK model through each client's native API protocol. Keep
   the OpenRouter key only in the dedicated test step of the protected

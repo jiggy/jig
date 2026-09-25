@@ -86,6 +86,20 @@ try {
   await stat(
     join(installed, 'libexec/authoring/node_modules/@jigging/flow-authoring/dist/index.js'),
   )
+  const authoringLock = JSON.parse(
+    await readFile(join(packageRoot, 'support/authoring-package-lock.json'), 'utf8'),
+  ) as { packages: Record<string, { version?: string }> }
+  for (const [path, locked] of Object.entries(authoringLock.packages)) {
+    if (!path.startsWith('node_modules/') || !locked.version) continue
+    let manifest: string
+    try {
+      manifest = await readFile(join(installed, 'libexec/authoring', path, 'package.json'), 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue // Optional platform package.
+      throw error
+    }
+    assert.equal(JSON.parse(manifest).version, locked.version, path)
+  }
   assert.deepEqual(installedManifest.bin, { jig: './bin/jig' })
   await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.package-lock.json')), {
     code: 'ENOENT',

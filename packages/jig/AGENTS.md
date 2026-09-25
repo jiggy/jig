@@ -77,6 +77,10 @@ admitted FLOW packages.
 - `scripts/pack.ts` stages the complete script-disabled npm compiler installation
   under private `libexec/authoring`, removes unused npm executable links, and
   rejects any non-regular archive entry before packing the allowlisted tree.
+  `support/authoring-install.json` and its generated npm lock pin the complete
+  private compiler closure; authoring-source changes require a matching lock
+  update. Packaging uses `npm ci` and fails on stale integrity. The final
+  tarball normalizes file order, timestamps and ownership.
   Consumers do not resolve the authoring workspace package from a registry.
 
 

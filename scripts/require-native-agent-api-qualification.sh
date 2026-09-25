@@ -54,16 +54,17 @@ runs_file=$temporary/runs.json
 attempt=1
 while [ "$attempt" -le "$attempts" ]; do
   gh api --method GET \
-    -f event=workflow_run \
     -f per_page=100 \
     "repos/$repository/actions/workflows/native-agent-api-qualification.yml/runs" \
     > "$runs_file"
   state=$(jq -r \
-    --arg title "$expected_title" \
+    --arg title "$expected_title" --arg revision "$revision" \
     '
       [
         .workflow_runs[]
-        | select(.event == "workflow_run" and .display_title == $title)
+        | select(.display_title == $title and
+            (.event == "workflow_run" or
+             (.event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $revision)))
       ]
       | sort_by(.created_at)
       | if length == 0 then
@@ -83,10 +84,12 @@ while [ "$attempt" -le "$attempts" ]; do
       ;;
     failed)
       jq -r \
-        --arg title "$expected_title" \
+        --arg title "$expected_title" --arg revision "$revision" \
         '
           .workflow_runs[]
-          | select(.event == "workflow_run" and .display_title == $title)
+          | select(.display_title == $title and
+              (.event == "workflow_run" or
+               (.event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $revision)))
           | "\(.status)/\(.conclusion // "unknown") \(.html_url)"
         ' "$runs_file" >&2
       echo "Native Agent API qualification did not succeed for $revision" >&2
