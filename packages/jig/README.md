@@ -44,7 +44,7 @@ jig new <name>
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig import-contract <source> <destination>
+jig import-contract <descriptor.json|npm:package> <destination>
 jig completion <bash|zsh|fish>
 ```
 

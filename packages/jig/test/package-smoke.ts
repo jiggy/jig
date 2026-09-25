@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 
@@ -271,6 +281,17 @@ try {
   )
   await assert.rejects(stat(join(consumer, 'imported-contract/FLOW.ts')), { code: 'ENOENT' })
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
+  await mkdir(join(consumer, 'node_modules'), { recursive: true })
+  await symlink(contractSource, join(consumer, 'node_modules/import-fixture'))
+  const installedImport = await run(
+    [command, 'import-contract', 'npm:import-fixture', 'imported-from-package'],
+    consumer,
+  )
+  assert.match(installedImport.stdout, /Imported 2 contract files/)
+  assert.equal(
+    await readFile(join(consumer, 'imported-from-package/FLOW.contract.json'), 'utf8'),
+    contract,
+  )
 
   await Promise.all([
     rm(join(consumer, '.env')),

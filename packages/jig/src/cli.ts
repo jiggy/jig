@@ -24,12 +24,11 @@ import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
 import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
-import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
-import { importContract } from './internal/contract-import.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
+import { importContract } from './internal/contract-import.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -50,6 +49,7 @@ import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
+import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
 import { flowSelector, npmPackageName } from './project/package-selector.js'
 import {
   createFlow,
@@ -77,7 +77,7 @@ Usage:
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
   jig completion <shell>     Print shell completion for bash, zsh, or fish
-  jig import-contract <file> <directory>  Copy a complete offline contract bundle
+  jig import-contract <file|npm:package> <directory>  Copy an offline contract bundle
   jig --version             Print the installed version
 
 Start here:
@@ -112,15 +112,18 @@ Fish: jig completion fish | source
 
 The scripts use jig completion targets [prefix] to read approved selectors.
 Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
-  'import-contract': `Usage: jig import-contract <descriptor.json> <new-directory>
+  'import-contract': `Usage: jig import-contract <descriptor.json|npm:package> <new-directory>
 
-Copy an installed or local invocation descriptor and its referenced channel
-agreements into a new directory. Bytes and relative paths are preserved.
+Copy a local descriptor or an explicitly selected installed package's invocation
+contract and referenced channel agreements into a new directory. An npm:package
+selector resolves from the destination's parent toward its ancestors, so member-
+local and project-root installations use the same command. Bytes and relative
+paths are preserved.
 The source is validated without importing code, fetching, or approving work.
 The destination parent must exist; existing destinations are never replaced.
 
 Example:
-  jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run`,
+  jig import-contract npm:@jigging/agent-method flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -505,10 +508,15 @@ async function executeImportContract(
   runtime: CliRuntime,
 ): Promise<number> {
   if (arguments_.length !== 3 || arguments_.slice(1).some((value) => value.startsWith('-')))
-    usage('import-contract', 'Specify one descriptor file and one new destination directory.')
+    usage(
+      'import-contract',
+      'Specify one descriptor file or npm:package and one new destination directory.',
+    )
   try {
     const result = await importContract(
-      resolve(runtime.currentDirectory, arguments_[1]!),
+      arguments_[1]!.startsWith('npm:')
+        ? arguments_[1]!
+        : resolve(runtime.currentDirectory, arguments_[1]!),
       resolve(runtime.currentDirectory, arguments_[2]!),
       runtime.signal,
     )

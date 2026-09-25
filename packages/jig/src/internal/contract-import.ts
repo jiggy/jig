@@ -1,10 +1,42 @@
 import { constants } from 'node:fs'
-import { type FileHandle, mkdir, mkdtemp, open, realpath, rm } from 'node:fs/promises'
+import { type FileHandle, lstat, mkdir, mkdtemp, open, realpath, rm } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
-import { captureOpenedPackageDirectory, type CapturedPackage } from '../package/capture.js'
+import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
+import { npmPackageName } from '../project/package-selector.js'
 import { privateFilePath, privatePublishDirectory } from './linux-file-input.js'
+
+async function installedDescriptor(selector: string, destination: string): Promise<string> {
+  let name: string
+  try {
+    name = npmPackageName(selector)
+  } catch {
+    invalid(
+      'CONTRACT_IMPORT_SOURCE',
+      'Select an exact npm package name without a version or subpath.',
+      selector,
+    )
+  }
+  let directory = dirname(resolve(destination))
+  for (;;) {
+    const packagePath = resolve(directory, 'node_modules', name)
+    try {
+      await lstat(packagePath)
+      return resolve(packagePath, 'FLOW.contract.json')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    const parent = dirname(directory)
+    if (parent === directory) break
+    directory = parent
+  }
+  return unavailable(
+    'CONTRACT_IMPORT_PACKAGE',
+    'The selected package is not installed for this consumer. Install its declared dependency, or choose a descriptor file directly.',
+    selector,
+  )
+}
 
 /** Explicit inert authoring: copy one validated offline closure, never package code. */
 export async function importContract(
@@ -19,14 +51,17 @@ export async function importContract(
   let phase: 'source' | 'destination' = 'source'
   try {
     signal?.throwIfAborted()
-    const name = basename(source)
+    const selected = source.startsWith('npm:')
+      ? await installedDescriptor(source, destination)
+      : source
+    const name = basename(selected)
     // The operator chooses the source root; descendants are captured without links.
     root = await open(
-      await realpath(dirname(resolve(source))),
+      await realpath(dirname(resolve(selected))),
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     )
     const capture = (paths: readonly string[]) =>
-      captureOpenedPackageDirectory(source, root!, {
+      captureOpenedPackageDirectory(selected, root!, {
         includes: (path) => paths.some((p) => p === path || p.startsWith(`${path}/`)),
         maximumFiles: 65,
         maximumBytes: 1_048_576,
@@ -87,7 +122,7 @@ export async function importContract(
     return unavailable(
       'CONTRACT_IMPORT_UNAVAILABLE',
       phase === 'source'
-        ? 'The source bundle could not be read. Choose an existing descriptor file and readable regular channel files. Workspace dependencies may be installed beneath their member directory.'
+        ? 'The source bundle could not be read. Choose an installed package with FLOW.contract.json or an existing descriptor file with readable regular channel files.'
         : 'The destination could not be written. Choose a new directory beneath an existing writable parent.',
       phase === 'source' ? source : destination,
     )
