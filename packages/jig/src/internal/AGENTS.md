@@ -102,6 +102,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Deadline failures that lack a proved result identify the static effect type,
   observed phase, and effective limiting budget without exposing worker errors,
   asserting remote non-delivery, or changing uncertainty and cleanup semantics.
+  On a repeated operation ID, resolve and settle its retained owner before
+  returning a pre-dispatch deadline claim; a prior owner remains uncertain even
+  when the retry's effective deadline has elapsed.
   HTTP, command and finite ACP grants resolve at Binding slots and are pinned in
   review and recipe identity. Optional catalog files are captured project proposals. The
   apply boundary checks explicit authority approval for new/changed recipients

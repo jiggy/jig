@@ -1,12 +1,6 @@
 import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
-import {
-  canonicalJson,
-  decodeJson1,
-  JSON_1_LIMITS,
-  type JsonObject,
-  type JsonValue,
-} from '../json.js'
+import { decodeJson1, JSON_1_LIMITS, type JsonObject, type JsonValue } from '../json.js'
 import type { ProjectCommand } from '../project/commands.js'
 import type { GrantPolicy, HttpGrant } from '../project/grants.js'
 import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
@@ -20,7 +14,6 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
@@ -31,10 +24,10 @@ import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   normalizeParentFlow,
+  type PrivateInvocationContext,
   protectedOwnerRoot,
   requireParentFlowOwner,
   requireParentTarget,
-  type PrivateInvocationContext,
 } from './invocation-context.js'
 import { privateSealedBytes, sha256 } from './linux-file-input.js'
 import {
@@ -54,13 +47,15 @@ import {
   planPrivateLinuxOwnerStateAllocation,
   releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
+import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
+  encodeHttpWorkerInput,
   HTTP_REQUEST_CONTRACT_DIGEST,
+  type HttpWorkerResult,
+  httpCredentialEcho,
   type PreparedHttpRequest,
   parseHttpRequest,
   parseHttpWorkerResult,
-  encodeHttpWorkerInput,
-  httpCredentialEcho,
 } from './private-http-request.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 import {
@@ -170,8 +165,6 @@ export async function executePrivateContainedEffect(
     input.parentDeadlineUnixMs,
     ownDeadlineUnixMs,
   )
-  if (deadlineUnixMs <= Date.now())
-    return failed('DEADLINE_EXCEEDED', 'the operation deadline elapsed before dispatch')
   if (input.parentFlow !== undefined)
     await requireParentFlowOwner(input, input.parentFlow, deadlineUnixMs)
   const rows = (await owners(input)).filter(
@@ -183,6 +176,13 @@ export async function executePrivateContainedEffect(
     await releaseEffect(input, prior)
     return failed('UNCERTAIN', 'a prior operation dispatch was fenced without a proved result')
   }
+  // A repeated operation ID may already own a dispatched effect. Resolve and
+  // fence that owner before claiming that this invocation was never dispatched.
+  if (deadlineUnixMs <= Date.now())
+    return failed(
+      'DEADLINE_EXCEEDED',
+      privateContainedDeadlineBeforeDispatchMessage(prepared.kind, deadlineLimit),
+    )
   if (rows.length !== 0)
     return failed('RESOURCE_EXHAUSTED', 'the parent already has an active operation')
   const identity = effectIdentity(
@@ -283,14 +283,14 @@ export async function executePrivateContainedEffect(
       if (reason === 'deadline')
         return failed(
           'DEADLINE_EXCEEDED',
-          'HTTP request deadline; remote effects may have occurred',
+          privateContainedWorkerDeadlineMessage('http', deadlineLimit),
         )
       if (observed.stdout.truncated || observed.fence.exitCode !== 0)
         return failed(
           'UNCERTAIN',
           'HTTP worker did not provide a complete result; remote effects may have occurred',
         )
-      let result
+      let result: HttpWorkerResult
       try {
         result = parseHttpWorkerResult(
           decodeJson1(Buffer.from(observed.stdout.text)),
@@ -332,7 +332,11 @@ export async function executePrivateContainedEffect(
     if (input.signal.aborted || reason === 'cancelled')
       return failed('CANCELLED', 'the contained operation was cancelled', details)
     if (reason === 'deadline')
-      return failed('DEADLINE_EXCEEDED', 'the project command exceeded its deadline', details)
+      return failed(
+        'DEADLINE_EXCEEDED',
+        privateContainedWorkerDeadlineMessage('command', deadlineLimit),
+        details,
+      )
     return {
       status: 'succeeded',
       result: { outcome: 'done', output: value as unknown as JsonValue },
@@ -388,7 +392,31 @@ export function privateContainedDeadlineMessage(
   limit: ReturnType<typeof privateContainedDeadlineLimit>,
   phase: string,
 ): string {
-  return `the ${kind === 'http' ? 'HTTP request' : 'project command'} did not return a proved result by its effective deadline (limited by ${limit}) while ${phase}; effects may have occurred`
+  const effect = kind === 'http' ? 'HTTP request' : 'project command'
+  const uncertainty =
+    kind === 'http'
+      ? 'remote effects may have occurred'
+      : 'the command ran in a disposable workspace and no result was proved'
+  return `the ${effect} did not settle by its effective deadline (limited by ${limit}) while the host was ${phase}; ${uncertainty}`
+}
+
+/** The worker's fence establishes that its own deadline stopped execution. */
+export function privateContainedWorkerDeadlineMessage(
+  kind: 'command' | 'http',
+  limit: ReturnType<typeof privateContainedDeadlineLimit>,
+): string {
+  return kind === 'http'
+    ? `the HTTP request worker stopped at its effective deadline (limited by ${limit}); remote effects may have occurred and no response was proved`
+    : `the project command worker stopped at its effective deadline (limited by ${limit}); cleanup completed but no successful command result was proved`
+}
+
+/** A deadline reached before owner allocation or worker dispatch is conclusive. */
+export function privateContainedDeadlineBeforeDispatchMessage(
+  kind: 'command' | 'http',
+  limit: ReturnType<typeof privateContainedDeadlineLimit>,
+): string {
+  const effect = kind === 'http' ? 'HTTP request' : 'project command'
+  return `the ${effect} did not start before its effective deadline (limited by ${limit}); it was not dispatched`
 }
 
 function httpPlan(

@@ -95,6 +95,13 @@ accepted or whether a command had side effects. Inspect retained evidence before
 starting a new Run. Increasing `--timeout` helps only when the root Run was the
 limiting budget and the work can finish within the other limits.
 
+If the effective deadline had already elapsed before the operation was
+dispatched, and Jig has no unresolved owner for an earlier attempt with the same
+operation ID, the diagnostic instead says the operation was not dispatched. A
+retry with a retained prior owner is reported as uncertain after Jig settles
+that owner; a deadline after launch also retains the uncertainty warning and
+the host's collected cleanup evidence.
+
 A protocol error means the Flow did not complete Run/0 correctly. Check its
 SDK revision and stdout use, then inspect the result and any effects before
 running again. After changing source or dependencies, review the changes first.
