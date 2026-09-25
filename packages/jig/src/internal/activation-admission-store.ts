@@ -893,6 +893,7 @@ export async function submitPrivateRootRun(input: {
   readonly projectRoot: string
   readonly packageStoreRoot: string
   readonly submissionId: string
+  readonly expectedAdmissionDigest?: string
   readonly target: RunTargetIdentity
   readonly input: JsonValue
   readonly files?: PrivateRunFileIdentity
@@ -923,6 +924,15 @@ export async function submitPrivateRootRun(input: {
       unavailable('ADMISSION_MISSING', 'no activation generation is active')
     const admissionRow = requireAdmissionRow(owner.database, head.revision)
     const admission = loadAndCrossCheckAdmission(owner.database, admissionRow, owner.root)
+    if (
+      input.expectedAdmissionDigest !== undefined &&
+      input.expectedAdmissionDigest !== admission.admissionDigest
+    )
+      unavailable(
+        'RUN_APPROVAL_CHANGED',
+        'approval changed after selecting the project entrypoint; invoke again to use the current approval',
+      )
+
     const candidateRow = requireCandidateRow(
       owner.database,
       BigInt(admission.admission.candidateRevision),
@@ -3420,6 +3430,7 @@ export async function inspectPrivateApprovedProject(
   selector?: string,
   checkEnvironment?: PrivateInspectionEnvironmentCheck,
   describeTargets = false,
+  onAdmission?: (digest: string) => void,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -3515,7 +3526,15 @@ export async function inspectPrivateApprovedProject(
       })
     }
     const state = inspectionState(states)
-    let result: JsonValue = { state, revision: candidate.candidate.lockDigest, targets: listed }
+    onAdmission?.(receipt.admissionDigest)
+    const entrypoint =
+      candidate.lock.entrypoint === undefined ? {} : { entrypoint: candidate.lock.entrypoint }
+    let result: JsonValue = {
+      state,
+      revision: candidate.candidate.lockDigest,
+      ...entrypoint,
+      targets: listed,
+    }
     if (selector !== undefined) {
       const index = selectedIndex!
       const { request } = candidate.candidate.targets[index]!
@@ -3533,6 +3552,7 @@ export async function inspectPrivateApprovedProject(
         result = {
           state,
           revision: candidate.candidate.lockDigest,
+          ...entrypoint,
           target: selector,
           package: request.packagePath,
           digest: request.package.digest,

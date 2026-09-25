@@ -88,6 +88,9 @@ completed publication is not undone. Process loss may leave an unpublished
    Preserve value-free expected/received JSON type facts for schema type errors
    across planning and execution boundaries. Never echo rejected values or
    arbitrary worker messages to manufacture a more detailed cause.
+   Missing or invalid files in the installed Jig runtime have a closed
+   installation-repair explanation; raw paths and filesystem exceptions remain
+   private, and a later revalidation failure must not imply that no work started.
 5. **Useful next actions.** Successful setup and review identify the next
    supported action. Failures give a verified command, specific correction, or
    relevant documentation when available. Never invent commands or recommend
@@ -95,7 +98,9 @@ completed publication is not undone. Process loss may leave an unpublished
 6. **Explicit authority.** Show consequential permission scope before effects.
    A supplied grant is acknowledged, not requested again. Dependency resolution
    notices retain public/private-network access, pre-validation effects,
-   irreversibility, possible rejection, and review-only scope. Approval shows
+   irreversibility, possible rejection, and review-only scope. Emit one notice
+   per review before its first network-enabled dependency preparation, covering
+   all packages; retain per-package progress without repeating the warning. Approval shows
    every changed public policy record; `--details` includes unchanged policy.
    Show public changes as contextual field diffs with explicit `-` previous and
    `+` proposed markers, preserving exact values and container types. Omit
@@ -128,7 +133,15 @@ completed publication is not undone. Process loss may leave an unpublished
    not a crash; already incurred dependency effects are not undone.
    Human Run output leads with host-observed execution and application outcome,
    packet delivery when requested, and unconfirmed cleanup when known. Preserve
-   arbitrary application output afterward; field names never establish success.
+   arbitrary small application output afterward; field names never establish
+   success. When a complete result packet is confirmed written, the terminal
+   may summarize large application output and checkpoint evidence by pointing
+   to `result.json` instead of repeating them. An uncertain or failed packet
+   delivery must not cause the terminal to hide result evidence.
+   Emphasize failed execution and unconfirmed cleanup in red, uncertain execution
+   or delivery in amber, and completed execution or written delivery in green.
+   Keep the same explicit status words when color is disabled. Application
+   outcomes do not inherit a success verdict from completed execution.
 8. **Progressive detail.** Ordinary output supports the next decision. Exact
    review details, Run JSON/NDJSON, and bounded diagnostics retain their roles;
    no debug flag is implied. Never hide important failures or authority notices
@@ -174,10 +187,18 @@ Syntax errors show a bounded explanation and the relevant `jig <command> --help`
 hint, not the complete manual. A close spelling suggestion never changes or
 executes the supplied command.
 
-Interactive `jig run` without a target presents numbered approved targets and
-their retained descriptions before execution acquisition. Empty input cancels;
-there is no default target. Noninteractive invocation requires an exact target.
-Selection does not approve visible edits or bypass Run validation.
+`jig run` without a target uses the approved project `entrypoint` and its default
+arguments, in terminals and scripts. Explicit options override defaults according
+to [Project Authoring SDK/1](project-sdk.md#project-entrypoint); an explicit target
+bypasses them. Show the selected target and effective file paths and duration
+before work, without printing input contents. Review shows entrypoint additions,
+changes and removal; inspection includes the approved declaration.
+
+Without an entrypoint, interactive `jig run` presents numbered approved targets
+and their retained descriptions before execution acquisition. Empty input
+cancels; noninteractive invocation requires an exact target. Selection does not
+approve visible edits or bypass Run validation. Approval changing between
+selection and submission refuses the invocation with `RUN_APPROVAL_CHANGED`.
 
 `jig completion bash|zsh|fish` prints shell integration. Its dynamic
 `jig completion targets [prefix]` lookup reads only approved selectors, without
@@ -188,7 +209,7 @@ Human inspection supplies invocation guidance from the retained interface:
 required fields, file placeholders, and channel requirements. Input examples
 are explicitly templates, not invented schema-valid domain data. Required
 incoming channels are identified as needing a Flow caller, not a runnable CLI
-example. Machine inspection retains its existing JSON contract.
+example. Machine inspection includes the optional approved `entrypoint` string.
 
 `jig new <name>` creates `flows/<name>` in the current project, never overwriting
 an existing path. It does not evaluate `jig.ts`, install dependencies, modify
@@ -211,10 +232,30 @@ bounded to 64 KiB across 32 emitting invocation paths. These are untrusted
 diagnostic bytes, not application results. The existing terminal `diagnostics`
 continues to describe root-process stderr only. Live rendering escapes control
 characters and identifies changes of emitting invocation.
-Human final results summarize diagnostic text already delivered for that invocation,
-retain any unseen suffix, and disclose capture truncation. Interleaved invocation
-paths are tracked separately. JSON records and result packets retain their complete
-bounded captures independently of this presentation.
+Human final results count invocation paths whose diagnostic text was already
+shown live, without replaying it or creating a result section for that count
+alone. Retain any unseen suffix and disclose capture truncation with its path.
+Interleaved invocation paths are tracked separately. JSON records and result
+packets retain their complete bounded captures independently of this presentation.
+Human output omits packet provenance manifests and digests already retained in
+`result.json`; identify that file when delivery is confirmed. When a successful
+Run has a confirmed written packet, keep small application output visible but
+refer to `result.json` for large output, patch contents, and full checkpoint
+evidence. Show the delivered file count when known. If delivery is uncertain
+or failed, keep result evidence visible. Retain unseen diagnostics and failure
+details, then end failed Runs with the explanation and next safe action so
+evidence does not bury recovery.
+Do not repeat delivery and cleanup records already explained by the summary.
+Omit a null checkpoint and a zero delivered-file count from human results;
+their exact machine values remain unchanged.
+
+Input errors name the approved schema and the rejected field when known. Explain
+that source edits need `jig review`; an input mismatch alone does not prove an
+outdated review. Run does not inspect or approve live source to guess freshness.
+Native Agent setup failures identify the selected client and a closed cause,
+separately from corrective guidance. Locate the selection at its captured Binding
+declaration and resource slot when known, instead of the provider's executable
+Flow file. Never expose private exception text or invent the source location.
 
 After interruption, the command waits for owned cleanup and emits its observed
 authoritative terminal when available, with `command: {status: 'interrupted'}`

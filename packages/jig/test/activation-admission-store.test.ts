@@ -641,6 +641,78 @@ describe.serial('direct alpha activation store', () => {
       }
     })
   }
+  test('entrypoint selection uses approval, survives explicit overrides, and refuses a newer admission', async () => {
+    const original = await createFixture('ready', 'flow:flows/run --input @job.json --timeout 8m')
+    let coordinator: PrivateProjectCoordinator | undefined
+    const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+    try {
+      const approved = await admit(original)
+      await rename(original.store, fixture.store)
+      await writeFile(join(fixture.root, 'jig.ts'), 'throw new Error("unreviewed source")')
+      // A missing job file is okay during selection; Run captures it later.
+      const prepared = await privateCliPrepareArguments(['run', '--timeout', '12m'], {
+        currentDirectory: fixture.root,
+        interactive: false,
+        answer: async () => {
+          throw new Error('entrypoint must never prompt')
+        },
+      })
+      expect(prepared).toEqual({
+        arguments: [
+          'run',
+          'flow:flows/run',
+          '--input',
+          '@' + join(fixture.root, 'job.json'),
+          '--timeout',
+          '12m',
+        ],
+        admissionDigest: approved,
+      })
+      expect(await inspectPrivateApprovedProject(fixture.root)).toMatchObject({
+        entrypoint: original.candidate.lock.entrypoint,
+      })
+      const direct = ['run', 'flow:flows/run', '--input', '{"value":"direct"}']
+      expect(await privateCliPrepareArguments(direct, { currentDirectory: fixture.root })).toEqual({
+        arguments: direct,
+      })
+      const newer = insertCandidate(fixture, 'entrypoint-race', false)
+      const next = requireAdmission(
+        await applyPlan(
+          fixture,
+          seedPlan(fixture, newer, {
+            baseGeneration: approved,
+            observedLock: 'present',
+            operation: 'admission',
+          }),
+        ),
+      )
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      await expect(
+        submitPrivateRootRun({
+          coordinator,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          submissionId: 'entrypoint-race',
+          expectedAdmissionDigest: approved,
+          target: { kind: 'flow', path: 'flows/run' },
+          input: { value: 'test' },
+          deadlineUnixMs: Date.now() + 1000,
+        }),
+      ).rejects.toMatchObject({ code: 'RUN_APPROVAL_CHANGED' })
+      expect(next.admissionDigest).not.toBe(approved)
+      expect(
+        await listPrivateRootExecutionWork({
+          coordinator,
+          projectRoot: fixture.root,
+          epoch: 'current',
+        }),
+      ).toEqual([])
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('inspection reads only approved retained meaning without state writes or coordinator acquisition', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
@@ -689,7 +761,10 @@ describe.serial('direct alpha activation store', () => {
           menu += text
         },
       })
-      expect(selection).toEqual({ arguments: ['run', 'flow:flows/run', '--input', '{"value":1}'] })
+      expect(selection).toEqual({
+        arguments: ['run', 'flow:flows/run', '--input', '{"value":1}'],
+        admissionDigest: approved,
+      })
       expect(menu).toContain('Direct alpha store fixture.')
       expect(menu).not.toContain('binding:router') // pending source is not approval
       for (const answer of ['', '99', '1;exit']) {
@@ -2834,6 +2909,7 @@ async function createEmptyFixture(): Promise<EmptyFixture> {
 
 async function createFixture(
   disposition: 'ready' | 'unavailable' = 'unavailable',
+  entrypoint?: string,
 ): Promise<Fixture> {
   const empty = await createEmptyFixture()
   const flowSource = join(empty.base, 'run-flow')
@@ -2867,6 +2943,7 @@ async function createFixture(
     const declaration = await retainPackage(empty.store, declarationSource)
     const information = await stat(empty.root, { bigint: true })
     const lockBytes = json1({
+      ...(entrypoint === undefined ? {} : { entrypoint }),
       packages: {
         'flows/run': {
           digest: flow.digest,

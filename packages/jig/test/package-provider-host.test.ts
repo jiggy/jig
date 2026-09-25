@@ -216,3 +216,191 @@ hostTest.each([false, true])(
   },
   120_000,
 )
+
+hostTest(
+  'packed project entrypoint uses reviewed defaults and fresh job data',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jig-entrypoint-consumer-'))
+    const packageRoot = join(import.meta.dir, '..')
+    const project = join(directory, 'project')
+    const tooling = join(directory, 'tooling')
+    const artifacts = join(directory, 'artifacts')
+    let passed = false
+    const put = async (path: string, value: unknown) => {
+      await mkdir(dirname(join(project, path)), { recursive: true })
+      await writeFile(
+        join(project, path),
+        typeof value === 'string' ? value : JSON.stringify(value),
+      )
+    }
+    try {
+      await mkdir(tooling)
+      await mkdir(artifacts)
+      let archive = process.env.JIG_PACKAGE_ARCHIVE
+      if (!archive) {
+        execFileSync(process.execPath, ['scripts/pack.ts', '--destination', artifacts], {
+          cwd: packageRoot,
+          stdio: 'pipe',
+          timeout: 120000,
+        })
+        const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+        archive = join(artifacts, `jigging-jig-${manifest.version}.tgz`)
+      }
+      await writeFile(
+        join(tooling, 'package.json'),
+        JSON.stringify({
+          private: true,
+          dependencies: { '@jigging/jig': `file:${archive}` },
+        }),
+      )
+      execFileSync(
+        process.execPath,
+        ['install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
+        {
+          cwd: tooling,
+          stdio: 'pipe',
+          timeout: 120000,
+        },
+      )
+      const installed = join(tooling, 'node_modules/.bin/jig')
+      let sequence = 0
+      const invoke = async (args: string[]) => {
+        const child = Bun.spawn([installed, ...args], {
+          cwd: project,
+          env: { ...process.env, NO_COLOR: '1' },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const timer = setTimeout(() => child.kill('SIGTERM'), 120000)
+        const [exit, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ]).finally(() => clearTimeout(timer))
+        await writeFile(
+          join(directory, `${++sequence}-${args[0]}.json`),
+          JSON.stringify({ args, exit, stdout, stderr }, null, 2),
+        )
+        return { exit, stdout, stderr }
+      }
+      const succeed = async (args: string[]) => {
+        const result = await invoke(args)
+        expect(result.exit, result.stdout + result.stderr).toBe(0)
+        return result
+      }
+      const declaration = (entrypoint: string) => `import {defineJig,discover} from '@jigging/jig';
+export default defineJig({flows:discover('flows'),bindings:discover('bindings'),entrypoint:${JSON.stringify(entrypoint)}});`
+      const echo = `import {createInterface} from 'node:readline';
+const lines=createInterface({input:process.stdin});
+for await (const line of lines) {
+ const request=JSON.parse(line);
+ const {input,attachments}=request.params;
+ let output=input;
+ if(attachments.source) {
+  const source=await Bun.file(attachments.source.path+'/value.txt').text();
+  output={input,source};
+  await Bun.write(attachments.result.path+'/copy.txt',source);
+ }
+ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{outcome:'done',output}})+'\\n');
+ break;
+}`
+      await put('package.json', { private: true, type: 'module' })
+      await put('flows/echo/FLOW.ts', echo)
+      await put('flows/files/FLOW.ts', echo)
+      await put('flows/files/FLOW.contract.json', {
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+        input: {
+          type: 'object',
+          properties: { job: { type: 'string', enum: ['first', 'second'] } },
+          required: ['job'],
+          additionalProperties: false,
+        },
+        attachments: { source: 'read', result: 'read-write' },
+      })
+      await put(
+        'bindings/factory.ts',
+        `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/files'});`,
+      )
+      await put(
+        'jig.ts',
+        declaration(
+          `binding:factory --input '@job data.json' --attach 'source=source files' --out result --timeout 30s`,
+        ),
+      )
+      await put('job data.json', { job: 'first' })
+      await put('source files/value.txt', 'original')
+      const review = await succeed(['review', '--yes'])
+      expect(review.stdout).toContain('Project entrypoint')
+      const inspection = JSON.parse((await succeed(['inspect', '--json'])).stdout)
+      expect(inspection.entrypoint).toContain('binding:factory --input')
+      // Unreviewed source must not affect selection or cause reevaluation.
+      await put('jig.ts', 'throw new Error("unreviewed source must not execute")')
+      const first = JSON.parse((await succeed(['run', '--json'])).stdout)
+      expect(first).toMatchObject({
+        status: 'succeeded',
+        outcome: 'done',
+        output: { input: { job: 'first' }, source: 'original' },
+      })
+      const occupied = await invoke(['run', '--json'])
+      expect(occupied.exit).not.toBe(0)
+      expect(occupied.stderr).toContain('JIG_OUTPUT_EXISTS')
+      await put('job data.json', { job: 'second' })
+      await put('source files/value.txt', 'fresh')
+      const second = JSON.parse(
+        (await succeed(['run', '--out', 'second-result', '--timeout', '45s', '--json'])).stdout,
+      )
+      expect(second).toMatchObject({
+        status: 'succeeded',
+        output: { input: { job: 'second' }, source: 'fresh' },
+      })
+      // Explicit targets bypass all defaults, including the occupied output.
+      const direct = JSON.parse(
+        (await succeed(['run', 'flow:flows/echo', '--input', '"direct"', '--json'])).stdout,
+      )
+      expect(direct).toMatchObject({ status: 'succeeded', output: 'direct' })
+      const sameTarget = await invoke(['run', 'binding:factory', '--json'])
+      expect(sameTarget.exit).not.toBe(0)
+      expect(sameTarget.stdout + sameTarget.stderr).not.toContain('JIG_OUTPUT_EXISTS')
+      expect(sameTarget.stdout + sameTarget.stderr).toContain('JIG_RUN_FILES_INVALID')
+      // An invalid job remains invalid after a fresh review. Recovery guidance
+      // names the approved schema without diagnosing source freshness.
+      await put('job data.json', { job: 'third' })
+      await put(
+        'jig.ts',
+        declaration(
+          `binding:factory --input '@job data.json' --attach 'source=source files' --out result --timeout 30s`,
+        ),
+      )
+      for (const output of ['rejected-before-review', 'rejected-after-review']) {
+        if (output === 'rejected-after-review') await succeed(['review', '--yes'])
+        const rejected = await invoke(['run', '--out', output, '--json'])
+        expect(rejected.exit).toBe(1)
+        expect(rejected.stderr).toContain('approved target input schema')
+        expect(rejected.stderr).toContain('choices declared')
+        expect(rejected.stderr).toContain('If you edited the Flow or its schema')
+        expect(rejected.stderr).not.toContain('Review required')
+        const terminal = JSON.parse(rejected.stdout)
+        expect(terminal).toMatchObject({
+          status: 'failed',
+          code: 'INVALID_INPUT',
+          details: { keyword: 'enum', instancePointer: '/job' },
+        })
+        expect(terminal.input.attachments[0].files[0].path).toBe('value.txt')
+        const packet = JSON.parse(await readFile(join(project, output, 'result.json'), 'utf8'))
+        expect(packet.details).toEqual(terminal.details)
+        expect(packet.method).toEqual(terminal.method)
+        expect(packet.input).toEqual(terminal.input)
+      }
+      await put('jig.ts', declaration('flow:flows/echo'))
+      await succeed(['review', '--yes'])
+      const short = JSON.parse((await succeed(['run', '--input', '"short"', '--json'])).stdout)
+      expect(short).toMatchObject({ status: 'succeeded', output: 'short' })
+      passed = true
+    } finally {
+      if (passed) await rm(directory, { recursive: true, force: true })
+      else console.error(`Entrypoint consumer evidence retained at ${directory}`)
+    }
+  },
+  600000,
+)

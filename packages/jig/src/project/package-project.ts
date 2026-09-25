@@ -1,3 +1,8 @@
+import {
+  entrypointWords,
+  parseProjectEntrypoint,
+  validateEntrypointInterface,
+} from './entrypoint.js'
 import { CheckError, invalid } from '../diagnostics.js'
 import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from '../internal/markdown-agent-contract.js'
@@ -45,6 +50,7 @@ export interface InjectedBindingDeclaration {
 }
 
 export interface PackageProjectInput {
+  readonly entrypoint?: string
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly InjectedBindingDeclaration[]
   readonly grants?: Readonly<Record<string, GrantPolicy>>
@@ -80,6 +86,7 @@ export interface LinkedPackageBinding {
 }
 
 export interface PackageProjectValue {
+  readonly entrypoint?: string
   readonly flows: readonly LinkedFlow[]
   readonly bindings: readonly LinkedPackageBinding[]
 }
@@ -113,6 +120,7 @@ export function linkPackageProject(
     [
       'flows',
       'bindings',
+      ...(input && Object.hasOwn(input, 'entrypoint') ? ['entrypoint'] : []),
       ...(input && Object.hasOwn(input, 'grants') ? ['grants'] : []),
       ...(input && Object.hasOwn(input, 'defaultProviders') ? ['defaultProviders'] : []),
     ],
@@ -213,7 +221,28 @@ export function linkPackageProject(
         '/defaultProviders',
       )
   }
+  if (root.entrypoint !== undefined) {
+    try {
+      const parsed = parseProjectEntrypoint(root.entrypoint)
+      const binding =
+        parsed.target.kind === 'binding' ? bindingById.get(parsed.target.id) : undefined
+      const flow =
+        parsed.target.kind === 'flow' ? flowByPath.get(parsed.target.path) : binding?.flow
+      if (!flow || (parsed.target.kind === 'flow' && !flow.value.directRun))
+        throw new TypeError('entrypoint must select an invokable project Flow or Binding')
+      validateEntrypointInterface(parsed, flow.value.invocation, binding?.boundAttachments)
+      const words = entrypointWords(root.entrypoint)
+      if (
+        words.some((word, index) => index % 2 === 1 && word === '--input') &&
+        parsed.inputFile === undefined
+      )
+        flow.inspected.schemas.input?.validate(parsed.input, 'INVALID_INPUT')
+    } catch (error) {
+      invalid('PROJECT_ENTRYPOINT_INVALID', errorText(error), 'jig.ts', '/entrypoint')
+    }
+  }
   const value = Object.freeze({
+    ...(root.entrypoint === undefined ? {} : { entrypoint: root.entrypoint as string }),
     flows: Object.freeze(flows.map((flow) => flow.value)),
     bindings: Object.freeze(
       preparedBindings.map((binding) =>

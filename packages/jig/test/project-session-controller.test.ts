@@ -432,6 +432,30 @@ describe('private finite project session', () => {
   })
 
   test('scopes known preparation and Agent failures without projecting private protocol details', () => {
+    const missingClient = new CheckError(
+      'unavailable',
+      'PROJECT_ACP_CODEX_EXECUTABLE',
+      'secret /private/provider',
+      'npm:@jigging/agent-acp/FLOW.ts',
+      '/slots/native',
+    )
+    expect(
+      projectError(
+        scopePrivatePackagePlanningError(
+          missingClient,
+          'npm:@jigging/agent-acp',
+          'bindings/agent.ts',
+        ),
+        'plan',
+      ).diagnostic,
+    ).toEqual({
+      code: 'PROJECT_ACP_CODEX_EXECUTABLE',
+      path: 'bindings/agent.ts',
+      pointer: '/slots/native',
+    })
+    expect(scopePrivatePackagePlanningError(missingClient, 'npm:@jigging/agent-acp')).toBe(
+      missingClient,
+    )
     const failure = new CheckError(
       'unavailable',
       'PACKAGE_BUN_SOURCE_UNSUPPORTED',

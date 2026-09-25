@@ -1,3 +1,4 @@
+import { parseProjectEntrypoint } from '../project/entrypoint.js'
 import {
   canonicalJson,
   decodeJson1,
@@ -46,6 +47,7 @@ export interface PrivateLockBinding {
 }
 
 export interface PrivateProjectLocalLock {
+  readonly entrypoint?: string
   readonly packages: Readonly<Record<string, PrivateLockPackage>>
   readonly bindings: Readonly<Record<string, PrivateLockBinding>>
 }
@@ -80,7 +82,11 @@ export function createPrivateProjectLocalLock(
       ...(binding.boundAttachments === undefined ? {} : { attachments: binding.boundAttachments }),
     })
   }
-  const lock = normalizeLock({ packages, bindings })
+  const lock = normalizeLock({
+    packages,
+    bindings,
+    ...(linked.entrypoint === undefined ? {} : { entrypoint: linked.entrypoint }),
+  })
   encodeNormalized(lock)
   return markValidated(lock)
 }
@@ -112,7 +118,15 @@ export function requirePrivateProjectLocalLock(value: unknown): PrivateProjectLo
 }
 
 function normalizeLock(value: unknown): PrivateProjectLocalLock {
-  const root = exactObject(value, ['packages', 'bindings'], 'lock')
+  const root = exactObject(
+    value,
+    [
+      'packages',
+      'bindings',
+      ...(Object.hasOwn(object(value, 'lock'), 'entrypoint') ? ['entrypoint'] : []),
+    ],
+    'lock',
+  )
   const packages = normalizePackages(root.packages)
   const bindings = normalizeBindings(root.bindings)
   const activationTargetCount =
@@ -122,7 +136,20 @@ function normalizeLock(value: unknown): PrivateProjectLocalLock {
     throw new TypeError(`lock activation targets exceed ${PRIVATE_ACTIVATION_TARGET_LIMIT} targets`)
   }
   validateReferences(packages, bindings)
-  return Object.freeze({ packages, bindings })
+  if (root.entrypoint !== undefined) {
+    const { target } = parseProjectEntrypoint(root.entrypoint)
+    if (
+      target.kind === 'flow'
+        ? !packages[target.path]?.directRun
+        : !Object.hasOwn(bindings, target.id)
+    )
+      throw new TypeError('lock entrypoint must select an invokable project target')
+  }
+  return Object.freeze({
+    packages,
+    bindings,
+    ...(root.entrypoint === undefined ? {} : { entrypoint: root.entrypoint as string }),
+  })
 }
 
 function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] {

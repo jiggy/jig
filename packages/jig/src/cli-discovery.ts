@@ -33,14 +33,14 @@ export function invocationGuide(snapshot: JsonValue): string {
     const targets = approvedTargets(snapshot)
     return targets.length === 0
       ? ''
-      : `Approved targets\n\n${targets
+      : `${typeof item.entrypoint === 'string' ? `Project entrypoint\n\n  ${JSON.stringify(item.entrypoint)}\n\nStart this application with jig run. Supplied options override its defaults.\n\n` : ''}Approved targets\n\n${targets
           .map(
             ({ target, description }) =>
               `  ${JSON.stringify(target)}${description ? ` — ${JSON.stringify(description)}` : ''}`,
           )
           .join(
             '\n',
-          )}\n\nChoose a target with jig run, or inspect its interface with jig inspect <target>.\n`
+          )}\n\n${typeof item.entrypoint === 'string' ? 'Invoke a component directly with jig run <target>, or inspect its interface with jig inspect <target>.' : 'Choose a target with jig run, or inspect its interface with jig inspect <target>.'}\n`
   }
   const input = record(item.contract).input
   const schema = record(input)

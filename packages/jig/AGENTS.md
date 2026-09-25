@@ -91,7 +91,7 @@ admitted FLOW packages.
 
 - `src/cli-discovery.ts` owns invocation guidance and shell completion. Completion
   and the interactive target chooser read approval only, without environment
-  probes or source evaluation. Selection is explicit and precedes acquisition;
+  probes or source evaluation. Approved project entrypoint selection precedes acquisition;
   Run still performs all ordinary authority checks. `jig new` writes ordinary
   Flow source without overwriting, evaluating, installing, or approving it.
 
@@ -142,6 +142,14 @@ admitted FLOW packages.
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or
   execution; Runs use retained admitted bytes.
+- Project `entrypoint` is a target plus optional Run-argument string, retained
+  in semantic identity, lock, review and inspection. `run-arguments.ts` owns shared
+  CLI validation; `project/entrypoint.ts` owns bounded shell-free tokenization,
+  project-relative defaults and explicit-option overrides. Explicit targets
+  bypass defaults. Job files are captured per Run; Binding resources stay pinned.
+  Resolve before delivery/delegation and carry the selected admission through
+  reexecution to the submission compare-and-set. Operator verification and
+  presentation options cannot be supplied by project defaults.
 - Project `defaultProviders` maps contract IDs to exact Flow or Binding targets.
   Explicit slots win; otherwise review uses the map or the sole structurally
   provisioned exact match. Ambiguity requires a choice, never a client-availability
@@ -215,7 +223,8 @@ admitted FLOW packages.
   `cli-run-presentation.ts` owns human Run results and channel streaming. Join
   text fragments exactly, label channel switches and endings, escape controls,
   and preserve separate execution, application, delivery, and cleanup outcomes.
-  Summarize diagnostics already delivered by host invocation path, preserving
+  Count invocation paths whose diagnostics were already shown live; do not replay
+  them or create a result section for the count alone. Preserve path-specific
   unseen suffixes and truncation; machine records retain the full bounded capture.
   A generic failure without diagnostics must state the missing evidence; do not
   imply that the Flow never started or repeat an identical raw error block.
@@ -225,6 +234,15 @@ admitted FLOW packages.
   stderr when the terminal already carries a specific explanation.
   Render host-only REVIEW_REQUIRED with `jig review` as the next action.
   Flow-supplied error details cannot establish that execution never started.
+  Emphasize host failure/uncertainty in summary status lines and end failed Runs
+  with the cause and next action after evidence. Omit packet provenance manifests
+  from human results; retain full machine and packet records. A confirmed written
+  packet permits compact success output: show small application answers, but
+  point to `result.json` for large output and checkpoint evidence, and show the
+  nonzero delivered file count. Omit null checkpoints from human results.
+  Uncertain delivery keeps evidence visible. Input errors name
+  the approved schema without guessing source freshness. Emit the dependency
+  network notice once per review before preparation, retaining package progress.
 
 - Agent selection belongs to ordinary dependencies, Bindings and resource grants,
   never inferred from credentials or a preferred vendor. Selection remains
@@ -263,6 +281,9 @@ admitted FLOW packages.
 - `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1`,
   exercises public installed review, inspection and direct/Binding/child invocation
   of an ordinary declared workspace dependency, including admitted-byte pinning.
+  Its packed entrypoint consumer checks both string forms, noninteractive default
+  selection, current input bytes, overrides, explicit-target bypass and output
+  collision refusal. It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete

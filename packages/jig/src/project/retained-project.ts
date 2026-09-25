@@ -1,3 +1,4 @@
+import { entrypointWords, parseProjectEntrypoint } from './entrypoint.js'
 import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
@@ -192,6 +193,19 @@ export async function retainOpenedPackageProject(
         selected.add(value)
       }
     }
+    if (project.value.entrypoint !== undefined) {
+      try {
+        parseProjectEntrypoint(project.value.entrypoint)
+        select(entrypointWords(project.value.entrypoint)[0]!)
+      } catch {
+        invalid(
+          'PROJECT_ENTRYPOINT_INVALID',
+          'entrypoint has invalid Run arguments',
+          'jig.ts',
+          '/entrypoint',
+        )
+      }
+    }
     for (const value of Object.values(project.value.defaultProviders ?? {})) select(value)
     for (const binding of bindings) {
       select(binding.evaluation.value.package)
@@ -226,6 +240,7 @@ export async function retainOpenedPackageProject(
     const linked = linkPackageProject(
       {
         flows: retainedFlows,
+        ...(project.value.entrypoint === undefined ? {} : { entrypoint: project.value.entrypoint }),
         grants: grantSource.grants,
         ...(project.value.defaultProviders === undefined
           ? {}

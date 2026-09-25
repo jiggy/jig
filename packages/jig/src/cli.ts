@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-
 import { randomBytes } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
@@ -21,43 +20,43 @@ import {
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
+import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
-import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
+import { ACP_SETUP_CAUSES, ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
 import { importContract } from './internal/contract-import.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
+import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import {
   PrivateFileInputError,
-  privateAttachmentName,
   privateCaptureAttachments,
-  privateFilePath,
   privateReadOperatorFile,
   sha256,
 } from './internal/linux-file-input.js'
 import { privateProfileSpan } from './internal/private-profile.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
-  PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
-  PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
-import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
+import { type RunTargetRef } from './project/author.js'
+import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
-import { flowSelector, npmPackageName } from './project/package-selector.js'
+import { flowSelector } from './project/package-selector.js'
 import {
   createFlow,
   createProject,
   type ProjectInitAgent,
   ProjectInitError,
 } from './project-init.js'
+import { parseRun, parseTarget, parseVerification } from './run-arguments.js'
 import { schemaTypeMismatchText } from './schema/types.js'
 
 const VERIFICATION_HELP = `Startup verification:
@@ -184,8 +183,10 @@ ${VERIFICATION_HELP}`,
 
 Run an exact reviewed target in the current project. No dependencies are
 installed and source changes are not approved automatically.
-Omit the target in an interactive terminal to choose from approved targets.
-Scripts must supply an exact target; selection never approves changed source.
+Omit the target to use the approved project entrypoint and its default arguments.
+Your options override its defaults. An explicit target uses no entrypoint defaults.
+Without an entrypoint, terminals offer a chooser and scripts require a target.
+Selection never approves changed source.
 
   --json             Emit exact JSON/NDJSON even in a terminal
   --input JSON|@FILE  Supply JSON inline or from a file (default: {})
@@ -209,32 +210,6 @@ Scripts should check the result and exit status.
 ${VERIFICATION_HELP}`,
 } as const
 
-function usage(command: keyof typeof COMMAND_HELP, message: string): never {
-  throw new CliDiagnostic('JIG_USAGE', `${message}\n\nHelp: jig ${command} --help`, 2)
-}
-
-/** Suggestions are spelling assistance, never alternate dispatch authority. */
-function spellingHint(value: string, choices: readonly string[]): string {
-  if (value.length > 64) return ''
-  const distance = (other: string): number => {
-    let row = Array.from({ length: other.length + 1 }, (_, index) => index)
-    for (let i = 0; i < value.length; i++) {
-      const next = [i + 1]
-      for (let j = 0; j < other.length; j++)
-        next.push(Math.min(next[j]! + 1, row[j + 1]! + 1, row[j]! + Number(value[i] !== other[j])))
-      row = next
-    }
-    return row[other.length]!
-  }
-  const matches = choices
-    .map((choice) => ({ choice, distance: distance(choice) }))
-    .filter((item) => item.distance <= (value.length > 5 ? 2 : 1))
-    .sort((a, b) => a.distance - b.distance)
-  return matches[0] && matches[0].distance !== matches[1]?.distance
-    ? `\nDid you mean ${matches[0].choice}?`
-    : ''
-}
-
 const RESOLUTION_WARNING =
   'Bun may contact dependency-selected public or private-network services before graph validation; requests cannot be undone, and unsupported dependencies may still fail. Applies only to this review; Runs gain no network access.'
 
@@ -246,6 +221,7 @@ export interface PrivateCliCommandHost {
   acquire(
     project: string,
     options?: {
+      readonly expectedAdmissionDigest?: string
       readonly runTimeoutMs?: number
       readonly files?: PrivateRootRunFiles
       readonly channelOutput?: PrivateRunChannelOutput
@@ -262,6 +238,7 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
+  readonly expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly host?: PrivateCliCommandHost
   readonly currentDirectory?: string
@@ -277,6 +254,7 @@ export interface PrivateCliOptions {
 }
 
 interface CliRuntime {
+  expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly humanOutput: boolean
   readonly outputColor: boolean
@@ -294,17 +272,6 @@ interface CliRuntime {
   readonly writeDiagnostic: (text: string) => void
   readonly writeNotice: (text: string) => void
   readonly createSubmissionId: () => string
-}
-
-class CliDiagnostic extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly exitCode: 1 | 2,
-  ) {
-    super(message)
-    this.name = 'CliDiagnostic'
-  }
 }
 
 export async function main(
@@ -331,6 +298,8 @@ export async function main(
     const prepared = await privateCliPrepareArguments(arguments_, options)
     if ('exitCode' in prepared) return prepared.exitCode
     arguments_ = prepared.arguments
+    if (prepared.admissionDigest !== undefined)
+      runtime.expectedAdmissionDigest = prepared.admissionDigest
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
@@ -362,11 +331,11 @@ export async function main(
   }
 }
 
-/** Resolve interactive selection before the installed launcher acquires any host. */
+/** Resolve approved entrypoint or interactive selection before host acquisition. */
 export async function privateCliPrepareArguments(
   arguments_: readonly string[],
   options: PrivateCliOptions = {},
-): Promise<{ arguments: readonly string[] } | { exitCode: number }> {
+): Promise<{ arguments: readonly string[]; admissionDigest?: string } | { exitCode: number }> {
   if (
     arguments_[0] !== 'run' ||
     isHelpRequest(arguments_) ||
@@ -375,21 +344,47 @@ export async function privateCliPrepareArguments(
     return { arguments: arguments_ }
   const runtime = cliRuntime(options)
   try {
-    // Validate options before prompting. This placeholder is never dispatched.
-    parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)])
-    if (!runtime.interactive)
-      usage(
-        'run',
-        'An exact target is required without an interactive terminal. List approved targets with jig inspect.',
+    // The placeholder is only syntax validation; it is never dispatched.
+    parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)], true)
+    let admissionDigest: string | undefined
+    let snapshot: Record<string, JsonValue>
+    try {
+      snapshot = (await inspectPrivateApprovedProject(
+        runtime.currentDirectory,
+        undefined,
+        undefined,
+        true,
+        (digest) => {
+          admissionDigest = digest
+        },
+      )) as Record<string, JsonValue>
+    } catch {
+      throw new CliDiagnostic(
+        'JIG_INSPECTION_UNAVAILABLE',
+        'The approved Run selection could not be read safely. No Flow was started. If a review is in progress, wait and retry; otherwise use jig review to diagnose the project state.',
+        2,
       )
-    const targets = approvedTargets(
-      await inspectPrivateApprovedProject(runtime.currentDirectory, undefined, undefined, true),
-    )
+    }
+    if (typeof snapshot.entrypoint === 'string') {
+      const effective = resolveProjectEntrypoint(
+        snapshot.entrypoint,
+        arguments_.slice(1),
+        runtime.currentDirectory,
+      )
+      return { arguments: effective, ...(admissionDigest === undefined ? {} : { admissionDigest }) }
+    }
+    parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)])
+    const targets = approvedTargets(snapshot)
     if (targets.length === 0)
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',
         'No approved targets. Run jig review to review your project first. No Flow was started.',
         1,
+      )
+    if (!runtime.interactive)
+      usage(
+        'run',
+        'An exact target is required without a project entrypoint or interactive terminal. List approved targets with jig inspect.',
       )
     runtime.writeError(
       `Choose a reviewed target\n\n${targets
@@ -408,7 +403,10 @@ export async function privateCliPrepareArguments(
     const index = /^[1-9][0-9]*$/.test(answer) ? Number(answer) - 1 : -1
     const target = targets[index]
     if (target === undefined) usage('run', 'Choose a listed target number. No Flow was started.')
-    return { arguments: ['run', target.target, ...arguments_.slice(1)] }
+    return {
+      arguments: ['run', target.target, ...arguments_.slice(1)],
+      ...(admissionDigest === undefined ? {} : { admissionDigest }),
+    }
   } catch (error) {
     if (runtime.signal?.aborted) {
       runtime.writeError('Target selection cancelled. No Flow was started.\n')
@@ -487,12 +485,6 @@ export function privateCliVerification(arguments_: readonly string[]): string | 
   if (arguments_[0] === 'run') return parseRun(arguments_).verification
   if (arguments_[0] === 'inspect') return parseInspect(arguments_).verification
   return undefined
-}
-
-function parseVerification(command: 'run' | 'review' | 'inspect', value?: string): string {
-  if (value !== 'cached' && value !== 'strict' && value !== 'fast')
-    usage(command, '--verification requires cached, strict, or fast.')
-  return value
 }
 
 function isHelpRequest(arguments_: readonly string[]): boolean {
@@ -678,6 +670,7 @@ function shellWord(value: string): string {
 }
 
 async function executeReview(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  let resolutionNoticeShown = false
   const parsed = parseReview(arguments_, runtime.currentDirectory)
   runtime.progress.note(
     `Reviewing ${asciiJsonString(basename(resolve(runtime.currentDirectory, parsed.project)))}`,
@@ -738,10 +731,13 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       ...(parsed.allowResolutionNetwork
         ? {
             allowResolutionNetwork: true,
-            onResolution: (path: string) =>
+            onResolution: () => {
+              if (resolutionNoticeShown) return
+              resolutionNoticeShown = true
               runtime.writeNotice(
-                `Warning: Dependency network access allowed\n\n  Package: ${asciiJsonString(path)}\n  Scope: This review only; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n`,
-              ),
+                'Warning: Dependency network access allowed\n\n  Scope: Dependency preparation across this review; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n',
+              )
+            },
           }
         : {}),
       ...(parsed.generate
@@ -758,7 +754,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
   runtime.signal?.throwIfAborted()
   if (result === 0)
     runtime.writeOutput(
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run (or jig run <target>; see jig run --help).\n',
     )
   return result
 }
@@ -768,6 +764,25 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   runtime.progress.note(
     `Running ${asciiJsonString(parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`)}`,
   )
+  if (runtime.expectedAdmissionDigest !== undefined) {
+    const settings = [`  Timeout: ${parsed.timeoutMs / 1000}s`]
+    if (parsed.inputFile !== undefined)
+      settings.push(
+        `  Input file: ${asciiJsonString(resolve(runtime.currentDirectory, parsed.inputFile))}`,
+      )
+    for (const attachment of parsed.attachments) {
+      settings.push(
+        `  Attachment ${asciiJsonString(attachment.name)}: ${asciiJsonString(resolve(runtime.currentDirectory, attachment.directory))}`,
+      )
+      for (const path of attachment.select) settings.push(`    Select: ${asciiJsonString(path)}`)
+    }
+    if (parsed.output !== undefined)
+      settings.push(
+        `  Output: ${asciiJsonString(resolve(runtime.currentDirectory, parsed.output))}`,
+      )
+    for (const name of parsed.receive) settings.push(`  Receive: ${asciiJsonString(name)}`)
+    runtime.progress.note(settings.join('\n'))
+  }
   runtime.progress.stage('Reading selected inputs')
   const outputStop = new AbortController()
   runtime = {
@@ -956,6 +971,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           }
         },
         {
+          ...(runtime.expectedAdmissionDigest === undefined
+            ? {}
+            : { expectedAdmissionDigest: runtime.expectedAdmissionDigest }),
           runTimeoutMs: parsed.timeoutMs,
           channelOutput,
           ...(parsed.attachments.length === 0 && parsed.output === undefined ? {} : { files }),
@@ -1000,6 +1018,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       } catch {
         delivery = { status: 'unknown', destination: files.identity.output!, code: 'CHANNEL_LOST' }
       }
+      if (delivery.status === 'written') runtime.progress.complete(true)
       record = {
         ...(record as Record<string, JsonValue>),
         delivery,
@@ -1028,7 +1047,20 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     const terminal = status.terminal
-    // State the failure before expanding its validation or retained-evidence details.
+    await emitTerminal(decodeJson1(encodedRecord))
+    if (terminal.status === 'succeeded' && !presentation)
+      runtime.progress.note(
+        `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the JSON result.`,
+      )
+    if (delivery !== undefined && !presentation)
+      runtime.progress.note(
+        `Delivery: ${delivery.status}. Destination: ${asciiJsonString(parsed.output!)}.${delivery.status === 'written' ? ' Inspect result.json and files/.' : ' Check the destination before starting new work.'}`,
+      )
+    if (runtime.host.delivery?.checkpoint != null && !presentation)
+      runtime.progress.note(
+        'Retained checkpoint information is in result.json; it is not proof of successful execution.',
+      )
+    // Finish with the cause and recovery action, after any retained evidence.
     if (terminal.status !== 'succeeded')
       runtime.writeError(
         renderRunFailure(
@@ -1036,19 +1068,6 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           parsed.target,
           runDiagnostics.entries.some((entry) => entry.stderrBytes > 0),
         ),
-      )
-    await emitTerminal(decodeJson1(encodedRecord))
-    if (terminal.status === 'succeeded')
-      runtime.progress.note(
-        `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the ${presentation ? 'result above' : 'JSON result'}.`,
-      )
-    if (delivery !== undefined)
-      runtime.progress.note(
-        `Delivery: ${delivery.status}. Destination: ${asciiJsonString(parsed.output!)}.${delivery.status === 'written' ? ' Inspect result.json and files/.' : ' Check the destination before starting new work.'}`,
-      )
-    if (runtime.host.delivery?.checkpoint != null)
-      runtime.progress.note(
-        'Retained checkpoint information is in result.json; it is not proof of successful execution.',
       )
     if (cleanupFailed) return 2
     if (delivery !== undefined && delivery.status !== 'written') {
@@ -1126,174 +1145,6 @@ function parseReview(
   }
 }
 
-function parseRun(arguments_: readonly string[]): {
-  readonly target: RunTargetRef
-  readonly input: JsonValue
-  readonly inputFile?: string
-  readonly attachments: readonly { name: string; directory: string; select: readonly string[] }[]
-  readonly output?: string
-  readonly timeoutMs: number
-  readonly receive: readonly string[]
-  readonly json: boolean
-  readonly verification: string | undefined
-} {
-  if (arguments_.length < 2)
-    usage('run', 'Choose a target, for example flow:flows/hello or binding:repair.')
-  const target = parseTarget(arguments_[1]!)
-  let input: JsonValue = {}
-  let inputFile: string | undefined, output: string | undefined
-  const attachments = new Map<string, string>(),
-    selectors = new Map<string, string[]>()
-  let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
-  let json = false
-  let sawInput = false
-  let sawTimeout = false
-  let verification: string | undefined
-  const receive: string[] = []
-  for (let index = 2; index < arguments_.length; index += 2) {
-    const option = arguments_[index]
-    if (option === '--json') {
-      if (json) usage('run', '--json may only be supplied once.')
-      json = true
-      index -= 1
-      continue
-    }
-    const value = arguments_[index + 1]
-    if (
-      ![
-        '--input',
-        '--attach',
-        '--select',
-        '--out',
-        '--receive',
-        '--timeout',
-        '--verification',
-      ].includes(option!)
-    )
-      usage(
-        'run',
-        `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.${spellingHint(option!, ['--input', '--attach', '--select', '--out', '--receive', '--timeout', '--verification', '--json'])}`,
-      )
-    if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
-    if (option === '--verification') {
-      if (verification !== undefined) usage('run', '--verification may only be supplied once.')
-      verification = parseVerification('run', value)
-      continue
-    }
-    if (option === '--receive') {
-      if (
-        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ||
-        value.length > 64 ||
-        receive.includes(value) ||
-        receive.length >= 16
-      )
-        throw new CliDiagnostic(
-          'JIG_USAGE',
-          '--receive requires unique channel names, at most 16',
-          2,
-        )
-      receive.push(value)
-      continue
-    }
-    if (option === '--input' && !sawInput) {
-      sawInput = true
-      if (value.startsWith('@')) {
-        if (value.length < 2)
-          throw new CliDiagnostic('JIG_RUN_INPUT_INVALID', '@FILE requires a file path', 1)
-        inputFile = value.slice(1)
-        continue
-      }
-      try {
-        input = decodeJson1(textEncoder.encode(value))
-      } catch {
-        throw new CliDiagnostic(
-          'JIG_RUN_INPUT_INVALID',
-          '--input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started.',
-          1,
-        )
-      }
-      continue
-    }
-    if (option === '--timeout' && !sawTimeout) {
-      sawTimeout = true
-      timeoutMs = parseRunTimeout(value)
-      continue
-    }
-    if (option === '--out' && output === undefined) {
-      output = value
-      continue
-    }
-    if (option === '--attach' || option === '--select') {
-      const split = value.indexOf('=')
-      try {
-        if (split < 1 || split === value.length - 1) throw new Error('missing mapping')
-        const name = privateAttachmentName(value.slice(0, split)),
-          path = value.slice(split + 1)
-        if (option === '--attach') {
-          if (attachments.has(name)) throw new Error('duplicate mapping')
-          attachments.set(name, path)
-        } else {
-          privateFilePath(path)
-          const selected = selectors.get(name) ?? []
-          if (selected.includes(path)) throw new Error('duplicate selector')
-          selected.push(path)
-          selectors.set(name, selected)
-        }
-      } catch {
-        throw new CliDiagnostic(
-          'JIG_RUN_FILES_INVALID',
-          'use --attach NAME=DIR and optional unique --select NAME=RELATIVE_FILE values',
-          1,
-        )
-      }
-      continue
-    }
-    usage('run', `${option} may only be supplied once.`)
-  }
-  if ([...selectors.keys()].some((name) => !attachments.has(name)))
-    throw new CliDiagnostic(
-      'JIG_RUN_FILES_INVALID',
-      '--select requires a matching --attach name',
-      1,
-    )
-  return {
-    target,
-    input,
-    timeoutMs,
-    receive,
-    json,
-    verification,
-    attachments: [...attachments].map(([name, directory]) => ({
-      name,
-      directory,
-      select: selectors.get(name) ?? [],
-    })),
-    ...(inputFile === undefined ? {} : { inputFile }),
-    ...(output === undefined ? {} : { output }),
-  }
-}
-
-function parseRunTimeout(value: string): number {
-  const match = /^([1-9][0-9]*)(ms|s|m|h)$/.exec(value)
-  if (match === null) return invalidRunTimeout()
-  const quantity = Number(match[1])
-  const factor =
-    match[2] === 'ms' ? 1 : match[2] === 's' ? 1_000 : match[2] === 'm' ? 60_000 : 3_600_000
-  const milliseconds = quantity * factor
-  if (!Number.isSafeInteger(milliseconds) || milliseconds > PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS) {
-    return invalidRunTimeout()
-  }
-  return milliseconds
-}
-
-function invalidRunTimeout(): never {
-  throw new CliDiagnostic(
-    'JIG_RUN_TIMEOUT_INVALID',
-    '--timeout must be a positive integer followed by ms, s, m, or h, up to 24h',
-    1,
-  )
-}
-
 /** Private installed-launcher seam; it deliberately exposes no package API. */
 export function privateCliCommandLifetimeMs(arguments_: readonly string[]): number {
   if (arguments_[0] !== 'run') return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
@@ -1303,25 +1154,6 @@ export function privateCliCommandLifetimeMs(arguments_: readonly string[]): numb
     // `main` renders invalid invocations inside this short bounded envelope.
     return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   }
-}
-
-function parseTarget(value: string): RunTargetRef {
-  try {
-    if (value.startsWith('npm:')) {
-      npmPackageName(value)
-      return flowRef(value)
-    }
-    if (value.startsWith('flow:npm:')) throw new TypeError('use npm:<package>')
-    if (value.startsWith('flow:')) return flowRef(value.slice('flow:'.length))
-    if (value.startsWith('binding:')) return bindingRef(value.slice('binding:'.length))
-  } catch {
-    // The public diagnostic intentionally does not repeat project-controlled input.
-  }
-  throw new CliDiagnostic(
-    'JIG_RUN_TARGET_INVALID',
-    'use flow:<path>, npm:<package> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.',
-    1,
-  )
 }
 
 async function withProjectSession<T>(
@@ -1458,6 +1290,9 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     options.signal,
   )
   return {
+    ...(options.expectedAdmissionDigest === undefined
+      ? {}
+      : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
     humanOutput: options.terminalOutput ?? process.stdout.isTTY === true,
     outputColor,
     outputColumns: process.stdout.columns || 80,
@@ -1557,6 +1392,15 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     runtime.writeError(renderDiagnostic(error.code, error.message))
     return error.exitCode
   }
+  if (error instanceof PrivateInstalledBundleError) {
+    runtime.writeError(
+      renderDiagnostic(
+        'JIG_COMMAND_UNAVAILABLE',
+        'The installed Jig runtime is incomplete or invalid. Restore the complete installation; inspect any result or effects before retrying. See https://jig.md/guide/#install.',
+      ),
+    )
+    return 2
+  }
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
@@ -1618,6 +1462,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'the selected Binding files could not be retained consistently; review stable source directories again',
       PROJECT_BINDING_PACKAGE_MISSING:
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
+      PROJECT_ENTRYPOINT_INVALID:
+        'Fix entrypoint in jig.ts: use an invokable Flow or Binding followed by valid jig run invocation arguments, project-relative paths, and declared unbound attachments or outgoing channels. Operator flags such as --verification are not project defaults.',
       PROJECT_DEFAULT_MISSING:
         'defaultProviders in jig.ts names a missing Flow or Binding; create the selected local Binding and include its Flow in discovery, or correct the selector. Provider selection does not create Bindings',
       PROJECT_DEFAULT_CONTRACT:
@@ -1651,7 +1497,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_MEMBER_COLLISION:
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
-        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants and defaultProviders',
+        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants, defaultProviders and entrypoint',
       PROJECT_EVALUATION_LIMIT:
         'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
       PROJECT_DECLARATION_INVALID:
@@ -1716,6 +1562,21 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     return projected.exitCode
   }
   if (error instanceof RootAdministrationError) {
+    if (
+      error.details &&
+      typeof error.details === 'object' &&
+      !Array.isArray(error.details) &&
+      (error.details as Record<string, JsonValue>).code === 'RUN_APPROVAL_CHANGED'
+    ) {
+      runtime.writeError(
+        renderDiagnostic(
+          'RUN_APPROVAL_CHANGED',
+          'The project approval changed after selection. Inspect it with jig inspect, then invoke jig run again. No Flow was started by this invocation.',
+        ),
+      )
+      return 2
+    }
+
     if (
       error.code === 'UNAVAILABLE' &&
       error.details !== null &&
@@ -1865,7 +1726,7 @@ function renderRunFailure(
   if (terminal.code === 'INVALID_INPUT')
     return renderDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\nNext step: Check --input against the approved schema with jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)}; see the result for validation details.`,
+      `Input does not match the approved target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${details?.keyword === 'enum' ? '\nThis field must be one of the choices declared in that schema.' : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\n\nNext step: Run jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)} to see the approved schema and correct --input.\nJig runs the last approved revision. If you edited the Flow or its schema, run jig review to approve those edits first.`,
     )
   if (terminal.status === 'lost')
     return renderDiagnostic(
@@ -1911,22 +1772,12 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   const pointer =
     diagnostic.pointer === undefined ? '' : `\n  Value: ${asciiJsonString(diagnostic.pointer)}`
   const mismatch = schemaTypeMismatchText(diagnostic.typeMismatch)
-  return `Review could not finish\n\n  Location: ${asciiJsonString(diagnostic.path)}${pointer}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
-}
-
-function asciiJsonString(value: string): string {
-  let output = '"'
-  for (const scalar of value) {
-    const code = scalar.codePointAt(0)!
-    if (scalar === '"' || scalar === '\\') output += `\\${scalar}`
-    else if (code >= 0x20 && code <= 0x7e) output += scalar
-    else if (code <= 0xffff) output += `\\u${code.toString(16).padStart(4, '0')}`
-    else {
-      const adjusted = code - 0x10000
-      output += `\\u${(0xd800 + (adjusted >> 10)).toString(16)}\\u${(0xdc00 + (adjusted & 0x3ff)).toString(16)}`
-    }
-  }
-  return `${output}"`
+  const cause = ACP_SETUP_CAUSES[diagnostic.code]
+  const selection =
+    cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
+      ? '\n  Agent selection: the resource grant at this Binding slot.'
+      : ''
+  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }
 
 if (import.meta.main) {

@@ -12,6 +12,7 @@ const schema = compileSchemaFile(
 )
 
 const project = defineJig({
+  entrypoint: "binding:review --input @job.json --timeout 8m",
   flows: discover('./flows'),
   bindings: ['./bindings/review.ts'],
   defaultProviders: { 'https://example.org/contracts/review': 'binding:review' },

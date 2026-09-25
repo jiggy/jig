@@ -16,9 +16,10 @@ relevant project-relative location where available and suggest a safe next step.
 A missing target lists targets from the approved revision; Jig never picks one
 for you.
 
-In a terminal, `jig run` without a target offers a numbered chooser. Select a
-target explicitly, or press Enter to cancel. Scripts must supply the target.
-The chooser runs the approved revision, not unreviewed edits.
+`jig run` without a target uses the approved project `entrypoint` and its default
+arguments. Without an entrypoint, terminals offer a numbered chooser and scripts
+must supply a target. Press Enter to cancel the chooser. Both paths run the
+approved revision, not unreviewed edits.
 
 Use `jig inspect` to list targets in the last approved revision. Use
 `jig inspect binding:repair` (or an exact `flow:` target) to read its invocation
@@ -39,14 +40,31 @@ Use `jig review` to review edits or a changed environment. Snapshot reads return
 exit 0 even when review is required; scripts should examine `state`.
 Without local approval, it reports `unreviewed`, even if a portable lock exists.
 
+An input mismatch is checked against the **approved** schema. Use
+`jig inspect <target>` to compare that schema with your input. If you edited the
+Flow or its schema, review and approve those changes with `jig review` first.
+If the approved schema is already correct, fix the input; reviewing again does
+not make an invalid value valid. For an `enum` error, choose one of the field's
+declared values.
+
 Type errors identify the value's location and, where available, its expected
 and received JSON types. They do not print the rejected value. For example,
 `Expected string; received object.` means the caller should pass a JSON string,
 not wrap it in an object. `jig inspect <target>` shows the approved input contract.
 
 Interactive stdout leads with execution and application outcome, plus packet
-delivery and unconfirmed cleanup when present, then shows the complete result as
-syntax-highlighted YAML. Lists and multiline text use ordinary YAML formatting;
+delivery and unconfirmed cleanup when present. Small application results and
+unseen diagnostics follow as syntax-highlighted YAML. When a full packet was
+written, large results and checkpoint evidence stay in `result.json`; the
+terminal points there and reports the delivered file count instead of printing
+patches and check logs again. If packet delivery is uncertain, the terminal
+keeps the result visible. A failed Run ends with its cause and next action.
+Complete packet evidence, including input file manifests and digests, remains
+in `result.json` when delivery succeeds.
+Diagnostics already printed live are counted in the final summary rather than
+printed again. A null checkpoint means no progress was retained and is omitted
+from the terminal view; the machine record keeps that exact value.
+Lists and multiline text use ordinary YAML formatting;
 strings remain quoted where needed to retain exact values.
 Application fields such as `success` are data, not host verdicts. With `--receive`, channel text
 streams continuously under labelled headings. Use `--json` for raw records in
@@ -111,6 +129,20 @@ correctly and return an application outcome such as `blocked`. Inspect the
 outcome, output, and exit status. With `--out`, also inspect the separate
 delivery status. Existing output directories are never replaced; choose a new
 destination for another Run.
+
+### Agent setup failures during review
+
+Review names the selected Agent, explains the known setup failure, and points to
+the Binding declaration and resource slot that selected it. For example, a
+Codex executable error points to the grant selecting `client: 'codex'`.
+Supply an actual executable through `CODEX_PATH` or operator `PATH`; shell
+aliases and functions are not executables. An explicit override must be an
+absolute executable file and does not fall back to `PATH`. Change the resource
+grant if you intended to use another client, then review again.
+
+`--allow-resolution-network` produces one warning covering dependency preparation
+for the entire review. Per-package progress still identifies which package is
+being prepared. This permission gives Runs no network access.
 
 ## If retained state cannot be opened
 

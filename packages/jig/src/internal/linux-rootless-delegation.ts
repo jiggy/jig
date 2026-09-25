@@ -78,7 +78,7 @@ export interface PrivateRootlessLinuxScopeDependencies {
 export interface PrivateRootlessLinuxDelegationDependencies {
   readonly acquire: () => Promise<PrivateRootlessLinuxAcquisitionObservation>
   readonly environment: () => NodeJS.ProcessEnv
-  readonly currentCommand: () => readonly [string, ...string[]]
+  readonly currentCommand: (arguments_: readonly string[]) => readonly [string, ...string[]]
   readonly currentDirectory: () => string
   readonly nonce: (bytes: number) => string
   readonly resolveManager: () => Promise<string>
@@ -110,7 +110,7 @@ export type PrivateRootlessLinuxDelegation =
   | PrivateRootlessLinuxReexecution
 
 /**
- * Continue inside an exact inherited delegation or run this exact command once
+ * Continue inside an exact inherited delegation or run the prepared command once
  * in one transient delegated user scope.
  *
  * A caller which receives `reexecuted` must terminate with that child outcome;
@@ -119,6 +119,7 @@ export type PrivateRootlessLinuxDelegation =
 export async function acquireOrReexecutePrivateRootlessLinux(
   input: {
     readonly commandLifetimeMs?: number
+    readonly commandArguments?: readonly string[]
     readonly dependencies?: PrivateRootlessLinuxDelegationDependencies
   } = {},
 ): Promise<PrivateRootlessLinuxDelegation> {
@@ -155,7 +156,9 @@ export async function acquireOrReexecutePrivateRootlessLinux(
     const managerPath = await dependencies.resolveManager()
     const unit = `jig-${dependencies.nonce(12)}.scope`
     if (!UNIT.test(unit)) throw new Error('invalid transient scope identity')
-    const command = requireCommand(dependencies.currentCommand())
+    const command = requireCommand(
+      dependencies.currentCommand(input.commandArguments ?? process.argv.slice(2)),
+    )
     const directory = dependencies.currentDirectory()
     if (!isAbsolute(directory) || directory.includes('\0')) {
       throw new Error('invalid current directory')
@@ -945,7 +948,7 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
     ),
 })
 
-function currentCommand(): [string, ...string[]] {
+function currentCommand(arguments_: readonly string[]): [string, ...string[]] {
   if (
     process.argv[0] === process.execPath &&
     process.argv[1]?.endsWith('/libexec/installed-cli.js') &&
@@ -955,7 +958,7 @@ function currentCommand(): [string, ...string[]] {
     process.execArgv.length === BUN_POLICY.length &&
     process.execArgv.every((value, index) => value === BUN_POLICY[index])
   ) {
-    return [process.execPath, ...BUN_POLICY, ...process.argv.slice(1)]
+    return [process.execPath, ...BUN_POLICY, process.argv[1], ...arguments_]
   }
   throw new Error('the installed Jig command cannot be reexecuted exactly')
 }

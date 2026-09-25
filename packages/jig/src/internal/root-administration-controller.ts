@@ -56,6 +56,7 @@ export interface PrivateRootLaunchExecutor {
 export async function openPrivateRootAdministrationController(input: {
   readonly projectRoot: string
   readonly packageStoreRoot: string
+  readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly onProjectIdentityLoss?: () => void
@@ -97,6 +98,7 @@ export async function attachPrivateRootAdministrationController(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
   readonly packageStoreRoot: string
+  readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly files?: PrivateRootRunFiles
@@ -126,6 +128,7 @@ export async function attachPrivateRootAdministrationController(input: {
 function createController(input: {
   readonly projectRoot: string
   readonly packageStoreRoot: string
+  readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly files?: PrivateRootRunFiles
@@ -171,6 +174,9 @@ function createController(input: {
               coordinator: input.coordinator,
               projectRoot: input.projectRoot,
               packageStoreRoot: input.packageStoreRoot,
+              ...(input.expectedAdmissionDigest === undefined
+                ? {}
+                : { expectedAdmissionDigest: input.expectedAdmissionDigest }),
               submissionId: request.submissionId,
               target: request.target,
               input: request.input,
@@ -443,6 +449,7 @@ function administrationError(error: unknown, operation: string): RootAdministrat
       case 'COORDINATOR_PROJECT_MISMATCH':
       case 'PROJECT_SOURCE_CHANGED':
         return new RootAdministrationError('PROJECT_CLOSED', 'project authority is closed')
+      case 'RUN_APPROVAL_CHANGED':
       case 'ADMISSION_MISSING':
       case 'STALE_PLAN':
         return new RootAdministrationError(

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
+import { createPrivateAcpAgentProvider } from '../src/internal/acp-agent-provider.js'
 import {
   inspectPrivateBunDirectIdentity,
   planPrivateBunDirectRun,
   requirePrivateBunDirectRecipe,
 } from '../src/internal/bun-direct-run.js'
-import { createPrivateAcpAgentProvider } from '../src/internal/acp-agent-provider.js'
 import {
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
   privateBunExecutionArtifact,
@@ -12,11 +12,11 @@ import {
 import { privateDomainDigest } from '../src/internal/identity.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { openPrivateInstalledBunSupport } from '../src/internal/installed-bun-support.js'
-import { openPrivateAcpResources } from '../src/internal/private-acp-resources.js'
 import {
   type PrivateLinuxBackendMechanismObservation,
   PrivateLinuxCgroupBackend,
 } from '../src/internal/linux-rootless-backend.js'
+import { openPrivateAcpResources } from '../src/internal/private-acp-resources.js'
 import {
   FINITE_ACP_CONTRACT_DIGEST,
   FINITE_ACP_CONTRACT_ID,
@@ -321,7 +321,7 @@ describe('private Bun direct Run', () => {
           backend,
           acpResources: host.acpResources,
         }),
-      ).rejects.toMatchObject({ code: 'PROJECT_ACP_CODEX_EXECUTABLE' })
+      ).rejects.toMatchObject({ code: 'PROJECT_ACP_CODEX_EXECUTABLE', pointer: '/slots/session' })
     }
   })
 })

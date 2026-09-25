@@ -99,7 +99,7 @@ export function privateCliHumanText(
           prefix,
         }
       const section =
-        /^(Run output:|Approval environment matches|Approval validity not checked|No approved revision|ACP runtimes selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
+        /^(Run output:|Approval environment matches|Approval validity not checked|No approved revision|ACP runtimes selected|Project entrypoint|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
         )
       const wrapped = wrapHumanLine(line, columns)
@@ -114,7 +114,17 @@ export function privateCliHumanText(
             color,
           )
       } else if (color) {
-        if (/^ {2}Unavailable:/.test(line) && /^ {4}\S/.test(lines[index + 1] ?? ''))
+        if (
+          /^ {2}(?:Execution: failed\.|Cleanup: not confirmed\.|Packet delivery: "failed"\.)/.test(
+            line,
+          )
+        )
+          rendered = privateCliHeading(wrapped, 'error', true)
+        else if (/^ {2}(?:Execution: lost;|Packet delivery: "unknown"\.)/.test(line))
+          rendered = privateCliHeading(wrapped, 'warning', true)
+        else if (/^ {2}(?:Execution: completed\.|Packet delivery: "written"\.)/.test(line))
+          rendered = privateCliHeading(wrapped, 'success', true)
+        else if (/^ {2}Unavailable:/.test(line) && /^ {4}\S/.test(lines[index + 1] ?? ''))
           rendered = privateCliHeading(wrapped, 'warning', true)
         else if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
           rendered = privateCliHeading(wrapped, 'error', true)

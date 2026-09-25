@@ -48,7 +48,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
 - Installed Bun authentication, rootless acquisition, delegation,
-  containment, supervision, and execution.
+  containment, supervision, and execution. Missing or invalid installed release
+  files produce closed repair evidence; supported-host failures remain distinct.
 - Native client launchers, reviewed runtime policy, private authentication and
   bounded process ownership. Ordinary Agent packages own method preparation,
   response interpretation and optional updates; no Agent method runs inside
@@ -65,6 +66,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
   corrective hints. Preserve known failures through planning and CLI rendering;
   raw exceptions, private paths and credentials never become recovery text.
+  Keep cause separate from guidance. Planning locates the selected client at
+  the captured Binding declaration and resource slot, when known; executable
+  discovery failures do not imply a particular missing path or accept shell aliases.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
   conversation. `finite-acp-resource.ts` owns bounded framing, private startup
   and authentication, and essential channel delivery. Ordinary Agent Flows own
@@ -401,7 +405,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `installation-verification.ts` owns command-scoped operator policy and the
   bounded installation cache. The installed CLI resolves `--verification` over
   `JIG_VERIFICATION`, falling back to cached, before opening the command scope.
-  Original arguments preserve the selection through delegation and recovery. Strict
+  Pass prepared command arguments and their selected admission through file-owner
+  and delegation reexecution. Root submission rejects changed approval before
+  allocation; the private admission marker can only constrain, never grant, execution.
+  Entrypoint defaults and interactive target choices survive reexecution; preserve the effective verification policy through delegation,
+  file delivery and recovery. Strict
   freshly hashes at every boundary, and fast accepts cached path identities
   without freshness checks. Cached compares inode/device, ownership/mode/link
   count, size and nanosecond mtime/ctime on every lookup. Hash misses and check

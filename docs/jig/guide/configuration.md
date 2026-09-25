@@ -35,12 +35,37 @@ before they appear. Unsupported or unreadable approval produces no suggestions.
 | Terminal appearance | `JIG_THEME`, `NO_COLOR`, and your terminal environment |
 | Agent client, model, and credentials | An ordinary Agent Binding and operator credentials; see [Agent settings](#agent-settings) |
 | Flows, Bindings, and application settings | `jig.ts`; see [Project settings](#project-settings) |
+| Application starting point and default Run arguments | `entrypoint` in `jig.ts`; see [Project entrypoint](#project-entrypoint) |
 | Input, deadline, and output for one Run | Command arguments; see [Per-command options](#per-command-options) |
 | Bubblewrap executable | Absolute `JIG_BWRAP_PATH`; see [Host configuration](#host-configuration) |
 
 Operator preferences are separate from reviewed project policy. Jig does not
 automatically load project `.env` files. Export environment variables in your
 shell or supply them through your process launcher.
+
+## Project entrypoint
+
+Give your application a starting point in `jig.ts` by copying the part of a
+working command after `jig run`:
+
+```ts
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m",
+```
+
+A target alone, such as `entrypoint: "binding:factory"`, is also valid. After
+`jig review`, run the application with `jig run`. Supply options to replace its
+defaults, for example `jig run --input @another-batch.json --out another-result`.
+An explicit target, such as `jig run binding:agent`, uses none of these defaults.
+
+Paths in the declaration are project-relative. Input files and source trees are
+captured afresh for each invocation; changing a job file does not require a new
+review. Changing the entrypoint itself does. Use quotes around arguments containing
+spaces. Jig parses arguments without shell execution or variable expansion.
+`jig inspect` shows the approved entrypoint.
+
+A fixed output directory must not already exist. Choose a new `--out` for the
+next Run; Jig never replaces an earlier result. See the
+[complete argument and override rules](../spec/project-sdk.md#project-entrypoint).
 
 ## Startup verification
 

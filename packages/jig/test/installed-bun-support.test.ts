@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import {
+  PrivateInstalledBundleError,
   openPrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
@@ -132,6 +133,10 @@ describe('fixed installed Bun support', () => {
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'changed\n')
       await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
         'installed Bun support changed after selection',
+      )
+      await rm(join(root, 'libexec', 'linux-rootless-supervisor.js'))
+      await expect(openPrivateInstalledBunSupport(location)).rejects.toBeInstanceOf(
+        PrivateInstalledBundleError,
       )
     } finally {
       await rm(root, { recursive: true, force: true })

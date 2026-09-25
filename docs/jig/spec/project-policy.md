@@ -63,7 +63,8 @@ it does not reset admission, migrate records, or bypass pending cleanup.
 ## 2. Project sources
 
 `defineJig()` accepts the independently optional `flows`, `bindings`, and
-`grants` membership sources, plus the contract-keyed `defaultProviders` map.
+`grants` membership sources, the contract-keyed `defaultProviders` map, and
+the optional string `entrypoint` described by [Project Authoring SDK/1](project-sdk.md#project-entrypoint).
 Omitted membership means an empty source, not implicit discovery. Omitted
 provider mappings impose no explicit preference; [default providers](#default-providers-by-contract)
 defines sole-match selection and the separate resolution rules.
@@ -641,6 +642,7 @@ meaning without admitting it.
 
 `jig.lock` is the one portable desired-state lock. It records only:
 
+- the optional project `entrypoint` string, including default invocation arguments;
 - selected package paths and Package/0 digests;
 - direct-target eligibility, invocation requirements, and effective ordinary
   routes for direct Flows;
@@ -661,7 +663,13 @@ The authoring `defaultProviders` map is not a runtime lock field. Exact interfac
 matching, direct-target eligibility and the full bounded graph are validated
 with the retained packages, not inferred from lock shape alone.
 
-It contains no runtime path, runtime version guess, host closure, sandbox
+Entrypoint file arguments are project-relative invocation defaults. Their current
+bytes are captured for each Run; they are not review-pinned Binding resources.
+The CLI resolves the approved defaults before host acquisition and reexecution,
+and refuses submission if approval changed after selection. No source evaluation
+or fallback target is permitted during this selection.
+
+The lock contains no absolute runtime path, runtime version guess, host closure, sandbox
 detail, process identity, coordinator epoch, or local approval.
 
 Local admission lives under `.jig/` and is separate from the portable lock. A

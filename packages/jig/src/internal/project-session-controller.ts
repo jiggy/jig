@@ -83,6 +83,7 @@ import type { PrivateRunChannelOutput } from './run-channels.js'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
+  readonly expectedAdmissionDigest?: string
   readonly backend: PrivateLinuxCgroupBackend
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
@@ -162,6 +163,9 @@ export async function openPrivateProjectSession(input: {
       coordinator: owner.coordinator,
       projectRoot: owner.root.requestedPath,
       packageStoreRoot,
+      ...(input.host.expectedAdmissionDigest === undefined
+        ? {}
+        : { expectedAdmissionDigest: input.host.expectedAdmissionDigest }),
       runTimeoutMs: input.host.runTimeoutMs,
       ...(input.host.channelOutput?.terminal === undefined
         ? {}
@@ -489,7 +493,16 @@ function createSession(
               }),
             )
           } catch (error) {
-            const scoped = scopePrivatePackagePlanningError(error, request.packagePath)
+            const target = request.target
+            const binding =
+              target.kind === 'binding'
+                ? aggregate.linked.bindings.find(({ id }) => id === target.id)
+                : undefined
+            const scoped = scopePrivatePackagePlanningError(
+              error,
+              request.packagePath,
+              binding?.declarationPath,
+            )
             if (scoped !== error) throw scoped
             if (error instanceof TypeError) {
               throw new ProjectAdministrationError(
@@ -835,11 +848,21 @@ export function projectError(
 }
 
 /** Package-private projection of known package-local preparation failures. */
-export function scopePrivatePackagePlanningError(error: unknown, packagePath: string): unknown {
+export function scopePrivatePackagePlanningError(
+  error: unknown,
+  packagePath: string,
+  bindingPath?: string,
+): unknown {
   if (error instanceof PrivateBunManifestError && error.projectRelative) return error
   if (!(error instanceof CheckError)) {
     return error
   }
+  if (
+    bindingPath !== undefined &&
+    Object.hasOwn(ACP_SETUP_HINTS, error.code) &&
+    error.pointer?.startsWith('/slots/')
+  )
+    return new CheckError(error.kind, error.code, error.message, bindingPath, error.pointer)
   const relativePath =
     error.code.startsWith('PACKAGE_BUN_') &&
     (error.path === 'bun.lock' || error.path === 'package.json')

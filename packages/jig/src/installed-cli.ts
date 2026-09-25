@@ -84,6 +84,21 @@ async function runPrivateInstalledCli(
   )
   if ('exitCode' in prepared) return exit(prepared.exitCode)
   arguments_ = prepared.arguments
+  if (prepared.admissionDigest !== undefined)
+    process.env.JIG_PRIVATE_RUN_ADMISSION = prepared.admissionDigest
+  const expectedAdmissionDigest = process.env.JIG_PRIVATE_RUN_ADMISSION
+  if (
+    expectedAdmissionDigest !== undefined &&
+    !/^sha256:[a-f0-9]{64}$/.test(expectedAdmissionDigest)
+  ) {
+    process.stderr.write(
+      privateCliStderrDiagnostic(
+        'JIG_COMMAND_UNAVAILABLE',
+        'The retained Run selection is invalid. Start a fresh jig run command.',
+      ),
+    )
+    return exit(2)
+  }
   let verification: string | undefined
   try {
     verification = privateCliVerification(arguments_)
@@ -151,6 +166,7 @@ async function runWithEnvironment(
     }
     const delegation = await acquireOrReexecutePrivateRootlessLinux({
       commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
+      commandArguments: arguments_,
     })
     if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
 
@@ -190,6 +206,9 @@ async function runWithEnvironment(
               directory: project,
               host: Object.freeze({
                 ...installedHost,
+                ...(options?.expectedAdmissionDigest === undefined
+                  ? {}
+                  : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
                 ...(options?.onStage === undefined ? {} : { onStage: options.onStage }),
                 ...(options?.generateContracts ? { generateContracts: true } : {}),
                 ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
@@ -220,6 +239,9 @@ async function runWithEnvironment(
         return exit(
           await main(arguments_, {
             host,
+            ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined
+              ? {}
+              : { expectedAdmissionDigest: process.env.JIG_PRIVATE_RUN_ADMISSION }),
             writeOutput: (text) => {
               void stdout.write(text).catch(() => undefined)
             },
