@@ -15,6 +15,15 @@ Jig public sites.
   path geometry identical in `mark-light.svg` and `favicon.svg`; those files
   provide the light-on-dark and browser-icon treatments. Jig uses the striped
   switch mark; FLOW uses its filled counterpart.
+- Each site's `public/logo.svg` and `logo-light.svg` are transparent standalone
+  lockups pairing that site's emblem with its Quicksand wordmark. Their PNG
+  counterparts are transparent 4× raster exports of the SVGs. These are
+  downloadable brand assets, not replacements for the accessible live-text
+  wordmarks in the site navigation.
+- Site headers compose those marks with the live product wordmarks in the shared
+  theme. Keep the two sites' mark assets separate; their visual distinction is
+  intentional, while wordmark typography and balanced lockup proportions are
+  owned by `theme/`.
 - FLOW publishes the Python SDK guide at `/guide/python`; navigation and
   `llms.txt` link it, and site assembly checks the route. Jig introduces
   composition at `/guide/request-triage`; its navigation, generated index, and
