@@ -24,10 +24,10 @@ it returns artifacts to Jig's separately owned managed publisher.
 - Named invocation identity and channel agreements can be authored together;
   generated channel closures contain only reachable definitions. Keep channel
   semantics explicit and validate complete artifact batches before publication.
-  `compileContract` accepts optional `channelContracts` paths supplied from an
-  offline package. It emits only authored outputs; the consumer must supply and
-  validate the referenced agreements before publishing the package. The compiler
-  never reads those paths or regenerates borrowed agreements.
+  `compileContract` emits borrowed channel references from source without
+  reading or inventorying package files. It emits only authored outputs; the
+  consumer must resolve and validate the exact referenced agreements before
+  publishing the package.
 - `@invocation` options may include the named single-form contract's `features`
   catalog. Preserve its names/descriptions and omission versus an empty map;
   reject anonymous catalogs and native bound violations. Catalogs affect the
