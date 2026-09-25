@@ -69,10 +69,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
   credentials out of setup, build, and archive steps. Its Codex case also
-  installs published Jig `0.1.0-alpha.22`, FLOW `0.1.0-alpha.12`, Agent method
-  `0.1.0-alpha.3` and ACP Agent `0.1.0-alpha.3` in an ordinary temporary
-  consumer, then exercises immediate follow-up interruption through the public
-  CLI; the other source-archive checks remain distinct candidate evidence.
+  exercises immediate follow-up interruption through the published Jig CLI in
+  an ordinary temporary consumer; the other source-archive checks remain
+  distinct candidate evidence.
 - Each host shard builds the linked workspace packages used by source tests;
   generated `dist` output is runner-local and is not created by a filtered
   dependency install. Frozen archives remain the inputs to installed gates.
