@@ -291,35 +291,65 @@ export default defineBinding({
   await writeFile(
     join(flow, 'FLOW.ts'),
     `import { handle } from '@jigging/flow'
-import { withAgentConversation } from '@jigging/agent-method/conversation'
+import { AgentConversationError, withAgentConversation } from '@jigging/agent-method/conversation'
 
 await handle(async run => {
-  const completed = await withAgentConversation(run, {
-    operationId: 'immediate-follow-up-interruption',
-    slot: 'agent',
-    input: { instructions: 'Reply with a short greeting.' },
-  }, async conversation => {
-    const initial = await conversation.initial
-    if (initial.type !== 'result' || initial.result.outcome !== 'done')
-      throw new Error('The initial Agent turn did not complete.')
+  let phase = 'conversation-start'
+  let interruption: 'accepted' | 'not-running' | undefined
+  try {
+    const completed = await withAgentConversation(run, {
+      operationId: 'immediate-follow-up-interruption',
+      slot: 'agent',
+      input: { instructions: 'Reply with a short greeting.' },
+    }, async conversation => {
+      phase = 'await-initial'
+      const initial = await conversation.initial
+      if (initial.type !== 'result' || initial.result.outcome !== 'done')
+        throw new Error('The initial Agent turn did not complete.')
 
-    const followup = conversation.prompt({
-      instructions: 'Write a detailed explanation of how to design a reliable public library. Continue until interrupted.',
+      phase = 'send-follow-up'
+      const followup = conversation.prompt({
+        instructions: 'Write a detailed explanation of how to design a reliable public library. Continue until interrupted.',
+      })
+      phase = 'interrupt-follow-up'
+      interruption = await conversation.interrupt()
+      phase = 'await-follow-up'
+      const turn = await followup
+      if (turn.type !== 'result' && turn.type !== 'cancelled')
+        throw new Error('The follow-up Agent turn did not settle normally.')
+      phase = 'callback-return'
+      return { interruption, turn: turn.type, turnNumber: turn.turn }
     })
-    const interruption = await conversation.interrupt()
-    const turn = await followup
-    if (turn.type !== 'result' && turn.type !== 'cancelled')
-      throw new Error('The follow-up Agent turn did not settle normally.')
-    return { interruption, turn: turn.type, turnNumber: turn.turn }
-  })
 
-  return {
-    outcome: 'done',
-    output: {
-      ...completed.value,
-      turns: completed.turns.map(turn => ({ turn: turn.turn, type: turn.type })),
-      settlement: completed.settlement,
-    },
+    phase = 'complete'
+    return {
+      outcome: 'done',
+      output: {
+        ...completed.value,
+        turns: completed.turns.map(turn => ({ turn: turn.turn, type: turn.type })),
+        settlement: completed.settlement,
+      },
+    }
+  } catch (error) {
+    if (error instanceof AgentConversationError) {
+      console.error(
+        'agent-conversation-diagnostic ' +
+          JSON.stringify({
+            phase,
+            interruption: interruption ?? null,
+            turns: error.turns.map(turn =>
+              turn.type === 'result'
+                ? { turn: turn.turn, type: turn.type, outcome: turn.result.outcome }
+                : turn.type === 'error'
+                  ? { turn: turn.turn, type: turn.type, code: turn.code }
+                  : { turn: turn.turn, type: turn.type },
+            ),
+            settlement: error.settlement?.outcome ?? null,
+            errorCount: error.errors.length,
+          }),
+      )
+    }
+    throw error
   }
 })
 `,
