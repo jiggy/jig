@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 import { checkRoutingResult } from 'semantic-router-flow/decision'
+import type { RepairInput } from '../repair/policy.ts'
 import { checkName, loadChecks } from './checks.ts'
 import {
   identity,
@@ -12,13 +13,23 @@ import {
 } from './files.ts'
 import { candidates, methods } from './methods.ts'
 
+const repairProgressSchema = {
+  type: 'object',
+  properties: {
+    phase: { type: 'string', enum: ['baseline', 'proposal', 'check', 'finished'] },
+    attempt: { type: 'integer', minimum: 0, maximum: 2 },
+  },
+  required: ['phase', 'attempt'],
+  additionalProperties: false,
+} as const
+
 interface Job {
   id: string
   directory: string
   checks: string
   issue: string
   editPaths: string[]
-  method?: 'single-pass' | 'checked-correction' | 'auto'
+  method?: string
   cancelAfterMs?: number
 }
 export function batchJobs(value: unknown): Job[] {
@@ -32,12 +43,6 @@ export function batchJobs(value: unknown): Job[] {
   )
     throw new TypeError('Supply one or two jobs.')
   for (const job of input.jobs) {
-    if (
-      job?.method !== undefined &&
-      job.method !== 'auto' &&
-      !methods.some((method) => method.slot === job.method)
-    )
-      throw new TypeError('Choose single-pass, checked-correction, or auto for method.')
     if (
       !job ||
       Object.keys(job).some(
@@ -53,13 +58,14 @@ export function batchJobs(value: unknown): Job[] {
       !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(job.directory) ||
       job.directory.split('/').length > 16 ||
       typeof job.checks !== 'string' ||
+      (job.method !== undefined && !methods.some((method) => method.id === job.method)) ||
       (job.cancelAfterMs !== undefined &&
         (!Number.isSafeInteger(job.cancelAfterMs) ||
           job.cancelAfterMs < 1 ||
           job.cancelAfterMs > 300_000))
     )
       throw new TypeError(
-        'Each job needs a unique id, a relative project directory, and a known check set; optional cancellation is 1–300,000 ms.',
+        'Each job needs a unique id, a relative project directory, and a known check set; method must name a reviewed method; optional cancellation is 1–300,000 ms.',
       )
     checkName(job.checks)
   }
@@ -82,6 +88,27 @@ export function patchConflicts(changes: readonly { job: string; path: string; co
 
 /** Application promises schedule work; Jig's exact slots and root budget bound it. */
 export async function repairBatch(run: RunContext): Promise<RunResult> {
+  const progress = run.channels?.progress
+  if (progress && (progress.direction !== 'send' || progress.delivery !== 'broadcast'))
+    throw new TypeError('progress must be a broadcast send channel.')
+  try {
+    return await repairBatchWithProgress(run, progress?.direction === 'send' ? progress : undefined)
+  } finally {
+    if (progress?.direction === 'send') {
+      try {
+        await progress.close()
+      } catch {
+        run.signal.throwIfAborted()
+        // Progress is observational; a lost reader must not change the work result.
+      }
+    }
+  }
+}
+
+async function repairBatchWithProgress(
+  run: RunContext,
+  progress: Extract<RunContext['channels'][string], { direction: 'send' }> | undefined,
+): Promise<RunResult> {
   const { source, deliverables } = run.attachments
   if (source?.access !== 'read' || deliverables?.access !== 'read-write')
     throw new TypeError('Supply source and deliverables attachments.')
@@ -102,19 +129,97 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
   const retainedFiles: Record<string, string> = Object.create(null)
   let sequence = 0
   let saves = Promise.resolve()
+  let progressAvailable = progress !== undefined
+  const publish = async (value: Record<string, JsonValue>) => {
+    run.signal.throwIfAborted()
+    if (!progress || !progressAvailable) return
+    try {
+      await progress.send(value)
+    } catch {
+      run.signal.throwIfAborted()
+      progressAvailable = false
+    }
+  }
+  const publishPhase = async (
+    jobId: string,
+    phase: 'selecting' | 'invoking' | 'baseline' | 'proposal' | 'check' | 'finished' | 'settled',
+    attempt: number,
+    extra: { method?: 'p1' | 'p2'; status?: 'review-ready' | 'unsuccessful' | 'unrouted' } = {},
+  ) => publish({ jobId, phase, attempt, ...extra })
+  const invokeRepair = async (
+    jobId: string,
+    method: (typeof methods)[number],
+    input: RepairInput,
+    selected: AbortSignal,
+  ): Promise<RunResult> => {
+    if (!progress || !progressAvailable)
+      return run.call(
+        { operationId: `repair:${jobId}`, slot: method.slot, input },
+        { signal: selected },
+      )
+
+    const pair = await run.channel({ schema: repairProgressSchema })
+    const forwarding = (async () => {
+      try {
+        for await (const value of pair.receive) {
+          if (
+            value === null ||
+            typeof value !== 'object' ||
+            Array.isArray(value) ||
+            typeof value.phase !== 'string' ||
+            !['baseline', 'proposal', 'check', 'finished'].includes(value.phase) ||
+            typeof value.attempt !== 'number'
+          )
+            continue
+          await publishPhase(
+            jobId,
+            value.phase as 'baseline' | 'proposal' | 'check' | 'finished',
+            value.attempt,
+            {
+              method: method.id,
+            },
+          )
+        }
+      } catch {
+        run.signal.throwIfAborted()
+        // Phase observation is best-effort; repair outcome remains authoritative.
+      }
+    })()
+    try {
+      const result = await run.call(
+        {
+          operationId: `repair:${jobId}`,
+          slot: method.slot,
+          input,
+          channels: { progress: pair.send },
+        },
+        { signal: selected },
+      )
+      await forwarding
+      return result
+    } catch (error) {
+      try {
+        await pair.receive.close()
+      } catch {
+        run.signal.throwIfAborted()
+      }
+      await forwarding.catch(() => undefined)
+      throw error
+    }
+  }
   const results = await Promise.all(
     prepared
       .map(async ({ job, input }) => {
-        const selection: Record<string, JsonValue> = {
-          source:
-            job.method === undefined ? 'default' : job.method === 'auto' ? 'auto' : 'explicit',
-        }
+        const routingInput = { task: input.issue, candidates }
+        const routing: Record<string, JsonValue> = job.method
+          ? { mode: 'explicit', candidateId: job.method }
+          : { mode: 'automatic', input: routingInput }
         const captured = {
           id: job.id,
           directory: job.directory,
           baseDigest: identity(input.files),
           acceptanceDigest: identity(input.cases),
-          selection,
+          routing,
         }
         const selected = new AbortController()
         const timer =
@@ -124,13 +229,9 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
         let result: RunResult
         try {
           run.signal.throwIfAborted()
-          let method = methods.find(
-            (candidate) => candidate.slot === (job.method ?? 'checked-correction'),
-          )
-          if (job.method === 'auto') {
-            const routingInput = { task: input.issue, candidates }
-            const routing: Record<string, JsonValue> = { input: routingInput }
-            selection.routing = routing
+          let candidateId = job.method
+          if (candidateId === undefined) {
+            await publishPhase(job.id, 'selecting', 0)
             const decision = await run.call(
               { operationId: `route:${job.id}`, slot: 'router', input: routingInput },
               { signal: selected.signal },
@@ -144,20 +245,20 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
               throw new OperationError('INVALID_RESULT', 'Router returned an invalid decision.')
             }
             routing.result = route
-            if (route.outcome !== 'done' || route.output.candidateId === null)
+            if (route.outcome !== 'done' || route.output.candidateId === null) {
               return { ...captured, status: 'unrouted' }
-            method = methods.find((candidate) => candidate.id === route.output.candidateId)
+            }
+            candidateId = route.output.candidateId
           }
+          const method = methods.find((candidate) => candidate.id === candidateId)
           if (!method)
             throw new OperationError('INVALID_RESULT', 'The selected method has no reviewed slot.')
-          selection.method = method.slot
+          routing.slot = method.slot
           // Do not reset the job budget after routing, including between calls.
           if (selected.signal.aborted)
-            throw new OperationError('CANCELLED', 'The job interval expired.')
-          result = await run.call(
-            { operationId: `repair:${job.id}`, slot: method.slot, input },
-            { signal: selected.signal },
-          )
+            throw new OperationError('CANCELLED', 'The routing and repair interval expired.')
+          await publishPhase(job.id, 'invoking', 0, { method: method.id })
+          result = await invokeRepair(job.id, method, input, selected.signal)
         } catch (error) {
           run.signal.throwIfAborted()
           // Preserve settled failure, not an invented candidate or verdict.
@@ -166,7 +267,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
             ...captured,
             status: 'failed',
             code: value.code ?? 'EXECUTION_FAILED',
-            message: value.message ?? 'Selection or repair failed.',
+            message: value.message ?? 'Routing or repair failed.',
             ...(value.details === undefined ? {} : { details: value.details }),
           }
         } finally {
@@ -226,8 +327,8 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
                 .join('\n') +
               `\nPending: ${pending.join(', ') || 'none'}\nPatches were checked separately. Review before applying.\n`
             await run.call({
-              operationId: `progress:${++sequence}`,
-              slot: 'progress',
+              operationId: `checkpoint:${++sequence}`,
+              slot: 'checkpoint',
               input: {
                 sequence,
                 evidence: {
@@ -237,6 +338,19 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
                 },
                 files,
               },
+            })
+            await publishPhase(result.id, 'settled', 0, {
+              status:
+                'ready' in result && result.ready
+                  ? 'review-ready'
+                  : result.status === 'unrouted'
+                    ? 'unrouted'
+                    : 'unsuccessful',
+              ...(typeof result.routing.slot === 'string' &&
+              (result.routing.slot === 'single-pass' ||
+                result.routing.slot === 'checked-correction')
+                ? { method: result.routing.slot === 'single-pass' ? 'p1' : 'p2' }
+                : {}),
             })
           })
           saves = saving
@@ -266,16 +380,14 @@ function summary(value: JsonValue): string {
     id: string
     ready?: boolean
     code?: string
-    selection: {
-      source: string
-      method?: string
-      routing?: {
-        result?: { outcome: string; output: { candidateId?: string | null; reason: string } }
-      }
+    routing: {
+      slot?: string
+      result?: { outcome: string; output: { candidateId?: string | null; reason: string } }
     }
   }
-  const route = job.selection.routing?.result
-  const chosen =
-    job.selection.method ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
-  return `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; selection: ${job.selection.source} → ${chosen}${job.code ? `; ${job.code}` : ''}${route ? `; ${route.output.reason.replace(/[\r\n]+/g, ' ')}` : ''}`
+  const route = job.routing.result
+  const selection =
+    job.routing.slot ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
+  const mode = job.routing.mode === 'explicit' ? 'explicit' : 'automatic'
+  return `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing (${mode}): ${selection}${job.code ? `; ${job.code}` : ''}${route ? `; ${route.output.reason.replace(/[\r\n]+/g, ' ')}` : ''}`
 }

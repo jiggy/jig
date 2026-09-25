@@ -67,8 +67,8 @@ use-case and orchestration hypotheses.
   and the caller receives eligibility rather than a payment authorization.
 - `guide/tested-patch.md` teaches reproduced failure, proposal, independent
   checks, and final patch evidence for one issue and one specialist.
-- `guide/software-factory.md` teaches direct selection between reviewed repair
-  configurations, optional bounded semantic routing, retained healthy-peer
+- `guide/software-factory.md` teaches bounded semantic routing between reviewed
+  repair configurations by default, optional exact selection, retained healthy-peer
   evidence, and the human merge gate.
 
 - `guide/overview.md` owns task-based discovery; `guide/for-agents.md` owns

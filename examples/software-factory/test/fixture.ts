@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { ChannelEndpoint } from '@jigging/flow'
 import cases from '../flows/factory/logs-cases.json'
 import { digest, type RepairInput, sha256 } from '../flows/repair/policy.ts'
 import { repair } from '../flows/repair/repair.ts'
@@ -78,12 +79,17 @@ function recorded(
   }
 }
 
-export async function syntheticRepair(maxProposals: 1 | 2 = 2, failFirstProposal = false) {
+export async function syntheticRepair(
+  maxProposals: 1 | 2 = 2,
+  failFirstProposal = false,
+  channels: Readonly<Record<string, ChannelEndpoint>> = {},
+) {
   let agents = 0
   const result = await repair({
     input,
     settings: { maxProposals },
     signal: new AbortController().signal,
+    channels,
     call: async (call) => {
       if (call.slot === 'agent') {
         agents++

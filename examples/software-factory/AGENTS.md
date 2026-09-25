@@ -2,21 +2,27 @@
 
 ## Purpose
 
-Show bounded repair composition over a fixed two-issue set: explicit application
-choice normally selects a reviewed repair configuration, optional Agent routing
-can choose from the same finite set, and every merge decision stays with a person.
+Show bounded semantic dispatch over a fixed two-issue set: reusable Agent
+judgment chooses a reviewed repair configuration, while application checks retain
+patch authority and every merge decision stays with a person.
 
 ## Ownership
 
-- `flows/factory/` owns bounded batch validation, method-to-slot policy,
-  source capture, independent evidence and optional routing-result validation, parallel
+- `flows/factory/` owns bounded batch validation, candidate-to-slot policy,
+  source capture, independent evidence and routing-result validation, parallel
   job dispatch, checkpoint aggregation, conflict detection, and final summaries.
 - `flows/router/` owns the portable decision Flow, separately governed below.
 - `flows/repair/` owns the factory's independently editable repair specialist.
 - `bindings/` composes one-proposal and checked-correction configurations of
   that specialist with one ordinary Agent and fixed Bun test/CLI grants.
+- `jig.ts` declares the project entrypoint with the factory target, batch/source
+  defaults, output destination and deadline. Ordinary `jig run` exercises the
+  public host defaults; repeat Runs choose a new output without overwriting.
 - `batch.json` and the named case files own the selected issues and acceptance
   policy. `fixtures/` owns the synthetic comparison projects.
+  The shipped batch omits `method` to exercise semantic selection; optional
+  reviewed IDs `p1` and `p2` map to `single-pass` and `checked-correction` for
+  explicit selection. Verify shipped data against the user-input validator.
 - `test/` owns deterministic batch, failure-isolation, and recovery checks.
 
 ## Local Contracts
@@ -29,22 +35,27 @@ can choose from the same finite set, and every merge decision stays with a perso
   independently; preserve a healthy result when its peer fails or is cancelled.
   Reject incomplete or wholly empty project reads instead of evaluating invented
   empty candidates.
-- Each job may select `single-pass`, `checked-correction`, or `auto`; omission
-  uses checked correction. Validate every selection before paid work. Explicit
-  and default choices dispatch directly. Route `auto` only after all inputs are
-  captured; validate complete router results and exact membership before
-  dispatch. Abstention, blocked/limit, invalid results and failures never
-  silently choose a default. Retain the selection source, chosen method, and
-  any routing context and decision with settled job evidence. `cancelAfterMs`
-  covers the complete selection-and-repair interval.
+- Capture all inputs before Agent work. An optional exact `method` selects one of
+  the reviewed factory IDs and bypasses semantic routing; without it, validate the
+  complete router result and exact membership before dispatch. Abstention,
+  blocked/limit, invalid results and failures never silently choose a default.
+  Retain whether selection was explicit or automatic, plus the applicable context
+  and decision, with settled job evidence. `cancelAfterMs` covers routing and
+  repair together.
 - Router and worker execute sequentially within each job, keeping two concurrent
   branches within the existing two-level-plus-effect resource reservations.
 - Both configurations use identical acceptance policy; one stops after its first
   checked proposal, the other permits one correction.
+- Keep invocation constraints within Jig's supported FLOW Schema/0 vocabulary;
+  enforce syntax checks in the owning Flow when the schema cannot express them.
 - Check each patch separately. Report overlaps and block conflicting output;
   never claim that separately passing patches pass as a combined change.
 - Checkpoints retain only settled evidence and patches. Pending or failed work
   never receives an invented verdict or deliverable.
+- The optional `progress` broadcast channel reports routing and the repair
+  specialist's observed baseline, proposal, check, and finish phases. A `settled`
+  update follows the durable checkpoint. Progress never establishes acceptance;
+  the `checkpoint` slot is the separate collaborator for settled evidence.
 - Original sources remain read-only. The application writes patch packets only;
   a person decides whether to apply, combine, merge, or release them.
 

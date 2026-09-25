@@ -10,7 +10,45 @@ interface Attempt {
   invalidProposal?: string
 }
 export async function repair(
+  run: Pick<RunContext, 'input' | 'signal' | 'call' | 'channels'> &
+    Partial<Pick<RunContext, 'settings'>>,
+): Promise<RunResult> {
+  const progress = run.channels.progress
+  if (progress && progress.direction !== 'send')
+    throw new TypeError('progress must be a send channel.')
+  let progressAvailable = progress !== undefined
+  const publish = async (
+    phase: 'baseline' | 'proposal' | 'check' | 'finished',
+    attempt: number,
+  ) => {
+    run.signal.throwIfAborted()
+    if (!progress || !progressAvailable) return
+    try {
+      await progress.send({ phase, attempt })
+    } catch {
+      run.signal.throwIfAborted()
+      progressAvailable = false
+    }
+  }
+  try {
+    return await repairWithProgress(run, publish)
+  } finally {
+    if (progress?.direction === 'send') {
+      try {
+        await progress.close()
+      } catch {
+        run.signal.throwIfAborted()
+      }
+    }
+  }
+}
+
+async function repairWithProgress(
   run: Pick<RunContext, 'input' | 'signal' | 'call'> & Partial<Pick<RunContext, 'settings'>>,
+  publish: (
+    phase: 'baseline' | 'proposal' | 'check' | 'finished',
+    attempt: number,
+  ) => Promise<void>,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
   const settings = object(run.settings ?? {})
@@ -30,6 +68,7 @@ export async function repair(
   })
   const finish = async (outcome: string, reason: string): Promise<RunResult> => {
     run.signal.throwIfAborted()
+    await publish('finished', attempts.length)
     return {
       outcome,
       output: {
@@ -66,6 +105,7 @@ export async function repair(
     return evaluate(input, files, values)
   }
   try {
+    await publish('baseline', 0)
     baseline = await observe(input.files, 'baseline')
     if (baseline.acceptance.every((c) => c.passed))
       return await finish(
@@ -74,6 +114,7 @@ export async function repair(
       )
     for (let index = 0; index < maxProposals; index++) {
       run.signal.throwIfAborted()
+      await publish('proposal', index + 1)
       const response = await run.call({
         operationId: `patch-${index + 1}`,
         slot: 'agent',
@@ -128,6 +169,7 @@ export async function repair(
       }
       const files = candidate(input, attempt.proposal)
       attempt.candidateDigest = digest(files)
+      await publish('check', index + 1)
       attempt.evaluation = await observe(files, `attempt-${index + 1}`)
       if (attempt.evaluation.accepted)
         return await finish(
