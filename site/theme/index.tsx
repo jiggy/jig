@@ -3,6 +3,7 @@ import { Content, useFrontmatter, usePage, useSite } from '@rspress/core/runtime
 import { Arrow } from './icons'
 import { Showcase, type ShowcaseData } from './showcase'
 import { PackageShowcase, type PackageShowcaseData } from './package-showcase'
+import { BrandTitle } from './brand-title'
 import '../landing.css'
 
 export * from '@rspress/core/theme-original'
@@ -60,6 +61,7 @@ export function Layout() {
   return <div className="experience" data-product={site.title.toLowerCase()}>
     {!import.meta.env.SSG_MD && (home || isCustom) && <a className="skip-link" href="#main-content">Skip to content</a>}
     <DefaultLayout
+      navTitle={<BrandTitle />}
       beforeDocContent={<DocContext />}
       bottom={isCustom ? <HomeFooter /> : undefined}
     />

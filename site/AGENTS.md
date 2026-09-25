@@ -14,7 +14,7 @@ Jig public sites.
 - Each site's `public/mark.svg` is its selected monochrome emblem. Keep its
   path geometry identical in `mark-light.svg` and `favicon.svg`; those files
   provide the light-on-dark and browser-icon treatments. Jig uses the striped
-  switch mark; FLOW uses its filled counterpart.
+  switch mark; FLOW uses its unstriped counterpart.
 - Each site's `public/logo.svg` and `logo-light.svg` are transparent standalone
   lockups pairing that site's emblem with its Quicksand wordmark. Their PNG
   counterparts are transparent 4× raster exports of the SVGs. These are

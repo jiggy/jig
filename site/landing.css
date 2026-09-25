@@ -12,6 +12,55 @@
   font-weight: 100 800;
   font-display: swap;
 }
+@font-face {
+  font-family: 'Quicksand';
+  src: url('./theme/fonts/quicksand-semibold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Quicksand';
+  src: url('./theme/fonts/quicksand-bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+.rp-nav__title__link {
+  gap: 0.1rem;
+}
+.rp-nav__title__logo {
+  width: 1.6rem;
+  height: 1.6rem;
+  min-width: 1.6rem;
+  margin-right: 0;
+  flex: 0 0 auto;
+}
+.rp-nav__title__logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.rp-nav__title__link > span {
+  color: #20242c;
+  font-family: 'Quicksand', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.dark .rp-nav__title__link > span {
+  color: #f3f5f8;
+}
+.experience[data-product='flow'] .rp-nav__title__link {
+  gap: 0.165rem;
+}
+.experience[data-product='flow'] .rp-nav__title__link > span {
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
 html:root {
   --rp-font-family-base: 'Manrope', system-ui, sans-serif;
   --rp-font-family-mono: 'JetBrains Mono', monospace;
