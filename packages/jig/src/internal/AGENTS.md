@@ -201,7 +201,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `macos-backend-state.ts` authenticates bounded, atomically committed allocation,
   sealing, admission, cancellation and final-receipt records. Interrupted staging
   never authorizes dispatch; retain the last authenticated commit. Reopening a
-  cancelled or finished allocation cannot admit work. The backend must validate
+  cancelled or finished allocation cannot admit work. Planning creates and binds
+  the exact allocation, control directory and lock inodes; opening state must never
+  recreate a missing allocation, because removal permanently revokes every stale
+  copy of its capability. The backend must validate
   sealed identities and cleanup receipts independently; ledger JSON alone is
   neither execution nor fencing authority.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.

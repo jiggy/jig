@@ -24,6 +24,9 @@ native(
   async () =>
     fixture(async (root) => {
       const allocation = await planPrivateMacosOwnerStateAllocation({ parent: root, name: 'run' })
+      await expect(
+        planPrivateMacosOwnerStateAllocation({ parent: root, name: 'run' }),
+      ).rejects.toThrow()
       expect(() =>
         normalizePrivateMacosOwnerStateAllocationIdentity({ ...allocation, name: 'other' }),
       ).toThrow()
@@ -53,6 +56,18 @@ native(
     }),
   10_000,
 )
+
+native('released native allocation authority cannot recreate its owner directory', async () => {
+  await fixture(async (root) => {
+    const allocation = await planPrivateMacosOwnerStateAllocation({
+      parent: root,
+      name: 'released',
+    })
+    await rm(allocation.directory, { recursive: true })
+    await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow()
+    expect(await readdir(root)).toEqual([])
+  })
+})
 
 native(
   'fresh native recovery sees committed active state after coordinator death and retains one final receipt',
@@ -145,7 +160,7 @@ native(
           expect(await readdir(control)).not.toContain('state.pending')
         } else {
           await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow(
-            'authentication failed',
+            mode === 'lock' ? 'lock changed' : 'authentication failed',
           )
           expect(await readFile(join(control, 'state.pending'), 'utf8')).toBe('interrupted write')
         }

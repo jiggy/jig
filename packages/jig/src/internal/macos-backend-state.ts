@@ -8,6 +8,7 @@ import {
   openPrivateChild,
   privateChildLocation,
   privateDirectoryEntries,
+  rmdirPrivateFile,
   statPrivateChild,
   unlinkPrivateFile,
 } from './descriptor-files.js'
@@ -32,6 +33,12 @@ export interface PrivateMacosOwnerStateAllocationIdentity {
   readonly parentInode: string
   readonly name: string
   readonly directory: string
+  readonly directoryDevice: string
+  readonly directoryInode: string
+  readonly controlDevice: string
+  readonly controlInode: string
+  readonly lockDevice: string
+  readonly lockInode: string
   readonly ownerToken: string
 }
 export interface PrivateMacosBackendState {
@@ -84,30 +91,100 @@ export async function planPrivateMacosOwnerStateAllocation(location: {
   )
     throw new TypeError('native execution allocation requires a canonical private parent')
   const parent = await open(location.parent, DIRECTORY)
+  let root: FileHandle | undefined,
+    control: FileHandle | undefined,
+    lock: PrivateMacosOwnerLock | undefined,
+    created = false
+  let handlesClosed = false
+  const closeHandles = async () => {
+    if (handlesClosed) return
+    handlesClosed = true
+    const results = await Promise.allSettled([
+      lock?.close(),
+      control?.close(),
+      root?.close(),
+      parent.close(),
+    ])
+    const errors = results
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason)
+    if (errors.length) throw new AggregateError(errors, 'native allocation closure failed')
+  }
   try {
     const info = await parent.stat({ bigint: true })
     privateDirectory(info)
-    try {
-      await statPrivateChild(parent, location.name)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      const fields = {
-        kind: 'private-macos-owner-state-allocation/1' as const,
-        parent: location.parent,
-        parentDevice: String(info.dev),
-        parentInode: String(info.ino),
-        name: location.name,
-        directory: join(location.parent, location.name),
-        ownerToken: randomBytes(32).toString('hex'),
-      }
-      return Object.freeze({
-        ...fields,
-        digest: privateDomainDigest('JIG-Macos-Owner-Allocation/1', fields),
-      })
+    await mkdirPrivateFile(privateChildLocation(parent, location.name))
+    created = true
+    root = await openPrivateChild(parent, location.name, DIRECTORY)
+    const rootInfo = await root.stat({ bigint: true })
+    privateDirectory(rootInfo)
+    await mkdirPrivateFile(privateChildLocation(root, 'control'))
+    control = await openPrivateChild(root, 'control', DIRECTORY)
+    const controlInfo = await control.stat({ bigint: true })
+    privateDirectory(controlInfo)
+    lock = await acquirePrivateMacosOwnerLock(control)
+    const fields = {
+      kind: 'private-macos-owner-state-allocation/1' as const,
+      parent: location.parent,
+      parentDevice: String(info.dev),
+      parentInode: String(info.ino),
+      name: location.name,
+      directory: join(location.parent, location.name),
+      directoryDevice: String(rootInfo.dev),
+      directoryInode: String(rootInfo.ino),
+      controlDevice: String(controlInfo.dev),
+      controlInode: String(controlInfo.ino),
+      lockDevice: lock.identity.device,
+      lockInode: lock.identity.inode,
+      ownerToken: randomBytes(32).toString('hex'),
     }
-    throw new Error('native execution allocation already exists')
-  } finally {
-    await parent.close()
+    const allocation = Object.freeze({
+      ...fields,
+      digest: privateDomainDigest('JIG-Macos-Owner-Allocation/1', fields),
+    })
+    await closeHandles()
+    return allocation
+  } catch (error) {
+    if (created) {
+      const cleanup = async () => {
+        await lock?.close()
+        lock = undefined
+        await control?.close()
+        control = undefined
+        await root?.close()
+        root = undefined
+        const reopened = await openPrivateChild(parent, location.name, DIRECTORY)
+        try {
+          const entries = []
+          for await (const entry of privateDirectoryEntries(reopened)) entries.push(entry.name)
+          if (entries.every((name) => ['control'].includes(name))) {
+            if (entries.includes('control')) {
+              const nested = await openPrivateChild(reopened, 'control', DIRECTORY)
+              try {
+                const names = []
+                for await (const entry of privateDirectoryEntries(nested)) names.push(entry.name)
+                if (!names.every((name) => name === 'coordinator.lock')) return
+                if (names.includes('coordinator.lock'))
+                  await unlinkPrivateFile(privateChildLocation(nested, 'coordinator.lock'))
+              } finally {
+                await nested.close()
+              }
+              await rmdirPrivateFile(privateChildLocation(reopened, 'control'))
+            }
+          } else return
+        } finally {
+          await reopened.close()
+        }
+        await rmdirPrivateFile(privateChildLocation(parent, location.name))
+      }
+      await cleanup().catch(() => undefined)
+    }
+    try {
+      await closeHandles()
+    } catch (closeError) {
+      throw new AggregateError([error, closeError], 'native allocation failed')
+    }
+    throw error
   }
 }
 export function normalizePrivateMacosOwnerStateAllocationIdentity(
@@ -121,6 +198,12 @@ export function normalizePrivateMacosOwnerStateAllocationIdentity(
     'parentInode',
     'name',
     'directory',
+    'directoryDevice',
+    'directoryInode',
+    'controlDevice',
+    'controlInode',
+    'lockDevice',
+    'lockInode',
     'ownerToken',
   ])
   if (
@@ -138,6 +221,18 @@ export function normalizePrivateMacosOwnerStateAllocationIdentity(
     typeof record.name !== 'string' ||
     !NAME.test(record.name) ||
     record.directory !== join(record.parent, record.name) ||
+    typeof record.directoryDevice !== 'string' ||
+    !NUMBER.test(record.directoryDevice) ||
+    typeof record.directoryInode !== 'string' ||
+    !NUMBER.test(record.directoryInode) ||
+    typeof record.controlDevice !== 'string' ||
+    !NUMBER.test(record.controlDevice) ||
+    typeof record.controlInode !== 'string' ||
+    !NUMBER.test(record.controlInode) ||
+    typeof record.lockDevice !== 'string' ||
+    !NUMBER.test(record.lockDevice) ||
+    typeof record.lockInode !== 'string' ||
+    !NUMBER.test(record.lockInode) ||
     typeof record.ownerToken !== 'string' ||
     !/^[0-9a-f]{64}$/.test(record.ownerToken)
   )
@@ -182,18 +277,28 @@ export async function openPrivateMacosBackendState(
       String(parentInfo.ino) !== allocation.parentInode
     )
       throw new Error('native execution parent changed')
-    await mkdirPrivateFile(privateChildLocation(parent, allocation.name)).catch((error) => {
-      if (error.code !== 'EEXIST') throw error
-    })
     root = await openPrivateChild(parent, allocation.name, DIRECTORY)
     const rootInfo = await root.stat({ bigint: true })
     privateDirectory(rootInfo)
-    await mkdirPrivateFile(privateChildLocation(root, 'control')).catch((error) => {
-      if (error.code !== 'EEXIST') throw error
-    })
+    if (
+      String(rootInfo.dev) !== allocation.directoryDevice ||
+      String(rootInfo.ino) !== allocation.directoryInode
+    )
+      throw new Error('native execution allocation changed')
     control = await openPrivateChild(root, 'control', DIRECTORY)
     const controlInfo = await control.stat({ bigint: true })
+    privateDirectory(controlInfo)
+    if (
+      String(controlInfo.dev) !== allocation.controlDevice ||
+      String(controlInfo.ino) !== allocation.controlInode
+    )
+      throw new Error('native execution control changed')
     lock = await acquirePrivateMacosOwnerLock(control)
+    if (
+      lock.identity.device !== allocation.lockDevice ||
+      lock.identity.inode !== allocation.lockInode
+    )
+      throw new Error('native execution lock changed')
     const fixed = {
       kind: 'private-macos-backend-state/1' as const,
       allocationDigest: allocation.digest,
