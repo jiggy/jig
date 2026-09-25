@@ -136,14 +136,27 @@ async function exercise(mode: string) {
         } else if (request.method === 'channel/send') {
           ok(request, null)
           const command = p.value
-          item({ type: 'accepted', command: command.type, turn: command.turn })
-          if (command.type === 'prompt') {
-            if (mode === 'late-error') {
-              nativeSettled = true
-              fail(call, 'EXECUTION_FAILED')
-            } else if (!['interrupt', 'completion-race'].includes(mode)) terminal(command.turn)
-          } else if (command.type === 'interrupt')
-            terminal(command.turn, mode === 'interrupt' ? 'cancelled' : 'result')
+          if (command.type === 'interrupt' && mode === 'not-running-race') {
+            // The turn finishes as the interruption reaches the Agent. The
+            // terminal result must remain distinct from the control rejection.
+            terminal(command.turn)
+            item({
+              type: 'rejected',
+              command: 'interrupt',
+              turn: command.turn,
+              code: 'NOT_RUNNING',
+            })
+          } else {
+            item({ type: 'accepted', command: command.type, turn: command.turn })
+            if (command.type === 'prompt') {
+              if (mode === 'late-error') {
+                nativeSettled = true
+                fail(call, 'EXECUTION_FAILED')
+              } else if (!['interrupt', 'completion-race', 'not-running-race'].includes(mode))
+                terminal(command.turn)
+            } else if (command.type === 'interrupt')
+              terminal(command.turn, mode === 'interrupt' ? 'cancelled' : 'result')
+          }
         } else if (request.method === 'channel/close') {
           expect(p.endpoint).toBe('commands:s')
           closed = true
@@ -230,11 +243,21 @@ async function exercise(mode: string) {
   }
 }
 
-for (const mode of ['normal', 'interrupt', 'completion-race']) {
+for (const mode of ['normal', 'interrupt', 'completion-race', 'not-running-race']) {
   test(`public conversation helper: ${mode}`, async () => {
-    const { output } = await exercise(mode)
+    const { output, operations } = await exercise(mode)
     expect(output.turns).toHaveLength(2)
     expect(output.value.second.type).toBe(mode === 'interrupt' ? 'cancelled' : 'result')
+    if (mode === 'interrupt' || mode === 'completion-race')
+      expect(output.value.control).toBe('accepted')
+    if (mode === 'not-running-race') {
+      expect(output.value.control).toBe('not-running')
+      expect(
+        operations
+          .filter((operation) => operation.method === 'channel/send')
+          .map((operation) => operation.params.value.type),
+      ).toEqual(['prompt', 'interrupt', 'close'])
+    }
     expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
   })
 }

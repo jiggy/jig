@@ -17,24 +17,37 @@ view of the next steps; active plans, status, evidence and blockers live in
 4. Let others build further capability: support independent builders and
    user-owned Starters based on demonstrated needs.
 
+## Current published baseline
+
+`@jigging/jig@0.1.0-alpha.22` is published and includes the corrected
+captured-input projection. The exact registry artifact used in the adoption
+check matches alpha.22's published integrity.
+
 ## Next steps
 
-1. Complete installed alpha reliability. Publish the corrected input projection
-   with source, tested archives, registry versions, tags and public guidance
-   aligned; qualify supported native behavior with installed clients.
-2. Prove independent repair usability. A fresh builder adapts the published
-   repair method to another small Bun project and produces a reviewable patch,
-   executed tests and independent acceptance evidence.
-3. Demonstrate a useful small factory. Builders adapt bounded repair methods
-   across several authorized issues with honest outcomes and a human merge
-   gate. Claim comparative advantage only after a decision-relevant comparison
-   against a capable coding Agent, tests and human review, using a metric chosen
-   beforehand.
+1. Complete independent factory adoption: one builder uses the published
+   alpha.22 and public guide on one different small Bun project with two
+   preselected reproducible issues; at least one patch passes both its
+   repository test and independent acceptance, other outcomes remain
+   inspectable and honestly classified, and the builder can explain review.
+   A recent same-project attempt reproduced both defects, but both Agent calls
+   were rejected before proposals, so this remains open.
+2. Qualify immediate native conversation interruption on supported Ubuntu
+   using published packages. Verify the immediate follow-up/control race,
+   actual turn settlement and cleanup; deterministic tests alone do not close
+   this gate.
+3. After those gates, build an application-owned time-travel handoff using the
+   existing conversation and retained-progress interfaces. Do not add host
+   locks, queues or session-replacement primitives without a demonstrated
+   cross-application need.
 
 ## Ongoing proof
 
 - Show FLOW interoperability by running an unchanged package through public
   contracts in an independent implementation.
+- Keep adoption, native interruption and comparative-advantage claims tied to
+  their stated evidence; success in one small consumer does not prove the
+  latter two.
 - Fix concrete release, CLI, authority and cleanup defects as found.
 
 Use the doctrine's [decision test](../doctrine/design-judgment.md#the-decision-test)

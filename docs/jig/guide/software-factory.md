@@ -13,7 +13,10 @@ patch for you.
 ## Run the supplied batch
 
 In a copy of the example, run `bun install`, inspect `batch.json`, the Agent
-Binding, and the two named case files. Configure and authenticate an Agent, then:
+Binding, and the two named case files. The supplied Binding selects native
+Codex through ACP. To use an HTTP Agent method instead, follow the package and
+Binding setup in [Reuse the Agent method](agent-method.md#invoke-the-ordinary-flow).
+Then authenticate the selected Agent:
 
 ```sh
 jig review --allow-resolution-network
@@ -60,10 +63,23 @@ fail; it never silently chooses a fallback. Unknown methods reject the whole
 batch before dispatch. Optional `cancelAfterMs` bounds selection and repair for
 one job; root cancellation stops all owned work.
 
-This is an authored example, not independent adoption proof. Its earlier
-two-issue comparisons tied or were unfavorable on their chosen measures; no
-speed or quality advantage over a capable coding Agent is established. A
-previous 24-file adapted project exposed a Jig projection defect, now corrected
-in source; a fresh installed release and independent consumer completion remain
-separate evidence gates. The example remains limited to small Bun projects and
-one or two preselected issues with a human merge gate.
+This example remains limited to small Bun projects and one or two preselected
+issues with a human merge gate. The published `@jigging/jig@0.1.0-alpha.22`
+contains the corrected captured-input projection used by the example.
+
+An independent builder used that published package and this guide to repair
+one issue in each of two other Bun projects; both patches passed repository
+commands and independent acceptance cases. This is preliminary evidence, not
+the current adoption criterion. A later same-project, two-issue attempt
+reproduced both defects, but the configured Agent endpoint rejected both calls
+before proposals, so no patch or repair-quality evidence resulted. Adoption
+remains unproved until an independent builder produces at least one review-ready
+patch with passing repository and independent checks, retains inspectable
+outcomes for the other issue, and can explain how to review the results. These
+runs were not technically isolated clean-room tests and establish neither
+general model reliability nor an advantage over a capable coding Agent.
+
+Immediate follow-up interruption also remains unqualified with a supported
+native client on Ubuntu using published packages. Deterministic tests and the
+documented requirement to await the same turn's result do not replace that live
+qualification.

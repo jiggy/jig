@@ -68,7 +68,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Native Agent API Qualification consumes the exact host archives from the
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
-  credentials out of setup, build, and archive steps.
+  credentials out of setup, build, and archive steps. Its Codex case also
+  installs the current published alpha packages in an ordinary temporary
+  consumer and exercises immediate follow-up interruption through the public
+  CLI; the other source-archive checks remain distinct candidate evidence.
 - Each host shard builds the linked workspace packages used by source tests;
   generated `dist` output is runner-local and is not created by a filtered
   dependency install. Frozen archives remain the inputs to installed gates.

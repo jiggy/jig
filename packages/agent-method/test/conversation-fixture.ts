@@ -1,5 +1,5 @@
 import { handle, type JsonValue } from '@jigging/flow'
-import { withAgentConversation, AgentConversationError } from '../src/conversation.js'
+import { AgentConversationError, withAgentConversation } from '../src/conversation.js'
 
 await handle(async (run) => {
   const displayed: string[] = []
@@ -32,9 +32,12 @@ await handle(async (run) => {
         const first = await conversation.initial
         if (run.input === 'callback-error') throw new Error('application rejected draft')
         const second = conversation.prompt({ instructions: 'Apply this correction' })
-        if (run.input === 'interrupt' || run.input === 'completion-race')
-          await conversation.interrupt()
-        return { first, second: await second }
+        const control = ['interrupt', 'completion-race', 'not-running-race'].includes(
+          run.input as string,
+        )
+          ? await conversation.interrupt()
+          : undefined
+        return { first, second: await second, ...(control === undefined ? {} : { control }) }
       },
     )
     return {

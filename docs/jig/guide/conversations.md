@@ -81,9 +81,13 @@ turns, and `completed.settlement` is the final invocation result. The helper
 closes the conversation and waits for that actual result before returning.
 It does not grant authority or determine whether an answer is correct.
 
-To interrupt an active turn, await `conversation.interrupt()`, then await that
-turn's promise. An accepted interruption can race ordinary completion. Leaving
-a live turn unfinished at callback return fails rather than detaching it.
+To interrupt an active turn, call `conversation.prompt(...)`, then await
+`conversation.interrupt()` and that same prompt's promise. It is safe to request
+interruption immediately: the helper waits for the prompt acknowledgement before
+sending the interrupt. `accepted` means the request was accepted, not that the
+turn was cancelled; natural completion can win, in which case the control may be
+`not-running` and the prompt still returns its result. Leaving a live turn
+unfinished at callback return fails rather than detaching it.
 `AgentConversationError` retains received `turns`, any known `settlement`, and
 both primary and cleanup `errors`; ordinary `try/catch` remains sufficient.
 Optional `onEvent` filters or displays public updates synchronously without
@@ -158,10 +162,23 @@ received and distinguish incomplete work from a finished revision.
 
 ## Interrupt without replacing the conversation
 
-Send `{type: 'interrupt', turn: 1}` while turn one is running. Its accepted
-reply means the method accepted that control. Only the later `cancelled` reply
-establishes native turn settlement. A completion racing interruption can instead
-return an ordinary result. Wait for either terminal turn reply before continuing.
+Keep the follow-up promise, request interruption, then await that same promise:
+
+```ts
+const turn = conversation.prompt({ instructions: 'Continue the draft.' })
+const control = await conversation.interrupt()
+const settled = await turn
+```
+
+The control reply (`accepted` or `not-running`) is not the turn result. The
+settled turn is either `cancelled` or an ordinary `result` if completion won the
+race. Do not start subsequent work until the turn promise settles.
+
+At the channel level, send `{type: 'interrupt', turn: 1}` while turn one is
+running. Its accepted reply means the method accepted that control. Only the
+later `cancelled` reply establishes native turn settlement. A completion racing
+interruption can instead return an ordinary result. Wait for either terminal
+turn reply before continuing.
 
 Busy or stale controls are rejected, not queued. The host independently refuses
 prompts beyond `maxTurns`. A native interruption that does not settle within

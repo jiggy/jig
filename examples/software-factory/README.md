@@ -11,7 +11,10 @@ whether to apply, merge, or release any patch.
 
 Run `bun install` in this project, select and authenticate an Agent in
 `bindings/agent.ts`, then inspect `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
-the two named case files under `flows/factory/`. From this directory:
+the two named case files under `flows/factory/`. The supplied Binding uses
+native ACP Codex. For an HTTP Agent route instead, follow the package and
+Binding setup in the [Agent method guide](../../docs/jig/guide/agent-method.md).
+From this directory:
 
 ```sh
 jig review --allow-resolution-network

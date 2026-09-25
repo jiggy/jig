@@ -1,5 +1,5 @@
 import { expect } from 'bun:test'
-import { cp, lstat, mkdir, readdir, realpath, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 /** Install the unchanged built Agent Flow and authorize only its selected native profile. */
@@ -130,4 +130,302 @@ await handle(async run => {
   return result;
 });`,
   )
+}
+
+/** A normal workspace Flow importing the published conversation helper subpath. */
+export async function writeConversationHelperCaller(root: string): Promise<void> {
+  const sdk = await installWorkspaceArtifact(root, 'flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE')
+  const method = await installWorkspaceArtifact(
+    root,
+    'agent-method',
+    'AGENT_METHOD_PACKAGE_ARCHIVE',
+  )
+  const flow = join(root, 'flows/conversation-helper')
+  await mkdir(flow, { recursive: true })
+  await cp(
+    join(import.meta.dir, '../../../../docs/jig/spec/contracts/agent-run'),
+    join(flow, 'contracts/agent-run'),
+    { recursive: true },
+  )
+  await writeFile(
+    join(flow, 'package.json'),
+    JSON.stringify({
+      name: 'native-conversation-helper-caller',
+      private: true,
+      type: 'module',
+      dependencies: { [sdk.name]: sdk.version, [method.name]: method.version },
+    }),
+  )
+  await writeFile(
+    join(flow, 'FLOW.meta.json'),
+    JSON.stringify({
+      uses: {
+        agent: {
+          contract: './contracts/agent-run/contract.json',
+          requires: ['conversation'],
+        },
+      },
+    }),
+  )
+  await writeFile(
+    join(flow, 'FLOW.ts'),
+    `import { handle } from '@jigging/flow';
+import { withAgentConversation } from '@jigging/agent-method/conversation';
+
+await handle(async run => {
+  const completed = await withAgentConversation(run, {
+    operationId: 'immediate-follow-up-interruption',
+    slot: 'agent',
+    input: { instructions: 'Reply with a short greeting.' },
+  }, async conversation => {
+    const initial = await conversation.initial;
+    if (initial.type !== 'result' || initial.result.outcome !== 'done')
+      throw new Error('The initial Agent turn did not complete.');
+
+    const followup = conversation.prompt({
+      instructions: 'Write a detailed explanation of how to design a reliable public library. Continue until interrupted.',
+    });
+    const interruption = await conversation.interrupt();
+    const turn = await followup;
+    if (turn.type !== 'result' && turn.type !== 'cancelled')
+      throw new Error('The follow-up Agent turn did not settle normally.');
+    return { interruption, turn: turn.type, turnNumber: turn.turn };
+  });
+
+  return {
+    outcome: 'done',
+    output: {
+      ...completed.value,
+      turns: completed.turns.map(turn => ({ turn: turn.turn, type: turn.type })),
+      settlement: completed.settlement,
+    },
+  };
+});`,
+  )
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({ private: true, type: 'module', workspaces: ['flows/*', 'packages/*'] }),
+  )
+  const install = Bun.spawn(
+    [process.execPath, '--no-env-file', 'install', '--ignore-scripts', '--config=/dev/null'],
+    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [exit, stdout, stderr] = await Promise.all([
+    install.exited,
+    new Response(install.stdout).text(),
+    new Response(install.stderr).text(),
+  ])
+  expect(exit, `${stdout}\n${stderr}`).toBe(0)
+}
+
+/** Ordinary consumer assembled only from packages published on the npm alpha tags. */
+export async function writePublishedConversationHelperProject(
+  root: string,
+  cliRoot: string,
+): Promise<{ readonly command: string; readonly versions: Readonly<Record<string, string>> }> {
+  const flow = join(root, 'flows/conversation-helper')
+  await mkdir(join(flow, 'contracts'), { recursive: true })
+  await mkdir(join(root, 'bindings'), { recursive: true })
+  await mkdir(cliRoot, { recursive: true })
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({
+      name: 'published-conversation-consumer',
+      private: true,
+      type: 'module',
+      workspaces: ['flows/*'],
+      dependencies: { '@jigging/agent-acp': 'alpha' },
+    }),
+  )
+  await writeFile(
+    join(flow, 'package.json'),
+    JSON.stringify({
+      name: 'published-conversation-flow',
+      private: true,
+      type: 'module',
+      dependencies: {
+        '@jigging/flow': 'alpha',
+        '@jigging/agent-method': 'alpha',
+      },
+    }),
+  )
+  await writeFile(
+    join(root, 'jig.ts'),
+    `import { defineJig, discover } from '@jigging/jig'
+export default defineJig({
+  flows: discover('flows'),
+  bindings: discover('bindings'),
+  defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' },
+})
+`,
+  )
+  await writeFile(
+    join(root, 'bindings/agent.ts'),
+    `import { defineBinding } from '@jigging/jig'
+export default defineBinding({
+  package: 'npm:@jigging/agent-acp',
+  slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } },
+})
+`,
+  )
+  await writeFile(
+    join(flow, 'FLOW.meta.json'),
+    JSON.stringify({
+      uses: {
+        agent: {
+          contract: './contracts/agent-run/FLOW.contract.json',
+          requires: ['conversation'],
+        },
+      },
+    }),
+  )
+  await writeFile(
+    join(flow, 'FLOW.ts'),
+    `import { handle } from '@jigging/flow'
+import { withAgentConversation } from '@jigging/agent-method/conversation'
+
+await handle(async run => {
+  const completed = await withAgentConversation(run, {
+    operationId: 'immediate-follow-up-interruption',
+    slot: 'agent',
+    input: { instructions: 'Reply with a short greeting.' },
+  }, async conversation => {
+    const initial = await conversation.initial
+    if (initial.type !== 'result' || initial.result.outcome !== 'done')
+      throw new Error('The initial Agent turn did not complete.')
+
+    const followup = conversation.prompt({
+      instructions: 'Write a detailed explanation of how to design a reliable public library. Continue until interrupted.',
+    })
+    const interruption = await conversation.interrupt()
+    const turn = await followup
+    if (turn.type !== 'result' && turn.type !== 'cancelled')
+      throw new Error('The follow-up Agent turn did not settle normally.')
+    return { interruption, turn: turn.type, turnNumber: turn.turn }
+  })
+
+  return {
+    outcome: 'done',
+    output: {
+      ...completed.value,
+      turns: completed.turns.map(turn => ({ turn: turn.turn, type: turn.type })),
+      settlement: completed.settlement,
+    },
+  }
+})
+`,
+  )
+
+  const safeEnvironment: Record<string, string> = {}
+  for (const key of ['PATH', 'HOME', 'TMPDIR', 'XDG_CACHE_HOME']) {
+    const value = process.env[key]
+    if (value !== undefined) safeEnvironment[key] = value
+  }
+  const cliInstall = Bun.spawn(
+    [
+      'npm',
+      'install',
+      '--prefix',
+      cliRoot,
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--userconfig=/dev/null',
+      '--registry=https://registry.npmjs.org/',
+      '@jigging/jig@alpha',
+    ],
+    {
+      cwd: cliRoot,
+      env: { ...safeEnvironment, NPM_CONFIG_USERCONFIG: '/dev/null' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  const [cliExit, cliStdout, cliStderr] = await Promise.all([
+    cliInstall.exited,
+    new Response(cliInstall.stdout).text(),
+    new Response(cliInstall.stderr).text(),
+  ])
+  expect(cliExit, `${cliStdout}\n${cliStderr}`).toBe(0)
+  const install = Bun.spawn(
+    [process.execPath, '--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts'],
+    { cwd: root, env: safeEnvironment, stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [exit, stdout, stderr] = await Promise.all([
+    install.exited,
+    new Response(install.stdout).text(),
+    new Response(install.stderr).text(),
+  ])
+  expect(exit, `${stdout}\n${stderr}`).toBe(0)
+  const [jig, acp, sdk, method] = await Promise.all([
+    packageVersion(join(cliRoot, 'node_modules/@jigging/jig/package.json')),
+    packageVersion(join(root, 'node_modules/@jigging/agent-acp/package.json')),
+    packageVersion(join(flow, 'node_modules/@jigging/flow/package.json')),
+    packageVersion(join(flow, 'node_modules/@jigging/agent-method/package.json')),
+  ])
+  const versions = Object.freeze({ jig, acp, flow: sdk, method })
+  return { command: join(cliRoot, 'node_modules/.bin/jig'), versions }
+}
+
+async function packageVersion(path: string): Promise<string> {
+  const packageJson = JSON.parse(await readFile(path, 'utf8')) as { version?: unknown }
+  if (typeof packageJson.version !== 'string') throw new Error('Published package omitted version')
+  return packageJson.version
+}
+
+async function installWorkspaceArtifact(
+  root: string,
+  name: 'flow-sdk' | 'agent-method',
+  archiveVariable: 'FLOW_SDK_PACKAGE_ARCHIVE' | 'AGENT_METHOD_PACKAGE_ARCHIVE',
+): Promise<{ readonly name: string; readonly version: string }> {
+  const destination = join(root, 'packages', name)
+  const artifacts = join(root, 'artifacts', name)
+  await mkdir(destination, { recursive: true })
+  await mkdir(artifacts, { recursive: true })
+  let archive = process.env[archiveVariable]
+  if (archive === undefined) {
+    const packageDirectory = join(import.meta.dir, `../../../${name}`)
+    const pack = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        'pm',
+        'pack',
+        '--ignore-scripts',
+        '--destination',
+        artifacts,
+      ],
+      { cwd: packageDirectory, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [exit, stdout, stderr] = await Promise.all([
+      pack.exited,
+      new Response(pack.stdout).text(),
+      new Response(pack.stderr).text(),
+    ])
+    expect(exit, `${stdout}\n${stderr}`).toBe(0)
+    const archives = (await readdir(artifacts)).filter((entry) => entry.endsWith('.tgz'))
+    expect(archives).toHaveLength(1)
+    const [packedArchive] = archives
+    if (packedArchive === undefined) throw new Error(`Bun did not pack ${name}`)
+    archive = join(artifacts, packedArchive)
+  }
+  archive = await realpath(resolve(archive))
+  if (!(await lstat(archive)).isFile()) throw new Error(`${archiveVariable} must be a regular file`)
+  const extract = Bun.spawn(['tar', '-xzf', archive, '--strip-components=1', '-C', destination], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [exit, stdout, stderr] = await Promise.all([
+    extract.exited,
+    new Response(extract.stdout).text(),
+    new Response(extract.stderr).text(),
+  ])
+  expect(exit, `${stdout}\n${stderr}`).toBe(0)
+  const manifest = JSON.parse(await readFile(join(destination, 'package.json'), 'utf8')) as {
+    name?: unknown
+    version?: unknown
+  }
+  if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string')
+    throw new Error(`The packed ${name} artifact omitted its package identity`)
+  return { name: manifest.name, version: manifest.version }
 }

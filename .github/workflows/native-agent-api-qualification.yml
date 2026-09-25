@@ -134,6 +134,7 @@ jobs:
             readlink -f "${archives[0]}"
           }
           {
+            printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
             printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
             printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
             printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
@@ -262,6 +263,7 @@ jobs:
             env JIG_LINUX_ROOTLESS_HOSTILE=1 \
             "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
             "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
+            "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
             "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
             "JIG_NATIVE_API_MODEL=$JIG_NATIVE_API_MODEL" \
             "JIG_NATIVE_API_CLIENT=$JIG_NATIVE_API_CLIENT" \
@@ -269,7 +271,7 @@ jobs:
             "${client_environment[@]}" \
             "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts \
             --test-name-pattern "$JIG_NATIVE_API_TEST_PATTERN" \
-            --timeout 240000
+            --timeout 420000
 
       - name: Verify the tested archives are unchanged
         if: always() && steps.archives.outputs.ready == 'true'

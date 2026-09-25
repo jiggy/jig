@@ -36,7 +36,11 @@ import {
   writeDeterministicAcpAgent,
 } from './fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
-import { writeOrdinaryAcpAgent } from './fixtures/ordinary-acp-agent.js'
+import {
+  writeConversationHelperCaller,
+  writeOrdinaryAcpAgent,
+  writePublishedConversationHelperProject,
+} from './fixtures/ordinary-acp-agent.js'
 import { completedResponse, writeOrdinaryAgent } from './fixtures/ordinary-agent.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
@@ -106,6 +110,36 @@ test('constructs the packed ACP Agent with an exact native grant and ordinary de
     await rm(root, { recursive: true, force: true })
   }
 }, 30_000)
+
+test('constructs an ordinary workspace caller of the packed conversation helper', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-conversation-helper-fixture-'))
+  try {
+    await writeOrdinaryAcpAgent(root, 'codex', 2)
+    await writeConversationHelperCaller(root)
+    expect(await Bun.file(join(root, 'flows/conversation-helper/FLOW.ts')).exists()).toBe(true)
+    expect(
+      JSON.parse(await Bun.file(join(root, 'flows/conversation-helper/FLOW.meta.json')).text()).uses
+        .agent.requires,
+    ).toEqual(['conversation'])
+    const consumer = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        '-e',
+        'import {handle} from "@jigging/flow"; import {withAgentConversation} from "@jigging/agent-method/conversation"; if (typeof handle !== "function" || typeof withAgentConversation !== "function") throw new Error("missing public package export");',
+      ],
+      { cwd: join(root, 'flows/conversation-helper'), stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [exit, stdout, stderr] = await Promise.all([
+      consumer.exited,
+      new Response(consumer.stdout).text(),
+      new Response(consumer.stderr).text(),
+    ])
+    expect(exit, `${stdout}\n${stderr}`).toBe(0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}, 60_000)
 
 test('constructs a locked local workspace for root and child Skill-delivery evidence', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-skill-fixture-'))
@@ -1286,6 +1320,96 @@ proofDescribe('private contained Agent Run lifecycle', () => {
     NATIVE_AGENT_TEST_TIMEOUT_MS,
   )
 
+  nativeCodexApiTest(
+    'interrupts an immediate follow-up through published Jig and conversation packages with a Responses-compatible endpoint',
+    async () => {
+      const codexPath = nativeCodexPath
+      const apiKey = process.env.OPENROUTER_API_KEY
+      const model = nativeCodexApiModel
+      if (codexPath === undefined || apiKey === undefined || model === undefined)
+        throw new Error('native Codex API qualification requires its executable and API key')
+      const proofRoot = await mkdtemp(join(tmpdir(), 'jig-native-codex-published-conversation-'))
+      const root = join(proofRoot, 'consumer')
+      const cliRoot = join(proofRoot, 'cli')
+      await mkdir(root)
+      let clean = false
+      try {
+        const published = await writePublishedConversationHelperProject(root, cliRoot)
+        console.info(
+          `Published native-conversation packages: ${JSON.stringify(published.versions)}`,
+        )
+        const commandEnvironment = nativePublicCommandEnvironment({
+          codexPath: await realpath(codexPath),
+          apiKey,
+          model,
+        })
+        const runCommand = async (args: readonly string[], timeoutMs = 120_000) => {
+          const result = await runPublishedJigCommand(
+            published.command,
+            args,
+            root,
+            commandEnvironment,
+            timeoutMs,
+          )
+          expect(
+            result.credentialLeaked,
+            'public command output must not contain its credential',
+          ).toBeFalse()
+          expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0)
+          return result
+        }
+
+        await runCommand([
+          'import-contract',
+          'flows/conversation-helper/node_modules/@jigging/agent-method/FLOW.contract.json',
+          'flows/conversation-helper/contracts/agent-run',
+        ])
+        await runCommand([
+          'review',
+          '--yes',
+          '--allow-authority-changes',
+          '--allow-resolution-network',
+        ])
+        const run = await runCommand(
+          ['run', 'flow:flows/conversation-helper', '--input', '{}', '--timeout', '3m', '--json'],
+          NATIVE_AGENT_TEST_TIMEOUT_MS + 60_000,
+        )
+        const terminal = JSON.parse(run.stdout) as {
+          status: unknown
+          outcome: unknown
+          output: {
+            interruption: unknown
+            turn: unknown
+            turnNumber: unknown
+            turns: unknown
+            settlement: unknown
+          }
+        }
+        expect(terminal.status).toBe('succeeded')
+        expect(terminal.outcome).toBe('done')
+        const output = terminal.output
+        expect(['accepted', 'not-running']).toContain(output.interruption)
+        expect(['result', 'cancelled']).toContain(output.turn)
+        expect(output.turnNumber).toBe(1)
+        expect(output.turns).toEqual([
+          { turn: 0, type: 'result' },
+          { turn: 1, type: output.turn },
+        ])
+        expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
+        if (output.turn === 'cancelled') expect(output.interruption).toBe('accepted')
+        if (output.interruption === 'not-running') expect(output.turn).toBe('result')
+        await expectNoAgentOwner(root)
+        await waitForCgroups(initialCgroups)
+        await waitForTemporaryState(initialTemporaryState)
+        clean = true
+      } finally {
+        if (clean) await rm(proofRoot, { recursive: true, force: true })
+        else console.error(`Published native conversation fixture retained at ${proofRoot}`)
+      }
+    },
+    NATIVE_AGENT_TEST_TIMEOUT_MS + 180_000,
+  )
+
   nativeClaudeApiTest(
     'executes the ordinary ACP Agent with native Claude Code through ACP with an Anthropic-compatible endpoint',
     async () => {
@@ -2384,6 +2508,87 @@ function rootlessTemporaryEntry(entry: string): boolean {
     entry.startsWith('jig-rootless-owner-') ||
     entry.startsWith('jig-rootless-devices-')
   )
+}
+
+function nativePublicCommandEnvironment(options: {
+  readonly codexPath: string
+  readonly apiKey: string
+  readonly model: string
+}): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {
+    PATH: requiredProcessEnvironment('PATH'),
+    HOME: requiredProcessEnvironment('HOME'),
+    CODEX_PATH: options.codexPath,
+    OPENAI_API: 'responses',
+    OPENAI_API_KEY: options.apiKey,
+    OPENAI_BASE_URL: OPENROUTER_RESPONSES_TEST_BASE_URL,
+    OPENAI_MODEL: options.model,
+  }
+  for (const key of ['TMPDIR', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS']) {
+    const value = process.env[key]
+    if (value !== undefined) environment[key] = value
+  }
+  return environment
+}
+
+function requiredProcessEnvironment(key: string): string {
+  const value = process.env[key]
+  if (value === undefined || value.length === 0)
+    throw new Error(`native published-package qualification requires ${key}`)
+  return value
+}
+
+async function runPublishedJigCommand(
+  command: string,
+  args: readonly string[],
+  cwd: string,
+  environment: NodeJS.ProcessEnv,
+  timeoutMs: number,
+): Promise<{
+  readonly exitCode: number
+  readonly stdout: string
+  readonly stderr: string
+  readonly credentialLeaked: boolean
+}> {
+  const child = Bun.spawn([command, ...args], {
+    cwd,
+    env: environment,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  let timedOut = false
+  let forceTimer: ReturnType<typeof setTimeout> | undefined
+  const timeout = setTimeout(() => {
+    timedOut = true
+    child.kill('SIGINT')
+    forceTimer = setTimeout(() => child.kill('SIGKILL'), 20_000)
+  }, timeoutMs)
+  let exitCode: number
+  let stdout: string
+  let stderr: string
+  try {
+    ;[exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+  } finally {
+    clearTimeout(timeout)
+    if (forceTimer !== undefined) clearTimeout(forceTimer)
+  }
+  const credential = environment.OPENAI_API_KEY
+  const credentialLeaked =
+    credential !== undefined && (stdout.includes(credential) || stderr.includes(credential))
+  if (credential !== undefined) {
+    stdout = stdout.replaceAll(credential, '[redacted]')
+    stderr = stderr.replaceAll(credential, '[redacted]')
+  }
+  if (timedOut)
+    throw new Error(
+      `published Jig command exceeded ${timeoutMs}ms: ${args.join(' ')}\n${stdout}${stderr}`,
+    )
+  return { exitCode, stdout, stderr, credentialLeaked }
 }
 
 async function waitForTemporaryState(expected: ReadonlySet<string>): Promise<void> {
