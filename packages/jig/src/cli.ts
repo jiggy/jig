@@ -38,6 +38,7 @@ import {
   privateReadOperatorFile,
   sha256,
 } from './internal/linux-file-input.js'
+import { privateProfileSpan } from './internal/private-profile.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
@@ -685,7 +686,9 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     parsed.project,
     runtime,
     async (session) => {
-      const plan = await session.plan({ lockMode: 'update' })
+      const plan = await privateProfileSpan('project-planning', () =>
+        session.plan({ lockMode: 'update' }),
+      )
       runtime.progress.complete(true)
       if (plan.state === 'unchanged') return 0
 
@@ -1361,7 +1364,7 @@ async function withProjectSession<T>(
   let closeFailure: unknown
   try {
     runtime.progress.stage('Stopping remaining work and cleaning up')
-    await close()
+    await privateProfileSpan('project-session-close', close)
     runtime.progress.complete()
     if (runtime.signal?.aborted)
       runtime.progress.note('Cleanup complete. The command remains interrupted.')
