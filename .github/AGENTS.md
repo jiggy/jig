@@ -17,6 +17,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   publisher consumes existing archives and requires neither Just nor source.
 - Grant each job only the authority it needs; build jobs must not inherit
   publication or Git-write authority.
+- The separate Native Agent API Qualification workflow runs after successful
+  Linux Host Conformance on each `main` push. It qualifies Codex and Claude
+  Code from `@latest` and the currently supported Pi 0.84.4 standalone profile,
+  using one Mistral BYOK model through each client's native API protocol. Keep
+  the OpenRouter key only in the dedicated test step of the protected
+  `native-agent-api` environment; never expose it to PRs or artifact builds.
+  Configure Mistral BYOK to never use shared capacity for that provider so
+  exhausted BYOK quota fails instead of using billable OpenRouter capacity.
 - Build, test, publish, and tag the exact triggering source and retained
   candidate bytes. Never rebuild a release during publication.
 - CI freezes npm and Python candidates while source gates run. The protected
@@ -29,8 +37,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   version, and channel tag. Existing versions require byte identity even if a
   newer tag exists; absent older versions are superseded without publication,
   tags, or releases. Recheck registry state before each ordered mutation.
-- Publish only after CI and the complete Linux Host Conformance workflow have
-  both succeeded for the exact triggering source revision.
+- Publish npm only after CI, complete Linux Host Conformance, and Native Agent
+  API Qualification have succeeded for the exact triggering source revision.
+  The native qualification covers Jig's ACP clients and does not gate the
+  independent FLOW/PyPI publication path.
 - Keep path filters synchronized with every real workflow input.
 - Jig's Linux conformance PR filter includes root license, pricing, mapping,
   and retained license texts. Jig GitHub release notes link the matching tagged
@@ -54,6 +64,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   archive hashes, performs zero-residue verification, and contributes to the
   aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
   prevent that aggregate from succeeding.
+- Native Agent API Qualification consumes the exact host archives from the
+  successful `Linux host conformance` run, then tests one native client per
+  disposable rootless host. It records resolved client versions and keeps API
+  credentials out of setup, build, and archive steps.
 - Each host shard builds the linked workspace packages used by source tests;
   generated `dist` output is runner-local and is not created by a filtered
   dependency install. Frozen archives remain the inputs to installed gates.

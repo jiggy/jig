@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -137,8 +137,212 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   expect(aggregate.name).toBe('rootless-linux')
   expect(aggregate.if).toBe('always()')
   expect(aggregate.needs).toEqual(['host-artifacts', 'host-suite'])
+  expect(workflow['true'].workflow_dispatch?.inputs?.qualify_codex_api).toBeUndefined()
   expect(aggregate.steps[0].run).toContain('!= success')
   expect(
     artifacts.steps.some((step: any) => step.name === 'Retain exact Linux host artifacts'),
   ).toBeTrue()
+})
+
+test('native API qualification is automatic, exact-revision, and scoped to supported clients', async () => {
+  const host = Bun.YAML.parse(
+    await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
+  ) as any
+  const live = Bun.YAML.parse(
+    await Bun.file(join(root, '.github/workflows/native-agent-api-qualification.yml')).text(),
+  ) as any
+  const publish = Bun.YAML.parse(
+    await Bun.file(join(root, '.github/workflows/npm-publish.yml')).text(),
+  ) as any
+  const pypi = await Bun.file(join(root, '.github/workflows/pypi-publish.yml')).text()
+  const trigger = live['true'].workflow_run
+  const qualification = live.jobs.qualification
+  const matrix = qualification.strategy.matrix.include
+  const codexInstall = qualification.steps.find(
+    (step: any) => step.name === 'Install current native Codex',
+  )
+  const claudeInstall = qualification.steps.find(
+    (step: any) => step.name === 'Install current native Claude Code',
+  )
+  const piInstall = qualification.steps.find(
+    (step: any) => step.name === 'Install the supported standalone Pi profile',
+  )
+  const apiSteps = qualification.steps.filter((step: any) =>
+    step.name?.startsWith('Qualify native '),
+  )
+  const secretScopes = Object.entries(live.jobs).flatMap(([jobId, job]: [string, any]) =>
+    (job.steps ?? [])
+      .filter((step: any) => step.env?.OPENROUTER_API_KEY !== undefined)
+      .map((step: any) => `${jobId}:${step.name}`),
+  )
+  const downloads = qualification.steps.filter((step: any) =>
+    step.uses?.startsWith('actions/download-artifact'),
+  )
+  const publishAuthorization = publish.jobs.authorize
+
+  expect(host.jobs['rootless-linux'].needs).toEqual(['host-artifacts', 'host-suite'])
+  expect(trigger.workflows).toEqual(['Linux host conformance'])
+  expect(trigger.types).toEqual(['completed'])
+  expect(live['run-name']).toContain('github.event.workflow_run.head_sha')
+  expect(live.env.JIG_NATIVE_API_MODEL).toBe('mistralai/ministral-8b-2512')
+  expect(qualification.if).toContain("github.event.workflow_run.conclusion == 'success'")
+  expect(qualification.if).toContain("github.event.workflow_run.event == 'push'")
+  expect(qualification.if).toContain("github.event.workflow_run.head_branch == 'main'")
+  expect(qualification.if).toContain(
+    'github.event.workflow_run.head_repository.full_name == github.repository',
+  )
+  expect(qualification.environment).toBe('native-agent-api')
+  expect(qualification.permissions).toEqual({ actions: 'read', contents: 'read' })
+  expect(qualification.strategy['max-parallel']).toBe(3)
+  expect(matrix.map((entry: any) => entry.client)).toEqual(['codex', 'claude', 'pi'])
+  expect(codexInstall.run).toContain('@openai/codex@latest')
+  expect(codexInstall.run).toContain('--version')
+  expect(claudeInstall.run).toContain('@anthropic-ai/claude-code@latest')
+  expect(piInstall.run).toContain('pi_version=0.84.4')
+  expect(piInstall.run).toContain('SHA256SUMS')
+  expect(apiSteps.map((step: any) => step.name)).toEqual([
+    'Qualify native ${{ matrix.client }} API-key ACP through OpenRouter',
+  ])
+  expect(
+    apiSteps.every(
+      (step: any) => step.env.OPENROUTER_API_KEY === '${{ secrets.OPENROUTER_API_KEY }}',
+    ),
+  ).toBeTrue()
+  expect(
+    apiSteps.every(
+      (step: any) => step.env.JIG_NATIVE_API_MODEL === '${{ env.JIG_NATIVE_API_MODEL }}',
+    ),
+  ).toBeTrue()
+  expect(secretScopes).toEqual([
+    'qualification:Qualify native ${{ matrix.client }} API-key ACP through OpenRouter',
+  ])
+  expect(downloads).toHaveLength(1)
+  expect(downloads[0].with.name).toBe('linux-host-artifacts-${{ env.SOURCE_REVISION }}')
+  expect(downloads[0].with['run-id']).toBe('${{ github.event.workflow_run.id }}')
+  expect(downloads[0].with['github-token']).toBe('${{ github.token }}')
+  expect(
+    qualification.steps.some(
+      (step: any) =>
+        step.name === 'Verify the tested archives are unchanged' && step.if.includes('always()'),
+    ),
+  ).toBeTrue()
+  expect(
+    qualification.steps.some(
+      (step: any) => step.name === 'Require zero host residue' && step.if.includes('always()'),
+    ),
+  ).toBeTrue()
+  expect(publishAuthorization['timeout-minutes']).toBe(90)
+  expect(
+    publishAuthorization.steps.some(
+      (step: any) => step.name === 'Require exact-revision native Agent API qualification',
+    ),
+  ).toBeTrue()
+  expect(pypi.includes('require-native-agent-api-qualification.sh')).toBeFalse()
+})
+
+test('native API publication gate waits for this revision and rejects an exact-revision failure', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-agent-api-gate-'))
+  const bin = join(directory, 'bin')
+  const script = join(root, 'scripts/require-native-agent-api-qualification.sh')
+  const revision = 'a'.repeat(40)
+  const otherRevision = 'b'.repeat(40)
+  const calls = join(directory, 'gh-calls')
+  const state = join(directory, 'gh-state')
+
+  async function runFixture(first: string, response: string, scriptPath = script) {
+    await writeFile(
+      join(bin, 'gh'),
+      '#!/bin/sh\nset -eu\nprintf \'call\\n\' >> "$MOCK_GH_CALLS"\nif [ ! -f "$MOCK_GH_STATE" ]; then : > "$MOCK_GH_STATE"; printf \'%s\' "$MOCK_GH_FIRST"; else printf \'%s\' "$MOCK_GH_RESPONSE"; fi\n',
+    )
+    await writeFile(join(bin, 'sleep'), '#!/bin/sh\nexit 0\n')
+    await chmod(join(bin, 'gh'), 0o755)
+    await chmod(join(bin, 'sleep'), 0o755)
+    const child = Bun.spawn(['/bin/sh', scriptPath, 'jiggy/jig', revision], {
+      cwd: directory,
+      env: {
+        ...process.env,
+        GH_TOKEN: 'fixture-token',
+        MOCK_GH_CALLS: calls,
+        MOCK_GH_STATE: state,
+        MOCK_GH_FIRST: first,
+        MOCK_GH_RESPONSE: response,
+        PATH: `${bin}:${process.env.PATH}`,
+        TMPDIR: directory,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const stdout = new Response(child.stdout).text()
+    const stderr = new Response(child.stderr).text()
+    return { exit: await child.exited, stdout: await stdout, stderr: await stderr }
+  }
+
+  try {
+    await mkdir(bin)
+    const otherRevisionRun = JSON.stringify({
+      workflow_runs: [
+        {
+          conclusion: 'success',
+          created_at: '2026-09-25T10:00:00Z',
+          display_title: `Native Agent API qualification for ${otherRevision}`,
+          event: 'workflow_run',
+          html_url: 'https://example.invalid/other',
+          status: 'completed',
+        },
+      ],
+    })
+    const exactSuccess = JSON.stringify({
+      workflow_runs: [
+        {
+          conclusion: 'success',
+          created_at: '2026-09-25T10:01:00Z',
+          display_title: `Native Agent API qualification for ${revision}`,
+          event: 'workflow_run',
+          html_url: 'https://example.invalid/exact',
+          status: 'completed',
+        },
+      ],
+    })
+    const success = await runFixture(otherRevisionRun, exactSuccess)
+    expect(success.exit).toBe(0)
+    expect(success.stdout).toContain(`succeeded for ${revision}`)
+    expect((await Bun.file(calls).text()).trim().split('\n')).toHaveLength(2)
+
+    await rm(calls, { force: true })
+    await rm(state, { force: true })
+    const fastScript = join(directory, 'gate-fast-poll.sh')
+    const source = await Bun.file(script).text()
+    expect(source.match(/attempts=240/g)).toHaveLength(1)
+    expect(source.match(/delay_seconds=10/g)).toHaveLength(1)
+    await writeFile(
+      fastScript,
+      source.replace('attempts=240', 'attempts=2').replace('delay_seconds=10', 'delay_seconds=0'),
+    )
+    const noMatch = await runFixture(otherRevisionRun, otherRevisionRun, fastScript)
+    expect(noMatch.exit).toBe(1)
+    expect(noMatch.stderr).toContain('before the authorization deadline')
+    expect((await Bun.file(calls).text()).trim().split('\n')).toHaveLength(2)
+
+    await rm(calls, { force: true })
+    await rm(state, { force: true })
+    const exactFailure = JSON.stringify({
+      workflow_runs: [
+        {
+          conclusion: 'failure',
+          created_at: '2026-09-25T10:02:00Z',
+          display_title: `Native Agent API qualification for ${revision}`,
+          event: 'workflow_run',
+          html_url: 'https://example.invalid/failed',
+          status: 'completed',
+        },
+      ],
+    })
+    const failure = await runFixture(exactFailure, exactFailure)
+    expect(failure.exit).toBe(1)
+    expect(failure.stderr).toContain(`did not succeed for ${revision}`)
+    expect(failure.stderr).toContain('https://example.invalid/failed')
+    expect((await Bun.file(calls).text()).trim().split('\n')).toHaveLength(1)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })

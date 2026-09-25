@@ -41,6 +41,9 @@ operational baselines, and public-site assembly.
   removal failures never replace the original failure or establish success.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
+- `require-native-agent-api-qualification.sh` owns the bounded, read-only check
+  that the exact main-push revision passed the separate live ACP client check
+  before npm publication.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
   requires clean Git source and records exact revision and artifact hashes. It
   uses one fixed archive timestamp so shallow CI checkouts and full-history
@@ -99,6 +102,9 @@ operational baselines, and public-site assembly.
   shell against controlled registry responses without credentials.
 - Validate the Host Conformance authorization script with `shellcheck` and
   success plus fail-closed API fixtures.
+- Test the native Agent API publication gate with exact-revision success,
+  failure, and no-match API fixtures; it must not accept a qualification for
+  another source revision.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
   missing-build, mismatched-version, matching-version, and PATH behavior.
 - `bun test scripts/new-worktree.test.ts` uses disposable Git repositories to
