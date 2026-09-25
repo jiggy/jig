@@ -1335,6 +1335,12 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       let clean = false
       try {
         const published = await writePublishedConversationHelperProject(root, cliRoot)
+        expect(published.versions).toEqual({
+          jig: '0.1.0-alpha.22',
+          acp: '0.1.0-alpha.3',
+          flow: '0.1.0-alpha.12',
+          method: '0.1.0-alpha.3',
+        })
         console.info(
           `Published native-conversation packages: ${JSON.stringify(published.versions)}`,
         )

@@ -272,12 +272,12 @@ admitted FLOW packages.
   `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
   rebuilding during execution. The native Codex immediate-interruption
-  qualification separately installs Jig from npm and runs an ordinary
-  consumer using the current published alpha tags for Jig, FLOW, Agent method
-  and ACP Agent. It imports the published Agent contract through the public
-  CLI, then checks the actual follow-up result and host cleanup. The resolved
-  versions are printed with the test evidence; this is published-artifact
-  evidence, not a source-candidate package test.
+  qualification separately installs Jig `0.1.0-alpha.22`, FLOW
+  `0.1.0-alpha.12`, Agent method `0.1.0-alpha.3` and ACP Agent
+  `0.1.0-alpha.3` from npm in an ordinary consumer. It imports the published
+  Agent contract through the public CLI, then checks the actual follow-up
+  result and host cleanup. The test asserts and prints these versions; this is
+  published-artifact evidence, not a source-candidate package test.
   `finite-acp-lifecycle.test.ts` also runs the unchanged incident-brief application
   with packed dependencies and a deterministic native peer. It checks two
   branches, predecessor settlement, one successor and residue, not model quality.

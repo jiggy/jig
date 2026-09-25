@@ -218,7 +218,7 @@ await handle(async run => {
   expect(exit, `${stdout}\n${stderr}`).toBe(0)
 }
 
-/** Ordinary consumer assembled only from packages published on the npm alpha tags. */
+/** Ordinary consumer assembled from exact published npm prerelease packages. */
 export async function writePublishedConversationHelperProject(
   root: string,
   cliRoot: string,
@@ -234,7 +234,16 @@ export async function writePublishedConversationHelperProject(
       private: true,
       type: 'module',
       workspaces: ['flows/*'],
-      dependencies: { '@jigging/agent-acp': 'alpha' },
+      dependencies: { '@jigging/agent-acp': '0.1.0-alpha.3' },
+    }),
+  )
+  await writeFile(
+    join(cliRoot, 'package.json'),
+    JSON.stringify({
+      name: 'published-jig-cli-consumer',
+      private: true,
+      type: 'module',
+      dependencies: { '@jigging/jig': '0.1.0-alpha.22' },
     }),
   )
   await writeFile(
@@ -244,8 +253,8 @@ export async function writePublishedConversationHelperProject(
       private: true,
       type: 'module',
       dependencies: {
-        '@jigging/flow': 'alpha',
-        '@jigging/agent-method': 'alpha',
+        '@jigging/flow': '0.1.0-alpha.12',
+        '@jigging/agent-method': '0.1.0-alpha.3',
       },
     }),
   )
@@ -323,16 +332,12 @@ await handle(async run => {
   }
   const cliInstall = Bun.spawn(
     [
-      'npm',
+      process.execPath,
+      '--no-env-file',
+      '--config=/dev/null',
       'install',
-      '--prefix',
-      cliRoot,
       '--ignore-scripts',
-      '--no-audit',
-      '--no-fund',
-      '--userconfig=/dev/null',
       '--registry=https://registry.npmjs.org/',
-      '@jigging/jig@alpha',
     ],
     {
       cwd: cliRoot,
