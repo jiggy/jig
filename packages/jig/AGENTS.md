@@ -95,10 +95,12 @@ admitted FLOW packages.
 
 
 - `import-contract` copies a validated local invocation/channel bundle into a
-  new directory, preserving bytes and relative paths. It follows only the
-  operator-selected source root; closure descendants must be regular captured
-  files. It neither acquires an execution host nor fetches, imports package
-  code, replaces an existing destination, or grants Run authority.
+  new directory, preserving bytes and relative paths. A direct descriptor path
+  or exact `npm:` package name selects the source; package lookup starts at the
+  destination parent and uses the nearest installed `node_modules`. Closure
+  descendants must be regular captured files. It neither acquires an execution
+  host nor fetches, imports package code, replaces an existing destination, or
+  grants Run authority.
 
 - `src/index.ts` is the only JavaScript package export. Other exported symbols
   are private composition or test seams.

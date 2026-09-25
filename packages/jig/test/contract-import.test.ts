@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { main, privateCliRequiresHost } from '../src/cli.js'
 import { importContract } from '../src/internal/contract-import.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
-import { main, privateCliRequiresHost } from '../src/cli.js'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -51,6 +51,63 @@ test('imports an exact complete closure from an installed-style symlink without 
       new Map([['contracts/events.json', Buffer.from(agreement)]]),
     ).digest,
   })
+})
+test.each(['project root', 'member-local'])(
+  'npm selector imports from a %s installation without a physical path',
+  async (layout) => {
+    const root = await fixture()
+    const member = join(root, 'flows/worker')
+    const installedAt = layout === 'project root' ? root : member
+    await mkdir(join(member, 'contracts'), { recursive: true })
+    await mkdir(join(installedAt, 'node_modules/@jigging'), { recursive: true })
+    await symlink(join(root, 'source'), join(installedAt, 'node_modules/@jigging/agent-method'))
+    let output = ''
+    const code = await main(
+      ['import-contract', 'npm:@jigging/agent-method', 'flows/worker/contracts/agent-run'],
+      {
+        currentDirectory: root,
+        writeOutput: (text) => {
+          output += text
+        },
+        host: {
+          async acquire() {
+            throw new Error('must not acquire host')
+          },
+        },
+      },
+    )
+    expect(code).toBe(0)
+    expect(output).toContain('Imported 2 contract files')
+    expect(await readFile(join(member, 'contracts/agent-run/FLOW.contract.json'), 'utf8')).toBe(
+      descriptor,
+    )
+    expect(await readFile(join(member, 'contracts/agent-run/contracts/events.json'), 'utf8')).toBe(
+      agreement,
+    )
+  },
+)
+test('nearest installed package wins and a missing descriptor does not fall back', async () => {
+  const root = await fixture()
+  const member = join(root, 'flows/worker')
+  await mkdir(join(member, 'contracts'), { recursive: true })
+  await mkdir(join(root, 'node_modules/@jigging'), { recursive: true })
+  await symlink(join(root, 'source'), join(root, 'node_modules/@jigging/agent-method'))
+  await mkdir(join(member, 'node_modules/@jigging/agent-method'), { recursive: true })
+  await expect(
+    importContract('npm:@jigging/agent-method', join(member, 'contracts/agent-run')),
+  ).rejects.toThrow('package has no FLOW.contract.json')
+  expect(await readdir(join(member, 'contracts'))).toEqual([])
+})
+test('missing installed package and malformed selectors remain actionable', async () => {
+  const root = await fixture()
+  await expect(importContract('npm:@jigging/missing', join(root, 'copied'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_PACKAGE',
+    path: 'npm:@jigging/missing',
+  })
+  await expect(importContract('npm:../source', join(root, 'copied'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_SOURCE',
+  })
+  expect(await readdir(root)).toEqual(['source'])
 })
 test('collisions never replace an existing destination, including an empty directory', async () => {
   const root = await fixture()
@@ -142,6 +199,6 @@ test('CLI import errors show escaped locations without acquiring a host', async 
   expect(code).toBe(2)
   expect(diagnostics).toContain('Location:')
   expect(diagnostics).toContain('missing\\u001b/FLOW.contract.json')
-  expect(diagnostics).toContain('Choose an existing descriptor file')
+  expect(diagnostics).toContain('existing descriptor file')
   expect(diagnostics).not.toContain('\u001b')
 })

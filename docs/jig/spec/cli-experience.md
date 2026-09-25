@@ -10,12 +10,16 @@ makes usable control an observable requirement;
 
 ## Required experience
 
-`jig import-contract <descriptor.json> <new-directory>` is explicit offline
+`jig import-contract <descriptor.json|npm:package> <new-directory>` is explicit offline
 authoring. It captures and validates one invocation descriptor and its exact
 channel closure (at most 64 agreements, 256 KiB per file, 1 MiB captured bytes),
 preserves bytes and relative paths, and publishes only to an absent destination
-whose parent already exists. It may resolve the operator-selected source root
-through an installed-package link; it rejects links within the selected closure.
+whose parent already exists. An exact `npm:` selector resolves an installed
+package by searching `node_modules` from the destination parent upward, nearest
+first, for `FLOW.contract.json`; an existing package without that descriptor
+does not fall back to a different installation. Direct descriptor paths remain
+supported. It may resolve the selected source root through an installed-package
+link; it rejects links within the selected closure.
 It does not evaluate package code, fetch dependencies, acquire execution
 authority or approve a Run. Cancellation before publication leaves no destination;
 completed publication is not undone. Process loss may leave an unpublished
