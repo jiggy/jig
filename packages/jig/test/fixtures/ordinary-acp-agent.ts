@@ -330,6 +330,9 @@ await handle(async run => {
     const value = process.env[key]
     if (value !== undefined) safeEnvironment[key] = value
   }
+  // Bun's default Linux backend hardlinks registry files to its shared cache.
+  // This consumer exercises npm-style extracted package contents, which Jig
+  // can safely capture as a self-contained selected source tree.
   const cliInstall = Bun.spawn(
     [
       process.execPath,
@@ -337,6 +340,7 @@ await handle(async run => {
       '--config=/dev/null',
       'install',
       '--ignore-scripts',
+      '--backend=copyfile',
       '--registry=https://registry.npmjs.org/',
     ],
     {
@@ -353,7 +357,14 @@ await handle(async run => {
   ])
   expect(cliExit, `${cliStdout}\n${cliStderr}`).toBe(0)
   const install = Bun.spawn(
-    [process.execPath, '--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts'],
+    [
+      process.execPath,
+      '--no-env-file',
+      '--config=/dev/null',
+      'install',
+      '--ignore-scripts',
+      '--backend=copyfile',
+    ],
     { cwd: root, env: safeEnvironment, stdout: 'pipe', stderr: 'pipe' },
   )
   const [exit, stdout, stderr] = await Promise.all([
