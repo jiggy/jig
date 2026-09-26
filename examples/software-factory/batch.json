@@ -5,7 +5,6 @@
       "directory": "log-report",
       "checks": "logs",
       "issue": "Reject fractional and out-of-range HTTP status codes. Count 4xx client errors separately from 5xx server errors. Make only one proposal; stop if it fails checks.",
-      "method": "single-pass",
       "editPaths": ["src/parse.ts", "src/report.ts"]
     },
     {
@@ -13,7 +12,6 @@
       "directory": "timesheet",
       "checks": "timesheet",
       "issue": "Reject invalid clock minutes. Include shifts crossing midnight, while equal start/end means zero minutes. Use check feedback for one correction if the first proposal fails.",
-      "method": "checked-correction",
       "editPaths": ["src/parse.ts", "src/total.ts"]
     }
   ]

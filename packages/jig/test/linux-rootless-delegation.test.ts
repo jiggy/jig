@@ -44,7 +44,7 @@ describe('private rootless Linux delegation', () => {
     expect(reexecuted).toBe(false)
   })
 
-  test('reexecutes the exact current command once through the fixed manager', async () => {
+  test('reexecutes the prepared command once through the fixed manager', async () => {
     const environment = { KEEP: 'exact' }
     const commandLifetimeMs = 86_700_000
     let request: unknown
@@ -53,7 +53,7 @@ describe('private rootless Linux delegation', () => {
         throw new PrivateRootlessLinuxAcquisitionError()
       },
       environment: () => environment,
-      currentCommand: () => [...COMMAND, 'run', 'answer'],
+      currentCommand: (arguments_) => [...COMMAND, ...arguments_],
       currentDirectory: () => '/project',
       nonce: () => '0123456789abcdef01234567',
       resolveManager: async () => '/bin/systemd-run',
@@ -85,6 +85,7 @@ describe('private rootless Linux delegation', () => {
       acquireOrReexecutePrivateRootlessLinux({
         dependencies,
         commandLifetimeMs,
+        commandArguments: ['run', 'binding:factory'],
       }),
     ).resolves.toEqual({
       kind: 'private-rootless-linux-reexecuted/1',
@@ -94,7 +95,7 @@ describe('private rootless Linux delegation', () => {
     expect(request).toEqual({
       managerPath: '/bin/systemd-run',
       unit: UNIT,
-      command: [...COMMAND, 'run', 'answer'],
+      command: [...COMMAND, 'run', 'binding:factory'],
       directory: '/project',
       environment,
       commandLifetimeMs,

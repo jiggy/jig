@@ -93,11 +93,15 @@ overwrites or deletes them. Editing a borrowed agreement requires explicit
 regeneration before review. The generated descriptor still references that
 file, so distribute the complete bundle.
 
-To reuse a complete invocation contract from an installed package or local
-directory, use `jig import-contract <descriptor.json> <new-directory>`. The
-destination parent must exist. Jig copies only the validated descriptor and
-its referenced channel agreements, preserving bytes and relative paths. It
-does not fetch dependencies, run code, overwrite a destination or approve work.
+To reuse a complete invocation contract from an installed package, use
+`jig import-contract npm:<package> <new-directory>`. Jig resolves the nearest
+installation from the destination's parent, so project-root and member-local
+dependencies use the same command. For an independently supplied contract, use
+`jig import-contract <descriptor.json> <new-directory>`. The destination parent
+must exist. Jig copies only the validated descriptor and its referenced channel
+agreements, preserving bytes and relative paths. The copy is a project-owned
+snapshot; upgrading the dependency does not silently change it. Import does
+not fetch dependencies, run code, overwrite a destination or approve work.
 
 ## Name optional behavior
 

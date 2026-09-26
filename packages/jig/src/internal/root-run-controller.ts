@@ -69,6 +69,7 @@ import {
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
+import { privateProfileSpan } from './private-profile.js'
 import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
 import {
   executePrivateContainedEffect,
@@ -303,18 +304,23 @@ async function startOrResumeCurrentExecution(
 
     channelPackage = await captureStoredPackage(input.packageStoreRoot, recipe.request.package)
     const channelInspected = await inspectCapturedPackage(channelPackage)
-    channels = await PrivateRunChannels.open(channelPackage, channelInspected, input.channelOutput)
-    stopChannels = () => channels!.broker.abort('CANCELLED')
+    const openedChannels = await PrivateRunChannels.open(
+      channelPackage,
+      channelInspected,
+      input.channelOutput,
+    )
+    channels = openedChannels
+    stopChannels = () => openedChannels.broker.abort('CANCELLED')
     input.signal?.addEventListener('abort', stopChannels, { once: true })
     if (input.signal?.aborted) stopChannels()
     channelDeadline = setTimeout(
-      () => channels!.broker.abort('DEADLINE_EXCEEDED'),
+      () => openedChannels.broker.abort('DEADLINE_EXCEEDED'),
       Math.max(0, plan.effectiveDeadlineUnixMs - Date.now()),
     )
     let provisional: RunHostTerminal
     let fence: PrivateExecutionConfirmedEnforcementReceipt
     try {
-      const component = await admitPrivateExecutionOwner(
+      const component = await privateProfileSpan('rootless-containment-startup', () => admitPrivateExecutionOwner(
         sealed,
         stop.enforcementSignal,
         async (prepared) => {
@@ -323,7 +329,7 @@ async function startOrResumeCurrentExecution(
             prepared,
           } as unknown as JsonValue)
         },
-      )
+      ))
       // The signal passed to Backend admission is startup-only. Once the
       // component is ready, RunHost owns cooperative cancellation/deadline
       // delivery and the helper's absolute timer owns the hard fence after
@@ -335,11 +341,11 @@ async function startOrResumeCurrentExecution(
         input,
         parent,
         plan.effectiveDeadlineUnixMs,
-        channels,
+        openedChannels,
         channelInspected,
         recipe,
       )
-      provisional = await new RunHostSession(
+      provisional = await privateProfileSpan('flow-execution', () => new RunHostSession(
         component,
         {
           input: work.run.input,
@@ -349,17 +355,17 @@ async function startOrResumeCurrentExecution(
             plan.ownerAllocation,
             fileProjection?.attachments ?? Object.freeze({}),
           ),
-          channels: channels.grants,
+          channels: openedChannels.grants,
           scratch: recipe.scratch,
           deadlineUnixMs: plan.effectiveDeadlineUnixMs,
           ...(input.signal === undefined ? {} : { signal: input.signal }),
         },
         { cancellationGraceMs: plan.cancellationGraceMs },
         dispatcher,
-      ).run()
+      ).run())
       observedTerminal = provisional
       try {
-        await recoverPrivateRootOperationOwners(input, parent)
+        await privateProfileSpan('operation-owner-settlement', () => recoverPrivateRootOperationOwners(input, parent))
       } catch (error) {
         if (!isPrivateExecutionFenceUnconfirmed(error)) throw error
         // The root result is known, but it cannot become terminal while a
@@ -373,7 +379,7 @@ async function startOrResumeCurrentExecution(
           provisional as unknown as JsonValue,
         )
         try {
-          fence = await component.enforcement
+          fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>('root-fence', () => component.enforcement)
         } catch (fenceError) {
           if (isPrivateExecutionFenceUnconfirmed(fenceError)) {
             return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
@@ -393,7 +399,7 @@ async function startOrResumeCurrentExecution(
         provisional as unknown as JsonValue,
       )
       try {
-        fence = await component.enforcement
+        fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>('root-fence', () => component.enforcement)
       } catch (error) {
         if (isPrivateExecutionFenceUnconfirmed(error)) {
           return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
@@ -452,11 +458,13 @@ async function startOrResumeCurrentExecution(
       }
     }
 
-    work = await advanceCheckpoint(input, work, 'fence', {
-      kind: FENCE_KIND,
-      receipt: fence,
-    } as unknown as JsonValue)
-    return terminal(await releaseAdmitAndClose(input, work))
+    return await privateProfileSpan('root-settlement', async () => {
+      work = await advanceCheckpoint(input, work, 'fence', {
+        kind: FENCE_KIND,
+        receipt: fence,
+      } as unknown as JsonValue)
+      return terminal(await releaseAdmitAndClose(input, work))
+    })
   } catch (error) {
     if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })

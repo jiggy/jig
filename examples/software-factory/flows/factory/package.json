@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.12",
+    "@jigging/flow": "0.1.0-alpha.13",
     "semantic-router-flow": "workspace:*"
   }
 }

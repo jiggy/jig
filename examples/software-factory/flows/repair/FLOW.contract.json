@@ -3,5 +3,23 @@
   "outcomes": {
     "blocked": "Independent cases did not reproduce the defect, or neither proposal passed.",
     "limit": "The Agent stopped at its limit."
+  },
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "required": false,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": ["baseline", "proposal", "check", "finished"]
+          },
+          "attempt": { "type": "integer", "minimum": 0, "maximum": 2 }
+        },
+        "required": ["phase", "attempt"],
+        "additionalProperties": false
+      }
+    }
   }
 }

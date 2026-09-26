@@ -16,7 +16,6 @@ test('usage mistakes show one correction, not the entire manual', async () => {
   for (const [args, expected] of [
     [['rn'], 'Did you mean run?'],
     [['run', 'flow:flows/hello', '--timeot', '2m'], 'Did you mean --timeout?'],
-    [['run'], 'exact target is required'],
     [['review', '--oops'], 'Unknown or repeated review option'],
   ] as const) {
     let text = ''
@@ -36,7 +35,7 @@ test('usage mistakes show one correction, not the entire manual', async () => {
   }
 })
 
-test('selection never defaults a target and validates options before asking', async () => {
+test('selection without an approved entrypoint never guesses and validates options before asking', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-empty-choice-'))
   try {
     let asked = false,

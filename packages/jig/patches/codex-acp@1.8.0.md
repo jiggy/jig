@@ -1,4 +1,4 @@
-# Keep Codex dispatch and shutdown accountable
+# Keep Codex dispatch, interruption and shutdown accountable
 
 Companion: [codex-acp@1.8.0.patch](codex-acp@1.8.0.patch).
 The root Bun `patchedDependencies` applies this to the pinned ACP adapter
@@ -32,6 +32,22 @@ Codex's ephemeral credential store before startup. This preserves subscription
 authentication on macOS, where a rootless host cannot mount the managed Linux
 requirements file at `/etc/codex/requirements.toml`, without exposing the token
 to Agent tools.
+The adapter registered a pending turn only after asynchronous prompt setup.
+An immediately following `session/cancel` could see neither a current turn nor
+a pending turn and disappear, leaving the follow-up running until host fencing.
+The patch registers the pending turn before that setup. Cancellation waits for
+the native turn ID and targets it; the native completion still supplies the
+cancelled result. No early synthetic completion or longer timeout is introduced.
+
+Codex 0.157.1 can acknowledge `turn/start` with an ID before the turn is
+active. Interrupting that ID immediately returns `no active turn to interrupt`.
+The adapter previously swallowed that error and lost the cancellation. It now
+captures the matching `turn/started` notification before issuing the request,
+accepting either notification/reply ordering and matching both thread and turn.
+An already completed turn retains its actual native result. Completion capture
+remains live while waiting; no retry, timer extension, or manufactured
+settlement is needed. This was reproduced with the native client as well as the
+recording peer; no exact upstream fix is established.
 
 ## Verification
 
@@ -48,13 +64,20 @@ native state collection and restoration need their own qualified boundary.
 The same suite launches Jig's credential bridge, verifies the exact in-memory
 login request, checks the ephemeral store setting, and proves that no
 `auth.json` is created.
+An immediate-follow-up case sends prompt and cancellation together and delays
+the native turn-start reply. It requires an interrupt naming the second turn,
+the actual cancelled response and clean shutdown. The unpatched race times out;
+the correction settles normally. Additional cases deliver the native start
+notification before or after the reply, reject interruption before activation,
+and include unrelated thread/turn notifications. Completion before the start
+reply remains authoritative even without a start notification.
 
 ## Removal condition
 
 Remove both files and the manifest entry when the selected upstream adapter
-provides verified no-implicit-model-work behavior, truthful bounded child
-shutdown, and a supported secret-free external-token bootstrap. Individual
-hunks may be removed when their own upstream correction is verified. Keep the
-behavioral regressions, rebuild the installed adapter, and qualify the same
-bounded native conversation path. A version bump or a patch conflict alone
-does not establish the removal condition.
+provides verified no-implicit-model-work behavior, immediate interruption, a supported secret-free external-token bootstrap and
+truthful bounded child shutdown. Individual hunks may be removed when their own
+upstream correction is verified. Keep the behavioral dispatch, interruption and
+shutdown regressions, rebuild the installed
+adapter, and qualify the same bounded native conversation path. A version bump
+or a patch conflict alone does not establish the removal condition.

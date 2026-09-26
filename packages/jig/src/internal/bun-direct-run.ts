@@ -151,6 +151,9 @@ async function describePrivateBunDirectRun(
         ? error.message
         : 'the target requires private operator resources for its selected ACP grants',
       `${request.packagePath}/${request.entrypoint.path}`,
+      error instanceof PrivateAcpResourceUnavailableError
+        ? `/slots/${error.slot.replace(/~/g, '~0').replace(/\//g, '~1')}`
+        : undefined,
     )
   }
   let http: Readonly<Record<string, HttpGrant>>

@@ -38,6 +38,48 @@ const agentRunContract = await readFile(
 setDefaultTimeout(30_000)
 
 describe('private package-project linker', () => {
+  test('links and retains the project entrypoint; rejects missing targets and incompatible defaults', async () => {
+    await withFlows(
+      {
+        'flows/work': {
+          ...run('work'),
+          'FLOW.contract.json': invocation({
+            input: { type: 'string' },
+            attachments: { source: 'read' },
+          }),
+        },
+      },
+      (flows) => {
+        for (const entrypoint of [
+          'flow:flows/work',
+          'binding:work --input \'"hello"\' --attach source=fixtures',
+        ]) {
+          const linked = linkPackageProject({
+            flows,
+            bindings: [binding('bindings/work.ts', { package: 'flows/work' })],
+            entrypoint,
+          })
+          const lock = createPrivateProjectLocalLock(linked)
+          expect(
+            decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock)).entrypoint,
+          ).toBe(entrypoint)
+        }
+        for (const entrypoint of [
+          'flow:flows/missing',
+          'binding:missing',
+          'flow:flows/work --input {}',
+          'flow:flows/work --attach unknown=fixtures',
+          'flow:flows/work --receive missing',
+        ])
+          expectCode(
+            () => linkPackageProject({ flows, bindings: [], entrypoint }),
+            'PROJECT_ENTRYPOINT_INVALID',
+            '/entrypoint',
+          )
+      },
+    )
+  })
+
   test('feature requirements qualify only the selected graph and persist in the lock', async () => {
     const consumer = {
       ...agentConsumer('consumer'),

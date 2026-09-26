@@ -21,27 +21,40 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Linux Host Conformance on each `main` push and can be dispatched manually
   on `main` against that revision's successful push-run host artifacts. It qualifies Codex and Claude
   Code from `@latest` and the currently supported Pi 0.84.4 standalone profile,
-  using one Mistral BYOK model through each client's native API protocol. Keep
+  using free OpenRouter routing for Codex's uncapped Responses requests and
+  Mistral BYOK for Claude and Pi through their native API protocols. These are
+  qualification inputs, not product defaults. Keep
   the OpenRouter key only in the dedicated test step of the protected
   `native-agent-api` environment; never expose it to PRs or artifact builds.
   Configure Mistral BYOK to never use shared capacity for that provider so
   exhausted BYOK quota fails instead of using billable OpenRouter capacity.
 - Build, test, publish, and tag the exact triggering source and retained
   candidate bytes. Never rebuild a release during publication.
+- Linux Host Conformance's optional `workflow_dispatch` input
+  `include_startup_profile` runs a bounded startup diagnostic inside the
+  installed-evidence host shard, against the exact frozen archives. It is
+  explicitly non-gating for the `rootless-linux` check; the host's final
+  archive-identity and zero-residue assertions remain mandatory. Retain only
+  its bounded mode-0600 profile artifacts for seven days; it performs no model
+  calls and does not establish a performance claim. Its 60-minute shard allows
+  the 30-minute profile command budget to finish before mandatory cleanup.
 - CI freezes npm and Python candidates while source gates run. The protected
   publication workflows download those exact successful push-run artifacts;
   they do not rebuild or accept artifacts from a different CI run.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
-  dependency order; all retain the same-revision CI/host gates and isolated
-  trusted publisher. First publication requires each package's npm setup.
-- Before any npm mutation, inspect every retained archive, exact registry
-  version, and channel tag. Existing versions require byte identity even if a
+  dependency order. FLOW publishes after its successful main-push CI run;
+  the Agent/Jig group additionally requires same-revision host and native gates.
+  Both groups use the isolated trusted publisher in `npm-publish.yml`. First
+  publication requires each package's npm setup.
+- Before any npm mutation, inspect every archive, exact registry version and
+  channel tag in the selected release group. Existing versions require byte identity even if a
   newer tag exists; absent older versions are superseded without publication,
   tags, or releases. Recheck registry state before each ordered mutation.
-- Publish npm only after CI, complete Linux Host Conformance, and Native Agent
-  API Qualification have succeeded for the exact triggering source revision.
-  The native qualification covers Jig's ACP clients and does not gate the
-  independent FLOW/PyPI publication path.
+- Publish Agent/Jig npm candidates only after CI, complete Linux Host Conformance,
+  and Native Agent API Qualification succeed for the exact source revision. FLOW
+  SDK npm publication and source tagging are independent of those Jig gates;
+  Python also uses its own CI-qualified artifacts. Each group preflights its own
+  archives before mutation. A host failure cannot block FLOW publication.
 - Keep path filters synchronized with every real workflow input.
 - Jig's Linux conformance PR filter includes root license, pricing, mapping,
   and retained license texts. Jig GitHub release notes link the matching tagged
@@ -69,9 +82,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
   credentials out of setup, build, and archive steps. Its Codex case also
-  exercises immediate follow-up interruption through the published Jig CLI in
-  an ordinary temporary consumer; the other source-archive checks remain
-  distinct candidate evidence.
+  exercises immediate follow-up interruption through the frozen Jig CLI archive
+  in an ordinary temporary consumer with published conversation dependencies.
+  Pass `JIG_PACKAGE_ARCHIVE` through delegation; qualifying an older registry CLI
+  would prevent source fixes from satisfying the prepublication gate.
 - Each host shard builds the linked workspace packages used by source tests;
   generated `dist` output is runner-local and is not created by a filtered
   dependency install. Frozen archives remain the inputs to installed gates.

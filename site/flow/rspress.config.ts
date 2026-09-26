@@ -19,7 +19,12 @@ const sidebar = [
   {
     text: 'Build',
     items: [
+      { text: 'Markdown methods', link: '/guide/markdown' },
+      { text: 'Skill compatibility', link: '/guide/skills' },
+      { text: 'TypeScript / JavaScript SDK', link: '/guide/typescript' },
       { text: 'Python SDK', link: '/guide/python' },
+      { text: 'Runtimes and SDKs', link: '/guide/runtimes' },
+      { text: 'Host and platform integration', link: '/guide/platforms' },
       { text: 'For agents', link: '/guide/for-agents' },
       { text: 'Concepts and questions', link: '/guide/concepts' },
     ],
@@ -83,7 +88,6 @@ export default defineConfig({
       { text: 'Documentation', link: '/guide/overview' },
       { text: 'Specifications', link: '/guide/' },
       { text: 'For agents', link: '/guide/for-agents' },
-      { text: 'Jig', link: 'https://jig.md/' },
       { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
     ],
     sidebar: { '/': sidebar },

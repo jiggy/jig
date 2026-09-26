@@ -1,8 +1,10 @@
+import { entrypointWords, parseProjectEntrypoint } from './entrypoint.js'
 import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
 import type { PrivateFileLocation } from '../internal/descriptor-files.js'
 import { privateDomainDigest } from '../internal/identity.js'
+import { privateProfileSpan } from '../internal/private-profile.js'
 import type { JsonValue } from '../json.js'
 import type { BindingDefinition, JigDefinition } from './author.js'
 import {
@@ -118,27 +120,21 @@ export async function retainOpenedPackageProject(
   let dependencies: CapturedFlowSource | undefined
   let operationFailure: unknown
   try {
-    bootstrap = await captureOpenedAuthorClosure(root, [entry])
-    const bootstrapProject = (await evaluateAuthorClosure(
-      options.evaluator,
-      bootstrap,
-      entry,
-      'project',
-      signal,
+    const bootstrapClosure = await captureOpenedAuthorClosure(root, [entry])
+    bootstrap = bootstrapClosure
+    const bootstrapProject = (await privateProfileSpan('author-configuration-evaluation', () =>
+      evaluateAuthorClosure(options.evaluator, bootstrapClosure, entry, 'project', signal),
     )) as EvaluatedAuthorDeclaration<JigDefinition>
 
     const bindingSource = await captureDeclarationSource(root, bootstrapProject.value.bindings)
-    closure = await captureOpenedAuthorClosure(root, [
+    const capturedClosure = await captureOpenedAuthorClosure(root, [
       entry,
       ...bindingSource.members.map(({ projectPath }) => projectPath),
     ])
-    assertBootstrapPreserved(bootstrap, closure)
-    const project = (await evaluateAuthorClosure(
-      options.evaluator,
-      closure,
-      entry,
-      'project',
-      signal,
+    closure = capturedClosure
+    assertBootstrapPreserved(bootstrapClosure, capturedClosure)
+    const project = (await privateProfileSpan('author-configuration-evaluation', () =>
+      evaluateAuthorClosure(options.evaluator, capturedClosure, entry, 'project', signal),
     )) as EvaluatedAuthorDeclaration<JigDefinition>
     if (project.outputDigest !== bootstrapProject.outputDigest) {
       invalid(
@@ -151,12 +147,14 @@ export async function retainOpenedPackageProject(
     const grantSource = await captureGrantSource(root, project.value.grants)
     const bindings: RetainedBindingDeclaration[] = []
     for (const member of bindingSource.members) {
-      const evaluation = (await evaluateAuthorClosure(
-        options.evaluator,
-        closure,
-        member.projectPath,
-        'binding',
-        signal,
+      const evaluation = (await privateProfileSpan('author-configuration-evaluation', () =>
+        evaluateAuthorClosure(
+          options.evaluator,
+          capturedClosure,
+          member.projectPath,
+          'binding',
+          signal,
+        ),
       )) as EvaluatedAuthorDeclaration<BindingDefinition>
       let attachments: BoundAttachments | undefined
       try {
@@ -196,6 +194,19 @@ export async function retainOpenedPackageProject(
         selected.add(value)
       }
     }
+    if (project.value.entrypoint !== undefined) {
+      try {
+        parseProjectEntrypoint(project.value.entrypoint)
+        select(entrypointWords(project.value.entrypoint)[0]!)
+      } catch {
+        invalid(
+          'PROJECT_ENTRYPOINT_INVALID',
+          'entrypoint has invalid Run arguments',
+          'jig.ts',
+          '/entrypoint',
+        )
+      }
+    }
     for (const value of Object.values(project.value.defaultProviders ?? {})) select(value)
     for (const binding of bindings) {
       select(binding.evaluation.value.package)
@@ -230,6 +241,7 @@ export async function retainOpenedPackageProject(
     const linked = linkPackageProject(
       {
         flows: retainedFlows,
+        ...(project.value.entrypoint === undefined ? {} : { entrypoint: project.value.entrypoint }),
         grants: grantSource.grants,
         ...(project.value.defaultProviders === undefined
           ? {}

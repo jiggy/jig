@@ -44,7 +44,7 @@ jig new <name>
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig import-contract <source> <destination>
+jig import-contract <descriptor.json|npm:package> <destination>
 jig completion <bash|zsh|fish>
 ```
 
@@ -68,6 +68,17 @@ network socket. See [delegated HTTP access](https://jig.md/guide/http).
 `--generate-contracts` compiles authored TypeSpec contracts and publishes their
 managed JSON and types before the separate execution-approval question. Plain
 review does not compile; already-generated contracts need no compiler runtime.
+
+Declare a project starting point using familiar Run arguments in `jig.ts`:
+
+```ts
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m",
+```
+
+After review, `jig run` uses that entrypoint. Explicit options override defaults;
+an explicit target bypasses them. Declaration paths are project-relative and job
+files are captured when invoked. Existing output destinations are never replaced.
+A target-only string is valid too. See [project entrypoints](https://jig.md/guide/configuration#project-entrypoint).
 
 `inspect` lists approved targets or shows a target's retained interface without
 evaluating source, contacting providers, preparing dependencies or changing state.

@@ -96,7 +96,7 @@ function number(value: number | Numeric, target: Type): number {
   return n === 0 ? 0 : n!
 }
 
-export function lower(program: Program, channelContracts: ReadonlySet<string> = new Set()) {
+export function lower(program: Program) {
   const entries = [...program.stateMap(invocationKey)]
   if (entries.length !== 1)
     fail('SOURCE_INVALID', 'Declare exactly one @invocation on a namespace.')
@@ -382,15 +382,6 @@ export function lower(program: Program, channelContracts: ReadonlySet<string> = 
       item: emit(type),
       $defs: reachableDefinitions(emit(type), definitions),
     }
-  }
-  for (const port of Object.values(ports)) {
-    if (!Object.hasOwn(channels, port.contract.slice(2)) && !channelContracts.has(port.contract))
-      fail(
-        'SOURCE_INVALID',
-        'Every port must reference a generated channel or a supplied offline contract.',
-        owner,
-        port.contract,
-      )
   }
   const projections: Record<string, { $schema: string } & Schema> = Object.create(null)
   for (const [type, path] of program.stateMap(projectionKey)) {

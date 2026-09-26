@@ -35,6 +35,23 @@ Every package contains an implementation, but it needs a compatible host to
 execute. A Markdown implementation requires an interpreter; other languages
 likewise require runtime support.
 
+## Can every Skill run unchanged?
+
+No. Many prose and text-resource methods fit Markdown/0, but its current
+profile has no general native tools or script execution and rejects unsupported
+tool declarations. [Skill compatibility](./skills.md) lists the differences;
+the [Markdown tutorial](./markdown.md) shows its input, calls and results.
+
+## Why do `flow/run` and `flow/call` both exist?
+
+`flow/run` enters a selected component with its host-supplied execution context.
+`flow/call` asks the host to invoke a declared dependency with supplied input.
+The host resolves that dependency and prepares its context; every launched
+component receives `flow/run`, including a child. Authors use `handle()` and
+`context.call()` through the same SDK in either case. The
+[host integration guide](./platforms.md#component-entry-and-dependency-invocation)
+demonstrates the complete exchange.
+
 ## Does portability mean every host runs every package?
 
 No. A host must support the implementation and the required public interfaces.
@@ -63,3 +80,11 @@ selection rights.
 No. Evaluation establishes whether reuse, adaptation, or combination adds
 usable capability. A portable method can still be wrong or unsuitable for a
 new setting. Compounding is the ambition, not an automatic property of copying.
+
+## How does FLOW relate to the Agent Client Protocol (ACP)?
+
+ACP and FLOW address orthogonal, complementary roles: ACP connects clients
+(such as IDEs and editors) with interactive coding agents. FLOW connects hosts
+with discrete, callable executable packages. An agent can host Flows internally,
+or an ACP client can orchestrate Flows and route slots to ACP agents.
+See [Host and platform integration](./platforms.md).

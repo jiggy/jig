@@ -5,12 +5,11 @@ import { lower } from './lower.js'
 import { checkText, encode } from './values.js'
 
 try {
-  const { source, types, channelContracts } = workerData as {
+  const { source, types } = workerData as {
     source: string
     types: boolean
-    channelContracts: string[]
   }
-  const result = lower(await compileProgram(source), new Set(channelContracts))
+  const result = lower(await compileProgram(source))
   const artifacts: Record<string, string> = Object.create(null)
   artifacts['FLOW.contract.json'] = encode(result.descriptor)
   for (const [path, schema] of Object.entries(result.projections)) artifacts[path] = encode(schema)

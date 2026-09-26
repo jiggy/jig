@@ -277,7 +277,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   recovery, or installation authority. These private components do not enable
   the installed macOS host independently.
 - Installed Bun authentication, rootless acquisition, delegation,
-  containment, supervision, and execution.
+  containment, supervision, and execution. Missing or invalid installed release
+  files produce closed repair evidence; supported-host failures remain distinct.
 - Native client launchers, reviewed runtime policy, private authentication and
   bounded process ownership. Ordinary Agent packages own method preparation,
   response interpretation and optional updates; no Agent method runs inside
@@ -294,6 +295,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
   corrective hints. Preserve known failures through planning and CLI rendering;
   raw exceptions, private paths and credentials never become recovery text.
+  Keep cause separate from guidance. Planning locates the selected client at
+  the captured Binding declaration and resource slot, when known; executable
+  discovery failures do not imply a particular missing path or accept shell aliases.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
   conversation. `finite-acp-resource.ts` owns bounded framing, private startup
   and authentication, and essential channel delivery. Ordinary Agent Flows own
@@ -331,6 +335,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Deadline failures that lack a proved result identify the static effect type,
   observed phase, and effective limiting budget without exposing worker errors,
   asserting remote non-delivery, or changing uncertainty and cleanup semantics.
+  On a repeated operation ID, resolve and settle its retained owner before
+  returning a pre-dispatch deadline claim; a prior owner remains uncertain even
+  when the retry's effective deadline has elapsed.
   HTTP, command and finite ACP grants resolve at Binding slots and are pinned in
   review and recipe identity. Optional catalog files are captured project proposals. The
   apply boundary checks explicit authority approval for new/changed recipients
@@ -343,6 +350,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
 ## Local Contracts
 
 - Every `Private*` export remains package-private and is not an extension SPI.
+- The optional installed-startup diagnostic accepts only a private local trace
+  destination, activates after rootless-host acquisition, and removes its
+  selector from operator configuration before opening a project session. It
+  records fixed phase names and monotonic durations in an exclusive mode-0600
+  file with bounded size; it records no source, Flow input, arguments,
+  environment values, provider output, or filesystem paths. Capture failure
+  must not change the Run outcome. This is maintainer-only profiling, not
+  telemetry, a runtime option, or a supported extension point.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
   coordinator. Reuse filesystem identity and retained-artifact verification;
@@ -651,7 +666,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `installation-verification.ts` owns command-scoped operator policy and the
   bounded installation cache. The installed CLI resolves `--verification` over
   `JIG_VERIFICATION`, falling back to cached, before opening the command scope.
-  Original arguments preserve the selection through delegation and recovery. Strict
+  Pass prepared command arguments and their selected admission through file-owner
+  and delegation reexecution. Root submission rejects changed approval before
+  allocation; the private admission marker can only constrain, never grant, execution.
+  Entrypoint defaults and interactive target choices survive reexecution; preserve the effective verification policy through delegation,
+  file delivery and recovery. Strict
   freshly hashes at every boundary, and fast accepts cached path identities
   without freshness checks. Cached compares inode/device, ownership/mode/link
   count, size and nanosecond mtime/ctime on every lookup. Hash misses and check

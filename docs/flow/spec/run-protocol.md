@@ -14,6 +14,12 @@ component -> host       flow/call
 either direction        request/cancel
 ```
 
+These are component entry and dependency invocation, respectively. They are
+not separate top-level and child execution models: every launched component
+receives `flow/run`, including a component selected through `flow/call`.
+The caller supplies the dependency's input; the host constructs the selected
+implementation's complete execution context under its local authority.
+
 The channel extension adds component-to-host `channel/create`,
 `channel/subscribe`, `channel/send`, `channel/next`, `channel/close`, and `channel/release`.
 Channels carry bounded JSON values during work; they do not start work,

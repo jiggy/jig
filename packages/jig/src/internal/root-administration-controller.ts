@@ -19,6 +19,7 @@ import {
   submitPrivateRootRun,
 } from './activation-admission-store.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
+import { privateProfileSpan } from './private-profile.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
 import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
@@ -56,6 +57,7 @@ export interface PrivateRootLaunchExecutor {
 export async function openPrivateRootAdministrationController(input: {
   readonly projectRoot: string
   readonly packageStoreRoot: PrivateFileLocation
+  readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly onProjectIdentityLoss?: () => void
@@ -97,6 +99,7 @@ export async function attachPrivateRootAdministrationController(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
   readonly packageStoreRoot: PrivateFileLocation
+  readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly files?: PrivateRootRunFiles
@@ -126,6 +129,7 @@ export async function attachPrivateRootAdministrationController(input: {
 function createController(input: {
   readonly projectRoot: string
   readonly packageStoreRoot: PrivateFileLocation
+  readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
   readonly files?: PrivateRootRunFiles
@@ -165,22 +169,27 @@ function createController(input: {
       try {
         const request = normalizeStartRootRunRequest(value)
         const deadlineUnixMs = deadlineFromNow(input.runTimeoutMs)
-        const submission = await retryPrivateBusy(() =>
-          submitPrivateRootRun({
-            coordinator: input.coordinator,
-            projectRoot: input.projectRoot,
-            packageStoreRoot: input.packageStoreRoot,
-            submissionId: request.submissionId,
-            target: request.target,
-            input: request.input,
-            ...(input.files === undefined
-              ? {}
-              : {
-                  files: input.files.identity,
-                  identifyFiles: (request) => input.files!.identify(request),
-                }),
-            deadlineUnixMs,
-          }),
+        const submission = await privateProfileSpan('root-submission-persistence', () =>
+          retryPrivateBusy(() =>
+            submitPrivateRootRun({
+              coordinator: input.coordinator,
+              projectRoot: input.projectRoot,
+              packageStoreRoot: input.packageStoreRoot,
+              ...(input.expectedAdmissionDigest === undefined
+                ? {}
+                : { expectedAdmissionDigest: input.expectedAdmissionDigest }),
+              submissionId: request.submissionId,
+              target: request.target,
+              input: request.input,
+              ...(input.files === undefined
+                ? {}
+                : {
+                    files: input.files.identity,
+                    identifyFiles: (request) => input.files!.identify(request),
+                  }),
+              deadlineUnixMs,
+            }),
+          ),
         )
         return Object.freeze({ runId: submission.run.runId })
       } catch (error) {
@@ -458,6 +467,7 @@ function administrationError(error: unknown, operation: string): RootAdministrat
       case 'COORDINATOR_PROJECT_MISMATCH':
       case 'PROJECT_SOURCE_CHANGED':
         return new RootAdministrationError('PROJECT_CLOSED', 'project authority is closed')
+      case 'RUN_APPROVAL_CHANGED':
       case 'ADMISSION_MISSING':
       case 'STALE_PLAN':
         return new RootAdministrationError(

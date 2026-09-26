@@ -24,14 +24,15 @@ not implement continuing conversations and rejects them before dispatch.
 The caller declares an `agent` slot using the complete
 [Agent Run contract bundle](../spec/agent-run.md). After installing the ordinary
 `@jigging/agent-method` dependency, import its bundle into your Flow's existing
-`contracts/` directory. For a dependency installed at the project root:
+`contracts/` directory:
 
 ```sh
-jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run
+jig import-contract npm:@jigging/agent-method flows/worker/contracts/agent-run
 ```
 
-Use the descriptor's actual installed path. In a workspace, a member-local
-dependency may be at `flows/worker/node_modules/@jigging/agent-method/` instead.
+Jig finds the nearest installation from the destination directory's parent,
+including a member-local or project-root `node_modules`. You can also supply a
+descriptor file path directly for a contract obtained without npm.
 
 This validates and copies the descriptor and all referenced channel agreements,
 without running the package or approving work. The new directory belongs to

@@ -36,6 +36,12 @@ const MACOS_BUN = Object.freeze({
 const authenticSupports = new WeakSet<object>()
 
 export type PrivateInstalledBunPlatform = 'linux-x64-glibc' | 'darwin-x64-23.4.0-23E224'
+/** Closed evidence that the installed release is incomplete or invalid. */
+export class PrivateInstalledBundleError extends Error {
+  constructor() {
+    super('the installed Jig runtime is incomplete or invalid')
+  }
+}
 
 export interface PrivateInstalledBunLocation {
   readonly releaseRoot: string
@@ -78,26 +84,26 @@ export async function openPrivateInstalledBunSupport(
 ): Promise<PrivateInstalledBunSupport> {
   const platform = installedPlatform()
   const runtime = platform === 'linux-x64-glibc' ? LINUX_BUN : MACOS_BUN
-  const releaseRoot = await exactDirectory(location.releaseRoot, 'installed Jig release')
+  const releaseRoot = await installedDirectory(location.releaseRoot, 'installed Jig release')
   if (releaseRoot !== location.releaseRoot)
-    throw new Error('the installed Jig release path is not canonical')
-  const executablePath = await exactRegularFile(
+    throw new PrivateInstalledBundleError()
+  const executablePath = await installedRegularFile(
     location.executablePath,
     true,
     'installed Bun executable',
   )
   if (executablePath !== location.executablePath)
-    throw new Error('the installed Bun executable path is not canonical')
+    throw new PrivateInstalledBundleError()
   if (executablePath !== (await resolveInstalledBun(releaseRoot, platform)))
-    throw new Error('Jig was not started with its exact installed Bun dependency')
-  const installedCliPath = await exactRegularFile(
+    throw new PrivateInstalledBundleError()
+  const installedCliPath = await installedRegularFile(
     join(releaseRoot, 'libexec', 'installed-cli.js'),
     false,
     'installed Jig command',
   )
   if (installedCliPath !== location.installedCliPath)
-    throw new Error('Jig was not started with its exact installed command')
-  const supervisorPath = await exactRegularFile(
+    throw new PrivateInstalledBundleError()
+  const supervisorPath = await installedRegularFile(
     join(
       releaseRoot,
       'libexec',
@@ -111,12 +117,12 @@ export async function openPrivateInstalledBunSupport(
   const launcherPath =
     platform === 'linux-x64-glibc'
       ? null
-      : await exactRegularFile(
+      : await installedRegularFile(
           join(releaseRoot, 'libexec', 'macos-exec'),
           true,
           'installed macOS execution launcher',
         )
-  const evaluatorSupportPath = await exactDirectory(
+  const evaluatorSupportPath = await installedDirectory(
     join(releaseRoot, 'libexec', 'evaluator'),
     'installed evaluator support',
   )
@@ -128,7 +134,7 @@ export async function openPrivateInstalledBunSupport(
     ].map(async (name) =>
       Object.freeze({
         name,
-        path: await exactRegularFile(
+        path: await installedRegularFile(
           join(evaluatorSupportPath, name),
           false,
           `installed evaluator asset ${name}`,
@@ -136,24 +142,24 @@ export async function openPrivateInstalledBunSupport(
       }),
     ),
   )
-  const preparationWorkerPath = await exactRegularFile(
+  const preparationWorkerPath = await installedRegularFile(
     join(releaseRoot, 'libexec', 'preparation', 'bun-native-preparation-worker.js'),
     false,
     'installed Bun preparation worker',
   )
-  const httpWorkerPath = await exactRegularFile(
+  const httpWorkerPath = await installedRegularFile(
     join(releaseRoot, 'libexec', 'http-request-worker.js'),
     false,
     'installed HTTP worker',
   )
-  const markdownRuntimePath = await exactRegularFile(
+  const markdownRuntimePath = await installedRegularFile(
     join(releaseRoot, 'libexec', 'markdown-runtime.js'),
     false,
     'installed Markdown interpreter',
   )
   const loaderPath =
     platform === 'linux-x64-glibc'
-      ? await exactRegularFile(
+      ? await installedRegularFile(
           await resolvePrivateLinuxHostLoader(),
           true,
           'supported-host ELF interpreter',
@@ -167,7 +173,7 @@ export async function openPrivateInstalledBunSupport(
           LIBRARIES.map(async (name) =>
             Object.freeze({
               name,
-              path: await exactRegularFile(
+              path: await installedRegularFile(
                 join(hostLibraryDirectory, name),
                 false,
                 `supported-host library ${name}`,
@@ -216,7 +222,7 @@ export async function openPrivateInstalledBunSupport(
     bun.revision !== runtime.revision ||
     executableDigest !== runtime.digest
   )
-    throw new Error('the exact installed Bun runtime is unavailable')
+    throw new PrivateInstalledBundleError()
   const evaluatorSupportDigest = privateDomainDigest(
     'JIG-Installed-Evaluator-Support/1',
     evaluatorDigests as unknown as JsonValue,
@@ -330,12 +336,32 @@ async function resolveInstalledBun(
   ]
   for (const candidate of candidates) {
     try {
-      return await exactRegularFile(candidate, true, 'installed Bun executable')
+      return await installedRegularFile(candidate, true, 'installed Bun executable')
     } catch {
       // npm may install the exact platform dependency nested or hoisted.
     }
   }
-  throw new Error('the exact installed Bun dependency is unavailable')
+  throw new PrivateInstalledBundleError()
+}
+
+async function installedRegularFile(
+  path: string,
+  executable: boolean,
+  label: string,
+): Promise<string> {
+  try {
+    return await exactRegularFile(path, executable, label)
+  } catch {
+    throw new PrivateInstalledBundleError()
+  }
+}
+
+async function installedDirectory(path: string, label: string): Promise<string> {
+  try {
+    return await exactDirectory(path, label)
+  } catch {
+    throw new PrivateInstalledBundleError()
+  }
 }
 
 async function exactRegularFile(path: string, executable: boolean, label: string): Promise<string> {

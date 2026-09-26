@@ -82,8 +82,13 @@ admitted FLOW packages.
   the root Bun `patchedDependencies` before the ordinary package build. Codex ACP
   must not generate unrequested model-based titles outside the reviewed turn
   and model policy. Its adapter preserves native failure and clears shutdown
-  timers on close; forced native termination cannot become adapter success. Pi ACP
-  invokes Jig's private launcher through the verified Bun interpreter and
+  timers on close; forced native termination cannot become adapter success.
+  Register pending Codex turns before asynchronous prompt setup so immediate
+  interruption cannot disappear before the native turn ID exists. A turn-start
+  reply allocates an ID; only its matching native `turn/started` event makes
+  that turn interruptible. Preserve early completion and either event/reply
+  ordering without retries or synthetic settlement. Pi ACP invokes Jig’s private
+  launcher through the verified Bun interpreter and
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
   when changing its patch. Each patch has a same-basename `.md` note explaining
@@ -107,16 +112,18 @@ admitted FLOW packages.
 
 - `src/cli-discovery.ts` owns invocation guidance and shell completion. Completion
   and the interactive target chooser read approval only, without environment
-  probes or source evaluation. Selection is explicit and precedes acquisition;
+  probes or source evaluation. Approved project entrypoint selection precedes acquisition;
   Run still performs all ordinary authority checks. `jig new` writes ordinary
   Flow source without overwriting, evaluating, installing, or approving it.
 
 
 - `import-contract` copies a validated local invocation/channel bundle into a
-  new directory, preserving bytes and relative paths. It follows only the
-  operator-selected source root; closure descendants must be regular captured
-  files. It neither acquires an execution host nor fetches, imports package
-  code, replaces an existing destination, or grants Run authority.
+  new directory, preserving bytes and relative paths. A direct descriptor path
+  or exact `npm:` package name selects the source; package lookup starts at the
+  destination parent and uses the nearest installed `node_modules`. Closure
+  descendants must be regular captured files. It neither acquires an execution
+  host nor fetches, imports package code, replaces an existing destination, or
+  grants Run authority.
 
 - `src/index.ts` is the only JavaScript package export. Other exported symbols
   are private composition or test seams.
@@ -156,6 +163,14 @@ admitted FLOW packages.
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or
   execution; Runs use retained admitted bytes.
+- Project `entrypoint` is a target plus optional Run-argument string, retained
+  in semantic identity, lock, review and inspection. `run-arguments.ts` owns shared
+  CLI validation; `project/entrypoint.ts` owns bounded shell-free tokenization,
+  project-relative defaults and explicit-option overrides. Explicit targets
+  bypass defaults. Job files are captured per Run; Binding resources stay pinned.
+  Resolve before delivery/delegation and carry the selected admission through
+  reexecution to the submission compare-and-set. Operator verification and
+  presentation options cannot be supplied by project defaults.
 - Project `defaultProviders` maps contract IDs to exact Flow or Binding targets.
   Explicit slots win; otherwise review uses the map or the sole structurally
   provisioned exact match. Ambiguity requires a choice, never a client-availability
@@ -231,7 +246,8 @@ admitted FLOW packages.
   `cli-run-presentation.ts` owns human Run results and channel streaming. Join
   text fragments exactly, label channel switches and endings, escape controls,
   and preserve separate execution, application, delivery, and cleanup outcomes.
-  Summarize diagnostics already delivered by host invocation path, preserving
+  Count invocation paths whose diagnostics were already shown live; do not replay
+  them or create a result section for the count alone. Preserve path-specific
   unseen suffixes and truncation; machine records retain the full bounded capture.
   A generic failure without diagnostics must state the missing evidence; do not
   imply that the Flow never started or repeat an identical raw error block.
@@ -241,6 +257,15 @@ admitted FLOW packages.
   stderr when the terminal already carries a specific explanation.
   Render host-only REVIEW_REQUIRED with `jig review` as the next action.
   Flow-supplied error details cannot establish that execution never started.
+  Emphasize host failure/uncertainty in summary status lines and end failed Runs
+  with the cause and next action after evidence. Omit packet provenance manifests
+  from human results; retain full machine and packet records. A confirmed written
+  packet permits compact success output: show small application answers, but
+  point to `result.json` for large output and checkpoint evidence, and show the
+  nonzero delivered file count. Omit null checkpoints from human results.
+  Uncertain delivery keeps evidence visible. Input errors name
+  the approved schema without guessing source freshness. Emit the dependency
+  network notice once per review before preparation, retaining package progress.
 
 - Agent selection belongs to ordinary dependencies, Bindings and resource grants,
   never inferred from credentials or a preferred vendor. Selection remains
@@ -279,6 +304,9 @@ admitted FLOW packages.
 - `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1`,
   exercises public installed review, inspection and direct/Binding/child invocation
   of an ordinary declared workspace dependency, including admitted-byte pinning.
+  Its packed entrypoint consumer checks both string forms, noninteractive default
+  selection, current input bytes, overrides, explicit-target bypass and output
+  collision refusal. It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
@@ -292,12 +320,13 @@ admitted FLOW packages.
   `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
   rebuilding during execution. The native Codex immediate-interruption
-  qualification separately installs the published Jig CLI and its published
+  qualification separately installs the frozen Jig candidate and published
   conversation dependencies in an ordinary consumer. It imports the published
   Agent contract through the public CLI, then checks the actual follow-up
   result and host cleanup. The test asserts and prints the resolved package
-  versions; this is published-artifact evidence, not a source-candidate
-  package test.
+  versions; the CLI must come from `JIG_PACKAGE_ARCHIVE`, so fixes can qualify
+  before publication. Published conversation dependencies remain separately
+  identified; this is installed candidate evidence, not a registry publication proof.
   `finite-acp-lifecycle.test.ts` also runs the unchanged incident-brief application
   with packed dependencies and a deterministic native peer. It checks two
   branches, predecessor settlement, one successor and residue, not model quality.

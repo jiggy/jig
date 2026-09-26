@@ -30,6 +30,7 @@ export interface JigDefinition {
   readonly bindings?: ProjectSource
   readonly grants?: ProjectSource
   readonly defaultProviders?: Readonly<Record<string, string>>
+  readonly entrypoint?: string
 }
 
 export interface JigDefinitionInput {
@@ -37,6 +38,7 @@ export interface JigDefinitionInput {
   readonly bindings?: ProjectSourceInput
   readonly grants?: ProjectSourceInput
   readonly defaultProviders?: Readonly<Record<string, string>>
+  readonly entrypoint?: string
 }
 
 export interface FlowRef {
@@ -90,7 +92,7 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
   const captured = snapshotJsonObject(input, 'Jig definition')
   assertClosedObject(
     captured,
-    ['flows', 'bindings', 'grants', 'defaultProviders'],
+    ['flows', 'bindings', 'grants', 'defaultProviders', 'entrypoint'],
     'Jig definition',
   )
   const output: {
@@ -98,6 +100,7 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
     bindings?: ProjectSource
     grants?: ProjectSource
     defaultProviders?: Readonly<Record<string, string>>
+    entrypoint?: string
   } = {}
   if (Object.hasOwn(captured, 'flows')) {
     output.flows = normalizeSource(
@@ -122,6 +125,15 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
   }
   if (Object.hasOwn(captured, 'defaultProviders')) {
     output.defaultProviders = normalizeDefaultProviders(captured.defaultProviders)
+  }
+  if (Object.hasOwn(captured, 'entrypoint')) {
+    if (
+      typeof captured.entrypoint !== 'string' ||
+      captured.entrypoint.trim().length === 0 ||
+      captured.entrypoint.length > 16384
+    )
+      throw new TypeError('entrypoint must be a nonempty string of at most 16384 characters')
+    output.entrypoint = captured.entrypoint
   }
   return record(output) as unknown as JigDefinition
 }

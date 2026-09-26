@@ -73,11 +73,34 @@ export function acpSetupCode(client: Client, stage: AcpSetupStage): string {
   return `PROJECT_ACP_${client.toUpperCase()}_${stage.toUpperCase()}`
 }
 
+/** Closed causes, never native exception text or environment values. */
+export const ACP_SETUP_CAUSES: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(
+    Object.entries(clients).flatMap(([client, profile]) => {
+      const causes: Record<AcpSetupStage, string> = {
+        executable:
+          'no usable executable was found through the configured override or operator PATH',
+        installation: 'its installation or required runtime files could not be verified',
+        location: 'its runtime files use locations reserved by the sandbox',
+        wrapper: 'its launcher is an unsupported wrapper',
+        sandbox: 'its required sandbox helper is unavailable',
+        login: 'its subscription authentication is missing, expired, or unsupported',
+        api: 'its API authentication or configuration is missing or invalid',
+        model: 'its model configuration is missing or invalid',
+      }
+      return Object.entries(causes).map(([stage, cause]) => [
+        acpSetupCode(client as Client, stage as AcpSetupStage),
+        `${profile.name} is selected, but ${cause}.`,
+      ])
+    }),
+  ),
+)
+
 export const ACP_SETUP_HINTS: Readonly<Record<string, string>> = Object.freeze(
   Object.fromEntries(
     Object.entries(clients).flatMap(([client, profile]) => {
       const hints = {
-        executable: `Select an executable ${profile.name} installation using ${profile.path} or operator PATH. An explicit ${profile.path} must be an absolute executable file and never falls back to PATH.`,
+        executable: `Select an executable ${profile.name} installation using ${profile.path} or operator PATH. Shell aliases and functions are not executable installations. An explicit ${profile.path} must be an absolute executable file and never falls back to PATH.`,
         installation: profile.installation,
         location: `Select a ${profile.name} installation whose executable and runtime files are outside reserved sandbox paths (/dev, /jig, /proc, /run, /sys, /tmp and /work). Use an operator-owned installation directory and update ${profile.path}.`,
         wrapper: `The selected ${profile.name} launcher is an unsupported wrapper. Select the underlying supported native executable with ${profile.path}; Jig does not execute shell or npm wrappers to discover their dependencies.`,

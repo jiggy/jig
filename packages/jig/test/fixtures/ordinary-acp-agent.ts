@@ -218,11 +218,17 @@ await handle(async run => {
   expect(exit, `${stdout}\n${stderr}`).toBe(0)
 }
 
-/** Ordinary consumer assembled from exact published npm prerelease packages. */
-export async function writePublishedConversationHelperProject(
+/** Ordinary installed consumer: frozen Jig candidate and published conversation dependencies. */
+export async function writeInstalledConversationHelperProject(
   root: string,
   cliRoot: string,
 ): Promise<{ readonly command: string; readonly versions: Readonly<Record<string, string>> }> {
+  const selectedArchive = process.env.JIG_PACKAGE_ARCHIVE
+  if (selectedArchive === undefined)
+    throw new Error('JIG_PACKAGE_ARCHIVE is required to qualify the Jig candidate')
+  const archive = await realpath(resolve(selectedArchive))
+  if (!(await lstat(archive)).isFile())
+    throw new Error('JIG_PACKAGE_ARCHIVE must be a regular file')
   const flow = join(root, 'flows/conversation-helper')
   await mkdir(join(flow, 'contracts'), { recursive: true })
   await mkdir(join(root, 'bindings'), { recursive: true })
@@ -240,10 +246,10 @@ export async function writePublishedConversationHelperProject(
   await writeFile(
     join(cliRoot, 'package.json'),
     JSON.stringify({
-      name: 'published-jig-cli-consumer',
+      name: 'candidate-jig-cli-consumer',
       private: true,
       type: 'module',
-      dependencies: { '@jigging/jig': '0.1.0-alpha.22' },
+      dependencies: { '@jigging/jig': archive },
     }),
   )
   await writeFile(
@@ -290,7 +296,7 @@ export default defineBinding({
   )
   await writeFile(
     join(flow, 'FLOW.ts'),
-    `import { handle } from '@jigging/flow'
+    `import { handle, OperationError } from '@jigging/flow'
 import { AgentConversationError, withAgentConversation } from '@jigging/agent-method/conversation'
 
 await handle(async run => {
@@ -346,6 +352,24 @@ await handle(async run => {
             ),
             settlement: error.settlement?.outcome ?? null,
             errorCount: error.errors.length,
+            errors: error.errors.map(cause => {
+              // Closed SDK codes and exact helper-authored messages only.
+              const codes = ['CANCELLED', 'DEADLINE_EXCEEDED', 'DISCONNECTED', 'LAGGED',
+                'CHANNEL_LOST', 'PROTOCOL_ERROR', 'OWNER_CLOSED', 'EXECUTION_FAILED',
+                'UNCERTAIN', 'INVALID_INPUT', 'INVALID_RESULT', 'RESOURCE_EXHAUSTED']
+              if (cause instanceof OperationError)
+                return { kind: 'operation', code: codes.includes(cause.code) ? cause.code : 'other' }
+              const messages = [
+                'Agent replies ended before accepted conversation close',
+                'Agent reply has an unexpected turn',
+                'Agent sent an out-of-order turn result',
+                'Agent sent an unexpected control reply',
+                'Application left a live Agent turn unfinished',
+                'Agent omitted matching conversation settlement',
+              ]
+              return { kind: 'helper', cause: cause instanceof Error && messages.includes(cause.message)
+                ? cause.message : 'unclassified' }
+            }),
           }),
       )
     }
@@ -415,7 +439,7 @@ await handle(async run => {
 
 async function packageVersion(path: string): Promise<string> {
   const packageJson = JSON.parse(await readFile(path, 'utf8')) as { version?: unknown }
-  if (typeof packageJson.version !== 'string') throw new Error('Published package omitted version')
+  if (typeof packageJson.version !== 'string') throw new Error('Installed package omitted version')
   return packageJson.version
 }
 

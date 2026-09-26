@@ -1,7 +1,6 @@
 import { Worker } from 'node:worker_threads'
 import { type AuthoringDiagnostic, AuthoringError, fail } from './errors.js'
 import { getToolchain, readHeader, type SourceHeader } from './toolchain.js'
-import { channelReference } from './values.js'
 
 export type { AuthoringDiagnostic } from './errors.js'
 export { AuthoringError } from './errors.js'
@@ -16,7 +15,7 @@ export interface Compilation {
 /** Compile explicit source into a bounded artifact packet, with no publication. */
 export async function compileContract(
   source: string,
-  options: { signal?: AbortSignal; timeoutMs?: number; channelContracts?: readonly string[] } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<Compilation> {
   if ('bun' in process.versions)
     fail('RUNTIME_UNSUPPORTED', 'Run the authoring prototype with Node 22 or newer.')
@@ -26,22 +25,10 @@ export async function compileContract(
   }
   if (options.signal?.aborted) fail('CANCELLED', 'Compilation was cancelled before it started.')
   const header = readHeader(source, await getToolchain())
-  const channelContracts = options.channelContracts ?? []
-  if (
-    !Array.isArray(channelContracts) ||
-    channelContracts.length > 4096 ||
-    channelContracts.some((path) => !channelReference(path)) ||
-    Buffer.byteLength(JSON.stringify(channelContracts)) > 131072 ||
-    new Set(channelContracts).size !== channelContracts.length
-  )
-    fail(
-      'SOURCE_INVALID',
-      'Supply at most 4096 distinct package-local channel contract paths within 128 KiB.',
-    )
   if (options.signal?.aborted) fail('CANCELLED', 'Compilation was cancelled before it started.')
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./worker.js', import.meta.url), {
-      workerData: { source, types: header.types, channelContracts: [...channelContracts] },
+      workerData: { source, types: header.types },
       env: {},
       execArgv: [],
       stdout: true,

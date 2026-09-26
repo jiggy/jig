@@ -29,10 +29,13 @@ jobs:
         with:
           ref: ${{ env.SOURCE_REVISION }}
           persist-credentials: false
-      - name: Require same-revision Linux Host Conformance
+      - name: Confirm exact-revision Python candidate was produced by CI
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/require-linux-host-conformance.sh "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
+        run: |
+          set -eu
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
+            --jq '.artifacts[] | select(.name == "python-candidate-${{ env.SOURCE_REVISION }}") | .name' | grep -q .
 
   prepare:
     needs: authorize

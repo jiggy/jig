@@ -47,15 +47,20 @@ jobs:
           "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
 
   publish:
-    name: Publish exact candidates
-    needs: authorize
+    name: Publish independent FLOW SDK candidate
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    env:
+      RELEASE_GROUP: flow
     environment: npm
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       actions: read
       id-token: write
-    outputs:
+    outputs: &release_outputs
       flow_new: ${{ steps.release.outputs.flow_new }}
       flow_state: ${{ steps.release.outputs.flow_state }}
       flow_version: ${{ steps.release.outputs.flow_version }}
@@ -68,7 +73,7 @@ jobs:
       acp_new: ${{ steps.release.outputs.acp_new }}
       acp_state: ${{ steps.release.outputs.acp_state }}
       acp_version: ${{ steps.release.outputs.acp_version }}
-    steps:
+    steps: &publish_steps
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
@@ -96,7 +101,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Publish or converge FLOW, Agent packages, then Jig
+      - name: Publish or converge qualified package group
         id: release
         run: |
           set -eu
@@ -297,17 +302,37 @@ jobs:
             printf '%s_version=%s\n' "$package_kind" "$version" >> "$GITHUB_OUTPUT"
           }
 
-          # Inspect all archives and already-published bytes before any registry mutation.
-          PREFLIGHT=true
-          publish_candidate flow @jigging/flow
-          publish_candidate agent @jigging/agent-method
-          publish_candidate acp @jigging/agent-acp
-          publish_candidate jig @jigging/jig
-          PREFLIGHT=false
-          publish_candidate flow @jigging/flow
-          publish_candidate agent @jigging/agent-method
-          publish_candidate acp @jigging/agent-acp
-          publish_candidate jig @jigging/jig
+          # Keep the independent SDK outside Jig's host qualification path.
+          # Each group preflights its complete set before any registry mutation.
+          case "$RELEASE_GROUP" in
+            flow) package_kinds=flow ;;
+            host) package_kinds="agent acp jig" ;;
+            *) echo "unknown release group" >&2; exit 1 ;;
+          esac
+          for PREFLIGHT in true false; do
+            for kind in $package_kinds; do
+              case "$kind" in
+                flow) publish_candidate flow @jigging/flow ;;
+                agent) publish_candidate agent @jigging/agent-method ;;
+                acp) publish_candidate acp @jigging/agent-acp ;;
+                jig) publish_candidate jig @jigging/jig ;;
+              esac
+            done
+          done
+
+  publish_host:
+    name: Publish host-qualified Agent and Jig candidates
+    needs: [authorize, publish]
+    environment: npm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      actions: read
+      id-token: write
+    env:
+      RELEASE_GROUP: host
+    outputs: *release_outputs
+    steps: *publish_steps
 
   tag:
     name: Tag published source and create package releases
@@ -315,23 +340,23 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    steps:
+    env:
+      RELEASE_GROUP: flow
+      FLOW_NEW: ${{ needs.publish.outputs.flow_new }}
+      FLOW_STATE: ${{ needs.publish.outputs.flow_state }}
+      FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
+      GH_TOKEN: ${{ github.token }}
+      JIG_NEW: ${{ needs.publish.outputs.jig_new }}
+      JIG_STATE: ${{ needs.publish.outputs.jig_state }}
+      JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
+      AGENT_NEW: ${{ needs.publish.outputs.agent_new }}
+      AGENT_STATE: ${{ needs.publish.outputs.agent_state }}
+      AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
+      ACP_NEW: ${{ needs.publish.outputs.acp_new }}
+      ACP_STATE: ${{ needs.publish.outputs.acp_state }}
+      ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
+    steps: &tag_steps
       - name: Create or verify annotated package tags
-        env:
-          FLOW_NEW: ${{ needs.publish.outputs.flow_new }}
-          FLOW_STATE: ${{ needs.publish.outputs.flow_state }}
-          FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
-          GH_TOKEN: ${{ github.token }}
-          JIG_NEW: ${{ needs.publish.outputs.jig_new }}
-          JIG_STATE: ${{ needs.publish.outputs.jig_state }}
-          JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
-          AGENT_NEW: ${{ needs.publish.outputs.agent_new }}
-          AGENT_STATE: ${{ needs.publish.outputs.agent_state }}
-          AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
-          ACP_NEW: ${{ needs.publish.outputs.acp_new }}
-          ACP_STATE: ${{ needs.publish.outputs.acp_state }}
-          ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
-          SOURCE_REVISION: ${{ env.SOURCE_REVISION }}
         run: |
           set -eu
 
@@ -340,7 +365,11 @@ jobs:
             message=$2
             require_current=$3
             state=$4
-            if [ "$state" = superseded ]; then return; fi
+            case "$state" in
+              superseded) return ;;
+              published|verified) ;;
+              *) echo "missing or invalid qualified package state" >&2; exit 1 ;;
+            esac
             if ref_type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.type 2> /dev/null); then
               ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)
               if [ "$ref_type" = tag ]; then
@@ -361,22 +390,19 @@ jobs:
               -f ref="refs/tags/$tag" -f sha="$tag_object" > /dev/null
           }
 
-          converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW" "$FLOW_STATE"
-          converge_tag "agent-method-v$AGENT_VERSION" "@jigging/agent-method $AGENT_VERSION" "$AGENT_NEW" "$AGENT_STATE"
-          converge_tag "agent-acp-v$ACP_VERSION" "@jigging/agent-acp $ACP_VERSION" "$ACP_NEW" "$ACP_STATE"
-          converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW" "$JIG_STATE"
+          case "$RELEASE_GROUP" in
+            flow)
+              converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW" "$FLOW_STATE"
+              ;;
+            host)
+              converge_tag "agent-method-v$AGENT_VERSION" "@jigging/agent-method $AGENT_VERSION" "$AGENT_NEW" "$AGENT_STATE"
+              converge_tag "agent-acp-v$ACP_VERSION" "@jigging/agent-acp $ACP_VERSION" "$ACP_NEW" "$ACP_STATE"
+              converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW" "$JIG_STATE"
+              ;;
+            *) exit 1 ;;
+          esac
 
       - name: Link published packages from GitHub Releases
-        env:
-          FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
-          FLOW_STATE: ${{ needs.publish.outputs.flow_state }}
-          JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
-          JIG_STATE: ${{ needs.publish.outputs.jig_state }}
-          AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
-          AGENT_STATE: ${{ needs.publish.outputs.agent_state }}
-          ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
-          ACP_STATE: ${{ needs.publish.outputs.acp_state }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
@@ -389,7 +415,11 @@ jobs:
             install=$4
             documentation=$5
             state=$6
-            if [ "$state" = superseded ]; then return; fi
+            case "$state" in
+              superseded) return ;;
+              published|verified) ;;
+              *) echo "missing or invalid qualified package state" >&2; exit 1 ;;
+            esac
             tag="$kind-v$version"
             if grep -Fx -- "$tag" "$RUNNER_TEMP/existing-releases" > /dev/null; then
               return
@@ -412,11 +442,41 @@ jobs:
               --title "@jigging/$kind $version" --notes-file "$notes"
           }
 
-          create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/0.' \
-            "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/' "$FLOW_STATE"
-          create_release agent-method "$AGENT_VERSION" 'Replaceable HTTP Agent Flow and reusable method library.' \
-            "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method' "$AGENT_STATE"
-          create_release agent-acp "$ACP_VERSION" 'Replaceable Agent Flow over a host-authorized finite ACP resource.' \
-            "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/guide/agents' "$ACP_STATE"
-          create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
-            "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/' "$JIG_STATE"
+          case "$RELEASE_GROUP" in
+            flow)
+              create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/0.' \
+                "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/' "$FLOW_STATE"
+              ;;
+            host)
+              create_release agent-method "$AGENT_VERSION" 'Replaceable HTTP Agent Flow and reusable method library.' \
+                "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method' "$AGENT_STATE"
+              create_release agent-acp "$ACP_VERSION" 'Replaceable Agent Flow over a host-authorized finite ACP resource.' \
+                "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/guide/agents' "$ACP_STATE"
+              create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
+                "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/' "$JIG_STATE"
+              ;;
+            *) exit 1 ;;
+          esac
+
+  tag_host:
+    name: Tag host-qualified packages and create releases
+    needs: publish_host
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      RELEASE_GROUP: host
+      FLOW_NEW: ${{ needs.publish_host.outputs.flow_new }}
+      FLOW_STATE: ${{ needs.publish_host.outputs.flow_state }}
+      FLOW_VERSION: ${{ needs.publish_host.outputs.flow_version }}
+      GH_TOKEN: ${{ github.token }}
+      JIG_NEW: ${{ needs.publish_host.outputs.jig_new }}
+      JIG_STATE: ${{ needs.publish_host.outputs.jig_state }}
+      JIG_VERSION: ${{ needs.publish_host.outputs.jig_version }}
+      AGENT_NEW: ${{ needs.publish_host.outputs.agent_new }}
+      AGENT_STATE: ${{ needs.publish_host.outputs.agent_state }}
+      AGENT_VERSION: ${{ needs.publish_host.outputs.agent_version }}
+      ACP_NEW: ${{ needs.publish_host.outputs.acp_new }}
+      ACP_STATE: ${{ needs.publish_host.outputs.acp_state }}
+      ACP_VERSION: ${{ needs.publish_host.outputs.acp_version }}
+    steps: *tag_steps

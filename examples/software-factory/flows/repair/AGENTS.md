@@ -16,6 +16,9 @@ operator's fixed commands and application-owned acceptance cases.
 
 ## Local Contracts
 
+- The optional `progress` channel reports only observed repair phases and
+  proposal numbers. It cannot establish acceptance or alter command evidence;
+  close it on every terminal path.
 - The factory's two Bindings select `maxProposals: 1` or `2`; both use the same
   reviewed commands and acceptance policy. A second proposal is allowed only
   after observed failure and within the same bounded repair call.

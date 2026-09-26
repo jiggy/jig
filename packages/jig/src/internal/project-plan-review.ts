@@ -70,6 +70,25 @@ export function renderPrivateProjectPlanReview(
         '\nData supplied to these slots goes to the selected clients. Credentials remain private.\n\n',
       )
     }
+    const beforeEntrypoint = review.baseCandidate?.lock.entrypoint
+    const afterEntrypoint = plan.proposed.lock.entrypoint
+    if (
+      beforeEntrypoint !== afterEntrypoint ||
+      (includeUnchanged && afterEntrypoint !== undefined)
+    ) {
+      summary.write('Project entrypoint (jig run):\n')
+      if (beforeEntrypoint === afterEntrypoint) writePolicy(summary, afterEntrypoint, 1)
+      else
+        writePolicyDiff(
+          summary,
+          { entrypoint: beforeEntrypoint ?? null },
+          { entrypoint: afterEntrypoint ?? null },
+          1,
+        )
+      summary.write(
+        '  File arguments select current job data when invoked; paths are project-relative.\n\n',
+      )
+    }
     writeChanges(
       summary,
       'Packages (source / dependency identity and invocation requirements)',

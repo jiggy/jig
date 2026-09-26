@@ -63,10 +63,7 @@ test('borrowed offline agreements are referenced, not regenerated', async () => 
     .slice(0, progress.indexOf('@channelContract'))
     .replace('./progress.channel.json', './contracts/shared-progress.json')
   const stamped = await stampSource(body, { types: true })
-  await assert.rejects(compileContract(stamped), /supplied offline contract/)
-  const result = await compileContract(stamped, {
-    channelContracts: ['./contracts/shared-progress.json'],
-  })
+  const result = await compileContract(stamped)
   assert.deepEqual(Object.keys(result.artifacts).sort(), [
     'FLOW.contract.d.ts',
     'FLOW.contract.json',
@@ -75,20 +72,9 @@ test('borrowed offline agreements are referenced, not regenerated', async () => 
     JSON.parse(result.artifacts['FLOW.contract.json']).channels.progress.contract,
     './contracts/shared-progress.json',
   )
-  for (const invalid of [
-    '../outside.json',
-    './a/../outside.json',
-    'https://example.org/channel.json',
-  ])
-    await assert.rejects(compileContract(stamped, { channelContracts: [invalid] }), /package-local/)
 })
 
 for (const [name, body, message] of [
-  [
-    'missing channel',
-    progress.replace('contract: "./progress.channel.json"', 'contract: "./missing.channel.json"'),
-    /generated/,
-  ],
   ['missing identity version', progress.replace('version: "1.0.0",', ''), /together/],
   [
     'noncanonical identity',

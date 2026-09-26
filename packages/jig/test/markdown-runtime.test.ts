@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import {
+  type AgentCallInput,
   assertResponseSchema,
   checkAgentResult,
   prepareAgent,
-  type AgentCallInput,
 } from '@jigging/agent-method'
 import {
   type ChannelEndpoint,
@@ -293,6 +293,90 @@ describe('finite Markdown runtime', () => {
       emptyResources,
     )
     expect(result).toEqual(done('stored'))
+  })
+
+  test('accepts matching whole-value assertions for @input and @previous, including null', async () => {
+    for (const input of [null, { name: 'Ada' }]) {
+      let reasons = 0
+      let effects = 0
+      const result = await runMarkdown(
+        compile(block('call reviewer @input') + block('return @previous'), 'uses: {reviewer: {}}'),
+        context(
+          async (call) => {
+            if (call.slot === 'reviewer') {
+              effects++
+              expect(call.input).toEqual(input)
+              return done(input)
+            }
+            const state = reasoningContext(call)
+            const recipe = ++reasons
+            const value = state.retainedValues.find((entry: any) =>
+              recipe === 1 ? entry.origin === 'input' : entry.origin.endsWith(':result'),
+            ).handle
+            return decision({ ...staticRecipe(recipe), operand: 'value', value })
+          },
+          { input },
+        ),
+        emptyResources,
+      )
+      expect(result).toEqual(done(input))
+      expect(effects).toBe(1)
+      expect(reasons).toBe(2)
+    }
+  })
+
+  test('rejects unrelated, projected, foreign and stale static handles before another effect', async () => {
+    for (const invalid of [
+      'input-for-previous',
+      'output-for-previous',
+      'previous-for-input',
+      'foreign',
+      'stale',
+    ]) {
+      let reasons = 0
+      let effects = 0
+      const compiled = compile(
+        block('call reviewer @input') + block('call archive @previous'),
+        'uses: {reviewer: {}, archive: {}}',
+      )
+      await expect(
+        runMarkdown(
+          compiled,
+          context(
+            async (call) => {
+              if (call.slot !== 'markdown-agent') {
+                effects++
+                if (effects === 2) throw new OperationError('EXECUTION_FAILED', 'Settled failure')
+                return done('reviewed')
+              }
+              const state = reasoningContext(call)
+              reasons++
+              if (reasons === 1 || (invalid === 'stale' && reasons === 2))
+                return decision(staticRecipe(1))
+              const origin =
+                invalid === 'input-for-previous'
+                  ? 'input'
+                  : invalid === 'output-for-previous'
+                    ? 'markdown:recipe:1:output'
+                    : 'markdown:recipe:1:result'
+              const value =
+                invalid === 'foreign'
+                  ? 'value:another-invocation:1'
+                  : state.retainedValues.find((entry: any) => entry.origin === origin).handle
+              return decision({
+                ...staticRecipe(invalid === 'previous-for-input' ? 1 : 2),
+                operand: 'value',
+                value,
+              })
+            },
+            { input: 'original' },
+          ),
+          emptyResources,
+        ),
+      ).rejects.toMatchObject({ code: 'INVALID_RESULT' })
+      expect(effects).toBe(invalid === 'stale' ? 2 : 1)
+      expect(reasons).toBe(invalid === 'stale' ? 3 : 2)
+    }
   })
 
   test('preserves 100 KiB exact values across decision packets and exposes failed cursor invalidation', async () => {

@@ -22,6 +22,9 @@ the operator's authority and execution ownership intact.
   operation; it grants no URL, shell, mutable-source or general filesystem access.
 - Resolve operands before clearing the previous-result cursor. Exact handles
   preserve whole JSON snapshots; fresh literals are an explicit separate choice.
+- Static `@input`/`@previous` decisions may assert a retained whole value only
+  when it equals the authored operand. Reject unrelated, unknown or absent-cursor
+  handles before effects; never use them to override authored meaning.
 - Reason only through the derived `markdown-agent` slot with the fixed admitted
   template and complete bounded context. Never repair malformed decisions or
   automatically replay uncertain work.

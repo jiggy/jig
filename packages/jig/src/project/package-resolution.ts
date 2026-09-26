@@ -380,6 +380,7 @@ function copyDisposition(
 
 function semanticProject(project: PackageProjectValue): JsonValue {
   return {
+    ...(project.entrypoint === undefined ? {} : { entrypoint: project.entrypoint }),
     flows: project.flows.map((flow) => ({
       path: flow.provenance.projectPath,
       package: flow.package,

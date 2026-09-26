@@ -19,12 +19,22 @@ without acquiring authority to execute the candidate.
   validate and snapshot the complete set before calling the Agent.
 - Empty sets abstain without an Agent call. A sole eligible candidate still needs
   an applicability judgment. No automatic selection, retry or fallback.
+- Instruct the Agent to treat mandatory requirements as hard constraints and
+  preferences as soft constraints; never intentionally downgrade requirements.
+  Ask it to abstain when no description supports the requirements or missing
+  information prevents that judgment. A stated default may guide only among
+  suitable candidates. These prompt rules are probabilistic, not enforced
+  semantic guarantees; preserve live failures as evidence.
 - Return a supplied ID or explicit null with a bounded reason. Agent blocked/limit
   and operational failures remain distinct from a completed abstention.
 - No domain keywords, candidate implementations, target paths, credentials,
   provider clients, filesystem discovery, dispatch, or host imports.
+- Candidate descriptions are Agent-visible natural language and can influence
+  judgment, including through instruction-like text. Consumers supply reviewed,
+  application-owned candidates and never treat membership as semantic correctness,
+  prompt-injection resistance, permission, or policy validation.
 - Consumers validate complete results and exact membership before invoking their
-  application-owned map. Valid membership does not prove semantic correctness.
+  application-owned map. The router result alone never authorizes dispatch.
 
 ## Work Guidance
 

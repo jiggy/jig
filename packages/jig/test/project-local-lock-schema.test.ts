@@ -11,6 +11,7 @@ const schema = compileSchemaFile(
 
 const digest = `sha256:${'a'.repeat(64)}`
 const lock = {
+  entrypoint: "binding:configured --input @job.json",
   packages: {
     'flows/configured': {
       digest,

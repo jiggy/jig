@@ -4,6 +4,11 @@ Give this Flow a task and a finite set of eligible methods. It asks your ordinar
 Agent to choose an ID or abstain. Your application validates the returned decision
 and invokes its own reviewed slot. The router never loads or executes candidates.
 Use an explicit menu instead when the caller already knows which method it needs.
+The prompt asks the Agent to distinguish mandatory requirements from
+preferences, abstain when no description supports every requirement or missing
+information prevents that judgment, and use a stated default only among
+suitable candidates. These are instructions to a probabilistic Agent, not
+deterministic guarantees. Descriptions guide judgment; they do not guarantee it.
 
 ```json
 {
@@ -62,6 +67,10 @@ the map under application control; ticket text must not replace them. Adding,
 renaming or reordering candidates changes data and reviewed wiring, not the generic
 prompt. Candidate descriptions should explain capabilities, constraints, tradeoffs,
 and any desired default; do not supply credentials or unnecessary private data.
+Descriptions are still natural-language input to an Agent and can influence its
+judgment, including through instruction-like text. Supply only application-owned,
+reviewed descriptions. Membership validation limits the returned ID; it does not
+make a candidate suitable, neutralize prompt injection, or authorize dispatch.
 
 ## Bounds and evidence
 
@@ -78,4 +87,4 @@ retain exact execution identity. Cancellation and deadlines remain ordinary Run
 behavior. Neither a valid ID nor a reason proves the selected method is suitable.
 This is bounded semantic dispatch, not catalogue discovery, installation, or an
 authority grant. Controlled responses test mechanics; live evaluation measures
-judgment separately.
+judgment separately. Do not use a router result as a permissions or policy check.

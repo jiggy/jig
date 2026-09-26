@@ -64,7 +64,7 @@ export interface PreparedAgent {
   readonly session?: AgentSessionRequest
 }
 
-export interface AgentResult {
+export type AgentResult = {
   readonly outcome: 'done' | 'blocked' | 'limit'
   readonly output: {
     readonly text: string

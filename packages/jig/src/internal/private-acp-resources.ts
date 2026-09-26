@@ -39,7 +39,11 @@ export type PrivateAcpClientOpener = (
 
 export class PrivateAcpResourceUnavailableError extends Error {
   readonly code: string
-  constructor(slot: string, client: AcpGrant['client'], error?: unknown) {
+  constructor(
+    readonly slot: string,
+    client: AcpGrant['client'],
+    error?: unknown,
+  ) {
     super(`ACP slot ${JSON.stringify(slot)} could not open its selected ${client} runtime`)
     this.name = 'PrivateAcpResourceUnavailableError'
     const stage =

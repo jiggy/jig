@@ -64,6 +64,56 @@ An exact source is the fail-closed alternative:
 flows: ["./flows/build", "./flows/review"]
 ```
 
+### Project entrypoint
+
+`entrypoint` optionally declares how `jig run` starts the application. It is one
+string: an exact `flow:<path>`, `npm:<package>` or `binding:<id>` target followed
+by optional Run arguments. Both declarations use the same grammar:
+
+```ts
+entrypoint: "binding:factory",
+```
+
+```ts
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m",
+```
+
+The string is bounded to 16,384 characters and 512 argument words. Jig tokenizes
+whitespace, single/double quotes and backslash escapes; it never invokes a shell.
+Single quotes preserve their contents. Outside quotes, a backslash escapes the
+next character. Within double quotes it escapes a quote, backslash, dollar sign,
+backtick or newline; other backslashes remain literal. Escaped newlines are
+removed. Unclosed quotes, unfinished escapes, NUL and unquoted shell operators
+(`|`, `&`, `;`, `<`, `>`, parentheses, backticks and `$`) are rejected.
+Quoted values are literal: no environment, tilde, wildcard or command expansion.
+TypeScript string escaping still applies before this argument parsing.
+
+Allowed options are `--input`, `--attach`, `--select`, `--out`, `--receive` and
+`--timeout`, with the ordinary Run grammar. Operator controls such as
+`--verification` and `--json` remain CLI options. Review validates the target,
+supplied inline input, unbound read-attachment names and outgoing channel names.
+Omitted required input or files can still be supplied by the caller. File
+arguments are project-relative slash paths; traversal, absolute paths and `.jig`
+are rejected. Review does not read those job files.
+
+`jig run` without a target uses the approved entrypoint in terminals and scripts.
+Explicit options replace corresponding defaults: `--input` replaces the entire
+JSON value or file reference, `--receive` replaces the channel set, and file
+mappings replace by attachment name. `--select` replaces that attachment's whole
+selection set. Replacing `--attach` clears its default selections unless explicit
+selections are also supplied. Duplicate options within either source remain
+errors. An explicit target bypasses all entrypoint defaults, even when it names
+the same target. Without an entrypoint, terminals offer a chooser and scripts
+require an exact target. An invalid or unavailable entrypoint never falls back.
+
+Declaration paths resolve from the project; explicit CLI paths resolve from the
+calling directory. Job file contents are captured at invocation, while Binding
+attachments remain review-pinned and cannot be overridden. Existing output
+paths are never overwritten: a fixed `--out` needs a new destination on repeat
+Runs. Entry point changes are reviewed and retained with the exact project
+revision. `jig inspect` exposes that approved string; unreviewed edits do not
+change execution. Selection and submission must use the same admission.
+
 ### Default providers by contract
 
 `defaultProviders` is an optional map of at most 256 contract IDs to exact

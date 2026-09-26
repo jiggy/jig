@@ -8,6 +8,8 @@ descriptors.
 ## Ownership
 
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
+  It also owns final failure ordering, concise human packet summaries, Agent
+  setup cause/selection locations, and one dependency-network notice per review.
   Interrupted delivery retains confirmed terminal/checkpoint evidence, not
   unfinished final files; cleanup uncertainty and forced termination stay explicit.
 
@@ -32,7 +34,9 @@ descriptors.
   support claims and dependency requirements remain package metadata.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient
   identity and explicit authority approval through the existing plan.
-- `project-sdk.md` and `project-policy.md` own contract-keyed `defaultProviders`,
+- `project-sdk.md` and `project-policy.md` own the approved string `entrypoint`,
+  shared Run grammar, per-option overrides and per-invocation job capture, alongside
+  contract-keyed `defaultProviders`,
   sole-match review-time resolution and declared `npm:` package targets.
   Selected feature requirements qualify package support before execution;
   unavailable dependencies affect their consumers, not unrelated targets.
