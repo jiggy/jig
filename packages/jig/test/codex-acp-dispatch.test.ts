@@ -12,6 +12,9 @@ for (const scenario of [
   'forced-clean',
   'missing-executable',
   'immediate-follow-up',
+  'immediate-follow-up-start-before-reply',
+  'immediate-follow-up-start-after-reply',
+  'completion-before-reply',
 ]) {
   test(`Codex ACP accounts for requested turns and native shutdown: ${scenario}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-dispatch-'))
@@ -112,7 +115,7 @@ for (const scenario of [
       })
       if (scenario === 'rejected') expect(answer.error).toBeDefined()
       else expect(answer.result?.stopReason).toBe('end_turn')
-      if (scenario === 'immediate-follow-up') {
+      if (scenario.startsWith('immediate-follow-up')) {
         const followup = await request(
           5,
           'session/prompt',
@@ -127,7 +130,12 @@ for (const scenario of [
       expect((await request(6, 'session/close', { sessionId })).error).toBeUndefined()
       await child.stdin.end()
       const exit = await child.exited
-      if (scenario === 'completed' || scenario === 'rejected' || scenario === 'immediate-follow-up')
+      if (
+        scenario === 'completed' ||
+        scenario === 'completion-before-reply' ||
+        scenario === 'rejected' ||
+        scenario.startsWith('immediate-follow-up')
+      )
         expect(exit, await diagnostics).toBe(0)
       else expect(exit, await diagnostics).not.toBe(0)
       const recorded = (await readFile(recording, 'utf8'))
@@ -141,8 +149,8 @@ for (const scenario of [
       if (scenario === 'forced-clean')
         expect(recorded.some((record) => record.event === 'native-forced-exit-zero')).toBe(true)
       const started = recorded.filter((record) => record.method === 'turn/start')
-      expect(started).toHaveLength(scenario === 'immediate-follow-up' ? 2 : 1)
-      if (scenario === 'immediate-follow-up') {
+      expect(started).toHaveLength(scenario.startsWith('immediate-follow-up') ? 2 : 1)
+      if (scenario.startsWith('immediate-follow-up')) {
         const interrupted = recorded.filter((record) => record.method === 'turn/interrupt')
         expect(interrupted).toHaveLength(1)
         expect(interrupted[0].params.turnId).toBe('turn-2')
@@ -157,7 +165,7 @@ for (const scenario of [
         ),
       ).toBe(false)
     } catch (error) {
-      if (scenario === 'immediate-follow-up') {
+      if (scenario.startsWith('immediate-follow-up')) {
         const records = (await readFile(recording, 'utf8'))
           .trim()
           .split('\n')

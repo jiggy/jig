@@ -31,6 +31,16 @@ The patch registers the pending turn before that setup. Cancellation waits for
 the native turn ID and targets it; the native completion still supplies the
 cancelled result. No early synthetic completion or longer timeout is introduced.
 
+Codex 0.157.1 can acknowledge `turn/start` with an ID before the turn is
+active. Interrupting that ID immediately returns `no active turn to interrupt`.
+The adapter previously swallowed that error and lost the cancellation. It now
+captures the matching `turn/started` notification before issuing the request,
+accepting either notification/reply ordering and matching both thread and turn.
+An already completed turn retains its actual native result. Completion capture
+remains live while waiting; no retry, timer extension, or manufactured
+settlement is needed. This was reproduced with the native client as well as the
+recording peer; no exact upstream fix is established.
+
 ## Verification
 
 `bun test packages/jig/test/codex-acp-dispatch.test.ts` launches the actual
@@ -46,7 +56,10 @@ native state collection and restoration need their own qualified boundary.
 An immediate-follow-up case sends prompt and cancellation together and delays
 the native turn-start reply. It requires an interrupt naming the second turn,
 the actual cancelled response and clean shutdown. The unpatched race times out;
-the correction settles normally.
+the correction settles normally. Additional cases deliver the native start
+notification before or after the reply, reject interruption before activation,
+and include unrelated thread/turn notifications. Completion before the start
+reply remains authoritative even without a start notification.
 
 ## Removal condition
 

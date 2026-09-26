@@ -1,7 +1,8 @@
 diff --git a/dist/index.js b/dist/index.js
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -22110,6 +22110,11 @@
+@@ -22109,7 +22109,12 @@
+   const writer = createJSONRPCWriter(codex.stdin);
    let connection = rpc.createMessageConnection(reader, writer);
    connection.listen();
 -  codex.on("exit", (_) => {
@@ -14,7 +15,74 @@ diff --git a/dist/index.js b/dist/index.js
      connection.dispose();
    });
    return { connection, process: codex };
-@@ -33448,6 +33453,7 @@
+@@ -29071,7 +29076,7 @@
+       if (this.handleStaleTurnNotification(serverNotification, routing)) {
+         return;
+       }
+-      this.recordTurnRouting(routing);
++      this.recordTurnRouting(routing, serverNotification.method);
+       if (this.handleStaleTurnNotification(serverNotification, routing)) {
+         return;
+       }
+@@ -29150,19 +29155,33 @@
+   }
+   async runTurn(params, onTurnStarted) {
+     const capturedCompletions = [];
++    const startedTurns = new Set();
++    let expectedTurnId = null;
++    let resolveReady = () => {};
++    const ready = new Promise((resolve) => { resolveReady = resolve; });
++    const releaseRouting = this.captureTurnRoutings(params.threadId, (turnId, method) => {
++      if (method !== "turn/started") return;
++      startedTurns.add(turnId);
++      if (turnId === expectedTurnId) resolveReady();
++    });
+     const releaseCapture = this.captureTurnCompletions(params.threadId, (event) => {
+       capturedCompletions.push(event);
++      if (event.turn.id === expectedTurnId) resolveReady();
+     });
+     try {
+       const turnStarted = await this.turnStart(params);
+-      onTurnStarted?.(turnStarted.turn.id);
+-      const earlyCompletion = capturedCompletions.find((event) => event.turn.id === turnStarted.turn.id);
++      expectedTurnId = turnStarted.turn.id;
++      // A turn/start reply allocates an ID before the native turn is interruptible.
++      if (!startedTurns.has(expectedTurnId) && !capturedCompletions.some((event) => event.turn.id === expectedTurnId)) {
++        await ready;
++      }
++      const earlyCompletion = capturedCompletions.find((event) => event.turn.id === expectedTurnId);
++      if (earlyCompletion) return earlyCompletion;
++      onTurnStarted?.(expectedTurnId);
+       releaseCapture();
+-      if (earlyCompletion) {
+-        return earlyCompletion;
+-      }
+-      return await this.awaitTurnCompleted(params.threadId, turnStarted.turn.id);
++      return await this.awaitTurnCompleted(params.threadId, expectedTurnId);
+     } finally {
++      releaseRouting();
+       releaseCapture();
+     }
+   }
+@@ -29596,7 +29615,7 @@
+       capture();
+     }
+   }
+-  recordTurnRouting(routing) {
++  recordTurnRouting(routing, method) {
+     if (routing.threadId === null || routing.turnId === null) {
+       return;
+     }
+@@ -29605,7 +29624,7 @@
+       return;
+     }
+     for (const capture of captures) {
+-      capture(routing.turnId);
++      capture(routing.turnId, method);
+     }
+   }
+   handleStaleTurnNotification(notification, routing) {
+@@ -33448,6 +33467,7 @@
        }
        return pendingTurnStart;
      };
@@ -22,7 +90,7 @@ diff --git a/dist/index.js b/dist/index.js
      const disposePromptRequestCancellation = this.observePromptRequestCancellation(signal, sessionState, activePrompt);
      let eventHandler = null;
      let promptNotificationsActive = true;
-@@ -33773,10 +33779,6 @@
+@@ -33773,10 +33793,6 @@
          agentFileChangeReportTurnId = turnCompleted.turn.id;
        }
        await clearRecoveredSessionFailure(eventHandler);
@@ -33,7 +101,8 @@ diff --git a/dist/index.js b/dist/index.js
        await this.publishFallbackSessionTitle(
          sessionState,
          this.createPromptFallbackTitle(params.prompt)
-@@ -34199,11 +34201,15 @@
+@@ -34198,13 +34214,17 @@
+     stderr: ""
    };
    process.stdin.on("close", () => {
 -    codexProcessState.connection.process.stdin.end();
@@ -53,3 +122,4 @@ diff --git a/dist/index.js b/dist/index.js
 +    native.stdin.end();
    });
    const acpJsonStream = createJsonStream(process.stdin, process.stdout);
+   function createAgent(connection) {

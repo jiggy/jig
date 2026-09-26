@@ -86,6 +86,8 @@ titles remain. The patch also propagates native process failure and clears the
 shutdown timer after native close. Forced termination cannot report a clean
 adapter exit. It also registers pending turns before asynchronous prompt setup
 so immediate cancellation waits for and interrupts the correct native turn.
+The adapter waits for the matching native turn-start notification before
+exposing the turn as interruptible; a start reply alone does not establish it.
 See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
 note for the correction and removal condition.
 

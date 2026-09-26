@@ -77,17 +77,51 @@ for await (const line of createInterface({ input: process.stdin })) {
         break
       }
       const turn = { id: `turn-${++turns}`, items: [], status: 'completed', error: null }
-      if (process.env.RECORD_SCENARIO === 'immediate-follow-up' && turns === 2) {
+      const scenario = process.env.RECORD_SCENARIO
+      const started = () => {
         interruptible = { threadId: request.params.threadId, turn }
-        setTimeout(() => ok({ turn: { ...turn, status: 'inProgress' } }), 100)
+        reply({
+          method: 'turn/started',
+          params: { threadId: request.params.threadId, turn: { ...turn, status: 'inProgress' } },
+        })
+      }
+      if (scenario?.startsWith('immediate-follow-up') && turns === 2) {
+        if (scenario === 'immediate-follow-up-start-after-reply') {
+          ok({ turn: { ...turn, status: 'inProgress' } })
+          // Neither an old turn nor another thread makes this turn interruptible.
+          reply({
+            method: 'turn/started',
+            params: { threadId: request.params.threadId, turn: { ...turn, id: 'turn-1' } },
+          })
+          reply({ method: 'turn/started', params: { threadId: 'unrelated', turn } })
+          setTimeout(started, 100)
+        } else if (scenario === 'immediate-follow-up-start-before-reply') {
+          started()
+          setTimeout(() => ok({ turn: { ...turn, status: 'inProgress' } }), 100)
+        } else {
+          setTimeout(() => {
+            started()
+            ok({ turn: { ...turn, status: 'inProgress' } })
+          }, 100)
+        }
         break
       }
-      ok({ turn: { ...turn, status: 'inProgress' } })
-      reply({ method: 'turn/completed', params: { threadId: request.params.threadId, turn } })
+      const completed = () =>
+        reply({ method: 'turn/completed', params: { threadId: request.params.threadId, turn } })
+      if (scenario === 'completion-before-reply') {
+        completed()
+        setTimeout(() => ok({ turn: { ...turn, status: 'inProgress' } }), 100)
+      } else {
+        ok({ turn: { ...turn, status: 'inProgress' } })
+        completed()
+      }
       break
     }
     case 'turn/interrupt': {
-      if (!interruptible || request.params.turnId !== interruptible.turn.id) process.exit(2)
+      if (!interruptible || request.params.turnId !== interruptible.turn.id) {
+        reply({ id: request.id, error: { code: -32600, message: 'no active turn to interrupt' } })
+        break
+      }
       ok({})
       reply({
         method: 'turn/completed',

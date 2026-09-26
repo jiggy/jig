@@ -70,7 +70,10 @@ admitted FLOW packages.
   and model policy. Its adapter preserves native failure and clears shutdown
   timers on close; forced native termination cannot become adapter success.
   Register pending Codex turns before asynchronous prompt setup so immediate
-  interruption cannot disappear before the native turn ID exists. Pi ACP
+  interruption cannot disappear before the native turn ID exists. A turn-start
+  reply allocates an ID; only its matching native `turn/started` event makes
+  that turn interruptible. Preserve early completion and either event/reply
+  ordering without retries or synthetic settlement. Pi ACP
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
   when changing its patch. Each patch has a same-basename `.md` note explaining
