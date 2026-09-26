@@ -10,6 +10,8 @@
   `a848bc9a2f6f1e2f73b4e36be966d704fb1cc7c1`.
 - **Scope:** Product intent, distinctions vulnerable to simplification, causal
   engineering lessons, and the judgment I would want a successor to inherit.
+- **Additional recorder:** Section 9 is a separately attributed supplement
+  from the integration and release session, with its own evidence window.
 
 This is the note I would want to find if I returned without remembering the
 work. Its purpose is to preserve reasons, not to make someone reconstruct our
@@ -703,6 +705,150 @@ The compass restores purpose, specifications restore exact mechanics, tests
 restore executable expectations, and current code plus artifacts restore
 reality. No single file can replace all four. This note preserves the reasoning
 that helps a successor interpret them and choose the next useful action.
+
+## 9. Supplement: what the integration and release work taught me
+
+**Recorded:** 2026-09-26 UTC. **Recorder:** Codex session/thread
+`01a0ddf7-2cdc-7991-b996-a34498bc704b`. **Evidence window:** The alpha/beta/main
+integration, operational-baseline repair (`fdab99cf`), native activation repair
+(`a848bc9a`), and package-version correction (`a2a89dae`). This section records
+my work and mistakes separately from the preceding recorder's account. It is
+causal history, not a claim about today's branches, registry or CI status.
+
+### Preserve the intended outcome across task boundaries
+
+The owner wanted three branches synchronized. Rebasing alpha and beta separately
+onto the same main could satisfy each individual rebase request while still
+leaving the branches divergent. Once main fast-forwarded to beta, alpha needed
+integration against that new combined history. The useful invariant was one
+shared completed history, not two commands reporting success.
+
+I would inspect the entire worktree topology, preserve recovery refs before
+rewriting history, and compare the resulting changes against the original work.
+Branch equality also does not imply clean or identical working directories.
+The owner continued editing during this work; those uncommitted changes had
+to survive integration. A remembered clean status is no substitute for checking
+again before a mutation. Carry the outcome forward without treating later,
+unrelated contributor work as permission to reset a branch.
+
+The deleted importer task exposed a more consequential version of this mistake.
+The owner explicitly kept beta's deletion: `abffbb67` had delivered package
+selection, root and member-local layouts, and public guide work. Main's expanded
+verification expectations still mattered. We preserved them in the remaining
+[adoption task](../coordination/inbox/conversation-handoff-adoption.md), removing
+completed work and the dead link. Restoring the implementation proposal would
+have manufactured unfinished work. The remaining adoption did not authorize
+another implementation, provider campaign or launch gate.
+
+### A previous success can hide the next asynchronous boundary
+
+The native conversation path had passed with the relevant versions before it
+failed again. That constrained the investigation; it did not disprove a race.
+The earlier correction registered pending work before asynchronous prompt
+setup. It did not prove that receiving a native turn ID meant that turn was
+already interruptible.
+
+In the later failure, interruption was accepted at an outer boundary, but the
+follow-up never settled and the host eventually fenced the owner. A direct
+native probe exposed the first divergence: the `turn/start` reply could arrive
+before `turn/started`. Interrupting immediately returned `no active turn to
+interrupt`, and the adapter swallowed that error.
+
+The correction belonged in the adapter. It installed the activation listener
+before issuing the start request, then waited for the matching thread and turn.
+It handled either reply/notification ordering and preserved actual completion
+if the turn finished first. Unrelated events could not release the wait. The
+host's grace period stayed unchanged. The
+[patch rationale](../../packages/jig/patches/codex-acp@1.8.0.md)
+and [adapter regressions](../../packages/jig/test/codex-acp-dispatch.test.ts)
+own the detailed behavior and removal conditions.
+
+My takeaway is broader than cancellation: accepted, identified, active,
+completed and cleaned up describe different facts. A wrapper that turns one
+into another can look simpler while quietly spending the operator's control.
+Test the transition where the facts first diverge, then confirm the bounded
+ordinary installed path. Do not teach every application to sleep around an
+adapter race or fabricate a successful cancellation to satisfy a test.
+
+### I underestimated the release set twice
+
+After the native repair, the runtime and host checks passed but publication
+rejected FLOW. I had advanced Jig's version without accounting for every other
+changed archive. Comparing the retained candidates with registry archives
+showed that FLOW differed only in its README. Agent Method also contained
+source, declaration and regression-test changes. Those were all shipped bytes.
+
+ACP initially matched its published archive. Advancing its dependencies then
+changed its packed development-dependency metadata, requiring a new ACP version
+too. A package with unchanged runtime code was still a changed release artifact.
+The correction advanced FLOW to alpha.13 and Agent Method/ACP to alpha.5,
+retained Jig's already advanced alpha.24, and aligned examples and generated
+project pins (`a2a89dae`). These are historical landmarks, not recommended
+versions for a future checkout.
+
+Then I checked the source manifests too confidently. The ignored root Bun lock
+still held old workspace versions; an ordinary install reported no changes.
+An assertion against a packed manifest caught the stale dependency. Regenerating
+that disposable lock with Bun and repacking produced the intended exact pins.
+The distinct tracked locks were not part of that repair.
+
+The [release guide](../../RELEASING.md#releasing-a-version) now states the
+operational lesson: inspect the whole archive set and its packed dependency
+versions before another push. Source wildcards and successful installation
+are insufficient evidence. Preserve the registry byte guard; it caught my
+incomplete preparation. Investigate a failed publication using its retained
+candidate, because rebuilding introduces a different artifact.
+
+### Diagnose shared failures once, and keep tests meaningful
+
+Two CI workflows failed on the same operational-baseline assertion. The CLI
+intentionally offered both `jig run` and `jig run <target>`, but the assertion
+still expected the old wording. The repair belonged in their shared baseline
+(`fdab99cf`), together with the current approved-schema recovery guidance and
+review-wide dependency-resolution warning.
+
+The lesson is not to update snapshots whenever tests fail. Establish the
+intended public behavior, then keep the owning assertions precise. Reverting
+useful guidance or reducing the test to an uninformative substring would both
+have concealed the disagreement. Two red workflows sharing one script do not
+imply two independent product defects.
+
+### My verification effort sometimes outgrew the uncertainty
+
+I ran broad, expensive suites after narrower evidence already addressed the
+changed boundary. Some local failures occurred before the behavior under
+investigation: compiler launch needed the explicit supported Node path;
+other runs hit evaluator-launch, resource or deadline failures. Correcting
+known setup problems enabled focused checks. Observed filesystem pressure
+could explain some delay, but did not prove every remaining failure harmless.
+
+I would not repeat the long, low-signal testing merely to feel more certain.
+For each run, name the unresolved question and the result that would answer it.
+Use controlled regressions for event ordering, installed checks for packaging,
+and the applicable native/host gates for their actual promises. Broaden testing
+when a change or failure supplies a reason. Report incomplete runs honestly;
+do not combine overlapping passes into invented independent evidence or relax
+product deadlines to make a loaded development machine appear healthy.
+
+The important distinction is between persistence toward the user's outcome
+and persistence with my chosen experiment. The first was necessary. The second
+sometimes delayed delivery. Green checks close their stated questions; they
+do not automatically establish publication, adoption or product advantage.
+
+### The judgment I most want to retain
+
+Near the end of a difficult delivery, "almost the same" becomes tempting:
+almost the same history, an acknowledged interruption, the same runtime with a
+different archive, an implementation task whose verification remains open.
+Those shortcuts erase different kinds of truth. Find the exact distinction
+that matters and fix it at its owner, while keeping that complexity out of
+the ordinary consumer's work where possible.
+
+The purpose remains greater usable capability under meaningful direction.
+Control that makes useful work impractical misses that purpose; useful work
+whose authority or settlement cannot be trusted misses it too. I would want
+my successor to preserve both halves, and to finish when the authorized outcome
+has adequate evidence instead of inventing another campaign.
 
 ## Final reminder
 

@@ -36,6 +36,13 @@ The supported prerelease forms are `*-alpha.*` and `*-next.*`; their first
 prerelease identifier selects the npm dist-tag. `latest` is never moved by this
 workflow.
 
+Audit the complete package set before pushing a release correction. Shipped
+README files, tests, notices and dependency metadata count as package bytes,
+even when runtime behavior is unchanged. A dependency's version bump can change
+a dependent's packed manifest and require that package to advance too. Inspect
+the actual archives, including the exact versions substituted for `workspace:*`,
+and align example and generated-project pins with the intended release set.
+
 Build jobs install Just 1.43.1 and invoke the package justfiles; manifests
 contain no task or lifecycle scripts. Local `just flow::pack` and
 `just agent::pack`, `just acp::pack` and `just jig::pack` explicitly build before packing. Publication never invokes
@@ -48,6 +55,12 @@ workspace lock. Rebuilding the same source can therefore resolve different
 transitive dependencies. The publication guarantee is the tested, retained
 archive, not reproducibility from a source commit alone; recovery must reuse
 that archive rather than rebuild it.
+
+If a local pack contains stale workspace versions despite updated manifests,
+check the generated root lock, regenerate it with Bun when necessary, and
+rebuild and inspect the archives. An install reporting no changes does not
+prove packed dependency versions are current. This applies to the disposable
+root workspace lock; independently owned tracked lockfiles are not disposable.
 
 All npm candidates are built once in parallel as part of CI from its exact
 source revision. The publication workflow selects artifacts from that exact
