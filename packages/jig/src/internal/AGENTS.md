@@ -762,10 +762,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   acquisition and residue checks intentionally reject other concurrent Runs;
   the ordinary suite also includes host tests when delegation is present.
 
-- Command and HTTP ownership observation waits cover the host root budget:
-  Mac uses 60 seconds for admission observations and 75 seconds for HTTP
-  settlement, including cleanup. Linux retains its 30/40-second waits. These
-  test windows never expand workload enforcement limits.
+- Command, HTTP and Agent lifecycle observation waits cover native setup and
+  settlement: Mac uses 60 seconds for admission observations and 75 seconds
+  for terminal settlement, including cleanup. Linux retains its existing waits.
+  Aggregate scenario tests allow each independently bounded Run to settle;
+  these test windows never expand workload enforcement limits.
 - Mac host conformance also enables the shared workspace preparation reuse and
   public CLI workspace dependency cases, plus installed command, HTTP Agent,
   Markdown, continuation and interruption checks. Linux-only preparation
