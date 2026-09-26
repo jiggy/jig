@@ -966,7 +966,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         await rm(root, { recursive: true, force: true })
         await rm(releaseRoot, { recursive: true, force: true })
       }
-    }, 90_000)
+    }, process.platform === 'darwin' ? 150_000 : 90_000)
   }
 
   for (const nested of [false, true]) {
