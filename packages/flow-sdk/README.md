@@ -2,7 +2,7 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/0.
 
-This is the prerelease `0.1.0-alpha.12` package. Its authoritative documents
+This is the prerelease `0.1.0-alpha.13` package. Its authoritative documents
 are the [Run SDK/0](https://flow.jig.md/spec/run-sdk) and
 [Run/0](https://flow.jig.md/spec/run-protocol) specifications. Prereleases
 do not establish a stable compatibility promise.
@@ -19,7 +19,7 @@ Or declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.12"
+    "@jigging/flow": "0.1.0-alpha.13"
   }
 }
 ```

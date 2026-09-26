@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jigging/agent-acp": "0.1.0-alpha.4"
+    "@jigging/agent-acp": "0.1.0-alpha.5"
   },
   "devDependencies": {
-    "@jigging/flow": "0.1.0-alpha.12",
-    "@jigging/agent-method": "0.1.0-alpha.4"
+    "@jigging/flow": "0.1.0-alpha.13",
+    "@jigging/agent-method": "0.1.0-alpha.5"
   }
 }
