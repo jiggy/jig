@@ -88,7 +88,6 @@ export default defineConfig({
       { text: 'Documentation', link: '/guide/overview' },
       { text: 'Specifications', link: '/guide/' },
       { text: 'For agents', link: '/guide/for-agents' },
-      { text: 'Jig', link: 'https://jig.md/' },
       { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
     ],
     sidebar: { '/': sidebar },

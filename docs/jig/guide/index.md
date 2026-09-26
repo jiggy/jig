@@ -11,11 +11,13 @@ to see how Agent work fits into the same model.
 
 ## Install
 
-Use a [supported Linux host](#supported-host). The qualified environment is
-Ubuntu 24.04 x86_64 with the isolation prerequisites listed below; a stock
-Linux installation may need host configuration. If you do not administer the
-host, ask its administrator to check that list before installing. Jig reports
-missing execution support rather than weakening isolation.
+Use a [supported Linux host](#supported-host). Jig is developed primarily on
+NixOS with manual maintainer smoke testing, while automated CI test suites and
+conformance qualification run on provisioned Ubuntu 24.04 x86_64 with the
+isolation prerequisites listed below; a stock Linux installation may need host
+configuration. If you do not administer the host, ask its administrator to
+check that list before installing. Jig reports missing execution support rather
+than weakening isolation.
 
 Install the CLI:
 
@@ -175,9 +177,12 @@ needed, as described in [dependencies](./dependencies.md).
 
 ## Supported host
 
-The alpha has independent host evidence on provisioned Ubuntu 24.04 x86_64.
-Other matching Linux hosts are not yet independently validated. Jig checks
-required invocation contracts and reports missing support.
+Jig requires a Linux x86_64 environment with container isolation facilities.
+Jig is developed primarily on NixOS, which serves as the maintainer's primary
+manual smoke-testing environment. Automated CI test suites and host conformance
+qualification run on provisioned Ubuntu 24.04 x86_64. Manual smoke testing on
+NixOS and automated CI runs on Ubuntu do not establish macOS, Windows, or aarch64
+support. Jig checks required invocation contracts and reports missing support.
 
 - Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
 - Bubblewrap 0.12 or newer and GNU `readlink -f`.
@@ -192,8 +197,8 @@ explicit selection fails rather than falling back.
 
 On NixOS, enable `programs.nix-ld.enable` for npm's runtime binary. Jig resolves
 glibc through `/run/current-system/sw/share/nix-ld/lib/ld.so` and gives Runs
-only the required loader and libraries. Independent NixOS conformance remains
-unverified.
+only the required loader and libraries. Automated CI conformance on NixOS
+remains unconfigured.
 
 `review` and `run` acquire their delegated scopes without `sudo`. Jig verifies
 the package-local Bun runtime before execution. See the

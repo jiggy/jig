@@ -356,6 +356,13 @@ class Interpreter {
       } else if (kind === 'fresh') {
         if (decision.operand !== 'literal') throw new Error('fresh value required')
         decodeJson1(new TextEncoder().encode(decision.value))
+      } else if (kind === 'previous' || kind === 'input') {
+        if (
+          (decision.operand !== 'none' || decision.value !== '') &&
+          (decision.operand !== 'value' || !this.valueByHandle.has(decision.value))
+        ) {
+          throw new Error('static operand override')
+        }
       } else if (decision.operand !== 'none' || decision.value !== '')
         throw new Error('static operand override')
     } else if (decision.action === 'read') {

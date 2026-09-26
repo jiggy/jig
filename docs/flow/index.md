@@ -143,7 +143,7 @@ showcase:
 </ul>
 <div className="adopter-actions">
 <a href="https://jig.md/" target="_blank" rel="noopener noreferrer">Explore Jig host ↗</a>
-<a href="/guide/markdown#run-the-greeting">Inspect Markdown greeting demo ↗</a>
+<a href="/guide/markdown#run-the-composition-on-jig">Inspect Markdown composition demo ↗</a>
 </div>
 </article>
 <article className="adopter-card adopter-card--invitation">

@@ -25,11 +25,14 @@ TypeScript execution is a specific runtime feature, not a property of the SDK;
 consult [Node's TypeScript support](https://nodejs.org/api/typescript.html) when
 choosing another Node version or syntax.
 
-SDK availability is separate from host support. Jig's current alpha is qualified
-on provisioned Ubuntu 24.04 x86_64 and requires the documented Linux facilities;
-see its [supported-host requirements](https://jig.md/guide/#supported-host).
-An SDK smoke on another operating system does not qualify Jig there. Other hosts
-publish their own supported runtimes, platforms and authority guarantees.
+SDK availability is separate from host support. For example, Jig's current alpha
+is developed primarily on NixOS (used for manual maintainer smoke testing) with
+automated CI test suites and host conformance qualified on provisioned
+Ubuntu 24.04 x86_64, requiring the documented Linux facilities; see its
+[supported-host requirements](https://jig.md/guide/#supported-host). An SDK smoke
+on another operating system does not qualify Jig there, and neither environment
+establishes macOS or aarch64 support. Other hosts publish their own supported
+runtimes, platforms, and authority guarantees.
 
 Code may itself call Agents and produce uncertain judgments. Markdown always
 uses the current profile's reasoning interpreter. These implementation choices

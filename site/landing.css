@@ -524,7 +524,7 @@ html.dark {
 }
 .adopters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 1.5rem;
   margin: 3rem 0 2rem;
 }
@@ -754,6 +754,8 @@ html.dark {
   .doc-context { font-size: .58rem; }
   .docs-search kbd { display: none; }
   .docs-search { width: 38px; padding: .5rem; justify-content: center; }
+  .adopters-grid { grid-template-columns: 1fr; gap: 1rem; margin: 2rem 0 1.5rem; }
+  .adopter-card { padding: 1.5rem 1.25rem; }
   .landing-routes { gap: .75rem 1.25rem; font-size: .78rem; padding: 2rem 0 3rem; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -70,6 +70,56 @@ ACP adapter, provider configuration, or host admission UI. Consult the
 [ACP documentation](https://agentclientprotocol.com/protocol/v1/overview) for its
 session protocol; use the dependency's actual invocation contract for its data.
 
+### Walkthrough: Servicing a declared slot with an ACP Agent
+
+Consider a caller Flow that declares a dependency slot `summarizer` in its
+`FLOW.meta.json`:
+
+```json
+{"uses":{"summarizer":{}}}
+```
+
+When running in an ACP Client orchestrator, the host routes calls for
+`slot: "summarizer"` to an admitted ACP Agent session. The integration follows
+these explicit boundaries:
+
+1. **Declared route validation**:
+   The caller component issues a child call:
+   ```json
+   {"jsonrpc":"2.0","id":"c:1","method":"flow/call","params":{"slot":"summarizer","operationId":"sum:1","input":{"text":"..."}}}
+   ```
+   The host validates that `slot: "summarizer"` exists in its static, operator-authorized
+   route table. A model-generated slot name or ungranted target is refused immediately
+   with a JSON-RPC error.
+2. **Translate input to an ACP prompt**:
+   The adapter formats the declared input into the ACP Agent's prompt or session work.
+   It supplies bounded context and instructions, preserving any attachments or scratch
+   directories authorized for that slot.
+3. **ACP updates are observations, not terminal results**:
+   During execution, the ACP Agent emits streaming notifications (text tokens, tool
+   calls, thought updates). These are streaming observations. If the caller component
+   declared an incoming progress channel, the host may forward updates; otherwise,
+   they serve as host diagnostics. They do not fulfill the pending `flow/call`.
+4. **Contract validation of the final answer**:
+   When the ACP Agent signals turn completion, the adapter extracts the final response,
+   validates that it satisfies the slot's contract (e.g., verifying `{ summary: string }`),
+   and returns the complete correlated result to the caller component:
+   ```json
+   {"jsonrpc":"2.0","id":"c:1","result":{"outcome":"done","output":{"summary":"..."}}}
+   ```
+5. **Cancellation and failure ownership**:
+   If the caller cancels or hits a deadline, the host sends `request/cancel` and the
+   adapter terminates or cancels the ACP session (`session/cancel`). If the ACP Agent
+   process crashes, disconnects, or emits malformed output, the adapter returns a
+   settled JSON-RPC operational error. If side effects cannot be verified, the host
+   records execution as uncertain rather than retrying automatically.
+
+| Responsibility | Who implements it |
+| --- | --- |
+| Transport, process launch & ACP session lifecycle | The maintainer / platform integration |
+| Run/0 framing, slot validation, deadlines & child responses | The FLOW host framework |
+| Component execution, recipe selection & dependency calls | The Flow component (via SDK or Markdown interpreter) |
+
 ## Implement the invocation lifecycle
 
 1. Inspect [Package/0](../spec/package-format.md): exactly one root `FLOW.<ext>`
