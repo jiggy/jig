@@ -20,6 +20,7 @@ import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
 import { main } from '../src/cli.js'
 import { requirePrivateBunResolutionManifest } from '../src/internal/bun-native-lock-policy.js'
+import type { PrivateExecutionOutput } from '../src/internal/execution-output.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
 import { withPrivateInstallationVerification } from '../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
@@ -402,13 +403,19 @@ proofDescribe('contained repair file application', () => {
                 },
                 saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
                 prepare: (directory: string, roots: readonly number[]) =>
-                  owner.prepare(directory, process.pid, roots),
-                publish: (record: import('../src/json.js').JsonValue, fd: number | undefined) =>
+                  owner.prepare(directory, roots),
+                publish: async (
+                  record: import('../src/json.js').JsonValue,
+                  output: PrivateExecutionOutput | undefined,
+                ) =>
                   owner.publish(
                     { ...(record as any), checkpoint: checkpoints?.latest ?? null },
-                    process.pid,
-                    fd,
-                    checkpoints?.latest,
+                    output === undefined
+                      ? undefined
+                      : output.kind === 'linux-directory'
+                        ? { kind: 'linux-directory', fd: output.directory.fd }
+                        : { kind: 'snapshot', capture: await output.ready },
+                    checkpoints?.latest ?? undefined,
                     true,
                   ),
               },

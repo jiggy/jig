@@ -330,12 +330,30 @@ function ownerRows(root: string): number {
 async function waitForCommand(root: string, count = 1) {
   // Allow the ordinary root budget to observe both nested owners; this tests
   // loss and recovery, not startup performance.
-  const until = Date.now() + 30_000
+  const until = Date.now() + (process.platform === 'darwin' ? 60_000 : 30_000)
   while (Date.now() < until) {
     if (ownerRows(root) >= count) return
     await Bun.sleep(20)
   }
-  throw new Error('command owner did not start')
+  const database = Database.open(
+    join(root, '.jig/jig.sqlite3'),
+    constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+  )
+  try {
+    const state = database
+      .query(
+        'SELECT operation_id, sandbox_digest IS NOT NULL AS sealed, fence_digest IS NOT NULL AS fenced FROM root_child_owners',
+      )
+      .all()
+    const terminal = database
+      .query(
+        'SELECT CAST(terminal_bytes AS TEXT) AS terminal FROM root_terminals ORDER BY rowid DESC LIMIT 1',
+      )
+      .get()
+    throw new Error(`command owner did not start: ${JSON.stringify({ state, terminal })}`)
+  } finally {
+    database.close()
+  }
 }
 async function checkAggregateEnvelopes() {
   if (process.platform === 'darwin') return

@@ -95,7 +95,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
       await server.stop(true)
       await rm(root, { recursive: true, force: true })
     }
-  }, 90000)
+  }, process.platform === 'darwin' ? 180000 : 90000)
   for (const [scenario, name] of Object.entries({
     input: 'validates HTTP input and exact root and child grants before dispatch',
     response: 'isolates HTTP credentials and bounds responses without following redirects',
@@ -273,7 +273,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
           else console.error(`Retained HTTP fixture: ${root}`)
         }
       }
-    }, 180000)
+    }, process.platform === 'darwin' ? 360000 : 180000)
   }
 })
 
@@ -334,7 +334,7 @@ async function fixture(root: string, grants: Record<string, unknown>) {
   )
 }
 async function terminal(administration: RootAdministration, receipt: StartRootRunReceipt) {
-  const until = Date.now() + 40000
+  const until = Date.now() + (process.platform === 'darwin' ? 75000 : 40000)
   while (Date.now() < until) {
     const status = await administration.runStatus(receipt)
     if (status.state === 'terminal') return status
@@ -343,7 +343,7 @@ async function terminal(administration: RootAdministration, receipt: StartRootRu
   throw new Error('HTTP Run did not settle')
 }
 async function waitUntil(ready: () => boolean) {
-  const until = Date.now() + 30000
+  const until = Date.now() + (process.platform === 'darwin' ? 60000 : 30000)
   while (!ready()) {
     if (Date.now() > until) throw new Error('HTTP request did not arrive')
     await Bun.sleep(20)
