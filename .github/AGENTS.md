@@ -42,16 +42,19 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   publication workflows download those exact successful push-run artifacts;
   they do not rebuild or accept artifacts from a different CI run.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
-  dependency order; all retain the same-revision CI/host gates and isolated
-  trusted publisher. First publication requires each package's npm setup.
-- Before any npm mutation, inspect every retained archive, exact registry
-  version, and channel tag. Existing versions require byte identity even if a
+  dependency order. FLOW publishes after its successful main-push CI run;
+  the Agent/Jig group additionally requires same-revision host and native gates.
+  Both groups use the isolated trusted publisher in `npm-publish.yml`. First
+  publication requires each package's npm setup.
+- Before any npm mutation, inspect every archive, exact registry version and
+  channel tag in the selected release group. Existing versions require byte identity even if a
   newer tag exists; absent older versions are superseded without publication,
   tags, or releases. Recheck registry state before each ordered mutation.
-- Publish npm only after CI, complete Linux Host Conformance, and Native Agent
-  API Qualification have succeeded for the exact triggering source revision.
-  The native qualification covers Jig's ACP clients and does not gate the
-  independent FLOW/PyPI publication path.
+- Publish Agent/Jig npm candidates only after CI, complete Linux Host Conformance,
+  and Native Agent API Qualification succeed for the exact source revision. FLOW
+  SDK npm publication and source tagging are independent of those Jig gates;
+  Python also uses its own CI-qualified artifacts. Each group preflights its own
+  archives before mutation. A host failure cannot block FLOW publication.
 - Keep path filters synchronized with every real workflow input.
 - Jig's Linux conformance PR filter includes root license, pricing, mapping,
   and retained license texts. Jig GitHub release notes link the matching tagged

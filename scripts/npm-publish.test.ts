@@ -13,21 +13,12 @@ const packages = [
   ['jig', '@jigging/jig'],
 ] as const
 
-function releaseScript() {
-  const source = Bun.file(join(import.meta.dir, '../.github/workflows/npm-publish.yml')).text()
-  return source.then((text) => {
-    const start = text.indexOf('        id: release\n')
-    const end = text.indexOf('\n  tag:\n', start)
-    if (start < 0 || end < 0) throw new Error('npm release step was not found')
-    const block = text.slice(start, end)
-    const run = block.indexOf('        run: |\n')
-    if (run < 0) throw new Error('npm release shell was not found')
-    return block
-      .slice(run + '        run: |\n'.length)
-      .split('\n')
-      .map((line) => (line.startsWith('          ') ? line.slice(10) : line))
-      .join('\n')
-  })
+async function releaseScript() {
+  const source = await Bun.file(
+    join(import.meta.dir, '../.github/workflows/npm-publish.yml'),
+  ).text()
+  const workflow = Bun.YAML.parse(source) as any
+  return workflow.jobs.publish.steps.find((step: any) => step.id === 'release').run as string
 }
 
 const fakeNpm = `#!/usr/bin/env node
@@ -122,7 +113,7 @@ async function fixture(
   }
 }
 
-async function run(root: string, state: Record<string, any>) {
+async function run(root: string, state: Record<string, any>, group = 'host') {
   const mock = join(root, 'mock')
   await mkdir(mock)
   const executable = join(mock, 'npm')
@@ -142,10 +133,11 @@ async function run(root: string, state: Record<string, any>) {
       PATH: `${mock}:${process.env.PATH}`,
       RUNNER_TEMP: root,
       SOURCE_REVISION: revision,
+      RELEASE_GROUP: group,
       GITHUB_OUTPUT: output,
       MOCK_NPM_STATE: statePath,
     },
-    timeout: 10_000,
+    timeout: 30_000,
   })
   return {
     result,
@@ -162,12 +154,12 @@ test('newer revision completes first; delayed older revision is skipped without 
     }
     const result = await run(root, state)
     expect(result.result.status).toBe(0)
-    expect(result.output.match(/_state=superseded/g)).toHaveLength(4)
+    expect(result.output.match(/_state=superseded/g)).toHaveLength(3)
     expect(result.state.calls.filter((call: string[]) => call[0] === 'publish')).toHaveLength(0)
     for (const [_, name] of packages)
       expect(result.state.packages[name].tags.alpha).toBe('0.1.0-alpha.10')
   })
-})
+}, 45_000)
 
 test('older exact-version retry verifies bytes promptly despite newer tag', async () => {
   await fixture('0.1.0-alpha.9', async ({ state, archives, root }) => {
@@ -177,51 +169,93 @@ test('older exact-version retry verifies bytes promptly despite newer tag', asyn
     }
     const result = await run(root, state)
     expect(result.result.status).toBe(0)
-    expect(result.output.match(/_state=verified/g)).toHaveLength(4)
+    expect(result.output.match(/_state=verified/g)).toHaveLength(3)
     expect(result.result.stdout).toContain('a newer alpha tag remains unchanged')
     expect(result.state.calls.filter((call: string[]) => call[0] === 'publish')).toHaveLength(0)
   })
-})
+}, 45_000)
 
 test('partial release verifies existing bytes before ordered missing publishes', async () => {
   await fixture('0.1.0-alpha.12', async ({ state, archives, root }) => {
-    state.packages['@jigging/flow'].versions['0.1.0-alpha.12'] = archives['@jigging/flow']
-    state.packages['@jigging/flow'].tags.alpha = '0.1.0-alpha.12'
+    state.packages['@jigging/agent-method'].versions['0.1.0-alpha.12'] =
+      archives['@jigging/agent-method']
+    state.packages['@jigging/agent-method'].tags.alpha = '0.1.0-alpha.12'
     const result = await run(root, state)
     expect(result.result.status).toBe(0)
-    expect(result.output).toContain('flow_state=verified')
-    expect(result.output.match(/_state=published/g)).toHaveLength(3)
+    expect(result.output).toContain('agent_state=verified')
+    expect(result.output.match(/_state=published/g)).toHaveLength(2)
     const published = result.state.calls.filter((call: string[]) => call[0] === 'publish')
     expect(published.map((call: string[]) => call[1])).toEqual(
-      packages.slice(1).map(([_, name]) => archives[name]),
+      packages.slice(2).map(([_, name]) => archives[name]),
     )
   })
-})
+}, 45_000)
 
 test('existing bytes with missing or older tag never wait or mutate the channel', async () => {
   await fixture('0.1.0-alpha.14', async ({ state, archives, root }) => {
     for (const [_, name] of packages)
       state.packages[name].versions['0.1.0-alpha.14'] = archives[name]
-    state.packages['@jigging/flow'].tags.alpha = '0.1.0-alpha.13'
+    state.packages['@jigging/agent-method'].tags.alpha = '0.1.0-alpha.13'
     const result = await run(root, state)
     expect(result.result.status).toBe(0)
-    expect(result.output.match(/_state=verified/g)).toHaveLength(4)
+    expect(result.output.match(/_state=verified/g)).toHaveLength(3)
     expect(result.result.stderr).toContain('the older alpha tag cannot be changed')
     expect(result.result.stderr).toContain('the missing alpha tag cannot be changed')
     expect(result.state.calls.filter((call: string[]) => call[0] === 'publish')).toHaveLength(0)
-    expect(result.state.packages['@jigging/flow'].tags.alpha).toBe('0.1.0-alpha.13')
+    expect(result.state.packages['@jigging/agent-method'].tags.alpha).toBe('0.1.0-alpha.13')
   })
-})
+}, 45_000)
 
-test('a changed immutable archive fails preflight before any publication', async () => {
+test('a changed host archive fails its entire group before any host publication', async () => {
   await fixture('0.1.0-alpha.15', async ({ state, archives, root }) => {
     const alternate = join(root, 'different.tgz')
     await copyFile(archives['@jigging/jig'], alternate)
     await writeFile(alternate, 'different registry bytes')
     state.packages['@jigging/jig'].versions['0.1.0-alpha.15'] = alternate
-    const result = await run(root, state)
+    const result = await run(root, state, 'host')
     expect(result.result.status).not.toBe(0)
     expect(result.result.stderr).toContain('registry bytes differ')
     expect(result.state.calls.filter((call: string[]) => call[0] === 'publish')).toHaveLength(0)
   })
-})
+}, 45_000)
+
+test('FLOW publishes independently even when a host candidate is invalid', async () => {
+  await fixture('0.1.0-alpha.16', async ({ state, archives, root }) => {
+    await writeFile(archives['@jigging/jig'], 'invalid host archive')
+    const result = await run(root, state, 'flow')
+    expect(result.result.status).toBe(0)
+    expect(result.output).toContain('flow_state=published')
+    expect(result.output).not.toContain('jig_state=')
+    expect(
+      result.state.calls
+        .filter((call: string[]) => call[0] === 'publish')
+        .map((call: string[]) => call[1]),
+    ).toEqual([archives['@jigging/flow']])
+  })
+}, 45_000)
+
+test('publication and tagging use separate SDK and host qualification paths', async () => {
+  const workflow = Bun.YAML.parse(
+    await Bun.file(join(import.meta.dir, '../.github/workflows/npm-publish.yml')).text(),
+  ) as any
+  const jobs = workflow.jobs
+  expect(jobs.publish.needs).toBeUndefined()
+  expect(jobs.publish.if).toContain("head_branch == 'main'")
+  expect(jobs.publish.if).toContain("event == 'push'")
+  expect(jobs.publish.if).toContain("conclusion == 'success'")
+  expect(jobs.publish.env.RELEASE_GROUP).toBe('flow')
+  expect(jobs.publish_host.needs).toEqual(['authorize', 'publish'])
+  expect(jobs.publish_host.env.RELEASE_GROUP).toBe('host')
+  expect(jobs.publish_host.steps).toEqual(jobs.publish.steps)
+  expect(jobs.tag.needs).toBe('publish')
+  expect(jobs.tag_host.needs).toBe('publish_host')
+  for (const job of [jobs.publish, jobs.publish_host]) {
+    expect(job.permissions).toEqual({ actions: 'read', 'id-token': 'write' })
+    expect(job.steps.some((step: any) => step.uses?.startsWith('actions/checkout'))).toBe(false)
+    expect(
+      job.steps.find((step: any) => step.uses?.startsWith('actions/download-artifact')).with[
+        'run-id'
+      ],
+    ).toBe('${{ github.event.workflow_run.id }}')
+  }
+}, 45_000)

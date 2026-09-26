@@ -36,11 +36,11 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
     await Bun.file(join(root, '.github/workflows/npm-publish.yml')).text(),
   ) as any
   const candidate = ci.jobs['npm-candidate']
-  const { publish, authorize, tag } = workflow.jobs
+  const { publish_host: publish, authorize, tag_host: tag } = workflow.jobs
   expect(candidate.strategy.matrix.package).toEqual(['flow', 'agent', 'acp', 'jig'])
   expect(ci.permissions).toEqual({ contents: 'read' })
   expect(publish.permissions).toEqual({ actions: 'read', 'id-token': 'write' })
-  expect(publish.needs).toBe('authorize')
+  expect(publish.needs).toEqual(['authorize', 'publish'])
   expect(authorize.name).toContain('same-revision')
   expect(publish.steps.some((step: any) => step.uses?.startsWith('actions/checkout'))).toBeFalse()
   const download = publish.steps.find(
@@ -50,17 +50,9 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
   expect(download.with['run-id']).toBe('${{ github.event.workflow_run.id }}')
   expect(download.with['github-token']).toBe('${{ github.token }}')
   const script = publish.steps.find((step: any) => step.id === 'release').run
-  const calls = script.split('\n').filter((line: string) => /^publish_candidate /.test(line))
-  const firstPackage = 'publish_candidate flow @jigging/flow'
-  const orderedPackages = [
-    firstPackage,
-    'publish_candidate agent @jigging/agent-method',
-    'publish_candidate acp @jigging/agent-acp',
-    'publish_candidate jig @jigging/jig',
-  ]
-  expect(calls).toEqual([...orderedPackages, ...orderedPackages])
-  expect(script.indexOf('PREFLIGHT=true')).toBeLessThan(script.indexOf(firstPackage))
-  expect(script.indexOf('PREFLIGHT=false')).toBeLessThan(script.lastIndexOf(firstPackage))
+  expect(publish.env.RELEASE_GROUP).toBe('host')
+  expect(script).toContain('host) package_kinds="agent acp jig"')
+  expect(script).toContain('for PREFLIGHT in true false; do')
   expect(script).toContain('registry bytes differ')
   expect(script).toContain('success.commit !== process.env.SOURCE_REVISION')
   expect(tag.permissions).toEqual({ contents: 'write' })

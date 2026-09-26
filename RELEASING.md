@@ -4,9 +4,10 @@ The exact prerelease versions in the `@jigging/flow`, `@jigging/agent-method`,
 `@jigging/agent-acp` and `@jigging/jig` manifests are release intent for this workflow.
 CI builds and tests the package candidates for every revision. After CI
 succeeds for a reviewed merge to `main`, the release workflow downloads those
-exact retained archives while a read-only gate waits for complete Linux Host
-Conformance on that same push revision. Only after both succeed may it publish
-a missing version newer than its channel tag, refetch the registry bytes, and
+exact retained archives. FLOW SDK publication uses that successful CI run. The
+Agent/Jig group additionally waits for complete Linux Host Conformance and
+Native Agent API Qualification on the same revision. Each qualified group may
+publish a missing version newer than its channel tag, refetch the registry bytes, and
 create package-specific annotated source tags. A missing older candidate is
 superseded without publication.
 
@@ -29,8 +30,9 @@ In the ordinary reviewed change:
 3. update packed-package assertions and public documentation for that version;
 4. include every source, notice, and manifest change for the release; and
 5. merge only after the source, packed-package, Operational Baseline/1, and
-   applicable pull-request Linux hostile gates pass. Publication additionally
-   requires complete Linux Host Conformance on the exact merged revision.
+   applicable pull-request Linux hostile gates pass. Agent/Jig publication
+   additionally requires complete Linux Host Conformance and Native Agent API
+   Qualification on the exact merged revision. FLOW SDK publication does not use those gates.
 
 The supported prerelease forms are `*-alpha.*` and `*-next.*`; their first
 prerelease identifier selects the npm dist-tag. `latest` is never moved by this
@@ -42,6 +44,17 @@ even when runtime behavior is unchanged. A dependency's version bump can change
 a dependent's packed manifest and require that package to advance too. Inspect
 the actual archives, including the exact versions substituted for `workspace:*`,
 and align example and generated-project pins with the intended release set.
+
+### Alpha installation channel
+
+Public installation instructions use `@alpha` (Python uses `--pre`). The npm
+`latest` tag may still name a bootstrap reservation and is not the alpha install
+path. Moving it does not make an alpha stable, but it is a separate registry
+owner action after approval and publication. Never copy version numbers from an
+old report: select the exact successfully qualified release, verify its registry
+archive and current `alpha` tag, then move `latest` to that version only if the
+owner wants unqualified installs to select it. Do not move a tag backward or
+choose nonexistent versions. No tag mutation is required before this work merges.
 
 Build jobs install Just 1.43.1 and invoke the package justfiles; manifests
 contain no task or lifecycle scripts. Local `just flow::pack` and
@@ -64,18 +77,18 @@ root workspace lock; independently owned tracked lockfiles are not disposable.
 
 All npm candidates are built once in parallel as part of CI from its exact
 source revision. The publication workflow selects artifacts from that exact
-successful CI run. A separate authorization job accepts only a
-successful `main` push run of the complete Linux Host Conformance workflow for
-that same revision. The publish job consumes only the retained candidate
-archives in the dependency order above. If a version already exists, its
-registry archive must be byte-for-byte identical to the candidate. Changed
+successful CI run. FLOW publishes and tags independently. A separate read-only
+authorization job qualifies the Agent/Jig group against the host and native
+checks for that revision; its publisher also waits for FLOW publication. Both
+publish jobs consume retained candidate archives, without a source checkout. If a
+version already exists, its registry archive must be byte-for-byte identical to the candidate. Changed
 package bytes under an existing version fail with an instruction to bump that
 package's version; npm versions are never replaced.
 
-The publisher preflights all four exact archives and registry states before
-mutating any package, then rechecks each package immediately before its ordered
-action. An exact version already present is verified against the retained bytes;
-a newer `alpha` or `next` tag does not delay or fail that historical check. A
+Each publisher preflights every archive and registry state in its own group
+(FLOW alone, or HTTP Agent/ACP Agent/Jig) before mutation, then rechecks each
+package immediately before its ordered action. An exact version already present
+is verified against the retained bytes; a newer `alpha` or `next` tag does not delay or fail that historical check. A
 missing version older than its channel is reported as superseded and receives
 no source tag or GitHub release. Prerelease precedence follows SemVer rather
 than lexical order (`alpha.10` is newer than `alpha.9`). These rules prevent a
@@ -157,9 +170,10 @@ later push is a new candidate, not an uncertainty retry.
 
 `jiggy-flow` is independently versioned using Python prerelease syntax, starting
 with `0.1.0a1`. Python execution support in Jig is not required. Its
-`pypi-publish.yml` workflow currently preserves the repository's same-revision CI
-and Linux Host Conformance authorization gates; that host gate does not claim
-Python hosting support. CI additionally qualifies installed Python artifacts.
+`pypi-publish.yml` workflow requires the successful main-push CI run and its
+exact retained Python candidate, including installed qualification across the
+supported interpreter/OS matrix. Jig host and native-client gates do not block
+Python SDK publication.
 
 `PYTHON=/absolute/path/to/python just python::pack /fresh/output` builds a wheel
 and sdist and runs metadata, installed runtime and typing checks. The selected

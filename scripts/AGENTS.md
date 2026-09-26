@@ -48,8 +48,8 @@ operational baselines, and public-site assembly.
   exact publication revision passed the complete Linux host workflow.
 - `require-native-agent-api-qualification.sh` owns the bounded, read-only check
   that the exact main-push revision passed the separate live ACP client check
-  before npm publication; a manually dispatched check qualifies only when it
-  ran on `main` at that same revision.
+  before Agent/Jig npm publication; a manually dispatched check qualifies only
+  when it ran on `main` at that same revision.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
   requires clean Git source and records exact revision and artifact hashes. It
   uses one fixed archive timestamp so shallow CI checkouts and full-history
@@ -115,7 +115,8 @@ operational baselines, and public-site assembly.
 - `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
   partial retries, registry failures, and immutable candidate/registry bytes.
 - `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
-  shell against controlled registry responses without credentials.
+  shell against controlled registry responses without credentials, including
+  independent FLOW publication and host-group preflight refusal.
 - Validate the Host Conformance authorization script with `shellcheck` and
   success plus fail-closed API fixtures.
 - Test the native Agent API publication gate with exact-revision success,

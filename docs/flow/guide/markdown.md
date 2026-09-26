@@ -94,8 +94,11 @@ mkdir -p flows/delegate
 
 Choose your client when prompted and follow the generated README's prerequisites.
 Initialization writes a code greeting at `flows/hello/FLOW.ts` and an Agent
-configuration. Save the `delegate/FLOW.md` example above as
-`flows/delegate/FLOW.md`. Create `bindings/delegate.ts`:
+configuration. To use an API directly instead of a native client, configure the
+[HTTP Agent method](https://jig.md/guide/agent-method#invoke-the-ordinary-flow)
+as the project's Agent; the delegate below is unchanged.
+
+Save the `delegate/FLOW.md` example above as `flows/delegate/FLOW.md`. Create `bindings/delegate.ts`:
 
 ```ts
 import { defineBinding } from "@jigging/jig";
@@ -110,13 +113,17 @@ Review the project, approve the intended source and grants, then invoke it:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:delegate --input '"Ada"'
+jig run binding:delegate --input '"Ada"' --timeout 4m
 ```
 
 The network option permits dependency resolution during review; it does not give
 the Markdown method network access. A successful run contains `outcome: "done"`
 and `output: { "message": "Hello, Ada!" }`. The Markdown interpreter also uses
 the project's configured Agent, so this example makes model calls.
+The four-minute limit gives those sequential calls room to finish; the CLI's
+default is 30 seconds. Actual time depends on the selected Agent and host. The
+limit bounds the whole invocation, including child calls and cleanup; it is
+not a latency guarantee.
 
 Change the greeting in `flows/hello/FLOW.ts` from `Hello,` to `Welcome,`, review
 again, and repeat the run. The caller's Markdown stays unchanged; the expected

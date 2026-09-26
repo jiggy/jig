@@ -134,11 +134,11 @@ showcase:
 <article className="adopter-card">
 <span className="adopter-badge">Direct-run Host</span>
 <h3>Jig</h3>
-<p>Local and containerized host for direct FLOW execution. Discovers packages, reviews permissions and capabilities, admits executable know-how under human-controlled policies, and executes Flows across Markdown, TypeScript, and Python with live progress channels.</p>
+<p>A local Linux host for running reviewed Markdown and TypeScript Flows with your configured Agents. Combine methods through dependency slots, stream progress, and control the powers each method receives.</p>
 <ul className="adopter-caps">
 <li>Package/0 and Run/0 wire host</li>
-<li>Markdown/0, TypeScript, and Python runtimes</li>
-<li>Human-in-the-loop review and capability admission</li>
+<li>Markdown/0 and TypeScript runtimes</li>
+<li>Explicit source review and operator-granted powers</li>
 <li>Streaming progress channels and child slot composition</li>
 </ul>
 <div className="adopter-actions">

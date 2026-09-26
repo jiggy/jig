@@ -60,6 +60,10 @@ and invocation-contract semantics.
 - Make public-alpha status prominent and concise: specifications and APIs may
   change, and early users can help shape them. Avoid lengthy compatibility
   declarations in introductory copy.
+- Skill compatibility evidence separates parsing, execution qualification, task
+  achievement and constraint preservation. Identify synthetic tests, live
+  interpreter experiments and installed-host checks separately; `done` alone
+  proves neither a completed task nor compliance with prose instructions.
 - Keep Python installation guidance independent of the current alpha number:
   link to the PyPI project and use `--pre`; exact versions belong in manifests
   and immutable release records.
