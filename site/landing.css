@@ -517,6 +517,101 @@ html.dark {
 }
 .reader-card:hover .card-link { transform: translateX(4px); }
 
+/* Built with FLOW Adopters section */
+.adopters-section {
+  padding: 5rem 0 3rem;
+  border-top: 1px solid var(--rp-c-divider-light);
+}
+.adopters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin: 3rem 0 2rem;
+}
+.adopter-card {
+  display: flex;
+  flex-direction: column;
+  padding: 2.2rem 2rem;
+  border: 1px solid var(--rp-c-divider-light);
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--rp-c-bg) 0%, var(--rp-c-bg-soft) 100%);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 10px -2px rgba(0, 0, 0, .04);
+  transition: border-color .22s ease, transform .22s ease, box-shadow .22s ease;
+}
+.adopter-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px -6px color-mix(in srgb, var(--accent) 18%, transparent), 0 4px 12px -2px rgba(0, 0, 0, .05);
+}
+.adopter-card--invitation {
+  border-style: dashed;
+  background: var(--rp-c-bg-soft);
+}
+.adopter-badge {
+  font: 700 .72rem/1.5 'JetBrains Mono', monospace;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: .6rem;
+}
+.product-story .adopter-card h3, .rp-doc .adopter-card h3 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  margin: .4rem 0 .8rem;
+  color: var(--rp-c-text-1);
+}
+.product-story .adopter-card p, .rp-doc .adopter-card p {
+  font-size: .88rem;
+  line-height: 1.7;
+  color: var(--rp-c-text-2);
+  margin: 0 0 1.4rem;
+}
+.adopter-caps {
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 0 0 1.8rem !important;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.adopter-caps li {
+  font-size: .82rem;
+  line-height: 1.5;
+  color: var(--rp-c-text-1);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.adopter-caps li::before {
+  content: '✓';
+  color: var(--accent);
+  font-weight: 800;
+}
+.adopter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin-top: auto;
+  align-items: center;
+}
+.adopter-actions a {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none !important;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  transition: transform .18s ease;
+}
+.adopter-actions a:hover {
+  transform: translateX(3px);
+  text-decoration: underline !important;
+}
+
 /* Closing CTA banner */
 .product-story .closing-cta {
   margin: 4.5rem 0 2rem; padding: 5.5rem 2rem; text-align: center;

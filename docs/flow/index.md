@@ -124,6 +124,44 @@ showcase:
 </div>
 </section>
 
+<section className="adopters-section">
+<div className="section-header">
+<p className="eyebrow">Built with FLOW</p>
+<h2>Real implementations.<br />Independent hosts.</h2>
+<p className="section-description">FLOW is an open, host-neutral standard. Explore runtimes, platforms, and hosts that run and compose Flows in practice.</p>
+</div>
+<div className="adopters-grid" role="region" aria-label="FLOW hosts and integrations">
+<article className="adopter-card">
+<span className="adopter-badge">Direct-run Host</span>
+<h3>Jig</h3>
+<p>Local and containerized host for direct FLOW execution. Discovers packages, reviews permissions and capabilities, admits executable know-how under human-controlled policies, and executes Flows across Markdown, TypeScript, and Python with live progress channels.</p>
+<ul className="adopter-caps">
+<li>Package/0 and Run/0 wire host</li>
+<li>Markdown/0, TypeScript, and Python runtimes</li>
+<li>Human-in-the-loop review and capability admission</li>
+<li>Streaming progress channels and child slot composition</li>
+</ul>
+<div className="adopter-actions">
+<a href="https://jig.md/" target="_blank" rel="noopener noreferrer">Explore Jig host ↗</a>
+<a href="/guide/markdown#run-the-greeting">Inspect Markdown greeting demo ↗</a>
+</div>
+</article>
+<article className="adopter-card adopter-card--invitation">
+<span className="adopter-badge">Community &amp; Partners</span>
+<h3>Add your host or platform</h3>
+<p>Building an agent platform, coding assistant, or execution runtime that implements FLOW? Share your implementation with the ecosystem. We evaluate every host by the same capability, support, and evidence criteria.</p>
+<ul className="adopter-caps">
+<li>Host-neutral protocol conformance</li>
+<li>Autonomous ACP agent or client integration</li>
+<li>Open, unencumbered Community Specification</li>
+</ul>
+<div className="adopter-actions">
+<a href="https://github.com/jiggy/jig/discussions" target="_blank" rel="noopener noreferrer">Submit an integration ↗</a>
+</div>
+</article>
+</div>
+</section>
+
 <section className="closing-cta"><h2>Start small.<br />Build something more capable.</h2><p>Write a single Flow or bring an existing Skill. Run it with an SDK or compatible host, and connect it to your application.</p><a className="action action--brand" href="/guide/start">Build your first Flow <span aria-hidden="true">↗</span></a><p className="start-note">Public alpha · Community Specification, Apache-2.0 &amp; CC-BY-4.0 · Open to feedback</p></section>
 <details className="honest-details" id="what-to-know"><summary>What to know about FLOW (public alpha &amp; licensing)</summary><p><strong>Public alpha:</strong> FLOW specifications, SDKs, and wire protocols are provisional. APIs and draft semantics may evolve based on real-world adoption. Help shape FLOW by reporting implementation experience or proposing changes in <a href="https://github.com/jiggy/jig/discussions">GitHub Discussions</a> or <a href="https://github.com/jiggy/jig/issues">Issues</a>.</p><p><strong>Licensing:</strong> Normative specifications and working-group materials use the <a href="https://github.com/jiggy/jig/blob/main/LICENSES/Community-Spec-1.0.md">Community Specification License 1.0</a>; SDKs, machine schemas, examples, and conformance tooling use <a href="https://github.com/jiggy/jig/blob/main/LICENSES/Apache-2.0.txt">Apache License 2.0</a>; explanatory documentation and site guides use <a href="https://github.com/jiggy/jig/blob/main/LICENSES/CC-BY-4.0.txt">Creative Commons Attribution 4.0 (CC-BY-4.0)</a>. See <a href="https://github.com/jiggy/jig/blob/main/LICENSES.md">LICENSES.md</a>.</p><p><strong>Execution &amp; Boundaries:</strong> Skills can bundle executable scripts; FLOW adds a standard package format and invocation contract. Markdown implementations require a compatible interpreter and host-granted capabilities (see the <a href="/guide/skills">Skill compatibility guide</a>). A shared interface does not guarantee identical judgment, cost, latency, or safety across different model providers. Hosts provide execution and security boundaries; FLOW does not enforce runtime isolation.</p><p><a href="/spec/package-format">Package specification</a> · <a href="/spec/run-protocol">Run protocol</a> · <a href="/guide/for-agents">For Agents</a> · <a href="https://github.com/jiggy/jig/blob/main/Governance.md">Governance &amp; Stewardship</a></p></details>
 <nav className="landing-routes" aria-label="More FLOW resources"><a href="/guide/overview">Documentation</a><a href="/guide/">Specifications</a><a href="/guide/typescript">TypeScript SDK</a><a href="/guide/python">Python SDK</a><a href="/guide/for-agents">For Agents</a><a href="https://github.com/jiggy/jig/discussions">Discussions</a><a href="https://github.com/jiggy/jig/blob/main/Governance.md">Governance</a><a href="https://github.com/jiggy/jig/blob/main/LICENSES.md">Licenses</a><a href="https://jig.md/">Jig host</a></nav>
