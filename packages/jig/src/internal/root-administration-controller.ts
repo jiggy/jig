@@ -249,9 +249,26 @@ function createController(input: {
   }
 
   async function settleRun(runId: string): Promise<void> {
-    const settled = await retryPrivateBusy(
-      async () => await input.execute(runId, input.coordinator, cancellation.signal),
-    )
+    let settled: PrivateRootExecutionDisposition
+    try {
+      settled = await retryPrivateBusy(
+        async () => await input.execute(runId, input.coordinator, cancellation.signal),
+      )
+    } catch (error) {
+      // A pending-work snapshot may outlive the task that committed its
+      // terminal. Reacquisition then refuses execution; consume only the
+      // matching durable terminal, without dispatching again.
+      if (!(error instanceof CheckError) || error.code !== 'RUN_ALREADY_TERMINAL') throw error
+      const run = await retryPrivateBusy(() =>
+        loadPrivateRootRunForCoordinator({
+          coordinator: input.coordinator,
+          projectRoot: input.projectRoot,
+          runId,
+        }),
+      )
+      if (run.runId !== runId || run.state !== 'terminal') throw error
+      settled = { state: 'terminal', run }
+    }
     if (settled.state === 'pending') {
       throw new RootAdministrationError(
         'PROJECT_BUSY',

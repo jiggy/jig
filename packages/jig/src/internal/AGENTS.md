@@ -370,7 +370,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   catches its operation error. A conclusively cleaned child failure remains
   recoverable with ordinary language handling; no result-acknowledgement ledger.
 - Root status reports a failed ownership-settlement attempt instead of silently
-  scheduling it again. Keep its durable work for coordinator recovery; polling
+  treating polling as permission to retry. A stale pending-work snapshot may
+  encounter `RUN_ALREADY_TERMINAL`; accept that refusal only after loading the
+  matching durable terminal under the current coordinator, without redispatch.
+  Keep failed durable work for coordinator recovery; polling
   or draining does not clear that failure or authorize another dispatch.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
@@ -767,6 +770,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   for terminal settlement, including cleanup. Linux retains its existing waits.
   Aggregate scenario tests allow each independently bounded Run to settle;
   these test windows never expand workload enforcement limits.
+- Mac repair application qualification uses the public guide’s five-minute Run
+  budget and allows setup and cleanup outside it. Linux keeps its existing
+  two/three-minute fixture budgets; production defaults remain unchanged.
 - Mac host conformance also enables the shared workspace preparation reuse and
   public CLI workspace dependency cases, plus installed command, HTTP Agent,
   Markdown, continuation and interruption checks. Linux-only preparation

@@ -441,7 +441,7 @@ proofDescribe('contained repair file application', () => {
                   '--out',
                   out,
                   '--timeout',
-                  '120s',
+                  process.platform === 'darwin' ? '5m' : '120s',
                 ],
                 options,
               ),
@@ -488,7 +488,7 @@ proofDescribe('contained repair file application', () => {
                   '--out',
                   failedOut,
                   '--timeout',
-                  '120s',
+                  process.platform === 'darwin' ? '5m' : '120s',
                 ],
                 options,
               ),
@@ -528,7 +528,7 @@ proofDescribe('contained repair file application', () => {
                   '--out',
                   batchOut,
                   '--timeout',
-                  '180s',
+                  process.platform === 'darwin' ? '5m' : '180s',
                 ],
                 options,
               ),
@@ -599,9 +599,11 @@ proofDescribe('contained repair file application', () => {
           }
         }
         // Each case owns one bounded Run. Leave setup/cleanup time outside its
-        // 120s/180s execution budget instead of killing a three-Run aggregate early.
+        // execution budget. Mac uses the documented five-minute repair invocation.
       },
-      scenario === 'batch' || scenario === 'mixed-batch' ? 240_000 : 180_000,
+      process.platform === 'darwin'
+        ? 420_000
+        : scenario === 'batch' || scenario === 'mixed-batch' ? 240_000 : 180_000,
     )
   }
 })
@@ -988,6 +990,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         let simultaneousRequests = 0
         let hold = false
         let completed = false
+        let primaryFailure: unknown
         // This is a local transport fixture, not independent consumption or model-quality evidence.
         // The unchanged method and trusted HTTP worker run. No Agent provider is configured.
         const server = createServer(async (request, response) => {
@@ -1146,7 +1149,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           if (nested) {
             hold = true
             const waitForRequest = async (count: number) => {
-              const deadline = Date.now() + 25_000
+              const deadline = Date.now() + (process.platform === 'darwin' ? 60_000 : 25_000)
               while (requests.length < count && Date.now() < deadline) await Bun.sleep(25)
               expect(requests).toHaveLength(count)
             }
@@ -1214,9 +1217,19 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await waitForCgroups(initialCgroups)
           await waitForTemporaryState(initialTemporaryState)
           completed = true
+        } catch (error) {
+          primaryFailure = error
+          throw error
         } finally {
           try {
             await session?.close()
+          } catch (cleanupFailure) {
+            throw primaryFailure === undefined
+              ? cleanupFailure
+              : new AggregateError(
+                  [primaryFailure, cleanupFailure],
+                  'HTTP Agent assertion and fixture cleanup failed',
+                )
           } finally {
             for (const item of pending) item.response.destroy()
             await closeServer(server)

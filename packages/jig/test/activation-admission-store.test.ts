@@ -17,6 +17,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { main, privateCliPrepareArguments } from '../src/cli.js'
+import { CheckError } from '../src/diagnostics.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -581,7 +582,65 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  for (const scenario of ['pending', 'throws'] as const) {
+  test('root controller consumes a durable terminal when pending-work reacquisition loses the race', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    let executions = 0
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      controller = await attachPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        coordinator,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          executions++
+          const terminal = successTerminal({ accepted: true })
+          await settleExecution(fixture, owner, runId, terminal)
+          await closePrivateRootExecution({
+            coordinator: owner,
+            projectRoot: fixture.root,
+            runId,
+            terminal,
+          })
+          // Model a stale pending-work observation reaching the real
+          // reacquisition boundary after another task committed completion.
+          await reacquirePrivateRootExecutionWork({
+            coordinator: owner,
+            projectRoot: fixture.root,
+            packageStoreRoot: fixture.store,
+            runId,
+          })
+          throw new Error('terminal reacquisition unexpectedly succeeded')
+        },
+      })
+      const { runId } = await controller.administration.startRun({
+        submissionId: 'terminal-race',
+        target: { kind: 'flow', path: 'flows/run' },
+        input: { value: 'first' },
+      })
+      await controller.drain()
+      for (let poll = 0; poll < 4; poll++) {
+        expect(await controller.administration.runStatus({ runId })).toMatchObject({
+          runId,
+          state: 'terminal',
+          terminal: { status: 'succeeded', output: { accepted: true } },
+        })
+      }
+      expect(executions).toBe(1)
+      await controller.dispose()
+    } finally {
+      await controller?.dispose().catch(() => undefined)
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  for (const scenario of ['pending', 'throws', 'terminal-refusal-without-terminal'] as const) {
     test(`root status exposes ${scenario} settlement without silently rescheduling`, async () => {
       const fixture = await createFixture('ready')
       let coordinator: PrivateProjectCoordinator | undefined
@@ -600,6 +659,9 @@ describe.serial('direct alpha activation store', () => {
           async execute() {
             executions++
             if (scenario === 'throws') throw new Error('private cleanup cause')
+            if (scenario === 'terminal-refusal-without-terminal') {
+              throw new CheckError('invalid', 'RUN_ALREADY_TERMINAL', 'unproved terminal')
+            }
             return { state: 'pending', reason: 'fence-unconfirmed' }
           },
         })
