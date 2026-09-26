@@ -120,5 +120,5 @@ operational baselines, and public-site assembly.
 
 ## Child DOX Index
 
-- [ci/AGENTS.md](ci/AGENTS.md) — Disposable privileged CI-host provisioning
-  and residue checks.
+- [ci/AGENTS.md](ci/AGENTS.md) — Disposable Linux proof-host provisioning,
+  rootless Mac candidate qualification, frozen archives, and residue checks.

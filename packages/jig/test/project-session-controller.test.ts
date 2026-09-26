@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -137,8 +137,13 @@ describe('private finite project session', () => {
         code: 'PROJECT_CLOSED',
       })
 
-      const reopened = await openPrivateProjectSession({ directory: root, host: inertHost() })
-      await reopened.close()
+      const descriptors = process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'
+      const before = (await readdir(descriptors)).length
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const reopened = await openPrivateProjectSession({ directory: root, host: inertHost() })
+        await reopened.close()
+      }
+      expect((await readdir(descriptors)).length).toBe(before)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

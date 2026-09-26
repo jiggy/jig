@@ -1,9 +1,16 @@
-import { constants, type BigIntStats } from 'node:fs'
+import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, open, opendir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
+import {
+  privateMacosAnonymousBacking,
+  privateMacosDirectory,
+  privateMacosDuplicate,
+  privateMacosOpenAt,
+  privateMacosStatAt,
+} from '../internal/macos-descriptor-files.js'
 import { packageDigest } from './digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from './paths.js'
 
@@ -18,6 +25,7 @@ const MAX_DIRECTORY_NAME_BYTES = 16 * 1024 * 1024
 const MAX_DIRECTORY_ENTRIES = 262_144
 // Linux O_TMPFILE is __O_TMPFILE | O_DIRECTORY; Node does not expose it.
 const O_TMPFILE = 0o20000000 | constants.O_DIRECTORY
+const backingReaders = new WeakMap<FileHandle, FileHandle>()
 
 /** Resource ceiling shared with private materializers which verify by recapture. */
 export const PACKAGE_CAPTURE_LIMITS = Object.freeze({ directories: MAX_DIRECTORIES })
@@ -70,12 +78,12 @@ export interface PackageCaptureSelection {
   readonly maximumBytes: number
 }
 
-/** Capture one mutable Linux directory into one unnamed read-only snapshot. */
+/** Capture one mutable directory into one unnamed read-only snapshot. */
 export async function capturePackageDirectory(source: string): Promise<CapturedPackage> {
-  if (process.platform !== 'linux') {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PACKAGE_CAPTURE_UNAVAILABLE',
-      'the first filesystem source adapter requires Linux descriptor paths and O_TMPFILE',
+      'this host has no qualified filesystem source adapter; use a supported Jig host',
     )
   }
 
@@ -114,10 +122,10 @@ export async function captureOpenedPackageDirectory(
   directory: FileHandle,
   selection?: PackageCaptureSelection,
 ): Promise<CapturedPackage> {
-  if (process.platform !== 'linux') {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PACKAGE_CAPTURE_UNAVAILABLE',
-      'opened-directory capture requires Linux descriptor paths and O_TMPFILE',
+      'this host has no qualified opened-directory capture; use a supported Jig host',
     )
   }
 
@@ -182,6 +190,13 @@ async function captureOpenedRootAttempt(
       throw error
     }
   } finally {
+    if (backing !== undefined) {
+      await backingReaders
+        .get(backing)
+        ?.close()
+        .catch(() => undefined)
+      backingReaders.delete(backing)
+    }
     await backing?.close().catch(() => undefined)
   }
 }
@@ -307,10 +322,13 @@ async function duplicateDirectoryRoot(
 ): Promise<OpenRoot> {
   let handle: FileHandle
   try {
-    handle = await open(
-      `/proc/self/fd/${directory.fd}`,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK,
-    )
+    handle =
+      process.platform === 'darwin'
+        ? await privateMacosDuplicate(directory.fd)
+        : await open(
+            `/proc/self/fd/${directory.fd}`,
+            constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK,
+          )
   } catch (error) {
     if (isResourceError(error))
       resourceExhausted(error, 'cannot duplicate opened package directory', sourceRoot)
@@ -347,6 +365,11 @@ async function verifyRootPath(root: OpenRoot): Promise<void> {
 
 async function openAnonymousBacking(): Promise<FileHandle> {
   try {
+    if (process.platform === 'darwin') {
+      const { writer, reader } = await privateMacosAnonymousBacking()
+      backingReaders.set(writer, reader)
+      return writer
+    }
     return await open(tmpdir(), constants.O_RDWR | O_TMPFILE, 0o600)
   } catch (error) {
     if (isResourceError(error)) resourceExhausted(error, 'cannot create the package snapshot')
@@ -557,7 +580,10 @@ async function* readDirectoryNames(directory: FileHandle): AsyncIterable<string>
       path: string,
       options: { readonly encoding: 'buffer' },
     ) => Promise<RawDirectory>
-    stream = await openRawDirectory(`/proc/self/fd/${directory.fd}`, { encoding: 'buffer' })
+    stream =
+      process.platform === 'darwin'
+        ? privateMacosDirectory(directory.fd)
+        : await openRawDirectory(`/proc/self/fd/${directory.fd}`, { encoding: 'buffer' })
   } catch (error) {
     if (isResourceError(error))
       resourceExhausted(error, 'cannot open package directory enumeration')
@@ -600,6 +626,7 @@ async function* readDirectoryNames(directory: FileHandle): AsyncIterable<string>
     try {
       await stream.close()
     } catch (error) {
+      // biome-ignore lint/correctness/noUnsafeFinally: A failed descriptor close invalidates capture even after enumeration.
       if (!isDirectoryAlreadyClosed(error)) throw error
     }
   }
@@ -633,7 +660,10 @@ async function openDirectoryEntry(
   const descriptorPath = `/proc/self/fd/${directory.fd}/${name}`
   let observed: BigIntStats
   try {
-    observed = await lstat(descriptorPath, { bigint: true })
+    observed =
+      process.platform === 'darwin'
+        ? privateMacosStatAt(directory.fd, name)
+        : await lstat(descriptorPath, { bigint: true })
   } catch (error) {
     if (isResourceError(error))
       resourceExhausted(error, 'cannot inspect package entry', logicalPath)
@@ -652,7 +682,10 @@ async function openDirectoryEntry(
     (observed.isDirectory() ? constants.O_DIRECTORY : 0)
   let handle: FileHandle
   try {
-    handle = await open(descriptorPath, flags)
+    handle =
+      process.platform === 'darwin'
+        ? await privateMacosOpenAt(directory.fd, name, flags)
+        : await open(descriptorPath, flags)
   } catch (error) {
     if (isResourceError(error)) resourceExhausted(error, 'cannot open package entry', logicalPath)
     if (isEntryRace(error)) sourceChanged('package entry changed while it was opened', logicalPath)
@@ -683,16 +716,22 @@ async function sealSnapshot(
   try {
     const byPath = new Map(records.map((record) => [record.path, record]))
     const before = await writable.stat({ bigint: true })
-    if (!before.isFile() || before.size !== BigInt(expectedSize)) {
+    if (!before.isFile() || before.nlink !== 0n || before.size !== BigInt(expectedSize)) {
       invalid('PACKAGE_STAGE_CHANGED', 'package snapshot size changed before sealing')
     }
     await writable.chmod(0o400)
-    readonly = await open(`/proc/self/fd/${writable.fd}`, constants.O_RDONLY)
+    if (process.platform === 'darwin') {
+      readonly = backingReaders.get(writable)
+      backingReaders.delete(writable)
+      if (readonly === undefined)
+        invalid('PACKAGE_STAGE_CHANGED', 'package snapshot lost its private reader')
+    } else readonly = await open(`/proc/self/fd/${writable.fd}`, constants.O_RDONLY)
     const after = await readonly.stat({ bigint: true })
-    if (!sameIdentity(before, after) || after.size !== BigInt(expectedSize)) {
+    if (!sameIdentity(before, after) || after.nlink !== 0n || after.size !== BigInt(expectedSize)) {
       invalid('PACKAGE_STAGE_CHANGED', 'package snapshot identity changed while sealing')
     }
     await writable.close()
+    const reader = readonly
 
     let disposed = false
     return {
@@ -701,12 +740,12 @@ async function sealSnapshot(
           unavailable('PACKAGE_SNAPSHOT_CLOSED', 'package snapshot has been disposed', path)
         const record = byPath.get(path)
         if (record === undefined) invalid('PACKAGE_FILE_MISSING', `package has no ${path}`, path)
-        return readRange(readonly!, record.offset, Math.min(record.size, maximumBytes), path)
+        return readRange(reader, record.offset, Math.min(record.size, maximumBytes), path)
       },
       async dispose(): Promise<void> {
         if (disposed) return
         disposed = true
-        await readonly!.close().catch(() => undefined)
+        await reader.close().catch(() => undefined)
         byPath.clear()
       },
     }

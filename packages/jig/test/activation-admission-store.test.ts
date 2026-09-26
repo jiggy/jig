@@ -1,11 +1,12 @@
 import { describe, expect, setDefaultTimeout, spyOn, test } from 'bun:test'
 import { createHash } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 import {
   chmod,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   rename,
   rm,
   stat,
@@ -14,7 +15,8 @@ import {
 } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { main, privateCliPrepareArguments } from '../src/cli.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -52,8 +54,6 @@ import {
   submitPrivateRootRun,
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
-import { main, privateCliPrepareArguments } from '../src/cli.js'
-import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
@@ -64,6 +64,7 @@ import {
   encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../src/internal/project-local-lock.js'
+import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
 
@@ -3405,7 +3406,8 @@ function openSqlite(path: string, mode: 'readonly' | 'readwrite'): any {
     mode === 'readonly'
       ? sqlite.constants.SQLITE_OPEN_READONLY
       : sqlite.constants.SQLITE_OPEN_READWRITE
-  return sqlite.Database.open(path, access | sqlite.constants.SQLITE_OPEN_NOFOLLOW)
+  const visible = join(realpathSync(dirname(path)), basename(path))
+  return sqlite.Database.open(visible, access | sqlite.constants.SQLITE_OPEN_NOFOLLOW)
 }
 
 function json1(value: JsonValue): Uint8Array {

@@ -4,13 +4,15 @@ import { join } from 'node:path'
 
 import { invalid, unavailable } from '../diagnostics.js'
 import {
-  PrivateLinuxCgroupBackend,
-  type PrivateLinuxCgroupLimits,
-} from '../internal/linux-rootless-backend.js'
+  launchPrivateExecution,
+  type PrivateAutomaticExecutionLaunchPlan,
+  type PrivateExecutionBackend,
+  privateExecutionBackendKind,
+} from '../internal/execution-backend.js'
 import {
+  type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
-  type PrivateInstalledBunSupport,
 } from '../internal/installed-bun-support.js'
 import {
   canonicalJson,
@@ -22,12 +24,12 @@ import {
 } from '../json.js'
 import { compileEmbeddedSchema } from '../schema/index.js'
 import {
-  normalizeJigDefinition,
-  normalizePackageBindingDefinition,
   type BindingDefinition,
   type JigDefinition,
+  normalizeJigDefinition,
+  normalizePackageBindingDefinition,
 } from './author.js'
-import { isCapturedAuthorClosure, type CapturedAuthorClosure } from './author-module.js'
+import { type CapturedAuthorClosure, isCapturedAuthorClosure } from './author-module.js'
 
 const PROTOCOL = 'jig-author-evaluator/1'
 const MAX_STDERR_BYTES = 64 * 1024
@@ -41,6 +43,16 @@ const EVALUATOR_LIMIT_POLICY = Object.freeze({
   cancellationGraceMs: 1_000,
   cleanupTimeoutMs: 5_000,
 })
+const MACOS_EVALUATOR_WALL_CLOCK_CEILING_MS = 10_000
+type EvaluatorLimitPolicy = Readonly<{
+  memoryBytes: number
+  pids: number
+  cpuQuotaMicros: number
+  cpuPeriodMicros: number
+  wallClockCeilingMs: number
+  cancellationGraceMs: number
+  cleanupTimeoutMs: number
+}>
 const EVALUATION_CODES = new Set([
   'PROJECT_AUTHORING_VALUE',
   'PROJECT_DEFAULT_EXPORT',
@@ -58,7 +70,7 @@ export type AuthorEvaluationExpectation = 'project' | 'binding'
 type AuthoringProfile = 'project-authoring/1'
 
 export interface PrivateAuthorEvaluatorOptions {
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly installedSupport: PrivateInstalledBunSupport
 }
 
@@ -77,23 +89,36 @@ export interface EvaluatorProfile {
     readonly digest: string
   }
   readonly buildOptions: 'bun-cjs-closed-static-closure/1'
-  readonly sandbox: {
-    readonly kind: 'linux-rootless-cgroup-v2-bubblewrap/1'
-    readonly mechanismDigest: string
-    readonly sealedPlanDigest: string
-    readonly bubblewrapPath: string
-    readonly bubblewrapDigest: string
-    readonly coordinatorRuntimePath: string
-    readonly coordinatorRuntimeDigest: string
-    readonly supervisorPath: string
-    readonly supervisorDigest: string
-    readonly payloadUid: number
-    readonly payloadGid: number
-    /** Stable policy only; invocation-local absolute deadlines are enforcement evidence. */
-    readonly limits: typeof EVALUATOR_LIMIT_POLICY
-    readonly privateProcessFilesystem: true
-    readonly privateRuntimeDevices: true
-  }
+  readonly sandbox:
+    | {
+        readonly kind: 'linux-rootless-cgroup-v2-bubblewrap/1'
+        readonly mechanismDigest: string
+        readonly sealedPlanDigest: string
+        readonly bubblewrapPath: string
+        readonly bubblewrapDigest: string
+        readonly coordinatorRuntimePath: string
+        readonly coordinatorRuntimeDigest: string
+        readonly supervisorPath: string
+        readonly supervisorDigest: string
+        readonly payloadUid: number
+        readonly payloadGid: number
+        /** Stable policy only; invocation-local absolute deadlines are enforcement evidence. */
+        readonly limits: EvaluatorLimitPolicy
+        readonly privateProcessFilesystem: true
+        readonly privateRuntimeDevices: true
+      }
+    | {
+        readonly kind: 'macos-supervised-seatbelt/1'
+        readonly mechanismDigest: string
+        readonly sealedPlanDigest: string
+        readonly supervisorPath: string
+        readonly supervisorDigest: string
+        readonly launcherPath: string
+        readonly launcherDigest: string
+        readonly limits: EvaluatorLimitPolicy
+        readonly resourceAccounting: 'supervised-sampled-with-termination'
+        readonly resourceOvershoot: true
+      }
 }
 
 export interface EvaluatedAuthorDeclaration<
@@ -118,20 +143,21 @@ export interface EvaluatedAuthorDeclaration<
   readonly outputDigest: string
   readonly value: Value
   readonly enforcement: {
-    readonly cgroup: {
-      readonly runCgroup: string
-      readonly payloadPid: number
-      readonly supervisorPid: number
-    }
+    readonly owner:
+      | {
+          readonly kind: 'linux-cgroup'
+          readonly runCgroup: string
+          readonly payloadPid: number
+          readonly supervisorPid: number
+        }
+      | { readonly kind: 'macos-process'; readonly pid: number; readonly version: number }
     readonly terminal: {
       readonly reason: 'payload_exit'
       readonly exitCode: 0
       readonly signal: null
       readonly fenced: true
     }
-    readonly cpuStat: Readonly<Record<string, number>>
-    readonly memoryEvents: Readonly<Record<string, number>>
-    readonly pidsEvents: Readonly<Record<string, number>>
+    readonly evidence: Readonly<Record<string, number | string>>
   }
 }
 
@@ -202,36 +228,29 @@ export async function evaluateAuthorClosure(
     modules,
   })
   const runId = `config-${process.pid.toString(36)}-${(++evaluationSequence).toString(36)}`
-  const limits = evaluatorLimits()
-  const component = await options.backend
-    .launch(
-      {
-        runId,
-        limits,
-        readOnlyMounts: [
-          ...runtimeMounts,
-          { source: installedSupport.evaluatorSupportPath, destination: '/jig-evaluator' },
-        ],
-        command: [
-          installedSupport.sandboxExecutablePath,
-          '/jig-evaluator/project-evaluator-worker.js',
-        ],
-      },
-      signal,
+  const policy = evaluatorLimitPolicy(options.backend)
+  const limits = evaluatorLimits(policy)
+  const component = await launchPrivateExecution(
+    options.backend,
+    evaluatorLaunchPlan(options.backend, installedSupport, runId, limits),
+    signal,
+  ).catch((error) => {
+    return unavailable(
+      'PROJECT_EVALUATOR_LAUNCH',
+      `cannot launch evaluator envelope: ${errorText(error)}`,
+      entryProjectPath,
     )
-    .catch((error) =>
-      unavailable(
-        'PROJECT_EVALUATOR_LAUNCH',
-        `cannot launch evaluator envelope: ${errorText(error)}`,
-        entryProjectPath,
-      ),
-    )
-  if (
-    !component.envelope.privateProcessFilesystem ||
-    !component.envelope.privateRuntimeDevices ||
-    !sameEvaluatorLimits(component.envelope.limits, limits) ||
-    component.envelope.trustedCoordinatorBunDigest !== installedSupport.executableDigest
-  ) {
+  })
+  const validEnvelope =
+    component.envelope.kind === 'linux-rootless-cgroup-v2-bubblewrap/1'
+      ? component.envelope.privateProcessFilesystem &&
+        component.envelope.privateRuntimeDevices &&
+        sameEvaluatorLimits(component.envelope.limits, limits) &&
+        component.envelope.trustedCoordinatorBunDigest === installedSupport.executableDigest
+      : component.envelope.resourceAccounting === 'supervised-sampled-with-termination' &&
+        component.envelope.resourceOvershoot === true &&
+        sameEvaluatorLimits(component.envelope.limits, limits)
+  if (!validEnvelope) {
     await component.terminate().catch(() => undefined)
     const completion = await component.completion.catch((error) =>
       unavailable(
@@ -255,22 +274,36 @@ export async function evaluateAuthorClosure(
   }
   const profile: EvaluatorProfile = Object.freeze({
     ...profileBase,
-    sandbox: Object.freeze({
-      kind: component.envelope.kind,
-      mechanismDigest: component.envelope.mechanismDigest,
-      sealedPlanDigest: component.envelope.sealedPlanDigest,
-      bubblewrapPath: component.envelope.trustedBubblewrapPath,
-      bubblewrapDigest: component.envelope.trustedBubblewrapDigest,
-      coordinatorRuntimePath: component.envelope.trustedCoordinatorBunPath,
-      coordinatorRuntimeDigest: component.envelope.trustedCoordinatorBunDigest,
-      supervisorPath: component.envelope.trustedSupervisorPath,
-      supervisorDigest: component.envelope.trustedSupervisorDigest,
-      payloadUid: component.envelope.payloadUid,
-      payloadGid: component.envelope.payloadGid,
-      limits: EVALUATOR_LIMIT_POLICY,
-      privateProcessFilesystem: component.envelope.privateProcessFilesystem,
-      privateRuntimeDevices: component.envelope.privateRuntimeDevices,
-    }),
+    sandbox:
+      component.envelope.kind === 'linux-rootless-cgroup-v2-bubblewrap/1'
+        ? Object.freeze({
+            kind: component.envelope.kind,
+            mechanismDigest: component.envelope.mechanismDigest,
+            sealedPlanDigest: component.envelope.sealedPlanDigest,
+            bubblewrapPath: component.envelope.trustedBubblewrapPath,
+            bubblewrapDigest: component.envelope.trustedBubblewrapDigest,
+            coordinatorRuntimePath: component.envelope.trustedCoordinatorBunPath,
+            coordinatorRuntimeDigest: component.envelope.trustedCoordinatorBunDigest,
+            supervisorPath: component.envelope.trustedSupervisorPath,
+            supervisorDigest: component.envelope.trustedSupervisorDigest,
+            payloadUid: component.envelope.payloadUid,
+            payloadGid: component.envelope.payloadGid,
+            limits: policy,
+            privateProcessFilesystem: component.envelope.privateProcessFilesystem,
+            privateRuntimeDevices: component.envelope.privateRuntimeDevices,
+          })
+        : Object.freeze({
+            kind: component.envelope.kind,
+            mechanismDigest: component.envelope.mechanismDigest,
+            sealedPlanDigest: component.envelope.sealedPlanDigest,
+            supervisorPath: installedSupport.supervisorPath,
+            supervisorDigest: installedSupport.supervisorDigest,
+            launcherPath: installedSupport.launcherPath!,
+            launcherDigest: installedSupport.launcherDigest!,
+            limits: policy,
+            resourceAccounting: component.envelope.resourceAccounting,
+            resourceOvershoot: component.envelope.resourceOvershoot,
+          }),
   })
 
   const stdout = collectBounded(component.stdout, MAX_STDOUT_BYTES, component.terminate)
@@ -292,14 +325,20 @@ export async function evaluateAuthorClosure(
         entryProjectPath,
       )
     }
-    if ((evidence.memoryEvents.max ?? 0) > 0) {
+    if (
+      ('memoryEvents' in evidence && (evidence.memoryEvents.max ?? 0) > 0) ||
+      terminationReason === 'memory_limit'
+    ) {
       invalid(
         'PROJECT_EVALUATION_LIMIT',
         'evaluator reached its hard memory limit',
         entryProjectPath,
       )
     }
-    if ((evidence.pidsEvents.max ?? 0) > 0) {
+    if (
+      ('pidsEvents' in evidence && (evidence.pidsEvents.max ?? 0) > 0) ||
+      terminationReason === 'process_limit'
+    ) {
       invalid(
         'PROJECT_EVALUATION_LIMIT',
         'evaluator reached its hard process limit',
@@ -372,16 +411,24 @@ export async function evaluateAuthorClosure(
       outputDigest: digestBytes(outputBytes),
       value: normalized,
       enforcement: Object.freeze({
-        cgroup: Object.freeze({ ...component.cgroup }),
+        owner:
+          'cgroup' in component
+            ? Object.freeze({ kind: 'linux-cgroup' as const, ...component.cgroup })
+            : Object.freeze({ kind: 'macos-process' as const, ...component.process }),
         terminal: Object.freeze({
           reason: terminationReason,
           exitCode: exit.exitCode,
           signal: exit.signal,
           fenced: exit.fenced,
         }) as EvaluatedAuthorDeclaration['enforcement']['terminal'],
-        cpuStat: frozenNumbers(evidence.cpuStat),
-        memoryEvents: frozenNumbers(evidence.memoryEvents),
-        pidsEvents: frozenNumbers(evidence.pidsEvents),
+        evidence:
+          'cpuStat' in evidence
+            ? Object.freeze({
+                ...prefixNumbers('cpu', evidence.cpuStat),
+                ...prefixNumbers('memory', evidence.memoryEvents),
+                ...prefixNumbers('pids', evidence.pidsEvents),
+              })
+            : Object.freeze({ ...evidence }),
       }),
     })
   } catch (error) {
@@ -479,25 +526,98 @@ function contextualAuthorSchema(
   }
 }
 
+function evaluatorLaunchPlan(
+  backend: PrivateExecutionBackend,
+  support: PrivateInstalledBunSupport,
+  runId: string,
+  limits: ReturnType<typeof evaluatorLimits>,
+): PrivateAutomaticExecutionLaunchPlan {
+  if (privateExecutionBackendKind(backend) === 'linux') {
+    return Object.freeze({
+      kind: 'linux',
+      plan: Object.freeze({
+        runId,
+        limits,
+        readOnlyMounts: [
+          ...support.runtimeMounts,
+          { source: support.evaluatorSupportPath, destination: '/jig-evaluator' },
+        ],
+        command: [
+          support.sandboxExecutablePath,
+          '/jig-evaluator/project-evaluator-worker.js',
+        ] as readonly [string, ...string[]],
+      }),
+    })
+  }
+  return Object.freeze({
+    kind: 'macos',
+    plan: (allocation) =>
+      Object.freeze({
+        runId,
+        limits: {
+          memoryBytes: limits.memoryBytes,
+          pids: limits.pids,
+          cpuQuotaMicros: limits.cpuQuotaMicros,
+          cpuPeriodMicros: limits.cpuPeriodMicros,
+          deadlineUnixMs: limits.deadlineUnixMs,
+          cleanupTimeoutMs: limits.cleanupTimeoutMs,
+        },
+        command: [
+          support.executablePath,
+          join(support.evaluatorSupportPath, 'project-evaluator-worker.js'),
+        ] as readonly [string, ...string[]],
+        cwd: support.evaluatorSupportPath,
+        environment: {
+          JIG_EVALUATOR_SDK: join(support.evaluatorSupportPath, 'project-evaluator-sdk.bundle.js'),
+        },
+        files: {
+          readOnlyFiles: [support.executablePath],
+          readOnlyTrees: [support.evaluatorSupportPath],
+          writableTrees: [],
+          protectedRoots: [join(allocation.directory, 'control')],
+          network: 'isolated' as const,
+        },
+        maxOutputBytes: MAX_STDOUT_BYTES + MAX_STDERR_BYTES,
+      }),
+  })
+}
+
 function exactKeys(value: object, expected: readonly string[]): boolean {
   const keys = Object.keys(value).sort()
   return keys.length === expected.length && keys.every((key, index) => key === expected[index])
 }
 
-function evaluatorLimits() {
+function evaluatorLimitPolicy(backend: PrivateExecutionBackend): EvaluatorLimitPolicy {
+  return privateExecutionBackendKind(backend) === 'macos'
+    ? Object.freeze({
+        ...EVALUATOR_LIMIT_POLICY,
+        wallClockCeilingMs: MACOS_EVALUATOR_WALL_CLOCK_CEILING_MS,
+      })
+    : EVALUATOR_LIMIT_POLICY
+}
+
+function evaluatorLimits(policy: EvaluatorLimitPolicy) {
   return Object.freeze({
-    memoryBytes: EVALUATOR_LIMIT_POLICY.memoryBytes,
-    pids: EVALUATOR_LIMIT_POLICY.pids,
-    cpuQuotaMicros: EVALUATOR_LIMIT_POLICY.cpuQuotaMicros,
-    cpuPeriodMicros: EVALUATOR_LIMIT_POLICY.cpuPeriodMicros,
-    deadlineUnixMs: Date.now() + EVALUATOR_LIMIT_POLICY.wallClockCeilingMs,
-    cancellationGraceMs: EVALUATOR_LIMIT_POLICY.cancellationGraceMs,
-    cleanupTimeoutMs: EVALUATOR_LIMIT_POLICY.cleanupTimeoutMs,
+    memoryBytes: policy.memoryBytes,
+    pids: policy.pids,
+    cpuQuotaMicros: policy.cpuQuotaMicros,
+    cpuPeriodMicros: policy.cpuPeriodMicros,
+    deadlineUnixMs: Date.now() + policy.wallClockCeilingMs,
+    cancellationGraceMs: policy.cancellationGraceMs,
+    cleanupTimeoutMs: policy.cleanupTimeoutMs,
   })
 }
 
 function sameEvaluatorLimits(
-  actual: PrivateLinuxCgroupLimits,
+  actual: {
+    readonly memoryBytes: number
+    readonly pids: number
+    readonly cpuQuotaMicros: number
+    readonly cpuPeriodMicros: number
+    readonly deadlineUnixMs: number
+    readonly cleanupTimeoutMs?: number
+    readonly cancellationGraceMs?: number
+  },
   expected: ReturnType<typeof evaluatorLimits>,
 ): boolean {
   return (
@@ -506,7 +626,8 @@ function sameEvaluatorLimits(
     actual.cpuQuotaMicros === expected.cpuQuotaMicros &&
     actual.cpuPeriodMicros === expected.cpuPeriodMicros &&
     actual.deadlineUnixMs === expected.deadlineUnixMs &&
-    actual.cancellationGraceMs === expected.cancellationGraceMs &&
+    (actual.cancellationGraceMs === undefined ||
+      actual.cancellationGraceMs === expected.cancellationGraceMs) &&
     actual.cleanupTimeoutMs === expected.cleanupTimeoutMs
   )
 }
@@ -539,10 +660,15 @@ function digestBytes(bytes: Uint8Array): string {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
 }
 
-function frozenNumbers(value: Readonly<Record<string, number>>): Readonly<Record<string, number>> {
+function prefixNumbers(
+  prefix: string,
+  value: Readonly<Record<string, number>>,
+): Readonly<Record<string, number>> {
   return Object.freeze(
     Object.fromEntries(
-      Object.entries(value).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+      Object.entries(value)
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([name, amount]) => [`${prefix}.${name}`, amount]),
     ),
   )
 }

@@ -248,6 +248,23 @@ do not weaken the product or turn the development host into architecture.
 A second containment implementation may eventually reveal a stable public
 Backend boundary. One mechanism alone has not earned it.
 
+Additional hosts should preserve native workload parity: ordinary Flows,
+dependencies, and native Agent clients should not need host-specific rewrites.
+Keep native workload compatibility distinct from resource-exhaustion protection.
+The authorized macOS design may use supervised resource accounting and termination
+with explicit overshoot limitations instead of Linux-equivalent aggregate hard
+quotas. Exact admission, authority isolation, complete descendant ownership and
+truthful cleanup remain required. Qualify those boundaries before product
+integration; synchronize any promoted host contract with specifications,
+implementation and tests. This design direction does not declare macOS supported
+or change the existing Linux contract. A constrained workload model or VM
+requirement still needs owner direction, not selection as a routine fallback.
+Prefer a macOS experience with no sudo, privileged helper installation or managed
+execution accounts. A privileged installation model requires a demonstrated,
+material tradeoff and explicit owner direction; temporary privileged probes do
+not select that product model. Investigate restrictive unprivileged profiles
+before adding installation authority or weakening confidentiality.
+
 ### Composition
 
 A Binding gives one Flow package a reusable project-local configuration.

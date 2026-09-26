@@ -1,18 +1,30 @@
 import { expect, spyOn, test } from 'bun:test'
+import { spawnSync } from 'node:child_process'
 import { closeSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { capturePrivateOutput } from '../src/internal/captured-output.js'
 import {
   PRIVATE_FILE_COMMAND_STOP_GRACE_MS,
   privateOwnFileCommand,
 } from '../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
-import { privateOpenFileRoot } from '../src/internal/linux-file-input.js'
+import { privateOpenFileRoot } from '../src/internal/file-input.js'
 import { PrivateRunCheckpoints } from '../src/internal/private-run-checkpoint.js'
 
 async function fixture(work: (root: string) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), 'jig-file-delivery-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-file-delivery-')))
   try {
     await work(root)
   } finally {
@@ -20,6 +32,104 @@ async function fixture(work: (root: string) => Promise<void>) {
   }
 }
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
+
+test.skipIf(process.platform !== 'darwin')(
+  'native command authenticates its parent and transfers renamed input roots and immutable final output',
+  async () =>
+    fixture(async (root) => {
+      const before = (await readdir('/private/tmp'))
+        .filter((name) => name.startsWith('jig-file-owner-'))
+        .sort()
+      for (const mode of ['snapshot', 'wrong-parent']) {
+        const destination = join(root, mode)
+        const exit = await privateOwnFileCommand(
+          [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+          ],
+          [destination, join(root, `${mode}.pid`), mode],
+          undefined,
+          10_000,
+        )
+        if (mode === 'snapshot') {
+          expect(exit).toEqual({ exitCode: 0, signal: null })
+          expect([...(await readFile(join(destination, 'files/nested/binary')))]).toEqual([
+            0, 255, 128,
+          ])
+          expect((await readFile(join(destination, 'files/empty'))).length).toBe(0)
+          expect(
+            JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).delivery.source,
+          ).toBe('final')
+        } else {
+          expect(exit.exitCode).not.toBe(0)
+          await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+        }
+      }
+      expect(
+        (await readdir('/private/tmp')).filter((name) => name.startsWith('jig-file-owner-')).sort(),
+      ).toEqual(before)
+    }),
+  25_000,
+)
+
+test('publishes immutable binary and empty output after its source storage is removed', async () =>
+  fixture(async (root) => {
+    const source = join(root, 'source')
+    await mkdir(join(source, 'nested'), { recursive: true })
+    await writeFile(join(source, 'nested/binary'), Buffer.from([0, 255, 128]))
+    await writeFile(join(source, 'empty'), '')
+    const fd = privateOpenFileRoot(source)
+    const capture = capturePrivateOutput(fd)
+    closeSync(fd)
+    await rm(source, { recursive: true })
+    const destination = join(root, 'result')
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    try {
+      await owner.prepare(destination, [])
+      const receipt = await owner.publish(record, { kind: 'snapshot', capture })
+      expect(receipt).toMatchObject({ status: 'written', source: 'final' })
+      expect(receipt.files?.map((file) => file.path)).toEqual(['empty', 'nested/binary'])
+      expect([...(await readFile(join(destination, 'files/nested/binary')))]).toEqual([0, 255, 128])
+      expect((await readFile(join(destination, 'files/empty'))).length).toBe(0)
+      expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))).toEqual({
+        ...record,
+        delivery: receipt,
+      })
+    } finally {
+      capture.close()
+      await owner.close()
+    }
+  }))
+
+test('copied or closed output capabilities and cleanup failure never authorize final files', async () =>
+  fixture(async (root) => {
+    const fd = privateOpenFileRoot(root)
+    const capture = capturePrivateOutput(fd)
+    closeSync(fd)
+    try {
+      for (const mode of ['copied', 'cleanup', 'closed']) {
+        if (mode === 'closed') capture.close()
+        const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+        try {
+          await owner.prepare(join(root, mode), [])
+          expect(
+            await owner.publish(mode === 'cleanup' ? { ...record, cleanup: {} } : record, {
+              kind: 'snapshot',
+              capture: mode === 'copied' ? { ...capture } : capture,
+            }),
+          ).toMatchObject({ status: 'failed', code: 'INVALID_FILES' })
+        } finally {
+          await owner.close()
+        }
+      }
+      expect(await readdir(root)).toEqual([])
+    } finally {
+      capture.close()
+    }
+  }))
 
 test('retained bytes survive execution cancellation but never an unconfirmed cleanup or output collision', async () =>
   fixture(async (root) => {
@@ -46,7 +156,7 @@ test('retained bytes survive execution cancellation but never an unconfirmed cle
       const retained = checkpoints.latest!
       const destination = join(root, mode)
       try {
-        await owner.prepare(destination, process.pid, [])
+        await owner.prepare(destination, [])
         abort.abort()
         if (mode === 'collision') {
           await mkdir(destination)
@@ -65,7 +175,6 @@ test('retained bytes survive execution cancellation but never an unconfirmed cle
         }
         const receipt = await owner.publish(
           record as any,
-          process.pid,
           undefined,
           mode === 'absent' || mode === 'empty-cleanup' ? undefined : retained,
           true,
@@ -110,10 +219,8 @@ test('ordinary terminal-only reporting preserves cleanup failure without claimin
     const destination = join(root, 'result')
     const failedCleanup = { ...record, cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } }
     try {
-      await owner.prepare(destination, process.pid, [])
-      expect(
-        await owner.publish(failedCleanup, process.pid, undefined, undefined, true),
-      ).toMatchObject({
+      await owner.prepare(destination, [])
+      expect(await owner.publish(failedCleanup, undefined, undefined, true)).toMatchObject({
         status: 'written',
         source: 'none',
         files: [],
@@ -133,11 +240,10 @@ test('late cancellation rejects cleanup-failed terminal retention with an empty 
     const abort = new AbortController()
     const owner = new PrivateFileDeliveryOwner(abort.signal, async () => abort.abort())
     try {
-      await owner.prepare(join(root, 'result'), process.pid, [])
+      await owner.prepare(join(root, 'result'), [])
       expect(
         await owner.publish(
           { ...record, cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } },
-          process.pid,
           undefined,
           undefined,
           true,
@@ -166,11 +272,13 @@ test('accepted checkpoints never make final-file capture survive cancellation', 
     })
     checkpoints.accept({ sequence: 1, evidence: null, files: { 'saved.txt': 'accepted' } })
     try {
-      await owner.prepare(join(root, 'result'), process.pid, [])
+      await owner.prepare(join(root, 'result'), [])
       abort.abort()
       // Cancellation must reject before consulting any final-file descriptor,
       // even with a retained checkpoint and interrupted-record permission.
-      expect(await owner.publish(record, process.pid, 0, checkpoints.latest, true)).toMatchObject({
+      expect(
+        await owner.publish(record, { kind: 'linux-directory', fd: 0 }, checkpoints.latest, true),
+      ).toMatchObject({
         status: 'failed',
         code: 'CANCELLED',
       })
@@ -185,7 +293,13 @@ test('accepted checkpoints never make final-file capture survive cancellation', 
 async function waitUntilStopped(pid: number): Promise<void> {
   const deadline = performance.now() + 1500
   while (performance.now() < deadline) {
-    if (/^State:\s+T/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))) return
+    if (process.platform === 'darwin') {
+      const result = spawnSync('/bin/ps', ['-o', 'state=', '-p', String(pid)], {
+        encoding: 'utf8',
+        timeout: 1000,
+      })
+      if (result.status === 0 && result.stdout.trim().startsWith('T')) return
+    } else if (/^State:\s+T/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))) return
     await Bun.sleep(5)
   }
   throw new Error('owned fixture did not stop')
@@ -359,8 +473,8 @@ test('publishes record-only outcomes in one private packet with fixed permission
     const owner = new PrivateFileDeliveryOwner(new AbortController().signal),
       destination = join(root, 'review')
     try {
-      await owner.prepare(destination, process.pid, [])
-      const delivery = await owner.publish(record, process.pid, undefined)
+      await owner.prepare(destination, [])
+      const delivery = await owner.publish(record, undefined)
       expect(delivery).toMatchObject({ status: 'written', files: [] })
       expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))).toEqual({
         ...record,
@@ -379,14 +493,14 @@ test('rejects destinations inside selected roots and existing destinations befor
     const fd = privateOpenFileRoot(root)
     const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
     try {
-      await expect(owner.prepare(join(root, 'review'), process.pid, [fd])).rejects.toThrow()
+      await expect(owner.prepare(join(root, 'review'), [fd])).rejects.toThrow()
     } finally {
       closeSync(fd)
       await owner.close()
     }
     const second = new PrivateFileDeliveryOwner(new AbortController().signal)
     try {
-      await expect(second.prepare(root, process.pid, [])).rejects.toThrow()
+      await expect(second.prepare(root, [])).rejects.toThrow()
     } finally {
       await second.close()
     }
@@ -405,8 +519,8 @@ test('cleans staging when cancellation or a destination collision wins publicati
         }
       })
       try {
-        await owner.prepare(destination, process.pid, [])
-        expect(await owner.publish(record, process.pid, undefined)).toMatchObject({
+        await owner.prepare(destination, [])
+        expect(await owner.publish(record, undefined)).toMatchObject({
           status: 'failed',
           code: mode === 'cancel' ? 'CANCELLED' : 'DESTINATION_CHANGED',
         })
@@ -423,8 +537,8 @@ test('publication which already won is not retracted by later cancellation', asy
     const signal = new AbortController(),
       owner = new PrivateFileDeliveryOwner(signal.signal),
       destination = join(root, 'review')
-    await owner.prepare(destination, process.pid, [])
-    expect((await owner.publish(record, process.pid, undefined)).status).toBe('written')
+    await owner.prepare(destination, [])
+    expect((await owner.publish(record, undefined)).status).toBe('written')
     signal.abort()
     await owner.close()
     expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).outcome).toBe(
@@ -439,8 +553,8 @@ test('a delivery budget expiry preserves execution and cleans uncommitted stagin
       clock.mockReturnValue(20_001)
     })
     try {
-      await owner.prepare(join(root, 'review'), process.pid, [])
-      expect(await owner.publish(record, process.pid, undefined)).toMatchObject({
+      await owner.prepare(join(root, 'review'), [])
+      expect(await owner.publish(record, undefined)).toMatchObject({
         status: 'failed',
         code: 'DEADLINE_EXCEEDED',
       })
@@ -463,8 +577,8 @@ test('a substituted output parent never redirects publication or cleanup', async
       await writeFile(join(parent, 'keep'), 'not owned staging')
     })
     try {
-      await owner.prepare(join(parent, 'review'), process.pid, [])
-      expect(await owner.publish(record, process.pid, undefined)).toMatchObject({
+      await owner.prepare(join(parent, 'review'), [])
+      expect(await owner.publish(record, undefined)).toMatchObject({
         status: 'failed',
         code: 'DESTINATION_CHANGED',
       })
@@ -511,11 +625,12 @@ test('retained terminal publication still removes staging when its coordinator i
       lost = new AbortController()
     const owner = new PrivateFileDeliveryOwner(abort.signal, async () => lost.abort())
     try {
-      await owner.prepare(join(root, 'result'), process.pid, [])
+      await owner.prepare(join(root, 'result'), [])
       abort.abort()
-      expect(
-        await owner.publish(record, process.pid, undefined, undefined, true, lost.signal),
-      ).toMatchObject({ status: 'failed', code: 'CANCELLED' })
+      expect(await owner.publish(record, undefined, undefined, true, lost.signal)).toMatchObject({
+        status: 'failed',
+        code: 'CANCELLED',
+      })
       expect(await readdir(root)).toEqual([])
     } finally {
       await owner.close()

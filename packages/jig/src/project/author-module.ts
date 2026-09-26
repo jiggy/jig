@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
-import { constants, type BigIntStats } from 'node:fs'
-import { type FileHandle, lstat, open } from 'node:fs/promises'
+import { type BigIntStats, constants } from 'node:fs'
+import type { FileHandle } from 'node:fs/promises'
 import { dirname, join as joinPath, normalize as normalizePath } from 'node:path/posix'
-
 import { invalid, unavailable } from '../diagnostics.js'
+import { openPrivateChild, statPrivateChild } from '../internal/descriptor-files.js'
 import { canonicalJson, type JsonValue } from '../json.js'
 import { fullCaseFold15_1 } from '../package/paths.js'
 import {
@@ -14,8 +14,8 @@ import {
 } from './paths.js'
 import {
   openPrivateProjectRoot,
-  requirePrivateProjectRoot,
   type PrivateProjectRoot,
+  requirePrivateProjectRoot,
 } from './root.js'
 
 const MAX_SOURCE_BYTES = 1024 * 1024
@@ -77,10 +77,10 @@ export async function captureAuthorModule(
   projectPath: string,
 ): Promise<CapturedAuthorModule> {
   validateAuthorPath(projectPath)
-  if (process.platform !== 'linux') {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PROJECT_EVALUATOR_UNAVAILABLE',
-      'the first author-module capture requires Linux descriptor paths',
+      'project source capture is unavailable on this host; use a supported Jig host',
       projectPath,
     )
   }
@@ -159,10 +159,10 @@ export async function captureOpenedAuthorClosure(
   entries.sort(compareProjectPaths)
   assertUniquePaths(entries, 'author closure entry')
 
-  if (process.platform !== 'linux') {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PROJECT_EVALUATOR_UNAVAILABLE',
-      'author-closure capture requires Linux descriptor paths',
+      'project source capture is unavailable on this host; use a supported Jig host',
     )
   }
 
@@ -487,10 +487,9 @@ async function openEntry(
   directory: boolean,
   missingIsChange: boolean,
 ): Promise<{ readonly handle: FileHandle; readonly information: BigIntStats }> {
-  const descriptorPath = `/proc/self/fd/${parent.fd}/${name}`
   let observed: BigIntStats
   try {
-    observed = await lstat(descriptorPath, { bigint: true })
+    observed = await statPrivateChild(parent, name)
   } catch (error) {
     if (isEntryRace(error)) {
       if (missingIsChange)
@@ -516,8 +515,9 @@ async function openEntry(
 
   let handle: FileHandle
   try {
-    handle = await open(
-      descriptorPath,
+    handle = await openPrivateChild(
+      parent,
+      name,
       constants.O_RDONLY |
         constants.O_NOFOLLOW |
         constants.O_NONBLOCK |

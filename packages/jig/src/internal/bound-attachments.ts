@@ -1,17 +1,22 @@
-import { closeSync, fstatSync, readFileSync } from 'node:fs'
+import { closeSync, fstatSync } from 'node:fs'
 import { invalid } from '../diagnostics.js'
 import { type CapturedPackage, createCapturedPackage } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { normalizeBindingAttachments } from '../project/author.js'
 import type { PrivateProjectRoot } from '../project/root.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateCapturedAttachment,
   PrivateFileInputError,
   privateCaptureAttachments,
   privateOpenFileRoot,
-  privateSealedBytes,
   sha256,
-} from './linux-file-input.js'
+} from './file-input.js'
+import {
+  capturePrivateInput,
+  type PrivateCapturedInput,
+  readPrivateCapturedInput,
+} from './input-capture.js'
 import {
   captureStoredPackage,
   normalizePackageArtifactRef,
@@ -67,7 +72,7 @@ export function normalizeBoundAttachments(value: unknown): BoundAttachments {
 export async function captureBoundAttachments(
   root: PrivateProjectRoot,
   selections: Readonly<Record<string, string>>,
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
 ): Promise<BoundAttachments> {
   const sources = normalizeBindingAttachments(selections)
   let parent: number | undefined
@@ -84,11 +89,11 @@ export async function captureBoundAttachments(
       const output: Record<string, BoundAttachment> = Object.create(null)
       for (const item of capture.attachments) {
         const byPath = new Map(item.files.map((file) => [file.path, file]))
-        const files = item.files.map(({ path, bytes }) => ({ path, size: bytes }))
+        const files = item.files.map(({ path, input }) => ({ path, size: input.bytes }))
         const backing = {
           async *stream(path: string, maximumBytes = Infinity) {
             const file = byPath.get(path)!
-            yield readFileSync(`/proc/self/fd/${file.fd}`).subarray(0, maximumBytes)
+            yield readPrivateCapturedInput(file.input).subarray(0, maximumBytes)
           },
           async dispose() {},
         }
@@ -98,7 +103,7 @@ export async function captureBoundAttachments(
         output[item.name] = {
           source: sources[item.name]!,
           digest: stored.digest,
-          files: item.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+          files: item.files.map(({ path, input: { bytes, digest } }) => ({ path, bytes, digest })),
         }
       }
       await root.verify()
@@ -135,7 +140,7 @@ export async function verifyBoundAttachment(
 
 /** Reopen admitted bytes only. The original paths are never consulted by execution. */
 export async function openBoundAttachments(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   value: BoundAttachments = {},
 ): Promise<{
   readonly attachments: readonly Omit<PrivateCapturedAttachment, 'rootFd'>[]
@@ -143,9 +148,9 @@ export async function openBoundAttachments(
 }> {
   const bindings = normalizeBoundAttachments(value)
   const attachments: Omit<PrivateCapturedAttachment, 'rootFd'>[] = []
-  const opened: number[] = []
+  const opened: PrivateCapturedInput[] = []
   const close = () => {
-    for (const fd of opened.splice(0)) closeSync(fd)
+    for (const input of opened.splice(0)) input.close()
   }
   try {
     for (const [name, item] of Object.entries(bindings)) {
@@ -157,9 +162,9 @@ export async function openBoundAttachments(
         await verifyBoundAttachment(captured, item)
         const files = []
         for (const file of item.files) {
-          const fd = privateSealedBytes(await captured.read(file.path, file.bytes))
-          opened.push(fd)
-          files.push({ ...file, fd })
+          const input = capturePrivateInput(await captured.read(file.path, file.bytes))
+          opened.push(input)
+          files.push({ path: file.path, input })
         }
         attachments.push({ name, files })
       } finally {

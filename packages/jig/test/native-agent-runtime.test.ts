@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -15,7 +25,7 @@ afterEach(async () => {
   roots.clear()
 })
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'jig-native-runtime-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-native-runtime-')))
   roots.add(root)
   const project = join(root, 'project')
   await mkdir(project)
@@ -30,7 +40,7 @@ function wrapper(executable: string, path: string) {
   return `makeCWrapper '${executable}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '${path}'\n\n`
 }
 
-describe('native Agent runtime metadata', () => {
+describe.skipIf(process.platform !== 'linux')('Linux native Agent runtime metadata', () => {
   test.each(['executable', 'wrapped executable', 'library'])(
     'rejects same-size %s byte replacement after inspection despite restored timestamps',
     async (selected) => {

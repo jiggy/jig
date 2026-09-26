@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { chmod, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -21,9 +21,9 @@ import {
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { selectPrivateAcpResources } from '../src/internal/private-acp-resources.js'
 import {
+  FINITE_ACP_CONTRACT_DIGEST,
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
-  FINITE_ACP_CONTRACT_DIGEST,
 } from '../src/internal/private-finite-acp-contract.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
@@ -31,140 +31,155 @@ import { nativeElf } from './fixtures/native-elf.js'
 
 const temporary = new Set<string>()
 const encoder = new TextEncoder()
+const linuxTest = process.platform === 'linux' ? test : test.skip
 afterEach(async () => {
   await Promise.all([...temporary].map((path) => rm(path, { recursive: true, force: true })))
   temporary.clear()
 })
 
 describe('private native Codex Agent provider', () => {
-  test('an unsupported wrapper retains its actionable stage without exposing wrapper contents', async () => {
-    const fixture = await files('/var/tmp')
-    await writeFile(
-      fixture.executablePath,
-      nativeElf({
-        wrapper: `makeCWrapper '/unavailable/native' --set 'PRIVATE_TOKEN' 'secret-canary'\n\n`,
-      }),
-      { mode: 0o700 },
-    )
-    const host = await openPrivateInstalledBunHost(installedBunLocation, {
-      CODEX_PATH: fixture.executablePath,
-      OPENAI_API_KEY: 'test-secret',
-      OPENAI_MODEL: 'test-model',
-    })
-    try {
-      await selectCodex(host)
-      throw new Error('Unsupported wrapper unexpectedly qualified')
-    } catch (error) {
-      expect(error).toMatchObject({ code: 'PROJECT_ACP_CODEX_WRAPPER' })
-      expect(String(error)).not.toContain('secret-canary')
-      expect(String(error)).not.toContain('test-secret')
-    }
-  })
-
-  test('uses operator Bubblewrap without a bundled directory and rejects later replacement', async () => {
-    const fixture = await files()
-    const project = join(fixture.root, 'project')
-    const tools = join(fixture.root, 'tools')
-    await mkdir(project)
-    await mkdir(tools)
-    const helper = join(tools, 'bwrap')
-    await writeFile(helper, nativeElf(), { mode: 0o700 })
-    await writeFile(join(project, 'bwrap'), nativeElf(), { mode: 0o700 })
-    await rm(fixture.nativeBubblewrapPath)
-    const provider = await openPrivateCodexAgentProvider(
-      installedBunLocation.releaseRoot,
-      {
+  linuxTest(
+    'an unsupported wrapper retains its actionable stage without exposing wrapper contents',
+    async () => {
+      const fixture = await files('/var/tmp')
+      await writeFile(
+        fixture.executablePath,
+        nativeElf({
+          wrapper: `makeCWrapper '/unavailable/native' --set 'PRIVATE_TOKEN' 'secret-canary'\n\n`,
+        }),
+        { mode: 0o700 },
+      )
+      const host = await openPrivateInstalledBunHost(installedBunLocation, {
         CODEX_PATH: fixture.executablePath,
-        PATH: `${project}:${tools}`,
-        JIG_BWRAP_PATH: '/unrelated-outer-helper',
+        OPENAI_API_KEY: 'test-secret',
+        OPENAI_MODEL: 'test-model',
+      })
+      try {
+        await selectCodex(host)
+        throw new Error('Unsupported wrapper unexpectedly qualified')
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'PROJECT_ACP_CODEX_WRAPPER' })
+        expect(String(error)).not.toContain('secret-canary')
+        expect(String(error)).not.toContain('test-secret')
+      }
+    },
+  )
+
+  linuxTest(
+    'uses operator Bubblewrap without a bundled directory and rejects later replacement',
+    async () => {
+      const fixture = await files()
+      const project = join(fixture.root, 'project')
+      const tools = join(fixture.root, 'tools')
+      await mkdir(project)
+      await mkdir(tools)
+      const helper = join(tools, 'bwrap')
+      await writeFile(helper, nativeElf(), { mode: 0o700 })
+      await writeFile(join(project, 'bwrap'), nativeElf(), { mode: 0o700 })
+      await rm(fixture.nativeBubblewrapPath)
+      const provider = await openPrivateCodexAgentProvider(
+        installedBunLocation.releaseRoot,
+        {
+          CODEX_PATH: fixture.executablePath,
+          PATH: `${project}:${tools}`,
+          JIG_BWRAP_PATH: '/unrelated-outer-helper',
+          OPENAI_API_KEY: 'test-key',
+          OPENAI_MODEL: 'test-model',
+        },
+        project,
+      )
+      const runtime = privateAcpAgentRuntime(provider)
+      expect(runtime.environment.PATH).toBe(tools)
+      expect(runtime.readOnlyMounts).toContainEqual({ source: helper, destination: helper })
+      expect(
+        runtime.readOnlyMounts.some((mount) => mount.destination.includes('codex-resources')),
+      ).toBe(false)
+      await revalidatePrivateAcpAgentProvider(provider)
+      await writeFile(helper, nativeElf({ search: '' }))
+      await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
+    },
+  )
+
+  linuxTest(
+    'retains the wrapped executable and libraries, selecting the wrapper helper before operator PATH',
+    async () => {
+      const fixture = await files()
+      const wrapped = join(dirname(fixture.executablePath), '.codex-wrapped')
+      const library = join(fixture.root, 'runtime.so')
+      const tools = join(fixture.root, 'tools')
+      await mkdir(tools)
+      const helper = join(tools, 'bwrap')
+      await writeFile(helper, nativeElf(), { mode: 0o700 })
+      await writeFile(library, nativeElf())
+      await writeFile(wrapped, nativeElf({ needed: [library] }), { mode: 0o700 })
+      await writeFile(
+        fixture.executablePath,
+        nativeElf({
+          wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '${tools}'\n\n`,
+        }),
+      )
+      const environment = {
+        CODEX_PATH: fixture.executablePath,
+        PATH: dirname(fixture.nativeBubblewrapPath),
         OPENAI_API_KEY: 'test-key',
         OPENAI_MODEL: 'test-model',
-      },
-      project,
-    )
-    const runtime = privateAcpAgentRuntime(provider)
-    expect(runtime.environment.PATH).toBe(tools)
-    expect(runtime.readOnlyMounts).toContainEqual({ source: helper, destination: helper })
-    expect(
-      runtime.readOnlyMounts.some((mount) => mount.destination.includes('codex-resources')),
-    ).toBe(false)
-    await revalidatePrivateAcpAgentProvider(provider)
-    await writeFile(helper, nativeElf({ search: '' }))
-    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
-  })
+      }
+      const provider = await openPrivateCodexAgentProvider(
+        installedBunLocation.releaseRoot,
+        environment,
+      )
+      const runtime = privateAcpAgentRuntime(provider)
+      expect(runtime.environment.PATH).toBe(tools)
+      for (const path of [wrapped, library, helper]) {
+        expect(runtime.readOnlyMounts).toContainEqual({ source: path, destination: path })
+      }
+      await revalidatePrivateAcpAgentProvider(provider)
+      await writeFile(library, nativeElf({ search: '' }))
+      await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
+      const replacement = await openPrivateCodexAgentProvider(
+        installedBunLocation.releaseRoot,
+        environment,
+      )
+      expect(replacement.digest).not.toBe(provider.digest)
+      await writeFile(wrapped, nativeElf({ search: '' }))
+      await expect(revalidatePrivateAcpAgentProvider(replacement)).rejects.toThrow(
+        'support changed',
+      )
+    },
+  )
 
-  test('retains the wrapped executable and libraries, selecting the wrapper helper before operator PATH', async () => {
-    const fixture = await files()
-    const wrapped = join(dirname(fixture.executablePath), '.codex-wrapped')
-    const library = join(fixture.root, 'runtime.so')
-    const tools = join(fixture.root, 'tools')
-    await mkdir(tools)
-    const helper = join(tools, 'bwrap')
-    await writeFile(helper, nativeElf(), { mode: 0o700 })
-    await writeFile(library, nativeElf())
-    await writeFile(wrapped, nativeElf({ needed: [library] }), { mode: 0o700 })
-    await writeFile(
-      fixture.executablePath,
-      nativeElf({
-        wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '${tools}'\n\n`,
-      }),
-    )
-    const environment = {
-      CODEX_PATH: fixture.executablePath,
-      PATH: dirname(fixture.nativeBubblewrapPath),
-      OPENAI_API_KEY: 'test-key',
-      OPENAI_MODEL: 'test-model',
-    }
-    const provider = await openPrivateCodexAgentProvider(
-      installedBunLocation.releaseRoot,
-      environment,
-    )
-    const runtime = privateAcpAgentRuntime(provider)
-    expect(runtime.environment.PATH).toBe(tools)
-    for (const path of [wrapped, library, helper]) {
-      expect(runtime.readOnlyMounts).toContainEqual({ source: path, destination: path })
-    }
-    await revalidatePrivateAcpAgentProvider(provider)
-    await writeFile(library, nativeElf({ search: '' }))
-    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
-    const replacement = await openPrivateCodexAgentProvider(
-      installedBunLocation.releaseRoot,
-      environment,
-    )
-    expect(replacement.digest).not.toBe(provider.digest)
-    await writeFile(wrapped, nativeElf({ search: '' }))
-    await expect(revalidatePrivateAcpAgentProvider(replacement)).rejects.toThrow('support changed')
-  })
-
-  test('opens a PATH-selected client and retains its identity across PATH changes', async () => {
-    // Resource admission rejects /tmp: that destination belongs to the payload.
-    // Use a normal Linux host installation location for this successful selection.
-    const fixture = await files('/var/tmp')
-    const environment = {
-      PATH: dirname(fixture.executablePath),
-      OPENAI_API_KEY: 'test-secret',
-      OPENAI_MODEL: 'test-model',
-    }
-    const pending = openPrivateInstalledBunHost(installedBunLocation, environment)
-    environment.PATH = '/missing-after-snapshot'
-    const host = await pending
-    const provider = await selectCodex(host)
-    expect(privateAcpAgentRuntime(provider).executablePath).toBe(fixture.executablePath)
-    await revalidatePrivateAcpAgentProvider(provider)
-    await writeFile(fixture.executablePath, 'replacement executable', { mode: 0o700 })
-    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow()
-    const rejected = await openPrivateInstalledBunHost(
-      installedBunLocation,
-      {
-        ...environment,
+  linuxTest(
+    'opens a PATH-selected client and retains its identity across PATH changes',
+    async () => {
+      // Resource admission rejects /tmp: that destination belongs to the payload.
+      // Use a normal Linux host installation location for this successful selection.
+      const fixture = await files('/var/tmp')
+      const environment = {
         PATH: dirname(fixture.executablePath),
-      },
-      fixture.root,
-    )
-    await expect(selectCodex(rejected)).rejects.toThrow('selected codex runtime')
-  })
+        OPENAI_API_KEY: 'test-secret',
+        OPENAI_MODEL: 'test-model',
+      }
+      const pending = openPrivateInstalledBunHost(installedBunLocation, environment)
+      environment.PATH = '/missing-after-snapshot'
+      const host = await pending
+      const provider = await selectCodex(host)
+      expect(privateAcpAgentRuntime(provider).executablePath).toBe(fixture.executablePath)
+      await revalidatePrivateAcpAgentProvider(provider)
+      await writeFile(fixture.executablePath, 'replacement executable', { mode: 0o700 })
+      await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow()
+      const rejected = await openPrivateInstalledBunHost(
+        installedBunLocation,
+        {
+          ...environment,
+          PATH: dirname(fixture.executablePath),
+        },
+        fixture.root,
+      )
+      await expect(selectCodex(rejected)).rejects.toThrow('selected codex runtime')
+    },
+  )
 
-  test('a PATH-selected installation with missing support does not fall back', async () => {
+  linuxTest('a PATH-selected installation with missing support does not fall back', async () => {
     const first = await files()
     const second = await files()
     await rm(first.nativeBubblewrapPath)
@@ -177,7 +192,7 @@ describe('private native Codex Agent provider', () => {
     ).rejects.toThrow(PrivateCodexSandboxUnavailableError)
   })
 
-  test('selects the Codex subscription by default and an explicit Responses API', async () => {
+  linuxTest('selects the Codex subscription by default and an explicit Responses API', async () => {
     const fixture = await files()
     const codexHome = join(fixture.root, 'canonical-home')
     await mkdir(codexHome)
@@ -310,68 +325,71 @@ describe('private native Codex Agent provider', () => {
     await expect(selectCodex(missingSandbox)).rejects.toThrow('selected codex runtime')
   })
 
-  test('resolves a Codex link and preserves its bundled helper despite outer overrides', async () => {
-    const fixture = await files()
-    const codexHome = join(fixture.root, 'linked-home')
-    const codexLink = join(fixture.root, 'codex')
-    await mkdir(codexHome)
-    await symlink(fixture.executablePath, codexLink)
-    await writeFile(
-      join(codexHome, 'auth.json'),
-      JSON.stringify(
-        credentialValue('account-one', 'subscription-secret', {
-          authMode: 'chatgpt',
-          refreshToken: 'canonical-refresh-secret',
-        }),
-      ),
-      { mode: 0o600 },
-    )
+  linuxTest(
+    'resolves a Codex link and preserves its bundled helper despite outer overrides',
+    async () => {
+      const fixture = await files()
+      const codexHome = join(fixture.root, 'linked-home')
+      const codexLink = join(fixture.root, 'codex')
+      await mkdir(codexHome)
+      await symlink(fixture.executablePath, codexLink)
+      await writeFile(
+        join(codexHome, 'auth.json'),
+        JSON.stringify(
+          credentialValue('account-one', 'subscription-secret', {
+            authMode: 'chatgpt',
+            refreshToken: 'canonical-refresh-secret',
+          }),
+        ),
+        { mode: 0o600 },
+      )
 
-    const environment = {
-      CODEX_HOME: codexHome,
-      CODEX_PATH: codexLink,
-    }
-    const provider = await openPrivateCodexAgentProvider(
-      installedBunLocation.releaseRoot,
-      environment,
-    )
-    const outerBubblewrap = join(fixture.root, 'outer-bwrap')
-    await writeFile(outerBubblewrap, 'unrelated outer helper\n', { mode: 0o700 })
-    const misleadingResources = join(fixture.root, 'native', 'bin', 'codex-resources')
-    await mkdir(misleadingResources)
-    await writeFile(join(misleadingResources, 'bwrap'), 'not the package helper\n', {
-      mode: 0o700,
-    })
-    for (const override of [outerBubblewrap, join(fixture.root, 'missing-bwrap'), 'relative']) {
-      const selected = await openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
-        ...environment,
-        JIG_BWRAP_PATH: override,
+      const environment = {
+        CODEX_HOME: codexHome,
+        CODEX_PATH: codexLink,
+      }
+      const provider = await openPrivateCodexAgentProvider(
+        installedBunLocation.releaseRoot,
+        environment,
+      )
+      const outerBubblewrap = join(fixture.root, 'outer-bwrap')
+      await writeFile(outerBubblewrap, 'unrelated outer helper\n', { mode: 0o700 })
+      const misleadingResources = join(fixture.root, 'native', 'bin', 'codex-resources')
+      await mkdir(misleadingResources)
+      await writeFile(join(misleadingResources, 'bwrap'), 'not the package helper\n', {
+        mode: 0o700,
       })
-      expect(selected.digest).toBe(provider.digest)
-    }
-    const runtime = privateAcpAgentRuntime(provider)
-    expect(provider).toMatchObject({
-      client: 'openai-codex',
-      credentialMode: 'openai-subscription',
-    })
-    expect(runtime.executablePath).toBe(fixture.executablePath)
-    expect(runtime.readOnlyMounts).toContainEqual({
-      source: fixture.nativeBubblewrapPath,
-      destination: fixture.nativeBubblewrapPath,
-    })
-    await revalidatePrivateAcpAgentProvider(provider)
-    await writeFile(fixture.nativeBubblewrapPath, nativeElf({ search: '' }))
-    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow(
-      'ACP Agent support changed after selection',
-    )
-    const changed = await openPrivateCodexAgentProvider(
-      installedBunLocation.releaseRoot,
-      environment,
-    )
-    expect(changed.digest).not.toBe(provider.digest)
-  })
+      for (const override of [outerBubblewrap, join(fixture.root, 'missing-bwrap'), 'relative']) {
+        const selected = await openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+          ...environment,
+          JIG_BWRAP_PATH: override,
+        })
+        expect(selected.digest).toBe(provider.digest)
+      }
+      const runtime = privateAcpAgentRuntime(provider)
+      expect(provider).toMatchObject({
+        client: 'openai-codex',
+        credentialMode: 'openai-subscription',
+      })
+      expect(runtime.executablePath).toBe(fixture.executablePath)
+      expect(runtime.readOnlyMounts).toContainEqual({
+        source: fixture.nativeBubblewrapPath,
+        destination: fixture.nativeBubblewrapPath,
+      })
+      await revalidatePrivateAcpAgentProvider(provider)
+      await writeFile(fixture.nativeBubblewrapPath, nativeElf({ search: '' }))
+      await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow(
+        'ACP Agent support changed after selection',
+      )
+      const changed = await openPrivateCodexAgentProvider(
+        installedBunLocation.releaseRoot,
+        environment,
+      )
+      expect(changed.digest).not.toBe(provider.digest)
+    },
+  )
 
-  test('supports the bundled resource beside a standalone Codex executable', async () => {
+  linuxTest('supports the bundled resource beside a standalone Codex executable', async () => {
     const fixture = await files()
     const executablePath = join(fixture.root, 'native', 'codex')
     await rename(fixture.executablePath, executablePath)
@@ -387,7 +405,7 @@ describe('private native Codex Agent provider', () => {
     expect(privateAcpAgentRuntime(provider).environment.PATH).toBe('/agent')
   })
 
-  test.each(['missing', 'symlink', 'directory', 'non-executable'])(
+  linuxTest.each(['missing', 'symlink', 'directory', 'non-executable'])(
     'rejects a %s bundled helper without using the outer Bubblewrap override',
     async (kind) => {
       const fixture = await files()
@@ -410,7 +428,7 @@ describe('private native Codex Agent provider', () => {
     },
   )
 
-  test('does not fall back when the preferred bundled resource is malformed', async () => {
+  linuxTest('does not fall back when the preferred bundled resource is malformed', async () => {
     const fixture = await files()
     await chmod(fixture.nativeBubblewrapPath, 0o600)
     const alternative = join(fixture.root, 'native', 'bin', 'codex-resources')
@@ -426,7 +444,7 @@ describe('private native Codex Agent provider', () => {
   })
 
   test('projects canonical subscription state without its refresh credential', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-codex-canonical-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-canonical-')))
     temporary.add(root)
     const path = join(root, 'auth.json')
     const source = credentialValue('account-one', 'secret-one', {
@@ -732,7 +750,7 @@ async function files(parent = tmpdir()): Promise<{
   readonly certificatesPath: string
   readonly requirementsPath: string
 }> {
-  const root = await mkdtemp(join(parent, 'jig-codex-provider-'))
+  const root = await realpath(await mkdtemp(join(parent, 'jig-codex-provider-')))
   temporary.add(root)
   const launcherPath = join(root, 'codex-agent-launcher.js')
   const adapterPath = join(root, 'codex-acp.js')

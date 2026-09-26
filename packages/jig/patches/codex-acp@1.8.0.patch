@@ -1,20 +1,62 @@
 diff --git a/dist/index.js b/dist/index.js
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -22110,6 +22110,11 @@
+@@ -22109,9 +22109,14 @@
+   const writer = createJSONRPCWriter(codex.stdin);
    let connection = rpc.createMessageConnection(reader, writer);
    connection.listen();
 -  codex.on("exit", (_) => {
 +  codex.on("error", () => {
 +    process.exitCode = process.exitCode || 1;
-+    connection.dispose();
-+  });
-+  codex.on("exit", (code, signal) => {
-+    if (code !== 0 || signal !== null) process.exitCode = process.exitCode || code || 1;
      connection.dispose();
    });
++  codex.on("exit", (code, signal) => {
++    if (code !== 0 || signal !== null) process.exitCode = process.exitCode || code || 1;
++    connection.dispose();
++  });
    return { connection, process: codex };
-@@ -33773,10 +33778,6 @@
+ }
+ function attachLogs(proc) {
+@@ -27900,9 +27905,21 @@
+ var CUSTOM_GATEWAY_PROVIDER_ID = "custom-gateway";
+ var OPENAI_PROVIDER_ID = "openai";
+ var DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
++var JIG_CODEX_AUTH_BOOTSTRAP = "__JIG_CODEX_AUTH_BOOTSTRAP__";
+ var SUPPORTED_GATEWAY_PROTOCOLS = {
+   openai: "responses"
+ };
++function consumeJigCodexAuthBootstrap() {
++  const bootstrap = globalThis[JIG_CODEX_AUTH_BOOTSTRAP];
++  if (bootstrap === void 0) return null;
++  delete globalThis[JIG_CODEX_AUTH_BOOTSTRAP];
++  if (typeof bootstrap !== "function") throw new Error("Codex startup authentication is invalid");
++  const value = bootstrap();
++  if (value === null || typeof value !== "object" || typeof value.accessToken !== "string" || value.accessToken.length === 0 || typeof value.chatgptAccountId !== "string" || value.chatgptAccountId.length === 0) {
++    throw new Error("Codex startup authentication is invalid");
++  }
++  return value;
++}
+ var CodexAcpClient = class {
+   codexClient;
+   config;
+@@ -27941,6 +27958,16 @@
+         title: request.clientInfo?.title ?? this.defaultClientInfo.title
+       }
+     });
++    const jigAuth = consumeJigCodexAuthBootstrap();
++    if (jigAuth !== null) {
++      const login = await this.codexClient.accountLogin({
++        type: "chatgptAuthTokens",
++        accessToken: jigAuth.accessToken,
++        chatgptAccountId: jigAuth.chatgptAccountId,
++        chatgptPlanType: null
++      });
++      if (login.type !== "chatgptAuthTokens") throw new Error("Codex startup authentication failed");
++    }
+     this.configPath = response?.codexHome ?? null;
+   }
+   getHomePath() {
+@@ -33773,10 +33800,6 @@
          agentFileChangeReportTurnId = turnCompleted.turn.id;
        }
        await clearRecoveredSessionFailure(eventHandler);
@@ -25,7 +67,8 @@ diff --git a/dist/index.js b/dist/index.js
        await this.publishFallbackSessionTitle(
          sessionState,
          this.createPromptFallbackTitle(params.prompt)
-@@ -34199,11 +34200,15 @@
+@@ -34198,13 +34221,17 @@
+     stderr: ""
    };
    process.stdin.on("close", () => {
 -    codexProcessState.connection.process.stdin.end();
@@ -45,3 +88,4 @@ diff --git a/dist/index.js b/dist/index.js
 +    native.stdin.end();
    });
    const acpJsonStream = createJsonStream(process.stdin, process.stdout);
+   function createAgent(connection) {

@@ -45,7 +45,8 @@ only after executed checks and independent acceptance.
 - Repository tests can be interfered with by candidate code. Independent assertions
   compare collected CLI output and exit without importing code or trusting pass flags.
 - Validate base/candidate and command identities before constructing patches from
-  replacement text. Only accepted evidence earns `review.patch`; failed proposals
+  replacement text. Compare decoded JSON evidence by content, independently of
+  object prototypes. Only accepted evidence earns `review.patch`; failed proposals
   remain inspectable. Do not apply or merge anything.
 - Cancellation, deadlines, uncertainty, unavailable support, and cleanup failures
   propagate without retries. Final file delivery does not promise interruption recovery.

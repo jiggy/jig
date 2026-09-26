@@ -16,17 +16,17 @@ import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
 } from './bun-execution-layout.js'
+import {
+  type PrivateExecutionBackend,
+  type PrivateExecutionBackendMechanismSupport,
+  requirePrivateExecutionBackend,
+} from './execution-backend.js'
 import { type HttpGrant, type PrivateHttpGrants, selectHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
-import {
-  type PrivateLinuxBackendMechanismSupport,
-  type PrivateLinuxCgroupBackend,
-  requirePrivateLinuxCgroupBackend,
-} from './linux-rootless-backend.js'
 import {
   type PrivateAcpResources,
   PrivateAcpResourceUnavailableError,
@@ -59,7 +59,7 @@ export interface PrivateBunDirectRecipe {
   readonly command: readonly [string, ...string[]]
   readonly runtimeMounts: PrivateInstalledBunSupport['runtimeMounts']
   readonly installedSupport: PrivateInstalledBunSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly mechanismDigest: string
   readonly observation: PrivateActivationRecipeObservation
   readonly sandboxExecutablePath: '/jig-runtime/bun'
@@ -78,13 +78,13 @@ export interface PrivateBunDirectRecipe {
 export async function planPrivateBunDirectRun(input: {
   readonly request: PrivateActivationRequest
   readonly installedSupport: PrivateInstalledBunSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly execution?: PrivateBunExecutionArtifact
   readonly selector?: string
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
 }): Promise<PrivateBunDirectRecipe> {
-  const backend = requirePrivateLinuxCgroupBackend(input.backend)
+  const backend = requirePrivateExecutionBackend(input.backend)
   const fields = await describePrivateBunDirectRun(
     input,
     async () => (await backend.observeMechanism()).support,
@@ -97,7 +97,7 @@ export async function planPrivateBunDirectRun(input: {
 /** Same recipe identity as planning, without manufacturing an executable recipe. */
 export async function inspectPrivateBunDirectIdentity(
   input: Omit<Parameters<typeof planPrivateBunDirectRun>[0], 'backend'>,
-  support: PrivateLinuxBackendMechanismSupport,
+  support: PrivateExecutionBackendMechanismSupport,
 ): Promise<{ readonly digest: string; readonly observationDigest: string }> {
   const fields = await describePrivateBunDirectRun(input, async () => support)
   return { digest: fields.digest, observationDigest: fields.observation.digest }
@@ -105,7 +105,7 @@ export async function inspectPrivateBunDirectIdentity(
 
 async function describePrivateBunDirectRun(
   input: Omit<Parameters<typeof planPrivateBunDirectRun>[0], 'backend'>,
-  observeSupport: () => Promise<PrivateLinuxBackendMechanismSupport>,
+  observeSupport: () => Promise<PrivateExecutionBackendMechanismSupport>,
 ): Promise<Omit<PrivateBunDirectRecipe, 'backend'>> {
   const request = requirePrivateActivationRequest(input.request)
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
@@ -272,7 +272,7 @@ function logicalLaunchDigest(
   request: PrivateActivationRequest,
   execution: PrivateBunExecutionArtifact,
   installedSupport: PrivateInstalledBunSupport,
-  mechanism: PrivateLinuxBackendMechanismSupport,
+  mechanism: PrivateExecutionBackendMechanismSupport,
   http: Readonly<Record<string, HttpGrant>>,
   acp: Readonly<Record<string, PrivateAcpAgentProvider>>,
 ): string {

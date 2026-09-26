@@ -1,7 +1,5 @@
 import { join } from 'node:path'
-import type { FileHandle } from 'node:fs/promises'
 import { CheckError } from '../diagnostics.js'
-import { PrivateFiniteAcpPolicyError } from './finite-acp-policy.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import { nativeInvocationKind } from '../project/invocation-slots.js'
 import {
@@ -12,37 +10,71 @@ import {
 import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
 import { RunHostFatalOperationError } from '../run/session.js'
 import {
-  privateAcpAgentRuntime,
-  revalidatePrivateAcpAgentProvider,
-  requirePrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
+  privateAcpAgentRuntime,
+  requirePrivateAcpAgentProvider,
+  revalidatePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
 import {
   allocatePrivateRootChildOwner,
+  claimPrivateNativeSession,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
   type PrivateRootChildOwnerLifecycle,
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
-  claimPrivateNativeSession,
   savePrivateNativeSession,
 } from './activation-admission-store.js'
+import { PrivateOutputProfileError } from './captured-output.js'
 import {
   collectPrivateCodexSession,
+  type PrivateCodexSessionState,
+  PrivateNativeHistoryUnavailable,
+  type PrivateNativeSessionRequest,
   parsePrivateNativeSessionRequest,
   privateCodexSessionBootstrap,
   privateCodexSessionSecrets,
-  PrivateNativeHistoryUnavailable,
   validatePrivateCodexSession,
-  type PrivateCodexSessionState,
-  type PrivateNativeSessionRequest,
 } from './codex-session-state.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import {
+  admitPrivateExecutionOwner,
+  cancelPrivateExecutionOwnerStateAllocation,
+  isPrivateExecutionFenceUnconfirmed,
+  normalizePrivateExecutionConfirmedEnforcementReceipt,
+  normalizePrivateExecutionOwnerStateAllocationIdentity,
+  normalizePrivateExecutionOwnerStateReleaseReceipt,
+  normalizePrivateExecutionSealedOwnerIdentity,
+  observePrivateExecutionBackendMechanism,
+  type PrivateExecutionBackend,
+  type PrivateExecutionConfirmedEnforcementReceipt,
+  type PrivateExecutionLaunchPlan,
+  type PrivateExecutionOwnerStateAllocationIdentity,
+  type PrivateExecutionOwnerStateReleaseReceipt,
+  type PrivateExecutionSealedOwnerIdentity,
+  planPrivateExecutionOwnerStateAllocation,
+  privateExecutionBackendKind,
+  recoverPrivateExecutionFence,
+  releasePrivateExecutionOwnerState,
+  sealPrivateExecutionOwner,
+} from './execution-backend.js'
+import {
+  closePrivateExecutionOutput,
+  type PrivateExecutionOutput,
+  resolvePrivateExecutionOutput,
+} from './execution-output.js'
+import { PrivateFiniteAcpPolicyError } from './finite-acp-policy.js'
+import {
+  PRIVATE_FINITE_ACP_CHANNELS,
+  type PrivateFiniteAcpEndpoints,
+  runPrivateFiniteAcpResource,
+} from './finite-acp-resource.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -54,29 +86,8 @@ import {
   requireParentFlowOwner,
   requireParentTarget,
 } from './invocation-context.js'
-import {
-  cancelPrivateLinuxOwnerStateAllocation,
-  normalizePrivateLinuxConfirmedEnforcementReceipt,
-  normalizePrivateLinuxOwnerStateAllocationIdentity,
-  normalizePrivateLinuxOwnerStateReleaseReceipt,
-  normalizePrivateLinuxSealedOwnerIdentity,
-  type PrivateLinuxCgroupBackend,
-  type PrivateLinuxConfirmedEnforcementReceipt,
-  PrivateLinuxFenceUnconfirmedError,
-  type PrivateLinuxLaunchPlan,
-  type PrivateLinuxOwnerStateAllocationIdentity,
-  type PrivateLinuxOwnerStateReleaseReceipt,
-  type PrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
-} from './linux-rootless-backend.js'
-import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
-import {
-  PRIVATE_FINITE_ACP_CHANNELS,
-  type PrivateFiniteAcpEndpoints,
-  runPrivateFiniteAcpResource,
-} from './finite-acp-resource.js'
+import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 
 const ALLOCATION_KIND = 'private-root-agent-owner-allocation/1'
 const SANDBOX_KIND = 'private-root-agent-sandbox/1'
@@ -95,23 +106,23 @@ interface AcpAllocation {
   readonly requestDigest: string
   readonly providerDigest: string
   readonly effectiveDeadlineUnixMs: number
-  readonly ownerAllocation: PrivateLinuxOwnerStateAllocationIdentity
+  readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
 }
 
 interface AcpSandbox {
   readonly kind: typeof SANDBOX_KIND
-  readonly owner: PrivateLinuxSealedOwnerIdentity
+  readonly owner: PrivateExecutionSealedOwnerIdentity
 }
 
 interface AcpCleanup {
   readonly kind: typeof CLEANUP_KIND
-  readonly ownerRelease: PrivateLinuxOwnerStateReleaseReceipt
+  readonly ownerRelease: PrivateExecutionOwnerStateReleaseReceipt
 }
 
 interface AcpRecoveryInput extends PrivateInvocationContext {
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly installedSupport: PrivateDirectRunInstalledSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
 }
@@ -253,7 +264,7 @@ async function executeOwnedProvider(
     input.call.operationId,
     input.parentFlow?.operationId,
   )
-  const ownerAllocation = await planPrivateLinuxOwnerStateAllocation({
+  const ownerAllocation = await planPrivateExecutionOwnerStateAllocation(input.backend, {
     parent: ownerParent,
     name: `a-${identity.slice(0, 62)}`,
   })
@@ -286,9 +297,7 @@ async function executeOwnedProvider(
       await cancelUnusedAllocation(ownerAllocation)
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
-        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
-          ? 'UNCERTAIN'
-          : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
@@ -300,7 +309,7 @@ async function executeOwnedProvider(
 
   let attemptedDispatch = false
   let execution: ProviderExecution
-  let output: FileHandle | undefined
+  let output: PrivateExecutionOutput | undefined
   let retained: PrivateCodexSessionState | undefined
   let lifetime =
     operation.session !== undefined && 'retain' in operation.session
@@ -336,12 +345,15 @@ async function executeOwnedProvider(
       operation.session === undefined
         ? []
         : privateCodexSessionSecrets(runtime, credentialBootstrap)
-    const sealed = await input.backend.seal(
+    const sealed = await sealPrivateExecutionOwner(
+      input.backend,
       backendPlan(
+        input.backend,
         recipe,
         provider,
         effectiveDeadlineUnixMs,
         identity,
+        ownerAllocation,
         operation.session !== undefined,
       ),
       ownerAllocation,
@@ -359,8 +371,8 @@ async function executeOwnedProvider(
       sandbox: sandbox as unknown as JsonValue,
     })
     attemptedDispatch = true
-    const component = await sealed.admit(input.signal)
-    output = component.outputDirectory
+    const component = await admitPrivateExecutionOwner(sealed, input.signal)
+    output = component.output
     execution = await runPrivateFiniteAcpResource(
       component,
       runtime,
@@ -388,10 +400,16 @@ async function executeOwnedProvider(
       if (output === undefined || execution.sessionId === undefined)
         throw new Error('Clean native retention lacks owned output or session identity')
       try {
-        retained = collectPrivateCodexSession(output, execution.sessionId, secrets)
+        retained = collectPrivateCodexSession(
+          await resolvePrivateExecutionOutput(output),
+          execution.sessionId,
+          secrets,
+        )
       } catch (error) {
-        if (!(error instanceof PrivateNativeHistoryUnavailable)) throw error
-        unavailableReason = error.reason
+        if (error instanceof PrivateNativeHistoryUnavailable) unavailableReason = error.reason
+        else if (error instanceof PrivateOutputProfileError)
+          unavailableReason = 'unsupported-history'
+        else throw error
       }
     }
     await releaseKnownAcp(input, lifecycle, execution.fence)
@@ -401,9 +419,7 @@ async function executeOwnedProvider(
       if (active !== undefined) await recoverPrivateRootFiniteAcpOwner(input, active)
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
-        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
-          ? 'UNCERTAIN'
-          : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         {
           cause: new AggregateError(
             [error, cleanupError],
@@ -433,10 +449,11 @@ async function executeOwnedProvider(
   } finally {
     credentialBootstrap?.fill(0)
     try {
-      await output?.close()
+      await closePrivateExecutionOutput(output)
     } catch (error) {
       // Descriptor release is owned cleanup. A failure here must not mask a
       // fatal fence failure with an ordinary, catchable operation exception.
+      // biome-ignore lint/correctness/noUnsafeFinally: Owned cleanup failure must remain fatal to the Run.
       throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
     }
   }
@@ -541,13 +558,13 @@ export async function recoverPrivateRootFiniteAcpOwner(
   const allocation = parseAllocation(lifecycle)
   await requireAllocationMatchesParent(input, lifecycle, allocation)
   if (lifecycle.sandbox === undefined) {
-    const cancelled = await cancelPrivateLinuxOwnerStateAllocation(allocation.ownerAllocation)
-    await releasePrivateLinuxOwnerState(allocation.ownerAllocation, cancelled)
+    const cancelled = await cancelPrivateExecutionOwnerStateAllocation(allocation.ownerAllocation)
+    await releasePrivateExecutionOwnerState(allocation.ownerAllocation, cancelled)
   } else {
     const sandbox = parseSandbox(lifecycle)
-    let fence: PrivateLinuxConfirmedEnforcementReceipt
+    let fence: PrivateExecutionConfirmedEnforcementReceipt
     if (lifecycle.fence === undefined) {
-      fence = await input.backend.recoverFence(sandbox.owner)
+      fence = await recoverPrivateExecutionFence(input.backend, sandbox.owner)
       lifecycle = await recordPrivateRootChildFence({
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
@@ -563,7 +580,7 @@ export async function recoverPrivateRootFiniteAcpOwner(
     } else {
       fence = parseFence(lifecycle)
     }
-    const ownerRelease = await releasePrivateLinuxOwnerState(sandbox.owner, fence)
+    const ownerRelease = await releasePrivateExecutionOwnerState(sandbox.owner, fence)
     const cleanup = acpCleanup(ownerRelease)
     if (lifecycle.cleanup === undefined) {
       lifecycle = await recordPrivateRootChildCleanup({
@@ -630,7 +647,7 @@ async function revalidateProviderSupport(
   input: ProviderCallInput,
 ): Promise<void> {
   const [mechanism] = await Promise.all([
-    recipe.backend.observeMechanism(),
+    observePrivateExecutionBackendMechanism(recipe.backend),
     revalidatePrivateInstalledBunSupport(recipe.installedSupport),
     revalidatePrivateAcpAgentProvider(provider),
   ])
@@ -650,47 +667,125 @@ function selectedRecipeProvider(
 }
 
 function backendPlan(
+  backend: PrivateExecutionBackend,
   recipe: PrivateDirectRunRecipe,
   provider: PrivateAcpAgentProvider,
   deadlineUnixMs: number,
   identity: string,
+  allocation: PrivateExecutionOwnerStateAllocationIdentity,
   retainSession = false,
-): PrivateLinuxLaunchPlan {
+): PrivateExecutionLaunchPlan {
   const acp = privateAcpAgentRuntime(provider)
-  return Object.freeze({
-    runId: `agent-${identity.slice(0, 42)}`,
-    limits: Object.freeze({
-      ...recipe.resourceCeilings,
-      pids: PRIVATE_AGENT_PROVIDER_PIDS,
-      deadlineUnixMs,
-      cancellationGraceMs: CANCELLATION_GRACE_MS,
-    }),
-    readOnlyMounts: Object.freeze([
-      ...recipe.installedSupport.runtimeMounts,
-      { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
-      { source: acp.adapterPath, destination: acp.sandboxAdapterPath },
-      { source: acp.executablePath, destination: acp.sandboxExecutablePath },
-      ...acp.readOnlyMounts.filter((mount) => {
-        const runtime = recipe.installedSupport.runtimeMounts.find(
-          (existing) => existing.destination === mount.destination,
-        )
-        // One exact system loader can support both Bun and the client.
-        // Conflicting bytes remain a duplicate and fail plan validation.
-        return runtime === undefined || runtime.source !== mount.source
-      }),
-    ]),
-    command: Object.freeze([
-      recipe.sandboxExecutablePath,
-      ...recipe.bunPolicy,
-      acp.sandboxAdapterPath,
-    ]) as readonly [string, ...string[]],
-    environment: retainSession
-      ? { ...acp.environment, JIG_CODEX_SESSION_STATE: '1' }
-      : acp.environment,
-    ...(retainSession ? { output: true } : {}),
-    network: 'inherited',
-    ...(acp.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
+  const runId = `agent-${identity.slice(0, 42)}`
+  const limits = Object.freeze({
+    ...recipe.resourceCeilings,
+    pids: PRIVATE_AGENT_PROVIDER_PIDS,
+    deadlineUnixMs,
+    cancellationGraceMs: CANCELLATION_GRACE_MS,
   })
+  if (privateExecutionBackendKind(backend) === 'linux')
+    return Object.freeze({
+      kind: 'linux',
+      plan: Object.freeze({
+        runId,
+        limits,
+        readOnlyMounts: Object.freeze([
+          ...recipe.installedSupport.runtimeMounts,
+          { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
+          { source: acp.adapterPath, destination: acp.sandboxAdapterPath },
+          { source: acp.executablePath, destination: acp.sandboxExecutablePath },
+          ...acp.readOnlyMounts.filter((mount) => {
+            const runtime = recipe.installedSupport.runtimeMounts.find(
+              (existing) => existing.destination === mount.destination,
+            )
+            return runtime === undefined || runtime.source !== mount.source
+          }),
+        ]),
+        command: Object.freeze([
+          recipe.sandboxExecutablePath,
+          ...recipe.bunPolicy,
+          acp.sandboxAdapterPath,
+        ]) as readonly [string, ...string[]],
+        environment: retainSession
+          ? { ...acp.environment, JIG_CODEX_SESSION_STATE: '1' }
+          : acp.environment,
+        ...(retainSession ? { output: true } : {}),
+        network: 'inherited',
+        ...(acp.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
+      }),
+    })
+  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
+    throw new TypeError('native macOS Agent requires a native owner allocation')
+  const data = join(allocation.directory, 'data')
+  const temporary = join(data, 'tmp')
+  const output = join(data, 'output')
+  const mappings = new Map([
+    [recipe.sandboxExecutablePath, recipe.installedSupport.executablePath],
+    [acp.sandboxAdapterPath, acp.adapterPath],
+    [acp.sandboxExecutablePath, acp.executablePath],
+    ...acp.readOnlyMounts.map((mount) => [mount.destination, mount.source] as const),
+  ])
+  const environment = Object.fromEntries(
+    Object.entries(
+      retainSession ? { ...acp.environment, JIG_CODEX_SESSION_STATE: '1' } : acp.environment,
+    ).map(([name, value]) => [name, translateMacosAgentValue(value, mappings, temporary, output)]),
+  )
+  environment.JIG_MACOS_AGENT_HOME = temporary
+  environment.TMPDIR = temporary
+  environment.JIG_MACOS_AGENT_WORK = join(data, 'work')
+  if (retainSession) environment.JIG_OUTPUT_ROOT = output
+  const readOnlyFiles = [
+    recipe.installedSupport.executablePath,
+    acp.adapterPath,
+    acp.executablePath,
+    ...acp.readOnlyMounts.map((mount) => mount.source),
+  ]
+  return Object.freeze({
+    kind: 'macos',
+    plan: Object.freeze({
+      runId,
+      limits: {
+        memoryBytes: limits.memoryBytes,
+        pids: limits.pids,
+        cpuQuotaMicros: limits.cpuQuotaMicros,
+        cpuPeriodMicros: limits.cpuPeriodMicros,
+        deadlineUnixMs: limits.deadlineUnixMs,
+        cleanupTimeoutMs: limits.cleanupTimeoutMs,
+      },
+      command: [
+        recipe.installedSupport.executablePath,
+        ...recipe.bunPolicy,
+        acp.adapterPath,
+      ] as readonly [string, ...string[]],
+      cwd: join(data, 'work'),
+      environment,
+      files: {
+        readOnlyFiles: [...new Set(readOnlyFiles)],
+        readOnlyTrees: [],
+        writableTrees: [join(data, 'work'), temporary, ...(retainSession ? [output] : [])],
+        protectedRoots: [join(allocation.directory, 'control')],
+        network: 'inherited' as const,
+      },
+      maxOutputBytes: 64 * 1024 * 1024,
+      storage: {
+        mountPath: data,
+        bytes: 512 * 1024 * 1024,
+        collect: retainSession ? ('output' as const) : null,
+      },
+    }),
+  })
+}
+
+function translateMacosAgentValue(
+  value: string,
+  mappings: ReadonlyMap<string, string>,
+  temporary: string,
+  output: string,
+): string {
+  let translated = value
+  for (const [destination, source] of mappings)
+    translated = translated.split(destination).join(source)
+  return translated.split('/jig-output').join(output).split('/tmp/').join(`${temporary}/`)
 }
 
 type ProviderExecution = Awaited<ReturnType<typeof runPrivateFiniteAcpResource>>
@@ -698,7 +793,7 @@ type ProviderExecution = Awaited<ReturnType<typeof runPrivateFiniteAcpResource>>
 async function releaseKnownAcp(
   input: AcpRecoveryInput,
   lifecycleValue: PrivateRootChildOwnerLifecycle,
-  fence: PrivateLinuxConfirmedEnforcementReceipt,
+  fence: PrivateExecutionConfirmedEnforcementReceipt,
 ): Promise<void> {
   let lifecycle = lifecycleValue
   const sandbox = parseSandbox(lifecycle)
@@ -714,7 +809,7 @@ async function releaseKnownAcp(
     sandboxDigest: lifecycle.sandbox!.digest,
     fence: fence as unknown as JsonValue,
   })
-  const ownerRelease = await releasePrivateLinuxOwnerState(sandbox.owner, fence)
+  const ownerRelease = await releasePrivateExecutionOwnerState(sandbox.owner, fence)
   const cleanup = acpCleanup(ownerRelease)
   lifecycle = await recordPrivateRootChildCleanup({
     coordinator: input.coordinator,
@@ -803,7 +898,7 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): AcpAllocati
     requestDigest: value.requestDigest,
     providerDigest: value.providerDigest,
     effectiveDeadlineUnixMs: value.effectiveDeadlineUnixMs,
-    ownerAllocation: normalizePrivateLinuxOwnerStateAllocationIdentity(value.ownerAllocation),
+    ownerAllocation: normalizePrivateExecutionOwnerStateAllocationIdentity(value.ownerAllocation),
   })
 }
 
@@ -813,18 +908,18 @@ function parseSandbox(lifecycle: PrivateRootChildOwnerLifecycle): AcpSandbox {
   if (value.kind !== SANDBOX_KIND) throw new TypeError('Agent sandbox kind is invalid')
   return Object.freeze({
     kind: SANDBOX_KIND,
-    owner: normalizePrivateLinuxSealedOwnerIdentity(value.owner),
+    owner: normalizePrivateExecutionSealedOwnerIdentity(value.owner),
   })
 }
 
 function parseFence(
   lifecycle: PrivateRootChildOwnerLifecycle,
-): PrivateLinuxConfirmedEnforcementReceipt {
+): PrivateExecutionConfirmedEnforcementReceipt {
   if (lifecycle.fence === undefined) throw new TypeError('Agent fence is absent')
-  return normalizePrivateLinuxConfirmedEnforcementReceipt(lifecycle.fence.value)
+  return normalizePrivateExecutionConfirmedEnforcementReceipt(lifecycle.fence.value)
 }
 
-function acpCleanup(ownerRelease: PrivateLinuxOwnerStateReleaseReceipt): AcpCleanup {
+function acpCleanup(ownerRelease: PrivateExecutionOwnerStateReleaseReceipt): AcpCleanup {
   return Object.freeze({ kind: CLEANUP_KIND, ownerRelease })
 }
 
@@ -832,7 +927,7 @@ function parseCleanup(lifecycle: PrivateRootChildOwnerLifecycle): AcpCleanup {
   if (lifecycle.cleanup === undefined) throw new TypeError('Agent cleanup is absent')
   const value = exactObject(lifecycle.cleanup.value, ['kind', 'ownerRelease'], 'Agent cleanup')
   if (value.kind !== CLEANUP_KIND) throw new TypeError('Agent cleanup kind is invalid')
-  return acpCleanup(normalizePrivateLinuxOwnerStateReleaseReceipt(value.ownerRelease))
+  return acpCleanup(normalizePrivateExecutionOwnerStateReleaseReceipt(value.ownerRelease))
 }
 
 function requireCleanupMatches(
@@ -898,10 +993,10 @@ async function requireAllocationMatchesParent(
 }
 
 async function cancelUnusedAllocation(
-  allocation: PrivateLinuxOwnerStateAllocationIdentity,
+  allocation: PrivateExecutionOwnerStateAllocationIdentity,
 ): Promise<void> {
-  const cancelled = await cancelPrivateLinuxOwnerStateAllocation(allocation)
-  await releasePrivateLinuxOwnerState(allocation, cancelled)
+  const cancelled = await cancelPrivateExecutionOwnerStateAllocation(allocation)
+  await releasePrivateExecutionOwnerState(allocation, cancelled)
 }
 
 function exactObject(

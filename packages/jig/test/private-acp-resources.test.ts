@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
@@ -41,6 +41,7 @@ import type { RunTargetIdentity } from '../src/project/package-project.js'
 import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 import { nativeElf } from './fixtures/native-elf.js'
+import { nativeMachO } from './fixtures/native-macho.js'
 
 const temporary: string[] = []
 afterEach(async () => {
@@ -460,13 +461,15 @@ describe('target-selected private ACP resources', () => {
 })
 
 async function fixture(parent = tmpdir()) {
-  const root = await mkdtemp(join(parent, 'jig-acp-resources-'))
+  const root = await realpath(await mkdtemp(join(parent, 'jig-acp-resources-')))
   temporary.push(root)
   const project = join(root, 'project')
   const executable = join(root, 'native-client')
   const adapter = join(root, 'adapter.js')
   await mkdir(project)
-  await writeFile(executable, nativeElf(), { mode: 0o700 })
+  await writeFile(executable, process.platform === 'darwin' ? nativeMachO() : nativeElf(), {
+    mode: 0o700,
+  })
   await writeFile(adapter, 'inert ACP metadata fixture')
   const support = await openPrivateInstalledBunSupport(installedBunLocation)
   const open: PrivateAcpClientOpener = async (client, _, environment, _project, model) =>

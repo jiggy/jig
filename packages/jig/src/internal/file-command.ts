@@ -1,15 +1,20 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync, fstatSync } from 'node:fs'
+import { type FileHandle, open } from 'node:fs/promises'
 import { connect, createServer, type Socket } from 'node:net'
+import { dirname, join } from 'node:path'
 import { privateCliStderrDiagnostic } from '../cli-presentation.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
+import { requirePrivateCapturedOutput } from './captured-output.js'
 import {
   type PrivateDeliveryConnection,
   type PrivateDeliveryReceipt,
   PrivateFileDeliveryOwner,
 } from './file-delivery.js'
-import { privateOpenFileRoot } from './linux-file-input.js'
+import { privateOpenFileRoot } from './file-input.js'
+import { sendPrivateMacosDescriptors } from './macos-descriptor-handoff.js'
+import { createPrivateMacosFileCommand, requirePrivateMacosFilePeer } from './macos-file-command.js'
 import {
   PrivateCheckpointRejected,
   PrivateRunCheckpoints,
@@ -43,18 +48,49 @@ export function privateFileRecovery(): PrivateFileRecovery | undefined {
 const MAX_BYTES = 16 * 1024 * 1024
 export const PRIVATE_FILE_COMMAND_STOP_GRACE_MS = 250
 export const PRIVATE_FILE_COMMAND_SETTLEMENT_MS = 60_000
-interface Marker {
-  readonly socket: string
-  readonly token: string
-}
+type Marker =
+  | { readonly platform: 'linux'; readonly socket: string; readonly token: string }
+  | {
+      readonly platform: 'darwin'
+      readonly socket: string
+      readonly token: string
+      readonly peer: { readonly pid: number; readonly version: number }
+    }
 function marker(): Marker | undefined {
   const text = process.env[MARKER]
   if (text === undefined) return undefined
+  if (text.length > 1024) throw new Error('invalid file-command owner')
   const value = JSON.parse(text) as Marker
-  if (!/^jig-file-owner-[a-f0-9]{32}$/.test(value.socket) || !/^[a-f0-9]{64}$/.test(value.token))
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    !/^[a-f0-9]{64}$/.test(value.token) ||
+    value.platform !== process.platform
+  )
+    throw new Error('invalid file-command owner')
+  if (value.platform === 'linux') {
+    if (
+      Object.keys(value).sort().join() !== 'platform,socket,token' ||
+      !/^jig-file-owner-[a-f0-9]{32}$/.test(value.socket)
+    )
+      throw new Error('invalid file-command owner')
+  } else if (
+    value.platform !== 'darwin' ||
+    Object.keys(value).sort().join() !== 'peer,platform,socket,token' ||
+    !/^\/private\/tmp\/jig-file-owner-[a-zA-Z0-9]+\/control$/.test(value.socket) ||
+    value.peer === null ||
+    typeof value.peer !== 'object' ||
+    Object.keys(value.peer).sort().join() !== 'pid,version' ||
+    !Number.isSafeInteger(value.peer.pid) ||
+    value.peer.pid < 1 ||
+    !Number.isSafeInteger(value.peer.version) ||
+    value.peer.version < 1
+  )
     throw new Error('invalid file-command owner')
   return value
 }
+const address = (marker: Marker) =>
+  marker.platform === 'linux' ? `\0${marker.socket}` : marker.socket
 export function privateNeedsFileOwner(arguments_: readonly string[]): boolean {
   return arguments_[0] === 'run' && arguments_.includes('--out') && marker() === undefined
 }
@@ -67,10 +103,20 @@ export async function privateOwnFileCommand(
   lifetimeMs: number,
   onStaged?: () => Promise<void>,
 ): Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }> {
-  const selected = {
-    socket: `jig-file-owner-${randomBytes(16).toString('hex')}`,
-    token: randomBytes(32).toString('hex'),
-  }
+  if (!['linux', 'darwin'].includes(process.platform))
+    throw new Error('no native file-command host')
+  const native = process.platform === 'darwin' ? await createPrivateMacosFileCommand() : undefined
+  const token = randomBytes(32).toString('hex')
+  const selected: Marker =
+    native === undefined
+      ? { platform: 'linux', socket: `jig-file-owner-${randomBytes(16).toString('hex')}`, token }
+      : {
+          platform: 'darwin',
+          socket: native.socket,
+          token,
+          peer: { pid: native.peer.pid, version: native.peer.version },
+        }
+  let childPid: number | undefined
   const cancellation = new AbortController()
   const coordinatorLost = new AbortController()
   const owner = new PrivateFileDeliveryOwner(cancellation.signal, onStaged)
@@ -87,6 +133,16 @@ export async function privateOwnFileCommand(
       socket.destroy()
       return
     }
+    let peer: { readonly pid: number; readonly version: number } | undefined
+    try {
+      if (native !== undefined) {
+        if (childPid === undefined) throw new Error('native file coordinator is unavailable')
+        peer = requirePrivateMacosFilePeer(socket, { pid: childPid })
+      }
+    } catch {
+      socket.destroy()
+      return
+    }
     connection = socket
     const lost = () => {
       coordinatorLost.abort()
@@ -100,13 +156,26 @@ export async function privateOwnFileCommand(
         if (request.token !== selected.token) throw new Error('file owner authentication failed')
         try {
           if (request.type === 'prepare') {
-            if (typeof request.destination !== 'string' || !Array.isArray(request.roots))
+            if (typeof request.destination !== 'string')
               throw new Error('invalid delivery preparation')
-            await owner.prepare(
-              request.destination,
-              request.pid as number,
-              request.roots as number[],
-            )
+            if (native !== undefined) {
+              if (Object.hasOwn(request, 'pid') || Object.hasOwn(request, 'roots'))
+                throw new Error('native input authority must be transferred')
+              await native.roots(
+                peer!,
+                request.rootCount as number,
+                coordinatorLost.signal,
+                (roots) => owner.prepare(request.destination as string, roots),
+              )
+            } else {
+              if (!Array.isArray(request.roots)) throw new Error('invalid input roots')
+              await withLinuxDirectories(request.pid, request.roots, 8, (roots) =>
+                owner.prepare(
+                  request.destination as string,
+                  roots.map((root) => root.fd),
+                ),
+              )
+            }
             prepared = true
             send(socket, { ok: true })
           } else if (request.type === 'bind-checkpoint') {
@@ -148,20 +217,45 @@ export async function privateOwnFileCommand(
             // Cancellation may retain that record, not unfinished output files.
             const interruptedRecord =
               request.cancelled === true &&
-              request.outputFd === null &&
+              request.output === null &&
               record !== null &&
               typeof record === 'object' &&
               !Array.isArray(record) &&
               !Object.hasOwn(record, 'cleanup')
-            publication = owner
-              .publish(
+            const publish = (
+              output: import('./file-delivery.js').PrivateDeliveryOutput | undefined,
+            ) =>
+              owner.publish(
                 record,
-                request.pid as number,
-                request.outputFd === null ? undefined : (request.outputFd as number),
+                output,
                 checkpoints?.latest,
                 checkpoints !== undefined || interruptedRecord,
                 coordinatorLost.signal,
               )
+            let delivered: Promise<PrivateDeliveryReceipt>
+            if (native !== undefined) {
+              if (Object.hasOwn(request, 'pid') || Object.hasOwn(request, 'outputFd'))
+                throw new Error('native output authority must be transferred')
+              delivered =
+                request.output === null
+                  ? publish(undefined)
+                  : native.output(peer!, request.output, coordinatorLost.signal, (capture) =>
+                      publish({ kind: 'snapshot', capture }),
+                    )
+            } else {
+              delivered = withLinuxDirectories(
+                request.pid,
+                request.output === null ? [] : [request.output],
+                1,
+                (outputs) =>
+                  publish(
+                    outputs[0] === undefined
+                      ? undefined
+                      : { kind: 'linux-directory', fd: outputs[0].fd },
+                  ),
+              )
+            }
+            publication = delivered
               .then((receipt) => {
                 send(socket, {
                   ok: true,
@@ -192,13 +286,20 @@ export async function privateOwnFileCommand(
   })
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    server.listen(`\0${selected.socket}`, resolve)
+    server.listen(address(selected), resolve)
   })
+    .then(() => native?.controlReady())
+    .catch(async (error) => {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+      await native?.close()
+      throw error
+    })
   const child = spawn(command[0]!, [...command.slice(1), ...arguments_], {
     cwd: process.cwd(),
     env: { ...process.env, [MARKER]: JSON.stringify(selected) },
     stdio: 'inherit',
   })
+  childPid = child.pid
   let escalation: ReturnType<typeof setTimeout> | undefined
   let escalationDeadline = Infinity
   const completion = new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>(
@@ -242,13 +343,7 @@ export async function privateOwnFileCommand(
           { ...recovered, ...checkpoints.identity } as JsonValue,
           checkpoints,
         )
-        const receipt = await owner.publish(
-          record,
-          process.pid,
-          undefined,
-          checkpoints.latest,
-          true,
-        )
+        const receipt = await owner.publish(record, undefined, checkpoints.latest, true)
         process.stdout.write(
           `${Buffer.from(canonicalJson({ ...(record as Record<string, JsonValue>), delivery: receipt } as unknown as JsonValue)).toString()}\n`,
         )
@@ -284,7 +379,17 @@ export async function privateOwnFileCommand(
     } catch {
       cleanupFailed = true
     }
+    try {
+      native?.beforeServerClose()
+    } catch {
+      cleanupFailed = true
+    }
     await new Promise<void>((resolve) => server.close(() => resolve()))
+    try {
+      await native?.close()
+    } catch {
+      cleanupFailed = true
+    }
   }
   if (cleanupFailed) {
     process.stderr.write(
@@ -306,7 +411,7 @@ export async function privateConnectFileOwner(): Promise<
   const selected = marker()
   if (selected === undefined) return undefined
   delete process.env[MARKER]
-  const socket = connect(`\0${selected.socket}`)
+  const socket = connect(address(selected))
   const cancellation = new AbortController()
   socket.on('error', () => cancellation.abort())
   socket.once('close', () => cancellation.abort())
@@ -322,10 +427,23 @@ export async function privateConnectFileOwner(): Promise<
   } finally {
     clearTimeout(connectionTimer)
   }
+  if (selected.platform === 'darwin') {
+    try {
+      requirePrivateMacosFilePeer(socket, selected.peer)
+    } catch (error) {
+      socket.destroy()
+      throw error
+    }
+  }
   const iterator = messages(socket)[Symbol.asyncIterator]()
+  let destination: string | undefined
   let checkpoint: import('./private-run-checkpoint.js').RetainedRunCheckpoint | null | undefined
   const request = async (fields: Record<string, JsonValue>): Promise<Record<string, JsonValue>> => {
-    send(socket, { ...fields, token: selected.token, pid: process.pid })
+    send(socket, {
+      ...fields,
+      token: selected.token,
+      ...(selected.platform === 'linux' ? { pid: process.pid } : {}),
+    })
     const next = await iterator.next()
     if (
       !next.done &&
@@ -345,8 +463,27 @@ export async function privateConnectFileOwner(): Promise<
     close() {
       socket.end()
     },
-    async prepare(destination, roots) {
-      await request({ type: 'prepare', destination, roots: [...roots] })
+    async prepare(path, roots) {
+      if (selected.platform === 'linux')
+        await request({ type: 'prepare', destination: path, roots: [...roots] })
+      else {
+        if (!Array.isArray(roots) || roots.length > 8) throw new TypeError('invalid input roots')
+        const pending = request({ type: 'prepare', destination: path, rootCount: roots.length })
+        const transfer = roots.length
+          ? sendPrivateMacosDescriptors(
+              join(dirname(selected.socket), 'fd-roots'),
+              selected.peer,
+              roots,
+              5000,
+              cancellation.signal,
+            )
+          : Promise.resolve()
+        await Promise.all([pending, transfer]).catch((error) => {
+          socket.destroy()
+          throw error
+        })
+      }
+      destination = path
     },
     async bindCheckpoint(identity, project, epoch) {
       await request({
@@ -360,15 +497,52 @@ export async function privateConnectFileOwner(): Promise<
       return (await request({ type: 'checkpoint', input: input as unknown as JsonValue }))
         .receipt as unknown as import('./private-run-checkpoint.js').RunCheckpointReceipt
     },
-    async publish(record, outputFd, signal) {
-      const cancel = () => send(socket, { type: 'cancel', token: selected.token, pid: process.pid })
+    async publish(record, output, signal) {
+      let transferred: ReturnType<typeof requirePrivateCapturedOutput> | undefined
+      if (output !== undefined) {
+        if (selected.platform === 'linux' && output.kind !== 'linux-directory')
+          throw new Error('invalid Linux output lifetime')
+        if (selected.platform === 'darwin') {
+          if (output.kind !== 'snapshot') throw new Error('invalid native output lifetime')
+          try {
+            transferred = requirePrivateCapturedOutput(await output.ready)
+          } catch {
+            return { status: 'failed', destination: destination!, code: 'INVALID_FILES' }
+          }
+        }
+      }
+      const cancel = () => send(socket, { type: 'cancel', token: selected.token })
       signal?.addEventListener('abort', cancel, { once: true })
       try {
-        const reply = await request({
+        const pending = request({
           type: 'publish',
           record,
-          outputFd: outputFd ?? null,
+          output:
+            output === undefined
+              ? null
+              : selected.platform === 'linux'
+                ? (output as Extract<typeof output, { kind: 'linux-directory' }>).directory.fd
+                : ({
+                    bytes: transferred!.bytes,
+                    digest: transferred!.digest,
+                    files: transferred!.files,
+                    directories: transferred!.directories,
+                  } as unknown as JsonValue),
           cancelled: signal?.aborted ?? false,
+        })
+        const transfer =
+          selected.platform === 'darwin' && transferred !== undefined
+            ? sendPrivateMacosDescriptors(
+                join(dirname(selected.socket), 'fd-output'),
+                selected.peer,
+                [transferred.fd],
+                5000,
+                cancellation.signal,
+              )
+            : Promise.resolve()
+        const [reply] = await Promise.all([pending, transfer]).catch((error) => {
+          socket.destroy()
+          throw error
         })
         if (Object.hasOwn(reply, 'checkpoint'))
           checkpoint = reply.checkpoint as unknown as typeof checkpoint
@@ -459,4 +633,43 @@ async function* messages(socket: Socket): AsyncGenerator<JsonValue> {
     }
   }
   if (size !== 0) throw new Error('truncated file-owner message')
+}
+
+/** Linux transport imports remote descriptors before handing local capabilities to delivery. */
+async function withLinuxDirectories<T>(
+  pid: unknown,
+  descriptors: readonly unknown[],
+  maximum: number,
+  work: (directories: readonly FileHandle[]) => Promise<T>,
+): Promise<T> {
+  if (
+    process.platform !== 'linux' ||
+    !Number.isSafeInteger(pid) ||
+    Number(pid) < 1 ||
+    descriptors.length > maximum ||
+    descriptors.some((fd) => !Number.isSafeInteger(fd) || Number(fd) < 0)
+  )
+    throw new TypeError('invalid Linux file transfer')
+  const directories: FileHandle[] = []
+  const errors: unknown[] = []
+  let result: T | undefined
+  try {
+    for (const fd of descriptors) {
+      const directory = await open(`/proc/${pid}/fd/${fd}`, 0x10000)
+      directories.push(directory)
+      if (!(await directory.stat()).isDirectory())
+        throw new TypeError('file transfer requires directories')
+    }
+    result = await work(directories)
+  } catch (error) {
+    errors.push(error)
+  } finally {
+    const results = await Promise.allSettled(directories.map((directory) => directory.close()))
+    errors.push(
+      ...results.filter((result) => result.status === 'rejected').map((result) => result.reason),
+    )
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length) throw new AggregateError(errors, 'file transfer failed')
+  return result as T
 }

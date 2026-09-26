@@ -6,6 +6,7 @@ import {
   open,
   readdir,
   readFile,
+  realpath,
   rm,
   rmdir,
   symlink,
@@ -34,11 +35,11 @@ import {
   privateCliRequiresHost,
   privateCliVerification,
 } from '../src/cli.js'
-import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
-import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
-import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
 import { CheckError } from '../src/diagnostics.js'
 import { projectError as projectFailure } from '../src/internal/project-session-controller.js'
+import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
+import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
+import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
 
@@ -1268,7 +1269,10 @@ describe('finite Jig project commands', () => {
     const invocation = commandInvocation(host, { createSubmissionId: () => 'private-submission' })
 
     expect(await main(['run', 'flow:./flows/work'], invocation.options)).toBe(0)
-    expect(acquisition).toMatchObject({ runTimeoutMs: 30_000, channelOutput: { receive: [] } })
+    expect(acquisition).toMatchObject({
+      runTimeoutMs: process.platform === 'darwin' ? 60_000 : 30_000,
+      channelOutput: { receive: [] },
+    })
     expect(request).toEqual({
       submissionId: 'private-submission',
       target: { kind: 'flow', path: 'flows/work' },
@@ -1581,7 +1585,9 @@ describe('finite Jig project commands', () => {
       const alias = join(root, 'alias')
       await symlink(root, alias)
       const args = ['run', 'flow:flows/work', '--input', `@${join(alias, 'issue.json')}`]
-      expect(privateCliCommandLifetimeMs(args)).toBe(330_000)
+      expect(privateCliCommandLifetimeMs(args)).toBe(
+        process.platform === 'darwin' ? 360_000 : 330_000,
+      )
       await writeFile(file, '{"captured":true}')
       let request: StartRootRunRequest | undefined
       const events: string[] = []
@@ -1652,9 +1658,13 @@ describe('finite Jig project commands', () => {
     expect(
       await main(['run', 'flow:flows/work', '--attach', 'source=/proc'], unsupported.options),
     ).toBe(1)
-    expect(unsupported.error).toContain('ext4, XFS, Btrfs, or tmpfs')
+    expect(unsupported.error).toContain(
+      process.platform === 'darwin'
+        ? 'Jig state and host control files cannot be selected'
+        : 'ext4, XFS, Btrfs, or tmpfs',
+    )
     expect(unsupported.error).not.toContain('/proc')
-    const root = await mkdtemp(join(tmpdir(), 'jig-cli-file-limit-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-cli-file-limit-')))
     try {
       await writeFile(join(root, 'large'), Buffer.alloc(8 * 1024 * 1024 + 1))
       const bounded = commandInvocation(unusedHost())
@@ -1736,7 +1746,7 @@ describe('finite Jig project commands', () => {
   })
 
   test('file report limits do not discard an already settled large terminal', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-cli-large-result-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-cli-large-result-')))
     try {
       for (let i = 0; i < 16; i++) await writeFile(join(root, `file-${i}`), '')
       const terminal: RootRunTerminal = {
@@ -1807,7 +1817,9 @@ describe('finite Jig project commands', () => {
   })
 
   test('installed command lifetime encloses Run cleanup without extending invalid commands', () => {
-    expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'])).toBe(330_000)
+    expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'])).toBe(
+      process.platform === 'darwin' ? 360_000 : 330_000,
+    )
     expect(
       privateCliCommandLifetimeMs(['run', 'flow:flows/work', '--input', '{}', '--timeout', '24h']),
     ).toBe(86_700_000)
@@ -2023,14 +2035,14 @@ describe('finite Jig project commands', () => {
           {
             delivery: {
               async prepare() {},
-              async publish(record, outputFd, signal) {
+              async publish(record, retainedOutput, signal) {
                 expect(events).toContain('close')
                 expect(record).toMatchObject({ status: 'succeeded' })
                 if (interruptAt === 'settlement') {
                   expect(record).toMatchObject({ command: { status: 'interrupted' } })
-                  expect(outputFd).toBeUndefined()
+                  expect(retainedOutput).toBeUndefined()
                 } else {
-                  expect(outputFd).toBe(output.fd)
+                  expect(retainedOutput).toEqual({ kind: 'linux-directory', directory: output })
                   controller.abort()
                 }
                 expect(signal?.aborted).toBe(true)
@@ -2046,7 +2058,7 @@ describe('finite Jig project commands', () => {
               },
             },
             async acquire(_project, options) {
-              options!.files!.retainOutput(output)
+              options!.files!.retainOutput({ kind: 'linux-directory', directory: output })
               return {
                 ...session,
                 async close() {

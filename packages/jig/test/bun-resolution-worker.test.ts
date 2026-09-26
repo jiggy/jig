@@ -72,18 +72,15 @@ test.each([
       ])
       expect(buildExit, buildError).toBe(0)
       const bundle = await readFile(worker, 'utf8')
-      expect(bundle).toContain('/work/package')
       expect(bundle).toContain('--registry=https://registry.npmjs.org')
       const work = join(root, 'work')
       await mkdir(work)
       await writeFile(
         worker,
-        bundle
-          .replaceAll('/work', work)
-          .replaceAll(
-            '--registry=https://registry.npmjs.org',
-            `--registry=http://127.0.0.1:${registry.port}`,
-          ),
+        bundle.replaceAll(
+          '--registry=https://registry.npmjs.org',
+          `--registry=http://127.0.0.1:${registry.port}`,
+        ),
       )
       const manifest = JSON.stringify({
         name: 'fixture',
@@ -105,7 +102,7 @@ test.each([
           worker,
           ...(mode === 'denied' ? [] : ['--allow-resolution-network']),
         ],
-        { cwd: root, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+        { cwd: work, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
       )
       child.stdin.write(
         `${JSON.stringify({

@@ -1,7 +1,11 @@
 import { type BigIntStats, constants } from 'node:fs'
-import { type FileHandle, lstat, open, opendir } from 'node:fs/promises'
-
+import type { FileHandle } from 'node:fs/promises'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
+import {
+  openPrivateChild,
+  openPrivateDirectory,
+  statPrivateChild,
+} from '../internal/descriptor-files.js'
 import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
 import {
   type InspectedPackage,
@@ -11,7 +15,7 @@ import {
 } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import type { ProjectSource } from './author.js'
-import { nativeInvocationKind, type InvocationSlots } from './invocation-slots.js'
+import { type InvocationSlots, nativeInvocationKind } from './invocation-slots.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -28,7 +32,7 @@ const CAPTURE_ATTEMPTS = 3
 const MAX_MEMBERS = 65_536
 const MAX_ROOT_ENTRIES = 262_144
 const MAX_ROOT_NAME_BYTES = 16 * 1024 * 1024
-const GLOB_CHARACTERS = /[*?\[\]{}]/
+const GLOB_CHARACTERS = /[*?[\]{}]/
 const decoder = new TextDecoder('utf-8', { fatal: true })
 
 export interface FlowMemberProvenance {
@@ -394,10 +398,9 @@ async function openChildDirectory(
   logicalPath: string,
   missingAllowed = false,
 ): Promise<OpenDirectory | undefined> {
-  const descriptorPath = `/proc/self/fd/${parent.fd}/${name}`
   let observed: BigIntStats
   try {
-    observed = await lstat(descriptorPath, { bigint: true })
+    observed = await statPrivateChild(parent, name)
   } catch (error) {
     if (missingAllowed && isMissing(error)) return undefined
     if (isMissing(error))
@@ -415,8 +418,9 @@ async function openChildDirectory(
 
   let handle: FileHandle
   try {
-    handle = await open(
-      descriptorPath,
+    handle = await openPrivateChild(
+      parent,
+      name,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
   } catch (error) {
@@ -479,10 +483,9 @@ async function fingerprintDiscoveryRoot(directory: OpenDirectory): Promise<Disco
   const selectedNames: string[] = []
   const selectedIdentities = new Map<string, string>()
   for await (const name of readDirectoryNames(directory.handle)) {
-    const descriptorPath = `/proc/self/fd/${directory.handle.fd}/${name}`
     let information: BigIntStats
     try {
-      information = await lstat(descriptorPath, { bigint: true })
+      information = await statPrivateChild(directory.handle, name)
     } catch (error) {
       if (isEntryRace(error)) sourceChanged('Flow discovery entry changed during inspection', name)
       unavailable(
@@ -525,7 +528,7 @@ async function flowMarker(
     if (packageEntrypointSuffix(name) === undefined) continue
     let information: BigIntStats
     try {
-      information = await lstat(`/proc/self/fd/${directory.fd}/${name}`, { bigint: true })
+      information = await statPrivateChild(directory, name)
     } catch (error) {
       if (isEntryRace(error))
         sourceChanged('Flow implementation changed during discovery', `${logicalPath}/${name}`)
@@ -589,11 +592,7 @@ async function reopenObservedDirectory(
 async function* readDirectoryNames(directory: FileHandle): AsyncIterable<string> {
   let stream: RawDirectory
   try {
-    const openRawDirectory = opendir as unknown as (
-      path: string,
-      options: { readonly encoding: 'buffer' },
-    ) => Promise<RawDirectory>
-    stream = await openRawDirectory(`/proc/self/fd/${directory.fd}`, { encoding: 'buffer' })
+    stream = await openPrivateDirectory(directory)
   } catch (error) {
     unavailable('PROJECT_SOURCE_IO', `cannot enumerate Flow source: ${errorText(error)}`)
   }
@@ -624,6 +623,7 @@ async function* readDirectoryNames(directory: FileHandle): AsyncIterable<string>
     try {
       await stream.close()
     } catch (error) {
+      // biome-ignore lint/correctness/noUnsafeFinally: An enumeration close failure invalidates capture.
       if (!isDirectoryAlreadyClosed(error)) throw error
     }
   }

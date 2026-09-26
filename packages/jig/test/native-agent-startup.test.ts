@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -14,6 +14,7 @@ import {
   privateLinuxHostToolCandidates,
   resolvePrivateLinuxHostPath,
 } from '../src/internal/linux-host-paths.js'
+import { PrivateMacosBackend } from '../src/internal/macos-native-backend.js'
 import { openPrivatePiAgentProvider } from '../src/internal/pi-agent-provider.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
@@ -22,11 +23,11 @@ import { installedBunLocation } from './fixtures/installed-bun-location.js'
 const nativeTest = process.env.JIG_NATIVE_AGENT_STARTUP === '1' ? test : test.skip
 for (const client of ['codex', 'claude', 'pi'] as const) {
   nativeTest(
-    `${client}: native version and ACP session initialize without network`,
+    `${client}: native ACP startup without network`,
     async () => {
       const selected = process.env[`JIG_${client.toUpperCase()}_STARTUP_PATH`]
       if (!selected) throw new Error(`JIG_${client.toUpperCase()}_STARTUP_PATH is required`)
-      const root = await mkdtemp(join(tmpdir(), 'jig-native-startup-'))
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-native-startup-')))
       try {
         const provider = await (client === 'codex'
           ? openPrivateCodexAgentProvider
@@ -51,6 +52,49 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
         await revalidatePrivateAcpAgentProvider(provider)
         const runtime = privateAcpAgentRuntime(provider)
         const support = await openPrivateInstalledBunSupport(installedBunLocation)
+        if (process.platform === 'darwin') {
+          await qualifyMacosStartup(runtime, support)
+          if (client === 'codex') {
+            const token = [
+              Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
+              Buffer.from(
+                JSON.stringify({
+                  email: 'offline@example.test',
+                  exp: Math.floor(Date.now() / 1000) + 3600,
+                  'https://api.openai.com/auth': {
+                    chatgpt_account_id: 'offline-account',
+                    chatgpt_plan_type: 'pro',
+                  },
+                }),
+              ).toString('base64url'),
+              'offline-signature',
+            ].join('.')
+            await writeFile(
+              join(root, 'auth.json'),
+              JSON.stringify({
+                OPENAI_API_KEY: null,
+                auth_mode: 'chatgpt',
+                last_refresh: new Date().toISOString(),
+                tokens: {
+                  access_token: token,
+                  id_token: token,
+                  account_id: 'offline-account',
+                  refresh_token: 'never-projected',
+                },
+              }),
+              { mode: 0o600 },
+            )
+            const subscription = await openPrivateCodexAgentProvider(
+              installedBunLocation.releaseRoot,
+              { CODEX_PATH: selected, CODEX_HOME: root },
+              root,
+            )
+            // Synthetic subscription tokens prove the in-memory login handshake.
+            // Session routing requires an online, valid subscription separately.
+            await qualifyMacosStartup(privateAcpAgentRuntime(subscription), support, false)
+          }
+          return
+        }
         const bwrap =
           process.env.JIG_BWRAP_PATH ??
           (await resolvePrivateLinuxHostPath(privateLinuxHostToolCandidates('bwrap')))
@@ -210,4 +254,137 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
     },
     60_000,
   )
+}
+
+async function qualifyMacosStartup(
+  runtime: ReturnType<typeof privateAcpAgentRuntime>,
+  support: Awaited<ReturnType<typeof openPrivateInstalledBunSupport>>,
+  createSession = true,
+): Promise<void> {
+  if (support.launcherPath === null) throw new Error('native macOS launcher is missing')
+  const backend = new PrivateMacosBackend({
+    bunPath: support.executablePath,
+    supervisorPath: support.supervisorPath,
+    launcherPath: support.launcherPath,
+  })
+  const mappings = new Map([
+    [runtime.sandboxAdapterPath, runtime.adapterPath],
+    [runtime.sandboxExecutablePath, runtime.executablePath],
+    ...runtime.readOnlyMounts.map((mount) => [mount.destination, mount.source] as const),
+  ])
+  let cwd = ''
+  const component = await backend.launch((allocation) => {
+    const data = join(allocation.directory, 'data')
+    const temporary = join(data, 'tmp')
+    cwd = join(data, 'work')
+    const environment = Object.fromEntries(
+      Object.entries(runtime.environment).map(([name, value]) => {
+        for (const [destination, source] of mappings) value = value.split(destination).join(source)
+        return [name, value.split('/tmp/').join(`${temporary}/`)]
+      }),
+    )
+    return {
+      runId: 'native-agent-startup',
+      limits: {
+        memoryBytes: 512 * 1024 * 1024,
+        pids: 64,
+        cpuQuotaMicros: 100_000,
+        cpuPeriodMicros: 100_000,
+        deadlineUnixMs: Date.now() + 45_000,
+        cleanupTimeoutMs: 5_000,
+      },
+      command: [support.executablePath, '--no-env-file', '--no-install', runtime.adapterPath],
+      cwd,
+      environment: {
+        ...environment,
+        TMPDIR: temporary,
+        JIG_MACOS_AGENT_HOME: temporary,
+        JIG_MACOS_AGENT_WORK: cwd,
+      },
+      files: {
+        readOnlyFiles: [
+          ...new Set([
+            support.executablePath,
+            runtime.adapterPath,
+            runtime.executablePath,
+            ...runtime.readOnlyMounts.map((mount) => mount.source),
+          ]),
+        ],
+        readOnlyTrees: [],
+        writableTrees: [cwd, temporary],
+        protectedRoots: [join(allocation.directory, 'control')],
+        network: 'isolated',
+      },
+      maxOutputBytes: 1024 * 1024,
+      storage: { mountPath: data, bytes: 512 * 1024 * 1024, collect: null },
+    }
+  })
+  const stderr = (async () => {
+    let text = ''
+    for await (const bytes of component.stderr) text += new TextDecoder().decode(bytes)
+    return text
+  })()
+  const iterator = component.stdout[Symbol.asyncIterator]()
+  let buffer = ''
+  const decoder = new TextDecoder()
+  const request = async (id: number, method: string, params: unknown) => {
+    await component.write(
+      new TextEncoder().encode(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'),
+    )
+    for (;;) {
+      const split = buffer.indexOf('\n')
+      if (split >= 0) {
+        const frame = JSON.parse(buffer.slice(0, split))
+        buffer = buffer.slice(split + 1)
+        if (frame.method) {
+          if (frame.id !== undefined)
+            await component.write(
+              new TextEncoder().encode(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: frame.id,
+                  error: { code: -32601, message: 'unsupported' },
+                }) + '\n',
+              ),
+            )
+          continue
+        }
+        expect(frame.id).toBe(id)
+        expect(frame.error, JSON.stringify(frame.error)).toBeUndefined()
+        return frame.result
+      }
+      const part = await iterator.next()
+      if (part.done) throw new Error(`native ACP ended: ${await stderr}`)
+      buffer += decoder.decode(part.value, { stream: true })
+      if (buffer.length > 1024 * 1024) throw new Error('native ACP response is too large')
+    }
+  }
+  try {
+    const startup = runtime.startupInput?.()
+    if (startup) {
+      await component.write(startup)
+      startup.fill(0)
+    }
+    const initialized = await request(1, 'initialize', {
+      protocolVersion: 1,
+      clientCapabilities: runtime.authentication?.clientAuthCapabilities
+        ? { auth: runtime.authentication.clientAuthCapabilities }
+        : {},
+      clientInfo: { name: 'jig-native-startup-test', version: '1' },
+    })
+    expect(initialized.protocolVersion).toBe(1)
+    if (runtime.authentication) await request(2, 'authenticate', runtime.authentication.request)
+    if (!createSession) return
+    const session = await request(3, 'session/new', {
+      cwd,
+      mcpServers: [],
+      ...(runtime.sessionMeta ? { _meta: runtime.sessionMeta } : {}),
+    })
+    expect(session.sessionId).toBeString()
+  } finally {
+    await component.terminate()
+    expect((await component.enforcement).fenced).toBe(true)
+    await iterator.return?.()
+    await stderr
+  }
 }

@@ -26,7 +26,7 @@ export class PrivateBunManifestError extends CheckError {
   }
 }
 
-/** Closed Bun 1.3.3 lock policy for the direct alpha's one preparer. */
+/** Closed native manifest policy for the host's pinned preparer. */
 export function requirePrivateBunResolutionManifest(
   value: unknown,
   workspace?: 'root' | 'member',
@@ -70,7 +70,10 @@ export function requirePrivateBunPatches(value: unknown): Readonly<Record<string
       typeof path !== 'string' ||
       Buffer.byteLength(path) > 1024 ||
       !path.endsWith('.patch') ||
-      /[\\\x00-\x1f\x7f]/.test(path) ||
+      path.includes('\\') ||
+      [...path].some(
+        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+      ) ||
       path.split('/').some((part) => ['', '.', '..', '.git', '.jig', 'node_modules'].includes(part))
     )
       throw new TypeError('unsupported Bun patch declarations')
@@ -78,13 +81,19 @@ export function requirePrivateBunPatches(value: unknown): Readonly<Record<string
   return Object.freeze({ ...patches }) as Readonly<Record<string, string>>
 }
 
-export function requirePrivateBunLockPolicy(value: unknown, members?: ReadonlySet<string>): void {
+/** The two selected host runtimes emit different native lock versions. No conversion. */
+export function requirePrivateBunLockPolicy(
+  value: unknown,
+  members?: ReadonlySet<string>,
+  version: 1 | 2 = 1,
+): void {
   const lock = ordinaryRecord(value)
   const workspaces = ordinaryRecord(lock?.workspaces)
   const rootWorkspace = ordinaryRecord(workspaces?.[''])
   const packages = ordinaryRecord(lock?.packages)
   if (
-    lock?.lockfileVersion !== 1 ||
+    (version !== 1 && version !== 2) ||
+    lock?.lockfileVersion !== version ||
     workspaces === undefined ||
     rootWorkspace === undefined ||
     packages === undefined ||

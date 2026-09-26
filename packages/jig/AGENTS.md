@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implements the `@jigging/jig` authoring API and installed Linux host for
+Implements the `@jigging/jig` authoring API, installed Linux host and native macOS candidate for
 admitted FLOW packages.
 
 ## Ownership
@@ -10,6 +10,16 @@ admitted FLOW packages.
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
+- `src/package/capture.ts` snapshots through held directory descriptors and
+  rechecks source identity and contents. Linux uses unnamed temporary files;
+  qualified Mac capture opens a private reader beside its sole writer, unlinks
+  the only pathname, and closes the writer before exposing streamed bytes.
+  Source renames cannot redirect opened-directory capture. This source adapter
+  does not independently qualify the installed Mac execution host.
+- Project source, declaration and static author-module capture use the same
+  closed descriptor operations on Linux and qualified Darwin. Workspace capture
+  preserves declared source/dependency selection and raw-name validation;
+  filesystem capture does not independently qualify Bun installation or execution.
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking, retained-lock decoding and dispatch. Dispatch
   caches longest paths per immutable candidate; repeated routes must not expand
@@ -57,6 +67,10 @@ admitted FLOW packages.
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
   `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated.
+- `support/macos-exec.c` and the private Mac capture/process controls supply
+  native-host development boundaries; their ownership and native qualification
+  procedure live in `src/internal/AGENTS.md`. They do not change the installed
+  package's supported platforms or require a consumer compiler or administrator.
 - Root licensing and pricing are canonical; the build copies their retained
   texts. Source delivery belongs to the matching GitHub release and its tagged
   repository archive. Never embed source archives or add source-assembly
@@ -69,6 +83,7 @@ admitted FLOW packages.
   must not generate unrequested model-based titles outside the reviewed turn
   and model policy. Its adapter preserves native failure and clears shutdown
   timers on close; forced native termination cannot become adapter success. Pi ACP
+  invokes Jig's private launcher through the verified Bun interpreter and
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
   when changing its patch. Each patch has a same-basename `.md` note explaining
@@ -80,7 +95,10 @@ admitted FLOW packages.
   `support/authoring-install.json` and its generated npm lock pin the complete
   private compiler closure; authoring-source changes require a matching lock
   update. Packaging uses `npm ci` and fails on stale integrity. The final
-  tarball normalizes file order, timestamps and ownership.
+  tarball uses pinned build-only `tar` to normalize file order, timestamps and
+  ownership on both Linux and Mac. The local authoring archive lock admits the
+  exact Bun 1.3.3 and 1.4.2 gzip outputs of identical tar contents; neither
+  platform may refresh that integrity during packing.
   Consumers do not resolve the authoring workspace package from a registry.
 
 
@@ -186,6 +204,8 @@ admitted FLOW packages.
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
   presentation; launcher failures follow the same structure. Never introduce
   a separate raw diagnostic style or route machine output through styling.
+  Shell completion must work with macOS's system Bash 3.2 without installing
+  another shell; collect replies with portable array/read operations.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
   A heading must never have less emphasis than its subordinate details. Expanded
@@ -288,6 +308,8 @@ admitted FLOW packages.
 
 ## Child DOX Index
 
+- [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
+  Mac pre-exec boundary; installed-platform promotion remains package-owned.
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,
   containment, execution, durable state, and Agent-provider boundary.
 - [test/fixtures/channel-conversation/AGENTS.md](test/fixtures/channel-conversation/AGENTS.md) —

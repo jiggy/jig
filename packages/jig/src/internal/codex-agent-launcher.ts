@@ -1,21 +1,26 @@
-import { closeSync, mkdirSync, openSync, readSync, writeSync, symlinkSync } from 'node:fs'
+import { closeSync, mkdirSync, openSync, readSync, symlinkSync, writeSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 const STARTUP_INPUT_BYTES = 64 * 1024
-const CODEX_HOME = '/tmp/codex-home'
-const CREDENTIAL_PATH = `${CODEX_HOME}/auth.json`
+const CODEX_HOME = process.env.JIG_MACOS_AGENT_HOME
+  ? `${process.env.JIG_MACOS_AGENT_HOME}/codex-home`
+  : '/tmp/codex-home'
+const OUTPUT_ROOT = process.env.JIG_OUTPUT_ROOT ?? '/jig-output'
 const ADAPTER_SPECIFIER = './codex-acp.js'
+const AUTH_BOOTSTRAP = '__JIG_CODEX_AUTH_BOOTSTRAP__'
 
 if (import.meta.main) await main()
 
 async function main(): Promise<void> {
+  delete process.env.JIG_MACOS_AGENT_HOME
+  delete process.env.JIG_OUTPUT_ROOT
   mkdirSync(CODEX_HOME, { mode: 0o700 })
   materializeStartupFeatures()
   const startup = process.env.JIG_CODEX_STARTUP_INPUT
   if (startup !== undefined && startup !== 'subscription') {
     throw new Error('Codex startup input mode is invalid')
   }
-  if (startup === 'subscription') materializeCredential()
+  if (startup === 'subscription') installCredentialBootstrap()
   delete process.env.JIG_CODEX_STARTUP_INPUT
   const session = process.env.JIG_CODEX_SESSION_STATE
   if (session !== undefined && session !== '1') throw new Error('Codex session mode is invalid')
@@ -40,7 +45,7 @@ export function codexStartupFeatures(configuration: string): string {
     entries.some(([key, value]) => !/^[a-z_]+(?![\s\S])/.test(key) || typeof value !== 'boolean')
   )
     throw new Error('Codex features are invalid')
-  return `[features]\n${entries.map(([key, value]) => `${key} = ${value}`).join('\n')}\n`
+  return `cli_auth_credentials_store = "ephemeral"\n\n[features]\n${entries.map(([key, value]) => `${key} = ${value}`).join('\n')}\n`
 }
 
 function materializeStartupFeatures(): void {
@@ -66,15 +71,15 @@ function materializeSession(): void {
     (pathBytes === 0) !== (contentBytes === 0)
   )
     throw new Error('Codex session bootstrap is invalid')
-  mkdirSync('/jig-output/sessions', { mode: 0o700 })
+  mkdirSync(`${OUTPUT_ROOT}/sessions`, { mode: 0o700 })
   // Only rollout history reaches retained anonymous output. Authentication,
   // SQLite, logs and the rest of CODEX_HOME remain disposable private state.
-  symlinkSync('/jig-output/sessions', `${CODEX_HOME}/sessions`)
+  symlinkSync(`${OUTPUT_ROOT}/sessions`, `${CODEX_HOME}/sessions`)
   if (pathBytes === 0) return
   const path = new TextDecoder('utf-8', { fatal: true }).decode(readExactly(pathBytes))
   if (!/^sessions\/\d{4}\/\d{2}\/\d{2}\/rollout-[0-9T-]+-[0-9a-f-]{36}\.jsonl(?![\s\S])/.test(path))
     throw new Error('Codex session path is invalid')
-  const target = `/jig-output/${path}`
+  const target = `${OUTPUT_ROOT}/${path}`
   mkdirSync(dirname(target), { recursive: true, mode: 0o700 })
   const descriptor = openSync(target, 'wx', 0o600)
   try {
@@ -84,21 +89,50 @@ function materializeSession(): void {
   }
 }
 
-function materializeCredential(): void {
+function installCredentialBootstrap(): void {
   const header = readExactly(4)
   const size = new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(0, false)
   if (size === 0 || size > STARTUP_INPUT_BYTES - 4) {
     throw new Error('Codex startup input is invalid')
   }
   const credential = readExactly(size)
-  let descriptor: number | undefined
+  let accessToken = ''
+  let accountId = ''
   try {
-    descriptor = openSync(CREDENTIAL_PATH, 'wx', 0o600)
-    writeExactly(descriptor, credential)
+    const parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(credential))
+    if (
+      parsed === null ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      parsed.auth_mode !== 'chatgptAuthTokens' ||
+      parsed.tokens === null ||
+      typeof parsed.tokens !== 'object' ||
+      Array.isArray(parsed.tokens) ||
+      typeof parsed.tokens.access_token !== 'string' ||
+      parsed.tokens.access_token.length === 0 ||
+      typeof parsed.tokens.account_id !== 'string' ||
+      parsed.tokens.account_id.length === 0
+    ) {
+      throw new Error('Codex startup input is invalid')
+    }
+    accessToken = parsed.tokens.access_token
+    accountId = parsed.tokens.account_id
   } finally {
     credential.fill(0)
-    if (descriptor !== undefined) closeSync(descriptor)
   }
+  Object.defineProperty(globalThis, AUTH_BOOTSTRAP, {
+    configurable: true,
+    enumerable: false,
+    value: (): Readonly<{ accessToken: string; chatgptAccountId: string }> => {
+      if (accessToken.length === 0 || accountId.length === 0)
+        throw new Error('Codex startup input was already consumed')
+      const result = Object.freeze({ accessToken, chatgptAccountId: accountId })
+      accessToken = ''
+      accountId = ''
+      return result
+    },
+    writable: false,
+  })
 }
 
 function readExactly(size: number): Uint8Array {
