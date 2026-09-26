@@ -116,7 +116,7 @@ fi
 
 case $site_name in
   flow)
-    for guide in python typescript markdown skills; do
+    for guide in python typescript markdown skills platforms runtimes; do
       if [ ! -s "$staging/guide/$guide.html" ]; then
         echo "the FLOW $guide guide is missing" >&2
         exit 1

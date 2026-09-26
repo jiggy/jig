@@ -70,3 +70,11 @@ selection rights.
 No. Evaluation establishes whether reuse, adaptation, or combination adds
 usable capability. A portable method can still be wrong or unsuitable for a
 new setting. Compounding is the ambition, not an automatic property of copying.
+
+## How does FLOW relate to the Agent Client Protocol (ACP)?
+
+ACP and FLOW address orthogonal, complementary roles: ACP connects clients
+(such as IDEs and editors) with interactive coding agents. FLOW connects hosts
+with discrete, callable executable packages. An agent can host Flows internally,
+or an ACP client can orchestrate Flows and route slots to ACP agents.
+See [Host and platform integration](./platforms.md).

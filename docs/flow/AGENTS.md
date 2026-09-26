@@ -10,9 +10,12 @@ and invocation-contract semantics.
 - `spec/` owns normative FLOW specifications and machine companions.
 - `index.md` and `guide/` explain and navigate the current portable surface.
 - `guide/python.md` and `guide/typescript.md` own SDK installation and local
-  protocol tutorials; SDK availability stays independent of host support.
+  protocol tutorials; `guide/runtimes.md` owns the language and runtime support
+  matrix and new SDK implementation guidance; SDK availability stays independent
+  of host support.
 - `guide/markdown.md` owns Markdown authoring, composition and outcome examples;
-  `guide/skills.md` explains current Skill compatibility and execution gaps.
+  `guide/skills.md` explains current Skill compatibility and execution gaps;
+  `guide/platforms.md` owns host and platform integration across ACP and coding agents.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides; the shared diagram workflow is in `docs/AGENTS.md`.
 - Admission, containment, permissions, persistence, providers, Agent policy,
