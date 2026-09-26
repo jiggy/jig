@@ -19,6 +19,9 @@ const sidebar = [
   {
     text: 'Build',
     items: [
+      { text: 'Markdown methods', link: '/guide/markdown' },
+      { text: 'Skill compatibility', link: '/guide/skills' },
+      { text: 'TypeScript / JavaScript SDK', link: '/guide/typescript' },
       { text: 'Python SDK', link: '/guide/python' },
       { text: 'For agents', link: '/guide/for-agents' },
       { text: 'Concepts and questions', link: '/guide/concepts' },

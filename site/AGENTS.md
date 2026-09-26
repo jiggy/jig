@@ -11,8 +11,9 @@ Jig public sites.
 - `flow/` and `jig/` own their site-specific navigation, styles, and public-root
   files. Each site's `diagrams.css` fits guide SVGs to the reading column;
   source diagrams remain with their owning guide under `docs/`.
-- FLOW publishes the Python SDK guide at `/guide/python`; navigation and
-  `llms.txt` link it, and site assembly checks the route. Jig introduces
+- FLOW publishes SDK guides at `/guide/python` and `/guide/typescript`, Markdown
+  authoring at `/guide/markdown`, and Skill compatibility at `/guide/skills`.
+  Navigation, `llms.txt`, and site assembly keep these routes reachable. Jig introduces
   composition at `/guide/request-triage`; its navigation, generated index, and
   assembly gate keep that walkthrough reachable.
   The bounded factory walkthrough is published at `/guide/software-factory`.

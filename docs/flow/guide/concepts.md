@@ -35,6 +35,13 @@ Every package contains an implementation, but it needs a compatible host to
 execute. A Markdown implementation requires an interpreter; other languages
 likewise require runtime support.
 
+## Can every Skill run unchanged?
+
+No. Many prose and text-resource methods fit Markdown/0, but its current
+profile has no general native tools or script execution and rejects unsupported
+tool declarations. [Skill compatibility](./skills.md) lists the differences;
+the [Markdown tutorial](./markdown.md) shows its input, calls and results.
+
 ## Does portability mean every host runs every package?
 
 No. A host must support the implementation and the required public interfaces.

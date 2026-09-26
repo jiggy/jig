@@ -9,8 +9,10 @@ and invocation-contract semantics.
 
 - `spec/` owns normative FLOW specifications and machine companions.
 - `index.md` and `guide/` explain and navigate the current portable surface.
-- `guide/python.md` owns the Python install and protocol quickstart; SDK
-  availability stays independent of any host's language support.
+- `guide/python.md` and `guide/typescript.md` own SDK installation and local
+  protocol tutorials; SDK availability stays independent of host support.
+- `guide/markdown.md` owns Markdown authoring, composition and outcome examples;
+  `guide/skills.md` explains current Skill compatibility and execution gaps.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides; the shared diagram workflow is in `docs/AGENTS.md`.
 - Admission, containment, permissions, persistence, providers, Agent policy,
@@ -35,6 +37,9 @@ and invocation-contract semantics.
 
 - Keep FLOW host-neutral. A host example cannot turn a Jig implementation
   choice into a portable requirement.
+- Present Jig by the same support and evidence criteria as other FLOW hosts.
+  Adopter cards explain capabilities without assuming a shared project history;
+  stewardship information remains in its own supporting material.
 - FLOW Run/0 owns wire behavior; Run SDK/0 defers to it when they differ.
 - Explanatory pages are not a second conformance source.
 - The public origin is `https://flow.jig.md`; route changes must reconcile the
@@ -45,6 +50,9 @@ and invocation-contract semantics.
 - Lead introductions with the applications readers can build by composing
   executable methods. Keep stewardship and governance in supporting reference
   material, after the technical value is clear.
+- Make public-alpha status prominent and concise: specifications and APIs may
+  change, and early users can help shape them. Avoid lengthy compatibility
+  declarations in introductory copy.
 - Keep Python installation guidance independent of the current alpha number:
   link to the PyPI project and use `--pre`; exact versions belong in manifests
   and immutable release records.

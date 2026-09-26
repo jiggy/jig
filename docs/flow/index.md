@@ -74,7 +74,7 @@ showcase:
   stages:
     - name: Natural Language
       title: Start with a readable Markdown.
-      description: FLOW.md captures instructions - Any SKILL.md is a compatible Flow if just renamed!
+      description: FLOW.md captures a readable procedure. Bring Skill instructions and resources when the receiving runtime supports their requirements.
     - name: Any Runtime
       title: Choose another execution format.
       description: Use FLOW.ts or FLOW.py instead of FLOW.md when code should express the procedure. A package has exactly one FLOW.<ext> entrypoint. Switch languages to see the same greeting.
