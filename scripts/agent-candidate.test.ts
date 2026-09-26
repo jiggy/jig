@@ -186,7 +186,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(live['true'].workflow_dispatch).toBeNull()
   expect(live['run-name']).toContain('github.event.workflow_run.head_sha')
   expect(live['run-name']).toContain('github.sha')
-  expect(live.env.JIG_NATIVE_API_MODEL).toBe('mistralai/ministral-8b-2512')
+  expect(live.env.JIG_NATIVE_API_MODEL).toBeUndefined()
   expect(qualification.if).toContain("github.event.workflow_run.conclusion == 'success'")
   expect(qualification.if).toContain("github.event_name == 'workflow_dispatch'")
   expect(qualification.if).toContain("github.ref == 'refs/heads/main'")
@@ -199,6 +199,11 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(qualification.permissions).toEqual({ actions: 'read', contents: 'read' })
   expect(qualification.strategy['max-parallel']).toBe(3)
   expect(matrix.map((entry: any) => entry.client)).toEqual(['codex', 'claude', 'pi'])
+  expect(matrix.map((entry: any) => ({ client: entry.client, model: entry.model }))).toEqual([
+    { client: 'codex', model: 'openrouter/free' },
+    { client: 'claude', model: 'mistralai/ministral-8b-2512' },
+    { client: 'pi', model: 'mistralai/ministral-8b-2512' },
+  ])
   expect(codexInstall.run).toContain('@openai/codex@latest')
   expect(codexInstall.run).toContain('--version')
   expect(claudeInstall.run).toContain('@anthropic-ai/claude-code@latest')
@@ -213,9 +218,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
     ),
   ).toBeTrue()
   expect(
-    apiSteps.every(
-      (step: any) => step.env.JIG_NATIVE_API_MODEL === '${{ env.JIG_NATIVE_API_MODEL }}',
-    ),
+    apiSteps.every((step: any) => step.env.JIG_NATIVE_API_MODEL === '${{ matrix.model }}'),
   ).toBeTrue()
   expect(secretScopes).toEqual([
     'qualification:Qualify native ${{ matrix.client }} API-key ACP through OpenRouter',

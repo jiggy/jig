@@ -21,7 +21,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Linux Host Conformance on each `main` push and can be dispatched manually
   on `main` against that revision's successful push-run host artifacts. It qualifies Codex and Claude
   Code from `@latest` and the currently supported Pi 0.84.4 standalone profile,
-  using one Mistral BYOK model through each client's native API protocol. Keep
+  using free OpenRouter routing for Codex's uncapped Responses requests and
+  Mistral BYOK for Claude and Pi through their native API protocols. These are
+  qualification inputs, not product defaults. Keep
   the OpenRouter key only in the dedicated test step of the protected
   `native-agent-api` environment; never expose it to PRs or artifact builds.
   Configure Mistral BYOK to never use shared capacity for that provider so

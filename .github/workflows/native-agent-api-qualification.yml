@@ -10,7 +10,6 @@ on:
 
 env:
   SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
-  JIG_NATIVE_API_MODEL: mistralai/ministral-8b-2512
 
 permissions:
   contents: read
@@ -37,10 +36,15 @@ jobs:
       matrix:
         include:
           - client: codex
+            # Native Codex sends no output-token cap. Free routing avoids an
+            # unfunded maximum-token reservation without modifying its request.
+            model: openrouter/free
             test-pattern: Responses-compatible endpoint
           - client: claude
+            model: mistralai/ministral-8b-2512
             test-pattern: Anthropic-compatible endpoint
           - client: pi
+            model: mistralai/ministral-8b-2512
             test-pattern: explicit built-in API provider
     steps:
       - name: Check out the tested source revision
@@ -227,7 +231,7 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JIG_NATIVE_API_CLIENT: ${{ matrix.client }}
-          JIG_NATIVE_API_MODEL: ${{ env.JIG_NATIVE_API_MODEL }}
+          JIG_NATIVE_API_MODEL: ${{ matrix.model }}
           JIG_NATIVE_API_TEST_PATTERN: ${{ matrix.test-pattern }}
         run: |
           set -euo pipefail
