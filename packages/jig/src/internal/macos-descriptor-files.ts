@@ -1,6 +1,7 @@
 import { type BigIntStats, closeSync, constants, type Dirent } from 'node:fs'
 import { type FileHandle, mkdtemp, open, rmdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { join } from 'node:path'
 import { getSystemErrorName } from 'node:util'
 import { privateMacosCurrentProcessIdentity } from './macos-process-controls.js'
 
@@ -193,8 +194,21 @@ export function privateMacosFilesystem(fd: number) {
 export async function privateMacosAnonymousBacking(): Promise<
   Readonly<{ writer: FileHandle; reader: FileHandle }>
 > {
+  return anonymousBacking('/private/tmp')
+}
+
+/** Guest-only capture, within the already granted bounded working directory. */
+export async function privateMacosContainedAnonymousBacking(): Promise<
+  Readonly<{ writer: FileHandle; reader: FileHandle }>
+> {
+  return anonymousBacking(process.cwd())
+}
+
+async function anonymousBacking(parent: string): Promise<
+  Readonly<{ writer: FileHandle; reader: FileHandle }>
+> {
   calls()
-  const path = await mkdtemp('/private/tmp/jig-capture-')
+  const path = await mkdtemp(join(parent, 'jig-capture-'))
   let directory: FileHandle | undefined
   let writer: FileHandle | undefined
   let reader: FileHandle | undefined

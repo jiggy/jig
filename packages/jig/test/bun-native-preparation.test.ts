@@ -22,6 +22,7 @@ import { installedBunLocation } from './fixtures/installed-bun-location.js'
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const MACOS = process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1'
 const proofDescribe = HOSTILE || MACOS ? describe.serial : describe.skip
+const hostTest = HOSTILE || MACOS ? test : test.skip
 const linuxTest = HOSTILE ? test : test.skip
 
 proofDescribe('private contained Bun dependency preparation', () => {
@@ -140,7 +141,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
     }
   }, 180_000)
 
-  linuxTest.each([false, true])(
+  hostTest.each([false, true])(
     'prepares a transitive graph without scripts or authored config (resolve=%s)',
     async (resolve) => {
       const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
@@ -239,14 +240,14 @@ proofDescribe('private contained Bun dependency preparation', () => {
     120_000,
   )
 
-  linuxTest('rejects non-registry lock sources before installer fetch', async () => {
+  hostTest('rejects non-registry lock sources before installer fetch', async () => {
     const root = await fixture()
     try {
       await writeFile(
         join(root, 'bun.lock'),
         `${JSON.stringify(
           {
-            lockfileVersion: 1,
+            lockfileVersion: MACOS ? 2 : 1,
             workspaces: { '': { dependencies: { local: 'file:../local' } } },
             packages: { local: ['local@file:../local', {}] },
           },
@@ -403,7 +404,7 @@ async function fixture(): Promise<string> {
   await writeFile(
     join(root, 'bun.lock'),
     `{
-  "lockfileVersion": 1,
+  "lockfileVersion": ${MACOS ? 2 : 1},
   "configVersion": 1,
   "workspaces": {
     "": {

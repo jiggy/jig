@@ -127,6 +127,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   evidence. Copied or closed bundle objects cannot supply descriptor authority.
 - `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
   file operations, raw directory enumeration and anonymous streaming backings.
+  Markdown's contained recapture allocates its anonymous backing
+  inside the existing bounded work directory; this guest-only path grants no
+  host capture authority. Trusted captures retain the separate host allocation
+  outside payload file grants.
   Do not substitute F_GETPATH followed by a pathname reopen for a held
   descriptor. The pinned Bun FileHandle adoption seam and SDK stat/dirent layouts
   require native qualification. Use matching INODE64 entrypoints, independent
@@ -697,6 +701,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   checks ignored install scripts, production dependency selection, source-write
   and private-file denial, and complete cleanup. Project workspace preparation
   tests use the worker's real working-directory interface without source rewriting.
+  `bun-native-preparation.test.ts` runs transitive locked/unlocked preparation
+  and non-registry lock rejection on both hosts; its cgroup-observed coordinator
+  loss cases remain Linux-specific.
   `macos-agent-runtime.test.ts` checks malformed and universal Mach-O metadata,
   project-excluded transitive lookup, cache membership and changed support bytes.
   Its opted-in SDK-linked fixture proves that inspection does not invoke library

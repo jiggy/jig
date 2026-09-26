@@ -6,6 +6,7 @@ import { resolve } from 'node:path'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import {
   privateMacosAnonymousBacking,
+  privateMacosContainedAnonymousBacking,
   privateMacosDirectory,
   privateMacosDuplicate,
   privateMacosOpenAt,
@@ -80,6 +81,17 @@ export interface PackageCaptureSelection {
 
 /** Capture one mutable directory into one unnamed read-only snapshot. */
 export async function capturePackageDirectory(source: string): Promise<CapturedPackage> {
+  return captureDirectory(source, false)
+}
+
+/** Only for an already contained worker recapturing its admitted package. */
+export async function capturePrivateContainedPackageDirectory(
+  source: string,
+): Promise<CapturedPackage> {
+  return captureDirectory(source, true)
+}
+
+async function captureDirectory(source: string, contained: boolean): Promise<CapturedPackage> {
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PACKAGE_CAPTURE_UNAVAILABLE',
@@ -91,7 +103,7 @@ export async function capturePackageDirectory(source: string): Promise<CapturedP
     let root: OpenRoot | undefined
     try {
       root = await openDirectoryRoot(source)
-      return await captureOpenedRootAttempt(root, true)
+      return await captureOpenedRootAttempt(root, true, undefined, contained)
     } catch (error) {
       if (isResourceError(error)) {
         resourceExhausted(error, 'cannot capture package source', resolve(source))
@@ -159,10 +171,11 @@ async function captureOpenedRootAttempt(
   root: OpenRoot,
   verifyPath: boolean,
   selection?: PackageCaptureSelection,
+  contained = false,
 ): Promise<CapturedPackage> {
   let backing: FileHandle | undefined
   try {
-    backing = await openAnonymousBacking()
+    backing = await openAnonymousBacking(contained)
     const { records, fingerprints } = await captureAttempt(root, backing, selection)
     let verification: SourceFingerprint[]
     try {
@@ -363,10 +376,12 @@ async function verifyRootPath(root: OpenRoot): Promise<void> {
   }
 }
 
-async function openAnonymousBacking(): Promise<FileHandle> {
+async function openAnonymousBacking(contained: boolean): Promise<FileHandle> {
   try {
     if (process.platform === 'darwin') {
-      const { writer, reader } = await privateMacosAnonymousBacking()
+      const { writer, reader } = await (contained
+        ? privateMacosContainedAnonymousBacking()
+        : privateMacosAnonymousBacking())
       backingReaders.set(writer, reader)
       return writer
     }

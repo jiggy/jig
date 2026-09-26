@@ -33,7 +33,11 @@ const selection = (recipe: number) => ({
   path: '',
 })
 const agent = (structured: unknown) => done({ text: '', structured })
-const hosted = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
+const hosted =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? describe.serial
+    : describe.skip
 let temporary: string
 let worker: string
 let preserveFailureEvidence = false
