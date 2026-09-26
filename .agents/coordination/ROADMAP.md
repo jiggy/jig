@@ -17,37 +17,38 @@ view of the next steps; active plans, status, evidence and blockers live in
 4. Let others build further capability: support independent builders and
    user-owned Starters based on demonstrated needs.
 
-## Current published baseline
+## Developer-alpha milestone
 
-`@jigging/jig@0.1.0-alpha.22` is published and includes the corrected
-captured-input projection. The exact registry artifact used in the adoption
-check matches alpha.22's published integrity.
+Complete: protected source, Linux host and native-client qualification gates
+passed, and the qualified packages are publicly available. Published-package
+factory adoption produced reviewable patches with executed repository tests and
+independent acceptance cases. Bounded application-owned summary handoff is
+implemented; it is not a new host subsystem.
+
+This closes the developer-alpha launch milestone, not stable-interface promotion,
+broad model reliability or comparative superiority. Exact revisions, artifacts,
+evidence and supported limits belong in `.tmp/` and the public guides, not in
+this roadmap.
 
 ## Next steps
 
-1. Complete independent factory adoption: one builder uses the published
-   alpha.22 and public guide on one different small Bun project with two
-   preselected reproducible issues; at least one patch passes both its
-   repository test and independent acceptance, other outcomes remain
-   inspectable and honestly classified, and the builder can explain review.
-   A recent same-project attempt reproduced both defects, but both Agent calls
-   were rejected before proposals, so this remains open.
-2. Qualify immediate native conversation interruption on supported Ubuntu
-   using published packages. Verify the immediate follow-up/control race,
-   actual turn settlement and cleanup; deterministic tests alone do not close
-   this gate.
-3. After those gates, build an application-owned time-travel handoff using the
-   existing conversation and retained-progress interfaces. Do not add host
-   locks, queues or session-replacement primitives without a demonstrated
-   cross-application need.
+1. Make existing specialist composition easier to adopt through ordinary
+   installed packages and understandable public guidance.
+2. Let consumer needs identify the next useful application increment; reuse
+   delivered conversation, channel and retained-progress interfaces before
+   proposing new host mechanisms.
+
+The [coordination inbox](inbox/) records the postponed contract-discovery and
+conversation/handoff adoption work. Its entries are not implementation approval
+or prerequisites for this completed launch.
 
 ## Ongoing proof
 
-- Show FLOW interoperability by running an unchanged package through public
-  contracts in an independent implementation.
-- Keep adoption, native interruption and comparative-advantage claims tied to
-  their stated evidence; success in one small consumer does not prove the
-  latter two.
+- Preserve the bounded outside-Jig unchanged-package consumption evidence;
+  extend interoperability proof only for a concrete new claim.
+- Keep adoption, native control, handoff and comparative-advantage claims tied
+  to their distinct evidence. Neither a passing gate nor one small consumer
+  establishes general reliability or superiority.
 - Fix concrete release, CLI, authority and cleanup defects as found.
 
 Use the doctrine's [decision test](../doctrine/design-judgment.md#the-decision-test)
