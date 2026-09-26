@@ -91,6 +91,8 @@ of a successful result.
 
 ## Call a configured method
 
+Use the same `handle()` and `run.call()` API whether your method is invoked
+directly or by another Flow. The host supplies the callee's execution context.
 Inside a handler, call a dependency using its local slot:
 
 ```ts

@@ -42,6 +42,16 @@ profile has no general native tools or script execution and rejects unsupported
 tool declarations. [Skill compatibility](./skills.md) lists the differences;
 the [Markdown tutorial](./markdown.md) shows its input, calls and results.
 
+## Why do `flow/run` and `flow/call` both exist?
+
+`flow/run` enters a selected component with its host-supplied execution context.
+`flow/call` asks the host to invoke a declared dependency with supplied input.
+The host resolves that dependency and prepares its context; every launched
+component receives `flow/run`, including a child. Authors use `handle()` and
+`context.call()` through the same SDK in either case. The
+[host integration guide](./platforms.md#component-entry-and-dependency-invocation)
+demonstrates the complete exchange.
+
 ## Does portability mean every host runs every package?
 
 No. A host must support the implementation and the required public interfaces.

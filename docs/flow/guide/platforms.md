@@ -1,300 +1,257 @@
 ---
-title: Host and Platform Integration
-description: Implement FLOW execution in coding agents, ACP clients, and agent platforms.
+title: Host and platform integration
+description: Implement FLOW invocation in coding agents, ACP clients, and agent platforms.
 ---
 
-# Host and Platform Integration
+# Host and platform integration
 
-FLOW is an open, host-neutral standard. Any developer tool, agent runtime,
-or application platform can become a FLOW host—giving software the ability to
-call, combine, and compound executable know-how.
+A FLOW host lets your application invoke a reusable method with input and receive
+an outcome with data. The method can use code, Agent judgment, or other methods.
+Your host selects its implementation and supplies its local powers and execution
+context.
 
-This guide is for maintainers integrating FLOW execution into their systems.
-It explains the core responsibilities of a FLOW host, maps how FLOW fits
-alongside protocols like the Agent Client Protocol (ACP), and outlines the
-minimal complete path to running a Flow.
+This guide is for maintainers adding that ability to a coding agent or platform.
+For writing a method instead, start with the [SDK tutorials](./start.mdx).
 
----
+## Component entry and dependency invocation
 
-## Architectural Roles: FLOW and ACP
+Run/0 has two requests because the caller and host supply different information:
 
-FLOW and ACP address complementary, orthogonal concerns in agentic architecture:
+| Request | Sender → receiver | Responsibility |
+| --- | --- | --- |
+| `flow/run` | Host → component | Start the selected component with its complete invocation context. |
+| `flow/call` | Component → host | Request an invocation through a declared dependency slot, supplying input and an operation identity. |
 
-| Protocol | Connects | Purpose | Wire boundary |
-| --- | --- | --- | --- |
-| **FLOW** | Host ↔ Component | Callable execution of discrete know-how packages (`FLOW.*`) | JSON-RPC 2.0 over standard I/O (Run/0) |
-| **ACP** | Client ↔ Agent | Interactive collaboration between editors/clients and coding agents | Client/Agent JSON-RPC sessions |
-
-Because these roles are orthogonal, there are two primary integration shapes
-when combining them:
+The host resolves the slot, checks its grants, and constructs the selected
+implementation's context. The caller does not choose its credentials, settings,
+attachments, scratch directory, or deadline. A child has its own context and
+inherits the remaining deadline; it does not implicitly inherit other powers.
 
 ```text
-Shape 1: FLOW Host inside an ACP Agent (Agent-hosted)
-┌────────────────┐     ACP      ┌───────────────────────────────────┐
-│   ACP Client   │ ───────────► │             ACP Agent             │
-│ (Editor / IDE) │              │  (FLOW Host)                      │
-└────────────────┘              │       │ Run/0                     │
-                                │       ▼                           │
-                                │  ┌──────────────┐                 │
-                                │  │ FLOW Package │                 │
-                                │  └──────────────┘                 │
-                                └───────────────────────────────────┘
-
-Shape 2: FLOW Host in an ACP Client / Platform (Platform-hosted)
-┌───────────────────────────────────┐     ACP      ┌────────────────┐
-│      ACP Client / Orchestrator    │ ───────────► │   ACP Agent    │
-│  (FLOW Host)                      │ ◄─────────── │ (Specialist)   │
-│       │ Run/0                     │   (slot)     └────────────────┘
-│       ▼                           │
-│  ┌──────────────┐                 │
-│  │ FLOW Package │                 │
-│  └──────────────┘                 │
-└───────────────────────────────────┘
+Host → Flow A: flow/run
+Flow A → Host: flow/call (slot: greeter)
+Host → Flow B: flow/run
+Flow B → Host: result
+Host → Flow A: result of the call
+Flow A → Host: result of its invocation
 ```
 
-### Shape 1: Embedded inside an ACP Agent
+Every launched component receives `flow/run`, including Flow B. A child is an
+invocation relationship, not a separate package type. A slot can also select a
+host-provided implementation without launching another component process; its
+input, result, authority and owned-work obligations still apply.
 
-In this placement, the coding agent (the ACP Agent) also acts as an internal
-FLOW host. When performing user tasks, the agent discovers and invokes Flow
-packages locally as reusable methods or specialized tools.
+For an author, the SDK exposes `handle(handler)` to receive an invocation and
+`context.call(...)` to invoke a dependency. See [Run/0](../spec/run-protocol.md)
+for the wire contract and [Run SDK/0](../spec/run-sdk.md) for that authoring API.
 
-- **Responsibilities**: The agent process prepares the Flow package, spawns
-  the runtime process, feeds input via stdin, receives structured outcomes
-  via stdout, and presents or utilizes the result within its reasoning loop.
-- **Benefit**: The agent acquires structured, deterministic procedures without
-  converting every multi-step recipe into ad-hoc prompt instructions or
-  uncontrolled bash commands.
+## Place the host alongside ACP
 
-### Shape 2: Coordinated by an ACP Client or Platform
+The Agent Client Protocol (ACP) connects a client, such as an editor, to a coding
+agent. FLOW connects a host to callable method implementations. These roles are
+independent; ACP support does not supply a Run/0 host.
 
-In this placement, the coordinating application or platform (the ACP Client)
-acts as the FLOW host. The platform executes Flows that may declare child
-dependencies (slots). When a Flow requires agent reasoning or interactive
-judgment, the host delegates that slot call across ACP to one or more ACP
-Agents.
+| Placement | What your integration owns |
+| --- | --- |
+| Inside an ACP Agent | The coding agent hosts Flows as part of its work, launching components and consuming their results. |
+| Inside an ACP Client or platform | The application hosts Flows and can supply dependencies backed by one or more ACP Agents. |
 
-- **Responsibilities**: The platform manages the outer workflow lifecycle,
-  sandboxes Flow processes, and routes slot calls (`call`) to the appropriate
-  ACP Agent session.
-- **Benefit**: Agent workflows become modular, testable packages whose
-  composition and control remain governed by application code rather than
-  opaque, unconstrained agent loops.
+In either placement, implement the same FLOW boundary. When supplying an
+ACP-backed dependency, an adapter must translate the dependency's declared
+input into the Agent's session/prompt API and validate the completed answer
+against its result contract. ACP updates are observations; they are not a FLOW
+terminal result. Own the session through completion, failure and cancellation,
+and distinguish a settled failure from uncertain dispatch. Use separate Agent
+contexts when the method requires that isolation.
 
----
+The application chooses the Agent route and its grants. An arbitrary slot name
+or model response must not create a new route. FLOW does not define a universal
+ACP adapter, provider configuration, or host admission UI. Consult the
+[ACP documentation](https://agentclientprotocol.com/protocol/v1/overview) for its
+session protocol; use the dependency's actual invocation contract for its data.
 
-## Minimal Complete Host Implementation
+## Implement the invocation lifecycle
 
-A compliant FLOW host implements the [Run/0 protocol](/spec/run-protocol).
-A complete lifecycle involves nine operational duties:
+1. Inspect [Package/0](../spec/package-format.md): exactly one root `FLOW.<ext>`
+   entrypoint, its metadata, and any invocation contract. Code metadata lives in
+   optional `FLOW.meta.json`; Markdown metadata lives in frontmatter. Check the
+   selected runtime, dependency requirements and supported channels.
+2. Prepare the execution environment and grants before starting work. Supply
+   only selected settings, attachments, scratch space and a finite deadline.
+   Keep credentials with their responsible host implementation.
+3. Send one complete `flow/run` request with a string request ID. Run/0 uses
+   bounded LF-terminated UTF-8 JSON objects over full-duplex stdio. Keep the
+   reader active while awaiting responses and serialize writes. Stderr carries
+   diagnostics, not protocol frames.
+4. Service `flow/call` only while its invocation owner is pending. Validate its
+   declared slot, operation identity, input and any explicit channel transfer;
+   resolve only an authorized implementation. Supply the callee's own context.
+5. Return and validate complete `{ outcome, output }` results. Declared domain
+   refusals are normal results; operational failures use the JSON-RPC error
+   envelope. Neither progress nor channel EOF establishes successful execution.
+6. On cancellation, send `request/cancel` with the pending request's ID. Enforce
+   deadlines and bounded termination even if the component ignores cancellation.
+   Settle the complete owned subtree and resources; do not retry uncertain work
+   automatically.
+7. After a terminal response, drain stdout and await process exit. Accept success
+   only with a valid correlated result, no pending owned requests, no trailing
+   bytes or frames, successful cleanup and a zero exit status. A shutdown kill
+   after a result is an execution failure.
 
-```text
-1. Inspect Package ──► 2. Prepare Sandbox ──► 3. Send Run Request
-                                                       │
-6. Process Exit    ◄── 5. Receive Outcome ◄── 4. Service Child Calls
-```
-
-### 1. Package Inspection
-
-Inspect the directory to locate the single executable entrypoint:
-- Look for exactly one file matching `FLOW.<suffix>` (e.g. `FLOW.md`,
-  `FLOW.ts`, `FLOW.py`). If zero or multiple entrypoints exist, reject the
-  package with format error.
-- Check optional `FLOW.meta.json` for declared dependencies and slots.
-- Check optional `FLOW.contract.json` for input/result schemas, custom
-  domain outcomes, and channel declarations.
-
-### 2. Sandbox and Process Preparation
-
-Spawn the appropriate interpreter or runner:
-- Pipe standard input (`stdin`) and standard output (`stdout`).
-- Direct standard error (`stderr`) to diagnostic logging.
-- Set an explicit working directory and clean environment. Never pass
-  ambient API tokens or credentials unless explicitly admitted for that Flow.
-
-### 3. Protocol Framing (Run/0)
-
-Run/0 uses newline-delimited JSON-RPC 2.0 messages over standard I/O.
-The host initiates execution by sending a single `run` request:
+Cancellation has this exact notification shape; it carries no `id` and receives
+no response:
 
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "run",
-  "params": {
-    "input": "Ada"
-  }
-}
+{"jsonrpc":"2.0","method":"request/cancel","params":{"requestId":"host:1"}}
 ```
 
-### 4. Servicing Child Calls (Slot Delegation)
+Run/0 specifies validation, error codes, identity, cancellation and completion in
+more detail. These duties do not prescribe Jig's review, persistence or sandbox
+implementation.
 
-If the executing Flow calls a child dependency, it writes a `call` request:
+## Exercise both directions locally
+
+This trusted-code exercise runs a caller and a greeter using Node 24, npm and
+Python 3.11+ on Linux or macOS. It uses the public, standard-library-only
+[Run/0 test peer](https://github.com/jiggy/jig/tree/main/conformance/run-0/python-peer).
+The peer checks framing and process completion. It inherits the launching
+process's environment and does not contain descendants; run it with the clean
+environment below and only code you trust. It is not a production host library.
+
+Create an empty directory and install the published SDK:
+
+```sh
+npm init -y
+npm pkg set type=module
+npm install --save-exact @jigging/flow@alpha
+mkdir greeter
+```
+
+Save this caller as `FLOW.mjs`:
+
+```js
+import { handle } from "@jigging/flow";
+
+await handle(async (context) => context.call({
+  operationId: "greet:1",
+  slot: "greeter",
+  input: context.input,
+}));
+```
+
+Declare its dependency in `FLOW.meta.json`:
 
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": "c1",
-  "method": "call",
-  "params": {
-    "slot": "greeter",
-    "operationId": "greet:1",
-    "input": "Ada"
-  }
-}
+{"uses":{"greeter":{}}}
 ```
 
-The host intercepts this request, resolves the configured slot (to another
-Flow, an ACP Agent, or internal logic), executes it, and replies with a
-matching JSON-RPC response:
+Save this implementation as `greeter/FLOW.mjs`. Both packages use the installed
+SDK in this local exercise:
+
+```js
+import { handle } from "@jigging/flow";
+
+await handle(async (context) => ({
+  outcome: "done",
+  output: { message: `Hello, ${context.input}!` },
+}));
+```
+
+Save the public peer's `run0_peer.py` in the exercise directory, then save this
+as `host.py`. It serves one exact dependency call for these packages. A general
+host additionally needs the other validation, authority, concurrency, channels
+and lifecycle duties described above.
+
+```python
+import json
+import tempfile
+import time
+from pathlib import Path
+from run0_peer import HostPeer, flow_run_request, require_exact_object, success
+
+
+def done_result(message, request_id):
+    require_exact_object(message, {"jsonrpc", "id", "result"})
+    if message["id"] != request_id:
+        raise RuntimeError("Unexpected response ID")
+    result = require_exact_object(message["result"], {"outcome", "output"})
+    if result["outcome"] != "done":
+        raise RuntimeError("These packages declare only the done outcome")
+    return result
+
+
+def remaining(deadline):
+    seconds = (deadline - int(time.time() * 1000)) / 1000
+    if seconds <= 0:
+        raise TimeoutError("Invocation deadline expired")
+    return seconds
+
+
+with tempfile.TemporaryDirectory() as directory:
+    scratch = Path(directory)
+    (scratch / "caller").mkdir()
+    (scratch / "greeter").mkdir()
+    deadline = int(time.time() * 1000) + 5_000
+    request = flow_run_request("host:1", "Ada")
+    request["params"].update(scratch=str(scratch / "caller"), deadlineUnixMs=deadline)
+
+    with HostPeer(["node", "FLOW.mjs"], timeout=1) as caller:
+        caller.send(request)
+        call = caller.validate_request(
+            caller.receive(timeout=remaining(deadline)), "flow/call"
+        )
+        params = require_exact_object(call["params"], {"slot", "operationId", "input"})
+        if params != {"slot": "greeter", "operationId": "greet:1", "input": "Ada"}:
+            raise RuntimeError("The call does not match this exercise's granted route")
+
+        child_request = flow_run_request("host:greeter:1", params["input"])
+        child_request["params"].update(
+            scratch=str(scratch / "greeter"), deadlineUnixMs=deadline
+        )
+        with HostPeer(["node", "greeter/FLOW.mjs"], timeout=1) as greeter:
+            greeter.send(child_request)
+            child_result = done_result(
+                greeter.receive(timeout=remaining(deadline)), "host:greeter:1"
+            )
+            greeter.finish()
+
+        caller.send(success(call["id"], child_result))
+        result = done_result(caller.receive(timeout=remaining(deadline)), "host:1")
+        caller.finish()
+
+    if result != {"outcome": "done", "output": {"message": "Hello, Ada!"}}:
+        raise RuntimeError("Unexpected greeting result")
+    print(json.dumps(result))
+```
+
+Run the exercise without ambient credentials:
+
+```sh
+env -i PATH="$PATH" python3 host.py
+```
+
+The expected output is:
 
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": "c1",
-  "result": {
-    "outcome": "done",
-    "output": { "message": "Hello, Ada!" }
-  }
-}
+{"outcome":"done","output":{"message":"Hello, Ada!"}}
 ```
 
-### 5. Outcome vs Failure
+Change `Hello,` to `Welcome,` in the greeter and change the final expected message
+in `host.py`. Run again: the caller is unchanged and receives the new result.
+As a failure case, remove `output` from the greeter's return value. The SDK
+rejects it; the host does not print a successful result. A component which emits
+trailing stdout or exits nonzero after responding must also fail completion.
 
-When the method finishes, it returns a terminal JSON-RPC result:
+## Verify an implementation
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "outcome": "done",
-    "output": { "result": "Success" }
-  }
-}
-```
+Use the [Run/0 conformance corpus](https://github.com/jiggy/jig/tree/main/conformance/run-0)
+and its README for executable component/host-peer checks. Start with ordinary
+invocation and slot calls, then test malformed frames, error responses,
+cancellation, pending work, nonzero exits and trailing output. Implement the
+channel extension when your host claims that support.
 
-Hosts must distinguish between three distinct categories of outcomes:
-- **Successful protocol execution with domain outcome**: The result contains
-  `outcome` (e.g., `"done"`, `"blocked"`, `"not-found"`). Domain outcomes are
-  normal data; they are not protocol failures.
-- **Operational protocol failure**: The response contains a JSON-RPC `error`
-  object (e.g., code `-32602` for invalid parameters, `-32000` for execution
-  failure).
-- **Process crash or timeout**: The process exits non-zero, writes unparseable
-  stdout framing, or exceeds deadline.
-
-### 6. Cancellation and Lifecycle Cleanup
-
-- If the caller cancels work or a deadline expires, the host sends a JSON-RPC
-  notification:
-  ```json
-  { "jsonrpc": "2.0", "method": "cancel", "params": {} }
-  ```
-- Give the process a bounded grace period to flush diagnostics and exit cleanly.
-- If the process fails to exit within the grace window, terminate it (`SIGTERM`,
-  then `SIGKILL`).
-- Reclaim temporary files, fifos, and allocated OS resources.
-
----
-
-## Minimal Host Skeleton (Node.js / TypeScript)
-
-Below is a minimal host runner in TypeScript demonstrating standard process
-spawning, framing, and result extraction:
-
-```ts
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
-
-interface FlowRunResult {
-  outcome: string;
-  output?: unknown;
-}
-
-export async function runFlow(
-  command: string,
-  args: string[],
-  cwd: string,
-  input: unknown
-): Promise<FlowRunResult> {
-  const child = spawn(command, args, {
-    cwd,
-    stdio: ["pipe", "pipe", "inherit"], // stderr flows to host console
-    env: { ...process.env, NODE_ENV: "production" },
-  });
-
-  const lines = createInterface({ input: child.stdout });
-
-  return new Promise((resolve, reject) => {
-    let completed = false;
-
-    // 1. Send the initial Run request
-    const request = JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "run",
-      params: { input },
-    });
-    child.stdin.write(`${request}\n`);
-
-    // 2. Handle incoming lines from stdout
-    lines.on("line", (line) => {
-      try {
-        const msg = JSON.parse(line);
-
-        // Check for terminal result
-        if (msg.id === 1) {
-          completed = true;
-          if (msg.error) {
-            reject(new Error(`Flow error [${msg.error.code}]: ${msg.error.message}`));
-          } else {
-            resolve(msg.result as FlowRunResult);
-          }
-          child.stdin.end();
-        }
-      } catch (err) {
-        reject(new Error(`Malformed protocol frame: ${line}`));
-      }
-    });
-
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (!completed) {
-        reject(new Error(`Flow process exited prematurely with code ${code}`));
-      }
-    });
-  });
-}
-```
-
----
-
-## Production Sandboxing vs. Protocol Conformance
-
-The protocol framing above confirms wire compatibility. It does **not**
-provide security or multi-tenant containment.
-
-A production host is responsible for:
-1. **Filesystem Isolation**: Restricting writes to declared output targets or
-   ephemeral workspaces (e.g. using Bubblewrap, Landlock, or container cgroups).
-2. **Network Policy**: Denying arbitrary outbound network requests unless
-   explicitly authorized.
-3. **Resource Quotas**: Enforcing maximum resident memory, CPU time, and wall-clock
-   execution timeouts.
-4. **Credential Safeguards**: Keeping API keys outside the process environment
-   and passing credentials only through scoped host calls.
-
-FLOW components cannot grant themselves system permissions or bypass host
-controls. The authority model remains strictly local to your host.
-
----
-
-## Conformance and Next Steps
-
-To verify your host implementation against the standard test suite:
-
-- Read the normative [Run/0 Specification](/spec/run-protocol).
-- Read the [Package/0 Specification](/spec/package-format) and [Invocation Contracts](/spec/invocation-contracts).
-- Run the executable conformance test suite under `conformance/run-0`.
-- Join technical discussions on [GitHub Discussions](https://github.com/jiggy/jig/discussions) to share feedback or ask implementation questions.
+Protocol evidence does not establish containment. The host's threat model must
+cover filesystem and network authority, resource limits, credentials, descendant
+ownership and cleanup. Those controls belong to the host; a method declaration
+cannot grant them. Share implementation experience in
+[GitHub Discussions](https://github.com/jiggy/jig/discussions).

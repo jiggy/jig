@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import Ajv2020 from 'ajv/dist/2020.js'
 import sessionContract from '../../docs/flow/spec/examples/invocation-contracts/session-store.contract.json'
 import ticketContract from '../../docs/flow/spec/examples/schema-files/FLOW.contract.json'
@@ -13,6 +14,31 @@ const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/0 message schemas', () => {
+  test('implementer guide wire examples match the normative message schemas', () => {
+    const methods: Record<string, string> = {
+      'flow/run': 'flowRunRequest',
+      'flow/call': 'flowCallRequest',
+      'request/cancel': 'requestCancelNotification',
+    }
+    for (const guide of ['platforms', 'runtimes']) {
+      const source = readFileSync(
+        new URL(`../../docs/flow/guide/${guide}.md`, import.meta.url),
+        'utf8',
+      )
+      let messages = 0
+      for (const match of source.matchAll(/^```json\n([\s\S]*?)^```$/gm)) {
+        if (match[1] === undefined) throw new Error(`${guide}: missing JSON example`)
+        const value = JSON.parse(match[1])
+        if (value.jsonrpc === undefined) continue
+        const name = value.method === undefined ? 'runSuccessResponse' : methods[value.method]
+        if (name === undefined) throw new Error(`${guide}: unsupported wire method ${value.method}`)
+        const validate = definition(name)
+        expect(validate(value), `${guide}: ${JSON.stringify(validate.errors)}`).toBe(true)
+        messages++
+      }
+      expect(messages, `${guide}: no checked wire examples`).toBeGreaterThan(0)
+    }
+  })
   test('channel creation accepts only closed slot channel references', () => {
     const validate = definition('channelCreateParams')
     expect(validate({ contract: { slot: 'agent', channel: 'events' } })).toBe(true)

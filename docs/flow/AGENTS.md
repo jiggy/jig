@@ -15,7 +15,8 @@ and invocation-contract semantics.
   of host support.
 - `guide/markdown.md` owns Markdown authoring, composition and outcome examples;
   `guide/skills.md` explains current Skill compatibility and execution gaps;
-  `guide/platforms.md` owns host and platform integration across ACP and coding agents.
+  `guide/platforms.md` owns host and platform integration across ACP and coding
+  agents, including the runnable trusted-code caller/child test-peer exercise.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides; the shared diagram workflow is in `docs/AGENTS.md`.
 - Admission, containment, permissions, persistence, providers, Agent policy,
@@ -45,6 +46,9 @@ and invocation-contract semantics.
   stewardship information remains in its own supporting material.
 - FLOW Run/0 owns wire behavior; Run SDK/0 defers to it when they differ.
 - Explanatory pages are not a second conformance source.
+- Explain `flow/run` as component entry and `flow/call` as dependency invocation;
+  every launched component, including a child, receives `flow/run`. Ordinary
+  authors use one `handle()`/context `call()` API.
 - The public origin is `https://flow.jig.md`; route changes must reconcile the
   FLOW site navigation, `llms.txt`, and assembly mappings.
 
@@ -65,6 +69,10 @@ and invocation-contract semantics.
 ## Verification
 
 - Build the FLOW site into a fresh directory with `scripts/build-site.sh`.
+- `bun test conformance/run-0/schema.test.ts` checks implementer-guide wire
+  examples against the normative schemas. The Python conformance tests execute
+  the platform guide's host snippet against controlled peer fixtures, including
+  invalid results and failed process completion.
 
 ## Child DOX Index
 
