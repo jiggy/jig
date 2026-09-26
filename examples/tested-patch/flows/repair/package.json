@@ -7,7 +7,7 @@
     "./repair": "./repair.ts"
   },
   "dependencies": {
-    "@jigging/agent-method": "0.1.0-alpha.3",
+    "@jigging/agent-method": "0.1.0-alpha.4",
     "@jigging/flow": "0.1.0-alpha.12"
   }
 }
