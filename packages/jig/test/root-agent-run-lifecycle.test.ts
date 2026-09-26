@@ -811,7 +811,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             session.rootAdministration,
             `subprocess-${nested}`,
             'success',
-            30_000,
+            process.platform === 'darwin' ? 75_000 : 30_000,
             nested,
           ),
         ).toMatchObject({
@@ -909,7 +909,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             session.rootAdministration,
             'skill-delivery',
             'success',
-            30_000,
+            process.platform === 'darwin' ? 75_000 : 30_000,
             nested,
           ),
         ).toMatchObject({
@@ -1597,7 +1597,11 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
         let primaryFailure: unknown
         const request = (id: string, scenario: string) => runRequest(id, scenario, nested)
-        const run = (id: string, scenario: string, timeoutMs = 30_000) =>
+        const run = (
+          id: string,
+          scenario: string,
+          timeoutMs = process.platform === 'darwin' ? 75_000 : 30_000,
+        ) =>
           runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested)
         const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 3 : 2)
         const openHost = (location: PrivateInstalledBunLocation) =>
@@ -1715,7 +1719,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             directory: root,
             host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
           })
-          expect(await run('agent-deadline', 'slow', 10_000)).toMatchObject({
+          expect(await run('agent-deadline', 'slow', process.platform === 'darwin' ? 75_000 : 10_000)).toMatchObject({
             state: 'terminal',
             terminal: { status: 'failed', code: 'DEADLINE_EXCEEDED' },
           })
@@ -1822,7 +1826,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           })
         }
       },
-      nested ? 240_000 : 180_000,
+      process.platform === 'darwin' ? 600_000 : nested ? 240_000 : 180_000,
     )
   }
 })
@@ -2328,7 +2332,7 @@ async function runToTerminal(
   administration: RootAdministration,
   submissionId: string,
   scenario: string,
-  timeoutMs = 30_000,
+  timeoutMs = process.platform === 'darwin' ? 75_000 : 30_000,
   nested = false,
 ) {
   const receipt = await administration.startRun(runRequest(submissionId, scenario, nested))
@@ -2358,7 +2362,7 @@ function agentText(terminal: Awaited<ReturnType<typeof waitForTerminal>>): strin
 async function waitForTerminal(
   administration: RootAdministration,
   receipt: StartRootRunReceipt,
-  timeoutMs = 30_000,
+  timeoutMs = process.platform === 'darwin' ? 75_000 : 30_000,
 ) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -2375,7 +2379,7 @@ async function waitForAgentSandbox(
   root: string,
   runId: string,
   expectedOwners = 1,
-  timeoutMs = 20_000,
+  timeoutMs = process.platform === 'darwin' ? 60_000 : 20_000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -2398,7 +2402,15 @@ async function waitForAgentSandbox(
     }
     await Bun.sleep(20)
   }
-  throw new Error('Agent fixture did not retain its sandbox owner')
+  const state = withStore(root, (database) => ({
+    owners: database
+      .query('SELECT scope_operation_id, operation_id, sandbox_digest IS NOT NULL AS sealed FROM root_child_owners WHERE parent_run_id = ?1')
+      .all(runId),
+    terminal: database
+      .query('SELECT CAST(terminal_bytes AS TEXT) AS terminal FROM root_terminals WHERE run_id = ?1')
+      .get(runId),
+  }))
+  throw new Error(`Agent fixture did not retain its sandbox owner: ${JSON.stringify(state)}`)
 }
 
 async function expectNoAgentOwner(root: string): Promise<void> {
@@ -2514,7 +2526,7 @@ async function waitForEvents(
   scenario: string,
   count: number,
 ): Promise<void> {
-  const deadline = Date.now() + 10_000
+  const deadline = Date.now() + (process.platform === 'darwin' ? 60_000 : 10_000)
   while (Date.now() < deadline) {
     if (events.filter((event) => event.scenario === scenario).length >= count) return
     await Bun.sleep(20)

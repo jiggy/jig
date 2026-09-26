@@ -185,7 +185,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   payload creation. Recheck original capture capabilities before admission,
   kernel-authenticate both transfer peers, and verify byte counts and hashes
   again in the guardian. Keep immutable inputs separate from writable roots;
-  close every writer and transferred descriptor before native execution. Input
+  close every writer and transferred descriptor before native execution. Root
+  launch plans grant read-only access to the bounded `data/inputs` projection
+  when captured inputs exist; this tree never joins writable payload grants. Input
   names, aggregate bytes, directory entries and file count retain common bounds.
   Recovery receives only its own fixed configuration, never stale input handles
   or other payload launch fields from the failed attempt.

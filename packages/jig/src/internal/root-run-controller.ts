@@ -837,7 +837,10 @@ function backendPlan(
             ? [recipe.installedSupport.markdownRuntimePath]
             : []),
         ],
-        readOnlyTrees: [packageRoot],
+        readOnlyTrees: [
+          packageRoot,
+          ...((files?.capturedInputs?.length ?? 0) > 0 ? [join(data, 'inputs')] : []),
+        ],
         writableTrees: [join(data, 'work'), join(data, 'tmp'), ...(hasOutput ? [output] : [])],
         protectedRoots: [join(allocation.directory, 'control')],
         network: 'isolated' as const,
