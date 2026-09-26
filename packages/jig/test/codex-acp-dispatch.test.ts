@@ -11,6 +11,7 @@ for (const scenario of [
   'shutdown-signal',
   'forced-clean',
   'missing-executable',
+  'immediate-follow-up',
 ]) {
   test(`Codex ACP accounts for requested turns and native shutdown: ${scenario}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-dispatch-'))
@@ -59,8 +60,16 @@ for (const scenario of [
     let buffer = ''
     let bytes = 0
     const decoder = new TextDecoder()
-    const request = async (id: number, method: string, params: unknown) => {
+    const request = async (id: number, method: string, params: unknown, interrupt?: string) => {
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      if (interrupt !== undefined)
+        child.stdin.write(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'session/cancel',
+            params: { sessionId: interrupt },
+          }) + '\n',
+        )
       await child.stdin.flush()
       for (;;) {
         const split = buffer.indexOf('\n')
@@ -71,8 +80,8 @@ for (const scenario of [
         } else {
           const part = await lines.read()
           if (part.done) throw new Error(`ACP ended: ${await diagnostics}`)
-          if ((bytes += part.value.byteLength) > 256 * 1024)
-            throw new Error('ACP fixture output overflow')
+          bytes += part.value.byteLength
+          if (bytes > 256 * 1024) throw new Error('ACP fixture output overflow')
           buffer += decoder.decode(part.value, { stream: true })
         }
       }
@@ -103,10 +112,22 @@ for (const scenario of [
       })
       if (scenario === 'rejected') expect(answer.error).toBeDefined()
       else expect(answer.result?.stopReason).toBe('end_turn')
-      expect((await request(5, 'session/close', { sessionId })).error).toBeUndefined()
+      if (scenario === 'immediate-follow-up') {
+        const followup = await request(
+          5,
+          'session/prompt',
+          {
+            sessionId,
+            prompt: [{ type: 'text', text: 'Only this follow-up' }],
+          },
+          sessionId,
+        )
+        expect(followup.result?.stopReason).toBe('cancelled')
+      }
+      expect((await request(6, 'session/close', { sessionId })).error).toBeUndefined()
       await child.stdin.end()
       const exit = await child.exited
-      if (scenario === 'completed' || scenario === 'rejected')
+      if (scenario === 'completed' || scenario === 'rejected' || scenario === 'immediate-follow-up')
         expect(exit, await diagnostics).toBe(0)
       else expect(exit, await diagnostics).not.toBe(0)
       const recorded = (await readFile(recording, 'utf8'))
@@ -120,7 +141,12 @@ for (const scenario of [
       if (scenario === 'forced-clean')
         expect(recorded.some((record) => record.event === 'native-forced-exit-zero')).toBe(true)
       const started = recorded.filter((record) => record.method === 'turn/start')
-      expect(started).toHaveLength(1)
+      expect(started).toHaveLength(scenario === 'immediate-follow-up' ? 2 : 1)
+      if (scenario === 'immediate-follow-up') {
+        const interrupted = recorded.filter((record) => record.method === 'turn/interrupt')
+        expect(interrupted).toHaveLength(1)
+        expect(interrupted[0].params.turnId).toBe('turn-2')
+      }
       expect(started[0].params.model).toBe('fixture')
       expect(recorded.filter((record) => record.method === 'thread/start')).toHaveLength(1)
       expect(
@@ -130,6 +156,18 @@ for (const scenario of [
           ),
         ),
       ).toBe(false)
+    } catch (error) {
+      if (scenario === 'immediate-follow-up') {
+        const records = (await readFile(recording, 'utf8'))
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        console.info(
+          'Immediate-interruption native methods:',
+          records.map((record) => record.method ?? record.event),
+        )
+      }
+      throw error
     } finally {
       try {
         await child.stdin.end()

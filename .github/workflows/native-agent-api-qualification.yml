@@ -137,6 +137,7 @@ jobs:
             printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
             printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
             printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
+            printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/jig")"
             printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
           } >> "$GITHUB_ENV"
           printf 'ready=true\n' >> "$GITHUB_OUTPUT"
@@ -264,6 +265,7 @@ jobs:
             "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
             "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
             "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
+            "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
             "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
             "JIG_NATIVE_API_MODEL=$JIG_NATIVE_API_MODEL" \
             "JIG_NATIVE_API_CLIENT=$JIG_NATIVE_API_CLIENT" \

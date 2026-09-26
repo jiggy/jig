@@ -68,7 +68,9 @@ admitted FLOW packages.
   the root Bun `patchedDependencies` before the ordinary package build. Codex ACP
   must not generate unrequested model-based titles outside the reviewed turn
   and model policy. Its adapter preserves native failure and clears shutdown
-  timers on close; forced native termination cannot become adapter success. Pi ACP
+  timers on close; forced native termination cannot become adapter success.
+  Register pending Codex turns before asynchronous prompt setup so immediate
+  interruption cannot disappear before the native turn ID exists. Pi ACP
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
   when changing its patch. Each patch has a same-basename `.md` note explaining
@@ -272,12 +274,13 @@ admitted FLOW packages.
   `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
   rebuilding during execution. The native Codex immediate-interruption
-  qualification separately installs the published Jig CLI and its published
+  qualification separately installs the frozen Jig candidate and published
   conversation dependencies in an ordinary consumer. It imports the published
   Agent contract through the public CLI, then checks the actual follow-up
   result and host cleanup. The test asserts and prints the resolved package
-  versions; this is published-artifact evidence, not a source-candidate
-  package test.
+  versions; the CLI must come from `JIG_PACKAGE_ARCHIVE`, so fixes can qualify
+  before publication. Published conversation dependencies remain separately
+  identified; this is installed candidate evidence, not a registry publication proof.
   `finite-acp-lifecycle.test.ts` also runs the unchanged incident-brief application
   with packed dependencies and a deterministic native peer. It checks two
   branches, predecessor settlement, one successor and residue, not model quality.

@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline'
 let requests = 0
 let threads = 0
 let turns = 0
+let interruptible: { threadId: string; turn: Record<string, unknown> } | undefined
 const reply = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n')
 if (process.env.RECORD_SCENARIO === 'forced-clean') {
   process.on('SIGTERM', () => {
@@ -76,8 +77,26 @@ for await (const line of createInterface({ input: process.stdin })) {
         break
       }
       const turn = { id: `turn-${++turns}`, items: [], status: 'completed', error: null }
+      if (process.env.RECORD_SCENARIO === 'immediate-follow-up' && turns === 2) {
+        interruptible = { threadId: request.params.threadId, turn }
+        setTimeout(() => ok({ turn: { ...turn, status: 'inProgress' } }), 100)
+        break
+      }
       ok({ turn: { ...turn, status: 'inProgress' } })
       reply({ method: 'turn/completed', params: { threadId: request.params.threadId, turn } })
+      break
+    }
+    case 'turn/interrupt': {
+      if (!interruptible || request.params.turnId !== interruptible.turn.id) process.exit(2)
+      ok({})
+      reply({
+        method: 'turn/completed',
+        params: {
+          threadId: interruptible.threadId,
+          turn: { ...interruptible.turn, status: 'interrupted' },
+        },
+      })
+      interruptible = undefined
       break
     }
     default:

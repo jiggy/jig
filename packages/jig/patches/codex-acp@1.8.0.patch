@@ -14,7 +14,15 @@ diff --git a/dist/index.js b/dist/index.js
      connection.dispose();
    });
    return { connection, process: codex };
-@@ -33773,10 +33778,6 @@
+@@ -33448,6 +33453,7 @@
+       }
+       return pendingTurnStart;
+     };
++    ensurePendingTurnStart();
+     const disposePromptRequestCancellation = this.observePromptRequestCancellation(signal, sessionState, activePrompt);
+     let eventHandler = null;
+     let promptNotificationsActive = true;
+@@ -33773,10 +33779,6 @@
          agentFileChangeReportTurnId = turnCompleted.turn.id;
        }
        await clearRecoveredSessionFailure(eventHandler);
@@ -25,7 +33,7 @@ diff --git a/dist/index.js b/dist/index.js
        await this.publishFallbackSessionTitle(
          sessionState,
          this.createPromptFallbackTitle(params.prompt)
-@@ -34199,11 +34200,15 @@
+@@ -34199,11 +34201,15 @@
    };
    process.stdin.on("close", () => {
 -    codexProcessState.connection.process.stdin.end();

@@ -38,8 +38,8 @@ import {
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 import {
   writeConversationHelperCaller,
+  writeInstalledConversationHelperProject,
   writeOrdinaryAcpAgent,
-  writePublishedConversationHelperProject,
 } from './fixtures/ordinary-acp-agent.js'
 import { completedResponse, writeOrdinaryAgent } from './fixtures/ordinary-agent.js'
 
@@ -1321,28 +1321,31 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   )
 
   nativeCodexApiTest(
-    'interrupts an immediate follow-up through published Jig and conversation packages with a Responses-compatible endpoint',
+    'interrupts an immediate follow-up through installed Jig and published conversation packages with a Responses-compatible endpoint',
     async () => {
       const codexPath = nativeCodexPath
       const apiKey = process.env.OPENROUTER_API_KEY
       const model = nativeCodexApiModel
       if (codexPath === undefined || apiKey === undefined || model === undefined)
         throw new Error('native Codex API qualification requires its executable and API key')
-      const proofRoot = await mkdtemp(join(tmpdir(), 'jig-native-codex-published-conversation-'))
+      const proofRoot = await mkdtemp(join(tmpdir(), 'jig-native-codex-installed-conversation-'))
       const root = join(proofRoot, 'consumer')
       const cliRoot = join(proofRoot, 'cli')
       await mkdir(root)
       let clean = false
       try {
-        const published = await writePublishedConversationHelperProject(root, cliRoot)
-        expect(published.versions).toEqual({
-          jig: '0.1.0-alpha.22',
+        const installed = await writeInstalledConversationHelperProject(root, cliRoot)
+        const candidate = JSON.parse(
+          await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+        )
+        expect(installed.versions).toEqual({
+          jig: candidate.version,
           acp: '0.1.0-alpha.3',
           flow: '0.1.0-alpha.12',
           method: '0.1.0-alpha.3',
         })
         console.info(
-          `Published native-conversation packages: ${JSON.stringify(published.versions)}`,
+          `Installed native-conversation packages: ${JSON.stringify(installed.versions)}`,
         )
         const commandEnvironment = nativePublicCommandEnvironment({
           codexPath: await realpath(codexPath),
@@ -1350,8 +1353,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           model,
         })
         const runCommand = async (args: readonly string[], timeoutMs = 120_000) => {
-          const result = await runPublishedJigCommand(
-            published.command,
+          const result = await runInstalledJigCommand(
+            installed.command,
             args,
             root,
             commandEnvironment,
@@ -1410,7 +1413,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         clean = true
       } finally {
         if (clean) await rm(proofRoot, { recursive: true, force: true })
-        else console.error(`Published native conversation fixture retained at ${proofRoot}`)
+        else console.error(`Installed native conversation fixture retained at ${proofRoot}`)
       }
     },
     NATIVE_AGENT_TEST_TIMEOUT_MS + 180_000,
@@ -2540,11 +2543,11 @@ function nativePublicCommandEnvironment(options: {
 function requiredProcessEnvironment(key: string): string {
   const value = process.env[key]
   if (value === undefined || value.length === 0)
-    throw new Error(`native published-package qualification requires ${key}`)
+    throw new Error(`native installed-package qualification requires ${key}`)
   return value
 }
 
-async function runPublishedJigCommand(
+async function runInstalledJigCommand(
   command: string,
   args: readonly string[],
   cwd: string,
@@ -2592,7 +2595,7 @@ async function runPublishedJigCommand(
   }
   if (timedOut)
     throw new Error(
-      `published Jig command exceeded ${timeoutMs}ms: ${args.join(' ')}\n${stdout}${stderr}`,
+      `installed Jig command exceeded ${timeoutMs}ms: ${args.join(' ')}\n${stdout}${stderr}`,
     )
   return { exitCode, stdout, stderr, credentialLeaked }
 }
