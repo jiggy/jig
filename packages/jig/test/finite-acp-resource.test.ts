@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
 import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
+import { PrivateFiniteAcpPolicyError } from '../src/internal/finite-acp-policy.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
   runPrivateFiniteAcpResource,
@@ -11,7 +12,6 @@ import type {
 } from '../src/internal/linux-rootless-backend.js'
 import type { JsonObject, JsonValue } from '../src/json.js'
 import { ChannelBroker } from '../src/run/channels.js'
-import { PrivateFiniteAcpPolicyError } from '../src/internal/finite-acp-policy.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -94,6 +94,7 @@ function component(options: FakeOptions = {}) {
     } as PrivateLinuxConfirmedEnforcementReceipt)
   }
   const process = {
+    owner: { kind: 'private-linux-prepared-owner/1' },
     stdout,
     stderr,
     enforcement,
@@ -362,7 +363,8 @@ describe('finite ACP resource transport (fake native process)', () => {
       _meta: { bearer: 'secret-token' },
     })
     expect(
-      (f.native.writes.find((x) => x.method === 'session/new')?.params as JsonObject)._meta,
+      (f.native.writes.find((x) => x.method === 'session/new')?.params as JsonObject | undefined)
+        ?._meta,
     ).toEqual({ trusted: 'private-session-policy' })
     expect(f.native.writes.find((x) => x.id === 'permission')).toEqual({
       jsonrpc: '2.0',

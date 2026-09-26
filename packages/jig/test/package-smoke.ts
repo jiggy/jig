@@ -7,6 +7,20 @@ import { isAbsolute, join, resolve } from 'node:path'
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
 let completed = false
+const installedRuntime =
+  process.platform === 'darwin'
+    ? Object.freeze({
+        package: 'bun-darwin-x64-baseline',
+        version: '1.4.2',
+        revision: '1.4.2+744846f84',
+        sha256: '2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
+      })
+    : Object.freeze({
+        package: 'bun-linux-x64-baseline',
+        version: '1.3.3',
+        revision: '1.3.3+274e01c73',
+        sha256: 'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+      })
 const expectedInstalledFiles = [
   'LICENSE.md',
   'PRICING.md',
@@ -46,6 +60,8 @@ const expectedInstalledFiles = [
   'libexec/evaluator/project-evaluator-worker.js',
   'libexec/preparation/bun-native-preparation-worker.js',
   'libexec/linux-rootless-supervisor.js',
+  'libexec/macos-native-supervisor.js',
+  'libexec/macos-exec',
   'package.json',
 ].sort()
 
@@ -66,7 +82,7 @@ try {
   )
   await run(
     [
-      'bun',
+      process.execPath,
       'install',
       '--ignore-scripts',
       '--no-progress',
@@ -78,6 +94,7 @@ try {
     consumer,
   )
   const installed = join(consumer, 'node_modules', '@jigging', 'jig')
+  const runtime = join(consumer, 'node_modules', '@oven', installedRuntime.package, 'bin', 'bun')
   const installedFiles = await listFiles(installed)
   const installedManifest = JSON.parse(
     await readFile(join(installed, 'package.json'), 'utf8'),
@@ -107,7 +124,8 @@ try {
   await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.bin')), {
     code: 'ENOENT',
   })
-  assert.deepEqual(installedManifest.dependencies, {
+  assert.deepEqual(installedManifest.optionalDependencies, {
+    '@oven/bun-darwin-x64-baseline': '1.4.2',
     '@oven/bun-linux-x64-baseline': '1.3.3',
   })
   assert.equal(Object.hasOwn(installedManifest, 'private'), false)
@@ -161,9 +179,9 @@ try {
       retained,
     )
   }
-  assert.deepEqual(installedManifest.os, ['linux'])
+  assert.deepEqual(installedManifest.os, ['linux', 'darwin'])
   assert.deepEqual(installedManifest.cpu, ['x64'])
-  assert.deepEqual(installedManifest.libc, ['glibc'])
+  assert.equal(Object.hasOwn(installedManifest, 'libc'), false)
   assert.equal(Object.hasOwn(installedManifest, 'scripts'), false)
 
   const executable = join(installed, 'bin', 'jig')
@@ -316,17 +334,13 @@ using FLOW;
     await compiler.exited
   }
 
-  const runtime = join(consumer, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
   const runtimeBytes = await readFile(runtime)
-  assert.equal(
-    createHash('sha256').update(runtimeBytes).digest('hex'),
-    'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
-  )
+  assert.equal(createHash('sha256').update(runtimeBytes).digest('hex'), installedRuntime.sha256)
   const bun = await run([runtime, '--version'], consumer)
-  assert.equal(bun.stdout, '1.3.3\n')
+  assert.equal(bun.stdout, `${installedRuntime.version}\n`)
   assert.equal(bun.stderr, '')
   const revision = await run([runtime, '--revision'], consumer)
-  assert.equal(revision.stdout, '1.3.3+274e01c73\n')
+  assert.equal(revision.stdout, `${installedRuntime.revision}\n`)
   assert.match(
     await readFile(join(installed, 'THIRD_PARTY_NOTICES'), 'utf8'),
     /EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED/,
@@ -369,6 +383,7 @@ using FLOW;
 
   for (const relative of [
     'libexec/linux-rootless-supervisor.js',
+    'libexec/macos-native-supervisor.js',
     'libexec/markdown-runtime.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
@@ -400,7 +415,25 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
 }
 `,
   )
-  await run(['bun', 'smoke.mjs'], consumer)
+  await run([runtime, 'smoke.mjs'], consumer)
+
+  if (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1') {
+    const project = join(consumer, 'macos-greeting')
+    await run([command, 'init', project], consumer)
+    await run([command, 'review', '--allow-resolution-network', '--yes'], project, {}, 120_000)
+    const result = await run(
+      [command, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada')],
+      project,
+      {},
+      120_000,
+    )
+    assert.deepEqual(JSON.parse(result.stdout), {
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+      outcome: 'done',
+      output: { message: 'Hello, Ada!' },
+      status: 'succeeded',
+    })
+  }
 
   await writeFile(
     join(consumer, 'smoke.ts'),

@@ -12,7 +12,7 @@ export const installedBunLocation: PrivateInstalledBunLocation = Object.freeze({
       '..',
       'node_modules',
       '@oven',
-      'bun-linux-x64-baseline',
+      process.platform === 'darwin' ? 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline',
       'bin',
       'bun',
     ),

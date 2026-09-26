@@ -27,6 +27,7 @@ test('writable projections cannot overlap immutable runtime or admitted data', (
     '/private/tmp/admitted',
     '/private/tmp/admitted/nested',
     '/System/Library/new',
+    '/usr/share/icu',
   ])
     expect(() => privateMacosSandboxProfile({ ...files, writableTrees: [grant] })).toThrow(
       'immutable',

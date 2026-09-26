@@ -223,6 +223,47 @@ native(
         await releasePrivateMacosOwnerState(lost, lostReceipt as never)
         expect(await readdir(owners)).toEqual([])
       }
+
+      const automatic = await backend.launch((allocation) => {
+        const data = join(allocation.directory, 'data')
+        const work = join(data, 'work')
+        return {
+          runId: 'automatic',
+          limits: {
+            memoryBytes: 256 * 1024 * 1024,
+            pids: 64,
+            cpuQuotaMicros: 50_000,
+            cpuPeriodMicros: 100_000,
+            deadlineUnixMs: Date.now() + 30_000,
+            cleanupTimeoutMs: 5000,
+          },
+          command: [payload],
+          cwd: work,
+          environment: {},
+          files: {
+            readOnlyFiles: [payload],
+            readOnlyTrees: [],
+            writableTrees: [work],
+            protectedRoots: [join(allocation.directory, 'control')],
+            network: 'isolated',
+          },
+          maxOutputBytes: 1,
+          storage: { mountPath: data, bytes: 16 * 1024 * 1024, collect: null },
+        }
+      })
+      const automaticParent = automatic.owner.owner.allocation.parent
+      await automatic.closeInput()
+      await expect(automatic.enforcement).resolves.toMatchObject({
+        stopReason: 'payload_exit',
+        exitCode: 1,
+        fenced: true,
+      })
+      expect(
+        await access(automaticParent).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false)
       safeToRemove = true
     } finally {
       if (safeToRemove) await rm(root, { recursive: true })

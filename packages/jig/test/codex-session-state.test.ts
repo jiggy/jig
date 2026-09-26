@@ -91,7 +91,9 @@ test('native startup receives the same inert feature flags before thread creatio
         model: 'not copied',
       }),
     ),
-  ).toBe('[features]\ncode_mode = false\ncode_mode_host = false\n')
+  ).toBe(
+    'cli_auth_credentials_store = "ephemeral"\n\n[features]\ncode_mode = false\ncode_mode_host = false\n',
+  )
   for (const features of [
     null,
     [],

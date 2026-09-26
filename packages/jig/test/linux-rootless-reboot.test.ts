@@ -6,21 +6,24 @@ import { join } from 'node:path'
 import { privateDomainDigest } from '../src/internal/identity.js'
 import {
   normalizePrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
   PrivateLinuxCgroupBackend,
   PrivateLinuxFenceUnconfirmedError,
-  releasePrivateLinuxOwnerState,
   type PrivateLinuxSealedOwnerIdentity,
+  planPrivateLinuxOwnerStateAllocation,
+  releasePrivateLinuxOwnerState,
 } from '../src/internal/linux-rootless-backend.js'
 import type { JsonValue } from '../src/json.js'
 
-const CURRENT_BOOT_ID = (await readFile('/proc/sys/kernel/random/boot_id', 'utf8')).trim()
+const CURRENT_BOOT_ID =
+  process.platform === 'linux'
+    ? (await readFile('/proc/sys/kernel/random/boot_id', 'utf8')).trim()
+    : ''
 const OTHER_BOOT_ID =
   CURRENT_BOOT_ID === '00000000-0000-0000-0000-000000000000'
     ? '11111111-1111-1111-1111-111111111111'
     : '00000000-0000-0000-0000-000000000000'
 
-describe('private rootless Linux reboot recovery', () => {
+describe.skipIf(process.platform !== 'linux')('private rootless Linux reboot recovery', () => {
   test('releases an active old-boot owner without probing its extinct cgroup', async () => {
     const fixture = await syntheticOwner(OTHER_BOOT_ID, 'old-boot')
     try {

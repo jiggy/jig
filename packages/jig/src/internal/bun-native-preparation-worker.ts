@@ -26,7 +26,7 @@ const WORK_ROOT = process.cwd()
 const PACKAGE_ROOT = join(WORK_ROOT, 'package')
 const CACHE_ROOT = join(WORK_ROOT, 'cache')
 const CHILD_ENVIRONMENT: Readonly<Record<string, string>> = Object.freeze(
-  process.platform === 'linux' ? { LD_LIBRARY_PATH: '/jig-runtime/lib' } : {},
+  process.platform === 'linux' ? { LD_LIBRARY_PATH: '/jig-runtime/lib' } : { TMPDIR: WORK_ROOT },
 )
 
 let workspace: Workspace | undefined

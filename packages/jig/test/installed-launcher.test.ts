@@ -3,11 +3,13 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-test('installed launcher uses the NixOS system tool, not ambient readlink or Bun', async () => {
+test('installed launcher uses a fixed system tool, not ambient readlink or Bun', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-launcher-paths-'))
   try {
     const release = join(root, 'release')
-    const runtime = join(release, 'node_modules/@oven/bun-linux-x64-baseline/bin/bun')
+    const runtimePackage =
+      process.platform === 'darwin' ? 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
+    const runtime = join(release, `node_modules/@oven/${runtimePackage}/bin/bun`)
     const systemReadlink = join(root, 'system/readlink')
     const shell = await realpath(Bun.which('bash')!)
     const launcher = join(release, 'bin/jig')
@@ -43,7 +45,7 @@ test('installed launcher uses the NixOS system tool, not ambient readlink or Bun
       '--no-env-file',
       '--no-install',
       '--config=/dev/null',
-      join(release, 'libexec/installed-cli.js'),
+      await realpath(join(release, 'libexec/installed-cli.js')),
       '--help',
     ])
     await rm(systemReadlink)

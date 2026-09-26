@@ -18,14 +18,16 @@ not bundled in the archive.
 EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED
 ------------------------------------------
 
-`@jigging/jig` declares an exact dependency on
-`@oven/bun-linux-x64-baseline@1.3.3`. Package managers obtain that package
-separately; its bytes are not included or bundled in the Jig archive.
+`@jigging/jig` declares exact, platform-selected optional dependencies on
+`@oven/bun-linux-x64-baseline@1.3.3` and
+`@oven/bun-darwin-x64-baseline@1.4.2`. Package managers obtain the matching
+package separately; its bytes are not included or bundled in the Jig archive.
 
 Bun and the third-party components contained in Bun are governed by their
 respective terms:
 
 https://github.com/oven-sh/bun/blob/bun-v1.3.3/LICENSE.md
+https://github.com/oven-sh/bun/blob/bun-v1.4.2/LICENSE.md
 
 yaml 2.9.0
 ----------
@@ -84,8 +86,10 @@ Jig patches the pinned adapter to disable automatic model-based session titles.
 Requested turns keep their reviewed model and count; deterministic fallback
 titles remain. The patch also propagates native process failure and clears the
 shutdown timer after native close. Forced termination cannot report a clean
-adapter exit. See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
-note for the correction and removal condition.
+adapter exit. It also accepts Jig's one-use in-memory ChatGPT token bootstrap so
+subscription credentials never need a sandbox-readable file. See
+`packages/jig/patches/codex-acp@1.8.0.patch` and its companion note for the
+corrections and removal condition.
 
 Copyright 2025 JetBrains s.r.o.
 
@@ -116,6 +120,7 @@ runtime-support files.
 
 Jig carries a version-pinned dependency patch preserving failed RPC prompts,
 assistant errors, cancellation, and token limits as distinct ACP results.
+It also invokes Jig's private launcher with the verified Bun interpreter.
 The patch is maintained at `packages/jig/patches/pi-acp@0.0.33.patch` in source;
 the installed bundle includes that correction.
 

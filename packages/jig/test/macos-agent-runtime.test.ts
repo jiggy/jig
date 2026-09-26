@@ -65,6 +65,16 @@ describe('bounded static Mach-O metadata', () => {
     })
   })
 
+  test.each([false, true])('accepts baseline LIB64 metadata (universal=%s)', async (universal) => {
+    const { executable } = await fixture()
+    const slice = nativeMachO()
+    slice.writeUInt32LE(0x80000003, 8)
+    const bytes = universal ? universalMachO(slice) : slice
+    if (universal) bytes.writeUInt32BE(0x80000003, 12)
+    await writeFile(executable, bytes)
+    expect((await read(executable)).executable).toBe(true)
+  })
+
   test.each([
     ['truncated header', (b: Buffer) => b.subarray(0, 16)],
     [

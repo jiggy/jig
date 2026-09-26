@@ -43,6 +43,27 @@ import {
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import {
+  admitPrivateExecutionOwner,
+  cancelPrivateExecutionOwnerStateAllocation,
+  isPrivateExecutionFenceUnconfirmed,
+  normalizePrivateExecutionConfirmedEnforcementReceipt,
+  normalizePrivateExecutionOwnerStateAllocationIdentity,
+  normalizePrivateExecutionOwnerStateReleaseReceipt,
+  normalizePrivateExecutionSealedOwnerIdentity,
+  observePrivateExecutionBackendMechanism,
+  type PrivateExecutionBackend,
+  type PrivateExecutionConfirmedEnforcementReceipt,
+  type PrivateExecutionLaunchPlan,
+  type PrivateExecutionOwnerStateAllocationIdentity,
+  type PrivateExecutionOwnerStateReleaseReceipt,
+  type PrivateExecutionSealedOwnerIdentity,
+  planPrivateExecutionOwnerStateAllocation,
+  privateExecutionBackendKind,
+  recoverPrivateExecutionFence,
+  releasePrivateExecutionOwnerState,
+  sealPrivateExecutionOwner,
+} from './execution-backend.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -52,22 +73,6 @@ import {
   requireParentFlowOwner,
   requireParentTarget,
 } from './invocation-context.js'
-import {
-  cancelPrivateLinuxOwnerStateAllocation,
-  normalizePrivateLinuxConfirmedEnforcementReceipt,
-  normalizePrivateLinuxOwnerStateAllocationIdentity,
-  normalizePrivateLinuxOwnerStateReleaseReceipt,
-  normalizePrivateLinuxSealedOwnerIdentity,
-  type PrivateLinuxCgroupBackend,
-  type PrivateLinuxConfirmedEnforcementReceipt,
-  PrivateLinuxFenceUnconfirmedError,
-  type PrivateLinuxLaunchPlan,
-  type PrivateLinuxOwnerStateAllocationIdentity,
-  type PrivateLinuxOwnerStateReleaseReceipt,
-  type PrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
-} from './linux-rootless-backend.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
   allocatePrivatePackageMaterialization,
@@ -111,18 +116,18 @@ interface ChildAllocation {
   readonly requestDigest: string
   readonly effectiveDeadlineUnixMs: number
   readonly packageAllocation: PrivatePackageMaterializationAllocationIdentity
-  readonly ownerAllocation: PrivateLinuxOwnerStateAllocationIdentity
+  readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
 }
 
 interface ChildSandbox {
   readonly kind: typeof SANDBOX_KIND
-  readonly owner: PrivateLinuxSealedOwnerIdentity
+  readonly owner: PrivateExecutionSealedOwnerIdentity
 }
 
 interface ChildCleanup {
   readonly kind: typeof CLEANUP_KIND
   readonly packageReleased: true
-  readonly ownerRelease: PrivateLinuxOwnerStateReleaseReceipt
+  readonly ownerRelease: PrivateExecutionOwnerStateReleaseReceipt
 }
 
 interface ChildInput {
@@ -132,7 +137,7 @@ interface ChildInput {
   readonly parentFlow?: PrivateParentFlow | undefined
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
   readonly channels?: {
@@ -278,7 +283,7 @@ async function executePreparedChild(
       ...privateBunExecutionMaterialization(recipe.execution),
       ownerToken: `sha256:${identity}`,
     }),
-    planPrivateLinuxOwnerStateAllocation({
+    planPrivateExecutionOwnerStateAllocation(input.backend, {
       parent: roots.owners,
       name: `c-${identity.slice(0, 47)}`,
     }),
@@ -316,8 +321,16 @@ async function executePreparedChild(
   try {
     const lease = await materializeChild(input.packageStoreRoot, recipe, packageAllocation)
     await revalidateRecipe(recipe)
-    const sealed = await input.backend.seal(
-      backendPlan(recipe, lease.root, identity, effectiveDeadlineUnixMs),
+    const sealed = await sealPrivateExecutionOwner(
+      input.backend,
+      backendPlan(
+        input.backend,
+        recipe,
+        lease.root,
+        identity,
+        effectiveDeadlineUnixMs,
+        ownerAllocation,
+      ),
       ownerAllocation,
     )
     const sandbox: ChildSandbox = Object.freeze({ kind: SANDBOX_KIND, owner: sealed.identity })
@@ -348,7 +361,7 @@ async function executePreparedChild(
     let component: Awaited<ReturnType<typeof sealed.admit>>
     try {
       attemptedDispatch = true
-      component = await sealed.admit(startup.signal)
+      component = await admitPrivateExecutionOwner(sealed, startup.signal)
     } finally {
       startup.dispose()
     }
@@ -382,9 +395,7 @@ async function executePreparedChild(
       if (active !== undefined) await recoverOne(input, active)
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
-        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
-          ? 'UNCERTAIN'
-          : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
@@ -572,7 +583,7 @@ async function materializeChild(
 
 async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
   const [mechanism] = await Promise.all([
-    recipe.backend.observeMechanism(),
+    observePrivateExecutionBackendMechanism(recipe.backend),
     revalidatePrivateInstalledBunSupport(recipe.installedSupport),
   ])
   if (mechanism.support.digest !== recipe.mechanismDigest) {
@@ -581,23 +592,74 @@ async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
 }
 
 function backendPlan(
+  backend: PrivateExecutionBackend,
   recipe: PrivateDirectRunRecipe,
   packageRoot: string,
   identity: string,
   deadlineUnixMs: number,
-): PrivateLinuxLaunchPlan {
+  allocation: PrivateExecutionOwnerStateAllocationIdentity,
+): PrivateExecutionLaunchPlan {
+  const runId = `child-${identity.slice(0, 42)}`
+  const limits = Object.freeze({
+    ...recipe.resourceCeilings,
+    deadlineUnixMs,
+    cancellationGraceMs: CANCELLATION_GRACE_MS,
+  })
+  if (privateExecutionBackendKind(backend) === 'linux')
+    return Object.freeze({
+      kind: 'linux',
+      plan: Object.freeze({
+        runId,
+        limits,
+        readOnlyMounts: Object.freeze([
+          ...recipe.runtimeMounts,
+          { source: packageRoot, destination: recipe.packageDestination },
+        ]),
+        command: recipe.command,
+      }),
+    })
+  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
+    throw new TypeError('native macOS child requires a native owner allocation')
+  const data = join(allocation.directory, 'data')
+  const command = recipe.command.map((part) => {
+    if (part === recipe.sandboxExecutablePath) return recipe.installedSupport.executablePath
+    if (part === recipe.installedSupport.sandboxMarkdownRuntimePath)
+      return recipe.installedSupport.markdownRuntimePath
+    if (part === recipe.packageDestination) return packageRoot
+    if (part.startsWith(`${recipe.packageDestination}/`))
+      return `${packageRoot}${part.slice(recipe.packageDestination.length)}`
+    return part
+  }) as [string, ...string[]]
   return Object.freeze({
-    runId: `child-${identity.slice(0, 42)}`,
-    limits: Object.freeze({
-      ...recipe.resourceCeilings,
-      deadlineUnixMs,
-      cancellationGraceMs: CANCELLATION_GRACE_MS,
+    kind: 'macos',
+    plan: Object.freeze({
+      runId,
+      limits: {
+        memoryBytes: limits.memoryBytes,
+        pids: limits.pids,
+        cpuQuotaMicros: limits.cpuQuotaMicros,
+        cpuPeriodMicros: limits.cpuPeriodMicros,
+        deadlineUnixMs: limits.deadlineUnixMs,
+        cleanupTimeoutMs: limits.cleanupTimeoutMs,
+      },
+      command,
+      cwd: join(data, 'work'),
+      environment: { TMPDIR: join(data, 'tmp') },
+      files: {
+        readOnlyFiles: [
+          recipe.installedSupport.executablePath,
+          ...(recipe.request.entrypoint.suffix === 'md'
+            ? [recipe.installedSupport.markdownRuntimePath]
+            : []),
+        ],
+        readOnlyTrees: [packageRoot],
+        writableTrees: [join(data, 'work'), join(data, 'tmp')],
+        protectedRoots: [join(allocation.directory, 'control')],
+        network: 'isolated' as const,
+      },
+      maxOutputBytes: 64 * 1024 * 1024,
+      storage: { mountPath: data, bytes: 512 * 1024 * 1024, collect: null },
     }),
-    readOnlyMounts: Object.freeze([
-      ...recipe.runtimeMounts,
-      { source: packageRoot, destination: recipe.packageDestination },
-    ]),
-    command: recipe.command,
   })
 }
 
@@ -605,7 +667,7 @@ async function releaseKnownChild(
   input: ChildInput,
   lifecycleValue: PrivateRootChildOwnerLifecycle,
   lease: PrivatePackageMaterializationLease,
-  fence: PrivateLinuxConfirmedEnforcementReceipt,
+  fence: PrivateExecutionConfirmedEnforcementReceipt,
 ): Promise<void> {
   let lifecycle = lifecycleValue
   const selected = await requireAllocationMatchesParent(
@@ -629,7 +691,7 @@ async function releaseKnownChild(
     lease.identity.allocation.parent.path,
     lease.identity,
   )
-  const ownerRelease = await releasePrivateLinuxOwnerState(sandbox.owner, fence)
+  const ownerRelease = await releasePrivateExecutionOwnerState(sandbox.owner, fence)
   const cleanup = childCleanup(ownerRelease)
   lifecycle = await recordPrivateRootChildCleanup({
     coordinator: input.coordinator,
@@ -685,13 +747,13 @@ async function recoverOne(
   const allocation = parseAllocation(lifecycle)
   const selected = await requireAllocationMatchesParent(input, lifecycle, allocation)
   if (lifecycle.sandbox === undefined) {
-    const cancelled = await cancelPrivateLinuxOwnerStateAllocation(allocation.ownerAllocation)
-    await releasePrivateLinuxOwnerState(allocation.ownerAllocation, cancelled)
+    const cancelled = await cancelPrivateExecutionOwnerStateAllocation(allocation.ownerAllocation)
+    await releasePrivateExecutionOwnerState(allocation.ownerAllocation, cancelled)
   } else {
     const sandbox = parseSandbox(lifecycle)
-    let fence: PrivateLinuxConfirmedEnforcementReceipt
+    let fence: PrivateExecutionConfirmedEnforcementReceipt
     if (lifecycle.fence === undefined) {
-      fence = await input.backend.recoverFence(sandbox.owner)
+      fence = await recoverPrivateExecutionFence(input.backend, sandbox.owner)
       lifecycle = await recordPrivateRootChildFence({
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
@@ -711,7 +773,7 @@ async function recoverOne(
       allocation.packageAllocation,
     )
     if (recovered.state === 'complete') await recovered.lease.dispose()
-    const ownerRelease = await releasePrivateLinuxOwnerState(sandbox.owner, fence)
+    const ownerRelease = await releasePrivateExecutionOwnerState(sandbox.owner, fence)
     const cleanup = childCleanup(ownerRelease)
     if (lifecycle.cleanup === undefined) {
       lifecycle = await recordPrivateRootChildCleanup({
@@ -809,7 +871,7 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
     packageAllocation: normalizePrivatePackageMaterializationAllocationIdentity(
       value.packageAllocation,
     ),
-    ownerAllocation: normalizePrivateLinuxOwnerStateAllocationIdentity(value.ownerAllocation),
+    ownerAllocation: normalizePrivateExecutionOwnerStateAllocationIdentity(value.ownerAllocation),
   })
 }
 
@@ -819,18 +881,18 @@ function parseSandbox(lifecycle: PrivateRootChildOwnerLifecycle): ChildSandbox {
   if (value.kind !== SANDBOX_KIND) throw new TypeError('child sandbox kind is invalid')
   return Object.freeze({
     kind: SANDBOX_KIND,
-    owner: normalizePrivateLinuxSealedOwnerIdentity(value.owner),
+    owner: normalizePrivateExecutionSealedOwnerIdentity(value.owner),
   })
 }
 
 function parseFence(
   lifecycle: PrivateRootChildOwnerLifecycle,
-): PrivateLinuxConfirmedEnforcementReceipt {
+): PrivateExecutionConfirmedEnforcementReceipt {
   if (lifecycle.fence === undefined) throw new TypeError('child fence is absent')
-  return normalizePrivateLinuxConfirmedEnforcementReceipt(lifecycle.fence.value)
+  return normalizePrivateExecutionConfirmedEnforcementReceipt(lifecycle.fence.value)
 }
 
-function childCleanup(ownerRelease: PrivateLinuxOwnerStateReleaseReceipt): ChildCleanup {
+function childCleanup(ownerRelease: PrivateExecutionOwnerStateReleaseReceipt): ChildCleanup {
   return Object.freeze({
     kind: CLEANUP_KIND,
     packageReleased: true,
@@ -848,7 +910,7 @@ function parseCleanup(lifecycle: PrivateRootChildOwnerLifecycle): ChildCleanup {
   if (value.kind !== CLEANUP_KIND || value.packageReleased !== true) {
     throw new TypeError('child cleanup is invalid')
   }
-  return childCleanup(normalizePrivateLinuxOwnerStateReleaseReceipt(value.ownerRelease))
+  return childCleanup(normalizePrivateExecutionOwnerStateReleaseReceipt(value.ownerRelease))
 }
 
 function requireCleanupMatches(
@@ -943,7 +1005,7 @@ async function protectedWorkRoots(projectRoot: string): Promise<{
 }> {
   const state = await realpath(join(projectRoot, '.jig'))
   const materializations = join(state, 'private-root-materializations')
-  const owners = join(state, 'private-root-linux-owners')
+  const owners = join(state, 'private-root-owners')
   await Promise.all([ensureProtectedDirectory(materializations), ensureProtectedDirectory(owners)])
   return Object.freeze({ materializations, owners })
 }

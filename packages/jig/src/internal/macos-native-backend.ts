@@ -1,17 +1,20 @@
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { lstat, mkdir, realpath, rmdir } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, realpath, rmdir } from 'node:fs/promises'
 import { constants as osConstants, release as osRelease } from 'node:os'
-import { posix } from 'node:path'
+import { join, posix } from 'node:path'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
 import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
 import {
+  cancelPrivateMacosOwnerStateAllocation,
   normalizePrivateMacosOwnerStateAllocationIdentity,
   openPrivateMacosBackendState,
   type PrivateMacosOwnerStateAllocationIdentity,
+  planPrivateMacosOwnerStateAllocation,
+  releasePrivateMacosOwnerState,
 } from './macos-backend-state.js'
 import {
   type PrivateMacosGuardian,
@@ -27,6 +30,7 @@ import {
   requirePrivateMacosGuardianStorage,
 } from './macos-guardian-storage.js'
 import type { PrivateMacosGuardianStart } from './macos-native-supervisor.js'
+import { PRIVATE_MACOS_MAX_OUTPUT_BYTES } from './macos-output-policy.js'
 import { privateMacosCurrentProcessIdentity } from './macos-process-controls.js'
 import {
   type PrivateMacosSandboxFiles,
@@ -253,6 +257,70 @@ export class PrivateMacosBackend {
       }),
     )
     return sealed
+  }
+
+  async launch(
+    planFor: (allocation: PrivateMacosOwnerStateAllocationIdentity) => PrivateMacosLaunchPlan,
+    signal?: AbortSignal,
+  ): Promise<PrivateMacosComponentProcess> {
+    requirePrivateMacosBackend(this)
+    const parent = await realpath(await mkdtemp('/private/tmp/jig-native-owner-'))
+    const allocation = await planPrivateMacosOwnerStateAllocation({
+      parent,
+      name: `owner-${randomBytes(12).toString('hex')}`,
+    })
+    let sealed: PrivateMacosSealedOwner | undefined
+    try {
+      const plan = planFor(allocation)
+      sealed = await this.seal(plan, allocation)
+      const component = await sealed.admit(signal)
+      const enforcement = component.enforcement
+        .then(async (receipt) => {
+          await releasePrivateMacosOwnerState(sealed!.identity.allocation, receipt as never)
+          await rmdir(parent)
+          return receipt
+        })
+        .catch((error): never => {
+          throw new PrivateMacosFenceUnconfirmedError(error)
+        })
+      return Object.freeze({
+        ...component,
+        enforcement,
+        evidence: enforcement.then((receipt) => receipt.evidence),
+        terminationReason: enforcement.then((receipt) => receipt.stopReason),
+        completion: enforcement.then((receipt) =>
+          Object.freeze({
+            exitCode: receipt.exitCode,
+            signal: signalName(receipt.signal),
+            fenced: true,
+            stopReason: commonStopReason(receipt.stopReason),
+          }),
+        ),
+        async terminate() {
+          await component.terminate()
+          await enforcement
+        },
+      })
+    } catch (error) {
+      try {
+        if (sealed === undefined) {
+          const cancelled = await cancelPrivateMacosOwnerStateAllocation(allocation)
+          await releasePrivateMacosOwnerState(allocation, cancelled)
+        } else {
+          const receipt = await this.recoverFence(sealed.identity)
+          await releasePrivateMacosOwnerState(sealed.identity.allocation, receipt as never)
+        }
+        await rmdir(parent)
+      } catch (cleanupError) {
+        throw new PrivateMacosFenceUnconfirmedError(
+          new AggregateError(
+            [error, cleanupError],
+            `native macOS automatic owner cleanup failed (${errorText(error)}; ${errorText(cleanupError)})`,
+          ),
+        )
+      }
+      throw error
+    }
   }
 
   async recoverFence(value: unknown): Promise<PrivateMacosConfirmedEnforcementReceipt> {
@@ -624,7 +692,7 @@ async function sealPlan(
     !canonical(value.cwd) ||
     !Number.isSafeInteger(value.maxOutputBytes) ||
     value.maxOutputBytes < 1 ||
-    value.maxOutputBytes > 64 * 1024 * 1024
+    value.maxOutputBytes > PRIVATE_MACOS_MAX_OUTPUT_BYTES
   )
     throw new TypeError('invalid native macOS launch configuration')
   const environment = Object.freeze({ ...(value.environment ?? {}) })
@@ -652,11 +720,27 @@ async function sealPlan(
   if (storage === undefined && files.writableTrees.length !== 0)
     throw new TypeError('native macOS writable paths require bounded storage')
   if (storage !== undefined) requirePrivateMacosGuardianStorage(storage, files, value.cwd)
+  const captures = (value.capturedInputs ?? []).map(({ path, input }) => {
+    const captured = requirePrivateCapturedInput(input)
+    return Object.freeze({ path, bytes: captured.bytes, digest: captured.digest })
+  })
+  const projectedInputs =
+    storage === undefined ? undefined : posix.join(storage.mountPath, 'inputs')
+  if (
+    projectedInputs !== undefined &&
+    files.readOnlyTrees.includes(projectedInputs) &&
+    captures.length === 0
+  )
+    throw new TypeError('native macOS input projection has no captured inputs')
   const immutablePaths: SealedImmutablePath[] = []
   for (const [path, type] of [
     ...files.readOnlyFiles.map((path) => [path, 'file'] as const),
     ...files.readOnlyTrees.map((path) => [path, 'directory'] as const),
   ]) {
+    // The guardian creates this tree from already captured descriptors after
+    // attaching the bounded volume. Its files are authenticated by digest and
+    // cannot exist at coordinator-side sealing time.
+    if (path === projectedInputs) continue
     if (immutablePaths.some((entry) => entry.path === path))
       throw new TypeError('native macOS immutable projection is duplicated')
     if ((await realpath(path)) !== path)
@@ -668,10 +752,6 @@ async function sealPlan(
       Object.freeze({ path, type, device: String(info.dev), inode: String(info.ino) }),
     )
   }
-  const captures = (value.capturedInputs ?? []).map(({ path, input }) => {
-    const captured = requirePrivateCapturedInput(input)
-    return Object.freeze({ path, bytes: captured.bytes, digest: captured.digest })
-  })
   const sealed = Object.freeze({
     runId: value.runId,
     limits,
@@ -856,6 +936,10 @@ function canonical(value: unknown): value is string {
     posix.normalize(value) === value &&
     !value.includes('\0')
   )
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
 }
 
 async function exists(path: string): Promise<boolean> {

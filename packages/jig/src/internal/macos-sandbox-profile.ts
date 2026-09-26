@@ -9,7 +9,8 @@ export interface PrivateMacosSandboxFiles {
   readonly network: 'isolated' | 'inherited'
 }
 
-const SYSTEM_TREES = ['/usr/lib', '/System/Library'] as const
+// JavaScriptCore loads its system Unicode tables lazily for Intl operations.
+const SYSTEM_TREES = ['/usr/lib', '/System/Library', '/usr/share/icu'] as const
 const RESOLVER_FILES = [
   '/etc',
   '/var',
@@ -79,6 +80,7 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
       parent = posix.dirname(parent)
     }
   }
+  const fileParents = [...new Set(readOnlyFiles.map((file) => posix.dirname(file)))].sort()
   const rules = [
     '(version 1)',
     '(deny default)',
@@ -89,6 +91,9 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
     '(allow sysctl-read (sysctl-name-regex #"^hw[.]") (sysctl-name "kern.osrelease") (sysctl-name "kern.osversion") (sysctl-name "kern.ostype"))',
     '(allow file-read-data (literal "/"))',
     `(allow file-read-metadata ${[...ancestors].sort().map(literal).join(' ')})`,
+    ...(fileParents.length === 0
+      ? []
+      : [`(allow file-read-data ${fileParents.map(literal).join(' ')})`]),
     `(allow file-read* file-map-executable ${SYSTEM_TREES.map(tree).join(' ')} ${readOnlyFiles.map(literal).join(' ')} ${readOnlyTrees.map(tree).join(' ')})`,
     ...(writableTrees.length
       ? [`(allow file-read* file-write* file-map-executable ${writableTrees.map(tree).join(' ')})`]

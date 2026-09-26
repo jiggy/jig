@@ -197,7 +197,15 @@ function signalMembers(
   return count
 }
 
-/** Fresh recovery accepts only authenticated durable ownership, on its recorded boot. */
+/** An authenticated guardian journal from a different kernel boot cannot own
+ * surviving tasks. Never look up its former PIDs or coalition on this boot:
+ * either identifier could now belong to unrelated work. Same-boot journals
+ * still require exact coalition fencing. This is separate from storage cleanup. */
+export function privateMacosOwnerIsFromPriorBoot(handle: PrivateMacosRecoveryOwner): boolean {
+  return requirePrivateMacosRecoveryOwner(handle).bootId !== bootIdentity()
+}
+
+/** Fresh coalition recovery accepts authenticated ownership on its recorded boot. */
 export async function recoverPrivateMacosCoalition(
   handle: PrivateMacosRecoveryOwner,
   timeoutMs: number,

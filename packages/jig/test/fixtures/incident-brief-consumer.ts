@@ -1,17 +1,17 @@
 import { expect } from 'bun:test'
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { basename, join, resolve } from 'node:path'
 import { main, type PrivateCliOptions } from '../../src/cli.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
-import { installedBunLocation } from './installed-bun-location.js'
 import {
-  openDeterministicFiniteAcpHost,
   deterministicAcpProgram,
+  openDeterministicFiniteAcpHost,
 } from './deterministic-acp-agent.js'
+import { installedBunLocation } from './installed-bun-location.js'
 
 export async function qualifyIncidentBrief(): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-incident-contained-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-incident-contained-')))
   const started = performance.now()
   const trace: { elapsedMs: number; stage: string }[] = []
   const mark = (stage: string) => {
@@ -63,9 +63,11 @@ export async function qualifyIncidentBrief(): Promise<void> {
   await cp(join(installedBunLocation.releaseRoot, 'libexec'), join(release, 'libexec'), {
     recursive: true,
   })
-  await mkdir(join(release, 'node_modules/@oven/bun-linux-x64-baseline/bin'), { recursive: true })
+  const runtimePackage =
+    process.platform === 'darwin' ? 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
+  await mkdir(join(release, `node_modules/@oven/${runtimePackage}/bin`), { recursive: true })
   const executablePath = await realpath(installedBunLocation.executablePath)
-  await symlink(executablePath, join(release, 'node_modules/@oven/bun-linux-x64-baseline/bin/bun'))
+  await symlink(executablePath, join(release, `node_modules/@oven/${runtimePackage}/bin/bun`))
   await writeFile(
     join(release, 'libexec/agent/fixture-acp.js'),
     deterministicAcpProgram().replace(
@@ -153,12 +155,13 @@ export async function qualifyIncidentBrief(): Promise<void> {
     expect(result.output.results[1].result.output.requestedTurns).toBe(2)
     expect(result.output.results[0].result.output.revision).toBe(1)
     expect(result.output.results[1].result.output.publication.status).toBe('submitted')
-    expect(
-      (await readdir(process.env.AGENT_DELEGATED_CGROUP!)).filter((name) =>
-        name.startsWith('jig-run-'),
-      ),
-    ).toEqual([])
-    for (const name of ['private-root-linux-owners', 'private-root-materializations']) {
+    if (process.platform === 'linux')
+      expect(
+        (await readdir(process.env.AGENT_DELEGATED_CGROUP!)).filter((name) =>
+          name.startsWith('jig-run-'),
+        ),
+      ).toEqual([])
+    for (const name of ['private-root-owners', 'private-root-materializations']) {
       expect(
         (await readdir(join(project, '.jig', name))).filter((entry) =>
           /^(a-|c-|x-|child-)/.test(entry),

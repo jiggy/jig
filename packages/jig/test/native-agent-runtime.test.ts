@@ -40,7 +40,7 @@ function wrapper(executable: string, path: string) {
   return `makeCWrapper '${executable}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '${path}'\n\n`
 }
 
-describe('native Agent runtime metadata', () => {
+describe.skipIf(process.platform !== 'linux')('Linux native Agent runtime metadata', () => {
   test.each(['executable', 'wrapped executable', 'library'])(
     'rejects same-size %s byte replacement after inspection despite restored timestamps',
     async (selected) => {

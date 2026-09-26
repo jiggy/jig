@@ -1,6 +1,6 @@
 import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
@@ -8,10 +8,14 @@ import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
-const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
+const proof =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? describe.serial
+    : describe.skip
 proof('delegated HTTP through contained root and child Runs', () => {
   test('fences a credential-bearing worker after coordinator loss without redispatch', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-http-loss-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-http-loss-')))
     let requests = 0
     const server = Bun.serve({
       hostname: '127.0.0.1',
@@ -99,7 +103,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
     policy: 'pins HTTP policy until explicit authority approval',
   })) {
     test(name, async () => {
-      const root = await mkdtemp(join(tmpdir(), 'jig-http-proof-'))
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-http-proof-')))
       const seen: { path: string; auth: string | null; method: string; body: string }[] = []
       const server = Bun.serve({
         hostname: '127.0.0.1',
@@ -358,8 +362,6 @@ async function noOwners(root: string) {
     database.close()
   }
   expect(
-    (await readdir(join(root, '.jig/private-root-linux-owners'))).filter((name) =>
-      /^(x-|c-)/.test(name),
-    ),
+    (await readdir(join(root, '.jig/private-root-owners'))).filter((name) => /^(x-|c-)/.test(name)),
   ).toEqual([])
 }

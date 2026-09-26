@@ -6,7 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readPrivateMacosOwner } from '../src/internal/macos-owner-state.js'
-import { recoverPrivateMacosCoalition } from '../src/internal/macos-process-controls.js'
+import {
+  privateMacosOwnerIsFromPriorBoot,
+  recoverPrivateMacosCoalition,
+} from '../src/internal/macos-process-controls.js'
 import { runMacosFixture } from './fixtures/macos-launchd.js'
 
 const native = test.skipIf(
@@ -62,6 +65,10 @@ native(
           let failure: unknown
           try {
             const owner = readPrivateMacosOwner(state, 'a'.repeat(64))
+            expect(privateMacosOwnerIsFromPriorBoot(owner)).toBe(false)
+            expect(() => privateMacosOwnerIsFromPriorBoot({ identity: owner.identity })).toThrow(
+              'not authentic',
+            )
             await expect(
               recoverPrivateMacosCoalition({ identity: owner.identity }, 3000),
             ).rejects.toThrow('not authentic')
@@ -83,6 +90,9 @@ native(
               .update(JSON.stringify(record.identity))
               .digest('hex')
             await writeFile(journal, JSON.stringify(record))
+            expect(
+              privateMacosOwnerIsFromPriorBoot(readPrivateMacosOwner(state, 'a'.repeat(64))),
+            ).toBe(true)
             await expect(
               recoverPrivateMacosCoalition(readPrivateMacosOwner(state, 'a'.repeat(64)), 3000),
             ).rejects.toThrow('boot does not match')

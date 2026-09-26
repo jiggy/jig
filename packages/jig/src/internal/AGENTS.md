@@ -193,7 +193,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   PID-version journal before descendants exist. Its per-allocation token stays
   in protected coordinator state, never arguments, payloads or the journal.
   Recovery accepts only a capability minted from the bounded private journal;
-  reject aliases, tampering, wrong boots and a still-live guardian. A fresh
+  reject aliases, tampering and a still-live guardian. Same-boot coalition recovery
+  rejects wrong boots. Authenticated prior-boot guardian recovery never observes
+  or signals stale PIDs or coalitions: kernel reboot establishes task death;
+  exact job/socket retirement and fresh storage cleanup remain required. A fresh
   process fences that exact coalition and confirms zero remaining tasks or the
   kernel's reaped-coalition response. Keep evidence when settlement is uncertain.
   Authenticate the temporary socket directory's device/inode separately; after
@@ -225,8 +228,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   runtime before launching recovery tools, handle both pre-admission and active
   coordinator loss, and retire guardian journals before recording completion.
   Report supervised sampling and possible resource overshoot explicitly; never
-  project Linux cgroup or hard-quota claims. This private backend remains disabled
-  in the installed host until the shared controllers and consumer path qualify it.
+  project Linux cgroup or hard-quota claims. Candidate assembly selects this
+  backend on the qualified Intel Mac; public support remains unpromoted until
+  complete installed-consumer and reboot-recovery qualification.
+- `execution-backend.ts` is the closed private Linux/macOS selection boundary.
+  Persist each backend's discriminated owner and receipt records without flattening
+  their evidence. Dispatch sealing, admission, recovery, cancellation and exact
+  release only when the backend, launch plan and owner allocation agree. Logical
+  recipe identity remains separate from the backend's physical launch paths;
+  this is not a public backend or extension interface. Shared owner journals live
+  under `.jig/private-root-owners`; prerelease hosts must not recreate the former
+  Linux-named directory as a compatibility path.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
   Reject overlap between host control, immutable inputs and writable trees;
   keep the narrow sysctl/process-information rules. Only explicit network
@@ -248,6 +260,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   job and socket allocation only after kernel fencing. `macos-control-channel.ts`
   bounds private frames and queued messages; none of these modules is a public
   backend extension point or an installed-support claim.
+- `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
+  under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
+  projections cannot overlap these runtime roots. Host control remains excluded.
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
   rights and descriptors, apply the selected profile, report private readiness,
   and wait for admission before execution. Close all child control handoffs
@@ -403,6 +418,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   same-name local member at that exact version. Treat that as fresh only when
   the validated lock resolution names the captured member and its version equals
   the exact request; ranges and mismatches remain stale.
+  Discover declared ancestor workspaces for exact public-version dependencies
+  as well as explicit workspace requests. An ordinary registry dependency with
+  no enclosing workspace remains standalone; explicit workspace requests still
+  require declared membership.
   Reuse workspace preparation only from this Jig project's active admission:
   match freshly captured complete workspace inputs to the artifact's retained
   preparation fingerprint and reproduce its recipe/observation. Never share
@@ -427,6 +446,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   file-backed Codex login. Project only its short-lived bearer; never embed a
   development login, retain its refresh token, mount `CODEX_HOME`, or expose a
   host keyring to Agent execution.
+  The private native launcher passes subscription bearer/account state through
+  a one-use in-memory bootstrap to the pinned adapter. Its app-server login uses
+  `chatgptAuthTokens` and ephemeral credential storage; never write `auth.json`
+  inside the execution volume. Qualify this unstable native operation against
+  the selected client. Offline synthetic tokens prove the login handshake only;
+  they do not qualify online subscription routing or model execution.
   Its constrained profile disables Code Mode and its helper host; unsupported
   optional tool startup must not inject private-path warnings into Agent answers.
 - Codex's nested sandbox uses an unprivileged Bubblewrap selected from its
@@ -452,7 +477,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   whole installation/store or import ambient loader variables. Each native
   launcher removes Bun's private loader override before starting its client.
 - `macos-agent-runtime.ts` supplies the candidate native Mac installation
-  inspector: bounded baseline x86-64 Mach-O and universal slices, exact third-party
+  inspector: bounded baseline x86-64 Mach-O and universal slices, including the
+  SDK's LIB64 library-width flag but no additional ISA subtypes, exact third-party
   libraries, loader/executable-relative paths and inherited run paths. Consult
   the active OS dyld cache for system libraries; never fabricate file identities
   for cache-only images or load selected libraries into the coordinator. Reject
@@ -460,6 +486,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   project routes. Provider construction must compare the inspection interval,
   and launch must revalidate files and the qualified OS mechanism. This private
   inspector does not independently enable installed Mac providers.
+  Native writable projections supply their own temporary directory. Claude's
+  native launcher also sets `CLAUDE_CODE_TMPDIR` to that bounded private root;
+  neither general nor client-specific temporary files may fall back to host `/tmp`.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
@@ -706,6 +735,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   durable final receipts, unused-owner recovery, prepared/active coordinator-loss
   recovery and exact owner release. It is backend integration evidence, not
   installed-host conformance.
+  The recovery fixture checks authenticated boot separation and keeps coalition
+  fencing restricted to the current boot. Simulating a signed prior-boot journal
+  does not qualify actual reboot, disk-image disappearance or post-boot reacquisition;
+  those require a controlled native reboot before public support promotion.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
@@ -713,7 +746,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `JIG_NATIVE_AGENT_STARTUP=1` with absolute `JIG_CODEX_STARTUP_PATH`,
   `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH` enables
   `test/native-agent-startup.test.ts` after building. It tests genuine native
-  versions and ACP sessions with networking disabled and dummy credentials;
+  ACP startup and API sessions with networking disabled and dummy credentials;
+  Codex subscription startup separately checks the in-memory login handshake.
   missing selections fail instead of silently skipping. This is startup evidence,
   separate from live model calls and the hostile-host gate.
 - Run real-host suites sequentially within one delegated cgroup. Their strict

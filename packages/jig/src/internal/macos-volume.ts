@@ -202,7 +202,13 @@ function systemTool(
         signal,
       },
       (error, stdout) => {
-        if (error) reject(new Error('macOS volume system operation failed', { cause: error }))
+        if (error)
+          reject(
+            new Error(
+              `macOS volume ${tool === '/usr/bin/hdiutil' ? (args[0] ?? 'operation') : 'plist conversion'} failed`,
+              { cause: error },
+            ),
+          )
         else resolve(stdout)
       },
     )
@@ -227,6 +233,35 @@ async function information(signal?: AbortSignal): Promise<Record<string, unknown
   )
     throw new Error('macOS image inventory is invalid')
   return parsed.images
+}
+
+async function attachedDeviceFromResult(
+  plist: Buffer,
+  allocation: Allocation,
+  signal?: AbortSignal,
+): Promise<string> {
+  const json = await systemTool(
+    '/usr/bin/plutil',
+    ['-convert', 'json', '-o', '-', '-'],
+    plist,
+    signal,
+  )
+  const parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(json))
+  const entities = parsed?.['system-entities']
+  if (!Array.isArray(entities) || entities.length !== 1) {
+    throw new Error('macOS volume attachment result is invalid')
+  }
+  const entity = entities[0]
+  if (
+    entity === null ||
+    typeof entity !== 'object' ||
+    typeof entity['dev-entry'] !== 'string' ||
+    !/^\/dev\/disk[1-9][0-9]{0,5}$/.test(entity['dev-entry']) ||
+    entity['mount-point'] !== allocation.mount.path ||
+    entity['volume-kind'] !== 'hfs'
+  )
+    throw new Error('macOS volume attachment does not match its allocation')
+  return entity['dev-entry']
 }
 
 /** No saved disk number grants detach authority: derive it from the live exact image. */
@@ -401,7 +436,7 @@ export async function attachPrivateMacosVolume(
         '-fs',
         'Case-sensitive HFS+',
         '-volname',
-        'Jig',
+        `Jig-${token.slice(0, 16)}`,
         '-type',
         'UDIF',
         '-layout',
@@ -427,7 +462,7 @@ export async function attachPrivateMacosVolume(
     await sameDirectory(controlPath, allocation.control)
     await sameDirectory(mountPath, allocation.mount)
     // In-kernel fixed image: no per-image userspace helper or sparse growth.
-    await systemTool(
+    const attachment = await systemTool(
       '/usr/bin/hdiutil',
       [
         'attach',
@@ -447,7 +482,7 @@ export async function attachPrivateMacosVolume(
       undefined,
       signal,
     )
-    const device = await attached(controlPath, allocation, signal)
+    const device = await attachedDeviceFromResult(attachment, allocation, signal)
     const checkedImage = await imageFile(parent, bytes, recordedImage)
     await checkedImage.close()
     await sameDirectory(controlPath, allocation.control)
@@ -455,7 +490,6 @@ export async function attachPrivateMacosVolume(
     const filesystem = privateMacosFilesystem(mounted.fd)
     const stat = await mounted.stat({ bigint: true })
     if (
-      device === undefined ||
       filesystem.device !== device ||
       filesystem.mountpoint !== mountPath ||
       filesystem.type !== 'hfs' ||
@@ -528,8 +562,7 @@ export async function recoverPrivateMacosVolume(
         if (!matches(privateMacosStatAt(parent.fd, IMAGE), recordedImage))
           throw new Error('macOS volume backing changed before detach')
         await systemTool('/usr/bin/hdiutil', ['detach', device], undefined, signal)
-        if ((await attached(controlPath, allocation, signal)) !== undefined)
-          throw new Error('macOS volume detachment is unconfirmed')
+        await sameDirectory(allocation.mount.path, allocation.mount)
       }
       try {
         await sameDirectory(allocation.mount.path, allocation.mount)
@@ -582,8 +615,6 @@ export async function releasePrivateMacosVolume(
     allocation = validateAllocation(intent.value)
     if (!matches(await control.stat({ bigint: true }), allocation.control))
       throw new Error('macOS volume control directory changed')
-    if ((await attached(controlPath, allocation, signal)) !== undefined)
-      throw new Error('macOS volume is still attached')
     try {
       await sameDirectory(allocation.mount.path, allocation.mount)
       throw new Error('macOS volume mount still exists')

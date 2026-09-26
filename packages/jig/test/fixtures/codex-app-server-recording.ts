@@ -29,6 +29,13 @@ for await (const line of createInterface({ input: process.stdin })) {
     case 'account/read':
       ok({ account: { type: 'apiKey' }, requiresOpenaiAuth: false })
       break
+    case 'account/login/start':
+      if (request.params?.type !== 'chatgptAuthTokens') {
+        reply({ id: request.id, error: { code: -32602, message: 'unexpected login method' } })
+        break
+      }
+      ok({ type: 'chatgptAuthTokens' })
+      break
     case 'skills/list':
       ok({ data: [] })
       break

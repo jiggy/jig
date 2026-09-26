@@ -20,6 +20,7 @@ import {
 } from '../src/internal/pi-agent-provider.js'
 
 import { nativeElf } from './fixtures/native-elf.js'
+import { nativeMachO } from './fixtures/native-macho.js'
 
 const temporary = new Set<string>()
 const encoder = new TextEncoder()
@@ -506,7 +507,7 @@ function environment(
 }
 
 async function files(): Promise<PrivatePiAgentSupportFixture> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-pi-provider-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-pi-provider-')))
   temporary.add(root)
   const releaseRoot = join(root, 'release')
   const agentRoot = join(releaseRoot, 'libexec', 'agent')
@@ -517,7 +518,9 @@ async function files(): Promise<PrivatePiAgentSupportFixture> {
   const manifestPath = join(nativeRoot, 'package.json')
   const darkThemePath = join(nativeRoot, 'theme', 'dark.json')
   const lightThemePath = join(nativeRoot, 'theme', 'light.json')
-  const certificatesPath = await realpath('/etc/ssl/certs/ca-certificates.crt')
+  const certificatesPath = await realpath(
+    process.platform === 'darwin' ? '/etc/ssl/cert.pem' : '/etc/ssl/certs/ca-certificates.crt',
+  )
   await Promise.all([
     mkdir(agentRoot, { recursive: true }),
     mkdir(join(nativeRoot, 'theme'), { recursive: true }),
@@ -525,7 +528,9 @@ async function files(): Promise<PrivatePiAgentSupportFixture> {
   await Promise.all([
     writeFile(launcherPath, 'launcher\n', { mode: 0o700 }),
     writeFile(adapterPath, 'adapter\n'),
-    writeFile(executablePath, nativeElf(), { mode: 0o700 }),
+    writeFile(executablePath, process.platform === 'darwin' ? nativeMachO() : nativeElf(), {
+      mode: 0o700,
+    }),
     writeFile(
       manifestPath,
       JSON.stringify({

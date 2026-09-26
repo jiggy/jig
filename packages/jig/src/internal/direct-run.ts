@@ -8,12 +8,12 @@ import {
   requirePrivateBunDirectRecipe,
 } from './bun-direct-run.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import type { PrivateExecutionBackend } from './execution-backend.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
-import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 
 export type PrivateDirectRunRecipe = PrivateBunDirectRecipe
@@ -23,7 +23,7 @@ export type PrivateDirectRunInstalledSupport = PrivateInstalledBunSupport
 export async function planPrivateDirectRun(input: {
   readonly request: PrivateActivationRequest
   readonly installedSupport: PrivateDirectRunInstalledSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly execution?: PrivateBunExecutionArtifact
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined

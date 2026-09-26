@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { privateExecutionBackendKind } from '../src/internal/execution-backend.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import {
   openPrivateInstalledBunSupport,
@@ -26,6 +27,9 @@ describe('fixed installed Bun support', () => {
         (stage) => stages.push(stage),
       )
       expect(host.acpResources).toEqual({ kind: 'private-acp-resources/1' })
+      expect(privateExecutionBackendKind(host.backend)).toBe(
+        process.platform === 'darwin' ? 'macos' : 'linux',
+      )
       expect(stages).toEqual(['Preparing operator resource configuration'])
       expect(JSON.stringify(host.acpResources)).not.toContain('private-credential')
     },
@@ -55,8 +59,16 @@ describe('fixed installed Bun support', () => {
   })
 
   test('authenticates the fixed adjacent layout and detects drift', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-installed-support-'))
-    const executable = join(root, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-installed-support-')))
+    const macos = process.platform === 'darwin'
+    const executable = join(
+      root,
+      'node_modules',
+      '@oven',
+      macos ? 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline',
+      'bin',
+      'bun',
+    )
     const installedCli = join(root, 'libexec', 'installed-cli.js')
     const evaluator = join(root, 'libexec', 'evaluator')
     const preparation = join(root, 'libexec', 'preparation')
@@ -68,7 +80,19 @@ describe('fixed installed Bun support', () => {
       await writeFile(join(root, 'libexec', 'http-request-worker.js'), 'http worker\n')
       await writeFile(installedCli, 'installed command\n')
       await writeFile(join(root, 'libexec', 'markdown-runtime.js'), 'markdown interpreter\n')
-      await writeFile(join(root, 'libexec', 'linux-rootless-supervisor.js'), 'supervisor\n')
+      await writeFile(
+        join(
+          root,
+          'libexec',
+          macos ? 'macos-native-supervisor.js' : 'linux-rootless-supervisor.js',
+        ),
+        'supervisor\n',
+      )
+      if (macos) {
+        const launcher = join(root, 'libexec', 'macos-exec')
+        await copyFile(new URL('../support/macos-exec-x64', import.meta.url), launcher)
+        await chmod(launcher, 0o755)
+      }
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'worker\n')
       await writeFile(join(evaluator, 'project-evaluator-sdk.bundle.js'), 'sdk\n')
       await writeFile(join(evaluator, 'project-authoring-1.schema.json'), '{}\n')
@@ -92,14 +116,18 @@ describe('fixed installed Bun support', () => {
       expect(support.markdownRuntimePath).toBe(join(root, 'libexec', 'markdown-runtime.js'))
       expect(support.markdownRuntimeDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
       expect(support.sandboxPreparationWorkerPath).toBe('/jig-preparation-worker.js')
-      expect(support.runtimeMounts.map(({ destination }) => destination)).toEqual([
-        '/jig-runtime/bun',
-        '/lib64/ld-linux-x86-64.so.2',
-        '/jig-runtime/lib/libc.so.6',
-        '/jig-runtime/lib/libm.so.6',
-        '/jig-runtime/lib/libdl.so.2',
-        '/jig-runtime/lib/libpthread.so.0',
-      ])
+      expect(support.runtimeMounts.map(({ destination }) => destination)).toEqual(
+        macos
+          ? ['/jig-runtime/bun']
+          : [
+              '/jig-runtime/bun',
+              '/lib64/ld-linux-x86-64.so.2',
+              '/jig-runtime/lib/libc.so.6',
+              '/jig-runtime/lib/libm.so.6',
+              '/jig-runtime/lib/libdl.so.2',
+              '/jig-runtime/lib/libpthread.so.0',
+            ],
+      )
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
 
       await writeFile(join(root, 'libexec', 'http-request-worker.js'), 'changed http worker\n')

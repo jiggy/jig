@@ -24,6 +24,15 @@ timer on actual close, and records forced termination as failure even if the
 native signal handler exits zero. It never truncates output with an immediate
 adapter exit. Jig's existing grace period and tree fencing remain unchanged.
 
+Jig's trusted launcher also passes a bounded, non-refreshable ChatGPT bearer
+projection to this exact adapter in process memory. The patch consumes it once
+after app-server initialization through Codex's `chatgptAuthTokens` login and
+never places it in a file or child-process environment. The launcher selects
+Codex's ephemeral credential store before startup. This preserves subscription
+authentication on macOS, where a rootless host cannot mount the managed Linux
+requirements file at `/etc/codex/requirements.toml`, without exposing the token
+to Agent tools.
+
 ## Verification
 
 `bun test packages/jig/test/codex-acp-dispatch.test.ts` launches the actual
@@ -36,12 +45,16 @@ The same recording peer covers clean EOF, nonzero exit, signal termination,
 and ignored EOF followed by a forced zero exit. Clean shutdown does not wait
 for the obsolete timer. This is not a persisted-session or clean-state receipt;
 native state collection and restoration need their own qualified boundary.
+The same suite launches Jig's credential bridge, verifies the exact in-memory
+login request, checks the ephemeral store setting, and proves that no
+`auth.json` is created.
 
 ## Removal condition
 
 Remove both files and the manifest entry when the selected upstream adapter
-provides verified no-implicit-model-work behavior and truthful bounded child
-shutdown. Individual hunks may be removed when their own upstream correction
-is verified. Keep the behavioral dispatch and shutdown regressions, rebuild the installed
-adapter, and qualify the same bounded native conversation path. A version bump
-or a patch conflict alone does not establish the removal condition.
+provides verified no-implicit-model-work behavior, truthful bounded child
+shutdown, and a supported secret-free external-token bootstrap. Individual
+hunks may be removed when their own upstream correction is verified. Keep the
+behavioral regressions, rebuild the installed adapter, and qualify the same
+bounded native conversation path. A version bump or a patch conflict alone
+does not establish the removal condition.

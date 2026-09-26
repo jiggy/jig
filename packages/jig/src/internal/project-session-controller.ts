@@ -60,11 +60,11 @@ import {
   privateChildLocation,
 } from './descriptor-files.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
+import type { PrivateExecutionBackend } from './execution-backend.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
-import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
 import {
   captureStoredPackage,
   type PackageArtifactRef,
@@ -88,7 +88,7 @@ import type { PrivateRunChannelOutput } from './run-channels.js'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
   readonly httpGrants?: PrivateHttpGrants | undefined

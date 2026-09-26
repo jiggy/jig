@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-execution-layout.js'
@@ -79,7 +79,7 @@ async function fixture(
   rootDependency = 'workspace:*',
   memberDependency = 'workspace:*',
 ) {
-  const root = await mkdtemp(join(tmpdir(), 'jig-workspace-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-workspace-')))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(root, path)), { recursive: true })
     await writeFile(join(root, path), typeof value === 'string' ? value : JSON.stringify(value))

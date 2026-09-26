@@ -351,9 +351,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
         }
         await waitForCgroups(initialCgroups)
         await waitForTemporary(initialTemporary)
-        expect(
-          await readdir(join(projectRoot, '.jig', 'private-preparation-linux-owners')),
-        ).toEqual([])
+        expect(await readdir(join(projectRoot, '.jig', 'private-preparation-owners'))).toEqual([])
       } finally {
         await Promise.all([
           rm(projectRoot, { recursive: true, force: true }),
@@ -433,7 +431,7 @@ function rootlessTemporaryEntry(name: string): boolean {
 }
 
 async function waitForActivePreparation(projectRoot: string): Promise<void> {
-  const parent = join(projectRoot, '.jig', 'private-preparation-linux-owners')
+  const parent = join(projectRoot, '.jig', 'private-preparation-owners')
   for (let attempt = 0; attempt < 1_000; attempt += 1) {
     try {
       for (const name of await readdir(parent)) {
@@ -488,7 +486,7 @@ async function recoverEventually(
     }
     await Bun.sleep(25)
   }
-  const ownerParent = join(input.projectRoot, '.jig', 'private-preparation-linux-owners')
+  const ownerParent = join(input.projectRoot, '.jig', 'private-preparation-owners')
   const owners = await readdir(ownerParent).catch(() => [])
   const evidence = await Promise.all(
     owners.map(async (name) => ({

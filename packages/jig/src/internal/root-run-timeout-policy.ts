@@ -1,6 +1,13 @@
 export const PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS = 30_000
+export const PRIVATE_DEFAULT_MACOS_ROOT_RUN_TIMEOUT_MS = 60_000
 export const PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS = 24 * 60 * 60_000
 export const PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS = 5 * 60_000
+
+export function privateDefaultRootRunTimeout(platform: NodeJS.Platform = process.platform): number {
+  return platform === 'darwin'
+    ? PRIVATE_DEFAULT_MACOS_ROOT_RUN_TIMEOUT_MS
+    : PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
+}
 
 export function requirePrivateRootRunTimeout(value: number): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS) {

@@ -40,9 +40,9 @@ import {
 } from './internal/file-input.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
-  PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
+  privateDefaultRootRunTimeout,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
@@ -1133,7 +1133,7 @@ function parseRun(arguments_: readonly string[]): {
   let inputFile: string | undefined, output: string | undefined
   const attachments = new Map<string, string>(),
     selectors = new Map<string, string[]>()
-  let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
+  let timeoutMs = privateDefaultRootRunTimeout()
   let json = false
   let sawInput = false
   let sawTimeout = false

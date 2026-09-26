@@ -1269,7 +1269,10 @@ describe('finite Jig project commands', () => {
     const invocation = commandInvocation(host, { createSubmissionId: () => 'private-submission' })
 
     expect(await main(['run', 'flow:./flows/work'], invocation.options)).toBe(0)
-    expect(acquisition).toMatchObject({ runTimeoutMs: 30_000, channelOutput: { receive: [] } })
+    expect(acquisition).toMatchObject({
+      runTimeoutMs: process.platform === 'darwin' ? 60_000 : 30_000,
+      channelOutput: { receive: [] },
+    })
     expect(request).toEqual({
       submissionId: 'private-submission',
       target: { kind: 'flow', path: 'flows/work' },
@@ -1582,7 +1585,9 @@ describe('finite Jig project commands', () => {
       const alias = join(root, 'alias')
       await symlink(root, alias)
       const args = ['run', 'flow:flows/work', '--input', `@${join(alias, 'issue.json')}`]
-      expect(privateCliCommandLifetimeMs(args)).toBe(330_000)
+      expect(privateCliCommandLifetimeMs(args)).toBe(
+        process.platform === 'darwin' ? 360_000 : 330_000,
+      )
       await writeFile(file, '{"captured":true}')
       let request: StartRootRunRequest | undefined
       const events: string[] = []
@@ -1741,7 +1746,7 @@ describe('finite Jig project commands', () => {
   })
 
   test('file report limits do not discard an already settled large terminal', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-cli-large-result-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-cli-large-result-')))
     try {
       for (let i = 0; i < 16; i++) await writeFile(join(root, `file-${i}`), '')
       const terminal: RootRunTerminal = {
@@ -1812,7 +1817,9 @@ describe('finite Jig project commands', () => {
   })
 
   test('installed command lifetime encloses Run cleanup without extending invalid commands', () => {
-    expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'])).toBe(330_000)
+    expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'])).toBe(
+      process.platform === 'darwin' ? 360_000 : 330_000,
+    )
     expect(
       privateCliCommandLifetimeMs(['run', 'flow:flows/work', '--input', '{}', '--timeout', '24h']),
     ).toBe(86_700_000)

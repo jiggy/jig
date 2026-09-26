@@ -215,7 +215,7 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
         ranges.push({ start: position, end: position + length })
         if (u32(table, offset) !== 0x01000007) continue
         // The qualified client profile uses baseline x86_64, not x86_64h dispatch.
-        if (selected || u32(table, offset + 4) !== 3)
+        if (selected || !baselineX64Subtype(u32(table, offset + 4)))
           throw new Error('unsupported native Agent Mach-O architecture')
         selected = true
         start = position
@@ -227,7 +227,7 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
     if (
       header.readUInt32LE(0) !== 0xfeedfacf ||
       header.readUInt32LE(4) !== 0x01000007 ||
-      header.readUInt32LE(8) !== 3
+      !baselineX64Subtype(header.readUInt32LE(8))
     )
       throw new Error('native Agent requires macOS x86-64 Mach-O')
     const type = header.readUInt32LE(12),
@@ -320,6 +320,11 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
   } finally {
     await file.close()
   }
+}
+
+function baselineX64Subtype(value: number): boolean {
+  // mach/machine.h defines LIB64 as a library-width flag, not an ISA extension.
+  return value === 3 || value === 0x80000003
 }
 
 function requirePath(path: string, canonical = true): void {

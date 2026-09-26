@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -11,7 +11,7 @@ afterEach(async () => {
 })
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'jig-agent-discovery-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-agent-discovery-')))
   temporary.push(root)
   const project = join(root, 'workspace', 'project')
   const first = join(root, 'operator', 'bin')

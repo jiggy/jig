@@ -19,6 +19,7 @@ import {
   type PrivateMacosInputIdentity,
   projectPrivateMacosInputs,
 } from './macos-input-projection.js'
+import { PRIVATE_MACOS_MAX_OUTPUT_BYTES } from './macos-output-policy.js'
 import {
   privateMacosStorageRecoveryToken,
   recordPrivateMacosOwner,
@@ -116,7 +117,7 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
     Array.isArray(record.environment) ||
     !Number.isSafeInteger(record.maxOutputBytes) ||
     (record.maxOutputBytes as number) < 1 ||
-    (record.maxOutputBytes as number) > 64 * 1024 * 1024
+    (record.maxOutputBytes as number) > PRIVATE_MACOS_MAX_OUTPUT_BYTES
   )
     throw new Error('invalid macOS guardian configuration')
   object(record.files, 'readOnlyFiles,readOnlyTrees,writableTrees,protectedRoots,network')

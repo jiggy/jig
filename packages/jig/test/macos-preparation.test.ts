@@ -74,7 +74,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 let outsideDenied = false, sourceDenied = false;
 try { readFileSync(${JSON.stringify(join(control, 'canary'))}); } catch { outsideDenied = true; }
 try { writeFileSync(import.meta.filename, 'changed'); } catch { sourceDenied = true; }
-console.log(JSON.stringify({ value: isNumber(42), platform: process.platform, outsideDenied, sourceDenied }));
+const unicode = new Intl.Collator('en').compare('a', 'b') < 0;
+console.log(JSON.stringify({ value: isNumber(42), platform: process.platform, outsideDenied, sourceDenied, unicode }));
 `,
       }
       async function run(
@@ -179,7 +180,13 @@ console.log(JSON.stringify({ value: isNumber(42), platform: process.platform, ou
           '',
           'isolated',
         ),
-      ).toEqual({ value: true, platform: 'darwin', outsideDenied: true, sourceDenied: true })
+      ).toEqual({
+        value: true,
+        platform: 'darwin',
+        outsideDenied: true,
+        sourceDenied: true,
+        unicode: true,
+      })
       expect(await readFile(join(control, 'canary'), 'utf8')).toBe('private host bytes')
     } finally {
       for (const owner of owners) {

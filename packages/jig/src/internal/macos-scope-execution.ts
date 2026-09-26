@@ -168,11 +168,11 @@ export async function preparePrivateMacosScope(input: {
     throw new TypeError('invalid macOS native launch')
   const profile = privateMacosSandboxProfile(input.files)
   if (
-    !input.files.writableTrees.some(
+    ![...input.files.readOnlyTrees, ...input.files.writableTrees].some(
       (root) => input.cwd === root || input.cwd.startsWith(`${root}/`),
     )
   )
-    throw new TypeError('macOS working directory is outside its writable projection')
+    throw new TypeError('macOS working directory is outside its directory projections')
   const hardDeadline = performance.now() + Math.max(0, limits.deadlineUnixMs - Date.now())
   const initial = owner.sample()
   if (!initial.complete || initial.active !== 1n)
@@ -222,10 +222,8 @@ export async function preparePrivateMacosScope(input: {
     throw new Error('macOS launch handoffs are unavailable')
   }
   let resolveReady: (value: { pid: number; version: number }) => void = () => {}
-  let rejectReady: (error: Error) => void = () => {}
-  const ready = new Promise<{ pid: number; version: number }>((resolve, reject) => {
+  const ready = new Promise<{ pid: number; version: number }>((resolve) => {
     resolveReady = resolve
-    rejectReady = reject
   })
   void ready.catch(() => undefined)
   const receiveFrame = (bytes: Buffer) => {
@@ -340,7 +338,6 @@ export async function preparePrivateMacosScope(input: {
       clearTimeout(startupTimeout)
     }
     reason ??= 'payload_exit'
-    rejectReady(new Error('macOS scope stopped before readiness'))
     const cleanupBy = performance.now() + limits.cleanupTimeoutMs
     while (!owner.empty()) {
       owner.signalMembers('kill')
@@ -374,8 +371,10 @@ export async function preparePrivateMacosScope(input: {
   try {
     const identity = await Promise.race([
       ready,
-      completion.then(() => {
-        throw new Error('macOS scope ended before readiness')
+      completion.then((result) => {
+        throw new Error(
+          `macOS scope ended before readiness (${result.reason}, exit ${result.exitCode ?? 'null'}, signal ${result.signal ?? 'null'})`,
+        )
       }),
     ])
     return Object.freeze({

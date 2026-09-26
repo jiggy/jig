@@ -32,6 +32,7 @@ import {
 } from './macos-owner-state.js'
 import {
   privateMacosCurrentProcessIdentity,
+  privateMacosOwnerIsFromPriorBoot,
   privateMacosPeerIdentity,
   recoverPrivateMacosCoalition,
 } from './macos-process-controls.js'
@@ -107,6 +108,13 @@ async function fenceDeadGuardian(
   cleanupTimeoutMs: number,
 ): Promise<void> {
   const owner = readPrivateMacosOwner(ownerDirectory, ownerToken)
+  if (privateMacosOwnerIsFromPriorBoot(owner)) {
+    // The kernel reboot fenced every former task. Only authenticated exact
+    // job/socket records are retired here; storage uses fresh live mappings.
+    removeJob(`user/${process.getuid?.()}/${jobLabel(ownerToken)}`)
+    removePrivateMacosSockets(ownerDirectory, ownerToken)
+    return
+  }
   // A live guardian may be finishing bounded image-tool cleanup after fencing.
   const end = performance.now() + 90_000
   for (;;) {
@@ -513,14 +521,19 @@ async function prepareGuardian(input: {
                 (message.result as { fenced?: unknown }).fenced === true))
           ) {
             phase = 'terminal'
-            rejectReady(new Error('macOS guardian ended before readiness'))
+            const normalizedResult =
+              message.result === null ? null : normalizePrivateMacosScopeResult(message.result)
+            rejectReady(
+              new Error(
+                `macOS guardian ended before readiness (${normalizedResult?.reason ?? 'recovery'})`,
+              ),
+            )
             closeCollector()
             await cleanup()
             control?.destroy()
             stdin.destroy()
             const terminal = Object.freeze({
-              result:
-                message.result === null ? null : normalizePrivateMacosScopeResult(message.result),
+              result: normalizedResult,
               outputLost: message.outputLost || collectionLost,
               recovered: false,
               fenced: true as const,

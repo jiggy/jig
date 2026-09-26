@@ -17,7 +17,11 @@ if (stopAt === 'wrong-parent') {
   marker.peer.version++
   process.env.JIG_PRIVATE_FILE_OWNER = JSON.stringify(marker)
 }
-const owner = await privateConnectFileOwner()
+const owner = await privateConnectFileOwner().catch((error) => {
+  if (stopAt === 'wrong-parent' && error.message === 'native file owner peer does not match')
+    process.exit(2)
+  throw error
+})
 if (owner === undefined || destination === undefined || pidFile === undefined)
   throw new Error('missing test owner')
 try {

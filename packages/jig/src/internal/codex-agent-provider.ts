@@ -7,14 +7,15 @@ import {
   type PrivateAcpAgentProvider,
   type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
-import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const CODEX_CLIENT = 'openai-codex'
 const SANDBOX_LAUNCHER_PATH = '/agent/codex-agent-launcher.js'
 const SANDBOX_ADAPTER_PATH = '/agent/codex-acp.js'
-const HOST_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
+const HOST_CERTIFICATES_PATH =
+  process.platform === 'darwin' ? '/etc/ssl/cert.pem' : '/etc/ssl/certs/ca-certificates.crt'
 const SANDBOX_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
 const SANDBOX_CODEX_HOME = '/tmp/codex-home'
 const SANDBOX_SUBSCRIPTION_CREDENTIAL_PATH = '/tmp/codex-home/auth.json'
@@ -113,13 +114,16 @@ export async function openPrivateCodexAgentProvider(
       cause: error,
     })
   }
-  const nativeBubblewrap = await nativeBubblewrapFor(
-    executablePath,
-    {
-      PATH: [runtime.pathPrefix, environment.PATH].filter(Boolean).join(':'),
-    },
-    projectDirectory,
-  )
+  const nativeBubblewrap =
+    process.platform === 'darwin'
+      ? { path: '/usr/bin/sandbox-exec', source: 'path' as const }
+      : await nativeBubblewrapFor(
+          executablePath,
+          {
+            PATH: [runtime.pathPrefix, environment.PATH].filter(Boolean).join(':'),
+          },
+          projectDirectory,
+        )
   const nativeBubblewrapPath = nativeBubblewrap.path
   let bubblewrapRuntime: Awaited<ReturnType<typeof inspectPrivateNativeAgentRuntime>>
   try {

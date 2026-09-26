@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implements the `@jigging/jig` authoring API and installed Linux host for
+Implements the `@jigging/jig` authoring API, installed Linux host and native macOS candidate for
 admitted FLOW packages.
 
 ## Ownership
@@ -83,6 +83,7 @@ admitted FLOW packages.
   must not generate unrequested model-based titles outside the reviewed turn
   and model policy. Its adapter preserves native failure and clears shutdown
   timers on close; forced native termination cannot become adapter success. Pi ACP
+  invokes Jig's private launcher through the verified Bun interpreter and
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
   when changing its patch. Each patch has a same-basename `.md` note explaining
@@ -200,6 +201,8 @@ admitted FLOW packages.
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
   presentation; launcher failures follow the same structure. Never introduce
   a separate raw diagnostic style or route machine output through styling.
+  Shell completion must work with macOS's system Bash 3.2 without installing
+  another shell; collect replies with portable array/read operations.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
   A heading must never have less emphasis than its subordinate details. Expanded

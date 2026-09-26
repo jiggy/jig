@@ -1,6 +1,6 @@
 import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
@@ -11,164 +11,179 @@ import { PRIVATE_ROOT_RESOURCE_POLICY } from '../src/internal/root-operation-lim
 import type { JsonValue } from '../src/json.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
-const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
+const proof =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? describe.serial
+    : describe.skip
 
 proof('contained Project Command effect', () => {
-  test('collects real root and leaf command evidence without Agent authority and rejects forged success', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-command-proof-'))
-    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
-    let primaryError: unknown
-    try {
-      await fixture(root)
-      const host = await openPrivateInstalledBunHost(installedBunLocation, {})
-      session = await openPrivateProjectSession({ directory: root, host })
-      const plan = await session.plan({ lockMode: 'update' })
-      expect(plan.state).toBe('applicable')
-      if (plan.state !== 'applicable') throw new Error('command fixture is not reviewable')
-      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
-      const run = async (
-        id: string,
-        files: Record<string, string>,
-        options: Record<string, JsonValue> = {},
-        parent = false,
-      ) => {
-        const receipt = await session!.rootAdministration.startRun({
-          submissionId: id,
-          target: { kind: 'binding', id: parent ? 'parent' : 'command' },
-          input: { command: 'cli', files, ...options },
-        })
-        return terminal(session!.rootAdministration, receipt)
-      }
-      const files = {
-        'src/value.ts': 'export const prefix = "heard:";',
-        'src/cli.ts':
-          'import {prefix} from "./value.ts"; console.log(prefix + await Bun.stdin.text()); console.error("diagnostic");',
-      }
-      const direct = await run('command-direct', files, { stdin: 'hello' })
-      expect(direct).toMatchObject({
-        state: 'terminal',
-        terminal: {
-          status: 'succeeded',
-          output: {
-            candidateDigest: projectCommandCandidateDigest(files),
-            invocation: ['bun', 'src/cli.ts'],
-            stdout: { text: 'heard:hello\n', truncated: false },
-            stderr: { text: 'diagnostic\n', truncated: false },
-            exitCode: 0,
-            signal: null,
-            stopReason: 'exited',
-            cleanup: 'complete',
+  test(
+    'collects real root and leaf command evidence without Agent authority and rejects forged success',
+    async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-proof-')))
+      let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+      let primaryError: unknown
+      try {
+        await fixture(root)
+        const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+        session = await openPrivateProjectSession({ directory: root, host })
+        const plan = await session.plan({ lockMode: 'update' })
+        expect(plan.state).toBe('applicable')
+        if (plan.state !== 'applicable') throw new Error('command fixture is not reviewable')
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
+        const run = async (
+          id: string,
+          files: Record<string, string>,
+          options: Record<string, JsonValue> = {},
+          parent = false,
+        ) => {
+          const receipt = await session!.rootAdministration.startRun({
+            submissionId: id,
+            target: { kind: 'binding', id: parent ? 'parent' : 'command' },
+            input: { command: 'cli', files, ...options },
+          })
+          return terminal(session!.rootAdministration, receipt)
+        }
+        const files = {
+          'src/value.ts': 'export const prefix = "heard:";',
+          'src/cli.ts':
+            'import {prefix} from "./value.ts"; console.log(prefix + await Bun.stdin.text()); console.error("diagnostic");',
+        }
+        const direct = await run('command-direct', files, { stdin: 'hello' })
+        expect(direct).toMatchObject({
+          state: 'terminal',
+          terminal: {
+            status: 'succeeded',
+            output: {
+              candidateDigest: projectCommandCandidateDigest(files),
+              invocation: ['bun', 'src/cli.ts'],
+              stdout: { text: 'heard:hello\n', truncated: false },
+              stderr: { text: 'diagnostic\n', truncated: false },
+              exitCode: 0,
+              signal: null,
+              stopReason: 'exited',
+              cleanup: 'complete',
+            },
           },
-        },
-      })
-      const nested = await run('command-leaf', files, { stdin: 'child' }, true)
-      expect(nested).toMatchObject({
-        terminal: { status: 'succeeded', output: { stdout: { text: 'heard:child\n' } } },
-      })
-      const falsePass = await run('command-false-pass', {
-        'src/cli.ts':
-          'console.log(JSON.stringify({passed:true})); console.error("actual failure"); process.exit(17);',
-      })
-      expect(falsePass).toMatchObject({
-        terminal: {
-          status: 'succeeded',
-          output: { stdout: { text: '{"passed":true}\n' }, exitCode: 17, cleanup: 'complete' },
-        },
-      })
-      const isolation = await run('command-isolation', {
-        'src/cli.ts': `
+        })
+        const nested = await run('command-leaf', files, { stdin: 'child' }, true)
+        expect(nested).toMatchObject({
+          terminal: { status: 'succeeded', output: { stdout: { text: 'heard:child\n' } } },
+        })
+        const falsePass = await run('command-false-pass', {
+          'src/cli.ts':
+            'console.log(JSON.stringify({passed:true})); console.error("actual failure"); process.exit(17);',
+        })
+        expect(falsePass).toMatchObject({
+          terminal: {
+            status: 'succeeded',
+            output: { stdout: { text: '{"passed":true}\n' }, exitCode: 17, cleanup: 'complete' },
+          },
+        })
+        const isolation = await run('command-isolation', {
+          'src/cli.ts': `
         import { existsSync, writeFileSync } from 'node:fs';
         let immutable=false; try { writeFileSync(import.meta.path, 'changed') } catch { immutable=true }
         console.log(JSON.stringify({immutable, key:process.env.OPENAI_API_KEY??null, path:process.env.PATH??null,
           packageVisible:existsSync('/package'), cgroupVisible:existsSync('/sys/fs/cgroup'), controlVisible:existsSync('/run/user')}));
       `,
-      })
-      expect(isolation).toMatchObject({
-        terminal: {
-          status: 'succeeded',
-          output: {
-            stdout: {
-              text: '{"immutable":true,"key":null,"path":null,"packageVisible":false,"cgroupVisible":false,"controlVisible":false}\n',
+        })
+        expect(isolation).toMatchObject({
+          terminal: {
+            status: 'succeeded',
+            output: {
+              stdout: {
+                text: '{"immutable":true,"key":null,"path":null,"packageVisible":false,"cgroupVisible":false,"controlVisible":false}\n',
+              },
             },
           },
-        },
-      })
-      const args = await run(
-        'command-args',
-        { 'src/cli.ts': 'console.log(JSON.stringify(process.argv.slice(2)))' },
-        { args: ['--preload=/work/missing.ts', '$(touch unwanted)', '--file', '--sync-fd'] },
-      )
-      expect(args).toMatchObject({
-        terminal: {
-          status: 'succeeded',
-          output: {
-            exitCode: 0,
-            stdout: {
-              text: '["--preload=/work/missing.ts","$(touch unwanted)","--file","--sync-fd"]\n',
+        })
+        const args = await run(
+          'command-args',
+          { 'src/cli.ts': 'console.log(JSON.stringify(process.argv.slice(2)))' },
+          { args: ['--preload=/work/missing.ts', '$(touch unwanted)', '--file', '--sync-fd'] },
+        )
+        expect(args).toMatchObject({
+          terminal: {
+            status: 'succeeded',
+            output: {
+              exitCode: 0,
+              stdout: {
+                text: '["--preload=/work/missing.ts","$(touch unwanted)","--file","--sync-fd"]\n',
+              },
             },
           },
-        },
-      })
-      const ordinary = await run(
-        'command-tests',
-        {
-          'package.json': '{"scripts":{"test":"echo unauthorized-script"}}',
-          'bunfig.toml': 'preload = ["./preload.ts"]',
-          'preload.ts': 'console.log("unauthorized-preload")',
-          'test/project.test.ts':
-            'import {test,expect} from "bun:test"; test("observed failure",()=>expect(1).toBe(2))',
-        },
-        { command: 'tests' },
-      )
-      expect(ordinary).toMatchObject({ terminal: { status: 'succeeded', output: { exitCode: 1 } } })
-      expect(JSON.stringify(ordinary)).toContain('observed failure')
-      expect(JSON.stringify(ordinary)).not.toContain('unauthorized-')
-      const invalid = await run('command-unknown', files, { command: 'shell' })
-      expect(invalid).toMatchObject({ terminal: { status: 'failed', code: 'UNAVAILABLE' } })
-      const flood = await run('command-flood', {
-        'src/cli.ts':
-          'process.stdout.write("x".repeat(131072)); process.stderr.write("e".repeat(131072));',
-      })
-      expect(flood).toMatchObject({
-        terminal: {
-          status: 'succeeded',
-          output: { stdout: { truncated: true }, stderr: { truncated: true }, cleanup: 'complete' },
-        },
-      })
-      await noOwners(root)
-      const deadline = await run('command-deadline', {
-        'src/cli.ts': `Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', 'await Bun.sleep(60000)'], {stdin:'ignore', stdout:'ignore', stderr:'ignore'}); console.log('started'); await Bun.sleep(60000)`,
-      })
-      expect(deadline).toMatchObject({ terminal: { status: 'failed', code: 'DEADLINE_EXCEEDED' } })
-      await noOwners(root)
-      const stopped = await session.rootAdministration.startRun({
-        submissionId: 'command-cancel',
-        target: { kind: 'binding', id: 'pair' },
-        input: { command: 'cli', files: { 'src/cli.ts': 'await Bun.sleep(60000)' } },
-      })
-      await waitForCommand(root, 2)
-      await checkAggregateEnvelopes()
-      await session.close()
-      session = await openPrivateProjectSession({ directory: root, host })
-      expect(await terminal(session.rootAdministration, stopped)).toMatchObject({
-        terminal: { status: 'failed', code: 'CANCELLED' },
-      })
-      await noOwners(root)
-    } catch (error) {
-      primaryError = error
-      throw error
-    } finally {
+        })
+        const ordinary = await run(
+          'command-tests',
+          {
+            'package.json': '{"scripts":{"test":"echo unauthorized-script"}}',
+            'bunfig.toml': 'preload = ["./preload.ts"]',
+            'preload.ts': 'console.log("unauthorized-preload")',
+            'test/project.test.ts':
+              'import {test,expect} from "bun:test"; test("observed failure",()=>expect(1).toBe(2))',
+          },
+          { command: 'tests' },
+        )
+        expect(ordinary).toMatchObject({
+          terminal: { status: 'succeeded', output: { exitCode: 1 } },
+        })
+        expect(JSON.stringify(ordinary)).toContain('observed failure')
+        expect(JSON.stringify(ordinary)).not.toContain('unauthorized-')
+        const invalid = await run('command-unknown', files, { command: 'shell' })
+        expect(invalid).toMatchObject({ terminal: { status: 'failed', code: 'UNAVAILABLE' } })
+        const flood = await run('command-flood', {
+          'src/cli.ts':
+            'process.stdout.write("x".repeat(131072)); process.stderr.write("e".repeat(131072));',
+        })
+        expect(flood).toMatchObject({
+          terminal: {
+            status: 'succeeded',
+            output: {
+              stdout: { truncated: true },
+              stderr: { truncated: true },
+              cleanup: 'complete',
+            },
+          },
+        })
+        await noOwners(root)
+        const deadline = await run('command-deadline', {
+          'src/cli.ts': `Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', 'await Bun.sleep(60000)'], {stdin:'ignore', stdout:'ignore', stderr:'ignore'}); console.log('started'); await Bun.sleep(60000)`,
+        })
+        expect(deadline).toMatchObject({
+          terminal: { status: 'failed', code: 'DEADLINE_EXCEEDED' },
+        })
+        await noOwners(root)
+        const stopped = await session.rootAdministration.startRun({
+          submissionId: 'command-cancel',
+          target: { kind: 'binding', id: 'pair' },
+          input: { command: 'cli', files: { 'src/cli.ts': 'await Bun.sleep(60000)' } },
+        })
+        await waitForCommand(root, 2)
+        await checkAggregateEnvelopes()
+        await session.close()
+        session = await openPrivateProjectSession({ directory: root, host })
+        expect(await terminal(session.rootAdministration, stopped)).toMatchObject({
+          terminal: { status: 'failed', code: 'CANCELLED' },
+        })
+        await noOwners(root)
+      } catch (error) {
+        primaryError = error
+      }
       try {
         await session?.close()
       } catch (cleanupError) {
         throw new AggregateError([primaryError, cleanupError], 'command test and cleanup failed')
       }
       await rm(root, { recursive: true, force: true })
-    }
-  }, 180_000)
+      if (primaryError !== undefined) throw primaryError
+    },
+    process.platform === 'darwin' ? 600_000 : 180_000,
+  )
 
   test('coordinator loss fences two leaf commands and recovers both branches without replay', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-command-loss-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-loss-')))
     const host = await openPrivateInstalledBunHost(installedBunLocation, {})
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     let coordinator: ReturnType<typeof Bun.spawn> | undefined
@@ -285,7 +300,7 @@ async function fixture(root: string) {
 }
 
 async function terminal(administration: RootAdministration, receipt: StartRootRunReceipt) {
-  const until = Date.now() + 35_000
+  const until = Date.now() + (process.platform === 'darwin' ? 75_000 : 35_000)
   while (Date.now() < until) {
     const status = await administration.runStatus(receipt)
     if (status.state === 'terminal') return status
@@ -323,6 +338,7 @@ async function waitForCommand(root: string, count = 1) {
   throw new Error('command owner did not start')
 }
 async function checkAggregateEnvelopes() {
+  if (process.platform === 'darwin') return
   const delegated = process.env.AGENT_DELEGATED_CGROUP
   if (!delegated?.startsWith('/sys/fs/cgroup/')) throw new Error('missing proof delegation')
   const until = Date.now() + 5_000
@@ -360,8 +376,6 @@ async function checkAggregateEnvelopes() {
 async function noOwners(root: string) {
   expect(ownerRows(root)).toBe(0)
   expect(
-    (await readdir(join(root, '.jig/private-root-linux-owners'))).filter((path) =>
-      /^(x-|c-)/.test(path),
-    ),
+    (await readdir(join(root, '.jig/private-root-owners'))).filter((path) => /^(x-|c-)/.test(path)),
   ).toEqual([])
 }

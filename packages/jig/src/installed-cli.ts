@@ -48,10 +48,12 @@ try {
   installedCliPath = await realpath(fileURLToPath(import.meta.url))
   releaseRoot = dirname(dirname(installedCliPath))
   executablePath = await realpath(process.execPath)
+  const runningExecutablePath =
+    process.platform === 'linux' ? await realpath('/proc/self/exe') : executablePath
   if (
     process.argv[0] !== executablePath ||
     process.argv[1] !== installedCliPath ||
-    (await realpath('/proc/self/exe')) !== executablePath ||
+    runningExecutablePath !== executablePath ||
     process.execArgv.length !== BUN_POLICY.length ||
     process.execArgv.some((value, index) => value !== BUN_POLICY[index])
   ) {
@@ -143,10 +145,12 @@ async function runWithEnvironment(
         privateCliCommandLifetimeMs(arguments_),
       )
     }
-    const delegation = await acquireOrReexecutePrivateRootlessLinux({
-      commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
-    })
-    if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
+    if (process.platform === 'linux') {
+      const delegation = await acquireOrReexecutePrivateRootlessLinux({
+        commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
+      })
+      if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
+    }
 
     const delivery = await privateConnectFileOwner()
     try {

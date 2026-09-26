@@ -1,15 +1,20 @@
 import type { PrivateInspectionEnvironmentCheck } from './activation-admission-store.js'
 import { inspectPrivateBunDirectIdentity } from './bun-direct-run.js'
-import { excludePrivateVerificationProject } from './installation-verification.js'
+import {
+  inspectPrivateExecutionBackendSupport,
+  type PrivateExecutionBackend,
+} from './execution-backend.js'
 import { openPrivateHttpGrants } from './http-grants.js'
+import { excludePrivateVerificationProject } from './installation-verification.js'
 import {
   openPrivateInstalledBunSupport,
   type PrivateInstalledBunLocation,
 } from './installed-bun-support.js'
 import { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
+import { PrivateMacosBackend } from './macos-native-backend.js'
 import { openPrivateAcpResources } from './private-acp-resources.js'
 import type { PrivateProjectSessionHost } from './project-session-controller.js'
-import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
+import { privateDefaultRootRunTimeout } from './root-run-timeout-policy.js'
 
 /** Read-only comparison against the same resource-aware identity used by planning. */
 export function privateInstalledEnvironmentCheck(
@@ -21,7 +26,7 @@ export function privateInstalledEnvironmentCheck(
   let evidence:
     | Promise<{
         host: PrivateProjectSessionHost
-        support: Awaited<ReturnType<PrivateLinuxCgroupBackend['inspectSupport']>>
+        support: Awaited<ReturnType<typeof inspectPrivateExecutionBackendSupport>>
       }>
     | undefined
   return async (target) => {
@@ -32,7 +37,7 @@ export function privateInstalledEnvironmentCheck(
         operatorEnvironment,
         projectDirectory,
       )
-      return { host, support: await host.backend.inspectSupport() }
+      return { host, support: await inspectPrivateExecutionBackendSupport(host.backend) }
     })()
     const { host, support } = await evidence
     const identity = await inspectPrivateBunDirectIdentity(
@@ -61,15 +66,27 @@ export async function openPrivateInstalledBunHost(
   const operatorEnvironment = Object.freeze({ ...environment })
   await excludePrivateVerificationProject(projectDirectory)
   const installedBunSupport = await openPrivateInstalledBunSupport(location)
-  onStage?.('Preparing operator resource configuration')
-  return Object.freeze({
-    backend: new PrivateLinuxCgroupBackend({
+  let backend: PrivateExecutionBackend
+  if (installedBunSupport.platform === 'linux-x64-glibc') {
+    backend = new PrivateLinuxCgroupBackend({
       bunPath: installedBunSupport.executablePath,
       bunHostLibraryPath: installedBunSupport.hostLibraryDirectory,
       supervisorPath: installedBunSupport.supervisorPath,
-    }),
+    })
+  } else {
+    if (installedBunSupport.launcherPath === null)
+      throw new Error('installed macOS execution launcher is unavailable')
+    backend = new PrivateMacosBackend({
+      bunPath: installedBunSupport.executablePath,
+      supervisorPath: installedBunSupport.supervisorPath,
+      launcherPath: installedBunSupport.launcherPath,
+    })
+  }
+  onStage?.('Preparing operator resource configuration')
+  return Object.freeze({
+    backend,
     installedBunSupport,
-    runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
+    runTimeoutMs: privateDefaultRootRunTimeout(),
     acpResources: openPrivateAcpResources(
       installedBunSupport,
       operatorEnvironment,
