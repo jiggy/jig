@@ -16,6 +16,10 @@ hero:
     - theme: alt
       text: Explore a Flow
       link: "#showcase"
+heroVideo:
+  src: /flow-intro.mp4
+  poster: /flow-intro-poster.jpg
+  title: "FLOW — Executable know-how video overview"
 showcase:
   kind: package
   title: A small package. A whole capability.

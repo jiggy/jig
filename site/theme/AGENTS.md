@@ -12,6 +12,8 @@ shared reading experience.
   beside Rspress's copy action.
 - `brand-title.tsx` composes the theme-selected decorative emblem with the live
   product name, which provides the navigation link's accessible name.
+- `hero-video.tsx` renders a shared, accessible product video player with sound
+  controls and reduced-motion awareness from homepage frontmatter.
 - `package-showcase.tsx` renders the FLOW package explorer from frontmatter,
   preserving every stage, language, and optional layer in generated Markdown.
   Show only one selected entrypoint; implementation alternatives replace rather
