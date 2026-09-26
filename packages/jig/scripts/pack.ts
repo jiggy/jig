@@ -5,6 +5,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'no
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { create } from 'tar'
 
 const args = process.argv.slice(2)
 if (args.length !== 2 || args[0] !== '--destination')
@@ -60,24 +61,17 @@ try {
   )
   // npm's packlist excludes nested node_modules. Archive this complete, allowlisted
   // package tree in the ordinary npm tarball format instead of pruning its closure.
-  execFileSync(
-    'tar',
-    [
-      '--sort=name',
-      '--mtime=@0',
-      '--owner=0',
-      '--group=0',
-      '--numeric-owner',
-      '--format=gnu',
-      '-czf',
-      output,
-      '-C',
-      temporary,
-      'package',
-    ],
+  await create(
     {
-      stdio: 'inherit',
+      file: output,
+      cwd: temporary,
+      portable: true,
+      mtime: new Date(0),
+      gzip: true,
+      noDirRecurse: true,
+      strict: true,
     },
+    await archivePaths(temporary, 'package'),
   )
   console.log(output)
 } finally {
@@ -90,4 +84,17 @@ async function requireRegularTree(root: string, relative = ''): Promise<void> {
     if (entry.isDirectory()) await requireRegularTree(root, path)
     else if (!entry.isFile()) throw new Error(`Jig archive contains a non-regular entry: ${path}`)
   }
+}
+
+async function archivePaths(root: string, relative: string): Promise<string[]> {
+  const paths = [relative]
+  const entries = await readdir(join(root, relative), { withFileTypes: true })
+  entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
+  for (const entry of entries) {
+    const path = join(relative, entry.name)
+    if (entry.isDirectory()) paths.push(...(await archivePaths(root, path)))
+    else if (entry.isFile()) paths.push(path)
+    else throw new Error(`Jig archive contains a non-regular entry: ${path}`)
+  }
+  return paths
 }

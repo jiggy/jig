@@ -5,7 +5,6 @@ import {
   lstat,
   mkdir,
   open,
-  opendir,
   readlink,
   realpath,
   rename,
@@ -26,6 +25,7 @@ import {
   privateMacosSymlinkAt,
   privateMacosUnlinkAt,
 } from './macos-descriptor-files.js'
+import { privateRawDirectory } from './raw-directory.js'
 
 const references = new WeakSet<object>()
 export interface PrivateChildLocation {
@@ -192,11 +192,7 @@ export interface PrivateRawDirectory {
 export async function openPrivateDirectory(parent: FileHandle): Promise<PrivateRawDirectory> {
   if (process.platform === 'darwin') return privateMacosDirectory(parent.fd)
   requireLinux()
-  const openRaw = opendir as unknown as (
-    path: string,
-    options: { encoding: 'buffer' },
-  ) => Promise<PrivateRawDirectory>
-  return openRaw(`/proc/self/fd/${parent.fd}`, { encoding: 'buffer' })
+  return privateRawDirectory(`/proc/self/fd/${parent.fd}`)
 }
 
 /** Preserve raw names until the consuming policy explicitly requires UTF-8. */

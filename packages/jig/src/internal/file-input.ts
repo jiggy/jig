@@ -1,12 +1,4 @@
-import {
-  closeSync,
-  constants,
-  type Dirent,
-  fstatSync,
-  opendirSync,
-  openSync,
-  readSync,
-} from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
 import {
   PRIVATE_FILE_LIMITS,
   PrivateFileInputError,
@@ -21,6 +13,7 @@ import {
 } from './linux-file-input.js'
 import { privateMacosDirectory, privateMacosRenameAt } from './macos-descriptor-files.js'
 import { privateMacosInputOpenAt, privateMacosOpenFileRoot } from './macos-file-input.js'
+import { privateRawDirectory } from './raw-directory.js'
 
 export {
   PRIVATE_FILE_LIMITS,
@@ -61,15 +54,10 @@ export function privatePublishDirectory(parent: number, staged: string, destinat
   privateMacosRenameAt(parent, staged, parent, destination, true)
 }
 export function privateInputDirectory(fd: number) {
-  // Node/Bun accept raw directory names; the Node declarations omit this overload.
-  const rawDirectory = opendirSync as unknown as (
-    path: string,
-    options: { encoding: 'buffer' },
-  ) => { readSync(): Dirent<Buffer> | null; closeSync(): void }
   const directory =
     process.platform === 'darwin'
       ? privateMacosDirectory(fd)
-      : rawDirectory(`/proc/self/fd/${fd}`, { encoding: 'buffer' })
+      : privateRawDirectory(`/proc/self/fd/${fd}`)
   return {
     readSync() {
       const entry = directory.readSync()

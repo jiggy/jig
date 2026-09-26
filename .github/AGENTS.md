@@ -88,6 +88,15 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   private authoring closure. Agent source rebuilds use ordinary declared
   dependencies; frozen archives are test inputs, never embedded dependencies.
 
+- `workflows/macos-host-conformance.yml` qualifies the rootless candidate only
+  on a self-hosted Intel runner labeled `jig-macos-23E224`. Keep manual dispatch
+  restricted to this repository's main or mac-support branch and the protected
+  `macos-host-conformance` environment. Never run arbitrary PR code on this
+  runner. Configure absolute native executable paths through the environment's
+  `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
+  variables. This candidate workflow does not replace Linux publication gates
+  or claim live model/API qualification.
+
 ## Verification
 
 - Validate the called script locally where possible and inspect the complete

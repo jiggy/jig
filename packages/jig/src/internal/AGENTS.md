@@ -655,6 +655,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Cache no credentials, packages, attachments, approval or containment authority.
   Mode alone must not alter recipe identity for unchanged installations.
 
+- `raw-directory.ts` preserves byte names for Linux descriptor enumeration.
+  Pinned Bun can return byte arrays instead of Dirent objects for buffer
+  encoding; acquire missing type metadata with no-follow stat of the raw leaf
+  beneath the held directory. Consumers retain strict UTF-8 validation and
+  descriptor-relative admission; never substitute lossy decoded names.
+
 ## Verification
 
 - Run the directly corresponding `packages/jig/test/` files, then
@@ -753,6 +759,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Run real-host suites sequentially within one delegated cgroup. Their strict
   acquisition and residue checks intentionally reject other concurrent Runs;
   the ordinary suite also includes host tests when delegation is present.
+
+- Mac host conformance also enables the shared workspace preparation reuse and
+  public CLI workspace dependency cases, plus installed command, HTTP Agent,
+  Markdown, continuation and interruption checks. Linux-only preparation
+  cgroup recovery cases retain their Linux proof-host opt-in.
 
 ## Child DOX Index
 

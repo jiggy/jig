@@ -95,7 +95,10 @@ admitted FLOW packages.
   `support/authoring-install.json` and its generated npm lock pin the complete
   private compiler closure; authoring-source changes require a matching lock
   update. Packaging uses `npm ci` and fails on stale integrity. The final
-  tarball normalizes file order, timestamps and ownership.
+  tarball uses pinned build-only `tar` to normalize file order, timestamps and
+  ownership on both Linux and Mac. The local authoring archive lock admits the
+  exact Bun 1.3.3 and 1.4.2 gzip outputs of identical tar contents; neither
+  platform may refresh that integrity during packing.
   Consumers do not resolve the authoring workspace package from a registry.
 
 

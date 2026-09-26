@@ -20,7 +20,9 @@ import { capturePackageDirectory } from '../src/package/capture.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
-const proofDescribe = HOSTILE ? describe.serial : describe.skip
+const MACOS = process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1'
+const proofDescribe = HOSTILE || MACOS ? describe.serial : describe.skip
+const linuxTest = HOSTILE ? test : test.skip
 
 proofDescribe('private contained Bun dependency preparation', () => {
   test('workspace preparation reuse stays in the approving project and checks fresh shared inputs', async () => {
@@ -138,7 +140,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
     }
   }, 180_000)
 
-  test.each([false, true])(
+  linuxTest.each([false, true])(
     'prepares a transitive graph without scripts or authored config (resolve=%s)',
     async (resolve) => {
       const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
@@ -237,7 +239,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
     120_000,
   )
 
-  test('rejects non-registry lock sources before installer fetch', async () => {
+  linuxTest('rejects non-registry lock sources before installer fetch', async () => {
     const root = await fixture()
     try {
       await writeFile(
@@ -281,7 +283,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
     }
   }, 30_000)
 
-  test.each([false, true])(
+  linuxTest.each([false, true])(
     'recovers preparation after coordinator loss (resolve=%s)',
     async (resolve) => {
       const projectRoot = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-project-'))

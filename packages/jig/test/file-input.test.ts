@@ -1,4 +1,3 @@
-import { privateDuplicateInputForStdio, privateVerifyLinuxSealedFile } from '../src/internal/linux-file-input.js'
 import { expect, test } from 'bun:test'
 import { closeSync, readFileSync, writeSync } from 'node:fs'
 import { link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
@@ -15,6 +14,10 @@ import {
   readPrivateCapturedInput,
   requirePrivateCapturedInput,
 } from '../src/internal/input-capture.js'
+import {
+  privateDuplicateInputForStdio,
+  privateVerifyLinuxSealedFile,
+} from '../src/internal/linux-file-input.js'
 
 async function fixture(work: (root: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-file-input-')))
@@ -48,38 +51,47 @@ test('captures selected binary and empty files into sealed anonymous input', asy
     }
   }))
 
-test.skipIf(process.platform !== 'linux')('duplicates sealed inputs above every child stdio destination without changing bytes', async () =>
-  fixture(async (root) => {
-    for (let index = 0; index < 24; index++)
-      await writeFile(join(root, `file-${index}`), `distinct payload ${index}`)
-    const capture = privateCaptureAttachments([
-      {
-        name: 'source',
-        directory: root,
-        select: Array.from({ length: 24 }, (_, index) => `file-${index}`),
-      },
-    ])
-    const duplicates: number[] = []
-    try {
-      const files = capture.attachments[0]!.files
-      for (const file of files)
-        duplicates.push(privateDuplicateInputForStdio(requirePrivateCapturedInput(file.input).fd, 6 + files.length))
-      expect(new Set(duplicates).size).toBe(files.length)
-      for (const [index, fd] of duplicates.entries()) {
-        expect(fd).toBeGreaterThanOrEqual(6 + files.length)
-        expect(readFileSync(`/proc/self/fd/${fd}`)).toEqual(
-          readFileSync(`/proc/self/fd/${requirePrivateCapturedInput(files[index]!.input).fd}`),
-        )
-        privateVerifyLinuxSealedFile(fd, files[index]!.bytes, files[index]!.digest)
-        expect(() =>
-          privateVerifyLinuxSealedFile(fd, files[index]!.bytes, `sha256:${'0'.repeat(64)}`),
-        ).toThrow('captured input descriptor changed')
+test.skipIf(process.platform !== 'linux')(
+  'duplicates sealed inputs above every child stdio destination without changing bytes',
+  async () =>
+    fixture(async (root) => {
+      for (let index = 0; index < 24; index++)
+        await writeFile(join(root, `file-${index}`), `distinct payload ${index}`)
+      const capture = privateCaptureAttachments([
+        {
+          name: 'source',
+          directory: root,
+          select: Array.from({ length: 24 }, (_, index) => `file-${index}`),
+        },
+      ])
+      const duplicates: number[] = []
+      try {
+        const files = capture.attachments[0]!.files
+        for (const file of files)
+          duplicates.push(
+            privateDuplicateInputForStdio(
+              requirePrivateCapturedInput(file.input).fd,
+              6 + files.length,
+            ),
+          )
+        expect(new Set(duplicates).size).toBe(files.length)
+        for (const [index, fd] of duplicates.entries()) {
+          const input = requirePrivateCapturedInput(files[index]!.input)
+          expect(fd).toBeGreaterThanOrEqual(6 + files.length)
+          expect(readFileSync(`/proc/self/fd/${fd}`)).toEqual(
+            readFileSync(`/proc/self/fd/${requirePrivateCapturedInput(files[index]!.input).fd}`),
+          )
+          privateVerifyLinuxSealedFile(fd, input.bytes, input.digest)
+          expect(() =>
+            privateVerifyLinuxSealedFile(fd, input.bytes, `sha256:${'0'.repeat(64)}`),
+          ).toThrow('captured input descriptor changed')
+        }
+      } finally {
+        for (const fd of duplicates) closeSync(fd)
+        capture.close()
       }
-    } finally {
-      for (const fd of duplicates) closeSync(fd)
-      capture.close()
-    }
-  }))
+    }),
+)
 test('capture capabilities cannot be reconstructed from copied metadata or reused after closure', () => {
   const capture = capturePrivateInput(Buffer.from('exact bytes'))
   try {

@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const hostTest = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? test : test.skip
+const hostTest =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? test
+    : test.skip
 const cli = fileURLToPath(new URL('../bin/jig', import.meta.url))
 const contract = {
   $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',

@@ -473,7 +473,10 @@ void binding;
     ],
     packageRoot,
   )
-  if (process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+  if (
+    process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+    (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+  ) {
     const project = join(consumer, 'granted-command')
     for (const path of ['flows/check', 'bindings', 'grants', 'libs/flow'])
       await mkdir(join(project, path), { recursive: true })
@@ -937,7 +940,7 @@ async function selectArchive(
     return canonical
   }
   await run(
-    packageName !== 'flow-sdk'
+    packageName === 'jig'
       ? ['bun', 'scripts/pack.ts', '--destination', artifacts]
       : ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
     resolve(packageRoot, '..', packageName),
