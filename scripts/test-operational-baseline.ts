@@ -140,7 +140,7 @@ try {
     assert.match(unchanged.stdout, /^Project ready\n/)
     assert.match(unchanged.stdout, /The exact reviewed revision is approved/)
     assert.match(unchanged.stdout, /No Flow was started/)
-    assert.match(unchanged.stdout, /Next: jig run <target>/)
+    assert.match(unchanged.stdout, /Next: jig run \(or jig run <target>; see jig run --help\)\./)
     assert.match(unchanged.stdout, /jig run --help/)
     assert.doesNotMatch(
       unchanged.stdout,
@@ -168,9 +168,14 @@ try {
     [1],
     120_000,
   )
-  assert.match(schemaInvalid.stderr, /Input does not match the target input schema/)
+  assert.match(schemaInvalid.stderr, /Input does not match the approved target input schema/)
   assert.match(schemaInvalid.stderr, /Value: "\/name"\n  Expected string; received integer\./)
-  assert.match(schemaInvalid.stderr, /Next step: Check --input/)
+  assert.match(
+    schemaInvalid.stderr,
+    /Next step: Run jig inspect 'flow:flows\/hello' to see the approved schema and correct --input\./,
+  )
+  assert.match(schemaInvalid.stderr, /Jig runs the last approved revision/)
+  assert.match(schemaInvalid.stderr, /run jig review to approve those edits first/)
   assert.match(schemaInvalid.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
   const rejectedTerminal = requireRecord(JSON.parse(schemaInvalid.stdout))
   assert.equal(rejectedTerminal.status, 'failed')
@@ -289,7 +294,10 @@ try {
     [2],
     120_000,
   )
-  assert.match(unapprovedResolution.stderr, /Package: "flows\/locked-dependency"/)
+  assert.match(
+    unapprovedResolution.stderr,
+    /Scope: Dependency preparation across this review; Runs gain no network access\./,
+  )
   assert.match(unapprovedResolution.stderr, /private-network services/)
   assert.match(unapprovedResolution.stderr, /JIG_APPROVAL_REQUIRED/)
   await assert.rejects(stat(join(resolvingProject, 'jig.lock')), { code: 'ENOENT' })
