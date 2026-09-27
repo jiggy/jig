@@ -21,6 +21,9 @@ or newer instructions. Keep the reviewer advancing independently.
   `test/` owns deterministic application checks.
   The README teaches ordinary project execution and reusing its complete Agent
   boundary through offline package-selected import, without installer paths.
+- `jig.ts` owns the reviewed default brief invocation with its input and deadline.
+  Worker diagnostics expose static application phases, not model text or native
+  dispatch claims; they remain distinct from the final settlement packet.
 
 ## Local Contracts
 
