@@ -300,6 +300,7 @@ async function executeOwnedProvider(
   }
 
   let attemptedDispatch = false
+  let phase = 'verifying the admitted runtime'
   let execution: ProviderExecution
   let output: FileHandle | undefined
   let retained: PrivateCodexSessionState | undefined
@@ -317,6 +318,7 @@ async function executeOwnedProvider(
     )
     let restored: PrivateCodexSessionState | undefined
     if (operation.session !== undefined && 'restore' in operation.session) {
+      phase = 'restoring the authorized session'
       const snapshot = await claimPrivateNativeSession({
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
@@ -339,6 +341,7 @@ async function executeOwnedProvider(
       operation.session === undefined
         ? []
         : privateCodexSessionSecrets(runtime, credentialBootstrap)
+    phase = 'preparing containment'
     const sealed = await privateProfileSpan('finite-acp-containment', () =>
       input.backend.seal(
         backendPlan(
@@ -364,10 +367,12 @@ async function executeOwnedProvider(
       sandbox: sandbox as unknown as JsonValue,
     })
     attemptedDispatch = true
+    phase = 'starting the native client'
     const component = await privateProfileSpan('finite-acp-launch', () =>
       sealed.admit(input.signal),
     )
     output = component.outputDirectory
+    phase = 'exchanging native messages'
     execution = await privateProfileSpan('finite-acp-exchange', () =>
       runPrivateFiniteAcpResource(
         component,
@@ -394,6 +399,7 @@ async function executeOwnedProvider(
       execution.fence.signal === null &&
       !input.signal.aborted
     ) {
+      phase = 'collecting authorized session state'
       if (output === undefined || execution.sessionId === undefined)
         throw new Error('Clean native retention lacks owned output or session identity')
       try {
@@ -403,6 +409,7 @@ async function executeOwnedProvider(
         unavailableReason = error.reason
       }
     }
+    phase = 'fencing and cleanup'
     await privateProfileSpan('finite-acp-release', () =>
       releaseKnownAcp(input, lifecycle, execution.fence),
     )
@@ -426,9 +433,13 @@ async function executeOwnedProvider(
         },
       )
     }
-    if (input.signal.aborted) return failed('CANCELLED', 'the finite ACP operation was cancelled')
+    if (input.signal.aborted)
+      return failed('CANCELLED', `the finite ACP operation was cancelled while ${phase}`)
     if (Date.now() >= effectiveDeadlineUnixMs) {
-      return failed('DEADLINE_EXCEEDED', 'the finite ACP operation deadline elapsed')
+      return failed(
+        'DEADLINE_EXCEEDED',
+        `the finite ACP operation deadline elapsed while ${phase}; ${attemptedDispatch ? 'dispatch may have occurred and no result was proved' : 'dispatch was not attempted'}`,
+      )
     }
     if (error instanceof NativeSessionUnavailable)
       return failed('UNAVAILABLE', 'the retained session is unavailable for this admitted caller')
@@ -441,9 +452,9 @@ async function executeOwnedProvider(
     return attemptedDispatch
       ? failed(
           'UNCERTAIN',
-          `Finite ACP dispatch may have occurred but no result was proved.${explanation}`,
+          `Finite ACP dispatch may have occurred but no result was proved while ${phase}.${explanation}`,
         )
-      : failed('EXECUTION_FAILED', 'finite ACP execution failed before dispatch')
+      : failed('EXECUTION_FAILED', `finite ACP execution failed before dispatch while ${phase}`)
   } finally {
     credentialBootstrap?.fill(0)
     try {

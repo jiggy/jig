@@ -70,6 +70,7 @@ const backend = {
       identity: owner,
       async admit() {
         step('admit')
+        if (mode === 'launch') throw new Error('/private/secret-token')
         return {
           outputDirectory: {
             async close() {
@@ -270,14 +271,31 @@ const run = async (value = input()) => await executePrivateRootFiniteAcp(value)
 for (const [failure, explanation] of [
   ['native-session-failure', 'native client reported a session failure'],
   ['native-protocol-failure', 'exchange violated its validated protocol'],
-  ['unclassified-failure', 'no result was proved.'],
+  ['unclassified-failure', 'no result was proved while exchanging native messages.'],
 ]) {
   reset(failure)
   const result: any = await run()
   assert.equal(result.code, 'UNCERTAIN')
   assert.ok(result.message.includes(explanation))
   if (failure === 'unclassified-failure')
-    assert.equal(result.message, 'Finite ACP dispatch may have occurred but no result was proved.')
+    assert.equal(
+      result.message,
+      'Finite ACP dispatch may have occurred but no result was proved while exchanging native messages.',
+    )
+  assert.ok(result.message.includes('exchanging native messages'))
+  assert.ok(!JSON.stringify(result).match(/private\/|secret-token/))
+  assert.equal(row, undefined)
+  assert.ok(events.includes('owner-close'))
+}
+for (const [failure, code, phase] of [
+  ['startup', 'EXECUTION_FAILED', 'preparing containment'],
+  ['launch', 'UNCERTAIN', 'starting the native client'],
+  ['collection-bug', 'UNCERTAIN', 'collecting authorized session state'],
+]) {
+  reset(failure)
+  const result: any = await run()
+  assert.equal(result.code, code)
+  assert.ok(result.message.includes(phase!))
   assert.ok(!JSON.stringify(result).match(/private\/|secret-token/))
   assert.equal(row, undefined)
   assert.ok(events.includes('owner-close'))

@@ -21,7 +21,14 @@ export async function brief(run: RunContext): Promise<RunResult> {
         console.log(`${role}: ${result.outcome}`)
         return { role, result }
       } catch (error) {
-        return { role, failure: error instanceof OperationError ? error.code : 'EXECUTION_FAILED' }
+        return {
+          role,
+          failure: error instanceof OperationError ? error.code : 'EXECUTION_FAILED',
+          message:
+            error instanceof OperationError
+              ? [...error.message].slice(0, 1024).join('')
+              : 'The worker did not complete; no further cause was retained.',
+        }
       }
     }),
   )
@@ -33,7 +40,7 @@ export async function brief(run: RunContext): Promise<RunResult> {
         (record): JsonValue =>
           record.result
             ? { role: record.role, result: { ...record.result } }
-            : { role: record.role, failure: record.failure },
+            : { role: record.role, failure: record.failure, message: record.message },
       ),
       purpose:
         'Internal suggestions for human review, not verified facts or permission to publish.',
