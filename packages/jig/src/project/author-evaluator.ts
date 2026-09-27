@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+
 import { invalid, unavailable } from '../diagnostics.js'
-import { privateProfileSpan } from '../internal/private-profile.js'
 import {
   launchPrivateExecution,
   type PrivateExecutionBackend,
@@ -18,6 +18,7 @@ import {
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
 } from '../internal/installed-bun-support.js'
+import { privateProfileSpan } from '../internal/private-profile.js'
 import {
   canonicalJson,
   decodeJson1,
