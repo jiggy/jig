@@ -78,13 +78,6 @@ proofDescribe('private contained Bun dependency preparation', () => {
               if (apply && plan.state === 'applicable')
                 await session.apply({ planDigest: plan.planDigest })
               return { plan, stages }
-            } catch (error) {
-              if (
-                error instanceof Error &&
-                (error as { diagnostic?: unknown }).diagnostic === undefined
-              )
-                console.error(error)
-              throw error
             } finally {
               await session.close()
             }

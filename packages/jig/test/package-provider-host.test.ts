@@ -217,10 +217,10 @@ hostTest.each([false, true])(
   120_000,
 )
 
-hostTest(
-  'packed project entrypoint uses reviewed defaults and fresh job data',
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'jig-entrypoint-consumer-'))
+hostTest.each(['entrypoint', 'dependencies'] as const)(
+  'packed project %s uses fresh reviewed data and immutable execution',
+  async (scenario) => {
+    const directory = await mkdtemp(join(tmpdir(), `jig-${scenario}-consumer-`))
     const packageRoot = join(import.meta.dir, '..')
     const project = join(directory, 'project')
     const tooling = join(directory, 'tooling')
@@ -283,10 +283,14 @@ hostTest(
           join(directory, `${++sequence}-${args[0]}.json`),
           JSON.stringify({ args, exit, stdout, stderr }, null, 2),
         )
-        const profile = (await readFile(trace, 'utf8'))
-          .trim()
-          .split('\n')
-          .map((line) => JSON.parse(line))
+        // Inert inspect/parser paths deliberately do not open a profile or host.
+        const profile =
+          args[0] === 'review'
+            ? (await readFile(trace, 'utf8'))
+                .trim()
+                .split('\n')
+                .map((line) => JSON.parse(line))
+            : []
         return { exit, stdout, stderr, profile }
       }
       const succeed = async (args: string[]) => {
@@ -310,114 +314,119 @@ for await (const line of lines) {
  process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{outcome:'done',output}})+'\\n');
  break;
 }`
-      await put('package.json', { private: true, type: 'module' })
-      await put('flows/echo/FLOW.ts', echo)
-      await put('flows/files/FLOW.ts', echo)
-      await put(
-        'flows/crash/FLOW.ts',
-        "console.error('fixture: installed Flow deliberately raising SIGSEGV'); process.kill(process.pid, 'SIGSEGV');",
-      )
-      await put('flows/files/FLOW.contract.json', {
-        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
-        input: {
-          type: 'object',
-          properties: { job: { type: 'string', enum: ['first', 'second'] } },
-          required: ['job'],
-          additionalProperties: false,
-        },
-        attachments: { source: 'read', result: 'read-write' },
-      })
-      await put(
-        'bindings/factory.ts',
-        `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/files'});`,
-      )
-      await put(
-        'jig.ts',
-        declaration(
-          `binding:factory --input '@job data.json' --attach 'source=source files' --out result --timeout 30s`,
-        ),
-      )
-      await put('job data.json', { job: 'first' })
-      await put('source files/value.txt', 'original')
-      const review = await succeed(['review', '--yes'])
-      expect(review.stdout).toContain('Project entrypoint')
-      const inspection = JSON.parse((await succeed(['inspect', '--json'])).stdout)
-      expect(inspection.entrypoint).toContain('binding:factory --input')
-      const crashStarted = performance.now()
-      const crashed = await invoke(['run', 'flow:flows/crash', '--timeout', '30s', '--json'])
-      expect(performance.now() - crashStarted).toBeLessThan(20_000)
-      expect(crashed.exit).toBe(1)
-      const crashTerminal = JSON.parse(crashed.stdout)
-      expect(crashTerminal.status).toBe('failed')
-      // Fast natural signal exit can close Run/0 before crash polling observes
-      // it. Both are honest failures; neither should consume the Run deadline.
-      expect(['EXECUTION_FAILED', 'CHANNEL_LOST']).toContain(crashTerminal.code)
-      // A following ordinary Run remains usable after the failed invocation.
-      // Unreviewed source must not affect selection or cause reevaluation.
-      await put('jig.ts', 'throw new Error("unreviewed source must not execute")')
-      const first = JSON.parse((await succeed(['run', '--json'])).stdout)
-      expect(first).toMatchObject({
-        status: 'succeeded',
-        outcome: 'done',
-        output: { input: { job: 'first' }, source: 'original' },
-      })
-      const occupied = await invoke(['run', '--json'])
-      expect(occupied.exit).not.toBe(0)
-      expect(occupied.stderr).toContain('JIG_OUTPUT_EXISTS')
-      await put('job data.json', { job: 'second' })
-      await put('source files/value.txt', 'fresh')
-      const second = JSON.parse(
-        (await succeed(['run', '--out', 'second-result', '--timeout', '45s', '--json'])).stdout,
-      )
-      expect(second).toMatchObject({
-        status: 'succeeded',
-        output: { input: { job: 'second' }, source: 'fresh' },
-      })
-      // Explicit targets bypass all defaults, including the occupied output.
-      const direct = JSON.parse(
-        (await succeed(['run', 'flow:flows/echo', '--input', '"direct"', '--json'])).stdout,
-      )
-      expect(direct).toMatchObject({ status: 'succeeded', output: 'direct' })
-      const sameTarget = await invoke(['run', 'binding:factory', '--json'])
-      expect(sameTarget.exit).not.toBe(0)
-      expect(sameTarget.stdout + sameTarget.stderr).not.toContain('JIG_OUTPUT_EXISTS')
-      expect(sameTarget.stdout + sameTarget.stderr).toContain('JIG_RUN_FILES_INVALID')
-      // An invalid job remains invalid after a fresh review. Recovery guidance
-      // names the approved schema without diagnosing source freshness.
-      await put('job data.json', { job: 'third' })
-      await put(
-        'jig.ts',
-        declaration(
-          `binding:factory --input '@job data.json' --attach 'source=source files' --out result --timeout 30s`,
-        ),
-      )
-      for (const output of ['rejected-before-review', 'rejected-after-review']) {
-        if (output === 'rejected-after-review') await succeed(['review', '--yes'])
-        const rejected = await invoke(['run', '--out', output, '--json'])
-        expect(rejected.exit).toBe(1)
-        expect(rejected.stderr).toContain('approved target input schema')
-        expect(rejected.stderr).toContain('choices declared')
-        expect(rejected.stderr).toContain('If you edited the Flow or its schema')
-        expect(rejected.stderr).not.toContain('Review required')
-        const terminal = JSON.parse(rejected.stdout)
-        expect(terminal).toMatchObject({
-          status: 'failed',
-          code: 'INVALID_INPUT',
-          details: { keyword: 'enum', instancePointer: '/job' },
+      if (scenario === 'entrypoint') {
+        await put('package.json', { private: true, type: 'module' })
+        await put('flows/echo/FLOW.ts', echo)
+        await put('flows/files/FLOW.ts', echo)
+        await put(
+          'flows/crash/FLOW.ts',
+          "console.error('fixture: installed Flow deliberately raising SIGSEGV'); process.kill(process.pid, 'SIGSEGV');",
+        )
+        await put('flows/files/FLOW.contract.json', {
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+          input: {
+            type: 'object',
+            properties: { job: { type: 'string', enum: ['first', 'second'] } },
+            required: ['job'],
+            additionalProperties: false,
+          },
+          attachments: { source: 'read', result: 'read-write' },
         })
-        expect(terminal.input.attachments[0].files[0].path).toBe('value.txt')
-        const packet = JSON.parse(await readFile(join(project, output, 'result.json'), 'utf8'))
-        expect(packet.details).toEqual(terminal.details)
-        expect(packet.method).toEqual(terminal.method)
-        expect(packet.input).toEqual(terminal.input)
+        await put(
+          'bindings/factory.ts',
+          `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/files'});`,
+        )
+        await put(
+          'jig.ts',
+          declaration(
+            `binding:factory --input '@job data.json' --attach 'source=source files' --out result --timeout 30s`,
+          ),
+        )
+        await put('job data.json', { job: 'first' })
+        await put('source files/value.txt', 'original')
+        const review = await succeed(['review', '--yes'])
+        expect(review.stdout).toContain('Project entrypoint')
+        const inspection = JSON.parse((await succeed(['inspect', '--json'])).stdout)
+        expect(inspection.entrypoint).toContain('binding:factory --input')
+        const crashStarted = performance.now()
+        const crashed = await invoke(['run', 'flow:flows/crash', '--timeout', '30s', '--json'])
+        expect(performance.now() - crashStarted).toBeLessThan(20_000)
+        expect(crashed.exit).toBe(1)
+        const crashTerminal = JSON.parse(crashed.stdout)
+        expect(crashTerminal.status).toBe('failed')
+        // Fast natural signal exit can close Run/0 before crash polling observes
+        // it. Both are honest failures; neither should consume the Run deadline.
+        expect(['EXECUTION_FAILED', 'CHANNEL_LOST']).toContain(crashTerminal.code)
+        // A following ordinary Run remains usable after the failed invocation.
+        // Unreviewed source must not affect selection or cause reevaluation.
+        await put('jig.ts', 'throw new Error("unreviewed source must not execute")')
+        const first = JSON.parse((await succeed(['run', '--json'])).stdout)
+        expect(first).toMatchObject({
+          status: 'succeeded',
+          outcome: 'done',
+          output: { input: { job: 'first' }, source: 'original' },
+        })
+        const occupied = await invoke(['run', '--json'])
+        expect(occupied.exit).not.toBe(0)
+        expect(occupied.stderr).toContain('JIG_OUTPUT_EXISTS')
+        await put('job data.json', { job: 'second' })
+        await put('source files/value.txt', 'fresh')
+        const second = JSON.parse(
+          (await succeed(['run', '--out', 'second-result', '--timeout', '45s', '--json'])).stdout,
+        )
+        expect(second).toMatchObject({
+          status: 'succeeded',
+          output: { input: { job: 'second' }, source: 'fresh' },
+        })
+        // Explicit targets bypass all defaults, including the occupied output.
+        const direct = JSON.parse(
+          (await succeed(['run', 'flow:flows/echo', '--input', '"direct"', '--json'])).stdout,
+        )
+        expect(direct).toMatchObject({ status: 'succeeded', output: 'direct' })
+        const sameTarget = await invoke(['run', 'binding:factory', '--json'])
+        expect(sameTarget.exit).not.toBe(0)
+        expect(sameTarget.stdout + sameTarget.stderr).not.toContain('JIG_OUTPUT_EXISTS')
+        expect(sameTarget.stdout + sameTarget.stderr).toContain('JIG_RUN_FILES_INVALID')
+        // An invalid job remains invalid after a fresh review. Recovery guidance
+        // names the approved schema without diagnosing source freshness.
+        await put('job data.json', { job: 'third' })
+        await put(
+          'jig.ts',
+          declaration(
+            `binding:factory --input '@job data.json' --attach 'source=source files' --out result --timeout 30s`,
+          ),
+        )
+        for (const output of ['rejected-before-review', 'rejected-after-review']) {
+          if (output === 'rejected-after-review') await succeed(['review', '--yes'])
+          const rejected = await invoke(['run', '--out', output, '--json'])
+          expect(rejected.exit).toBe(1)
+          expect(rejected.stderr).toContain('approved target input schema')
+          expect(rejected.stderr).toContain('choices declared')
+          expect(rejected.stderr).toContain('If you edited the Flow or its schema')
+          expect(rejected.stderr).not.toContain('Review required')
+          const terminal = JSON.parse(rejected.stdout)
+          expect(terminal).toMatchObject({
+            status: 'failed',
+            code: 'INVALID_INPUT',
+            details: { keyword: 'enum', instancePointer: '/job' },
+          })
+          expect(terminal.input.attachments[0].files[0].path).toBe('value.txt')
+          const packet = JSON.parse(await readFile(join(project, output, 'result.json'), 'utf8'))
+          expect(packet.details).toEqual(terminal.details)
+          expect(packet.method).toEqual(terminal.method)
+          expect(packet.input).toEqual(terminal.input)
+        }
+        await put('jig.ts', declaration('flow:flows/echo'))
+        await succeed(['review', '--yes'])
+        const short = JSON.parse((await succeed(['run', '--input', '"short"', '--json'])).stdout)
+        expect(short).toMatchObject({ status: 'succeeded', output: 'short' })
+        passed = true
+        return
       }
-      await put('jig.ts', declaration('flow:flows/echo'))
-      await succeed(['review', '--yes'])
-      const short = JSON.parse((await succeed(['run', '--input', '"short"', '--json'])).stdout)
-      expect(short).toMatchObject({ status: 'succeeded', output: 'short' })
 
       // A real installed consumer edits project source without a new install.
       // These are local Bun workspace inputs, not registry/model calls.
+      await put('jig.ts', declaration('binding:dependencies'))
       await put('package.json', {
         private: true,
         type: 'module',
@@ -439,6 +448,12 @@ for await (const line of lines) {
         'flows/dependencies/FLOW.ts',
         `import {value} from 'helper';\n${echo.replace('let output=input;', 'let output={input,value,settings:request.params.settings};')}`,
       )
+      await put('flows/dependencies/settings.schema.json', {
+        $schema: 'https://flow.jig.md/schemas/schema-0.json',
+        type: 'object',
+        properties: { phase: { type: 'string' } },
+        additionalProperties: false,
+      })
       const binding = (phase: string) =>
         `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/dependencies',settings:{phase:${JSON.stringify(phase)}}});`
       await put('bindings/dependencies.ts', binding('first'))
@@ -499,7 +514,7 @@ for await (const line of lines) {
       passed = true
     } finally {
       if (passed) await rm(directory, { recursive: true, force: true })
-      else console.error(`Entrypoint consumer evidence retained at ${directory}`)
+      else console.error(`Packed ${scenario} consumer evidence retained at ${directory}`)
     }
   },
   600000,

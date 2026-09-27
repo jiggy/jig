@@ -245,7 +245,7 @@ jobs:
           env JIG_LINUX_ROOTLESS_HOSTILE=1
           "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
-          -t 'packed project entrypoint' --timeout 600000
+          -t 'packed project dependencies' --timeout 600000
 
       - name: Prove ordinary ACP Agent progress and cancellation
         if: matrix.suite == 'installed-evidence'
