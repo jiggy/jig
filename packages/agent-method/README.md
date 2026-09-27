@@ -133,8 +133,11 @@ The caller declares the exact Agent bundle and required mechanisms once in
 `FLOW.meta.json`. The helper resolves channel agreements through that slot:
 
 With Jig, import the installed bundle in one step into an existing `contracts/`
-parent: `jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run`.
+parent: `jig import-contract npm:@jigging/agent-method flows/worker/contracts/agent-run`.
 This copies the validated offline closure without running code or granting authority.
+Resolution starts from that parent and uses the nearest ordinary installation,
+including a Flow-local or project-root dependency. The
+[conversation guide](https://jig.md/guide/conversations) supplies a complete caller.
 
 ```json
 {

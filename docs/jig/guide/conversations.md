@@ -19,16 +19,44 @@ Choose your installed client and model; this is not a product default. Review
 the changed grant. One-shot calls remain unchanged. The HTTP Agent package does
 not implement continuing conversations and rejects them before dispatch.
 
-## Revise a draft
+## Build a two-turn Flow
 
-The caller declares an `agent` slot using the complete
-[Agent Run contract bundle](../spec/agent-run.md). After installing the ordinary
-`@jigging/agent-method` dependency, import its bundle into your Flow's existing
-`contracts/` directory:
+With Jig installed and a [native client configured](agents.md#local-clients),
+create an ordinary project and caller:
 
 ```sh
+jig init conversation-demo --agent codex
+cd conversation-demo
+jig new worker
+bun add --cwd flows/worker @jigging/agent-method@0.1.0-alpha.5
+mkdir flows/worker/contracts
 jig import-contract npm:@jigging/agent-method flows/worker/contracts/agent-run
 ```
+
+The Bun command installs an authoring dependency and records it in the worker's
+manifest. Jig separately prepares its reviewed execution dependencies. Choose
+your native client; `codex` here is an example, not a default.
+
+In `bindings/agent.ts`, set the native grant to
+`{ kind: 'acp', client: 'codex', maxTurns: 2 }`. Add the `uses` declaration below
+to the generated `flows/worker/FLOW.meta.json`, retaining its name and description.
+Replace `flows/worker/FLOW.ts` with the complete caller below. Then run:
+
+```sh
+jig review --allow-resolution-network
+jig run flow:flows/worker --input '{"facts":"Recovery at 09:48; cause unknown.","correction":"Reconciled recovery time: 09:47. Keep the cause uncertain."}'
+```
+
+Review shows the code, dependencies and two-turn authority before approval.
+Resolution permission can contact dependency-selected destinations before that
+approval; see [dependency preparation](dependencies.md). For later edits,
+review again. Inspect the returned turn's `type` and `result.outcome`: a clean
+conversation close alone does not establish a successful revision.
+
+## Declare and implement the caller
+
+The caller declares an `agent` slot using the complete
+[Agent Run contract bundle](../spec/agent-run.md), imported in the step above.
 
 Jig finds the nearest installation from the destination directory's parent,
 including a member-local or project-root `node_modules`. You can also supply a
@@ -59,24 +87,43 @@ cleanup out of application code:
 
 ```ts
 import { withAgentConversation } from '@jigging/agent-method/conversation'
+import { handle } from '@jigging/flow'
 
-const completed = await withAgentConversation(run, {
-  operationId: 'incident-brief', slot: 'agent',
-  input: { instructions: `Draft an incident brief from these facts: ${facts}` },
-  onEvent(event) {
-    if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
-  },
-}, async conversation => {
-  const draft = await conversation.initial
-  if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
-  return await conversation.prompt({
-    instructions: `Revise using this correction: ${correction}`,
+await handle(async run => {
+  if (run.input === null || typeof run.input !== 'object' || Array.isArray(run.input))
+    throw new TypeError('Supply facts and correction strings.')
+  const { facts, correction } = run.input
+  if (typeof facts !== 'string' || typeof correction !== 'string'
+      || facts.length > 4096 || correction.length > 4096)
+    throw new TypeError('Supply facts and correction strings of at most 4096 characters.')
+
+  const completed = await withAgentConversation(run, {
+    operationId: 'incident-brief', slot: 'agent',
+    input: { instructions: `Draft an incident brief from these facts: ${facts}` },
+    onEvent(event) {
+      if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
+    },
+  }, async conversation => {
+    const draft = await conversation.initial
+    if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
+    return await conversation.prompt({
+      instructions: `Revise using this correction: ${correction}`,
+    })
   })
+  return {
+    outcome: 'done',
+    output: {
+      turn: completed.value,
+      settlement: completed.settlement,
+      observation: completed.observation?.status ?? 'complete',
+    },
+  }
 })
 ```
 
-Declare `@jigging/agent-method` as an ordinary package dependency. `facts` and
-`correction` above are validated application input. `completed.value` is the
+The caller's `done` means it returned a settled conversation packet; inspect
+`output.turn` to distinguish an answer from an unsuccessful or cancelled turn.
+Operational errors still fail the Run. `completed.value` is the
 callback result, `completed.turns` retains received answers and unsuccessful
 turns, and `completed.settlement` is the final invocation result. The helper
 closes the conversation and waits for that actual result before returning.
@@ -92,7 +139,7 @@ unfinished at callback return fails rather than detaching it.
 `AgentConversationError` retains received `turns`, any known `settlement`, and
 both primary and cleanup `errors`; ordinary `try/catch` remains sufficient.
 Optional `onEvent` filters or displays public updates synchronously without
-manual channel setup. Inspect `completed.observation.status`: `incomplete`
+manual channel setup. Inspect `completed.observation?.status`: `incomplete`
 preserves observation errors without replacing the actual execution result.
 Asynchronous routing can instead use a caller-created `events` writer; do not
 combine it with `onEvent`. There is no privileged host echo of filtered text.
