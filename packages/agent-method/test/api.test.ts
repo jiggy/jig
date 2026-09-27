@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { parseApiResult, prepareApiRequest } from '../src/api.js'
+import { AgentMethodError } from '../src/errors.js'
 import { finishAgent, prepareAgent } from '../src/index.js'
 
 const prepared = prepareAgent({ instructions: 'Answer.' })
@@ -116,6 +117,95 @@ test('HTTP and malformed replies remain failures, without echoing provider data'
     { outcome: 'done', output: { status: 200, body: 'not json' } },
   ])
     expect(() => chatResult(result)).toThrow()
+})
+
+test('HTTP diagnostics identify safe status facts and corrective settings without provider text', () => {
+  const categories = [
+    [400, 'request'],
+    [422, 'request'],
+    [401, 'authentication'],
+    [403, 'permission'],
+    [402, 'account'],
+    [404, 'endpoint'],
+    [429, 'capacity'],
+    [500, 'provider'],
+    [301, 'unexpected-status'],
+  ] as const
+  for (const api of ['chat-completions', 'responses'] as const) {
+    for (const [status, category] of categories) {
+      let error: unknown
+      try {
+        parseApiResult(
+          {
+            outcome: 'done',
+            output: {
+              status,
+              body: {
+                error: {
+                  message: 'private-input-and-key\u001b[31m',
+                  code: 'secret',
+                  param: 'secret',
+                },
+              },
+            },
+          },
+          api,
+        )
+      } catch (failure) {
+        error = failure
+      }
+      if (!(error instanceof AgentMethodError)) throw new Error('Expected provider rejection')
+      expect(error.code).toBe('INVALID_RESULT')
+      expect(error.details).toEqual({
+        phase: 'provider-response',
+        api,
+        status,
+        category,
+        retry: 'not-attempted',
+      })
+      expect(error.message).toContain('no automatic retry')
+      expect(error.message).toContain('endpoint returned a response')
+      expect(JSON.stringify(error)).not.toContain('private-input-and-key')
+      expect(JSON.stringify(error)).not.toContain('secret')
+      if (status === 422) expect(error.message).toContain('rejected parameter is unknown')
+      if (status === 500) expect(error.message).toContain('whether remote work occurred')
+    }
+  }
+})
+
+test('only exact known API parameter names can be projected from provider rejection', () => {
+  for (const [api, parameter, setting] of [
+    ['chat-completions', 'max_completion_tokens', 'maxCompletionTokens'],
+    ['responses', 'text.format', 'structuredOutput'],
+  ] as const) {
+    for (const param of [parameter, 'unknown-secret', '__proto__', `${parameter}\u001b[31m`]) {
+      let error: unknown
+      try {
+        parseApiResult(
+          {
+            outcome: 'done',
+            output: {
+              status: 422,
+              body: {
+                error: { param, message: 'private-input-and-key' },
+              },
+            },
+          },
+          api,
+        )
+      } catch (failure) {
+        error = failure
+      }
+      if (!(error instanceof AgentMethodError)) throw new Error('Expected provider rejection')
+      if (param === parameter) {
+        expect(error.details?.parameter).toBe(parameter)
+        expect(error.message).toContain(`Check ${setting}`)
+      } else expect(error.details?.parameter).toBeUndefined()
+      expect(error.message).not.toContain('private-input-and-key')
+      expect(error.message).not.toContain('unknown-secret')
+      expect(error.message).not.toContain('\u001b')
+    }
+  }
 })
 
 test('complete answers, refusals and exhausted completions retain distinct outcomes', () => {

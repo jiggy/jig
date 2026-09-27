@@ -17,6 +17,33 @@ const justfiles = [
   'site/justfile',
 ]
 
+test('startup profiler initializes its trace allowlist before execution and refuses unsupported hosts', async () => {
+  const path = join(repository, 'scripts/profile-installed-startup.ts')
+  const source = await readFile(path, 'utf8')
+  const initialized = source.indexOf('const tracePhases = new Set<TracePhase>(')
+  expect(initialized).toBeGreaterThan(-1)
+  expect(initialized).toBeLessThan(
+    source.indexOf('const environment = requireProfileEnvironment()'),
+  )
+  // The direct Flow has no collaborators; its Binding supplies both children.
+  expect(source).toContain("'binding:analysis'")
+  expect(source).not.toContain("'flow:flows/investigate'")
+  const child = Bun.spawn([process.execPath, path], {
+    env: { PATH: process.env.PATH },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  expect(code).not.toBe(0)
+  expect(stdout).toBe('')
+  expect(stderr).toContain('requires the provisioned Ubuntu 24.04 x86-64 workflow host')
+  expect(stderr).not.toContain('before initialization')
+})
+
 test('repository task manifests exclude scripts without constraining imported skill tooling', async () => {
   const child = Bun.spawn(['git', 'ls-files', '*package.json', ':(exclude).agents/skills/**'], {
     cwd: repository,

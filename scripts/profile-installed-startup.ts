@@ -48,6 +48,24 @@ interface CapturedCommand {
   readonly stderr: string
 }
 
+// Initialize the allowlist before top-level profiling calls its trace readers.
+const tracePhases = new Set<TracePhase>([
+  'author-configuration-evaluation',
+  'project-planning',
+  'installed-host-opening',
+  'project-session-opening',
+  'dependency-preparation',
+  'dependency-reuse',
+  'root-submission-persistence',
+  'linux-owner-state-initialization',
+  'rootless-containment-startup',
+  'flow-execution',
+  'operation-owner-settlement',
+  'root-fence',
+  'root-settlement',
+  'project-session-close',
+])
+
 const environment = requireProfileEnvironment()
 const profileDeadlineMs = performance.now() + totalProfileTimeoutMs
 const outputDirectory = resolve(environment.outputDirectory)
@@ -145,7 +163,7 @@ try {
       jig,
       [
         'run',
-        'flow:flows/investigate',
+        'binding:analysis',
         '--input',
         '@input.json',
         '--timeout',
@@ -595,23 +613,6 @@ function measureInstantEvents(
 function isTracePhase(value: unknown): value is TracePhase {
   return typeof value === 'string' && tracePhases.has(value as TracePhase)
 }
-
-const tracePhases = new Set<TracePhase>([
-  'author-configuration-evaluation',
-  'project-planning',
-  'installed-host-opening',
-  'project-session-opening',
-  'dependency-preparation',
-  'dependency-reuse',
-  'root-submission-persistence',
-  'linux-owner-state-initialization',
-  'rootless-containment-startup',
-  'flow-execution',
-  'operation-owner-settlement',
-  'root-fence',
-  'root-settlement',
-  'project-session-close',
-])
 
 function mergePhaseSpans(
   first: Partial<Record<TracePhase, readonly number[]>>,

@@ -122,6 +122,28 @@ host execution status. Tool requests, malformed data and non-200 HTTP statuses
 remain failures. Nothing is retried automatically. A refused answer is `blocked`;
 token exhaustion is `limit`.
 
+### Diagnose a failed request
+
+The following diagnostics are implemented in the source candidate, not yet in
+the published Agent alpha. Build its complete archive from reviewed source to
+exercise them.
+
+HTTP failures name the selected API and status, explain which configuration to
+check, and retain status-derived facts in the operation error's `details`:
+`phase`, `api`, `status`, `category`, and `retry: "not-attempted"`. An optional
+`parameter` names only an exact recognized API field reported by the provider.
+For example, HTTP 422 points to the Agent Binding's model, API format, output
+mode and token settings. Without a recognized parameter, the exact cause
+remains unknown. HTTP 404 may
+mean an unavailable model or an incorrect endpoint. Neither diagnosis invents
+a provider cause or prints its error body.
+
+Use the originating operation path to identify the selected method and Binding.
+An HTTP response establishes that the endpoint responded, not that remote work
+was undone or safe to replay. Transport uncertainty remains a separate host
+failure. Correct configuration explicitly and review changed settings or grants
+before starting new work; the method never switches providers or retries.
+
 ### Use an OpenAI-compatible gateway
 
 The same Flow can call an OpenAI-compatible gateway by changing its model,

@@ -14,9 +14,9 @@ combined, merged, or released.
 Use the [small software factory source](https://github.com/jiggy/jig/tree/main/examples/software-factory).
 This is an implemented, self-contained source application. Its local repair Flow
 and Semantic Router use ordinary workspace dependencies. Its external Agent and
-FLOW dependencies are published alphas. The live comparison below used a fresh
-maintainer-authored copy, public dependencies, and the source Jig host. It does
-not establish an installed npm Jig run or independent consumer adoption.
+FLOW dependencies are published alphas. Independent installed-package adoption
+and maintainer-authored source comparisons are distinct evidence, summarized
+below. Neither establishes general repair reliability or comparative advantage.
 
 ## Run the supplied batch
 
@@ -230,16 +230,16 @@ the cause of the projection mismatch.
 ## Published package evidence and adoption limits
 
 This example remains limited to small Bun projects and one or two preselected
-issues with a human merge gate. The published `@jigging/jig@0.1.0-alpha.22`
-contains the corrected captured-input projection used by the example.
+issues with a human merge gate. An independent builder used published packages
+and this guide to adapt it to pantry and receipts projects: both patches passed
+their repository commands and all seven unchanged independent acceptance cases.
+No patch was applied or combined. This establishes that particular adaptation,
+not general repair reliability or comparative superiority.
 
-An independent builder used that published package and this guide to repair
-one issue in each of two other Bun projects; both patches passed repository
-commands and independent acceptance cases. This is preliminary evidence, not
-the current adoption criterion. A later same-project, two-issue attempt
+A later same-project, two-issue attempt
 reproduced both defects, but the configured Agent endpoint rejected both calls
-before proposals, so no patch or repair-quality evidence resulted. Adoption
-remains unproved until an independent builder produces at least one review-ready
+before proposals, so no patch or repair-quality evidence resulted. That narrower
+adoption criterion remains unproved until an independent builder produces a review-ready
 patch with passing repository and independent checks, retains inspectable
 outcomes for the other issue, and can explain how to review the results. These
 runs were not technically isolated clean-room tests and establish neither

@@ -170,6 +170,32 @@ describe('ordinary Flow wiring', () => {
     expect(calls).toBe(1)
   })
 
+  test('provider response diagnostics cross the ordinary Flow error boundary once', async () => {
+    let calls = 0
+    const run = {
+      input: { instructions: 'private task' },
+      settings: { model: 'fixture-model' },
+      attachments: {},
+      channels: {},
+      signal: new AbortController().signal,
+      call: async () => {
+        calls++
+        return { outcome: 'done', output: { status: 422, body: { error: 'private task and key' } } }
+      },
+    } as unknown as RunContext
+    await expect(agentFlow(run)).rejects.toMatchObject({
+      code: 'INVALID_RESULT',
+      details: {
+        phase: 'provider-response',
+        api: 'chat-completions',
+        status: 422,
+        category: 'request',
+        retry: 'not-attempted',
+      },
+    })
+    expect(calls).toBe(1)
+  })
+
   test('selected Responses schema mode reaches HTTP once and returns a checked result', async () => {
     let calls = 0
     const signal = new AbortController().signal

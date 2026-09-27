@@ -6,14 +6,21 @@ sends its initial analysis through a FLOW channel, then keeps preparing question
 Commentary refines the draft in its existing conversation. A separately supplied
 replacement of files or instructions triggers one handoff to a fresh conversation.
 
-After the repository's ordinary workspace setup, configure the included
-Agent Binding and your native client as described in the
-[conversation guide](../../docs/jig/guide/conversations.md). Then, here:
+Download this directory as an ordinary project. With Jig installed, configure
+the included Agent Binding and your native client as described in the
+[conversation guide](https://jig.md/guide/conversations). From this directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run binding:brief --input @input.json --timeout 3m
 ```
+
+Review prepares the declared package dependencies; no repository-private tools
+or separate Flow installations are needed. Resolution can make dependency-selected
+network requests before approval. An authored lock avoids fresh resolution;
+see [dependencies](https://jig.md/guide/dependencies).
+In a Jig source checkout, the ordinary workspace setup supplies matching local
+packages instead of requiring publication.
 
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.

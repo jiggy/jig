@@ -115,6 +115,10 @@ admitted FLOW packages.
   probes or source evaluation. Approved project entrypoint selection precedes acquisition;
   Run still performs all ordinary authority checks. `jig new` writes ordinary
   Flow source without overwriting, evaluating, installing, or approving it.
+  Optional `--use slot=source` snapshots selected offline contract closures and
+  writes portable slot references; it does not infer providers, grants, library
+  dependencies or workflow logic. Complete source is staged outside ordinary
+  Flow discovery before non-replacing publication.
 
 
 - `import-contract` copies a validated local invocation/channel bundle into a

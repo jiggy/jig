@@ -163,6 +163,11 @@ directory; if you selected explicit members in `jig.ts`, add it there first.
 Dependency resolution still requires your explicit network permission when
 needed, as described in [dependencies](./dependencies.md).
 
+The source candidate also supports `jig new worker --use agent=npm:@jigging/agent-acp`
+after installing that declared dependency. It copies the complete selected
+contract and declares the slot, leaving the method's code, provider selection
+and grants with you. See [conversations](./conversations.md) for a complete caller.
+
 - [Add an ordinary Agent](./agents.md) in the project you just created.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
 - [Run a Markdown method](./markdown.md) without an SDK dependency.

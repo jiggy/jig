@@ -42,16 +42,16 @@ export function privateOpenFileRoot(path: string): number {
     ? privateMacosOpenFileRoot(path)
     : privateLinuxOpenFileRoot(path)
 }
-export function privatePublishDirectory(parent: number, staged: string, destination: string): void {
+export function privatePublishDirectory(parent: number, staged: string, destination: string, sourceParent = parent): void {
   if (process.platform !== 'darwin') {
-    privateLinuxPublishDirectory(parent, staged, destination)
+    privateLinuxPublishDirectory(parent, staged, destination, sourceParent)
     return
   }
   privateFilePath(staged)
   privateFilePath(destination)
   if (staged.includes('/') || destination.includes('/'))
     throw new TypeError('publication requires two leaf names')
-  privateMacosRenameAt(parent, staged, parent, destination, true)
+  privateMacosRenameAt(sourceParent, staged, parent, destination, true)
 }
 export function privateInputDirectory(fd: number) {
   const directory =

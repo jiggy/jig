@@ -91,8 +91,7 @@ export function parseApiResult(result: unknown, api: Api): AgentTransportResult 
     !Object.hasOwn(http, 'body')
   )
     return invalid('HTTP slot returned invalid response evidence')
-  if (http.status !== 200)
-    return invalid(`Agent endpoint returned HTTP ${http.status}; no automatic retry was attempted`)
+  if (http.status !== 200) return rejectedHttp(http.status, api, http.body)
   if (canonicalJson(http.body as JsonObject).byteLength > 12_582_912)
     throw new AgentMethodError('RESOURCE_EXHAUSTED', 'Agent HTTP response exceeds 12 MiB')
   const body = ordinaryRecord(http.body)
@@ -188,4 +187,71 @@ function responsesResult(body: Record<string, unknown> | undefined): AgentTransp
 
 function invalid(message: string): never {
   throw new AgentMethodError('INVALID_RESULT', message)
+}
+
+function rejectedHttp(status: number, api: Api, body: unknown): never {
+  // Project status and exact known parameter names, never free-form text. Even an apparently
+  // harmless error field can contain credentials, input, or terminal controls.
+  let category = 'unexpected-status'
+  let action = 'Check the selected endpoint and its documented API format.'
+  const error = ordinaryRecord(ordinaryRecord(body)?.error)
+  const parameters: Record<string, string> = {
+    model: 'model',
+    store: 'endpoint support for store: false',
+    ...(api === 'responses'
+      ? {
+          max_output_tokens: 'maxCompletionTokens',
+          input: 'api',
+          'text.format': 'structuredOutput',
+        }
+      : {
+          max_completion_tokens: 'maxCompletionTokens',
+          messages: 'api',
+          response_format: 'structuredOutput',
+        }),
+  }
+  const parameter =
+    (status === 400 || status === 422) &&
+    typeof error?.param === 'string' &&
+    Object.hasOwn(parameters, error.param)
+      ? error.param
+      : undefined
+  if (status === 400 || status === 422) {
+    category = 'request'
+    action =
+      parameter === undefined
+        ? 'Check the Agent Binding model, api, structuredOutput and token settings against the endpoint requirements. The rejected parameter is unknown.'
+        : `The provider reports a rejected ${parameter} parameter. Check ${parameters[parameter]} against the endpoint requirements.`
+  } else if (status === 401 || status === 403) {
+    category = status === 401 ? 'authentication' : 'permission'
+    action =
+      'Check the operator credential and account permissions for the reviewed HTTP grant. Keep credentials in the operator environment.'
+  } else if (status === 402) {
+    category = 'account'
+    action = 'Check the selected account quota or balance and request token budget.'
+  } else if (status === 404) {
+    category = 'endpoint'
+    action =
+      'Check the reviewed endpoint URL and selected model availability. The status alone does not distinguish a missing route from an unavailable model.'
+  } else if (status === 429) {
+    category = 'capacity'
+    action =
+      'Check the selected account and model rate or quota limits before explicitly starting new work.'
+  } else if (status >= 500) {
+    category = 'provider'
+    action =
+      'Check provider availability. This response does not establish whether remote work occurred.'
+  }
+  throw new AgentMethodError(
+    'INVALID_RESULT',
+    `Agent ${api} endpoint returned HTTP ${status}. ${action} The endpoint returned a response; no automatic retry was attempted.`,
+    Object.freeze({
+      phase: 'provider-response',
+      api,
+      status,
+      category,
+      retry: 'not-attempted',
+      ...(parameter === undefined ? {} : { parameter }),
+    }),
+  )
 }

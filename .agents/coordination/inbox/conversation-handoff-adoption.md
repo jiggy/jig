@@ -1,16 +1,17 @@
 # Make existing Agent conversations and handoff easier to adopt
 
-Status: postponed follow-up awaiting triage; not a developer-alpha launch gate.
-Package-selected contract import is implemented, and the public contract and
-conversation guides already teach it.
+Status: complete conversation walkthrough and package-selected guidance delivered;
+native incident-handoff qualification remains outstanding. Not a developer-alpha
+launch gate.
 
 ## Problem
 
-The remaining Agent package and incident-brief guidance needs to use the
-implemented package-selected importer consistently. The incident-brief application
-already implements bounded summary handoff; rebuilding it would not address the
-burden of adopting its existing collaborators. Ordinary-consumer verification
-of the complete documented path remains outstanding.
+An ordinary installed consumer completed the documented two-turn conversation,
+including its actual final settlement, on one explicitly selected native model.
+The incident-brief application implements bounded summary handoff, but the live
+consumer run returned no handoff packet. Deterministic application checks are not
+native handoff evidence. Diagnose that path before claiming complete adoption;
+rebuilding the application or tuning its prompts is not the starting point.
 
 ## Proposed scope
 

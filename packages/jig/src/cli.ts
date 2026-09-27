@@ -47,7 +47,7 @@ import {
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
-import { type RunTargetRef } from './project/author.js'
+import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
 import { flowSelector } from './project/package-selector.js'
@@ -93,7 +93,7 @@ Use jig <command> --help for options and examples.
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
-  new: `Usage: jig new <name>
+  new: `Usage: jig new <name> [--use <slot=descriptor.json|slot=npm:package>]...
 
 Create flows/<name> in the current Jig project. Names use lowercase letters,
 digits and hyphens. Existing files are never replaced. The Flow uses the SDK
@@ -101,6 +101,11 @@ dependency declared by the project's package.json, or Jig's tested SDK version.
 No installation, network, approval, source evaluation or execution occurs.
 
 Example: jig new summarize
+With a collaborator: jig new worker --use agent=npm:@jigging/agent-method
+--use copies the selected complete contract bundle into contracts/<slot> and
+declares uses.<slot>. Repeat for up to 16 distinct slots. Descriptor paths are
+relative to this project; npm sources must already be installed in its tree
+or an ancestor. Edit FLOW.ts to call the slots; providers and grants stay separate.
 Review project membership in jig.ts if you use explicit arrays rather than discover().`,
   completion: `Usage: jig completion <bash|zsh|fish>
 
@@ -445,9 +450,21 @@ async function executeCompletion(
 }
 
 async function executeNew(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  if (arguments_.length !== 2) usage('new', 'Supply one Flow name, for example: jig new summarize.')
+  const name = arguments_[1]
+  if (name === undefined || name.startsWith('-'))
+    usage('new', 'Supply one Flow name, optionally followed by --use slot=source.')
+  const uses: { slot: string; source: string }[] = []
+  for (let index = 2; index < arguments_.length; index += 2) {
+    const declaration = arguments_[index + 1]
+    if (arguments_[index] !== '--use' || declaration === undefined || declaration.startsWith('-'))
+      usage('new', 'Use --use slot=source for each selected collaborator contract.')
+    const separator = declaration.indexOf('=')
+    if (separator <= 0 || separator === declaration.length - 1)
+      usage('new', 'Use --use slot=source with a local descriptor or installed npm package.')
+    uses.push({ slot: declaration.slice(0, separator), source: declaration.slice(separator + 1) })
+  }
   try {
-    const path = await createFlow(runtime.currentDirectory, arguments_[1]!)
+    const path = await createFlow(runtime.currentDirectory, name, uses, runtime.signal)
     runtime.writeOutput(
       `Created Flow ${asciiJsonString(path)}.\n\nNext:\n  Edit ${path}/FLOW.ts.\n  If jig.ts uses explicit membership, add ${asciiJsonString(path)}.\n  jig review --allow-resolution-network\n  jig run ${shellWord(`flow:${path}`)}\n\nNo dependencies installed or execution approved.\n`,
     )
@@ -456,6 +473,21 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
     if (error instanceof ProjectInitError) {
       runtime.writeError(renderDiagnostic(error.code, error.message))
       return error.kind === 'invalid' ? 1 : 2
+    }
+    if (error instanceof CheckError) {
+      const location =
+        error.path === undefined ? '' : `Location: ${asciiJsonString(error.path.slice(0, 1024))}. `
+      runtime.writeError(
+        renderDiagnostic(
+          error.code,
+          `Flow creation failed. ${location}${asciiJsonString(error.message.slice(0, 2048))} No Flow was published. Check the selected contract source and try again.`,
+        ),
+      )
+      return error.kind === 'invalid' ? 1 : 2
+    }
+    if (runtime.signal?.aborted) {
+      runtime.writeError('Flow creation cancelled. Unpublished files were removed.\n')
+      return 2
     }
     throw error
   }
