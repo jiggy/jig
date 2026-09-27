@@ -245,7 +245,8 @@ try {
     /Cannot find package 'jig-alpha-deliberately-missing' from '\/package\/FLOW\.ts'/,
   )
   assert.ok(Buffer.byteLength(unsupportedDependency.stderr) <= 64 * 1024)
-  assert.doesNotMatch(unsupportedDependency.stderr, /\u001b|\.jig|\/proc\/|\/home\/|\/tmp\//)
+  assert.ok(!unsupportedDependency.stderr.includes('\u001b'))
+  assert.doesNotMatch(unsupportedDependency.stderr, /\.jig|\/proc\/|\/home\/|\/tmp\//)
   const dependencyTerminal = requireRecord(JSON.parse(unsupportedDependency.stdout))
   assert.equal(dependencyTerminal.status, 'failed')
   assert.equal(dependencyTerminal.code, 'CHANNEL_LOST')
@@ -319,7 +320,7 @@ try {
   await assert.rejects(stat(join(resolvingFlow, 'bun.lock')), { code: 'ENOENT' })
   await assert.rejects(stat(join(resolvingFlow, 'node_modules')), { code: 'ENOENT' })
   await assert.rejects(stat(join(resolvingFlow, 'postinstall-ran')), { code: 'ENOENT' })
-  const admittedLock = await readFile(join(resolvingProject, 'jig.lock'), 'utf8')
+  let admittedLock = await readFile(join(resolvingProject, 'jig.lock'), 'utf8')
   const reused = await run([jig, 'review', resolvingProject, '--yes'], consumer, [0], 120_000)
   assert.equal(reused.stderr, '')
   assert.match(reused.stdout, /^Project ready\n/)
@@ -332,17 +333,39 @@ try {
   assert.deepEqual(requireRecord(JSON.parse(resolvedRun.stdout)).output, { capitalized: 'Ada' })
 
   const entry = join(resolvingFlow, 'FLOW.ts')
-  await writeFile(entry, `${await readFile(entry, 'utf8')}\n// source changed\n`)
+  await writeFile(
+    entry,
+    (await readFile(entry, 'utf8')).replace(
+      'capitalized: capitalize(request.params.input)',
+      'capitalized: capitalize(request.params.input), revised: true',
+    ),
+  )
+  const sourceEdit = await run([jig, 'review', resolvingProject, '--yes'], consumer, [0], 120_000)
+  assert.equal(sourceEdit.stderr, '')
+  assert.doesNotMatch(sourceEdit.stdout, /Warning: Dependency network access allowed/)
+  const sourceRun = await run(
+    [jig, 'run', 'flow:flows/locked-dependency', '--input', JSON.stringify('ada')],
+    resolvingProject,
+    [0],
+    45_000,
+  )
+  assert.deepEqual(requireRecord(JSON.parse(sourceRun.stdout)).output, {
+    capitalized: 'Ada',
+    revised: true,
+  })
+  admittedLock = await readFile(join(resolvingProject, 'jig.lock'), 'utf8')
+
+  // Changing installer inputs cannot borrow the previous resolution permission.
+  const manifestPath = join(resolvingFlow, 'package.json')
+  const changedManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  changedManifest.dependencies.lodash = '4.17.20'
+  await writeFile(manifestPath, JSON.stringify(changedManifest))
   const changed = await run([jig, 'review', resolvingProject, '--yes'], consumer, [2], 120_000)
   assert.match(changed.stderr, /PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED/)
   assert.equal(await readFile(join(resolvingProject, 'jig.lock'), 'utf8'), admittedLock)
 
   // Permission is not permission to repair an existing stale authored lock.
   await writeFile(join(resolvingFlow, 'bun.lock'), authoredLock)
-  const manifestPath = join(resolvingFlow, 'package.json')
-  const changedManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  changedManifest.dependencies.lodash = '4.17.20'
-  await writeFile(manifestPath, JSON.stringify(changedManifest))
   const stale = await run(
     [jig, 'review', resolvingProject, '--allow-resolution-network', '--yes'],
     consumer,
