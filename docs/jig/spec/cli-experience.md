@@ -211,11 +211,24 @@ are explicitly templates, not invented schema-valid domain data. Required
 incoming channels are identified as needing a Flow caller, not a runnable CLI
 example. Machine inspection includes the optional approved `entrypoint` string.
 
-`jig new <name>` creates `flows/<name>` in the current project, never overwriting
+`jig new <name> [--use slot=source]...` creates `flows/<name>` in the current project, never overwriting
 an existing path. It does not evaluate `jig.ts`, install dependencies, modify
 membership, or approve the new Flow. The SDK dependency follows the project's
 explicit package manifest declaration when present, otherwise the tested SDK.
 Explicit membership arrays must be edited by the author before review.
+
+Optional `--use` declarations select at most 16 distinct contract slots. Each
+source is a project-relative descriptor path or an exact installed `npm:` package
+name; npm lookup starts in the project and searches its ancestors, nearest first.
+Each complete validated bundle is copied unchanged to `contracts/<slot>`, and
+`FLOW.meta.json` references its descriptor under `uses.<slot>`. The generated
+implementation remains a simple input return: the author decides how to call
+collaborators and which optional features to require. No provider, grant, library
+dependency or execution authority is inferred from a contract.
+Creation with contracts stages the complete source outside `flows` discovery,
+then publishes to an absent destination. Failure or cancellation before publication
+removes unpublished source; completed publication is not undone. Process loss
+can leave an unpublished `.jig-new-*` directory in the project root.
 ## Diagnostic evidence and interruption
 
 Configuration-evaluator refusals retain the captured declaration location and

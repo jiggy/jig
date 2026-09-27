@@ -1,5 +1,19 @@
-import { lstat, mkdir, readFile, rmdir, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  rmdir,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
+import { CheckError } from './diagnostics.js'
+import { importContract } from './internal/contract-import.js'
+import { privatePublishDirectory } from './internal/linux-file-input.js'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -42,13 +56,36 @@ export class ProjectInitError extends Error {
 }
 
 /** Authoring only: no evaluation of jig.ts, dependency installation or approval. */
-export async function createFlow(project: string, name: string): Promise<string> {
-  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name) || name.length > 64)
+export async function createFlow(
+  project: string,
+  name: string,
+  uses: readonly { slot: string; source: string }[] = [],
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\s\S])/.test(name) || name.length > 64)
     throw new ProjectInitError(
       'invalid',
       'JIG_NEW_INVALID',
       'Use a name of at most 64 lowercase letters, digits and single hyphens, starting with a letter.',
     )
+  if (
+    uses.length > 16 ||
+    new Set(uses.map(({ slot }) => slot)).size !== uses.length ||
+    uses.some(
+      ({ slot, source }) =>
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/.test(slot) ||
+        slot.length > 64 ||
+        source.length === 0 ||
+        source.length > 2048 ||
+        source.includes('\0'),
+    )
+  )
+    throw new ProjectInitError(
+      'invalid',
+      'JIG_NEW_INVALID',
+      'Supply at most 16 distinct --use slot=source declarations. Slots use up to 64 lowercase letters, digits and single hyphens; sources select local descriptors or installed npm packages.',
+    )
+  signal?.throwIfAborted()
   let sdk = GREETING_SDK_VERSION
   try {
     const definition = await lstat(join(project, 'jig.ts'))
@@ -79,6 +116,7 @@ export async function createFlow(project: string, name: string): Promise<string>
   const flows = join(project, 'flows')
   const destination = join(flows, name)
   const created: string[] = []
+  let staged: string | undefined
   let createdFlows = false,
     createdDestination = false
   try {
@@ -91,8 +129,20 @@ export async function createFlow(project: string, name: string): Promise<string>
         throw new Error('flows must be a directory, not a link')
     }
     try {
-      await mkdir(destination)
-      createdDestination = true
+      if (uses.length === 0) {
+        await mkdir(destination)
+        createdDestination = true
+      } else {
+        // Keep incomplete source outside ordinary flows discovery. Only the complete
+        // selected contract closures and authored files are published together.
+        try {
+          await lstat(destination)
+          throw Object.assign(new Error('exists'), { code: 'EEXIST' })
+        } catch (error) {
+          if (errorCode(error) !== 'ENOENT') throw error
+        }
+        staged = await mkdtemp(join(project, '.jig-new-'))
+      }
     } catch (error) {
       if (errorCode(error) === 'EEXIST')
         throw new ProjectInitError(
@@ -106,20 +156,54 @@ export async function createFlow(project: string, name: string): Promise<string>
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '-')
       .slice(0, 64)
+    const authoredAt = staged ?? destination
+    const declarations: Record<string, { contract: string }> = Object.create(null)
+    if (uses.length > 0) await mkdir(join(authoredAt, 'contracts'))
+    for (const { slot, source } of uses) {
+      const imported = await importContract(
+        source.startsWith('npm:') ? source : resolve(project, source),
+        join(authoredAt, 'contracts', slot),
+        signal,
+      )
+      declarations[slot] = { contract: `./contracts/${slot}/${basename(imported.descriptor)}` }
+    }
     const files: Record<string, string> = {
-      'FLOW.meta.json': `${JSON.stringify({ name, description: 'Describe what this method does.' }, null, 2)}\n`,
+      'FLOW.meta.json': `${JSON.stringify({ name, description: 'Describe what this method does.', ...(uses.length === 0 ? {} : { uses: declarations }) }, null, 2)}\n`,
       'package.json': `${JSON.stringify({ name: `${projectName || 'jig'}-${name}-flow`, private: true, type: 'module', dependencies: { '@jigging/flow': sdk } }, null, 2)}\n`,
       'FLOW.ts':
         'import { handle } from "@jigging/flow";\n\nawait handle(async (run) => {\n  return { outcome: "done", output: run.input };\n});\n',
     }
     for (const [file, content] of Object.entries(files)) {
-      const path = join(destination, file)
+      signal?.throwIfAborted()
+      const path = join(authoredAt, file)
       await writeFile(path, content, { flag: 'wx' })
-      created.push(path)
+      if (staged === undefined) created.push(path)
+    }
+    if (staged !== undefined) {
+      const projectDirectory = await open(
+        project,
+        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+      )
+      try {
+        const flowsDirectory = await open(
+          `/proc/self/fd/${projectDirectory.fd}/flows`,
+          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+        )
+        try {
+          signal?.throwIfAborted()
+          privatePublishDirectory(flowsDirectory.fd, basename(staged), name, projectDirectory.fd)
+          staged = undefined
+        } finally {
+          await flowsDirectory.close()
+        }
+      } finally {
+        await projectDirectory.close()
+      }
     }
     return `flows/${name}`
   } catch (error) {
     try {
+      if (staged !== undefined) await rm(staged, { recursive: true, force: true })
       for (const path of created.reverse()) await unlink(path)
       if (createdDestination) await rmdir(destination)
       if (createdFlows) await rmdir(flows)
@@ -130,7 +214,14 @@ export async function createFlow(project: string, name: string): Promise<string>
         'Flow creation failed and its created files could not all be removed. Inspect flows before retrying.',
       )
     }
-    if (error instanceof ProjectInitError) throw error
+    if (signal?.aborted || error instanceof ProjectInitError || error instanceof CheckError)
+      throw error
+    if (errorCode(error) === 'EEXIST')
+      throw new ProjectInitError(
+        'invalid',
+        'JIG_NEW_EXISTS',
+        'That Flow directory already exists. Choose a different name; existing files were not changed.',
+      )
     throw new ProjectInitError(
       'unavailable',
       'JIG_NEW_UNAVAILABLE',

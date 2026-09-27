@@ -24,22 +24,27 @@ not implement continuing conversations and rejects them before dispatch.
 With Jig installed and a [native client configured](agents.md#local-clients),
 create an ordinary project and caller:
 
+The compact `new --use` authoring path below is a source candidate, not part of
+the currently published Jig alpha. It writes ordinary editable contract files
+and slot declarations; the conversation interface itself is unchanged.
+
 ```sh
 jig init conversation-demo --agent codex
 cd conversation-demo
-jig new worker
+bun install
+jig new worker --use agent=npm:@jigging/agent-acp
 bun add --cwd flows/worker @jigging/agent-method@0.1.0-alpha.5
-mkdir flows/worker/contracts
-jig import-contract npm:@jigging/agent-method flows/worker/contracts/agent-run
 ```
 
 The Bun command installs an authoring dependency and records it in the worker's
-manifest. Jig separately prepares its reviewed execution dependencies. Choose
+manifest. The project installation supplies the already-declared ACP package
+whose Agent Run contract is selected by `--use`; it grants no additional powers.
+Jig separately prepares reviewed execution dependencies. Choose
 your native client; `codex` here is an example, not a default.
 
 In `bindings/agent.ts`, set the native grant to
-`{ kind: 'acp', client: 'codex', maxTurns: 2 }`. Add the `uses` declaration below
-to the generated `flows/worker/FLOW.meta.json`, retaining its name and description.
+`{ kind: 'acp', client: 'codex', maxTurns: 2 }`. Add `requires` as shown below
+to the generated `agent` slot in `flows/worker/FLOW.meta.json`.
 Replace `flows/worker/FLOW.ts` with the complete caller below. Then run:
 
 ```sh
@@ -58,9 +63,10 @@ conversation close alone does not establish a successful revision.
 The caller declares an `agent` slot using the complete
 [Agent Run contract bundle](../spec/agent-run.md), imported in the step above.
 
-Jig finds the nearest installation from the destination directory's parent,
-including a member-local or project-root `node_modules`. You can also supply a
-descriptor file path directly for a contract obtained without npm.
+`new --use` finds the nearest project or ancestor installation. You can also
+supply a descriptor path directly. For an existing Flow, use
+[`jig import-contract`](../spec/cli-experience.md#required-experience) and declare
+the corresponding slot in its metadata.
 
 This validates and copies the descriptor and all referenced channel agreements,
 without running the package or approving work. The new directory belongs to
@@ -70,7 +76,7 @@ your project. In the worker's `FLOW.meta.json`:
 {
   "uses": {
     "agent": {
-      "contract": "./contracts/agent-run/FLOW.contract.json",
+      "contract": "./contracts/agent/FLOW.contract.json",
       "requires": ["conversation", "events"]
     }
   }

@@ -162,7 +162,12 @@ export function privateOpenAt(
   return result(symbols.syscall!(437, directory, ffi.ptr(name), ffi.ptr(how), 24))
 }
 
-export function privatePublishDirectory(parent: number, staged: string, destination: string): void {
+export function privatePublishDirectory(
+  parent: number,
+  staged: string,
+  destination: string,
+  sourceParent = parent,
+): void {
   privateFilePath(staged)
   privateFilePath(destination)
   if (staged.includes('/') || destination.includes('/'))
@@ -170,7 +175,7 @@ export function privatePublishDirectory(parent: number, staged: string, destinat
   const { ffi, symbols } = calls()
   const source = cString(staged),
     target = cString(destination)
-  result(symbols.renameat2!(parent, ffi.ptr(source), parent, ffi.ptr(target), 1))
+  result(symbols.renameat2!(sourceParent, ffi.ptr(source), parent, ffi.ptr(target), 1))
 }
 
 export function privateFilePath(value: string): string {

@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { main, privateCliRequiresHost } from '../src/cli.js'
 import { importContract } from '../src/internal/contract-import.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
+import { checkPackageDirectory } from '../src/package/inspect.js'
+import { createFlow, createProject } from '../src/project-init.js'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -33,6 +35,144 @@ async function fixture() {
   await symlink('/does-not-exist', join(root, 'source/unrelated'))
   return root
 }
+
+test('new wires selected complete contract closures as ordinary source without evaluating code', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await writeFile(join(project, 'jig.ts'), 'throw new Error("must not evaluate")')
+  await mkdir(join(project, 'node_modules/@example'), { recursive: true })
+  await symlink(join(root, 'source'), join(project, 'node_modules/@example/work'))
+  let output = ''
+  expect(
+    await main(
+      [
+        'new',
+        'workshop',
+        '--use',
+        'draft=npm:@example/work',
+        '--use',
+        'review=../source/FLOW.contract.json',
+      ],
+      {
+        currentDirectory: project,
+        writeOutput: (text) => {
+          output += text
+        },
+        host: {
+          async acquire() {
+            throw new Error('must not acquire host')
+          },
+        },
+      },
+    ),
+  ).toBe(0)
+  expect(output).toContain('Created Flow')
+  const flow = join(project, 'flows/workshop')
+  expect(JSON.parse(await readFile(join(flow, 'FLOW.meta.json'), 'utf8')).uses).toEqual({
+    draft: { contract: './contracts/draft/FLOW.contract.json' },
+    review: { contract: './contracts/review/FLOW.contract.json' },
+  })
+  for (const slot of ['draft', 'review']) {
+    expect(await readFile(join(flow, `contracts/${slot}/FLOW.contract.json`), 'utf8')).toBe(
+      descriptor,
+    )
+    expect(await readFile(join(flow, `contracts/${slot}/contracts/events.json`), 'utf8')).toBe(
+      agreement,
+    )
+    expect((await readdir(join(flow, `contracts/${slot}`))).sort()).toEqual([
+      'FLOW.contract.json',
+      'contracts',
+    ])
+  }
+  expect((await checkPackageDirectory(flow)).entrypoint.path).toBe('FLOW.ts')
+  expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+  expect(await readFile(join(project, 'jig.ts'), 'utf8')).toContain('must not evaluate')
+  expect(await readdir(join(project, 'flows'))).toEqual(['workshop'])
+})
+
+test('new removes unpublished source if a later contract fails; collisions preserve existing source', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await expect(
+    createFlow(project, 'workshop', [
+      { slot: 'draft', source: '../source/FLOW.contract.json' },
+      { slot: 'review', source: 'missing.json' },
+    ]),
+  ).rejects.toThrow('package has no missing.json')
+  expect(await readdir(join(project, 'flows'))).toEqual([])
+  expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+  await createFlow(project, 'workshop')
+  const before = await readFile(join(project, 'flows/workshop/FLOW.meta.json'), 'utf8')
+  await expect(
+    createFlow(project, 'workshop', [{ slot: 'draft', source: '../source/FLOW.contract.json' }]),
+  ).rejects.toMatchObject({ code: 'JIG_NEW_EXISTS' })
+  expect(await readFile(join(project, 'flows/workshop/FLOW.meta.json'), 'utf8')).toBe(before)
+})
+
+test.each([
+  ['new', 'worker', '--use'],
+  ['new', 'worker', '--use', 'agent'],
+  ['new', 'worker', '--use', 'agent='],
+  ['new', 'worker', '--uses', 'agent=source.json'],
+  ['new', 'worker', '--use', '../escape=source.json'],
+  ['new', 'worker', '--use', 'agent\n=source.json'],
+  ['new', 'worker', '--use', 'agent=source.json', '--use', 'agent=other.json'],
+])('invalid new grammar writes nothing: %j', async (...args) => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  expect(
+    await main(args, {
+      currentDirectory: project,
+      writeError() {},
+      host: {
+        async acquire() {
+          throw new Error('must not acquire host')
+        },
+      },
+    }),
+  ).not.toBe(0)
+  expect(await readdir(join(project, 'flows'))).toEqual([])
+  expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+})
+
+test('new pre-cancellation creates nothing and does not acquire execution authority', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await expect(
+    createFlow(
+      project,
+      'worker',
+      [{ slot: 'agent', source: '../source/FLOW.contract.json' }],
+      AbortSignal.abort(),
+    ),
+  ).rejects.toThrow()
+  expect(await readdir(join(project, 'flows'))).toEqual([])
+  expect(privateCliRequiresHost(['new', 'worker', '--use', 'agent=source.json'])).toBe(false)
+})
+
+test('concurrent new publication never replaces the winning complete Flow', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  const results = await Promise.allSettled([
+    createFlow(project, 'worker', [{ slot: 'first', source: '../source/FLOW.contract.json' }]),
+    createFlow(project, 'worker', [{ slot: 'second', source: '../source/FLOW.contract.json' }]),
+  ])
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  expect(results.find((result) => result.status === 'rejected')).toMatchObject({
+    reason: { code: 'JIG_NEW_EXISTS' },
+  })
+  const flow = join(project, 'flows/worker')
+  const metadata = JSON.parse(await readFile(join(flow, 'FLOW.meta.json'), 'utf8'))
+  expect(Object.keys(metadata.uses)).toHaveLength(1)
+  expect(await readdir(join(flow, 'contracts'))).toEqual(Object.keys(metadata.uses))
+  expect((await checkPackageDirectory(flow)).entrypoint.path).toBe('FLOW.ts')
+  expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+})
 test('imports an exact complete closure from an installed-style symlink without code or unrelated files', async () => {
   const root = await fixture()
   await symlink('source', join(root, 'installed'))
