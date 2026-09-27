@@ -14,12 +14,12 @@ const job = {
   issue: 'Repair both defects.',
   editPaths: ['src/parse.ts', 'src/report.ts'],
 }
-test('the shipped batch validates and leaves both method choices to the router', () => {
+test('the shipped batch validates and selects its known repair budgets explicitly', () => {
   expect(batchJobs(sampleBatch)).toEqual(sampleBatch.jobs)
   expect(sampleBatch.jobs).toHaveLength(2)
-  expect(sampleBatch.jobs.every((entry) => !Object.hasOwn(entry, 'method'))).toBe(true)
+  expect(sampleBatch.jobs.map((entry) => entry.method)).toEqual(['p1', 'p2'])
 })
-test('the shipped batch invokes the router for both jobs and honors abstention', async () => {
+test('omitting exact choices invokes the optional router and honors abstention', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-shipped-batch-'))
   try {
     const source = join(root, 'source')
@@ -28,7 +28,7 @@ test('the shipped batch invokes the router for both jobs and honors abstention',
     await mkdir(out)
     const routes: string[] = []
     const actual = await repairBatch({
-      input: sampleBatch,
+      input: { jobs: sampleBatch.jobs.map(({ method: _method, ...entry }) => entry) },
       attachments: {
         source: { access: 'read', path: source },
         deliverables: { access: 'read-write', path: out },
