@@ -20,6 +20,9 @@ test('conversation failure summary preserves a bounded already-exposed cause wit
   expect(
     Array.from(new AgentConversationError([new Error('🙂'.repeat(1000))], []).message).length,
   ).toBeLessThan(300)
+  const malformed = new Error('bad\ud800text')
+  expect(new AgentConversationError([malformed], []).message).toContain('bad�text')
+  expect(new AgentConversationError([malformed], []).cause).toBe(malformed)
 })
 
 /** Synthetic Agent host, real public SDK subprocess. No native-client qualification. */

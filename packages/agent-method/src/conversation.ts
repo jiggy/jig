@@ -81,7 +81,10 @@ function conversationFailureMessage(error: unknown): string {
   let count = 0
   for (const character of message) {
     if (count++ === 240) return `${heading}: ${summary}…`
-    summary += character
+    // Error text is a diagnostic, not a JSON/0 application value. Preserve the
+    // full original cause, but keep its display summary valid portable text.
+    const point = character.charCodeAt(0)
+    summary += character.length === 1 && point >= 0xd800 && point <= 0xdfff ? '�' : character
   }
   return `${heading}: ${summary}`
 }
