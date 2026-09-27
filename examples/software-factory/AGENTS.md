@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Show bounded semantic dispatch over a fixed two-issue set: reusable Agent
-judgment chooses a reviewed repair configuration, while application checks retain
+Produce tested patches for a fixed two-issue set: explicit method IDs choose
+reviewed repair budgets, with optional semantic selection when a choice is unknown.
+Application checks retain
 patch authority and every merge decision stays with a person.
 
 ## Ownership
@@ -20,9 +21,10 @@ patch authority and every merge decision stays with a person.
   public host defaults; repeat Runs choose a new output without overwriting.
 - `batch.json` and the named case files own the selected issues and acceptance
   policy. `fixtures/` owns the synthetic comparison projects.
-  The shipped batch omits `method` to exercise semantic selection; optional
+  The shipped batch selects `method` explicitly to avoid unnecessary model routing;
   reviewed IDs `p1` and `p2` map to `single-pass` and `checked-correction` for
-  explicit selection. Verify shipped data against the user-input validator.
+  selection. Omitting `method` requests semantic selection. Verify shipped data
+  against the user-input validator.
 - `test/` owns deterministic batch, failure-isolation, and recovery checks.
 
 ## Local Contracts
