@@ -71,6 +71,7 @@ import {
   releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
 import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
+import { privateProfileSpan } from './private-profile.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
@@ -311,7 +312,9 @@ async function executeOwnedProvider(
   const runtime = privateAcpAgentRuntime(provider)
   const scopeDigest = nativeSessionScope(input, provider)
   try {
-    await revalidateProviderSupport(recipe, provider, input)
+    await privateProfileSpan('finite-acp-revalidation', () =>
+      revalidateProviderSupport(recipe, provider, input),
+    )
     let restored: PrivateCodexSessionState | undefined
     if (operation.session !== undefined && 'restore' in operation.session) {
       const snapshot = await claimPrivateNativeSession({
@@ -336,15 +339,17 @@ async function executeOwnedProvider(
       operation.session === undefined
         ? []
         : privateCodexSessionSecrets(runtime, credentialBootstrap)
-    const sealed = await input.backend.seal(
-      backendPlan(
-        recipe,
-        provider,
-        effectiveDeadlineUnixMs,
-        identity,
-        operation.session !== undefined,
+    const sealed = await privateProfileSpan('finite-acp-containment', () =>
+      input.backend.seal(
+        backendPlan(
+          recipe,
+          provider,
+          effectiveDeadlineUnixMs,
+          identity,
+          operation.session !== undefined,
+        ),
+        ownerAllocation,
       ),
-      ownerAllocation,
     )
     const sandbox: AcpSandbox = Object.freeze({ kind: SANDBOX_KIND, owner: sealed.identity })
     lifecycle = await recordPrivateRootChildSandbox({
@@ -359,23 +364,27 @@ async function executeOwnedProvider(
       sandbox: sandbox as unknown as JsonValue,
     })
     attemptedDispatch = true
-    const component = await sealed.admit(input.signal)
+    const component = await privateProfileSpan('finite-acp-launch', () =>
+      sealed.admit(input.signal),
+    )
     output = component.outputDirectory
-    execution = await runPrivateFiniteAcpResource(
-      component,
-      runtime,
-      endpoints,
-      input.signal,
-      operation.maxTurns,
-      ...(operation.session === undefined
-        ? []
-        : [
-            {
-              bootstrap: privateCodexSessionBootstrap(restored),
-              ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
-              ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
-            },
-          ]),
+    execution = await privateProfileSpan('finite-acp-exchange', () =>
+      runPrivateFiniteAcpResource(
+        component,
+        runtime,
+        endpoints,
+        input.signal,
+        operation.maxTurns,
+        ...(operation.session === undefined
+          ? []
+          : [
+              {
+                bootstrap: privateCodexSessionBootstrap(restored),
+                ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
+                ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
+              },
+            ]),
+      ),
     )
     if (
       operation.session !== undefined &&
@@ -394,11 +403,16 @@ async function executeOwnedProvider(
         unavailableReason = error.reason
       }
     }
-    await releaseKnownAcp(input, lifecycle, execution.fence)
+    await privateProfileSpan('finite-acp-release', () =>
+      releaseKnownAcp(input, lifecycle, execution.fence),
+    )
   } catch (error) {
     try {
       const active = await findLifecycle(input, input.call.operationId)
-      if (active !== undefined) await recoverPrivateRootFiniteAcpOwner(input, active)
+      if (active !== undefined)
+        await privateProfileSpan('finite-acp-recovery', () =>
+          recoverPrivateRootFiniteAcpOwner(input, active),
+        )
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
         cleanupError instanceof PrivateLinuxFenceUnconfirmedError

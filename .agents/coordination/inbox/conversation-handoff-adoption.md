@@ -19,6 +19,11 @@ recorded residue. Those results do not qualify complete handoff adoption or
 identify the deadline's cause. Deterministic application checks are separate
 evidence. Further work should diagnose a concrete execution phase rather than
 rebuild the application, tune prompts, or repeat the same campaign.
+The private profiler now distinguishes native revalidation, containment, launch,
+exchange, release and recovery without exposing content or changing authority.
+An installed one-shot diagnostic exercised the working stages successfully;
+it does not qualify the failed continuing/two-worker handoff path or explain
+that failure. Complete independent handoff adoption remains unproved.
 
 ## Proposed scope
 

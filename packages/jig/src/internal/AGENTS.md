@@ -131,6 +131,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   telemetry, a runtime option, or a supported extension point.
   Its planning trace distinguishes support verification, envelope startup,
   execution/settlement and workspace capture; nested spans must not be summed.
+  Finite ACP phases separate revalidation, containment, launch, exchange, release
+  and recovery; they neither record native content nor establish remote dispatch.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
   coordinator. Reuse filesystem identity and retained-artifact verification;

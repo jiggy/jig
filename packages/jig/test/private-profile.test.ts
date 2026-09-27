@@ -84,7 +84,7 @@ test('inactive profiling preserves the operation result and failure behavior', a
   ).rejects.toBe(failure)
 })
 
-test('planning subphases remain bounded diagnostic names understood by the installed profiler', async () => {
+test('planning and native subphases remain bounded names understood by the installed profiler', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-profile-planning-'))
   try {
     const destination = join(directory, 'trace.jsonl')
@@ -98,6 +98,12 @@ test('planning subphases remain bounded diagnostic names understood by the insta
       'author-envelope-startup',
       'author-execution-settlement',
       'dependency-workspace-capture',
+      'finite-acp-revalidation',
+      'finite-acp-containment',
+      'finite-acp-launch',
+      'finite-acp-exchange',
+      'finite-acp-release',
+      'finite-acp-recovery',
     ] as const
     for (const phase of phases) {
       const span = profile.start(phase)
@@ -114,6 +120,49 @@ test('planning subphases remain bounded diagnostic names understood by the insta
       phases,
     )
     expect(records.some((record) => record.kind === 'truncated')).toBe(false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('active native profiling preserves returned values and the exact thrown failure', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-profile-native-'))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const module = join(import.meta.dir, '../src/internal/private-profile.ts')
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        `import { privateProfileActivate, privateProfileFinish, privateProfileSpan } from ${JSON.stringify(module)};
+        privateProfileActivate();
+        const value = await privateProfileSpan('finite-acp-revalidation', async () => 17);
+        if (value !== 17) throw new Error('Result changed');
+        const failure = new Error('private content must never enter the trace');
+        try {
+          await privateProfileSpan('finite-acp-containment', async () => { throw failure });
+          throw new Error('Failure disappeared');
+        } catch (error) { if (error !== failure) throw error }
+        privateProfileFinish();`,
+      ],
+      {
+        env: { ...process.env, JIG_PRIVATE_PROFILE_FILE: destination },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(code, stderr).toBe(0)
+    const text = await readFile(destination, 'utf8')
+    expect(text).not.toContain('private content')
+    const records = text
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(records.filter((record) => record.kind === 'end')).toEqual([
+      expect.objectContaining({ phase: 'finite-acp-revalidation', outcome: 'returned' }),
+      expect.objectContaining({ phase: 'finite-acp-containment', outcome: 'failed' }),
+    ])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
