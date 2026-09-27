@@ -37,6 +37,10 @@ admitted FLOW packages.
   proof-host evidence. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
+- `src/package/capture.ts` owns descriptor-confined immutable snapshots. Its
+  serial copy traversal reuses one private bounded buffer per attempt; yielded
+  snapshot chunks remain independently owned. Source rechecks and digest gates
+  are unchanged by buffer reuse.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.
   Jig retains source admission, resource grants and owned execution, not Agent
   preparation or answer interpretation. Skill content is explicit caller data;

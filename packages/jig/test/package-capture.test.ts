@@ -18,10 +18,10 @@ import { join } from 'node:path'
 
 import { CheckError } from '../src/diagnostics.js'
 import {
-  capturePackageDirectory,
-  captureOpenedPackageDirectory,
   type CapturedFile,
   type CapturedPackage,
+  captureOpenedPackageDirectory,
+  capturePackageDirectory,
 } from '../src/package/capture.js'
 import { packageDigest } from '../src/package/digest.js'
 
@@ -134,6 +134,60 @@ describe('Linux Package/0 directory capture', () => {
             expect(first.digest).toBe(second.digest)
           })
         })
+      })
+    })
+  })
+
+  linuxTest('isolates reused copy bytes across chunks, files and concurrent captures', async () => {
+    await withDirectory(async (left) => {
+      await withDirectory(async (right) => {
+        const chunk = 1024 * 1024
+        const large = new Uint8Array(2 * chunk + 17)
+        large.fill(0xa1, 0, chunk)
+        large.fill(0xb2, chunk, 2 * chunk)
+        large.fill(0xc3, 2 * chunk)
+        const files = new Map([
+          ['large.bin', large],
+          ['short.bin', Uint8Array.of(0, 255, 1)],
+          ['empty.bin', new Uint8Array(0)],
+        ])
+        for (const [path, bytes] of files) await writeFile(join(left, path), bytes)
+        await writeFile(join(right, 'other.bin'), new Uint8Array(chunk + 3).fill(0xd4))
+
+        const [firstCapture, secondCapture] = await Promise.all([
+          capturePackageDirectory(left),
+          capturePackageDirectory(right),
+        ])
+        try {
+          for (const [path, bytes] of files) expect(await firstCapture.read(path)).toEqual(bytes)
+          expect(await secondCapture.read('other.bin')).toEqual(
+            new Uint8Array(chunk + 3).fill(0xd4),
+          )
+          expect(firstCapture.digest).toBe(
+            await packageDigest(
+              [...files].map(([path, bytes]) => ({ path, size: bytes.byteLength })),
+              async function* (file) {
+                const bytes = files.get(file.path)
+                if (bytes === undefined) throw new Error('Unexpected fixture file.')
+                yield bytes
+              },
+            ),
+          )
+          // Snapshot streams own their yielded chunks, unlike the private copier.
+          const iterator = firstCapture.stream('large.bin')[Symbol.asyncIterator]()
+          try {
+            const first = await iterator.next()
+            if (first.done || first.value === undefined) throw new Error('Missing captured chunk.')
+            const saved = first.value.slice()
+            await iterator.next()
+            await firstCapture.read('short.bin')
+            expect(first.value).toEqual(saved)
+          } finally {
+            await iterator.return?.()
+          }
+        } finally {
+          await Promise.all([firstCapture.dispose(), secondCapture.dispose()])
+        }
       })
     })
   })

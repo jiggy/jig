@@ -1,12 +1,15 @@
 # Reduce ordinary startup and settlement overhead
 
-Status: measured; the bounded opt-in profile completed on Ubuntu 24.04 x86-64.
-No runtime optimization or before/after improvement is established. The
-installed-evidence shard can run the profile manually on Ubuntu 24.04 x86-64 from the exact frozen Jig
-and FLOW archives; its results do not gate the normal host check.
-The source trace now separates support verification, evaluator envelope startup,
-execution/settlement and workspace capture within planning. These narrower spans
-have not yet been measured on that host; no speedup is claimed.
+Status: supported-host baseline measured; a locally measured source optimization
+awaits installed qualification. The installed-evidence shard can run the profile
+manually on Ubuntu 24.04 x86-64 from the exact frozen Jig and FLOW archives;
+its results do not gate the normal host check.
+The narrower trace has also completed on the supported host. Evaluation and
+dependency preparation dominate review; installed-support verification is small.
+A source candidate reuses one private capture-copy buffer instead of allocating
+it for every read. Local complete lease disposal met its preset improvement
+target with unchanged checks; installed command-level before/after measurement
+remains outstanding. No installed startup speedup is claimed.
 
 ## Proposed scope
 
