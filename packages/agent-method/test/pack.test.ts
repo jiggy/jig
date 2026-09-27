@@ -71,7 +71,7 @@ test('ordinary packing retains editable source, registry dependencies and a stan
     })
     const timer = setTimeout(() => child.kill(), 10_000)
     let calls = 0
-    let terminal: any
+    let terminal: unknown
     let buffer = ''
     const stderr = new Response(child.stderr).text()
     try {
@@ -94,8 +94,9 @@ test('ordinary packing retains editable source, registry dependencies and a stan
       for await (const chunk of child.stdout) {
         buffer += new TextDecoder().decode(chunk)
         expect(buffer.length).toBeLessThan(64 * 1024)
-        let newline: number
-        while ((newline = buffer.indexOf('\n')) >= 0) {
+        while (true) {
+          const newline = buffer.indexOf('\n')
+          if (newline < 0) break
           const frame = JSON.parse(buffer.slice(0, newline))
           buffer = buffer.slice(newline + 1)
           if (frame.method === 'flow/call') {
@@ -128,11 +129,17 @@ test('ordinary packing retains editable source, registry dependencies and a stan
       // A clean protocol exit does not turn an operational error into success.
       expect(await child.exited).toBe(0)
       expect(calls).toBe(1)
-      expect(terminal.error.data.code).toBe('INVALID_RESULT')
-      expect(terminal.error.data.details).toMatchObject({
-        status: 422,
-        parameter: 'max_completion_tokens',
-        retry: 'not-attempted',
+      expect(terminal).toMatchObject({
+        error: {
+          data: {
+            code: 'INVALID_RESULT',
+            details: {
+              status: 422,
+              parameter: 'max_completion_tokens',
+              retry: 'not-attempted',
+            },
+          },
+        },
       })
       expect(JSON.stringify(terminal)).not.toContain('private fixture input')
       expect(await stderr).not.toContain('private fixture input')

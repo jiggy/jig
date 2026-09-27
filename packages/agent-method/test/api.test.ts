@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { parseApiResult, prepareApiRequest } from '../src/api.js'
+import { AgentMethodError } from '../src/errors.js'
 import { finishAgent, prepareAgent } from '../src/index.js'
 
 const prepared = prepareAgent({ instructions: 'Answer.' })
@@ -132,7 +133,7 @@ test('HTTP diagnostics identify safe status facts and corrective settings withou
   ] as const
   for (const api of ['chat-completions', 'responses'] as const) {
     for (const [status, category] of categories) {
-      let error: any
+      let error: unknown
       try {
         parseApiResult(
           {
@@ -153,6 +154,7 @@ test('HTTP diagnostics identify safe status facts and corrective settings withou
       } catch (failure) {
         error = failure
       }
+      if (!(error instanceof AgentMethodError)) throw new Error('Expected provider rejection')
       expect(error.code).toBe('INVALID_RESULT')
       expect(error.details).toEqual({
         phase: 'provider-response',
@@ -177,7 +179,7 @@ test('only exact known API parameter names can be projected from provider reject
     ['responses', 'text.format', 'structuredOutput'],
   ] as const) {
     for (const param of [parameter, 'unknown-secret', '__proto__', `${parameter}\u001b[31m`]) {
-      let error: any
+      let error: unknown
       try {
         parseApiResult(
           {
@@ -194,10 +196,11 @@ test('only exact known API parameter names can be projected from provider reject
       } catch (failure) {
         error = failure
       }
+      if (!(error instanceof AgentMethodError)) throw new Error('Expected provider rejection')
       if (param === parameter) {
-        expect(error.details.parameter).toBe(parameter)
+        expect(error.details?.parameter).toBe(parameter)
         expect(error.message).toContain(`Check ${setting}`)
-      } else expect(error.details.parameter).toBeUndefined()
+      } else expect(error.details?.parameter).toBeUndefined()
       expect(error.message).not.toContain('private-input-and-key')
       expect(error.message).not.toContain('unknown-secret')
       expect(error.message).not.toContain('\u001b')
