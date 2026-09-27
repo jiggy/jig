@@ -1,4 +1,26 @@
 import { expect, test } from 'bun:test'
+import { AgentConversationError } from '../src/conversation.js'
+
+test('conversation failure summary preserves a bounded already-exposed cause without getters', () => {
+  const cause = new Error('Agent endpoint returned HTTP401. Check operator authentication.')
+  const cleanup = new Error('Cleanup failed')
+  const failure = new AgentConversationError([cause, cleanup], [])
+  expect(failure.message).toContain(cause.message)
+  expect(failure.errors).toEqual([cause, cleanup])
+  expect(failure.cause).toBe(cause)
+  const hostile = new Error()
+  Object.defineProperty(hostile, 'message', {
+    get() {
+      throw new Error('must not read getter')
+    },
+  })
+  expect(new AgentConversationError([hostile], []).message).toBe(
+    'Agent conversation did not complete cleanly',
+  )
+  expect(
+    Array.from(new AgentConversationError([new Error('🙂'.repeat(1000))], []).message).length,
+  ).toBeLessThan(300)
+})
 
 /** Synthetic Agent host, real public SDK subprocess. No native-client qualification. */
 async function exercise(mode: string) {

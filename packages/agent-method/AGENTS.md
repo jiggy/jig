@@ -30,6 +30,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
   Final receipt presence must match the initial session request; malformed or
   unsolicited receipts fail without discarding settled turn evidence.
   Callback or cleanup failures retain received turns in `AgentConversationError`.
+  Its bounded summary preserves the first already-exposed Error message without
+  invoking getters or traversing arbitrary causes; full errors remain available.
   Optional synchronous `onEvent` owns its public update channel and reports
   observation loss separately from execution settlement. It never privately
   echoes filtered data or requires a Log grant. Async routing uses `events`.

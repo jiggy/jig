@@ -65,9 +65,25 @@ export class AgentConversationError extends AggregateError {
     readonly turns: readonly AgentTurn[],
     readonly settlement?: RunResult,
   ) {
-    super(errors, 'Agent conversation did not complete cleanly', { cause: errors[0] })
+    super(errors, conversationFailureMessage(errors[0]), { cause: errors[0] })
     this.name = 'AgentConversationError'
   }
+}
+
+function conversationFailureMessage(error: unknown): string {
+  const heading = 'Agent conversation did not complete cleanly'
+  if (!(error instanceof Error)) return heading
+  // Reuse the error already exposed to this caller, without invoking getters
+  // or traversing arbitrary causes. Full primary/cleanup errors remain retained.
+  const message = Object.getOwnPropertyDescriptor(error, 'message')?.value
+  if (typeof message !== 'string' || !message.trim()) return heading
+  let summary = ''
+  let count = 0
+  for (const character of message) {
+    if (count++ === 240) return `${heading}: ${summary}…`
+    summary += character
+  }
+  return `${heading}: ${summary}`
 }
 
 function deferred<T>() {
