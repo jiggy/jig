@@ -26,6 +26,8 @@ operator's fixed commands and application-owned acceptance cases.
   acceptance cases stay fixed, and no proposal applies or merges a patch.
 - Agent judgment and command output remain evidence, not authority to change
   grants or declare success without independent checks.
+- Operational errors retain method evidence plus supplied collaborator details
+  under `operationDetails`, without flattening or inventing command verdicts.
 
 ## Work Guidance
 

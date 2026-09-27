@@ -50,6 +50,8 @@ only after executed checks and independent acceptance.
   remain inspectable. Do not apply or merge anything.
 - Cancellation, deadlines, uncertainty, unavailable support, and cleanup failures
   propagate without retries. Final file delivery does not promise interruption recovery.
+  Repair failure details keep method attempts alongside any supplied underlying
+  `operationDetails`; neither establishes a successful check.
 
 ## Work Guidance
 
