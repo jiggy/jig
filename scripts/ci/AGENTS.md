@@ -14,6 +14,9 @@ qualification. Host preparation never becomes a consumer requirement.
   digest rechecks, sequential native tests, installed-consumer checks, and
   comparison of owned host residue before and after qualification.
 - The matching Linux and Mac host-conformance workflows own runner selection.
+- `probe-macos-host.ts` observes native process identity and coalition accounting
+  prerequisites on hosted Intel and Apple Silicon candidates. It starts no
+  package work and does not bypass the backend's qualified-platform checks.
 
 ## Local Contracts
 

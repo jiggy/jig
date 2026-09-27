@@ -110,6 +110,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
   variables. This candidate workflow does not replace Linux publication gates
   or claim live model/API qualification.
+- `workflows/macos-hosted-candidates.yml` checks native prerequisites on
+  disposable GitHub-hosted Intel (`macos-15-intel`) and Apple Silicon
+  (`macos-15`) runners. Record exact kernel/build, native Bun architecture,
+  process/coalition ABI observations, and SDK layout assertions. These probes
+  neither authorize a backend nor establish full host conformance. Keep their
+  evidence separate from the qualified exact-kernel gate.
 
 ## Verification
 

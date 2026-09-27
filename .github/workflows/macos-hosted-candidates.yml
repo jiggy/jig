@@ -1,0 +1,61 @@
+name: macOS hosted candidates
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mac-support]
+    paths:
+      - .github/workflows/macos-hosted-candidates.yml
+      - scripts/ci/probe-macos-host.ts
+      - packages/jig/support/macos-exec.c
+      - packages/jig/test/fixtures/macos-file-abi.c
+
+permissions:
+  contents: read
+
+jobs:
+  prerequisites:
+    name: Native prerequisites — ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.2'
+      - name: Record exact host and verify native process prerequisites
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/mac-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/mac-evidence/source.txt"
+          uname -a > "$RUNNER_TEMP/mac-evidence/host.txt"
+          sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
+          xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
+          bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
+          bun scripts/ci/probe-macos-host.ts | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
+      - name: Compile the native launcher and validate SDK descriptor layouts
+        run: |
+          clang -Wall -Wextra -Werror -Wno-deprecated-declarations packages/jig/support/macos-exec.c -o "$RUNNER_TEMP/mac-evidence/macos-exec"
+          clang -Wall -Wextra -Werror packages/jig/test/fixtures/macos-file-abi.c -o "$RUNNER_TEMP/mac-evidence/file-abi"
+          "$RUNNER_TEMP/mac-evidence/file-abi" | tee "$RUNNER_TEMP/mac-evidence/file-abi.txt"
+          file "$RUNNER_TEMP/mac-evidence/macos-exec" >> "$RUNNER_TEMP/mac-evidence/host.txt"
+      - name: Retain candidate prerequisite evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-prerequisites-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/mac-evidence/*.txt
+            ${{ runner.temp }}/mac-evidence/*.json
+          retention-days: 7
