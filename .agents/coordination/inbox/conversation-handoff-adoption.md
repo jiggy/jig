@@ -1,17 +1,24 @@
 # Make existing Agent conversations and handoff easier to adopt
 
-Status: complete conversation walkthrough and package-selected guidance delivered;
-native incident-handoff qualification remains outstanding. Not a developer-alpha
-launch gate.
+Status: conversation walkthrough, package-selected guidance and reviewed incident
+entrypoint delivered. The bounded independent native handoff attempt finished
+unsuccessfully at its deadline; complete independent handoff adoption remains
+unproved. Not a developer-alpha launch gate.
 
 ## Problem
 
 An ordinary installed consumer completed the documented two-turn conversation,
 including its actual final settlement, on one explicitly selected native model.
-The incident-brief application implements bounded summary handoff, but the live
-consumer run returned no handoff packet. Deterministic application checks are not
-native handoff evidence. Diagnose that path before claiming complete adoption;
-rebuilding the application or tuning its prompts is not the starting point.
+The incident-brief application implements bounded summary handoff. A
+maintainer-authored installed native run completed it; the independent live
+consumer did not receive a handoff packet. Its final terminal was
+`DEADLINE_EXCEEDED`, with two independent-worker answers received but no final
+worker settlements. The malformed-input case rejected before model work, and a
+separate read-only ownership audit found both Runs fenced and released without
+recorded residue. Those results do not qualify complete handoff adoption or
+identify the deadline's cause. Deterministic application checks are separate
+evidence. Further work should diagnose a concrete execution phase rather than
+rebuild the application, tune prompts, or repeat the same campaign.
 
 ## Proposed scope
 

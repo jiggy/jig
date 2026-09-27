@@ -1,15 +1,21 @@
 # Reduce ordinary startup and settlement overhead
 
-Status: supported-host baseline measured; a locally measured source optimization
-awaits installed qualification. The installed-evidence shard can run the profile
+Status: the source optimization passed CI and installed host qualification;
+the installed profile did not demonstrate an overall startup improvement.
+The installed-evidence shard can run the profile
 manually on Ubuntu 24.04 x86-64 from the exact frozen Jig and FLOW archives;
 its results do not gate the normal host check.
 The narrower trace has also completed on the supported host. Evaluation and
 dependency preparation dominate review; installed-support verification is small.
 A source candidate reuses one private capture-copy buffer instead of allocating
 it for every read. Local complete lease disposal met its preset improvement
-target with unchanged checks; installed command-level before/after measurement
-remains outstanding. No installed startup speedup is claimed.
+target with unchanged checks. Comparable installed command-level measurements
+completed: combined median was 7.116 seconds before and 7.237 seconds after.
+Workspace-capture spans were lower, but this small single-cohort comparison
+does not establish command-level benefit. Keep the narrower allocation correction
+and its local evidence; do not repeat the same campaign seeking a favorable result.
+No installed startup speedup is claimed. Broader performance work remains open
+and must select another demonstrated cost and target before implementation.
 
 ## Proposed scope
 
