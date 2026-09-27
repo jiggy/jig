@@ -44,7 +44,8 @@ admitted FLOW packages.
   sticky source failure, settle pending sends and preserve earlier clean seals.
   Producer declarations are observation evidence, not execution authority.
 - `test/` owns unit, integration, fault-injection, packed-package, and
-  proof-host evidence. `test/fixtures/channel-conversation/` owns the synthetic
+  proof-host evidence. `test/fixtures/agent-fixture-host.ts` keeps explicit
+  native composition budgets shared with independent coordinator fixtures. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.

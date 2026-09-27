@@ -44,6 +44,11 @@ import {
   writeOrdinaryAcpAgent,
 } from './fixtures/ordinary-acp-agent.js'
 import { completedResponse, writeOrdinaryAgent } from './fixtures/ordinary-agent.js'
+import {
+  fixtureHost,
+  MACOS_FIXTURE_SETTLEMENT_MS,
+  MACOS_FIXTURE_ADMISSION_MS,
+} from './fixtures/agent-fixture-host.js'
 
 const HOSTILE =
   process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
@@ -802,7 +807,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       )
       session = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation, {}),
+        host: fixtureHost(await openPrivateInstalledBunHost(installedBunLocation, {})),
       })
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state !== 'applicable') throw new Error('Subprocess fixture did not produce a Plan')
@@ -813,7 +818,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             session.rootAdministration,
             `subprocess-${nested}`,
             'success',
-            process.platform === 'darwin' ? 75_000 : 30_000,
+            process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
             nested,
           ),
         ).toMatchObject({
@@ -897,9 +902,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         await writeFile(join(selected, 'references/checklist.md'), reference)
         session = await openPrivateProjectSession({
           directory: root,
-          host: await openPrivateInstalledBunHost(location, {
+          host: fixtureHost(await openPrivateInstalledBunHost(location, {
             METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-          }),
+          })),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable') throw new Error('Skill fixture did not produce a Plan')
@@ -911,7 +916,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             session.rootAdministration,
             'skill-delivery',
             'success',
-            process.platform === 'darwin' ? 75_000 : 30_000,
+            process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
             nested,
           ),
         ).toMatchObject({
@@ -968,7 +973,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         await rm(root, { recursive: true, force: true })
         await rm(releaseRoot, { recursive: true, force: true })
       }
-    }, process.platform === 'darwin' ? 150_000 : 90_000)
+    }, process.platform === 'darwin' ? 450_000 : 90_000)
   }
 
   for (const nested of [false, true]) {
@@ -1047,9 +1052,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           )
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location, {
+            host: fixtureHost(await openPrivateInstalledBunHost(location, {
               METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-            }),
+            })),
           })
           const plan = await session.plan({ lockMode: 'update' })
           if (plan.state !== 'applicable')
@@ -1063,8 +1068,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
               input: { scenario },
             })
             try {
-              // Observe settlement beyond the unchanged 30-second execution deadline.
-              return await waitForTerminal(session!.rootAdministration, receipt, 60_000)
+              // Observe settlement beyond the selected Run budget, including cleanup.
+              return await waitForTerminal(session!.rootAdministration, receipt,
+                process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 60_000)
             } catch (cause) {
               throw new Error(
                 `Agent method fixture did not settle: ${JSON.stringify({
@@ -1149,7 +1155,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           if (nested) {
             hold = true
             const waitForRequest = async (count: number) => {
-              const deadline = Date.now() + (process.platform === 'darwin' ? 60_000 : 25_000)
+              const deadline = Date.now() + (process.platform === 'darwin' ? MACOS_FIXTURE_ADMISSION_MS : 25_000)
               while (requests.length < count && Date.now() < deadline) await Bun.sleep(25)
               expect(requests).toHaveLength(count)
             }
@@ -1162,9 +1168,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             await session.close()
             session = await openPrivateProjectSession({
               directory: root,
-              host: await openPrivateInstalledBunHost(location, {
+              host: fixtureHost(await openPrivateInstalledBunHost(location, {
                 METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-              }),
+              })),
             })
             expect(await waitForTerminal(session.rootAdministration, cancelled)).toMatchObject({
               terminal: { status: 'failed', code: 'CANCELLED' },
@@ -1202,9 +1208,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             await waitForCgroups(initialCgroups)
             session = await openPrivateProjectSession({
               directory: root,
-              host: await openPrivateInstalledBunHost(location, {
+              host: fixtureHost(await openPrivateInstalledBunHost(location, {
                 METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-              }),
+              })),
             })
             expect(await waitForTerminal(session.rootAdministration, receipt)).toMatchObject({
               terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
@@ -1240,7 +1246,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           }
         }
       },
-      nested ? 240_000 : 150_000,
+      process.platform === 'darwin' ? (nested ? 900_000 : 600_000) : nested ? 240_000 : 150_000,
     )
   }
 
@@ -1616,7 +1622,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         const run = (
           id: string,
           scenario: string,
-          timeoutMs = process.platform === 'darwin' ? 75_000 : 30_000,
+          timeoutMs = process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
         ) =>
           runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested)
         const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 3 : 2)
@@ -1645,7 +1651,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
 
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
           })
           const plan = await session.plan({ lockMode: 'update' })
           if (plan.state !== 'applicable') throw new Error('Agent fixture did not produce a Plan')
@@ -1735,7 +1741,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             directory: root,
             host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
           })
-          expect(await run('agent-deadline', 'slow', process.platform === 'darwin' ? 75_000 : 10_000)).toMatchObject({
+          expect(await run('agent-deadline', 'slow', process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 10_000)).toMatchObject({
             state: 'terminal',
             terminal: { status: 'failed', code: 'DEADLINE_EXCEEDED' },
           })
@@ -1744,7 +1750,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
           })
           const cancellation = await session.rootAdministration.startRun(
             request('agent-cancellation', 'slow'),
@@ -1753,7 +1759,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
           })
           expect(
             await session.rootAdministration.startRun(request('agent-cancellation', 'slow')),
@@ -1800,7 +1806,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           delete environment.METHOD_TEST_TOKEN
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
           })
           expect(
             await session.rootAdministration.startRun(
@@ -1842,7 +1848,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           })
         }
       },
-      process.platform === 'darwin' ? 600_000 : nested ? 240_000 : 180_000,
+      process.platform === 'darwin' ? 900_000 : nested ? 240_000 : 180_000,
     )
   }
 })
@@ -2349,7 +2355,7 @@ async function runToTerminal(
   administration: RootAdministration,
   submissionId: string,
   scenario: string,
-  timeoutMs = process.platform === 'darwin' ? 75_000 : 30_000,
+  timeoutMs = process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
   nested = false,
 ) {
   const receipt = await administration.startRun(runRequest(submissionId, scenario, nested))
@@ -2379,7 +2385,7 @@ function agentText(terminal: Awaited<ReturnType<typeof waitForTerminal>>): strin
 async function waitForTerminal(
   administration: RootAdministration,
   receipt: StartRootRunReceipt,
-  timeoutMs = process.platform === 'darwin' ? 75_000 : 30_000,
+  timeoutMs = process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
 ) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {

@@ -72,6 +72,7 @@ const expectedInstalledFiles = [
   'libexec/linux-rootless-supervisor.js',
   'libexec/macos-native-supervisor.js',
   'libexec/macos-exec',
+  'libexec/macos-descriptor-bridge.dylib',
   'package.json',
 ].sort()
 

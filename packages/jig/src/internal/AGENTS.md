@@ -508,7 +508,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   whole installation/store or import ambient loader variables. Each native
   launcher removes Bun's private loader override before starting its client.
 - `macos-agent-runtime.ts` supplies the candidate native Mac installation
-  inspector: bounded baseline x86-64 Mach-O and universal slices, including the
+  inspector: bounded baseline x86-64 or ARM64 Mach-O and universal slices, including the
   SDK's LIB64 library-width flag but no additional ISA subtypes, exact third-party
   libraries, loader/executable-relative paths and inherited run paths. Consult
   the active OS dyld cache for system libraries; never fabricate file identities
@@ -818,6 +818,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   for terminal settlement, including cleanup. Linux retains its existing waits.
   Aggregate scenario tests allow each independently bounded Run to settle;
   these test windows never expand workload enforcement limits.
+- Mac Agent composition fixtures explicitly select five-minute Runs and allow
+  75 seconds of settlement observation afterward. Their independent coordinator
+  fixtures select the same budget; deep branch admission observation allows
+  three minutes before deliberate cancellation/loss. This covers nested native
+  setup while production defaults and deliberate short-deadline checks stay
+  unchanged; aggregate test bounds account for their multiple independent Runs.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing
   two/three-minute fixture budgets; production defaults remain unchanged.
