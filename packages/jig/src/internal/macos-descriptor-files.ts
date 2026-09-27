@@ -1,7 +1,9 @@
-import { type BigIntStats, closeSync, constants, type Dirent } from 'node:fs'
+import { type BigIntStats, closeSync, constants, type Dirent, readFileSync, realpathSync, lstatSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { type FileHandle, mkdtemp, open, rmdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { getSystemErrorName } from 'node:util'
 import { privateMacosCurrentProcessIdentity } from './macos-process-controls.js'
 
@@ -40,8 +42,6 @@ function calls(): Native {
     throw new Error('macOS descriptor adoption requires the qualified Bun runtime')
   const ffi = createRequire(import.meta.url)('bun:ffi')
   const { symbols: loaded } = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
-    openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
-    fcntl: { args: ['i32', 'i32', 'u64'], returns: 'i32' },
     [process.arch === 'arm64' ? 'fstatat' : 'fstatat$INODE64']: { args: ['i32', 'ptr', 'ptr', 'i32'], returns: 'i32' },
     [process.arch === 'arm64' ? 'fstatfs' : 'fstatfs$INODE64']: { args: ['i32', 'ptr'], returns: 'i32' },
     [process.arch === 'arm64' ? 'fdopendir' : 'fdopendir$INODE64']: { args: ['i32'], returns: 'ptr' },
@@ -55,7 +55,20 @@ function calls(): Native {
     linkat: { args: ['i32', 'ptr', 'i32', 'ptr', 'i32'], returns: 'i32' },
     __error: { args: [], returns: 'ptr' },
   })
-  const symbols = { ...loaded,
+  const modulePath = fileURLToPath(import.meta.url)
+  const libexec = modulePath.lastIndexOf('/libexec/')
+  const bridge = libexec >= 0
+    ? join(modulePath.slice(0, libexec), 'libexec/macos-descriptor-bridge.dylib')
+    : join(dirname(modulePath), modulePath.includes('/internal/') ? '../../support/macos-descriptor-bridge.dylib' : '../support/macos-descriptor-bridge.dylib')
+  const canonical = realpathSync(bridge)
+  const metadata = lstatSync(bridge)
+  if (canonical !== bridge || !metadata.isFile() || metadata.size > 1024 * 1024 || (metadata.mode & 0o022) !== 0 || createHash('sha256').update(readFileSync(bridge)).digest('hex') !== '35e67cd8ca82b71476bfdb795b566ce8b6aa515a8964c2c33102457dffdf21a8')
+    throw new Error('native descriptor bridge identity is invalid')
+  const fixed = ffi.dlopen(bridge, {
+    jig_openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
+    jig_fcntl: { args: ['i32', 'i32', 'u64'], returns: 'i32' },
+  })
+  const symbols = { ...loaded, openat: fixed.symbols.jig_openat, fcntl: fixed.symbols.jig_fcntl,
     fstatat: loaded[process.arch === 'arm64' ? 'fstatat' : 'fstatat$INODE64'],
     fstatfs: loaded[process.arch === 'arm64' ? 'fstatfs' : 'fstatfs$INODE64'],
     fdopendir: loaded[process.arch === 'arm64' ? 'fdopendir' : 'fdopendir$INODE64'],

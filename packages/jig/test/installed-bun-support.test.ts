@@ -93,6 +93,7 @@ describe('fixed installed Bun support', () => {
         const launcher = join(root, 'libexec', 'macos-exec')
         await copyFile(new URL('../support/macos-exec-universal', import.meta.url), launcher)
         await chmod(launcher, 0o755)
+        await copyFile(new URL('../support/macos-descriptor-bridge.dylib', import.meta.url), join(root, 'libexec', 'macos-descriptor-bridge.dylib'))
       }
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'worker\n')
       await writeFile(join(evaluator, 'project-evaluator-sdk.bundle.js'), 'sdk\n')

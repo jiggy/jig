@@ -14,6 +14,9 @@ setup or package-held authority.
 - `macos-exec-universal` contains the Intel and Apple Silicon launcher slices
   compiled from that source with the Apple toolchain. Assembly copies it into
   the release; installed consumers do not compile it.
+- `macos-descriptor-bridge.c` and its universal `.dylib` supply fixed-signature
+  `openat` and `fcntl` calls. The SDK compiler owns Darwin's variadic ABI;
+  descriptor code verifies the packaged bridge digest before loading it.
 
 ## Local Contracts
 

@@ -126,6 +126,13 @@ export async function openPrivateInstalledBunSupport(
     join(releaseRoot, 'libexec', 'evaluator'),
     'installed evaluator support',
   )
+  const descriptorBridgeDigest = platform === 'linux-x64-glibc' ? null :
+    await privateInstallationFileDigest(await installedRegularFile(
+      join(releaseRoot, 'libexec', 'macos-descriptor-bridge.dylib'), false,
+      'installed macOS descriptor bridge',
+    ))
+  if (descriptorBridgeDigest !== null && descriptorBridgeDigest !== 'sha256:35e67cd8ca82b71476bfdb795b566ce8b6aa515a8964c2c33102457dffdf21a8')
+    throw new PrivateInstalledBundleError()
   const evaluatorFiles = await Promise.all(
     [
       'project-evaluator-worker.js',
@@ -238,6 +245,7 @@ export async function openPrivateInstalledBunSupport(
       loaderDigest === null
         ? null
         : Object.freeze({ destination: ELF_INTERPRETER, digest: loaderDigest }),
+    descriptorBridgeDigest,
     libraries: libraryDigests,
     evaluatorSupportDigest,
     preparationWorkerDigest,

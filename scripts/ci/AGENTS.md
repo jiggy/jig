@@ -9,7 +9,8 @@ qualification. Host preparation never becomes a consumer requirement.
 
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
-- `qualify-macos-host.sh` owns exact Intel macOS 14.4.1 build 23E224 and
+- `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
+  Intel/Apple Silicon 24G830 candidate profiles and
   Bun 1.4.2 and real Node 22+ preflight, frozen same-revision archives with
   digest rechecks, sequential native tests, installed-consumer checks, and
   comparison of owned host residue before and after qualification.
@@ -17,6 +18,9 @@ qualification. Host preparation never becomes a consumer requirement.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
   prerequisites on hosted Intel and Apple Silicon candidates. It starts no
   package work and does not bypass the backend's qualified-platform checks.
+- `install-macos-test-clients.ts` extracts digest-pinned native Codex, Claude
+  and Pi archives into a fresh runner-owned directory for offline startup
+  qualification. It neither executes clients nor provisions consumer machines.
 
 ## Local Contracts
 

@@ -2,8 +2,12 @@
 # Rootless qualification on the exact candidate host; no host provisioning.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-if [[ "$(uname -s)" != Darwin || "$(uname -m)" != x86_64 || "$(uname -r)" != 23.4.0 || "$(sw_vers -buildVersion)" != 23E224 || "$EUID" == 0 ]]; then
-  echo 'Qualification requires unprivileged Intel macOS 14.4.1 build 23E224 (Darwin 23.4.0).' >&2
+case "$(uname -s):$(uname -m):$(uname -r):$(sw_vers -buildVersion)" in
+  Darwin:x86_64:23.4.0:23E224|Darwin:x86_64:24.6.0:24G830|Darwin:arm64:24.6.0:24G830) ;;
+  *) echo 'Qualification requires an exact selected native Mac candidate.' >&2; exit 2 ;;
+esac
+if [[ "$EUID" == 0 ]]; then
+  echo 'Qualification requires an unprivileged operator.' >&2
   exit 2
 fi
 bun -e 'if (Bun.version !== "1.4.2" || Bun.revision !== "744846f844374847c902b5e7fd59b4342a51ef99") throw new Error("exact qualified Bun 1.4.2 is required")'

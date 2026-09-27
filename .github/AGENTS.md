@@ -119,6 +119,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   After prerequisites, build the ordinary candidate and execute native
   containment/recovery tests on each architecture. A prerequisite pass must
   not conceal a failed native job or stand in for installed-host conformance.
+  The complete gate freezes candidate archives, runs the sequential native
+  suite and installed consumer, checks pinned genuine clients offline, and
+  verifies archive identity and ownership residue. Hosted setup installs no
+  privileged helper and uses no model credentials.
 
 ## Verification
 

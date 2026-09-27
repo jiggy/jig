@@ -700,6 +700,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   unsuffixed native symbols explicitly. Coalition CPU ledger values are Mach
   ticks: convert with the kernel's `mach_timebase_info` ratio before comparing
   nanosecond limits or recording evidence. Per-process rusage units stay unchanged.
+- `openat` and `fcntl` use the packaged fixed-signature native bridge rather
+  than calling variadic libc through FFI. Verify its exact digest before dlopen
+  and bind it into installed-support identity; no consumer compiler is required.
 
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.

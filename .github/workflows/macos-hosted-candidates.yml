@@ -7,6 +7,8 @@ on:
     paths:
       - .github/workflows/macos-hosted-candidates.yml
       - scripts/ci/probe-macos-host.ts
+      - scripts/ci/install-macos-test-clients.ts
+      - scripts/ci/qualify-macos-host.sh
       - packages/jig/support/macos-exec.c
       - packages/jig/test/fixtures/macos-file-abi.c
       - packages/jig/**
@@ -66,7 +68,21 @@ jobs:
           JIG_MACOS_PROCESS_TEST: '1'
         run: |
           set -o pipefail
-          bun test packages/jig/test/macos-process-controls.test.ts packages/jig/test/macos-execution.test.ts packages/jig/test/macos-descriptor-files.test.ts packages/jig/test/macos-volume.test.ts packages/jig/test/macos-backend-state.test.ts packages/jig/test/macos-native-backend.test.ts packages/jig/test/macos-guardian.test.ts --timeout 420000 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt"
+          snapshot() {
+            { launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'; mount | awk '/jig-/ {print "mount " $0}'; } | LC_ALL=C sort
+          }
+          snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
+          status=0
+          bun test packages/jig/test/macos-process-controls.test.ts packages/jig/test/macos-execution.test.ts packages/jig/test/macos-descriptor-files.test.ts packages/jig/test/macos-volume.test.ts packages/jig/test/macos-backend-state.test.ts packages/jig/test/macos-native-backend.test.ts packages/jig/test/macos-guardian.test.ts --timeout 420000 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
+          snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
+          diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
+          exit "$status"
+      - name: Prepare genuine pinned clients for offline startup
+        run: bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
+      - name: Qualify the complete rootless host and installed consumer
+        run: |
+          set -o pipefail
+          scripts/ci/qualify-macos-host.sh 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
       - name: Retain candidate prerequisite evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

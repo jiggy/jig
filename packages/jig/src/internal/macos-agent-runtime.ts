@@ -324,7 +324,7 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
 
 function nativeCpuType(): number { return process.arch === 'arm64' ? 0x0100000c : 0x01000007 }
 function nativeSubtype(value: number): boolean {
-  if (process.arch === 'arm64') return value === 0
+  if (process.arch === 'arm64') return value === 0 || value === 0x80000000
   // mach/machine.h defines LIB64 as a library-width flag, not an ISA extension.
   return value === 3 || value === 0x80000003
 }
