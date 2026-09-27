@@ -696,6 +696,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   profiles have prerequisite ABI evidence; full conformance is required before
   promoting support. Select architecture-native Bun and Mach-O slices; never
   treat Rosetta execution as Apple Silicon qualification.
+- Darwin descriptor calls bind Intel's `$INODE64` symbols and Apple Silicon's
+  unsuffixed native symbols explicitly. Coalition CPU ledger values are Mach
+  ticks: convert with the kernel's `mach_timebase_info` ratio before comparing
+  nanosecond limits or recording evidence. Per-process rusage units stay unchanged.
 
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.

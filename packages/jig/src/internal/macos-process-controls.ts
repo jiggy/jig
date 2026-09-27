@@ -15,6 +15,7 @@ const signals = Object.freeze({ stop: 17, continue: 19, kill: 9 })
 type NativeFunction = (...args: (number | bigint)[]) => number
 type NativeSymbol =
   | 'coalition_info_resource_usage'
+  | 'mach_timebase_info'
   | 'proc_pidinfo'
   | 'proc_listallpids'
   | 'proc_pid_rusage'
@@ -25,6 +26,8 @@ type NativeSymbol =
 interface Native {
   ptr(bytes: Uint8Array): number
   read: { i32(pointer: number): number }
+  timeNumerator: bigint
+  timeDenominator: bigint
   symbols: Record<NativeSymbol, NativeFunction>
 }
 let native: Native | undefined
@@ -44,6 +47,7 @@ function calls(): Native {
   }
   const library = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
     coalition_info_resource_usage: { args: ['u64', 'ptr', 'u64'], returns: 'i32' },
+    mach_timebase_info: { args: ['ptr'], returns: 'i32' },
     proc_pidinfo: { args: ['i32', 'i32', 'u64', 'ptr', 'i32'], returns: 'i32' },
     proc_listallpids: { args: ['ptr', 'i32'], returns: 'i32' },
     proc_pid_rusage: { args: ['i32', 'i32', 'ptr'], returns: 'i32' },
@@ -52,7 +56,10 @@ function calls(): Native {
     getsockopt: { args: ['i32', 'i32', 'i32', 'ptr', 'ptr'], returns: 'i32' },
     __error: { args: [], returns: 'ptr' },
   })
-  const opened = { ptr: ffi.ptr, read: ffi.read, symbols: library.symbols }
+  const timebase = Buffer.alloc(8)
+  if (library.symbols.mach_timebase_info(ffi.ptr(timebase)) !== 0 || timebase.readUInt32LE(0) === 0 || timebase.readUInt32LE(4) === 0)
+    throw new Error('macOS CPU timebase is unavailable')
+  const opened = { ptr: ffi.ptr, read: ffi.read, symbols: library.symbols, timeNumerator: BigInt(timebase.readUInt32LE(0)), timeDenominator: BigInt(timebase.readUInt32LE(4)) }
   if (!platformFor(kernelString(opened, 'kern.osversion')))
     throw new Error('macOS process controls are not qualified on this kernel build')
   native = opened
@@ -159,7 +166,10 @@ function usage(
   const started = bytes.readBigUInt64LE(0)
   const exited = bytes.readBigUInt64LE(8)
   if (started < exited) throw new Error('macOS coalition accounting is invalid')
-  return { active: started - exited, cpuNanoseconds: bytes.readBigUInt64LE(24) }
+  // XNU's cpu_time ledger uses Mach absolute ticks; Intel's 1:1 timebase hid
+  // this conversion. Apple Silicon requires the kernel-supplied ratio.
+  const timebase = calls()
+  return { active: started - exited, cpuNanoseconds: bytes.readBigUInt64LE(24) * timebase.timeNumerator / timebase.timeDenominator }
 }
 
 function coalitionMembers(coalition: bigint, exclude: number): { pid: number; version: number }[] {

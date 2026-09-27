@@ -8,10 +8,10 @@ import { privateMacosCurrentProcessIdentity } from './macos-process-controls.js'
 type NativeSymbol =
   | 'openat'
   | 'fcntl'
-  | 'fstatat$INODE64'
-  | 'fstatfs$INODE64'
-  | 'fdopendir$INODE64'
-  | 'readdir$INODE64'
+  | 'fstatat'
+  | 'fstatfs'
+  | 'fdopendir'
+  | 'readdir'
   | 'closedir'
   | 'mkdirat'
   | 'unlinkat'
@@ -39,13 +39,13 @@ function calls(): Native {
   if (process.versions.bun !== '1.4.2')
     throw new Error('macOS descriptor adoption requires the qualified Bun runtime')
   const ffi = createRequire(import.meta.url)('bun:ffi')
-  const { symbols } = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
+  const { symbols: loaded } = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
     openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
     fcntl: { args: ['i32', 'i32', 'u64'], returns: 'i32' },
-    fstatat$INODE64: { args: ['i32', 'ptr', 'ptr', 'i32'], returns: 'i32' },
-    fstatfs$INODE64: { args: ['i32', 'ptr'], returns: 'i32' },
-    fdopendir$INODE64: { args: ['i32'], returns: 'ptr' },
-    readdir$INODE64: { args: ['ptr'], returns: 'ptr' },
+    [process.arch === 'arm64' ? 'fstatat' : 'fstatat$INODE64']: { args: ['i32', 'ptr', 'ptr', 'i32'], returns: 'i32' },
+    [process.arch === 'arm64' ? 'fstatfs' : 'fstatfs$INODE64']: { args: ['i32', 'ptr'], returns: 'i32' },
+    [process.arch === 'arm64' ? 'fdopendir' : 'fdopendir$INODE64']: { args: ['i32'], returns: 'ptr' },
+    [process.arch === 'arm64' ? 'readdir' : 'readdir$INODE64']: { args: ['ptr'], returns: 'ptr' },
     closedir: { args: ['ptr'], returns: 'i32' },
     mkdirat: { args: ['i32', 'ptr', 'u32'], returns: 'i32' },
     unlinkat: { args: ['i32', 'ptr', 'i32'], returns: 'i32' },
@@ -55,6 +55,12 @@ function calls(): Native {
     linkat: { args: ['i32', 'ptr', 'i32', 'ptr', 'i32'], returns: 'i32' },
     __error: { args: [], returns: 'ptr' },
   })
+  const symbols = { ...loaded,
+    fstatat: loaded[process.arch === 'arm64' ? 'fstatat' : 'fstatat$INODE64'],
+    fstatfs: loaded[process.arch === 'arm64' ? 'fstatfs' : 'fstatfs$INODE64'],
+    fdopendir: loaded[process.arch === 'arm64' ? 'fdopendir' : 'fdopendir$INODE64'],
+    readdir: loaded[process.arch === 'arm64' ? 'readdir' : 'readdir$INODE64'],
+  }
   native = { ptr: ffi.ptr, toArrayBuffer: ffi.toArrayBuffer, symbols }
   return native
 }
@@ -172,7 +178,7 @@ export function privateMacosDescriptorPath(fd: number): string {
 export function privateMacosFilesystem(fd: number) {
   const { ptr, symbols } = calls()
   const bytes = Buffer.alloc(2168)
-  checked(symbols.fstatfs$INODE64(fd, ptr(bytes)))
+  checked(symbols.fstatfs(fd, ptr(bytes)))
   const string = (start: number, size: number): string => {
     const value = bytes.subarray(start, start + size)
     const end = value.indexOf(0)
@@ -258,7 +264,7 @@ export function privateMacosStatAt(parent: number, name: string | Uint8Array): B
   const { ptr, symbols } = calls()
   const path = nameBytes(name),
     bytes = Buffer.alloc(144)
-  checked(symbols.fstatat$INODE64(parent, ptr(path), ptr(bytes), 0x20))
+  checked(symbols.fstatat(parent, ptr(path), ptr(bytes), 0x20))
   // SDK offsets are independently compiled in macos-file-abi.c and compared to Node stats.
   const mode = BigInt(bytes.readUInt16LE(4))
   const atimeNs = bytes.readBigInt64LE(32) * 1_000_000_000n + bytes.readBigInt64LE(40)
@@ -311,7 +317,7 @@ export function privateMacosDirectory(fd: number) {
       0,
     ),
   )
-  const stream = symbols.fdopendir$INODE64(duplicate)
+  const stream = symbols.fdopendir(duplicate)
   if (!stream) {
     const code = errnoBytes().readInt32LE()
     closeSync(duplicate)
@@ -324,7 +330,7 @@ export function privateMacosDirectory(fd: number) {
     if (closed) throw new Error('macOS directory stream is closed')
     for (;;) {
       errnoBytes().writeInt32LE(0)
-      const entry = symbols.readdir$INODE64(stream)
+      const entry = symbols.readdir(stream)
       if (!entry) {
         if (errnoBytes().readInt32LE() !== 0) checked(-1)
         return null
