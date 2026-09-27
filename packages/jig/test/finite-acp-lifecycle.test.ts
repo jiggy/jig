@@ -26,7 +26,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
     qualifyIncidentBrief,
     300_000,
   )
-  test('returns checked text and live updates, rejects malformed work, and settles cancellation', async () => {
+  test('returns checked text and live updates, rejects malformed work, and settles crashes and cancellation', async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-finite-acp-proof-')))
     const project = join(root, 'project')
     const release = join(root, 'release')
@@ -101,7 +101,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
       expect(await main(['review', '--yes', '--allow-authority-changes'], options), stderr).toBe(0)
       expect(stdout).toContain('acp')
       expect(stdout).not.toContain(key)
-      for (const scenario of ['success', 'schema-invalid', 'malformed', 'slow']) {
+      for (const scenario of ['success', 'schema-invalid', 'malformed', 'signal', 'exit', 'slow']) {
         stdout = ''
         stderr = ''
         cancellation = new AbortController()
@@ -145,6 +145,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
           required: ['decision'],
           additionalProperties: false,
         }
+        const started = Date.now()
         const code = await main(
           [
             'run',
@@ -192,6 +193,11 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
           expect(terminal, `${stdout}\n${stderr}`).toBeDefined()
           expect(code, `${stdout}\n${stderr}`).not.toBe(0)
           expect(terminal.result.status).toBe('failed')
+          if (scenario === 'signal' || scenario === 'exit') {
+            expect(cancellation.signal.aborted).toBe(false)
+            expect(Date.now() - started).toBeLessThan(20_000)
+            expect(terminal.result.code).not.toBe('DEADLINE_EXCEEDED')
+          }
         }
         expect(stdout).not.toContain(key)
         expect(stderr).not.toContain(key)
@@ -234,6 +240,8 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
         'success',
         'schema-invalid',
         'malformed',
+        'signal',
+        'exit',
         'slow',
         'success',
         'slow',
@@ -269,7 +277,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
           },
         )
         expect(code, `${stdout}\n${stderr}`).not.toBe(0)
-        expect(events).toHaveLength(7)
+        expect(events).toHaveLength(9)
         expect(stdout + stderr).not.toContain(key)
         await settledCgroups(before)
       }
