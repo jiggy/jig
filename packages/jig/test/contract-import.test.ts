@@ -112,14 +112,15 @@ test('new removes unpublished source if a later contract fails; collisions prese
 })
 
 test.each([
-  ['new', 'worker', '--use'],
-  ['new', 'worker', '--use', 'agent'],
-  ['new', 'worker', '--use', 'agent='],
-  ['new', 'worker', '--uses', 'agent=source.json'],
-  ['new', 'worker', '--use', '../escape=source.json'],
-  ['new', 'worker', '--use', 'agent\n=source.json'],
-  ['new', 'worker', '--use', 'agent=source.json', '--use', 'agent=other.json'],
-])('invalid new grammar writes nothing: %j', async (...args) => {
+  { args: ['new', 'worker', '--use'], exit: 2 },
+  { args: ['new', 'worker', '--use', 'agent'], exit: 2 },
+  { args: ['new', 'worker', '--use', 'agent='], exit: 2 },
+  { args: ['new', 'worker', '--uses', 'agent=source.json'], exit: 2 },
+  { args: ['new', 'worker', '--use', '../escape=source.json'], exit: 1 },
+  { args: ['new', 'worker', '--use', 'agent\n=source.json'], exit: 1 },
+  { args: ['new', 'worker\n'], exit: 1 },
+  { args: ['new', 'worker', '--use', 'agent=source.json', '--use', 'agent=other.json'], exit: 1 },
+])('invalid new grammar writes nothing: %j', async ({ args, exit }) => {
   const root = await fixture()
   const project = join(root, 'project')
   await createProject(project, undefined, true)
@@ -133,7 +134,7 @@ test.each([
         },
       },
     }),
-  ).not.toBe(0)
+  ).toBe(exit)
   expect(await readdir(join(project, 'flows'))).toEqual([])
   expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
 })
