@@ -21,6 +21,7 @@ const POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/nu
 const SANDBOX_BUN = '/jig-runtime/bun'
 const SANDBOX_LIBRARY_PATH = '/jig-runtime/lib'
 const MAX_CONTROL_BYTES = 64 * 1024
+const CORE_DUMP_POLL_MS = 250
 // The source checkout executes this file as TypeScript while packed builds
 // execute emitted JavaScript. JavaScript is valid TypeScript, so one `.ts`
 // destination is safe for both and never causes Bun to parse source TS as JS.
@@ -81,7 +82,13 @@ interface Evidence {
   readonly pidsEvents: Readonly<Record<string, number>>
 }
 
-type StopReason = 'cancelled' | 'coordinator_lost' | 'deadline' | 'payload_exit' | 'setup_failed'
+type StopReason =
+  | 'cancelled'
+  | 'coordinator_lost'
+  | 'deadline'
+  | 'payload_exit'
+  | 'core_dump'
+  | 'setup_failed'
 
 interface PreparedMessage {
   readonly type: 'prepared'
@@ -201,6 +208,9 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   let exitSignal: string | null = null
   let evidence = emptyEvidence()
   let terminal: TerminalMessage | undefined
+  let coreDumpTimer: ReturnType<typeof setInterval> | undefined
+  let coreDumpCheck: Promise<void> | undefined
+  let monitoringClosed = false
   try {
     await mkdir(runCgroup, { mode: 0o755 })
     cgroupCreated = true
@@ -255,6 +265,22 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     )
     childExit = childClose(launched)
     child = launched
+    // A pipe-based kernel core collector can keep a crashed process alive and
+    // hold every waiting launcher until the Run deadline. Observe kernel state,
+    // not payload stderr. Stop the exact owned tree; retain its actual signal.
+    coreDumpTimer = setInterval(() => {
+      if (monitoringClosed || stopReason !== undefined || coreDumpCheck !== undefined) return
+      coreDumpCheck = privateHasCoreDumpingProcess(runCgroup, limits.pids)
+        .then((dumping) => {
+          if (dumping && !monitoringClosed && stopReason === undefined) stop('core_dump')
+        })
+        .catch(() => {
+          if (!monitoringClosed && stopReason === undefined) stop('setup_failed')
+        })
+        .finally(() => {
+          coreDumpCheck = undefined
+        })
+    }, CORE_DUMP_POLL_MS)
     // Cancellation can close the gate while the coordinator is acknowledging
     // readiness. A failed write must settle through the same cleanup owner.
     ;(launched.stdio[4] as Writable).on('error', () => stop('setup_failed'))
@@ -282,12 +308,20 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     stopReason ??= 'setup_failed'
     if (stopReason === 'setup_failed') process.stderr.write(`${errorText(error)}\n`)
   } finally {
+    monitoringClosed = true
+    clearInterval(coreDumpTimer)
     clearTimeout(deadline)
     await outputDirectory?.close()
     let cleanupError: string | undefined
     try {
       child?.kill('SIGKILL')
       await killRun()
+      if (coreDumpCheck !== undefined)
+        await withinTimeout(
+          coreDumpCheck,
+          limits.cleanupTimeoutMs,
+          'core-dump check did not settle',
+        )
       // Spawn failure is already a setup failure; settlement still precedes cleanup.
       if (childExit !== undefined) {
         await withinTimeout(
@@ -321,6 +355,42 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     safeSend(control, terminal)
     control.end()
   }
+}
+
+/** Package-private kernel observation seam; never reads candidate-authored files. */
+export async function privateHasCoreDumpingProcess(
+  runCgroup: string,
+  maxProcesses: number,
+  readText: (path: string) => Promise<string> = (path) => readFile(path, 'utf8'),
+): Promise<boolean> {
+  const processes = (await readText(`${runCgroup}/cgroup.procs`)).trim()
+  const pids = processes === '' ? [] : processes.split('\n')
+  if (
+    !positiveInteger(maxProcesses) ||
+    pids.length > maxProcesses ||
+    pids.some((pid) => !/^[1-9][0-9]*$/.test(pid) || !Number.isSafeInteger(Number(pid)))
+  )
+    throw new Error('invalid owned process observation')
+  const membership = `0::${runCgroup.slice('/sys/fs/cgroup'.length)}`
+  for (const pid of pids) {
+    try {
+      const status = await readText(`/proc/${pid}/status`)
+      if (status.length > MAX_CONTROL_BYTES) throw new Error('oversized owned process status')
+      // Zombies have no mm and Linux omits CoreDumping from their status.
+      // They are reaped through childClose, not treated as inspection failures.
+      if (!/^CoreDumping:/m.test(status)) continue
+      const dumping = /^CoreDumping:[ \t]+([01])$/m.exec(status)
+      if (dumping === null) throw new Error('kernel core-dump observation is unavailable')
+      if (dumping[1] !== '1') continue
+      // PIDs can disappear or be reused during a scan. A stale foreign PID
+      // cannot establish a crash in this owner, and is never signalled directly.
+      if ((await readText(`/proc/${pid}/cgroup`)).split('\n').includes(membership)) return true
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'ESRCH') throw error
+    }
+  }
+  return false
 }
 
 async function enterMain(arguments_: readonly string[]): Promise<void> {
