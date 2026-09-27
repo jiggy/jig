@@ -447,12 +447,14 @@ function createSession(
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
                 host.onStage?.(`Capturing dependency inputs for ${packageLabel}`)
-                const workspace = await capturePrivateBunWorkspace({
-                  projectRoot: owner.root,
-                  packagePath: request.packagePath,
-                  captured: source,
-                  signal: budget.signal,
-                })
+                const workspace = await privateProfileSpan('dependency-workspace-capture', () =>
+                  capturePrivateBunWorkspace({
+                    projectRoot: owner.root,
+                    packagePath: request.packagePath,
+                    captured: source,
+                    signal: budget.signal,
+                  }),
+                )
                 if (workspace !== undefined) {
                   try {
                     const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
