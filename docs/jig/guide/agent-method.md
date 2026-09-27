@@ -124,6 +124,10 @@ token exhaustion is `limit`.
 
 ### Diagnose a failed request
 
+The following diagnostics are implemented in the source candidate, not yet in
+the published Agent alpha. Build its complete archive from reviewed source to
+exercise them.
+
 HTTP failures name the selected API and status, explain which configuration to
 check, and retain status-derived facts in the operation error's `details`:
 `phase`, `api`, `status`, `category`, and `retry: "not-attempted"`. An optional

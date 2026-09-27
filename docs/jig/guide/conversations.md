@@ -139,9 +139,9 @@ turn was cancelled; natural completion can win, in which case the control may be
 unfinished at callback return fails rather than detaching it.
 `AgentConversationError` retains received `turns`, any known `settlement`, and
 both primary and cleanup `errors`; ordinary `try/catch` remains sufficient.
-The source candidate also includes the first exposed error's bounded message in
-the failure summary; earlier installed packages may show only the aggregate
-heading. Inspect the retained `errors` when deliberately recovering.
+The source candidate includes the first exposed error's bounded message in the
+failure summary; this diagnostic improvement is not yet published. Inspect the
+retained `errors` when deliberately recovering.
 Optional `onEvent` filters or displays public updates synchronously without
 manual channel setup. Inspect `completed.observation?.status`: `incomplete`
 preserves observation errors without replacing the actual execution result.
