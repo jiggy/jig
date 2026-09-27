@@ -31,6 +31,12 @@ type TracePhase =
   | 'linux-owner-state-initialization'
   | 'rootless-containment-startup'
   | 'flow-execution'
+  | 'finite-acp-revalidation'
+  | 'finite-acp-containment'
+  | 'finite-acp-launch'
+  | 'finite-acp-exchange'
+  | 'finite-acp-release'
+  | 'finite-acp-recovery'
   | 'operation-owner-settlement'
   | 'root-fence'
   | 'root-settlement'
@@ -68,6 +74,12 @@ const tracePhases = new Set<TracePhase>([
   'linux-owner-state-initialization',
   'rootless-containment-startup',
   'flow-execution',
+  'finite-acp-revalidation',
+  'finite-acp-containment',
+  'finite-acp-launch',
+  'finite-acp-exchange',
+  'finite-acp-release',
+  'finite-acp-recovery',
   'operation-owner-settlement',
   'root-fence',
   'root-settlement',

@@ -89,6 +89,7 @@ import {
   requireParentFlowOwner,
   requireParentTarget,
 } from './invocation-context.js'
+import { privateProfileSpan } from './private-profile.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 
@@ -346,7 +347,9 @@ async function executeOwnedProvider(
   const scopeDigest = nativeSessionScope(input, provider)
   let failurePhase: PrivateFiniteAcpFailurePhase = 'preparation'
   try {
-    await revalidateProviderSupport(recipe, provider, input)
+    await privateProfileSpan('finite-acp-revalidation', () =>
+      revalidateProviderSupport(recipe, provider, input),
+    )
     let restored: PrivateCodexSessionState | undefined
     if (operation.session !== undefined && 'restore' in operation.session) {
       const snapshot = await claimPrivateNativeSession({
@@ -372,16 +375,18 @@ async function executeOwnedProvider(
         ? []
         : privateCodexSessionSecrets(runtime, credentialBootstrap)
     failurePhase = 'sealing'
-    const sealed = await sealPrivateExecutionOwner(
-      input.backend,
-      agentExecutionIntent(
-        recipe,
-        provider,
-        effectiveDeadlineUnixMs,
-        identity,
-        operation.session !== undefined,
+    const sealed = await privateProfileSpan('finite-acp-containment', () =>
+      sealPrivateExecutionOwner(
+        input.backend,
+        agentExecutionIntent(
+          recipe,
+          provider,
+          effectiveDeadlineUnixMs,
+          identity,
+          operation.session !== undefined,
+        ),
+        ownerAllocation,
       ),
-      ownerAllocation,
     )
     const sandbox: AcpSandbox = Object.freeze({ kind: SANDBOX_KIND, owner: sealed.identity })
     lifecycle = await recordPrivateRootChildSandbox({
@@ -397,24 +402,28 @@ async function executeOwnedProvider(
     })
     attemptedDispatch = true
     failurePhase = 'admission'
-    const component = await admitPrivateExecutionOwner(sealed, input.signal)
+    const component = await privateProfileSpan('finite-acp-launch', () =>
+      admitPrivateExecutionOwner(sealed, input.signal),
+    )
     output = component.output
     failurePhase = 'protocol'
-    execution = await runPrivateFiniteAcpResource(
-      component,
-      runtime,
-      endpoints,
-      input.signal,
-      operation.maxTurns,
-      ...(operation.session === undefined
-        ? []
-        : [
-            {
-              bootstrap: privateCodexSessionBootstrap(restored),
-              ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
-              ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
-            },
-          ]),
+    execution = await privateProfileSpan('finite-acp-exchange', () =>
+      runPrivateFiniteAcpResource(
+        component,
+        runtime,
+        endpoints,
+        input.signal,
+        operation.maxTurns,
+        ...(operation.session === undefined
+          ? []
+          : [
+              {
+                bootstrap: privateCodexSessionBootstrap(restored),
+                ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
+                ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
+              },
+            ]),
+      ),
     )
     failurePhase = 'settlement'
     if (
@@ -440,12 +449,17 @@ async function executeOwnedProvider(
         else throw error
       }
     }
-    await releaseKnownAcp(input, lifecycle, execution.fence)
+    await privateProfileSpan('finite-acp-release', () =>
+      releaseKnownAcp(input, lifecycle, execution.fence),
+    )
   } catch (error) {
     reportFailure(input, failurePhase, error)
     try {
       const active = await findLifecycle(input, input.call.operationId)
-      if (active !== undefined) await recoverPrivateRootFiniteAcpOwner(input, active)
+      if (active !== undefined)
+        await privateProfileSpan('finite-acp-recovery', () =>
+          recoverPrivateRootFiniteAcpOwner(input, active),
+        )
     } catch (cleanupError) {
       reportFailure(input, 'cleanup', cleanupError)
       throw new RunHostFatalOperationError(
