@@ -11,6 +11,9 @@ setup or package-held authority.
   policy. Provider code owns its selection, identity and projection.
 - `macos-exec.c` owns the private Darwin pre-exec boundary. The private host
   owns profile generation, durable admission, supervision, recovery and assembly.
+- `macos-exec-universal` contains the Intel and Apple Silicon launcher slices
+  compiled from that source with the Apple toolchain. Assembly copies it into
+  the release; installed consumers do not compile it.
 
 ## Local Contracts
 

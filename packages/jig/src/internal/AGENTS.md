@@ -691,6 +691,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 ## Verification
 
+- Native Mac candidate profiles are closed to Intel Darwin 23.4.0 build
+  23E224 and hosted Intel/Apple Silicon Darwin 24.6.0 build 24G830. The hosted
+  profiles have prerequisite ABI evidence; full conformance is required before
+  promoting support. Select architecture-native Bun and Mach-O slices; never
+  treat Rosetta execution as Apple Silicon qualification.
+
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.
 - On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables

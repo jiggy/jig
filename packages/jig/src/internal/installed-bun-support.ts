@@ -1,6 +1,6 @@
+import { privateMacosKernelPlatform, type PrivateMacosPlatform } from './macos-process-controls.js'
 import { constants } from 'node:fs'
 import { access, lstat, realpath } from 'node:fs/promises'
-import { release as osRelease } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import type { JsonValue } from '../json.js'
@@ -35,7 +35,7 @@ const MACOS_BUN = Object.freeze({
 })
 const authenticSupports = new WeakSet<object>()
 
-export type PrivateInstalledBunPlatform = 'linux-x64-glibc' | 'darwin-x64-23.4.0-23E224'
+export type PrivateInstalledBunPlatform = 'linux-x64-glibc' | PrivateMacosPlatform
 /** Closed evidence that the installed release is incomplete or invalid. */
 export class PrivateInstalledBundleError extends Error {
   constructor() {
@@ -83,7 +83,7 @@ export async function openPrivateInstalledBunSupport(
   location: PrivateInstalledBunLocation,
 ): Promise<PrivateInstalledBunSupport> {
   const platform = installedPlatform()
-  const runtime = platform === 'linux-x64-glibc' ? LINUX_BUN : MACOS_BUN
+  const runtime = platform === 'linux-x64-glibc' ? LINUX_BUN : process.arch === 'arm64' ? { ...MACOS_BUN, digest: 'sha256:35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5' } : MACOS_BUN
   const releaseRoot = await installedDirectory(location.releaseRoot, 'installed Jig release')
   if (releaseRoot !== location.releaseRoot)
     throw new PrivateInstalledBundleError()
@@ -320,8 +320,7 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
 
 function installedPlatform(): PrivateInstalledBunPlatform {
   if (process.platform === 'linux' && process.arch === 'x64') return 'linux-x64-glibc'
-  if (process.platform === 'darwin' && process.arch === 'x64' && osRelease() === '23.4.0')
-    return 'darwin-x64-23.4.0-23E224'
+  if (process.platform === 'darwin') return privateMacosKernelPlatform()
   throw new Error('the installed Bun host is unavailable on this platform')
 }
 
@@ -329,7 +328,7 @@ async function resolveInstalledBun(
   releaseRoot: string,
   platform: PrivateInstalledBunPlatform,
 ): Promise<string> {
-  const packagePath = platform === 'linux-x64-glibc' ? LINUX_BUN_PACKAGE : MACOS_BUN_PACKAGE
+  const packagePath = platform === 'linux-x64-glibc' ? LINUX_BUN_PACKAGE : process.arch === 'arm64' ? join('@oven', 'bun-darwin-aarch64', 'bin', 'bun') : MACOS_BUN_PACKAGE
   const candidates = [
     join(releaseRoot, 'node_modules', packagePath),
     join(releaseRoot, '..', '..', packagePath),

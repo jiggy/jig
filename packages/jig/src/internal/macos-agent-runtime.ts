@@ -213,23 +213,23 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
         )
           throw new Error('invalid native Agent Mach-O slice bounds')
         ranges.push({ start: position, end: position + length })
-        if (u32(table, offset) !== 0x01000007) continue
-        // The qualified client profile uses baseline x86_64, not x86_64h dispatch.
-        if (selected || !baselineX64Subtype(u32(table, offset + 4)))
+        if (u32(table, offset) !== nativeCpuType()) continue
+        // Accept only baseline native slices, never translated architecture dispatch.
+        if (selected || !nativeSubtype(u32(table, offset + 4)))
           throw new Error('unsupported native Agent Mach-O architecture')
         selected = true
         start = position
         sliceSize = length
       }
-      if (!selected) throw new Error('native Agent requires macOS x86-64 Mach-O')
+      if (!selected) throw new Error('native Agent requires native macOS Mach-O')
     }
     const header = await read(start, 32)
     if (
       header.readUInt32LE(0) !== 0xfeedfacf ||
-      header.readUInt32LE(4) !== 0x01000007 ||
-      !baselineX64Subtype(header.readUInt32LE(8))
+      header.readUInt32LE(4) !== nativeCpuType() ||
+      !nativeSubtype(header.readUInt32LE(8))
     )
-      throw new Error('native Agent requires macOS x86-64 Mach-O')
+      throw new Error('native Agent requires native macOS Mach-O')
     const type = header.readUInt32LE(12),
       count = header.readUInt32LE(16),
       commandSize = header.readUInt32LE(20)
@@ -322,7 +322,9 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
   }
 }
 
-function baselineX64Subtype(value: number): boolean {
+function nativeCpuType(): number { return process.arch === 'arm64' ? 0x0100000c : 0x01000007 }
+function nativeSubtype(value: number): boolean {
+  if (process.arch === 'arm64') return value === 0
   // mach/machine.h defines LIB64 as a library-width flag, not an ISA extension.
   return value === 3 || value === 0x80000003
 }

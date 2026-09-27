@@ -6,7 +6,7 @@ import {
   requirePrivateMacosRecoveryOwner,
 } from './macos-owner-state.js'
 
-// Private Darwin 23 ABI. Qualification of another kernel is a separate change.
+// Exact candidate profiles; each requires independent native qualification.
 const PROC_PIDUNIQIDENTIFIERINFO = 17
 const PROC_PIDCOALITIONINFO = 20
 const RESOURCE_USAGE_BYTES = 37 * 8
@@ -32,7 +32,7 @@ const authenticCoalitions = new WeakSet<object>()
 
 function calls(): Native {
   if (native !== undefined) return native
-  if (process.platform !== 'darwin' || process.arch !== 'x64' || release() !== '23.4.0')
+  if (process.platform !== 'darwin' || !['x64', 'arm64'].includes(process.arch))
     throw new Error('macOS process controls are not qualified on this kernel')
   const ffi = createRequire(import.meta.url)('bun:ffi') as {
     ptr(bytes: Uint8Array): number
@@ -53,7 +53,7 @@ function calls(): Native {
     __error: { args: [], returns: 'ptr' },
   })
   const opened = { ptr: ffi.ptr, read: ffi.read, symbols: library.symbols }
-  if (kernelString(opened, 'kern.osversion') !== '23E224')
+  if (!platformFor(kernelString(opened, 'kern.osversion')))
     throw new Error('macOS process controls are not qualified on this kernel build')
   native = opened
   return native
@@ -348,4 +348,19 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
   })
   authenticCoalitions.add(control)
   return control
+}
+
+export type PrivateMacosPlatform = 'darwin-x64-23.4.0-23E224' | 'darwin-x64-24.6.0-24G830' | 'darwin-arm64-24.6.0-24G830'
+function platformFor(build: string): PrivateMacosPlatform | undefined {
+  if (process.arch === 'x64' && release() === '23.4.0' && build === '23E224') return 'darwin-x64-23.4.0-23E224'
+  if (release() === '24.6.0' && build === '24G830') {
+    if (process.arch === 'x64') return 'darwin-x64-24.6.0-24G830'
+    if (process.arch === 'arm64') return 'darwin-arm64-24.6.0-24G830'
+  }
+}
+/** Exact observed candidate identity, not a support-promotion claim. */
+export function privateMacosKernelPlatform(): PrivateMacosPlatform {
+  const platform = platformFor(kernelString(calls(), 'kern.osversion'))
+  if (!platform) throw new Error('native macOS platform is unavailable')
+  return platform
 }

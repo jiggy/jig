@@ -329,7 +329,7 @@ native('qualified Mac native runtime closure', () => {
       ['-dynamiclib', '-install_name', '@rpath/libfixture.dylib', source, '-o', library],
       [main, '-L', root, '-lfixture', '-Wl,-rpath,@executable_path', '-o', executable],
     ]) {
-      const result = Bun.spawnSync(['/usr/bin/clang', '-arch', 'x86_64', ...args], {
+      const result = Bun.spawnSync(['/usr/bin/clang', '-arch', process.arch === 'arm64' ? 'arm64' : 'x86_64', ...args], {
         stdout: 'pipe',
         stderr: 'pipe',
         timeout: 20_000,

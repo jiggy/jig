@@ -66,7 +66,7 @@ describe('fixed installed Bun support', () => {
       root,
       'node_modules',
       '@oven',
-      macos ? 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline',
+      macos ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline',
       'bin',
       'bun',
     )
@@ -91,7 +91,7 @@ describe('fixed installed Bun support', () => {
       )
       if (macos) {
         const launcher = join(root, 'libexec', 'macos-exec')
-        await copyFile(new URL('../support/macos-exec-x64', import.meta.url), launcher)
+        await copyFile(new URL('../support/macos-exec-universal', import.meta.url), launcher)
         await chmod(launcher, 0o755)
       }
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'worker\n')

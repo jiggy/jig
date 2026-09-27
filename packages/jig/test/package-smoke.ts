@@ -20,10 +20,10 @@ let completed = false
 const installedRuntime =
   process.platform === 'darwin'
     ? Object.freeze({
-        package: 'bun-darwin-x64-baseline',
+        package: process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline',
         version: '1.4.2',
         revision: '1.4.2+744846f84',
-        sha256: '2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
+        sha256: process.arch === 'arm64' ? '35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5' : '2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
       })
     : Object.freeze({
         package: 'bun-linux-x64-baseline',
@@ -136,6 +136,7 @@ try {
   })
   assert.deepEqual(installedManifest.optionalDependencies, {
     '@oven/bun-darwin-x64-baseline': '1.4.2',
+    '@oven/bun-darwin-aarch64': '1.4.2',
     '@oven/bun-linux-x64-baseline': '1.3.3',
   })
   assert.equal(Object.hasOwn(installedManifest, 'private'), false)

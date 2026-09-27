@@ -67,7 +67,12 @@ entry=$release/libexec/installed-cli.js
 [ -f "$entry" ] || fail
 
 case $($uname_command -s 2>/dev/null) in
-  Darwin) runtime_package=bun-darwin-x64-baseline ;;
+  Darwin)
+    case $($uname_command -m 2>/dev/null) in
+      x86_64) runtime_package=bun-darwin-x64-baseline ;;
+      arm64) runtime_package=bun-darwin-aarch64 ;;
+      *) fail ;;
+    esac ;;
   Linux) runtime_package=bun-linux-x64-baseline ;;
   *) fail ;;
 esac

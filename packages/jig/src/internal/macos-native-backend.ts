@@ -1,7 +1,8 @@
+import { privateMacosKernelPlatform, type PrivateMacosPlatform } from './macos-process-controls.js'
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import { lstat, mkdir, mkdtemp, realpath, rmdir } from 'node:fs/promises'
-import { constants as osConstants, release as osRelease } from 'node:os'
+import { constants as osConstants } from 'node:os'
 import { join, posix } from 'node:path'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
 import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
@@ -58,7 +59,7 @@ export interface PrivateMacosBackendOptions {
 export interface PrivateMacosBackendMechanismSupport {
   readonly kind: 'macos-supervised-seatbelt-mechanism/1'
   readonly digest: string
-  readonly platform: 'darwin-x64-23.4.0-23E224'
+  readonly platform: PrivateMacosPlatform
   readonly trustedBunPath: string
   readonly trustedBunDigest: string
   readonly trustedSupervisorPath: string
@@ -642,8 +643,7 @@ async function observeSupport(
   options: NormalizedOptions,
 ): Promise<PrivateMacosBackendMechanismSupport> {
   privateMacosCurrentProcessIdentity()
-  if (osRelease() !== '23.4.0' || process.arch !== 'x64')
-    throw new Error('native macOS Backend is not qualified on this host')
+  const platform = privateMacosKernelPlatform()
   const [bunPath, supervisorPath, launcherPath] = await Promise.all([
     realpath(options.bunPath),
     realpath(options.supervisorPath),
@@ -662,7 +662,7 @@ async function observeSupport(
   ])
   const fields = {
     kind: 'macos-supervised-seatbelt-mechanism/1' as const,
-    platform: 'darwin-x64-23.4.0-23E224' as const,
+    platform,
     trustedBunPath: bunPath,
     trustedBunDigest,
     trustedSupervisorPath: supervisorPath,

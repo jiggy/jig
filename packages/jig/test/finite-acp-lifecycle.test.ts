@@ -54,7 +54,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
       })
       const executablePath = await realpath(installedBunLocation.executablePath)
       const runtimePackage =
-        process.platform === 'darwin' ? 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
+        process.platform === 'darwin' ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
       await mkdir(join(release, `node_modules/@oven/${runtimePackage}/bin`), {
         recursive: true,
       })

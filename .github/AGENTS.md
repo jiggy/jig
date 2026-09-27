@@ -116,6 +116,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   process/coalition ABI observations, and SDK layout assertions. These probes
   neither authorize a backend nor establish full host conformance. Keep their
   evidence separate from the qualified exact-kernel gate.
+  After prerequisites, build the ordinary candidate and execute native
+  containment/recovery tests on each architecture. A prerequisite pass must
+  not conceal a failed native job or stand in for installed-host conformance.
 
 ## Verification
 

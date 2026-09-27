@@ -8,7 +8,7 @@ test('installed launcher uses a fixed system tool, not ambient readlink or Bun',
   try {
     const release = join(root, 'release')
     const runtimePackage =
-      process.platform === 'darwin' ? 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
+      process.platform === 'darwin' ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
     const runtime = join(release, `node_modules/@oven/${runtimePackage}/bin/bun`)
     const systemReadlink = join(root, 'system/readlink')
     const shell = await realpath(Bun.which('bash')!)
