@@ -660,24 +660,32 @@ async function releaseAdmitAndClose(
       }
       if (work.lifecycle.backing !== undefined) {
         const backing = parseBacking(work.lifecycle.backing.value)
-        await disposePrivatePackageMaterializationLease(
-          plan.packageAllocation.parent.path,
-          backing.lease,
+        await privateProfileSpan('root-package-release', () =>
+          disposePrivatePackageMaterializationLease(
+            plan.packageAllocation.parent.path,
+            backing.lease,
+          ),
         )
       } else {
-        const recovered = await recoverPrivatePackageMaterializationAllocation(
-          plan.packageAllocation.parent.path,
-          plan.packageAllocation,
-        )
-        if (recovered.state === 'complete') await recovered.lease.dispose()
+        await privateProfileSpan('root-package-release', async () => {
+          const recovered = await recoverPrivatePackageMaterializationAllocation(
+            plan.packageAllocation.parent.path,
+            plan.packageAllocation,
+          )
+          if (recovered.state === 'complete') await recovered.lease.dispose()
+        })
       }
       if (work.lifecycle.sandbox !== undefined) {
         const sandbox = parseSandbox(work.lifecycle.sandbox.value)
         const fence = parseFence(work.lifecycle.fence!.value)
-        ownerRelease = await releasePrivateLinuxOwnerState(sandbox.owner, fence.receipt)
+        ownerRelease = await privateProfileSpan('root-owner-release', () =>
+          releasePrivateLinuxOwnerState(sandbox.owner, fence.receipt),
+        )
       } else {
-        const cancelled = await cancelPrivateLinuxOwnerStateAllocation(plan.ownerAllocation)
-        ownerRelease = await releasePrivateLinuxOwnerState(plan.ownerAllocation, cancelled)
+        ownerRelease = await privateProfileSpan('root-owner-release', async () => {
+          const cancelled = await cancelPrivateLinuxOwnerStateAllocation(plan.ownerAllocation)
+          return await releasePrivateLinuxOwnerState(plan.ownerAllocation, cancelled)
+        })
       }
     }
     work = await advanceCheckpoint(input, work, 'release', {

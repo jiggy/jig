@@ -40,6 +40,8 @@ type TracePhase =
   | 'operation-owner-settlement'
   | 'root-fence'
   | 'root-settlement'
+  | 'root-package-release'
+  | 'root-owner-release'
   | 'project-session-close'
 
 interface CapturedCommand {
@@ -83,6 +85,8 @@ const tracePhases = new Set<TracePhase>([
   'operation-owner-settlement',
   'root-fence',
   'root-settlement',
+  'root-package-release',
+  'root-owner-release',
   'project-session-close',
 ])
 

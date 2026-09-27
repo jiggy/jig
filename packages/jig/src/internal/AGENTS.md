@@ -15,6 +15,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+- `private-profile.ts` owns opt-in bounded phase-only diagnostics, written before
+  shutdown. Partial spans are not completion or machine-crash durability evidence.
 - Admission storage retains private native-session snapshots under exact
   recipient scopes: at most sixteen 8 MiB UTF-8 rollouts, with 24-hour logical
   expiry and atomic single-use claims that delete the payload. Access requires
