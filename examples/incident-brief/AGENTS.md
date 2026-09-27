@@ -24,6 +24,8 @@ or newer instructions. Keep the reviewer advancing independently.
 - `jig.ts` owns the reviewed default brief invocation with its input and deadline.
   Worker diagnostics expose static application phases, not model text or native
   dispatch claims; they remain distinct from the final settlement packet.
+  Unsuccessful packets retain bounded public SDK error messages beside their
+  codes, never arbitrary exception text; missing causes remain explicit.
 
 ## Local Contracts
 

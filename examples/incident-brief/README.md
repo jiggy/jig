@@ -52,6 +52,11 @@ of remote dispatch or completion; a deadline can still prevent the final packet.
 Inspect each branch's `outcome`: `blocked` retains available unsuccessful work
 and the other worker's result. Model text is not independently verified evidence
 or permission to publish.
+An unsuccessful worker includes `failureDetails` with bounded public operation
+explanations; a root-level worker-call failure includes `message`. These distinguish
+lost connections, execution failures and incomplete application work without
+requiring private traces. A received answer still does not establish clean final
+settlement, and a deadline can prevent the packet from arriving at all.
 
 ## What triggers the handoff?
 

@@ -309,6 +309,15 @@ export async function work(run: RunContext, converse = withAgentConversation): P
             failures: failures.map((error) =>
               error instanceof OperationError ? error.code : 'INCOMPLETE_WORK',
             ),
+            failureDetails: failures.map((error) => ({
+              code: error instanceof OperationError ? error.code : 'INCOMPLETE_WORK',
+              // Public SDK error text is data. Never copy arbitrary exception
+              // messages, causes, stack traces or native implementation details.
+              message:
+                error instanceof OperationError
+                  ? [...error.message].slice(0, 1024).join('')
+                  : 'Application work did not complete; no further cause was retained.',
+            })),
           }
         : {}),
     } as unknown as JsonValue,

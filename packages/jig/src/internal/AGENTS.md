@@ -366,6 +366,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   authoritative errors remain failures even before session creation or after a turn.
   Preserve closed native-session/protocol failure explanations after possible
   dispatch without exposing exception text or weakening uncertainty and cleanup.
+  Failed finite ACP operations identify the last host execution phase using
+  fixed text; starting a client does not establish remote dispatch.
 - Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or finite ACP resource endpoints. Unused incoming
   rights may move onward; each child and effect retains its own participant identity.
