@@ -90,7 +90,8 @@ import { withAgentConversation } from '@jigging/agent-method/conversation'
 import { handle } from '@jigging/flow'
 
 await handle(async run => {
-  if (run.input === null || typeof run.input !== 'object' || Array.isArray(run.input))
+  if (run.input === null || typeof run.input !== 'object' || Array.isArray(run.input)
+      || !('facts' in run.input) || !('correction' in run.input))
     throw new TypeError('Supply facts and correction strings.')
   const { facts, correction } = run.input
   if (typeof facts !== 'string' || typeof correction !== 'string'
