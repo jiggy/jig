@@ -300,6 +300,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   live filesystem scan, and cannot grant authority or select a replacement.
 - Deadlines and cancellation fence descendants, settle each terminal once,
   and complete bounded cleanup. Do not replay uncertain operations.
+- The independent Linux supervisor polls bounded owned kernel process state.
+  Confirmed core dumping fences that exact cgroup without waiting for the Run
+  deadline. Keep the private crash reason separate from the actual reaped signal;
+  neither payload stderr nor a reused foreign PID establishes an owned crash.
 - Durable transitions use exact identities and conflict-safe commits;
   recovery must not create duplicate owners or official Runs.
 - Root attachments use invocation-owned descriptors and canonical file identity;

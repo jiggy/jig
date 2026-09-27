@@ -308,6 +308,10 @@ for await (const line of lines) {
       await put('package.json', { private: true, type: 'module' })
       await put('flows/echo/FLOW.ts', echo)
       await put('flows/files/FLOW.ts', echo)
+      await put(
+        'flows/crash/FLOW.ts',
+        "console.error('fixture: installed Flow deliberately raising SIGSEGV'); process.kill(process.pid, 'SIGSEGV');",
+      )
       await put('flows/files/FLOW.contract.json', {
         $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
         input: {
@@ -334,6 +338,16 @@ for await (const line of lines) {
       expect(review.stdout).toContain('Project entrypoint')
       const inspection = JSON.parse((await succeed(['inspect', '--json'])).stdout)
       expect(inspection.entrypoint).toContain('binding:factory --input')
+      const crashStarted = performance.now()
+      const crashed = await invoke(['run', 'flow:flows/crash', '--timeout', '30s', '--json'])
+      expect(performance.now() - crashStarted).toBeLessThan(20_000)
+      expect(crashed.exit).toBe(1)
+      const crashTerminal = JSON.parse(crashed.stdout)
+      expect(crashTerminal.status).toBe('failed')
+      // Fast natural signal exit can close Run/0 before crash polling observes
+      // it. Both are honest failures; neither should consume the Run deadline.
+      expect(['EXECUTION_FAILED', 'CHANNEL_LOST']).toContain(crashTerminal.code)
+      // A following ordinary Run remains usable after the failed invocation.
       // Unreviewed source must not affect selection or cause reevaluation.
       await put('jig.ts', 'throw new Error("unreviewed source must not execute")')
       const first = JSON.parse((await succeed(['run', '--json'])).stdout)

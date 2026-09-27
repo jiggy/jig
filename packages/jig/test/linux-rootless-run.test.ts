@@ -14,6 +14,12 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
+import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
+import {
+  PRIVATE_FINITE_ACP_CHANNELS,
+  runPrivateFiniteAcpResource,
+} from '../src/internal/finite-acp-resource.js'
 import { privateCaptureAttachments } from '../src/internal/linux-file-input.js'
 import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
 import {
@@ -25,15 +31,9 @@ import {
   releasePrivateLinuxOwnerState,
   requirePrivateLinuxMechanismUnchanged,
 } from '../src/internal/linux-rootless-backend.js'
-import { RunHostSession } from '../src/run/session.js'
-import { ChannelBroker } from '../src/run/channels.js'
 import type { JsonObject, JsonValue } from '../src/json.js'
-import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
-import {
-  PRIVATE_FINITE_ACP_CHANNELS,
-  runPrivateFiniteAcpResource,
-} from '../src/internal/finite-acp-resource.js'
-import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
+import { ChannelBroker } from '../src/run/channels.js'
+import { RunHostSession } from '../src/run/session.js'
 import { deterministicAcpProgram } from './fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
@@ -113,7 +113,6 @@ delegatedDescribe('private rootless Linux Run', () => {
         phases.push({ phase, timeMs: Math.round(performance.now() - started) })
       const key = 'synthetic-settlement-only'
       const abort = new AbortController()
-      let interruption: ReturnType<typeof setTimeout> | undefined
       const server = Bun.serve({
         hostname: '127.0.0.1',
         port: 0,
@@ -128,11 +127,6 @@ delegatedDescribe('private rootless Linux Run', () => {
           expect(event.scenario).toBe(scenario)
           if (event.phase === undefined) expect(event.keyInEnvironment).toBe(false)
           mark(event.phase ?? 'prompt-dispatched')
-          if (scenario === 'signal')
-            interruption = setTimeout(() => {
-              mark('explicit-cancellation')
-              abort.abort(new Error('synthetic cancellation after deliberate signal'))
-            }, 1_000)
           return new Response('recorded')
         },
       })
@@ -251,12 +245,20 @@ delegatedDescribe('private rootless Linux Run', () => {
           expect(fence.exitCode === 0 && fence.signal === null).toBe(false)
           if (scenario === 'exit')
             expect(fence).toMatchObject({ stopReason: 'payload_exit', exitCode: 17, signal: null })
+          if (scenario === 'signal') {
+            expect(['payload_exit', 'core_dump']).toContain(fence.stopReason)
+            expect(abort.signal.aborted).toBe(false)
+            const dispatched = phases.find((item) => item.phase === 'prompt-dispatched')
+            const completed = phases.at(-1)
+            if (dispatched === undefined || completed === undefined)
+              throw new Error('The native crash proof omitted its phase observations')
+            expect(completed.timeMs - dispatched.timeMs).toBeLessThan(5_000)
+          }
         }
         expect(await missing(component.cgroup.runCgroup)).toBe(true)
         expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
         clean = true
       } finally {
-        clearTimeout(interruption)
         abort.abort()
         try {
           await work
@@ -298,6 +300,7 @@ delegatedDescribe('private rootless Linux Run', () => {
       let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
       let settled = false
       const evidence = await mkdtemp(join(tmpdir(), 'jig-signal-evidence-'))
+      let crashObservedAt: number | undefined
       try {
         component = await backend.launch(
           plan(host, fixture, 'signal-provenance', { deadlineMs: 30_000 }),
@@ -314,6 +317,7 @@ delegatedDescribe('private rootless Linux Run', () => {
                 throw new Error('signal diagnostic output exceeded its bound')
               if (!sampled && text.includes('Segmentation fault')) {
                 sampled = true
+                crashObservedAt = performance.now()
                 await Bun.sleep(200)
                 const pids = (
                   await readFile(join(component!.cgroup.runCgroup, 'cgroup.procs'), 'utf8').catch(
@@ -374,10 +378,13 @@ delegatedDescribe('private rootless Linux Run', () => {
         // A Bun handler may report the payload, or forwarding may report the
         // trampoline. Preserve the actual text; neither names the cause alone.
         expect(stderr).toContain('Segmentation fault')
-        // The diagnostic preserves natural exit versus deadline fencing. A
-        // crashed process can still be alive in kernel core-dump settlement.
+        // Preserve natural exit versus explicit crash fencing, never wait for
+        // the thirty-second Run deadline or infer a signal from the panic text.
         expect(receipt.fenced).toBe(true)
-        expect(['payload_exit', 'deadline']).toContain(receipt.stopReason)
+        expect(['payload_exit', 'core_dump']).toContain(receipt.stopReason)
+        expect(crashObservedAt).toBeDefined()
+        if (crashObservedAt === undefined) throw new Error('The signal diagnostic was not observed')
+        expect(performance.now() - crashObservedAt).toBeLessThan(5_000)
         expect(receipt.exitCode === 0 && receipt.signal === null).toBe(false)
         expect(receipt.evidence.memoryEvents.oom_kill ?? 0).toBe(0)
         expect(receipt.evidence.pidsEvents.max ?? 0).toBe(0)
