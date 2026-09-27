@@ -238,6 +238,15 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/run-checkpoint-lifecycle.test.ts
           --timeout 90000
 
+      - name: Prove packed source edits reuse dependencies without reusing authority
+        if: matrix.suite == 'installed-evidence'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
+          "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
+          -t 'packed project entrypoint' --timeout 600000
+
       - name: Prove ordinary ACP Agent progress and cancellation
         if: matrix.suite == 'installed-evidence'
         run: >-

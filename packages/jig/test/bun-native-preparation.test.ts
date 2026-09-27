@@ -26,7 +26,7 @@ const hostTest = HOSTILE || MACOS ? test : test.skip
 const linuxTest = HOSTILE ? test : test.skip
 
 proofDescribe('private contained Bun dependency preparation', () => {
-  test('workspace preparation reuse stays in the approving project and checks fresh shared inputs', async () => {
+  test('workspace dependencies stay project-local while code edits assemble fresh reviewed source', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-workspace-reuse-'))
     const put = async (path: string, value: unknown) => {
       await mkdir(dirname(join(root, path)), { recursive: true })
@@ -145,16 +145,19 @@ proofDescribe('private contained Bun dependency preparation', () => {
             ),
           ).toBeTrue()
           await put('libs/helper/index.js', 'export const value = 2')
-          await expect(review('a', false)).rejects.toMatchObject({
-            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
-          })
-          await review('a', true)
+          const edited = await review('a', false)
+          expect(edited.plan.state).toBe('applicable')
+          expect(
+            edited.stages.some((stage) => stage.startsWith('Reusing approved dependencies')),
+          ).toBeTrue()
+          expect(
+            edited.stages.some((stage) => stage.startsWith('Preparing dependencies')),
+          ).toBeFalse()
           expect((await review('a', false)).plan.state).toBe('unchanged')
           await put('libs/helper/added.txt', 'new captured file')
-          await expect(review('a', false)).rejects.toMatchObject({
-            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
-          })
+          expect((await review('a', false)).plan.state).toBe('applicable')
           await rm(join(root, 'libs/helper/added.txt'))
+          expect((await review('a', false)).plan.state).toBe('applicable')
           expect((await review('a', false)).plan.state).toBe('unchanged')
           await put('package.json', {
             private: true,

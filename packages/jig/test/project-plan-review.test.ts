@@ -2,12 +2,12 @@ import { describe, expect, test } from 'bun:test'
 import { parse as parseYaml } from 'yaml'
 
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
+import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from './fixtures/agent-contract.js'
-import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 
 describe('private project Plan review', () => {
   test('shows added, changed and removed project entrypoints in review', () => {
@@ -642,15 +642,18 @@ describe('private project Plan review', () => {
         ...target.disposition,
         execution: {
           ...target.disposition.execution,
-          preparationInputDigest: `sha256:${'b'.repeat(64)}`,
+          preparation: {
+            inputDigest: `sha256:${'b'.repeat(64)}`,
+            package: target.disposition.execution.package,
+          },
         },
       },
     })
     expect(evidence.text).toContain(
-      'records captured workspace inputs for future preparation reuse',
+      'records dependency inputs and installed bytes for future preparation reuse',
     )
     expect(evidence.text).toContain('Prepared files and dependency layout are unchanged.')
-    expect(evidence.text).not.toContain('Workspace preparation inputs changed')
+    expect(evidence.text).not.toContain('Dependency preparation evidence changed')
     const reordered = render({
       disposition: target.disposition,
       request: Object.fromEntries(Object.entries(target.request).reverse()),
