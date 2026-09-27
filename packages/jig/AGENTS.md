@@ -382,6 +382,10 @@ admitted FLOW packages.
   branches, predecessor settlement, one successor and residue, not model quality.
   Failed handoff fixtures retain bounded phase/dispatch timing with their results;
   timing is diagnostic evidence, not permission to extend execution deadlines.
+- `linux-rootless-run.test.ts` isolates real finite ACP exit, post-crash
+  cancellation and shutdown-grace fencing with a synthetic authenticated peer.
+  Its deliberate payload/launcher SIGSEGV probes retain bounded process-state
+  and fencing evidence, not native-client qualification or crash-origin proof.
 - Test diagnostic usefulness as well as redaction, and human-facing output
   alongside its machine-readable contract.
 
