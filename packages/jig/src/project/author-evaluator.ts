@@ -343,7 +343,7 @@ export async function evaluateAuthorClosure(
       terminationReason === 'memory_limit'
     ) {
       invalid(
-        'PROJECT_EVALUATION_LIMIT',
+        'PROJECT_EVALUATOR_MEMORY_LIMIT',
         'evaluator reached its hard memory limit',
         entryProjectPath,
       )
@@ -353,14 +353,14 @@ export async function evaluateAuthorClosure(
       terminationReason === 'process_limit'
     ) {
       invalid(
-        'PROJECT_EVALUATION_LIMIT',
+        'PROJECT_EVALUATOR_PROCESS_LIMIT',
         'evaluator reached its hard process limit',
         entryProjectPath,
       )
     }
     if (terminationReason === 'deadline') {
       invalid(
-        'PROJECT_EVALUATION_LIMIT',
+        'PROJECT_EVALUATOR_DEADLINE',
         'evaluator reached its hard wall deadline',
         entryProjectPath,
       )

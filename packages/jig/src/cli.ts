@@ -1531,7 +1531,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_EVALUATION_FAILED:
         'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants, defaultProviders and entrypoint',
       PROJECT_EVALUATION_LIMIT:
-        'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
+        'project evaluation exceeded a capture or execution limit; keep authoring modules small and inert. The specific limiting resource was not retained. Preserve this diagnostic if a small declaration fails. No Flow was started',
       PROJECT_DECLARATION_INVALID:
         'export a valid defineJig or defineBinding declaration from the indicated module',
       CHANNEL_FIELD: 'check channel declarations and descriptors against FLOW Channel Contract/0',

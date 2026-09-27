@@ -1,5 +1,11 @@
 /** Closed explanations; evaluator/launcher exception text is never public guidance. */
 export const EVALUATOR_HINTS = Object.freeze({
+  PROJECT_EVALUATOR_MEMORY_LIMIT:
+    'The configuration evaluator reached its enforced memory limit. Keep declarations small and inert; preserve this diagnostic if a small declaration fails. No Flow was started.',
+  PROJECT_EVALUATOR_PROCESS_LIMIT:
+    'The configuration evaluator reached its enforced process limit. Preserve this diagnostic and report it with the indicated declaration; changing a Flow deadline will not fix review. No Flow was started.',
+  PROJECT_EVALUATOR_DEADLINE:
+    'The configuration evaluator reached its enforced wall-clock deadline. This does not establish whether authored work or runtime startup consumed the budget. Preserve this diagnostic if a small, inert declaration fails. No Flow was started.',
   PROJECT_EVALUATOR_SUPPORT:
     'Jig could not verify its configuration evaluator files. Restore the complete Jig installation and retry review. No Flow was started.',
   PROJECT_EVALUATOR_LAUNCH:
