@@ -1,8 +1,8 @@
 # Reduce ordinary startup and settlement overhead
 
-Status: active; a bounded opt-in profile harness is implemented, but no
-supported-host measurements have been collected. The installed-evidence shard
-can run the profile manually on Ubuntu 24.04 x86-64 from the exact frozen Jig
+Status: measured; the bounded opt-in profile completed on Ubuntu 24.04 x86-64.
+No runtime optimization or before/after improvement is established. The
+installed-evidence shard can run the profile manually on Ubuntu 24.04 x86-64 from the exact frozen Jig
 and FLOW archives; its results do not gate the normal host check.
 
 ## Proposed scope
