@@ -129,6 +129,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   environment values, provider output, or filesystem paths. Capture failure
   must not change the Run outcome. This is maintainer-only profiling, not
   telemetry, a runtime option, or a supported extension point.
+  Its planning trace distinguishes support verification, envelope startup,
+  execution/settlement and workspace capture; nested spans must not be summed.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
   coordinator. Reuse filesystem identity and retained-artifact verification;

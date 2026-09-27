@@ -7,6 +7,10 @@ const MAX_RECORD_BYTES = 192
 
 export type PrivateProfilePhase =
   | 'author-configuration-evaluation'
+  | 'author-support-verification'
+  | 'author-envelope-startup'
+  | 'author-execution-settlement'
+  | 'dependency-workspace-capture'
   | 'project-planning'
   | 'installed-host-opening'
   | 'project-session-opening'

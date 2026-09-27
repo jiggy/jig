@@ -40,6 +40,8 @@ operational baselines, and public-site assembly.
   three-Flow conversation. It excludes package/fixture setup, records one warmup
   plus five fresh-project trials, and preserves bounded failure evidence. It
   makes no provider calls and is not a performance claim or release threshold.
+  Planning subphases separate configuration support verification, envelope
+  startup, execution/settlement and workspace capture before selecting a change.
 - `test-operational-baseline.ts` retains failed fixtures and private command
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed; residue or

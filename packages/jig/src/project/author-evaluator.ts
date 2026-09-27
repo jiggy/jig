@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { invalid, unavailable } from '../diagnostics.js'
+import { privateProfileSpan } from '../internal/private-profile.js'
 import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupLimits,
@@ -154,7 +155,9 @@ export async function evaluateAuthorClosure(
     )
   }
   const installedSupport = requirePrivateInstalledBunSupport(options.installedSupport)
-  await revalidatePrivateInstalledBunSupport(installedSupport).catch((error) =>
+  await privateProfileSpan('author-support-verification', () =>
+    revalidatePrivateInstalledBunSupport(installedSupport),
+  ).catch((error) =>
     unavailable(
       'PROJECT_EVALUATOR_SUPPORT',
       `installed evaluator support is unavailable: ${errorText(error)}`,
@@ -203,8 +206,8 @@ export async function evaluateAuthorClosure(
   })
   const runId = `config-${process.pid.toString(36)}-${(++evaluationSequence).toString(36)}`
   const limits = evaluatorLimits()
-  const component = await options.backend
-    .launch(
+  const component = await privateProfileSpan('author-envelope-startup', () =>
+    options.backend.launch(
       {
         runId,
         limits,
@@ -218,14 +221,14 @@ export async function evaluateAuthorClosure(
         ],
       },
       signal,
-    )
-    .catch((error) =>
-      unavailable(
-        'PROJECT_EVALUATOR_LAUNCH',
-        `cannot launch evaluator envelope: ${errorText(error)}`,
-        entryProjectPath,
-      ),
-    )
+    ),
+  ).catch((error) =>
+    unavailable(
+      'PROJECT_EVALUATOR_LAUNCH',
+      `cannot launch evaluator envelope: ${errorText(error)}`,
+      entryProjectPath,
+    ),
+  )
   if (
     !component.envelope.privateProcessFilesystem ||
     !component.envelope.privateRuntimeDevices ||
@@ -278,13 +281,17 @@ export async function evaluateAuthorClosure(
   try {
     await component.write(request)
     await component.closeInput()
-    const [output, diagnostics, exit, evidence, terminationReason] = await Promise.all([
-      stdout,
-      stderr,
-      component.completion,
-      component.evidence,
-      component.terminationReason,
-    ])
+    const [output, diagnostics, exit, evidence, terminationReason] = await privateProfileSpan(
+      'author-execution-settlement',
+      () =>
+        Promise.all([
+          stdout,
+          stderr,
+          component.completion,
+          component.evidence,
+          component.terminationReason,
+        ]),
+    )
     if (exit.cleanupError !== undefined || !exit.fenced) {
       unavailable(
         'PROJECT_EVALUATOR_CLEANUP',

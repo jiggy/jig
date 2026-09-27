@@ -18,6 +18,10 @@ const projectDeadlineMs = 5 * 60_000
 
 type TracePhase =
   | 'author-configuration-evaluation'
+  | 'author-support-verification'
+  | 'author-envelope-startup'
+  | 'author-execution-settlement'
+  | 'dependency-workspace-capture'
   | 'project-planning'
   | 'installed-host-opening'
   | 'project-session-opening'
@@ -51,6 +55,10 @@ interface CapturedCommand {
 // Initialize the allowlist before top-level profiling calls its trace readers.
 const tracePhases = new Set<TracePhase>([
   'author-configuration-evaluation',
+  'author-support-verification',
+  'author-envelope-startup',
+  'author-execution-settlement',
+  'dependency-workspace-capture',
   'project-planning',
   'installed-host-opening',
   'project-session-opening',

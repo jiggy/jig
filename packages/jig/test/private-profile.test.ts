@@ -83,3 +83,38 @@ test('inactive profiling preserves the operation result and failure behavior', a
     }),
   ).rejects.toBe(failure)
 })
+
+test('planning subphases remain bounded diagnostic names understood by the installed profiler', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-profile-planning-'))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const profile = new PrivateProfileCapture(destination)
+    const consumer = await readFile(
+      join(import.meta.dir, '../../../scripts/profile-installed-startup.ts'),
+      'utf8',
+    )
+    const phases = [
+      'author-support-verification',
+      'author-envelope-startup',
+      'author-execution-settlement',
+      'dependency-workspace-capture',
+    ] as const
+    for (const phase of phases) {
+      const span = profile.start(phase)
+      if (!span) throw new Error('Missing planning span')
+      profile.end(span, 'returned')
+      expect(consumer).toContain(`'${phase}'`)
+    }
+    profile.finish()
+    const records = (await readFile(destination, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(records.filter((record) => record.kind === 'end').map((record) => record.phase)).toEqual(
+      phases,
+    )
+    expect(records.some((record) => record.kind === 'truncated')).toBe(false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
