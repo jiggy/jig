@@ -18,6 +18,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+- `private-profile.ts` owns opt-in bounded phase-only diagnostics, written before
+  shutdown. Partial spans are not completion or machine-crash durability evidence.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.

@@ -744,24 +744,32 @@ async function releaseAdmitAndClose(
       }
       if (work.lifecycle.backing !== undefined) {
         const backing = parseBacking(work.lifecycle.backing.value)
-        await disposePrivatePackageMaterializationLease(
-          plan.packageAllocation.parent.path,
-          backing.lease,
+        await privateProfileSpan('root-package-release', () =>
+          disposePrivatePackageMaterializationLease(
+            plan.packageAllocation.parent.path,
+            backing.lease,
+          ),
         )
       } else {
-        const recovered = await recoverPrivatePackageMaterializationAllocation(
-          plan.packageAllocation.parent.path,
-          plan.packageAllocation,
-        )
-        if (recovered.state === 'complete') await recovered.lease.dispose()
+        await privateProfileSpan('root-package-release', async () => {
+          const recovered = await recoverPrivatePackageMaterializationAllocation(
+            plan.packageAllocation.parent.path,
+            plan.packageAllocation,
+          )
+          if (recovered.state === 'complete') await recovered.lease.dispose()
+        })
       }
       if (work.lifecycle.sandbox !== undefined) {
         const sandbox = parseSandbox(work.lifecycle.sandbox.value)
         const fence = parseFence(work.lifecycle.fence!.value)
-        ownerRelease = await releasePrivateExecutionOwnerState(sandbox.owner, fence.receipt)
+        ownerRelease = await privateProfileSpan('root-owner-release', () =>
+          releasePrivateExecutionOwnerState(sandbox.owner, fence.receipt),
+        )
       } else {
-        const cancelled = await cancelPrivateExecutionOwnerStateAllocation(plan.ownerAllocation)
-        ownerRelease = await releasePrivateExecutionOwnerState(plan.ownerAllocation, cancelled)
+        ownerRelease = await privateProfileSpan('root-owner-release', async () => {
+          const cancelled = await cancelPrivateExecutionOwnerStateAllocation(plan.ownerAllocation)
+          return await releasePrivateExecutionOwnerState(plan.ownerAllocation, cancelled)
+        })
       }
     }
     work = await advanceCheckpoint(input, work, 'release', {

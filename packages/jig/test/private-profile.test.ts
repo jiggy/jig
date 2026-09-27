@@ -84,6 +84,64 @@ test('inactive profiling preserves the operation result and failure behavior', a
   ).rejects.toBe(failure)
 })
 
+test('private profile preserves partial phases after forced process termination', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-profile-interrupted-'))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const module = join(import.meta.dir, '../src/internal/private-profile.ts')
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        `import { PrivateProfileCapture } from ${JSON.stringify(module)};
+        const capture = new PrivateProfileCapture(${JSON.stringify(destination)});
+        const span = capture.start('root-fence');
+        capture.end(span, 'returned');
+        capture.start('root-package-release');
+        process.kill(process.pid, 'SIGKILL');`,
+      ],
+      { stdout: 'ignore', stderr: 'pipe' },
+    )
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(code, stderr).not.toBe(0)
+    const records = (await readFile(destination, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(records.slice(1)).toEqual([
+      expect.objectContaining({ kind: 'start', phase: 'root-fence' }),
+      expect.objectContaining({ kind: 'end', phase: 'root-fence', outcome: 'returned' }),
+      expect.objectContaining({ kind: 'start', phase: 'root-package-release' }),
+    ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('private profile bounds total records, including mixed instants and spans', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-profile-bounded-'))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const capture = new PrivateProfileCapture(destination)
+    for (let i = 0; i < 1024; i++) capture.instant('dependency-reuse')
+    for (let i = 0; i < 600; i++) {
+      const span = capture.start('root-owner-release')
+      if (span) capture.end(span, 'returned')
+    }
+    capture.finish()
+    const text = await readFile(destination, 'utf8')
+    const records = text
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(records).toHaveLength(1026)
+    expect(records.at(-1)).toEqual({ kind: 'truncated', phaseLimit: 512 })
+    expect(Buffer.byteLength(text)).toBeLessThan(1026 * 193)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('planning and native subphases remain bounded names understood by the installed profiler', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-profile-planning-'))
   try {
@@ -104,6 +162,8 @@ test('planning and native subphases remain bounded names understood by the insta
       'finite-acp-exchange',
       'finite-acp-release',
       'finite-acp-recovery',
+      'root-package-release',
+      'root-owner-release',
     ] as const
     for (const phase of phases) {
       const span = profile.start(phase)

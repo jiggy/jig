@@ -24,6 +24,12 @@ exchange, release and recovery without exposing content or changing authority.
 An installed one-shot diagnostic exercised the working stages successfully;
 it does not qualify the failed continuing/two-worker handoff path or explain
 that failure. Complete independent handoff adoption remains unproved.
+Verified configuration limits and bounded operation-phase failure messages are
+now retained separately. Forced termination no longer discards all private
+phase records; package and owner-state release have distinct diagnostic spans.
+These corrections improve diagnosis, not qualification: the subsequent native
+handoff remained unsuccessful, and ordinary project recovery settled its
+deadline failure. Preserve that result before proposing another live attempt.
 
 ## Proposed scope
 
