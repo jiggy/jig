@@ -282,6 +282,11 @@ Tool requests, asynchronous or failed responses, unknown termination reasons,
 malformed replies and non-200 HTTP statuses fail without echoing provider error
 bodies. Refusal and explicit token exhaustion remain `blocked` and `limit`
 outcomes. No request is retried, including after cancellation or uncertain dispatch.
+HTTP rejection errors retain status-derived `details` (`phase`, `api`, `status`,
+`category`, `retry`, and an optional recognized `parameter`) and explain which configuration to check. Provider bodies
+remain private, unknown parameters remain unknown, and a received response
+does not prove remote rollback or safe replay. See the
+[diagnostic guide](https://jig.md/guide/agent-method#diagnose-a-failed-request).
 
 The exact Agent Run contract declares optional updates. This HTTP implementation
 rejects a requested channel before dispatch; it supplies no streaming or ACP

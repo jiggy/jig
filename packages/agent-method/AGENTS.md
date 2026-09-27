@@ -55,6 +55,10 @@ ordinary Flow, preserving operator ownership of Agent execution.
   are checked before dispatch. `structuredOutput: 'json-schema'` explicitly
   adds the API's strict schema request; prompt mode is the default. Both modes
   check results locally and never fall back or retry on rejection.
+  HTTP failures retain closed status-derived diagnostics and corrective guidance;
+  only an exact allowlisted API parameter name may be projected from rejection.
+  Provider error text, headers and rejected values never enter diagnostics.
+  A response establishes neither remote effect rollback nor safe replay.
   Endpoint, credentials and request policy belong to the host grant. No retries,
   native Agent dependency, channel projection or direct networking. Skill contents
   and guidance arrive as explicit caller data, not host-authenticated provenance.
