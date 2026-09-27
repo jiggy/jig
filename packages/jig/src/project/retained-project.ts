@@ -1,4 +1,3 @@
-import { entrypointWords, parseProjectEntrypoint } from './entrypoint.js'
 import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
@@ -9,6 +8,7 @@ import type { BindingDefinition, JigDefinition } from './author.js'
 import {
   type EvaluatedAuthorDeclaration,
   evaluateAuthorClosure,
+  evaluateAuthorClosureBatch,
   type PrivateAuthorEvaluatorOptions,
 } from './author-evaluator.js'
 import { type CapturedAuthorClosure, captureOpenedAuthorClosure } from './author-module.js'
@@ -16,6 +16,7 @@ import {
   captureDeclarationSource,
   type DeclarationSourceObservation,
 } from './declaration-source.js'
+import { entrypointWords, parseProjectEntrypoint } from './entrypoint.js'
 import {
   type CapturedFlowSource,
   captureOpenedFlowSource,
@@ -132,9 +133,21 @@ export async function retainOpenedPackageProject(
     ])
     closure = capturedClosure
     assertBootstrapPreserved(bootstrapClosure, capturedClosure)
-    const project = (await privateProfileSpan('author-configuration-evaluation', () =>
-      evaluateAuthorClosure(options.evaluator, capturedClosure, entry, 'project', signal),
-    )) as EvaluatedAuthorDeclaration<JigDefinition>
+    const evaluations = await privateProfileSpan('author-configuration-evaluation', () =>
+      evaluateAuthorClosureBatch(
+        options.evaluator,
+        capturedClosure,
+        [
+          { entryProjectPath: entry, expected: 'project' },
+          ...bindingSource.members.map(({ projectPath }) => ({
+            entryProjectPath: projectPath,
+            expected: 'binding' as const,
+          })),
+        ],
+        signal,
+      ),
+    )
+    const project = evaluations[0] as EvaluatedAuthorDeclaration<JigDefinition>
     if (project.outputDigest !== bootstrapProject.outputDigest) {
       invalid(
         'PROJECT_SOURCE_CHANGED',
@@ -145,16 +158,8 @@ export async function retainOpenedPackageProject(
 
     const grantSource = await captureGrantSource(root, project.value.grants)
     const bindings: RetainedBindingDeclaration[] = []
-    for (const member of bindingSource.members) {
-      const evaluation = (await privateProfileSpan('author-configuration-evaluation', () =>
-        evaluateAuthorClosure(
-          options.evaluator,
-          capturedClosure,
-          member.projectPath,
-          'binding',
-          signal,
-        ),
-      )) as EvaluatedAuthorDeclaration<BindingDefinition>
+    for (const [index, member] of bindingSource.members.entries()) {
+      const evaluation = evaluations[index + 1] as EvaluatedAuthorDeclaration<BindingDefinition>
       let attachments: BoundAttachments | undefined
       try {
         if (evaluation.value.attachments !== undefined)

@@ -1,11 +1,20 @@
 import vm from 'node:vm'
 
-import { canonicalJson, type JsonValue } from '../json.js'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
+import {
+  PrivateAuthorEvaluatorChildError,
+  runPrivateAuthorEvaluatorChild,
+} from './project-evaluator-child.js'
+import {
+  PRIVATE_AUTHOR_EVALUATOR_DIRECTORY,
+  PRIVATE_AUTHOR_EVALUATOR_MAX_ENTRIES,
+  PRIVATE_AUTHOR_EVALUATOR_PROTOCOL,
+} from './project-evaluator-policy.js'
 
-const PROTOCOL = 'jig-author-evaluator/1'
+const PROTOCOL = PRIVATE_AUTHOR_EVALUATOR_PROTOCOL
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const VM_TIMEOUT_MS = 1_000
-const SDK_ENTRY = '/jig-evaluator/project-evaluator-sdk.bundle.js'
+const SDK_ENTRY = `${PRIVATE_AUTHOR_EVALUATOR_DIRECTORY}/project-evaluator-sdk.bundle.js`
 type AuthoringProfile = 'project-authoring/1'
 const EVALUATION_CODES = new Set([
   'PROJECT_AUTHORING_VALUE',
@@ -20,7 +29,7 @@ const EVALUATION_CODES = new Set([
 interface WorkerRequest {
   readonly protocol: typeof PROTOCOL
   readonly authoringProfile: AuthoringProfile
-  readonly entryProjectPath: string
+  readonly entries: readonly string[]
   readonly modules: readonly WorkerModule[]
 }
 
@@ -85,15 +94,35 @@ interface BunRuntime {
 
 const runtime = (globalThis as unknown as { readonly Bun: BunRuntime }).Bun
 
+let entryIndex: number | null = null
 try {
   const request = await readRequest()
-  const code = await build(request)
-  const value = evaluate(code)
-  write({ protocol: PROTOCOL, status: 'ok', value } as unknown as JsonValue)
+  const values: JsonValue[] = []
+  let resultBytes = 0
+  for (let index = 0; index < request.entries.length; index += 1) {
+    entryIndex = index
+    // A multi-entry manager never evaluates authored code. Each trusted child
+    // has a fresh process, compiler, guest realm and SDK, under one unchanged
+    // aggregate kernel envelope. Its watchdog cannot be blocked by guest code.
+    const value =
+      request.entries.length === 1
+        ? evaluate(await build(request, request.entries[index]!))
+        : await evaluateEntry(request, index)
+    resultBytes += canonicalJson(value).byteLength + 1
+    if (resultBytes > JSON_1_LIMITS.bytes - 128) {
+      throw tagged(
+        'PROJECT_EVALUATION_LIMIT',
+        'declaration batch exceeds its aggregate output bound',
+      )
+    }
+    values.push(value)
+  }
+  write({ protocol: PROTOCOL, status: 'ok', values })
 } catch (error) {
   write({
     protocol: PROTOCOL,
     status: 'error',
+    entryIndex,
     code: errorCode(error),
     message: boundedMessage(error),
   })
@@ -114,7 +143,11 @@ async function readRequest(): Promise<WorkerRequest> {
     !isRecord(value) ||
     value.protocol !== PROTOCOL ||
     !isAuthoringProfile(value.authoringProfile) ||
-    typeof value.entryProjectPath !== 'string' ||
+    !Array.isArray(value.entries) ||
+    value.entries.length === 0 ||
+    value.entries.length > PRIVATE_AUTHOR_EVALUATOR_MAX_ENTRIES ||
+    !value.entries.every((entry) => typeof entry === 'string') ||
+    new Set(value.entries).size !== value.entries.length ||
     !Array.isArray(value.modules) ||
     Object.keys(value).length !== 4
   ) {
@@ -158,7 +191,7 @@ async function readRequest(): Promise<WorkerRequest> {
       imports,
     })
   }
-  if (!paths.has(value.entryProjectPath)) {
+  if (!value.entries.every((entry) => paths.has(entry))) {
     throw tagged('PROJECT_EVALUATOR_PROTOCOL', 'evaluator entry is absent from its module closure')
   }
   for (const module of modules) {
@@ -174,12 +207,47 @@ async function readRequest(): Promise<WorkerRequest> {
   return {
     protocol: PROTOCOL,
     authoringProfile: value.authoringProfile,
-    entryProjectPath: value.entryProjectPath,
+    entries: value.entries as string[],
     modules,
   }
 }
 
-async function build(request: WorkerRequest): Promise<string> {
+/** Wait for the exact child to exit even after a timer, pipe or framing failure. */
+async function evaluateEntry(request: WorkerRequest, index: number): Promise<JsonValue> {
+  const output = await runPrivateAuthorEvaluatorChild(
+    canonicalJson({ ...request, entries: [request.entries[index]!] } as unknown as JsonValue),
+  )
+  const response = decodeJson1(output)
+  if (!isRecord(response) || response.protocol !== PROTOCOL) {
+    throw tagged('PROJECT_EVALUATOR_PROTOCOL', 'declaration worker returned an invalid envelope')
+  }
+  if (
+    response.status === 'error' &&
+    exactKeys(response, ['code', 'entryIndex', 'message', 'protocol', 'status']) &&
+    response.entryIndex === 0 &&
+    typeof response.code === 'string' &&
+    EVALUATION_CODES.has(response.code) &&
+    typeof response.message === 'string'
+  ) {
+    throw tagged(response.code, response.message)
+  }
+  if (
+    response.status !== 'ok' ||
+    !exactKeys(response, ['protocol', 'status', 'values']) ||
+    !Array.isArray(response.values) ||
+    response.values.length !== 1
+  ) {
+    throw tagged('PROJECT_EVALUATOR_PROTOCOL', 'declaration worker returned an invalid result')
+  }
+  return response.values[0] as JsonValue
+}
+
+function exactKeys(value: object, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort()
+  return keys.length === expected.length && keys.every((key, index) => key === expected[index])
+}
+
+async function build(request: WorkerRequest, entryProjectPath: string): Promise<string> {
   const sdkSource = await runtime.file(SDK_ENTRY).text()
   const modules = new Map(request.modules.map((module) => [module.projectPath, module]))
   const edges = new Map<string, string>()
@@ -224,7 +292,7 @@ async function build(request: WorkerRequest): Promise<string> {
               ) {
                 throw deniedImport(arguments_.path)
               }
-              return { path: request.entryProjectPath, namespace: 'jig-project' }
+              return { path: entryProjectPath, namespace: 'jig-project' }
             })
             builder.onResolve({ filter: /^jig-author:/ }, (arguments_) => {
               throw deniedImport(arguments_.path)
@@ -410,6 +478,8 @@ function tagged(code: string, message: string): Error & { readonly code: string 
 }
 
 function errorCode(error: unknown): string {
+  // Guest-thrown code strings are not independently observed deadline facts.
+  if (error instanceof PrivateAuthorEvaluatorChildError) return error.code
   if (
     typeof error === 'object' &&
     error !== null &&

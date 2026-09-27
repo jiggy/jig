@@ -495,6 +495,30 @@ for await (const line of lines) {
       expect(await runDependency()).toMatchObject({
         output: { value: 2, settings: { phase: 'second' } },
       })
+      // Five independent Bindings still perform bootstrap and complete-closure
+      // evaluation. Only their envelope setup is shared; public Run uses each
+      // declaration's freshly checked settings, not an evaluated-value cache.
+      for (let index = 0; index < 4; index += 1)
+        await put(`bindings/peer${index}.ts`, binding(`peer-${index}`))
+      const manyBindings = await succeed(['review', '--yes'])
+      expect(count(manyBindings, 'author-envelope-startup')).toBe(2)
+      expect(count(manyBindings, 'dependency-preparation')).toBe(0)
+      expect(count(manyBindings, 'dependency-reuse')).toBe(1)
+      const peer = JSON.parse(
+        (await succeed(['run', 'binding:peer3', '--input', '"checked"', '--json'])).stdout,
+      )
+      expect(peer).toMatchObject({
+        status: 'succeeded',
+        output: { value: 2, settings: { phase: 'peer-3' } },
+      })
+      await put('bindings/bad.ts', 'throw new Error("inert fixture failure"); export default {};')
+      const refused = await invoke(['review', '--yes'])
+      expect(refused.exit).not.toBe(0)
+      expect(refused.stderr).toContain('bindings/bad.ts')
+      expect(await runDependency()).toMatchObject({
+        output: { value: 2, settings: { phase: 'second' } },
+      })
+      await rm(join(project, 'bindings/bad.ts'))
       await put('libs/helper/package.json', {
         name: 'helper',
         type: 'module',
