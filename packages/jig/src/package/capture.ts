@@ -429,6 +429,9 @@ async function captureAttempt(
   const directories = new Set<string>([identityKey(root.information)])
   let totalBytes = 0
   let directoryCount = 0
+  // Copying and directory recursion are serial. No consumer receives this
+  // buffer, and each write settles before it is reused for another read.
+  const copyBuffer = new Uint8Array(COPY_CHUNK_BYTES)
 
   async function walk(directory: FileHandle, logicalDirectory: string): Promise<void> {
     directoryCount += 1
@@ -470,6 +473,7 @@ async function captureAttempt(
           offset,
           totalBytes,
           logicalPath,
+          copyBuffer,
           selection?.maximumBytes,
         )
         totalBytes += size
@@ -511,11 +515,11 @@ async function copyToBacking(
   backingOffset: number,
   priorTotal: number,
   logicalPath: string,
+  buffer: Uint8Array,
   maximumBytes = MAX_TOTAL_BYTES,
 ): Promise<number> {
   let sourceOffset = 0
   while (true) {
-    const buffer = new Uint8Array(COPY_CHUNK_BYTES)
     let bytesRead: number
     try {
       ;({ bytesRead } = await source.read(buffer, 0, buffer.byteLength, sourceOffset))
