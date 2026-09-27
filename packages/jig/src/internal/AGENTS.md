@@ -509,7 +509,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   launcher removes Bun's private loader override before starting its client.
 - `macos-agent-runtime.ts` supplies the candidate native Mac installation
   inspector: bounded baseline x86-64 or ARM64 Mach-O and universal slices, including the
-  SDK's LIB64 library-width flag but no additional ISA subtypes, exact third-party
+  SDK's LIB64 library-width flag. The exact SIP-protected `/usr/bin/sandbox-exec`
+  additionally admits Apple's native arm64e slice on qualified Apple Silicon;
+  operator-selected Agent binaries still require baseline slices. Inspect exact third-party
   libraries, loader/executable-relative paths and inherited run paths. Consult
   the active OS dyld cache for system libraries; never fabricate file identities
   for cache-only images or load selected libraries into the coordinator. Reject

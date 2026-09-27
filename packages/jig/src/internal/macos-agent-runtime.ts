@@ -158,6 +158,13 @@ export function privateMacosCachedLibrary(path: string): boolean {
 /** Bounded Mach-O reader. Can inspect inert fixtures on any development host;
  * this alone establishes neither executable validity nor host qualification. */
 export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO> {
+  // Apple ships its SIP-protected sandbox executable as native arm64e.
+  // This OS prerequisite is distinct from operator-selected Agent binaries.
+  const systemSandbox =
+    process.platform === 'darwin' && process.arch === 'arm64' && path === '/usr/bin/sandbox-exec'
+  const acceptedSubtype = (value: number) =>
+    nativeSubtype(value) || (systemSandbox && value === 0x80000002)
+
   const file = await open(path, 'r')
   try {
     const size = (await file.stat()).size
@@ -218,7 +225,7 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
         ranges.push({ start: position, end: position + length })
         if (u32(table, offset) !== nativeCpuType()) continue
         // Accept only baseline native slices, never translated architecture dispatch.
-        if (selected || !nativeSubtype(u32(table, offset + 4)))
+        if (selected || !acceptedSubtype(u32(table, offset + 4)))
           throw new Error('unsupported native Agent Mach-O architecture')
         selected = true
         start = position
@@ -230,7 +237,7 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
     if (
       header.readUInt32LE(0) !== 0xfeedfacf ||
       header.readUInt32LE(4) !== nativeCpuType() ||
-      !nativeSubtype(header.readUInt32LE(8))
+      !acceptedSubtype(header.readUInt32LE(8))
     )
       throw new Error('native Agent requires native macOS Mach-O')
     const type = header.readUInt32LE(12),

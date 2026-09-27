@@ -65,6 +65,15 @@ describe('bounded static Mach-O metadata', () => {
     })
   })
 
+  test('rejects an operator-selected arm64e executable', async () => {
+    const { executable } = await fixture()
+    const bytes = nativeMachO()
+    bytes.writeUInt32LE(0x0100000c, 4)
+    bytes.writeUInt32LE(0x80000002, 8)
+    await writeFile(executable, bytes)
+    await expect(read(executable)).rejects.toThrow()
+  })
+
   test.each([false, true])('accepts baseline LIB64 metadata (universal=%s)', async (universal) => {
     const { executable } = await fixture()
     const slice = nativeMachO()
@@ -213,6 +222,11 @@ const native = describe.skipIf(
   process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1',
 )
 native('qualified Mac native runtime closure', () => {
+  test('inspects the native OS sandbox executable without running it', async () => {
+    const { project } = await fixture()
+    expect((await read('/usr/bin/sandbox-exec')).executable).toBe(true)
+    expect((await inspect('/usr/bin/sandbox-exec', project)).pathPrefix).toBe('')
+  })
   test('retains transitive loader, executable and run-path libraries as exact files', async () => {
     const { root, project, executable } = await fixture()
     const directory = join(root, 'lib')
