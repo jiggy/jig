@@ -242,6 +242,11 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   expect(dependencyReuse.if).toBe("matrix.suite == 'installed-evidence'")
   expect(dependencyReuse.run).toContain('"JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"')
   expect(dependencyReuse.run).toContain("-t 'packed project dependencies'")
+  const preparation = suites.steps.find(
+    (step: any) => step.name === 'Prove contained native preparation',
+  )
+  expect(preparation.if).toBe("matrix.suite == 'installed-evidence'")
+  expect(preparation.run).toContain('packages/jig/test/project-author-evaluator.test.ts')
   expect(
     suites.steps.find((step: any) => step.name === 'Verify the tested archives are unchanged').if,
   ).toBe('always()')

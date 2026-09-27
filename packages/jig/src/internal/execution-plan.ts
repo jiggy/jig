@@ -102,7 +102,7 @@ export function privateMacosExecutionPlan(
       network: intent.network ?? 'isolated',
     },
     maxOutputBytes: intent.maxOutputBytes,
-    ...(intent.readOnlyCwd === undefined
+    ...(intent.readOnlyCwd === undefined || (intent.inputDirectories?.length ?? 0) > 0
       ? {
           storage: {
             mountPath: data,

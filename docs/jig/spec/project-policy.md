@@ -126,6 +126,17 @@ randomness may affect ordinary language code. Safety comes from capture: Jig
 retains the exact evaluated output and source closure, and apply never
 reevaluates either.
 
+Review may share finite evaluator setup across the complete project declaration
+and its Bindings. Each declaration still receives a fresh guest realm, module
+graph and authoring SDK, with a three-second wall ceiling. A trusted contained
+manager enforces that ceiling independently of authored code; the independent
+supervisor bounds the complete batch by the sum of those ceilings. The batch
+shares the existing 256 MiB memory, 64-task and half-core CPU limits, never a
+separate resource allowance per declaration. Bootstrap discovery and the
+complete-closure consistency evaluation remain distinct. No evaluated result
+is cached by source identity. A failed batch supplies no admissible declarations;
+fencing and cleanup precede successful collection.
+
 If source changes during capture, Jig retries a bounded number of times and
 then reports the project busy or unavailable. It never combines an evaluated
 declaration with a different package tree.

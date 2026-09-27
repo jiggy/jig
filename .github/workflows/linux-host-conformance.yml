@@ -228,6 +228,7 @@ jobs:
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
           "$JIG_CI_BUN" test packages/jig/test/bun-native-preparation.test.ts
+          packages/jig/test/project-author-evaluator.test.ts
           --timeout 120000
 
       - name: Prove retained progress and coordinator-loss delivery

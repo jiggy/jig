@@ -20,6 +20,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and durable lifecycle state.
 - `private-profile.ts` owns opt-in bounded phase-only diagnostics, written before
   shutdown. Partial spans are not completion or machine-crash durability evidence.
+- The configuration evaluator shares only finite review-envelope setup. Its
+  trusted manager runs fresh declaration subprocesses sequentially, enforcing
+  each three-second ceiling independently of guest code. Kernel resources stay
+  aggregate-bounded; the supervisor caps total lifetime by the sum of entry
+  ceilings. Worker and SDK bytes use the existing sealed file projection; later
+  children never reopen live installed support. Bootstrap consistency remains
+  a separate evaluation; collection requires whole-batch fencing and cleanup.
+  No result cache or resident service.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.
