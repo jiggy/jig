@@ -152,6 +152,11 @@ export function privateMacosOpenFdAt(
   )
 }
 
+/** Fixed-signature Darwin fcntl; variadic libc calls are not valid ARM64 FFI. */
+export function privateMacosFcntl(fd: number, command: number, value = 0): number {
+  return checked(calls().symbols.fcntl(fd, command, value))
+}
+
 /** Only trusted ancestry walks may select the current or parent directory. */
 export function privateMacosOpenAncestryDirectory(parent: number, upwards: boolean): number {
   const { ptr, symbols } = calls()

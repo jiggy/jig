@@ -68,9 +68,9 @@ describe('bounded static Mach-O metadata', () => {
   test.each([false, true])('accepts baseline LIB64 metadata (universal=%s)', async (universal) => {
     const { executable } = await fixture()
     const slice = nativeMachO()
-    slice.writeUInt32LE((process.arch === 'arm64' ? 0x80000000 : 0x80000003), 8)
+    slice.writeUInt32LE(process.arch === 'arm64' ? 0x80000000 : 0x80000003, 8)
     const bytes = universal ? universalMachO(slice) : slice
-    if (universal) bytes.writeUInt32BE((process.arch === 'arm64' ? 0x80000000 : 0x80000003), 12)
+    if (universal) bytes.writeUInt32BE(process.arch === 'arm64' ? 0x80000000 : 0x80000003, 12)
     await writeFile(executable, bytes)
     expect((await read(executable)).executable).toBe(true)
   })
@@ -171,7 +171,7 @@ describe('bounded static Mach-O metadata', () => {
     [
       'newer platform',
       (b: Buffer) => {
-        b.writeUInt32LE(0x000f0000, b.length - 12)
+        b.writeUInt32LE(0x00100000, b.length - 12)
         return b
       },
     ],
@@ -196,7 +196,8 @@ describe('bounded static Mach-O metadata', () => {
       const bytes = universalMachO(nativeMachO(), true)
       if (kind === 'outside') bytes.writeBigUInt64BE(BigInt(bytes.length), 16)
       if (kind === 'unaligned') bytes.writeBigUInt64BE(4097n, 16)
-      if (kind === 'wrong cpu') bytes.writeUInt32BE(process.arch === 'arm64' ? 0x01000007 : 0x0100000c, 8)
+      if (kind === 'wrong cpu')
+        bytes.writeUInt32BE(process.arch === 'arm64' ? 0x01000007 : 0x0100000c, 8)
       if (kind === 'unsafe integer') bytes.writeBigUInt64BE(2n ** 63n, 16)
       if (kind === 'overlap') {
         bytes.writeUInt32BE(2, 4)
@@ -329,11 +330,14 @@ native('qualified Mac native runtime closure', () => {
       ['-dynamiclib', '-install_name', '@rpath/libfixture.dylib', source, '-o', library],
       [main, '-L', root, '-lfixture', '-Wl,-rpath,@executable_path', '-o', executable],
     ]) {
-      const result = Bun.spawnSync(['/usr/bin/clang', '-arch', process.arch === 'arm64' ? 'arm64' : 'x86_64', ...args], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-        timeout: 20_000,
-      })
+      const result = Bun.spawnSync(
+        ['/usr/bin/clang', '-arch', process.arch === 'arm64' ? 'arm64' : 'x86_64', ...args],
+        {
+          stdout: 'pipe',
+          stderr: 'pipe',
+          timeout: 20_000,
+        },
+      )
       expect(result.exitCode).toBe(0)
     }
     const inspected = await inspect(executable, project)

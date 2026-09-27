@@ -127,6 +127,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   evidence. Copied or closed bundle objects cannot supply descriptor authority.
 - `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
   file operations, raw directory enumeration and anonymous streaming backings.
+  Bundled Markdown workers resolve the verified descriptor bridge beside their
+  installed `libexec` entrypoint; native Markdown launch grants read access to
+  that exact bridge file, never its containing tree. Copied installation
+  fixtures must preserve the complete support closure.
   Markdown's contained recapture allocates its anonymous backing
   inside the existing bounded work directory; this guest-only path grants no
   host capture authority. Trusted captures retain the separate host allocation
@@ -148,7 +152,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `macos-descriptor-handoff.ts` passes at most 64 read-only file/directory
   descriptors between kernel-authenticated trusted peers. Keep the socket owner
   outside payload grants, bound waits and framing, set close-on-exec immediately,
-  and close every received right on refusal. Receive storage must fit a complete
+  and close every received right on refusal. Socket and received-file `fcntl`
+  operations use the fixed-signature bridge too; verify nonblocking and
+  close-on-exec flags before accepting, so a flag failure cannot block the
+  coordinator’s event loop. Receive storage must fit a complete
   qualified kernel control mbuf even when rejecting an oversized protocol bundle;
   Darwin externalizes rights before copying ancillary bytes. A receipt proves
   transfer from that peer, not immutable capture, exact file identity or writer
@@ -235,7 +242,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   coordinator loss, and retire guardian journals before recording completion.
   Report supervised sampling and possible resource overshoot explicitly; never
   project Linux cgroup or hard-quota claims. Candidate assembly selects this
-  backend on the qualified Intel Mac; public support remains unpromoted until
+  backend on exact selected native Mac candidates; public support remains unpromoted until
   complete installed-consumer and reboot-recovery qualification.
 - `execution-backend.ts` is the closed private Linux/macOS selection boundary.
   Persist each backend's discriminated owner and receipt records without flattening
@@ -738,6 +745,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   loss cases remain Linux-specific.
   `macos-agent-runtime.test.ts` checks malformed and universal Mach-O metadata,
   project-excluded transitive lookup, cache membership and changed support bytes.
+  Deployment targets must not exceed the already qualified host kernel’s
+  `kern.osproductversion`; SDK defaults cannot inherit another candidate’s ceiling.
   Its opted-in SDK-linked fixture proves that inspection does not invoke library
   constructors. ELF metadata fixtures retain their separate Linux-format coverage.
   `macos-descriptor-handoff.test.ts` uses an independent SDK-native sender to

@@ -66,7 +66,11 @@ describe('fixed installed Bun support', () => {
       root,
       'node_modules',
       '@oven',
-      macos ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline',
+      macos
+        ? process.arch === 'arm64'
+          ? 'bun-darwin-aarch64'
+          : 'bun-darwin-x64-baseline'
+        : 'bun-linux-x64-baseline',
       'bin',
       'bun',
     )
@@ -93,7 +97,10 @@ describe('fixed installed Bun support', () => {
         const launcher = join(root, 'libexec', 'macos-exec')
         await copyFile(new URL('../support/macos-exec-universal', import.meta.url), launcher)
         await chmod(launcher, 0o755)
-        await copyFile(new URL('../support/macos-descriptor-bridge.dylib', import.meta.url), join(root, 'libexec', 'macos-descriptor-bridge.dylib'))
+        await copyFile(
+          new URL('../support/macos-descriptor-bridge.dylib', import.meta.url),
+          join(root, 'libexec', 'macos-descriptor-bridge.dylib'),
+        )
       }
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'worker\n')
       await writeFile(join(evaluator, 'project-evaluator-sdk.bundle.js'), 'sdk\n')
@@ -131,6 +138,16 @@ describe('fixed installed Bun support', () => {
             ],
       )
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
+      if (macos) {
+        const bridge = join(root, 'libexec', 'macos-descriptor-bridge.dylib')
+        expect(support.descriptorBridgePath).toBe(bridge)
+        await writeFile(bridge, 'altered native support')
+        await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toBeInstanceOf(
+          PrivateInstalledBundleError,
+        )
+        await copyFile(new URL('../support/macos-descriptor-bridge.dylib', import.meta.url), bridge)
+        await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
+      } else expect(support.descriptorBridgePath).toBeNull()
 
       await writeFile(join(root, 'libexec', 'http-request-worker.js'), 'changed http worker\n')
       await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(

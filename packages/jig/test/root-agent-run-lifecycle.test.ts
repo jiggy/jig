@@ -1855,6 +1855,7 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
     'libexec/linux-rootless-supervisor.js',
     'libexec/macos-native-supervisor.js',
     'libexec/macos-exec',
+    ...(process.platform === 'darwin' ? ['libexec/macos-descriptor-bridge.dylib'] : []),
     'libexec/http-request-worker.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',

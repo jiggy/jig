@@ -117,7 +117,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   neither authorize a backend nor establish full host conformance. Keep their
   evidence separate from the qualified exact-kernel gate.
   After prerequisites, build the ordinary candidate and execute native
-  containment/recovery tests on each architecture. A prerequisite pass must
+  containment/recovery and authenticated descriptor-handoff tests on each
+  architecture. A prerequisite pass must
   not conceal a failed native job or stand in for installed-host conformance.
   The complete gate freezes candidate archives, runs the sequential native
   suite and installed consumer, checks pinned genuine clients offline, and

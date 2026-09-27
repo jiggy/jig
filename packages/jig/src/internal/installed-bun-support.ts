@@ -65,6 +65,7 @@ export interface PrivateInstalledBunSupport {
   readonly supervisorDigest: string
   readonly launcherPath: string | null
   readonly launcherDigest: string | null
+  readonly descriptorBridgePath: string | null
   readonly evaluatorSupportPath: string
   readonly evaluatorSupportDigest: string
   readonly preparationWorkerPath: string
@@ -83,17 +84,23 @@ export async function openPrivateInstalledBunSupport(
   location: PrivateInstalledBunLocation,
 ): Promise<PrivateInstalledBunSupport> {
   const platform = installedPlatform()
-  const runtime = platform === 'linux-x64-glibc' ? LINUX_BUN : process.arch === 'arm64' ? { ...MACOS_BUN, digest: 'sha256:35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5' } : MACOS_BUN
+  const runtime =
+    platform === 'linux-x64-glibc'
+      ? LINUX_BUN
+      : process.arch === 'arm64'
+        ? {
+            ...MACOS_BUN,
+            digest: 'sha256:35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5',
+          }
+        : MACOS_BUN
   const releaseRoot = await installedDirectory(location.releaseRoot, 'installed Jig release')
-  if (releaseRoot !== location.releaseRoot)
-    throw new PrivateInstalledBundleError()
+  if (releaseRoot !== location.releaseRoot) throw new PrivateInstalledBundleError()
   const executablePath = await installedRegularFile(
     location.executablePath,
     true,
     'installed Bun executable',
   )
-  if (executablePath !== location.executablePath)
-    throw new PrivateInstalledBundleError()
+  if (executablePath !== location.executablePath) throw new PrivateInstalledBundleError()
   if (executablePath !== (await resolveInstalledBun(releaseRoot, platform)))
     throw new PrivateInstalledBundleError()
   const installedCliPath = await installedRegularFile(
@@ -101,8 +108,7 @@ export async function openPrivateInstalledBunSupport(
     false,
     'installed Jig command',
   )
-  if (installedCliPath !== location.installedCliPath)
-    throw new PrivateInstalledBundleError()
+  if (installedCliPath !== location.installedCliPath) throw new PrivateInstalledBundleError()
   const supervisorPath = await installedRegularFile(
     join(
       releaseRoot,
@@ -126,12 +132,21 @@ export async function openPrivateInstalledBunSupport(
     join(releaseRoot, 'libexec', 'evaluator'),
     'installed evaluator support',
   )
-  const descriptorBridgeDigest = platform === 'linux-x64-glibc' ? null :
-    await privateInstallationFileDigest(await installedRegularFile(
-      join(releaseRoot, 'libexec', 'macos-descriptor-bridge.dylib'), false,
-      'installed macOS descriptor bridge',
-    ))
-  if (descriptorBridgeDigest !== null && descriptorBridgeDigest !== 'sha256:35e67cd8ca82b71476bfdb795b566ce8b6aa515a8964c2c33102457dffdf21a8')
+  const descriptorBridgePath =
+    platform === 'linux-x64-glibc'
+      ? null
+      : await installedRegularFile(
+          join(releaseRoot, 'libexec', 'macos-descriptor-bridge.dylib'),
+          false,
+          'installed macOS descriptor bridge',
+        )
+  const descriptorBridgeDigest =
+    descriptorBridgePath === null ? null : await privateInstallationFileDigest(descriptorBridgePath)
+  if (
+    descriptorBridgeDigest !== null &&
+    descriptorBridgeDigest !==
+      'sha256:35e67cd8ca82b71476bfdb795b566ce8b6aa515a8964c2c33102457dffdf21a8'
+  )
     throw new PrivateInstalledBundleError()
   const evaluatorFiles = await Promise.all(
     [
@@ -273,6 +288,7 @@ export async function openPrivateInstalledBunSupport(
     installedCliDigest,
     hostLibraryDirectory,
     runtimeMounts,
+    descriptorBridgePath,
     supervisorPath,
     supervisorDigest,
     launcherPath,
@@ -318,6 +334,7 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
     current.installedCliPath !== support.installedCliPath ||
     current.supervisorPath !== support.supervisorPath ||
     current.launcherPath !== support.launcherPath ||
+    current.descriptorBridgePath !== support.descriptorBridgePath ||
     current.evaluatorSupportPath !== support.evaluatorSupportPath ||
     current.preparationWorkerPath !== support.preparationWorkerPath ||
     current.httpWorkerPath !== support.httpWorkerPath ||
@@ -336,7 +353,12 @@ async function resolveInstalledBun(
   releaseRoot: string,
   platform: PrivateInstalledBunPlatform,
 ): Promise<string> {
-  const packagePath = platform === 'linux-x64-glibc' ? LINUX_BUN_PACKAGE : process.arch === 'arm64' ? join('@oven', 'bun-darwin-aarch64', 'bin', 'bun') : MACOS_BUN_PACKAGE
+  const packagePath =
+    platform === 'linux-x64-glibc'
+      ? LINUX_BUN_PACKAGE
+      : process.arch === 'arm64'
+        ? join('@oven', 'bun-darwin-aarch64', 'bin', 'bun')
+        : MACOS_BUN_PACKAGE
   const candidates = [
     join(releaseRoot, 'node_modules', packagePath),
     join(releaseRoot, '..', '..', packagePath),

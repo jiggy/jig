@@ -57,9 +57,19 @@ function calls(): Native {
     __error: { args: [], returns: 'ptr' },
   })
   const timebase = Buffer.alloc(8)
-  if (library.symbols.mach_timebase_info(ffi.ptr(timebase)) !== 0 || timebase.readUInt32LE(0) === 0 || timebase.readUInt32LE(4) === 0)
+  if (
+    library.symbols.mach_timebase_info(ffi.ptr(timebase)) !== 0 ||
+    timebase.readUInt32LE(0) === 0 ||
+    timebase.readUInt32LE(4) === 0
+  )
     throw new Error('macOS CPU timebase is unavailable')
-  const opened = { ptr: ffi.ptr, read: ffi.read, symbols: library.symbols, timeNumerator: BigInt(timebase.readUInt32LE(0)), timeDenominator: BigInt(timebase.readUInt32LE(4)) }
+  const opened = {
+    ptr: ffi.ptr,
+    read: ffi.read,
+    symbols: library.symbols,
+    timeNumerator: BigInt(timebase.readUInt32LE(0)),
+    timeDenominator: BigInt(timebase.readUInt32LE(4)),
+  }
   if (!platformFor(kernelString(opened, 'kern.osversion')))
     throw new Error('macOS process controls are not qualified on this kernel build')
   native = opened
@@ -169,7 +179,10 @@ function usage(
   // XNU's cpu_time ledger uses Mach absolute ticks; Intel's 1:1 timebase hid
   // this conversion. Apple Silicon requires the kernel-supplied ratio.
   const timebase = calls()
-  return { active: started - exited, cpuNanoseconds: bytes.readBigUInt64LE(24) * timebase.timeNumerator / timebase.timeDenominator }
+  return {
+    active: started - exited,
+    cpuNanoseconds: (bytes.readBigUInt64LE(24) * timebase.timeNumerator) / timebase.timeDenominator,
+  }
 }
 
 function coalitionMembers(coalition: bigint, exclude: number): { pid: number; version: number }[] {
@@ -360,9 +373,13 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
   return control
 }
 
-export type PrivateMacosPlatform = 'darwin-x64-23.4.0-23E224' | 'darwin-x64-24.6.0-24G830' | 'darwin-arm64-24.6.0-24G830'
+export type PrivateMacosPlatform =
+  | 'darwin-x64-23.4.0-23E224'
+  | 'darwin-x64-24.6.0-24G830'
+  | 'darwin-arm64-24.6.0-24G830'
 function platformFor(build: string): PrivateMacosPlatform | undefined {
-  if (process.arch === 'x64' && release() === '23.4.0' && build === '23E224') return 'darwin-x64-23.4.0-23E224'
+  if (process.arch === 'x64' && release() === '23.4.0' && build === '23E224')
+    return 'darwin-x64-23.4.0-23E224'
   if (release() === '24.6.0' && build === '24G830') {
     if (process.arch === 'x64') return 'darwin-x64-24.6.0-24G830'
     if (process.arch === 'arm64') return 'darwin-arm64-24.6.0-24G830'
@@ -373,4 +390,13 @@ export function privateMacosKernelPlatform(): PrivateMacosPlatform {
   const platform = platformFor(kernelString(calls(), 'kern.osversion'))
   if (!platform) throw new Error('native macOS platform is unavailable')
   return platform
+}
+
+/** Mach-O deployment ceiling from the already qualified host's kernel, never PATH. */
+export function privateMacosDeploymentVersion(): number {
+  const version = kernelString(calls(), 'kern.osproductversion')
+  if (!/^(14|15)\.[0-9]{1,2}(?:\.[0-9]{1,2})?$/.test(version))
+    throw new Error('native macOS product version is unavailable')
+  const [major = 0, minor = 0, patch = 0] = version.split('.').map(Number)
+  return major * 65536 + minor * 256 + patch
 }

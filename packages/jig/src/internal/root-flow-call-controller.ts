@@ -649,7 +649,12 @@ function backendPlan(
         readOnlyFiles: [
           recipe.installedSupport.executablePath,
           ...(recipe.request.entrypoint.suffix === 'md'
-            ? [recipe.installedSupport.markdownRuntimePath]
+            ? [
+                recipe.installedSupport.markdownRuntimePath,
+                ...(recipe.installedSupport.descriptorBridgePath === null
+                  ? []
+                  : [recipe.installedSupport.descriptorBridgePath]),
+              ]
             : []),
         ],
         readOnlyTrees: [packageRoot],

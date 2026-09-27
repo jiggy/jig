@@ -1,4 +1,3 @@
-import { dlopen } from 'bun:ffi'
 import { expect, test } from 'bun:test'
 import { closeSync, constants, fstatSync, openSync, readSync, writeSync } from 'node:fs'
 import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -14,7 +13,7 @@ import {
   capturePrivateMacosBytes,
   requirePrivateMacosCapturedBytes,
 } from '../src/internal/macos-captured-bytes.js'
-import { privateMacosOpenAt } from '../src/internal/macos-descriptor-files.js'
+import { privateMacosFcntl, privateMacosOpenAt } from '../src/internal/macos-descriptor-files.js'
 import {
   createPrivateMacosDescriptorReceiver,
   type PrivateMacosReceivedDescriptors,
@@ -104,15 +103,8 @@ native(
       expect(received.descriptors).toHaveLength(2)
       const fd = received.descriptors[0]!,
         directoryFd = received.descriptors[1]!
-      const nativeFlags = dlopen('/usr/lib/libSystem.B.dylib', {
-        fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
-      })
-      try {
-        expect(nativeFlags.symbols.fcntl(fd, 1, 0) & 1).toBe(1)
-        expect(nativeFlags.symbols.fcntl(directoryFd, 1, 0) & 1).toBe(1)
-      } finally {
-        nativeFlags.close()
-      }
+      expect(privateMacosFcntl(fd, 1) & 1).toBe(1)
+      expect(privateMacosFcntl(directoryFd, 1) & 1).toBe(1)
       const bytes = Buffer.alloc(15)
       expect(readSync(fd, bytes, 0, bytes.length, 0)).toBe(15)
       expect(bytes.toString()).toBe('anonymous input')

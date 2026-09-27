@@ -3,7 +3,11 @@ import { open } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { getSystemErrorName } from 'node:util'
-import { privateMacosStatAt, privateMacosUnlinkAt } from './macos-descriptor-files.js'
+import {
+  privateMacosFcntl,
+  privateMacosStatAt,
+  privateMacosUnlinkAt,
+} from './macos-descriptor-files.js'
 import {
   privateMacosCurrentProcessIdentity,
   privateMacosDescriptorPeerIdentity,
@@ -48,7 +52,6 @@ function calls(): Native {
     send: { args: ['i32', 'ptr', 'u64', 'i32'], returns: 'i64' },
     recv: { args: ['i32', 'ptr', 'u64', 'i32'], returns: 'i64' },
     shutdown: { args: ['i32', 'i32'], returns: 'i32' },
-    fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
     __error: { args: [], returns: 'ptr' },
   })
   native = { symbols, ptr: ffi.ptr, read: ffi.read }
@@ -75,9 +78,10 @@ function socket(): number {
   }
 }
 function configure(fd: number): void {
-  const { symbols } = calls()
-  checked(symbols.fcntl!(fd, 2, 1)) // FD_CLOEXEC, before any await or child spawn.
-  checked(symbols.fcntl!(fd, 4, checked(symbols.fcntl!(fd, 3, 0)) | 4)) // O_NONBLOCK
+  privateMacosFcntl(fd, 2, 1) // FD_CLOEXEC, before any await or child spawn.
+  privateMacosFcntl(fd, 4, privateMacosFcntl(fd, 3) | 4) // O_NONBLOCK
+  if ((privateMacosFcntl(fd, 1) & 1) !== 1 || (privateMacosFcntl(fd, 3) & 4) !== 4)
+    throw new Error('macOS descriptor socket flags are unavailable')
 }
 function address(path: string): Buffer {
   const encoded = Buffer.from(path)
@@ -309,7 +313,7 @@ async function receive(
           const received = packet.control.readInt32LE(index)
           if (received < 0) throw new Error('invalid macOS received descriptor')
           descriptors.push(received)
-          checked(symbols.fcntl!(received, 2, 1))
+          privateMacosFcntl(received, 2, 1)
         }
         offset += length
       }
@@ -333,10 +337,7 @@ async function receive(
       throw new Error('invalid macOS descriptor frame')
     for (const descriptor of descriptors) {
       const info = fstatSync(descriptor)
-      if (
-        (!info.isFile() && !info.isDirectory()) ||
-        (checked(symbols.fcntl!(descriptor, 3, 0)) & 3) !== 0
-      )
+      if ((!info.isFile() && !info.isDirectory()) || (privateMacosFcntl(descriptor, 3) & 3) !== 0)
         throw new Error('macOS handoff requires read-only files or directories')
     }
     const ack = Buffer.from('A')

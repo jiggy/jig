@@ -8,7 +8,10 @@ import {
 } from './acp-agent-provider.js'
 import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
-import { privateMacosCurrentProcessIdentity } from './macos-process-controls.js'
+import {
+  privateMacosCurrentProcessIdentity,
+  privateMacosDeploymentVersion,
+} from './macos-process-controls.js'
 import { privateNativeAgentSupportResolver } from './native-agent-executable.js'
 
 interface MachO {
@@ -297,7 +300,8 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
           length < (command === 0x32 ? 24 : 16) ||
           (command === 0x32 &&
             (bytes.readUInt32LE(8) !== 1 || bytes.readUInt32LE(20) * 8 !== length - 24)) ||
-          bytes.readUInt32LE(command === 0x32 ? 12 : 8) > 0x000e0401
+          bytes.readUInt32LE(command === 0x32 ? 12 : 8) >
+            (process.platform === 'darwin' ? privateMacosDeploymentVersion() : 0x000e0401)
         )
           throw new Error('unsupported native Agent Mach-O platform')
         platform = true
@@ -322,7 +326,9 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
   }
 }
 
-function nativeCpuType(): number { return process.arch === 'arm64' ? 0x0100000c : 0x01000007 }
+function nativeCpuType(): number {
+  return process.arch === 'arm64' ? 0x0100000c : 0x01000007
+}
 function nativeSubtype(value: number): boolean {
   if (process.arch === 'arm64') return value === 0 || value === 0x80000000
   // mach/machine.h defines LIB64 as a library-width flag, not an ISA extension.
