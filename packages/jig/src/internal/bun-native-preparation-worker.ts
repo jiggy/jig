@@ -1,11 +1,8 @@
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import {
-  requirePrivateBunLockPolicy,
-  requirePrivateBunPatches,
-  requirePrivateBunResolutionManifest,
-} from './bun-native-lock-policy.js'
+import { privateBunNativeInputs } from './bun-native-inputs.js'
+import { requirePrivateBunLockPolicy, requirePrivateBunPatches } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
   PRIVATE_BUN_PREPARATION_LIMITS,
@@ -43,35 +40,20 @@ try {
   }
   // Bun sees only its intended native inputs, not authored configuration,
   // foreign locks, preload files, or Flow code. Restore source after installation.
-  const inputPaths = new Set([
-    'package.json',
-    'bun.lock',
-    ...(workspace?.members.map((path) => `${path}/package.json`) ?? []),
-  ])
-  // Patch paths come only from the captured workspace root manifest. Validate
-  // every native manifest even with a supplied lock, before any installer call.
+  let inputPaths: ReadonlySet<string>
   let patches: Readonly<Record<string, string>> = {}
   try {
-    for (const path of [
-      'package.json',
-      ...(workspace?.members.map((path) => `${path}/package.json`) ?? []),
-    ]) {
-      const file = source.files.find((file) => file.path === path)!
-      const manifest = JSON.parse(
-        new TextDecoder('utf-8', { fatal: true }).decode(decodeBase64(file.content, path)),
-      )
-      requirePrivateBunResolutionManifest(
-        manifest,
-        workspace === undefined ? undefined : path === 'package.json' ? 'root' : 'member',
-      )
-      if (path === 'package.json') patches = requirePrivateBunPatches(manifest.patchedDependencies)
-    }
-    for (const path of Object.values(patches)) {
-      const file = source.files.find((file) => file.path === path)
-      if (file === undefined || decodeBase64(file.content, path).byteLength > 1024 * 1024)
-        throw new TypeError('missing or oversized captured patch')
-      inputPaths.add(path)
-    }
+    const native = await privateBunNativeInputs({
+      paths: source.files.map(({ path }) => path),
+      ...(workspace === undefined ? {} : { members: workspace.members }),
+      read(path) {
+        const file = source.files.find((file) => file.path === path)
+        if (file === undefined) throw new TypeError('missing native input')
+        return decodeBase64(file.content, path)
+      },
+    })
+    inputPaths = native.paths
+    patches = native.patches
   } catch {
     throw new WorkerFailure(
       'PACKAGE_BUN_SOURCE_UNSUPPORTED',

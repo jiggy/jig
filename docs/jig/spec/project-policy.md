@@ -266,13 +266,18 @@ the retained execution artifact and are verified unchanged after preparation.
 Workspace members use the root lock; member locks and member-level patch
 declarations, overrides, catalogs, and alternate sources are unsupported.
 A new review recaptures the workspace. It may reuse this Jig project's approved
-preparation only when the complete captured input digest matches the preparation
-evidence bound to that artifact and the current request reproduces its approved
-recipe and observation. Inputs include root manifest, lock and patch bytes,
-member manifests and selected local source bytes. Flow identity alone is
-insufficient. Reuse never crosses Jig project boundaries, even within one
-ancestor workspace, and performs no resolution or installation. Missing
-preparation evidence or changed inputs require preparation.
+dependencies only when fresh installer inputs and current preparation support
+match retained evidence. Inputs include exact root manifest, authored lock and
+patch bytes, all member manifests, target and selected membership, and the
+installed preparation runtime and containment support. Selected local source
+is captured afresh but is not an installer input. Reuse revalidates the admitted
+execution and separate installed-byte artifact, then assembles a new immutable
+execution image from fresh source and those bytes. Added and deleted source
+files are reflected exactly; no live overlay is used. A fresh execution recipe
+and ordinary review still cover source, settings and authority changes. Flow
+identity alone is insufficient. Reuse never crosses Jig project boundaries,
+even within one ancestor workspace, and performs no resolution or installation.
+Missing preparation evidence or changed installer inputs require preparation.
 Prepared bytes and normalized layout participate in
 target-change review, exact admission, launch and durable materialization identity.
 The host creates only recorded aliases after copying regular bytes, verifies both
@@ -295,17 +300,19 @@ on different machines may resolve different dependency versions. A Run
 performs no install or fetch and has no network, lifecycle scripts, or ambient
 runtime lookup. A package without runtime dependencies needs no preparation.
 
-For standalone registry preparation, planning may reuse the execution Package
-from the active admission only when the current request reproduces its exact
-recipe and observation digests under the current runtime and containment
-mechanism. Exact reuse performs no
-resolution and requires no new resolution permission. Any source change, including a
-code-only edit, or changed execution support can invalidate reuse and require
-the flag again for unlocked source. Declined preparations do not grant reuse.
-Final publication reacquires
-the retained bytes and compare-and-sets the captured policy heads. Missing or
-corrupt retained execution bytes fail closed; they are not silently fetched
-again under an otherwise unchanged admission.
+Standalone registry preparations use the same project-local separation:
+exact manifest and authored lock bytes plus preparation support identify the
+installer inputs. Code-only and settings/grant changes do not themselves
+reinstall dependencies. The current source is recaptured and assembled with
+verified installed bytes; the new request and recipe still require ordinary
+admission. For unchanged unlocked inputs, reuse preserves the admitted generated
+lock and resolved bytes, without resolution or a new network permission. It
+does not refresh the selection. Changed installer inputs or preparation support
+require fresh preparation and the flag again when no authored lock exists.
+Declined preparations do not grant reuse. Final publication reacquires both
+execution and dependency artifacts and compare-and-sets the captured policy
+heads. Missing or corrupt admitted bytes fail closed; they are not silently
+fetched again under an otherwise reusable admission.
 
 After bounded project capture, the alpha's dependency-planning phase permits
 16 distinct actual preparations, 256 MiB of aggregate prepared content, and

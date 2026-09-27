@@ -213,10 +213,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   the validated lock resolution names the captured member and its version equals
   the exact request; ranges and mismatches remain stale.
   Reuse workspace preparation only from this Jig project's active admission:
-  match freshly captured complete workspace inputs to the artifact's retained
-  preparation fingerprint and reproduce its recipe/observation. Never share
+  match freshly captured installer inputs and current preparation support to
+  retained dependency evidence. Assemble fresh source with verified installed
+  bytes, then plan and review the new execution identity independently. Never share
   preparation between Jig projects under one workspace. Recapture source on
-  every review; source, manifest, lock or membership changes invalidate reuse.
+  every review; manifest, lock, patch, membership or preparation-support changes
+  invalidate reuse. Source-only edits reuse dependencies, never source or authority.
   Missing evidence requires preparation; missing/corrupt admitted bytes fail
   closed. Reuse performs no network activity and does not retain a network grant.
 - Provider credentials are host configuration and must not enter Flow input,

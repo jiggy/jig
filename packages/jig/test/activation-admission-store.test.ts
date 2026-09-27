@@ -4,8 +4,8 @@ import {
   chmod,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   rename,
   rm,
   stat,
@@ -15,6 +15,7 @@ import {
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { main, privateCliPrepareArguments } from '../src/cli.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -52,8 +53,6 @@ import {
   submitPrivateRootRun,
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
-import { main, privateCliPrepareArguments } from '../src/cli.js'
-import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
@@ -64,8 +63,10 @@ import {
   encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../src/internal/project-local-lock.js'
+import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
+import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
 
 const TABLES = [
   'admission_head',
@@ -2200,10 +2201,34 @@ describe.serial('direct alpha activation store', () => {
       await admit(fixture)
       const after = await capturePrivateActivationPlanningBase({ projectRoot: fixture.root })
       expect(readPrivateAdmittedExecutionReuse({ planningBase: after, request })).toEqual({
-        recipeDigest: digest('direct-recipe'),
-        observationDigest: digest('direct-observation'),
         execution: { package: fixture.flow, layout: { flowRoot: '', members: [], aliases: [] } },
       })
+      const changed = (changes: Record<string, unknown>) => {
+        const { digest: _, ...fields } = request
+        return restorePrivateActivationRequest(activationRequest({ ...fields, ...changes }))
+      }
+      // Dependency reuse does not carry the old request's source/settings approval.
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({
+            settings: { changed: true },
+            package: { ...request.package, digest: digest('new-source') },
+          }),
+        })?.execution.package,
+      ).toEqual(fixture.flow)
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({ packagePath: 'flows/other' }),
+        }),
+      ).toBeUndefined()
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({ target: { kind: 'binding', id: 'other' } }),
+        }),
+      ).toBeUndefined()
     } finally {
       await fixture.dispose()
     }
@@ -2277,31 +2302,43 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  test('corrupt execution Package fails before Candidate, Plan, or admission mutation', async () => {
-    const fixture = await createFixture('ready')
-    try {
-      const executionPackage = await retainDistinctExecutionPackage(fixture, 'corrupt')
-      const candidate = insertExecutionCandidate(fixture, executionPackage, 'corrupt')
-      const plan = seedPlan(fixture, candidate, {
-        baseGeneration: null,
-        observedLock: 'absent',
-        operation: 'admission',
-      })
-      const artifact = packageArtifactPath(fixture.store, executionPackage)
-      await chmod(artifact, 0o600)
-      await writeFile(artifact, 'corrupt\n')
-      await chmod(artifact, 0o400)
-      const before = activationAuthoritySnapshot(fixture.database)
+  test.each(['execution', 'dependencies'] as const)(
+    'corrupt %s Package fails before Candidate, Plan, or admission mutation',
+    async (kind) => {
+      const fixture = await createFixture('ready')
+      try {
+        const executionPackage = await retainDistinctExecutionPackage(fixture, 'corrupt')
+        const dependencies =
+          kind === 'dependencies'
+            ? await retainDistinctExecutionPackage(fixture, 'dependencies')
+            : undefined
+        const candidate = insertExecutionCandidate(
+          fixture,
+          executionPackage,
+          'corrupt',
+          dependencies,
+        )
+        const plan = seedPlan(fixture, candidate, {
+          baseGeneration: null,
+          observedLock: 'absent',
+          operation: 'admission',
+        })
+        const artifact = packageArtifactPath(fixture.store, dependencies ?? executionPackage)
+        await chmod(artifact, 0o600)
+        await writeFile(artifact, 'corrupt\n')
+        await chmod(artifact, 0o400)
+        const before = activationAuthoritySnapshot(fixture.database)
 
-      await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
-        code: 'PACKAGE_ARTIFACT_CORRUPT',
-      })
-      expect(activationAuthoritySnapshot(fixture.database)).toEqual(before)
-      await expect(stat(join(fixture.root, 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
-    } finally {
-      await fixture.dispose()
-    }
-  })
+        await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
+          code: 'PACKAGE_ARTIFACT_CORRUPT',
+        })
+        expect(activationAuthoritySnapshot(fixture.database)).toEqual(before)
+        await expect(stat(join(fixture.root, 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
+      } finally {
+        await fixture.dispose()
+      }
+    },
+  )
 
   test('repairs the visible lock without creating another authority record', async () => {
     const fixture = await createFixture()
@@ -3055,6 +3092,7 @@ function insertExecutionCandidate(
   fixture: Fixture,
   executionPackage: PackageArtifactRef,
   label: string,
+  dependencies?: PackageArtifactRef,
 ): PrivateActivationCandidateArtifactV5 {
   const database = openSqlite(fixture.database, 'readonly')
   const revision = database.query('SELECT revision FROM candidate_head WHERE singleton = 1').get()
@@ -3069,7 +3107,15 @@ function insertExecutionCandidate(
         ...target.disposition,
         recipeDigest: digest(`direct-recipe:${label}`),
         observationDigest: digest(`direct-observation:${label}`),
-        execution: { ...target.disposition.execution, package: executionPackage },
+        execution: {
+          ...target.disposition.execution,
+          package: executionPackage,
+          ...(dependencies === undefined
+            ? {}
+            : {
+                preparation: { inputDigest: digest('preparation-inputs'), package: dependencies },
+              }),
+        },
       },
     },
   ]

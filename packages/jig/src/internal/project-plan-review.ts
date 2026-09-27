@@ -219,13 +219,15 @@ function executionChangeExplanation(
     )
       reasons.push('Prepared execution files or dependency layout changed.')
     else if (
-      before.disposition.execution?.preparationInputDigest !==
-      after.disposition.execution?.preparationInputDigest
+      !samePolicy(
+        before.disposition.execution?.preparation,
+        after.disposition.execution?.preparation,
+      )
     )
       reasons.push(
-        before.disposition.execution?.preparationInputDigest === undefined
-          ? 'This review records captured workspace inputs for future preparation reuse.\n  Prepared files and dependency layout are unchanged.'
-          : 'Workspace preparation inputs changed.\n  Prepared files and dependency layout are unchanged.',
+        before.disposition.execution?.preparation === undefined
+          ? 'This review records dependency inputs and installed bytes for future preparation reuse.\n  Prepared files and dependency layout are unchanged.'
+          : 'Dependency preparation evidence changed.\n  Prepared files and dependency layout are unchanged.',
       )
     if (reasons.length === 0) {
       reasons.push(

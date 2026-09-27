@@ -50,6 +50,12 @@ import {
   inspectPrivateBunPackageInput,
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
+import {
+  assemblePrivateBunExecution,
+  capturePrivateBunDependencies,
+  type PrivateBunPreparationWorkspace,
+  privateBunPreparationInputs,
+} from './bun-preparation-evidence.js'
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
 import { prepareContractGeneration } from './contract-generation.js'
 import { captureDependencyFlows } from './dependency-flows.js'
@@ -353,69 +359,7 @@ function createSession(
                 )
                 if (workspace !== undefined) {
                   try {
-                    const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
-                    if (
-                      admitted?.execution.preparationInputDigest === workspace.captured.digest &&
-                      admitted.execution.layout.flowRoot === workspace.target
-                    ) {
-                      const current = await planPrivateDirectRun({
-                        request,
-                        execution: admitted.execution,
-                        installedSupport: host.installedBunSupport,
-                        backend: host.backend,
-                        httpGrants: host.httpGrants,
-                        acpResources: host.acpResources,
-                      })
-                      if (
-                        current.digest === admitted.recipeDigest &&
-                        current.observation.digest === admitted.observationDigest
-                      ) {
-                        execution = admitted.execution
-                        privateProfileInstant('dependency-reuse')
-                        host.onStage?.(`Reusing approved dependencies for ${packageLabel}`)
-                      }
-                    }
-                    if (execution === undefined) {
-                      budget.reserve(workspace.captured.digest, request.packagePath)
-                      const unlocked = !workspace.captured.files.some(
-                        ({ path }) => path === 'bun.lock',
-                      )
-                      requirePrivateBunResolutionPermission(
-                        unlocked
-                          ? { state: 'unlocked', manifestPath: 'package.json' }
-                          : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
-                        host.allowResolutionNetwork,
-                      )
-                      if (unlocked) host.onResolution?.(request.packagePath)
-                      host.onStage?.(`Preparing dependencies for ${packageLabel}`)
-                      const prepared = await privateProfileSpan('dependency-preparation', () =>
-                        preparePrivateBunPackage({
-                          captured: workspace.captured,
-                          workspace,
-                          installedSupport: host.installedBunSupport,
-                          backend: host.backend,
-                          projectRoot: owner.root.requestedPath,
-                          coordinator: owner.coordinator,
-                          deadlineUnixMs: budget.deadlineUnixMs,
-                          signal: budget.signal,
-                          allowResolutionNetwork: host.allowResolutionNetwork === true,
-                        }),
-                      )
-                      try {
-                        budget.retain(
-                          prepared.captured.files,
-                          request.packagePath,
-                          Buffer.byteLength(JSON.stringify(prepared.layout)),
-                        )
-                        execution = privateBunExecutionArtifact(
-                          await publishCapturedPackage(packageStoreRoot, prepared.captured),
-                          prepared.layout,
-                          workspace.captured.digest,
-                        )
-                      } finally {
-                        await prepared.captured.dispose()
-                      }
-                    }
+                    execution = await prepareExecution(workspace.captured, workspace)
                   } finally {
                     await workspace.captured.dispose()
                   }
@@ -424,59 +368,106 @@ function createSession(
                   if (dependencyInput.state === 'direct') {
                     execution = privateBunExecutionArtifact(request.package)
                   } else {
-                    const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
-                    if (admitted !== undefined) {
-                      const current = await planPrivateDirectRun({
-                        request,
-                        execution: admitted.execution,
-                        installedSupport: host.installedBunSupport,
-                        backend: host.backend,
-                        httpGrants: host.httpGrants,
-                        acpResources: host.acpResources,
+                    execution = await prepareExecution(source)
+                  }
+                }
+
+                async function prepareExecution(
+                  captured: typeof source,
+                  workspace?: PrivateBunPreparationWorkspace,
+                ): Promise<PrivateBunExecutionArtifact> {
+                  const inputs = await privateBunPreparationInputs({
+                    captured,
+                    ...(workspace === undefined ? {} : { workspace }),
+                    supportDigest: privateDomainDigest('JIG-Bun-Preparation-Support/1', {
+                      installation: host.installedBunSupport.digest,
+                      mechanism: (await host.backend.inspectSupport()).digest,
+                    }),
+                  })
+                  const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
+                  const evidence = admitted?.execution.preparation
+                  if (admitted !== undefined && evidence?.inputDigest === inputs.digest) {
+                    // Reverify both admitted images. Corruption cannot silently trigger installation.
+                    const previous = await captureStoredPackage(
+                      packageStoreRoot,
+                      admitted.execution.package,
+                    )
+                    await previous.dispose()
+                    const dependencies = await captureStoredPackage(
+                      packageStoreRoot,
+                      evidence.package,
+                    )
+                    try {
+                      const assembled = await assemblePrivateBunExecution({
+                        source: captured,
+                        sourcePaths: inputs.sourcePaths,
+                        dependencies,
+                        layout: admitted.execution.layout,
                       })
-                      if (
-                        current.digest === admitted.recipeDigest &&
-                        current.observation.digest === admitted.observationDigest
-                      ) {
-                        execution = admitted.execution
-                        privateProfileInstant('dependency-reuse')
-                      }
-                    }
-                    if (execution === undefined) {
-                      requirePrivateBunResolutionPermission(
-                        dependencyInput,
-                        host.allowResolutionNetwork,
-                      )
-                      budget.reserve(request.package.digest, request.packagePath)
-                      if (dependencyInput.state === 'unlocked')
-                        host.onResolution?.(request.packagePath)
-                      host.onStage?.(`Preparing dependencies for ${packageLabel}`)
-                      const prepared = await privateProfileSpan('dependency-preparation', () =>
-                        preparePrivateBunPackage({
-                          captured: source,
-                          installedSupport: host.installedBunSupport,
-                          backend: host.backend,
-                          projectRoot: owner.root.requestedPath,
-                          coordinator: owner.coordinator,
-                          deadlineUnixMs: budget.deadlineUnixMs,
-                          signal: budget.signal,
-                          allowResolutionNetwork: host.allowResolutionNetwork === true,
-                        }),
-                      )
                       try {
-                        budget.retain(
-                          prepared.captured.files,
-                          request.packagePath,
-                          Buffer.byteLength(JSON.stringify(prepared.layout)),
+                        budget.signal.throwIfAborted()
+                        const execution = privateBunExecutionArtifact(
+                          await publishCapturedPackage(packageStoreRoot, assembled),
+                          admitted.execution.layout,
+                          evidence,
                         )
-                        execution = privateBunExecutionArtifact(
-                          await publishCapturedPackage(packageStoreRoot, prepared.captured),
-                          prepared.layout,
-                        )
+                        privateProfileInstant('dependency-reuse')
+                        host.onStage?.(`Reusing approved dependencies for ${packageLabel}`)
+                        return execution
                       } finally {
-                        await prepared.captured.dispose()
+                        await assembled.dispose()
                       }
+                    } finally {
+                      await dependencies.dispose()
                     }
+                  }
+                  const unlocked = !captured.files.some(({ path }) => path === 'bun.lock')
+                  requirePrivateBunResolutionPermission(
+                    unlocked
+                      ? { state: 'unlocked', manifestPath: 'package.json' }
+                      : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
+                    host.allowResolutionNetwork,
+                  )
+                  budget.reserve(captured.digest, request.packagePath)
+                  if (unlocked) host.onResolution?.(request.packagePath)
+                  host.onStage?.(`Preparing dependencies for ${packageLabel}`)
+                  const prepared = await privateProfileSpan('dependency-preparation', () =>
+                    preparePrivateBunPackage({
+                      captured,
+                      ...(workspace === undefined ? {} : { workspace }),
+                      installedSupport: host.installedBunSupport,
+                      backend: host.backend,
+                      projectRoot: owner.root.requestedPath,
+                      coordinator: owner.coordinator,
+                      deadlineUnixMs: budget.deadlineUnixMs,
+                      signal: budget.signal,
+                      allowResolutionNetwork: host.allowResolutionNetwork === true,
+                    }),
+                  )
+                  try {
+                    budget.retain(
+                      prepared.captured.files,
+                      request.packagePath,
+                      Buffer.byteLength(JSON.stringify(prepared.layout)),
+                    )
+                    const dependencies = await capturePrivateBunDependencies(
+                      prepared.captured,
+                      inputs.sourcePaths,
+                    )
+                    try {
+                      return privateBunExecutionArtifact(
+                        await publishCapturedPackage(packageStoreRoot, prepared.captured),
+                        prepared.layout,
+                        {
+                          inputDigest: inputs.digest,
+                          package: await publishCapturedPackage(packageStoreRoot, dependencies),
+                        },
+                      )
+                    } finally {
+                      await dependencies.dispose()
+                    }
+                  } finally {
+                    await prepared.captured.dispose()
                   }
                 }
               } finally {

@@ -265,9 +265,10 @@ hostTest(
       const installed = join(tooling, 'node_modules/.bin/jig')
       let sequence = 0
       const invoke = async (args: string[]) => {
+        const trace = join(directory, `${sequence + 1}-${args[0]}.profile.jsonl`)
         const child = Bun.spawn([installed, ...args], {
           cwd: project,
-          env: { ...process.env, NO_COLOR: '1' },
+          env: { ...process.env, NO_COLOR: '1', JIG_PRIVATE_PROFILE_FILE: trace },
           stdin: 'ignore',
           stdout: 'pipe',
           stderr: 'pipe',
@@ -282,7 +283,11 @@ hostTest(
           join(directory, `${++sequence}-${args[0]}.json`),
           JSON.stringify({ args, exit, stdout, stderr }, null, 2),
         )
-        return { exit, stdout, stderr }
+        const profile = (await readFile(trace, 'utf8'))
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        return { exit, stdout, stderr, profile }
       }
       const succeed = async (args: string[]) => {
         const result = await invoke(args)
@@ -410,6 +415,87 @@ for await (const line of lines) {
       await succeed(['review', '--yes'])
       const short = JSON.parse((await succeed(['run', '--input', '"short"', '--json'])).stdout)
       expect(short).toMatchObject({ status: 'succeeded', output: 'short' })
+
+      // A real installed consumer edits project source without a new install.
+      // These are local Bun workspace inputs, not registry/model calls.
+      await put('package.json', {
+        private: true,
+        type: 'module',
+        workspaces: ['flows/dependencies', 'libs/*'],
+      })
+      await put('libs/helper/package.json', {
+        name: 'helper',
+        type: 'module',
+        exports: './index.ts',
+      })
+      await put('libs/helper/index.ts', 'export const value = 1;')
+      await put('libs/helper/removed.txt', 'original resource')
+      await put('flows/dependencies/package.json', {
+        name: 'dependencies',
+        type: 'module',
+        dependencies: { helper: 'workspace:*' },
+      })
+      await put(
+        'flows/dependencies/FLOW.ts',
+        `import {value} from 'helper';\n${echo.replace('let output=input;', 'let output={input,value,settings:request.params.settings};')}`,
+      )
+      const binding = (phase: string) =>
+        `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/dependencies',settings:{phase:${JSON.stringify(phase)}}});`
+      await put('bindings/dependencies.ts', binding('first'))
+      const count = (result: Awaited<ReturnType<typeof invoke>>, phase: string) =>
+        result.profile.filter(
+          (record) =>
+            record.phase === phase && (record.kind === 'start' || record.kind === 'instant'),
+        ).length
+      const prepared = await succeed(['review', '--yes', '--allow-resolution-network'])
+      expect(count(prepared, 'dependency-preparation')).toBe(1)
+      const runDependency = async () =>
+        JSON.parse(
+          (await succeed(['run', 'binding:dependencies', '--input', '"checked"', '--json'])).stdout,
+        )
+      expect(await runDependency()).toMatchObject({
+        status: 'succeeded',
+        output: { input: 'checked', value: 1, settings: { phase: 'first' } },
+      })
+      const unchanged = await succeed(['review', '--yes'])
+      expect(count(unchanged, 'dependency-preparation')).toBe(0)
+      expect(count(unchanged, 'dependency-reuse')).toBe(1)
+      await put('libs/helper/index.ts', 'export const value = 2;')
+      await rm(join(project, 'libs/helper/removed.txt'))
+      await put('libs/helper/added.txt', 'new resource')
+      // Until review, execution still uses the old admitted source.
+      expect(await runDependency()).toMatchObject({ output: { value: 1 } })
+      const edited = await succeed(['review', '--yes'])
+      expect(count(edited, 'dependency-preparation')).toBe(0)
+      expect(count(edited, 'dependency-reuse')).toBe(1)
+      expect(edited.stdout).toContain('Prepared execution files or dependency layout changed')
+      expect(await runDependency()).toMatchObject({
+        status: 'succeeded',
+        output: { value: 2, settings: { phase: 'first' } },
+      })
+      await put('bindings/dependencies.ts', binding('second'))
+      const settingsChanged = await succeed(['review', '--yes'])
+      expect(count(settingsChanged, 'dependency-preparation')).toBe(0)
+      expect(count(settingsChanged, 'dependency-reuse')).toBe(1)
+      expect(await runDependency()).toMatchObject({
+        output: { value: 2, settings: { phase: 'second' } },
+      })
+      await put('libs/helper/package.json', {
+        name: 'helper',
+        type: 'module',
+        exports: './index.ts',
+        description: 'Changed installer input',
+      })
+      const missingPermission = await invoke(['review', '--yes'])
+      expect(missingPermission.exit).not.toBe(0)
+      expect(missingPermission.stderr).toContain('PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED')
+      const dependencyChanged = await succeed(['review', '--yes', '--allow-resolution-network'])
+      expect(count(dependencyChanged, 'dependency-preparation')).toBe(1)
+      expect(count(dependencyChanged, 'dependency-reuse')).toBe(0)
+      expect(await runDependency()).toMatchObject({
+        status: 'succeeded',
+        output: { value: 2, settings: { phase: 'second' } },
+      })
       passed = true
     } finally {
       if (passed) await rm(directory, { recursive: true, force: true })

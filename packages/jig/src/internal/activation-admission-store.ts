@@ -413,8 +413,6 @@ interface PrivateActivationPlanningSnapshot {
 }
 
 export interface PrivateAdmittedExecutionReuse {
-  readonly recipeDigest: string
-  readonly observationDigest: string
   readonly execution: PrivateBunExecutionArtifact
 }
 
@@ -621,8 +619,8 @@ export async function capturePrivateActivationPlanningBase(input: {
 }
 
 /**
- * Reopen the exact prepared execution reference admitted for one unchanged
- * request. The opaque planning base keeps this lookup tied to the same heads
+ * Reopen preparation evidence for the same exact target and package location.
+ * It is not authority for the fresh request. The opaque planning base ties it to the heads
  * that final Candidate publication will compare-and-set.
  */
 export function readPrivateAdmittedExecutionReuse(input: {
@@ -632,12 +630,13 @@ export function readPrivateAdmittedExecutionReuse(input: {
   const base = requirePrivateActivationPlanningBase(input.planningBase)
   const request = requirePrivateActivationRequest(input.request)
   const target = base.admittedCandidate?.candidate.targets.find(
-    (candidate) => candidate.request.digest === request.digest,
+    (candidate) =>
+      privateActivationTargetKey(candidate.request.target) ===
+        privateActivationTargetKey(request.target) &&
+      candidate.request.packagePath === request.packagePath,
   )
   if (target?.disposition.state !== 'ready') return undefined
   return Object.freeze({
-    recipeDigest: target.disposition.recipeDigest,
-    observationDigest: target.disposition.observationDigest,
     execution: target.disposition.execution,
   })
 }
@@ -5043,7 +5042,14 @@ async function reacquireCandidateArtifacts(
         Object.values(entry.attachments ?? {}).map((item) => item.digest),
       ),
       ...candidate.candidate.targets.flatMap((target) =>
-        target.disposition.state === 'ready' ? [target.disposition.execution.package.digest] : [],
+        target.disposition.state === 'ready'
+          ? [
+              target.disposition.execution.package.digest,
+              ...(target.disposition.execution.preparation === undefined
+                ? []
+                : [target.disposition.execution.preparation.package.digest]),
+            ]
+          : [],
       ),
     ])
     for (const digest of [...digests].sort()) {
