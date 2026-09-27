@@ -19,6 +19,9 @@ or newer instructions. Keep the reviewer advancing independently.
   instructions and an optional replacement. The root sends that replacement
   only to the reviewer to publish; model output never supplies its contents.
   `test/` owns deterministic application checks.
+- `jig.ts` owns the reviewed default brief invocation with its input and deadline.
+  Worker diagnostics expose static application phases, not model text or native
+  dispatch claims; they remain distinct from the final settlement packet.
 
 ## Local Contracts
 

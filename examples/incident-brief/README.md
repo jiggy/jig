@@ -12,7 +12,7 @@ the included Agent Binding and your native client as described in the
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:brief --input @input.json --timeout 3m
+jig run
 ```
 
 Review prepares the declared package dependencies; no repository-private tools
@@ -24,9 +24,13 @@ packages instead of requiring publication.
 
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
+The reviewed entrypoint in `jig.ts` selects the brief, input and three-minute
+deadline. Override an argument when needed, for example `jig run --input @my-incident.json`.
 Successful output contains a proposed brief, independent questions, actual
 conversation settlement and, when replaced, the exact handoff snapshot. Progress
-diagnostics show when handoff preparation and successor dispatch happen.
+diagnostics identify each worker's requested turn, received answer, handoff
+preparation and actual predecessor settlement. A requested turn is not evidence
+of remote dispatch or completion; a deadline can still prevent the final packet.
 Inspect each branch's `outcome`: `blocked` retains available unsuccessful work
 and the other worker's result. Model text is not independently verified evidence
 or permission to publish.

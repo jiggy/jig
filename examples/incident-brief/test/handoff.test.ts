@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import {
   AgentConversationError,
   type AgentTurn,
@@ -124,6 +124,37 @@ const converse: typeof withAgentConversation = async (_run, _options, use) => {
 
 test('the sibling channel uses identical offline contracts', () =>
   expect(projectContract).toEqual(workerContract))
+
+test('phase diagnostics precede answers without echoing supplied context or claiming dispatch', async () => {
+  const f = fixture()
+  const run = { ...f.run, channels: {} }
+  const pending = deferred<AgentTurn>()
+  const messages: string[] = []
+  const log = spyOn(console, 'log').mockImplementation((message) => messages.push(String(message)))
+  try {
+    const execution = work(run, async (_run, _options, use) => ({
+      value: await use({
+        initial: pending.promise,
+        prompt: async () => {
+          throw new Error('No follow-up expected')
+        },
+        interrupt: async () => 'not-running',
+      }),
+      turns: [],
+      settlement: { outcome: 'done', output: { turns: 1 } },
+    }))
+    expect(messages).toEqual(['draft: requesting turn 1/3.'])
+    pending.resolve(turn('private answer not for diagnostic output'))
+    expect((await execution).outcome).toBe('done')
+    expect(messages).toEqual([
+      'draft: requesting turn 1/3.',
+      'draft: initial turn result; awaiting context decision.',
+    ])
+  } finally {
+    pending.resolve(turn('settled'))
+    log.mockRestore()
+  }
+})
 
 test('review commentary continues the same conversation without interruption or a successor', async () => {
   const f = fixture()
