@@ -183,7 +183,10 @@ async function repairWithProgress(
     )
   } catch (error) {
     if (error instanceof OperationError)
-      throw new OperationError(error.code, error.message, evidence() as unknown as JsonValue)
+      throw new OperationError(error.code, error.message, {
+        ...evidence(),
+        ...(error.details === undefined ? {} : { operationDetails: error.details }),
+      } as unknown as JsonValue)
     throw error
   }
 }
