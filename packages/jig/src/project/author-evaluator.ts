@@ -3,16 +3,16 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { invalid, unavailable } from '../diagnostics.js'
-import { privateProfileSpan } from '../internal/private-profile.js'
+import {
+  type PrivateInstalledBunSupport,
+  requirePrivateInstalledBunSupport,
+  revalidatePrivateInstalledBunSupport,
+} from '../internal/installed-bun-support.js'
 import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupLimits,
 } from '../internal/linux-rootless-backend.js'
-import {
-  requirePrivateInstalledBunSupport,
-  revalidatePrivateInstalledBunSupport,
-  type PrivateInstalledBunSupport,
-} from '../internal/installed-bun-support.js'
+import { privateProfileSpan } from '../internal/private-profile.js'
 import {
   canonicalJson,
   decodeJson1,
@@ -23,12 +23,12 @@ import {
 } from '../json.js'
 import { compileEmbeddedSchema } from '../schema/index.js'
 import {
-  normalizeJigDefinition,
-  normalizePackageBindingDefinition,
   type BindingDefinition,
   type JigDefinition,
+  normalizeJigDefinition,
+  normalizePackageBindingDefinition,
 } from './author.js'
-import { isCapturedAuthorClosure, type CapturedAuthorClosure } from './author-module.js'
+import { type CapturedAuthorClosure, isCapturedAuthorClosure } from './author-module.js'
 
 const PROTOCOL = 'jig-author-evaluator/1'
 const MAX_STDERR_BYTES = 64 * 1024
