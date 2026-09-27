@@ -60,6 +60,9 @@ operational baselines, and public-site assembly.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
 - `ci/` owns disposable CI-host provisioning.
+- `generate-unicode-normalization.py` verifies the exact Unicode 15.1 source
+  digests before generating Jig's canonical normalization tables and official
+  conformance vectors. It makes no network requests or contract-version changes.
 - Site assembly verifies every public HTML page has indexed Markdown and
   full-text bundle coverage, rejects public `AGENTS.md` routes, and includes
   notices for bundled fonts.

@@ -293,11 +293,14 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Unicode 15.1.0 CaseFolding data
+Unicode 15.1.0 case folding and normalization data
 --------------------------------
 
 `src/package/case-fold-15.1.ts` is generated from the C and F mappings in
-Unicode 15.1.0 `CaseFolding.txt`. Unicode data files are licensed under the
+Unicode 15.1.0 `CaseFolding.txt`. `src/package/normalization-data-15.1.ts`
+is generated from `UnicodeData.txt` and `DerivedNormalizationProps.txt`;
+the normalization test fixture retains vectors from `NormalizationTest.txt`.
+Unicode data files are licensed under the
 Unicode License v3 unless a file identifies different terms.
 
 UNICODE LICENSE V3

@@ -284,6 +284,14 @@ admitted FLOW packages.
 
 ## Verification
 
+- Package/project path NFC uses pinned Unicode 15.1 canonical decomposition,
+  combining classes and composition data, independently of host ICU. Keep
+  case folding and normalization at the same contract version. The official
+  normalization conformance vectors in `test/normalization-15.1.test.ts` and
+  path/workspace-preparation tests verify this boundary. Regenerate tables and
+  vectors with `scripts/generate-unicode-normalization.py` and its exact hashed
+  Unicode 15.1 inputs; the generator refuses changed data before writing.
+
 - `bun test packages/jig`
 - `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.

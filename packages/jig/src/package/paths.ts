@@ -1,21 +1,14 @@
 import { CASE_FOLD_15_1 } from './case-fold-15.1.js'
-import { invalid, unavailable } from '../diagnostics.js'
+import { invalid } from '../diagnostics.js'
+import { normalizeNfc15_1 } from './normalization-15.1.js'
 
 const encoder = new TextEncoder()
-const REQUIRED_UNICODE_VERSION = '15.1'
 
 export const PACKAGE_1_MAX_PATH_BYTES = 1_024
 
 /** Test NFC with the exact Unicode database fixed by Package/0. */
 export function isNfc15_1(value: string): boolean {
-  const actual = process.versions.unicode
-  if (actual !== REQUIRED_UNICODE_VERSION) {
-    unavailable(
-      'PACKAGE_UNICODE_UNAVAILABLE',
-      `Package/0 requires Unicode ${REQUIRED_UNICODE_VERSION} NFC; host reports ${actual ?? 'no Unicode version'}`,
-    )
-  }
-  return value === value.normalize('NFC')
+  return value === normalizeNfc15_1(value)
 }
 
 export function validateLogicalPath(path: string): string {
