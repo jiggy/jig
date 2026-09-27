@@ -163,7 +163,7 @@ try {
       jig,
       [
         'run',
-        'flow:flows/investigate',
+        'binding:analysis',
         '--input',
         '@input.json',
         '--timeout',

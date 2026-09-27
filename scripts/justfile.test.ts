@@ -25,6 +25,9 @@ test('startup profiler initializes its trace allowlist before execution and refu
   expect(initialized).toBeLessThan(
     source.indexOf('const environment = requireProfileEnvironment()'),
   )
+  // The direct Flow has no collaborators; its Binding supplies both children.
+  expect(source).toContain("'binding:analysis'")
+  expect(source).not.toContain("'flow:flows/investigate'")
   const child = Bun.spawn([process.execPath, path], {
     env: { PATH: process.env.PATH },
     stdout: 'pipe',
