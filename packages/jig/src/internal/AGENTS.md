@@ -127,6 +127,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   evidence. Copied or closed bundle objects cannot supply descriptor authority.
 - `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
   file operations, raw directory enumeration and anonymous streaming backings.
+  Capture syscall errno inside the packaged native bridge; never read or clear
+  thread-local errno in a later FFI call. Integer errors return negative errno;
+  directory pointers use explicit error buffers and native readdir resets.
   Bundled Markdown workers resolve the verified descriptor bridge beside their
   installed `libexec` entrypoint; native Markdown launch grants read access to
   that exact bridge file, never its containing tree. Copied installation
@@ -705,8 +708,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   profiles have prerequisite ABI evidence; full conformance is required before
   promoting support. Select architecture-native Bun and Mach-O slices; never
   treat Rosetta execution as Apple Silicon qualification.
-- Darwin descriptor calls bind Intel's `$INODE64` symbols and Apple Silicon's
-  unsuffixed native symbols explicitly. Coalition CPU ledger values are Mach
+- The SDK-compiled descriptor bridge selects Intel and Apple Silicon's native
+  stat and directory ABIs. Coalition CPU ledger values are Mach
   ticks: convert with the kernel's `mach_timebase_info` ratio before comparing
   nanosecond limits or recording evidence. Per-process rusage units stay unchanged.
 - `openat` and `fcntl` use the packaged fixed-signature native bridge rather

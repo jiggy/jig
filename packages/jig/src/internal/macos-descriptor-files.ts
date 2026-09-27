@@ -21,7 +21,7 @@ type NativeSymbol =
   | 'readlinkat'
   | 'symlinkat'
   | 'linkat'
-  | '__error'
+
 type Call = (...args: (number | bigint)[]) => number
 interface Native {
   ptr(bytes: Uint8Array): number
@@ -41,20 +41,6 @@ function calls(): Native {
   if (process.versions.bun !== '1.4.2')
     throw new Error('macOS descriptor adoption requires the qualified Bun runtime')
   const ffi = createRequire(import.meta.url)('bun:ffi')
-  const { symbols: loaded } = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
-    [process.arch === 'arm64' ? 'fstatat' : 'fstatat$INODE64']: { args: ['i32', 'ptr', 'ptr', 'i32'], returns: 'i32' },
-    [process.arch === 'arm64' ? 'fstatfs' : 'fstatfs$INODE64']: { args: ['i32', 'ptr'], returns: 'i32' },
-    [process.arch === 'arm64' ? 'fdopendir' : 'fdopendir$INODE64']: { args: ['i32'], returns: 'ptr' },
-    [process.arch === 'arm64' ? 'readdir' : 'readdir$INODE64']: { args: ['ptr'], returns: 'ptr' },
-    closedir: { args: ['ptr'], returns: 'i32' },
-    mkdirat: { args: ['i32', 'ptr', 'u32'], returns: 'i32' },
-    unlinkat: { args: ['i32', 'ptr', 'i32'], returns: 'i32' },
-    renameatx_np: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
-    readlinkat: { args: ['i32', 'ptr', 'ptr', 'u64'], returns: 'i64' },
-    symlinkat: { args: ['ptr', 'i32', 'ptr'], returns: 'i32' },
-    linkat: { args: ['i32', 'ptr', 'i32', 'ptr', 'i32'], returns: 'i32' },
-    __error: { args: [], returns: 'ptr' },
-  })
   const modulePath = fileURLToPath(import.meta.url)
   const libexec = modulePath.lastIndexOf('/libexec/')
   const bridge = libexec >= 0
@@ -62,28 +48,35 @@ function calls(): Native {
     : join(dirname(modulePath), modulePath.includes('/internal/') ? '../../support/macos-descriptor-bridge.dylib' : '../support/macos-descriptor-bridge.dylib')
   const canonical = realpathSync(bridge)
   const metadata = lstatSync(bridge)
-  if (canonical !== bridge || !metadata.isFile() || metadata.size > 1024 * 1024 || (metadata.mode & 0o022) !== 0 || createHash('sha256').update(readFileSync(bridge)).digest('hex') !== '35e67cd8ca82b71476bfdb795b566ce8b6aa515a8964c2c33102457dffdf21a8')
+  if (canonical !== bridge || !metadata.isFile() || metadata.size > 1024 * 1024 || (metadata.mode & 0o022) !== 0 || createHash('sha256').update(readFileSync(bridge)).digest('hex') !== '025fef6db394ca776da58294e93bb98d7484962bc3718a3c434a980a069570ca')
     throw new Error('native descriptor bridge identity is invalid')
-  const fixed = ffi.dlopen(bridge, {
-    jig_openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
-    jig_fcntl: { args: ['i32', 'i32', 'u64'], returns: 'i32' },
-  })
-  const symbols = { ...loaded, openat: fixed.symbols.jig_openat, fcntl: fixed.symbols.jig_fcntl,
-    fstatat: loaded[process.arch === 'arm64' ? 'fstatat' : 'fstatat$INODE64'],
-    fstatfs: loaded[process.arch === 'arm64' ? 'fstatfs' : 'fstatfs$INODE64'],
-    fdopendir: loaded[process.arch === 'arm64' ? 'fdopendir' : 'fdopendir$INODE64'],
-    readdir: loaded[process.arch === 'arm64' ? 'readdir' : 'readdir$INODE64'],
+  const declarations = {
+    openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
+    fcntl: { args: ['i32', 'i32', 'u64'], returns: 'i32' },
+    fstatat: { args: ['i32', 'ptr', 'ptr', 'i32'], returns: 'i32' },
+    fstatfs: { args: ['i32', 'ptr'], returns: 'i32' },
+    fdopendir: { args: ['i32', 'ptr'], returns: 'ptr' },
+    readdir: { args: ['ptr', 'ptr'], returns: 'ptr' },
+    closedir: { args: ['ptr'], returns: 'i32' },
+    mkdirat: { args: ['i32', 'ptr', 'u32'], returns: 'i32' },
+    unlinkat: { args: ['i32', 'ptr', 'i32'], returns: 'i32' },
+    renameatx_np: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
+    readlinkat: { args: ['i32', 'ptr', 'ptr', 'u64'], returns: 'i64' },
+    symlinkat: { args: ['ptr', 'i32', 'ptr'], returns: 'i32' },
+    linkat: { args: ['i32', 'ptr', 'i32', 'ptr', 'i32'], returns: 'i32' },
   }
+  const fixed = ffi.dlopen(bridge, Object.fromEntries(
+    Object.entries(declarations).map(([name, declaration]) => [`jig_${name}`, declaration]),
+  ))
+  const symbols = Object.fromEntries(Object.keys(declarations).map(
+    (name) => [name, fixed.symbols[`jig_${name}`]],
+  )) as Native['symbols']
   native = { ptr: ffi.ptr, toArrayBuffer: ffi.toArrayBuffer, symbols }
   return native
 }
-function errnoBytes(): Buffer {
-  const { symbols, toArrayBuffer } = calls()
-  return Buffer.from(toArrayBuffer(symbols.__error(), 0, 4))
-}
 function checked(result: number): number {
   if (result >= 0) return result
-  const code = getSystemErrorName(-errnoBytes().readInt32LE())
+  const code = getSystemErrorName(result)
   throw Object.assign(new Error(`macOS descriptor operation failed (${code})`), { code })
 }
 function nameBytes(value: string | Uint8Array): Buffer {
@@ -335,9 +328,10 @@ export function privateMacosDirectory(fd: number) {
       0,
     ),
   )
-  const stream = symbols.fdopendir(duplicate)
+  const error = Buffer.alloc(4)
+  const stream = symbols.fdopendir(duplicate, ptr(error))
   if (!stream) {
-    const code = errnoBytes().readInt32LE()
+    const code = error.readInt32LE()
     closeSync(duplicate)
     throw Object.assign(new Error('macOS directory stream unavailable'), {
       code: getSystemErrorName(-code),
@@ -347,10 +341,9 @@ export function privateMacosDirectory(fd: number) {
   const read = (): Dirent<Buffer> | null => {
     if (closed) throw new Error('macOS directory stream is closed')
     for (;;) {
-      errnoBytes().writeInt32LE(0)
-      const entry = symbols.readdir(stream)
+      const entry = symbols.readdir(stream, ptr(error))
       if (!entry) {
-        if (errnoBytes().readInt32LE() !== 0) checked(-1)
+        if (error.readInt32LE() !== 0) checked(-error.readInt32LE())
         return null
       }
       const header = Buffer.from(toArrayBuffer(entry, 0, 21))

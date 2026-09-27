@@ -141,3 +141,28 @@ native(
   },
   30_000,
 )
+
+native('descriptor failures retain their own errno and directory exhaustion is clean', async () => {
+  const root = await mkdtemp('/private/tmp/jig-descriptor-errno-')
+  const directory = await open(root, constants.O_RDONLY | constants.O_DIRECTORY)
+  try {
+    await writeFile(join(root, 'present'), 'fixture')
+    for (let iteration = 0; iteration < 32; iteration++) {
+      await expect(privateMacosOpenAt(directory.fd, 'present', constants.O_CREAT | constants.O_EXCL))
+        .rejects.toMatchObject({ code: 'EEXIST' })
+      expect(() => privateMacosStatAt(directory.fd, 'absent')).toThrow('(ENOENT)')
+      const entries = privateMacosDirectory(directory.fd)
+      try {
+        expect((await entries.read())?.name.toString()).toBe('present')
+        expect(await entries.read()).toBeNull()
+      } finally {
+        await entries.close()
+      }
+      await Bun.sleep(0)
+    }
+    expect(() => privateMacosStatAt(-1, 'absent')).toThrow('(EBADF)')
+  } finally {
+    await directory.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
