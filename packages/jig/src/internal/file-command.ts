@@ -239,7 +239,7 @@ export async function privateOwnFileCommand(
               delivered =
                 request.output === null
                   ? publish(undefined)
-                  : native.output(peer!, request.output, coordinatorLost.signal, (capture) =>
+                  : native.output(peer!, request.output, cancellation.signal, (capture) =>
                       publish({ kind: 'snapshot', capture }),
                     )
             } else {

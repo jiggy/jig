@@ -298,6 +298,53 @@ test('manual native qualification selects only a successful main-push host run f
   }
 })
 
+test('Mac publication gate accepts only a successful exact main-push host run', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mac-host-gate-'))
+  const bin = join(directory, 'bin')
+  const revision = 'a'.repeat(40)
+  const script = join(root, 'scripts/require-macos-host-conformance.sh')
+  try {
+    await mkdir(bin)
+    await writeFile(join(bin, 'gh'), '#!/bin/sh\ncat "$MOCK_GH_RESPONSE"\n')
+    await writeFile(join(bin, 'sleep'), '#!/bin/sh\nexit 0\n')
+    await chmod(join(bin, 'gh'), 0o755)
+    await chmod(join(bin, 'sleep'), 0o755)
+    const response = join(directory, 'response.json')
+    const run = async (value: unknown) => {
+      await writeFile(response, JSON.stringify({ workflow_runs: Array.isArray(value) ? value : [value] }))
+      const child = Bun.spawn(['/bin/sh', script, 'jiggy/jig', revision], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          GH_TOKEN: 'fixture-token',
+          MOCK_GH_RESPONSE: response,
+          PATH: `${bin}:${process.env.PATH}`,
+          TMPDIR: directory,
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      return { exit: await child.exited, output: await new Response(child.stdout).text() }
+    }
+    const matching = {
+      status: 'completed',
+      conclusion: 'success',
+      event: 'push',
+      head_branch: 'main',
+      head_sha: revision,
+      head_repository: { full_name: 'jiggy/jig' },
+    }
+    expect((await run(matching)).exit).toBe(0)
+    expect((await run({ ...matching, conclusion: 'failure' })).exit).toBe(1)
+    expect((await run([
+      { ...matching, head_sha: 'b'.repeat(40) },
+      { ...matching, conclusion: 'failure' },
+    ])).exit).toBe(1)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('native API publication gate waits for this revision and rejects an exact-revision failure', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'native-agent-api-gate-'))
   const bin = join(directory, 'bin')

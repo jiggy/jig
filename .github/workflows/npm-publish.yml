@@ -39,6 +39,13 @@ jobs:
           scripts/require-linux-host-conformance.sh
           "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
 
+      - name: Require successful Intel and Apple Silicon Mac host conformance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          scripts/require-macos-host-conformance.sh
+          "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
+
       - name: Require exact-revision native Agent API qualification
         env:
           GH_TOKEN: ${{ github.token }}

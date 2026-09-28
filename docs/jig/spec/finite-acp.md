@@ -365,7 +365,7 @@ resolved executable checked against admitted provider identity, without repeatin
 host PATH discovery. A changed selection cannot silently replace reviewed
 executable or support bytes.
 
-All three native adapters inspect Linux x86-64 ELF executables. Codex and
+On Linux, all three native adapters inspect x86-64 ELF executables. Codex and
 Claude Code also accept the declarative `makeBinaryWrapper` form which preserves
 arguments and prefixes PATH; Pi requires its unwrapped standalone executable.
 Arbitrary shell/JavaScript wrappers, wrapper flags or environment changes, and nested
@@ -382,7 +382,14 @@ executable and cannot be selected through the project tree. Bun's private loader
 settings are removed before each native client starts, so its libraries use
 the reviewed installation's ABI.
 
-For Codex's nested sandbox, Jig selects the first eligible unprivileged `bwrap`
+On qualified Macs, the adapters inspect native-architecture Mach-O executable
+and library metadata without running the selected client during review. Jig
+retains exact regular-file dependencies outside project source and rechecks
+their digests before launch; qualified system-cache libraries remain OS
+support. A different architecture, unsupported load command, missing library,
+or project-selected dependency fails closed.
+
+On Linux, for Codex's nested sandbox, Jig selects the first eligible unprivileged `bwrap`
 from the wrapper's declared PATH prefix followed by operator PATH, with the
 same project and dependency-directory exclusions as client discovery. With no
 eligible helper, it selects the installation's matching `codex-resources/bwrap`

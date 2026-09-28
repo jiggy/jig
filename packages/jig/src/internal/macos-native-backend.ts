@@ -167,6 +167,7 @@ interface SealedData {
   readonly mechanism: PrivateMacosBackendMechanismObservation
   readonly identity: PrivateMacosSealedOwnerIdentity
   readonly prepared: PrivateMacosPreparedOwnerIdentity
+  readonly state: Awaited<ReturnType<typeof openPrivateMacosBackendState>>
 }
 
 export class PrivateMacosFenceUnconfirmedError extends Error {
@@ -181,6 +182,7 @@ export class PrivateMacosFenceUnconfirmedError extends Error {
 /** One qualified private Mac implementation; this is not a public Backend SPI. */
 export class PrivateMacosBackend {
   readonly #options: NormalizedOptions
+  readonly #pending = new Map<string, { take(): Awaited<ReturnType<typeof openPrivateMacosBackendState>> }>()
   constructor(options: PrivateMacosBackendOptions) {
     this.#options = Object.freeze({
       bunPath: absolute(options.bunPath, 'Bun'),
@@ -230,22 +232,29 @@ export class PrivateMacosBackend {
     const state = await openPrivateMacosBackendState(allocation)
     try {
       await state.seal(identity as unknown as JsonObject)
-    } finally {
+    } catch (error) {
       await state.close()
+      throw error
     }
     const prepared = preparedFor(identity)
     let admitted = false
+    const take = () => {
+      if (admitted) throw new TypeError('sealed native macOS owner was already admitted')
+      admitted = true
+      this.#pending.delete(identity.digest)
+      return state
+    }
     const sealed = Object.freeze({
       identity,
       admit: async (
         signal?: AbortSignal,
         beforeAdmission?: (prepared: PrivateMacosPreparedOwnerIdentity) => Promise<void>,
       ) => {
-        if (admitted) throw new TypeError('sealed native macOS owner was already admitted')
-        admitted = true
+        take()
         return this.#launch(plan, sealed, signal, beforeAdmission)
       },
     })
+    this.#pending.set(identity.digest, { take })
     authenticSealedOwners.set(
       sealed,
       Object.freeze({
@@ -255,6 +264,7 @@ export class PrivateMacosBackend {
         mechanism,
         identity,
         prepared,
+        state,
       }),
     )
     return sealed
@@ -329,7 +339,8 @@ export class PrivateMacosBackend {
     const owner = isPrepared(value)
       ? normalizePrivateMacosPreparedOwnerIdentity(value).owner
       : normalizePrivateMacosSealedOwnerIdentity(value)
-    const state = await openPrivateMacosBackendState(owner.allocation)
+    const state = this.#pending.get(owner.digest)?.take() ??
+      await openPrivateMacosBackendState(owner.allocation)
     try {
       const current = await state.read()
       if (!sameJson(current.sealed, owner))
@@ -370,7 +381,9 @@ export class PrivateMacosBackend {
     beforeAdmission?: (prepared: PrivateMacosPreparedOwnerIdentity) => Promise<void>,
   ): Promise<PrivateMacosComponentProcess> {
     const data = requireSealed(sealed, this, plan)
-    const state = await openPrivateMacosBackendState(data.identity.allocation)
+    // Sealing retains the coordinator lock through admission. Recovery can
+    // acquire it only after this coordinator closes or dies.
+    const state = data.state
     let guardian: PrivateMacosGuardian | undefined
     let active = false
     let componentReturned = false

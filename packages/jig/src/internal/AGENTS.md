@@ -190,7 +190,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   separate 30-second deadline; uncertain cleanup preserves the allocation.
   After authentic guardian completion or recovery proves fencing and storage
   cleanup, retire the volume and guardian journals through their authenticated
-  fixed entry sets. Journal release is separate from recovery: detach/backing or
+  fixed entry sets. Volume retirement stages and persists an authenticated
+  marker in the guardian directory before deleting its last control journal; recovery and
+  release can resume after either deletion, and remove the marker only after
+  the exact control directory is gone. Journal release is separate from recovery: detach/backing or
   job uncertainty must retain evidence. Remove each exact guardian directory only
   after its main and recovery jobs are absent; never replace this with recursive
   deletion.
@@ -238,15 +241,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   neither execution nor fencing authority.
 - `macos-native-backend.ts` binds the qualified Darwin mechanism, immutable path
   identities, bounded native storage and live input capabilities into one sealed
-  owner. Keep its coordinator lock through guardian admission, complete cleanup
+  owner. Keep its coordinator lock continuously from sealing through guardian
+  admission, complete cleanup
   and the authenticated final receipt. Durable active state precedes the guardian's
   payload gate. Recovery must exclude a live coordinator, revalidate the cleanup
   runtime before launching recovery tools, handle both pre-admission and active
   coordinator loss, and retire guardian journals before recording completion.
   Report supervised sampling and possible resource overshoot explicitly; never
-  project Linux cgroup or hard-quota claims. Candidate assembly selects this
-  backend on exact selected native Mac candidates; public support remains unpromoted until
-  complete installed-consumer and reboot-recovery qualification.
+  project Linux cgroup or hard-quota claims. Installed support selects this
+  backend only on exact qualified native Mac kernels.
 - `execution-backend.ts` is the closed private Linux/macOS selection boundary.
   Persist each backend's discriminated owner and receipt records without flattening
   their evidence. Dispatch sealing, admission, recovery, cancellation and exact
@@ -429,7 +432,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   generated graph before frozen installation; retain its exact bytes privately.
   The worker derives scratch paths from its trusted launch working directory,
   never rewritten worker or consumer source. Select the native lock version for
-  the pinned runtime (Linux Bun 1.3.3 or candidate Mac Bun 1.4.2), retaining exact
+  the pinned runtime (Linux Bun 1.3.3 or qualified Mac Bun 1.4.2), retaining exact
   source/provenance checks without translating locks. Missing-lock resolution
   uses `--omit=dev` so production-only installation does not suppress publication
   of the new lock; the subsequent install stays frozen and script-disabled.
@@ -510,7 +513,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Reject unsupported or project-selected dependencies; never mount a
   whole installation/store or import ambient loader variables. Each native
   launcher removes Bun's private loader override before starting its client.
-- `macos-agent-runtime.ts` supplies the candidate native Mac installation
+- `macos-agent-runtime.ts` supplies the qualified native Mac installation
   inspector: bounded baseline x86-64 or ARM64 Mach-O and universal slices, including the
   SDK's LIB64 library-width flag. The exact SIP-protected `/usr/bin/sandbox-exec`
   additionally admits Apple's native arm64e slice on qualified Apple Silicon;
@@ -703,10 +706,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 ## Verification
 
-- Native Mac candidate profiles are closed to Intel Darwin 23.4.0 build
-  23E224 and hosted Intel/Apple Silicon Darwin 24.6.0 build 24G830. The hosted
-  profiles have prerequisite ABI evidence; full conformance is required before
-  promoting support. Select architecture-native Bun and Mach-O slices; never
+- Native Mac profiles are closed to Intel Darwin 23.4.0 build
+  23E224 and hosted Intel/Apple Silicon Darwin 24.6.0 build 24G830. Select
+  architecture-native Bun and Mach-O slices; never
   treat Rosetta execution as Apple Silicon qualification.
 - The SDK-compiled descriptor bridge selects Intel and Apple Silicon's native
   stat and directory ABIs. Coalition CPU ledger values are Mach

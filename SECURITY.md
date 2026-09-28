@@ -1,24 +1,29 @@
 # Security
 
 Jig's direct-run alpha treats admitted project and FLOW package code as
-untrusted. Its supported Linux host runs project evaluation, dependency
-preparation, and Flow execution inside one rootless cgroup-v2 and Bubblewrap
-boundary. There is no privileged or weaker fallback.
+untrusted. Its Linux host uses rootless cgroup-v2 and Bubblewrap containment;
+qualified native Macs use an unprivileged sandbox, owned process coalition,
+and private bounded storage. Neither path requires an installed privileged
+helper or weakens containment when its mechanism is unavailable.
 
 ## What the boundary protects
 
 An admitted Flow receives only its exact execution package, fixed runtime
-support, explicitly supplied root attachments, private scratch space, private process and network namespaces, and
-the Run/0 channel. It does not receive the project tree, host environment,
-ambient `PATH`, host process tree, host network, writable cgroup controls,
-general host devices, inherited descriptors, or Jig's control channel.
+support, explicitly supplied root attachments, private scratch space, and the
+Run/0 channel. Linux uses private process and network namespaces; Mac uses a
+restrictive native sandbox and selected network policy. The Flow does not
+receive the project tree, host environment, ambient `PATH`, unrestricted host
+process or network access, general host devices, inherited descriptors, or
+Jig's control channel.
 Trusted launchers exclude unselected descriptors before entering the sandbox
 and before launching package code, including access through visible parent
 processes. Missing enforcement refuses execution.
 
-Jig applies aggregate CPU, memory, and process limits before package code can
-execute. Every terminal path fences the complete process tree and removes its
-rootless owner state before reporting completion.
+Linux applies aggregate CPU, memory, and process limits before package code can
+execute. Mac establishes an exclusive process coalition before admission and
+supervises its resource use; samples and termination are not hard kernel quotas
+and can overshoot. Both paths fence owned descendants and confirm cleanup
+before reporting completion.
 
 Project evaluation, the fixed dependency installer, HTTP request worker, and Agent
 provider worker use the same containment mechanism in separate scopes. The
@@ -116,20 +121,26 @@ for the exact contract.
 
 The alpha does not defend against:
 
-- compromise of the Linux kernel, systemd, Bubblewrap, cgroup v2, or Jig's
-  fixed Bun runtime and trusted support files;
+- compromise of the host kernel, Linux systemd/Bubblewrap/cgroup v2, Mac
+  sandbox/launchd/disk-image facilities, or Jig's fixed Bun runtime and trusted
+  support files;
 - the host administrator or another malicious process running as the same
   operating-system user;
 - physical access or compromise outside the supported host; or
 - denial of service within the documented resource ceilings or through
   bounded content-addressed storage retained while a project is reviewed.
 
-An unsupported host or missing containment capability fails closed. Do not
-replace cgroup-v2 ownership with `ulimit`, per-process accounting,
-process-group killing, or `/proc` polling; those mechanisms do not enforce the
-same descendant and cleanup boundary.
+An unsupported host or missing containment capability fails closed. Linux
+does not replace cgroup-v2 ownership with `ulimit`, per-process accounting,
+process-group killing, or `/proc` polling. Mac's coalition ownership and
+supervised limits have a distinct, explicit overshoot tradeoff.
 
 ## Alpha ceilings
+
+The table gives hard aggregate CPU, memory, and process ceilings on Linux.
+Mac applies the same requested values through supervised sampling and
+termination; short overshoot is possible. Wall-clock deadlines and confirmed
+descendant fencing still apply on both hosts.
 
 | Operation | Wall clock | Aggregate memory | Aggregate PIDs | CPU quota |
 | --- | ---: | ---: | ---: | ---: |
@@ -157,8 +168,9 @@ through confirmed fencing and cleanup, even after execution fails.
 At most seven payload/provider envelopes fit the fixed root aggregate ceiling:
 the root, four child Flows, and two effects. The budget is 1,792 MiB memory,
 576 tasks, and 3.5 CPU cores (100 ms quota period). The table's
-individual kernel ceilings stay unchanged and their reserved sum cannot exceed
-that budget. Unused reservations are not borrowed. Trusted coordinators and
+individual Linux kernel ceilings stay unchanged and their reserved sum cannot exceed
+that budget. On Mac, the same reservations bound admission but actual use can
+overshoot before termination. Unused reservations are not borrowed. Trusted coordinators and
 supervisors are outside this budget; this is not combined utilization accounting
 or fair-share scheduling. Every child's deadline is capped by the root deadline.
 The fixed reservation policy is part of the admitted launch identity; changing

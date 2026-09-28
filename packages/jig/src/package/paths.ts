@@ -16,11 +16,6 @@ export function validateLogicalPath(path: string): string {
     invalid('PACKAGE_PATH', `invalid logical path ${JSON.stringify(path)}`, path)
   }
   assertUnicodeScalarString(path)
-  if (!isNfc15_1(path)) {
-    invalid('PACKAGE_PATH_NFC', `logical path is not NFC: ${JSON.stringify(path)}`, path)
-  }
-  const segments = path.split('/')
-  if (segments.length > 64) invalid('PACKAGE_PATH_LIMIT', `logical path exceeds 64 segments`, path)
   if (encoder.encode(path).byteLength > PACKAGE_1_MAX_PATH_BYTES) {
     invalid(
       'PACKAGE_PATH_LIMIT',
@@ -28,6 +23,11 @@ export function validateLogicalPath(path: string): string {
       path,
     )
   }
+  if (!isNfc15_1(path)) {
+    invalid('PACKAGE_PATH_NFC', `logical path is not NFC: ${JSON.stringify(path)}`, path)
+  }
+  const segments = path.split('/')
+  if (segments.length > 64) invalid('PACKAGE_PATH_LIMIT', `logical path exceeds 64 segments`, path)
   for (const segment of segments) {
     if (segment.length === 0 || segment === '.' || segment === '..') {
       invalid('PACKAGE_PATH', `logical path has an invalid segment`, path)

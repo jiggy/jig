@@ -7,6 +7,7 @@ import {
   privateMacosDirectory,
   privateMacosFilesystem,
   privateMacosOpenAt,
+  privateMacosRenameAt,
   privateMacosStatAt,
   privateMacosUnlinkAt,
 } from './macos-descriptor-files.js'
@@ -19,6 +20,8 @@ const MIB = 1024 * 1024
 const IMAGE = 'volume.dmg'
 const INTENT = 'volume.json'
 const IMAGE_RECORD = 'volume-image.json'
+const RETIRE_RECORD = 'storage.release.json'
+const RETIRE_PENDING = 'storage.release.pending'
 
 interface Identity {
   readonly device: string
@@ -112,8 +115,9 @@ async function writeRecord(
   name: string,
   token: string,
   value: unknown,
+  signatureName = name,
 ): Promise<string> {
-  const mac = signature(token, name, value).toString('hex')
+  const mac = signature(token, signatureName, value).toString('hex')
   const file = await privateMacosOpenAt(
     parent.fd,
     name,
@@ -178,6 +182,28 @@ async function readRecord(
   } finally {
     await file.close()
   }
+}
+
+async function writeRetirement(parent: FileHandle, token: string, allocation: Allocation): Promise<void> {
+  // A crash during a direct journal write could leave a truncated but named
+  // marker. Stage it under one fixed private name and rename only complete,
+  // synced authenticated bytes into the durable retirement name.
+  try {
+    const pending = privateMacosStatAt(parent.fd, RETIRE_PENDING)
+    if (
+      !pending.isFile() ||
+      pending.uid !== BigInt(process.getuid!()) ||
+      pending.nlink !== 1n ||
+      (pending.mode & 0o777n) !== 0o600n ||
+      pending.size > 4096n
+    ) throw new Error('macOS volume retirement staging is unsafe')
+    privateMacosUnlinkAt(parent.fd, RETIRE_PENDING)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  await writeRecord(parent, RETIRE_PENDING, token, allocation, RETIRE_RECORD)
+  privateMacosRenameAt(parent.fd, RETIRE_PENDING, parent.fd, RETIRE_RECORD, true)
+  await parent.sync()
 }
 
 /** Fixed system tools, bounded bytes and lifetime; never a shell or caller command. */
@@ -529,7 +555,19 @@ export async function recoverPrivateMacosVolume(
   signal?.throwIfAborted()
   const parent = await privateDirectory(controlPath)
   try {
-    const intent = await readRecord(parent, INTENT, token)
+    let intent: Awaited<ReturnType<typeof readRecord>>
+    try {
+      intent = await readRecord(parent, INTENT, token)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      const owner = await privateDirectory(dirname(controlPath))
+      try {
+        const retired = validateAllocation((await readRecord(owner, RETIRE_RECORD, token)).value)
+        intent = { value: retired, mac: signature(token, INTENT, retired).toString('hex') }
+      } finally {
+        await owner.close()
+      }
+    }
     const allocation = validateAllocation(intent.value)
     if (!matches(await parent.stat({ bigint: true }), allocation.control))
       throw new Error('macOS volume control directory changed')
@@ -602,67 +640,93 @@ export async function releasePrivateMacosVolume(
   signal?: AbortSignal,
 ): Promise<void> {
   signal?.throwIfAborted()
-  let control: FileHandle
+  let parent: FileHandle
   try {
-    control = await privateDirectory(controlPath)
+    parent = await privateDirectory(dirname(controlPath))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
     throw error
   }
-  let allocation: Allocation
   try {
-    const intent = await readRecord(control, INTENT, token)
-    allocation = validateAllocation(intent.value)
-    if (!matches(await control.stat({ bigint: true }), allocation.control))
-      throw new Error('macOS volume control directory changed')
+    let retired: Allocation | undefined
     try {
-      await sameDirectory(allocation.mount.path, allocation.mount)
-      throw new Error('macOS volume mount still exists')
+      retired = validateAllocation((await readRecord(parent, RETIRE_RECORD, token)).value)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
+    let control: FileHandle
     try {
-      privateMacosStatAt(control.fd, IMAGE)
-      throw new Error('macOS volume backing still exists')
+      control = await privateDirectory(controlPath)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-    const names: string[] = []
-    const entries = privateMacosDirectory(control.fd)
-    try {
-      for (;;) {
-        const entry = entries.readSync()
-        if (entry === null) break
-        names.push(new TextDecoder('utf-8', { fatal: true }).decode(entry.name))
+      if (retired !== undefined) {
+        privateMacosUnlinkAt(parent.fd, RETIRE_RECORD)
+        await parent.sync()
       }
+      return
+    }
+    try {
+      let intent: Awaited<ReturnType<typeof readRecord>> | undefined
+      try {
+        intent = await readRecord(control, INTENT, token)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      const allocation = intent === undefined ? retired : validateAllocation(intent.value)
+      if (allocation === undefined ||
+        (retired !== undefined && JSON.stringify(allocation) !== JSON.stringify(retired)))
+        throw new Error('macOS volume retirement identity is unavailable')
+      if (!matches(await control.stat({ bigint: true }), allocation.control))
+        throw new Error('macOS volume control directory changed')
+      try {
+        await sameDirectory(allocation.mount.path, allocation.mount)
+        throw new Error('macOS volume mount still exists')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      try {
+        privateMacosStatAt(control.fd, IMAGE)
+        throw new Error('macOS volume backing still exists')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      const names: string[] = []
+      const entries = privateMacosDirectory(control.fd)
+      try {
+        for (;;) {
+          const entry = entries.readSync()
+          if (entry === null) break
+          names.push(new TextDecoder('utf-8', { fatal: true }).decode(entry.name))
+        }
+      } finally {
+        entries.closeSync()
+      }
+      if (!names.every((name) => [INTENT, IMAGE_RECORD].includes(name)))
+        throw new Error('macOS volume control contains unexpected state')
+      if (retired === undefined) await writeRetirement(parent, token, allocation)
+      if (names.includes(IMAGE_RECORD)) {
+        const record = await readRecord(control, IMAGE_RECORD, token)
+        const image = record.value as ImageIdentity
+        if (
+          !isIdentity(image) ||
+          Object.keys(image).sort().join() !== 'allocationMac,device,inode' ||
+          image.allocationMac !== signature(token, INTENT, allocation).toString('hex')
+        )
+          throw new Error('macOS volume backing journal is invalid')
+        privateMacosUnlinkAt(control.fd, IMAGE_RECORD)
+      }
+      if (intent !== undefined) privateMacosUnlinkAt(control.fd, INTENT)
+      await control.sync()
+      const name = posix.basename(controlPath)
+      if (!matches(privateMacosStatAt(parent.fd, name), allocation.control))
+        throw new Error('macOS volume control changed before release')
+      privateMacosUnlinkAt(parent.fd, name, true)
+      await parent.sync()
+      privateMacosUnlinkAt(parent.fd, RETIRE_RECORD)
+      await parent.sync()
     } finally {
-      entries.closeSync()
+      await control.close()
     }
-    if (!names.every((name) => [INTENT, IMAGE_RECORD].includes(name)))
-      throw new Error('macOS volume control contains unexpected state')
-    if (names.includes(IMAGE_RECORD)) {
-      const record = await readRecord(control, IMAGE_RECORD, token)
-      const image = record.value as ImageIdentity
-      if (
-        !isIdentity(image) ||
-        Object.keys(image).sort().join() !== 'allocationMac,device,inode' ||
-        image.allocationMac !== intent.mac
-      )
-        throw new Error('macOS volume backing journal is invalid')
-      privateMacosUnlinkAt(control.fd, IMAGE_RECORD)
-    }
-    privateMacosUnlinkAt(control.fd, INTENT)
-    await control.sync()
-  } finally {
-    await control.close()
-  }
-  const parent = await privateDirectory(dirname(controlPath))
-  try {
-    const name = posix.basename(controlPath)
-    if (!matches(privateMacosStatAt(parent.fd, name), allocation!.control))
-      throw new Error('macOS volume control changed before release')
-    privateMacosUnlinkAt(parent.fd, name, true)
-    await parent.sync()
   } finally {
     await parent.close()
   }

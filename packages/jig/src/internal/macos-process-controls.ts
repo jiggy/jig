@@ -207,14 +207,15 @@ function signalMembers(
   signal: keyof typeof signals,
 ): number {
   if (!Object.hasOwn(signals, signal)) throw new TypeError('invalid macOS ownership signal')
-  const { ptr, symbols } = calls()
+  const { ptr, read, symbols } = calls()
   let count = 0
   for (const member of members) {
     const token = Buffer.alloc(32)
     token.writeUInt32LE(member.pid, 20)
     token.writeUInt32LE(member.version, 28)
     const result = symbols.proc_signal_with_audittoken(ptr(token), signals[signal])
-    if (result !== 0 && result !== 3) throw new Error('macOS owned process signaling failed')
+    if (result !== 0 && read.i32(symbols.__error()) !== 3)
+      throw new Error('macOS owned process signaling failed')
     if (result === 0) count++
   }
   return count

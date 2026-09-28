@@ -108,11 +108,7 @@ export async function releasePrivateMacosGuardianStorage(
   token: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  try {
-    await lstat(controlPath(owner))
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
-    throw error
-  }
+  // The storage directory may already be gone while its authenticated
+  // retirement marker still needs to be removed from the guardian directory.
   await releasePrivateMacosVolume(controlPath(owner), token, signal)
 }

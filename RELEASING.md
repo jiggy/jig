@@ -5,8 +5,9 @@ The exact prerelease versions in the `@jigging/flow`, `@jigging/agent-method`,
 CI builds and tests the package candidates for every revision. After CI
 succeeds for a reviewed merge to `main`, the release workflow downloads those
 exact retained archives. FLOW SDK publication uses that successful CI run. The
-Agent/Jig group additionally waits for complete Linux Host Conformance and
-Native Agent API Qualification on the same revision. Each qualified group may
+Agent/Jig group additionally waits for complete Linux Host Conformance, hosted
+Intel and Apple Silicon Mac conformance, and Native Agent API Qualification on
+the same revision. Each qualified group may
 publish a missing version newer than its channel tag, refetch the registry bytes, and
 create package-specific annotated source tags. A missing older candidate is
 superseded without publication.
@@ -30,9 +31,10 @@ In the ordinary reviewed change:
 3. update packed-package assertions and public documentation for that version;
 4. include every source, notice, and manifest change for the release; and
 5. merge only after the source, packed-package, Operational Baseline/1, and
-   applicable pull-request Linux hostile gates pass. Agent/Jig publication
-   additionally requires complete Linux Host Conformance and Native Agent API
-   Qualification on the exact merged revision. FLOW SDK publication does not use those gates.
+applicable pull-request Linux hostile gates pass. Agent/Jig publication
+additionally requires complete Linux Host Conformance, hosted Intel and Apple
+Silicon Mac conformance, and Native Agent API Qualification on the exact merged
+revision. FLOW SDK publication does not use those gates.
 
 The supported prerelease forms are `*-alpha.*` and `*-next.*`; their first
 prerelease identifier selects the npm dist-tag. `latest` is never moved by this

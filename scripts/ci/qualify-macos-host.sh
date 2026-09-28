@@ -80,6 +80,11 @@ for package in flow-sdk agent-method agent-acp jig; do
 done
 shasum -a 256 "$scratch"/*/*.tgz > "$scratch/SHA256SUMS"
 cat "$scratch/SHA256SUMS"
+# npm must accept the frozen package on this native architecture and install
+# its matching optional Bun runtime through an ordinary consumer manifest.
+mkdir "$scratch/npm-consumer"
+npm install --prefix "$scratch/npm-consumer" --ignore-scripts --no-audit --no-fund "$JIG_PACKAGE_ARCHIVE"
+"$scratch/npm-consumer/node_modules/.bin/jig" --version
 export JIG_MACOS_PROCESS_TEST=1
 # Keep resource ownership tests sequential; every enabled native case must run.
 bun test packages/jig/test --timeout 420000

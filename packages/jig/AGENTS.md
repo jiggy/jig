@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implements the `@jigging/jig` authoring API, installed Linux host and native macOS candidate for
+Implements the `@jigging/jig` authoring API and installed Linux and qualified native macOS hosts for
 admitted FLOW packages.
 
 ## Ownership
@@ -69,9 +69,9 @@ admitted FLOW packages.
   `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
   `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated.
 - `support/macos-exec.c` and the private Mac capture/process controls supply
-  native-host development boundaries; their ownership and native qualification
-  procedure live in `src/internal/AGENTS.md`. They do not change the installed
-  package's supported platforms or require a consumer compiler or administrator.
+  the qualified native host boundaries; their ownership and qualification
+  procedure live in `src/internal/AGENTS.md`. Installed Mac consumers require
+  neither a compiler nor an administrator.
 - Root licensing and pricing are canonical; the build copies their retained
   texts. Source delivery belongs to the matching GitHub release and its tagged
   repository archive. Never embed source archives or add source-assembly

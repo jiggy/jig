@@ -356,7 +356,10 @@ async function startOrResumeCurrentExecution(
             fileProjection?.attachments ?? Object.freeze({}),
           ),
           channels: openedChannels.grants,
-          scratch: recipe.scratch,
+          scratch:
+            plan.ownerAllocation.kind === 'private-macos-owner-state-allocation/1'
+              ? join(plan.ownerAllocation.directory, 'data', 'work')
+              : recipe.scratch,
           deadlineUnixMs: plan.effectiveDeadlineUnixMs,
           ...(input.signal === undefined ? {} : { signal: input.signal }),
         },

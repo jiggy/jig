@@ -51,7 +51,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   newer tag exists; absent older versions are superseded without publication,
   tags, or releases. Recheck registry state before each ordered mutation.
 - Publish Agent/Jig npm candidates only after CI, complete Linux Host Conformance,
-  and Native Agent API Qualification succeed for the exact source revision. FLOW
+  complete hosted Intel and Apple Silicon Mac conformance, and Native Agent API
+  Qualification succeed for the exact source revision. FLOW
   SDK npm publication and source tagging are independent of those Jig gates;
   Python also uses its own CI-qualified artifacts. Each group preflights its own
   archives before mutation. A host failure cannot block FLOW publication.

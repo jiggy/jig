@@ -37,9 +37,9 @@ setup or package-held authority.
   it must not recreate payload crashes by signaling itself.
 - This helper is unprivileged. It does not install services, create accounts,
   grant admission, or claim that a child exit proves descendant cleanup.
-- Mac assembly and installed support remain unpromoted until the complete host
-  is qualified. Compile development fixtures with the Apple toolchain; a consumer
-  compiler is not part of the intended installation experience.
+- Compile development fixtures with the Apple toolchain. The qualified
+  installed Mac host uses packaged universal support and requires no consumer
+  compiler.
 
 ## Work Guidance
 

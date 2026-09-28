@@ -372,7 +372,10 @@ async function executePreparedChild(
         settings: selected.request.settings,
         attachments: Object.freeze({}),
         ...(grants === undefined ? {} : { channels: grants }),
-        scratch: recipe.scratch,
+        scratch:
+          ownerAllocation.kind === 'private-macos-owner-state-allocation/1'
+            ? join(ownerAllocation.directory, 'data', 'work')
+            : recipe.scratch,
         deadlineUnixMs: effectiveDeadlineUnixMs,
         signal: input.signal,
       },

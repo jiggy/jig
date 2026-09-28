@@ -87,7 +87,7 @@ actual=$(
   find \
     "$repository/docs/flow/spec/machine" \
     "$repository/docs/jig/spec/machine" \
-    -maxdepth 1 -type f -name '*.json' -printf '%p\n' |
+    -maxdepth 1 -type f -name '*.json' -print |
     sed "s|^$repository/||" |
     LC_ALL=C sort
 )
@@ -194,7 +194,16 @@ if [ -e "$staging/$forbidden_page" ]; then
   exit 1
 fi
 
-mv -T --no-clobber -- "$staging" "$output"
+if [ "$(uname -s)" = Darwin ]; then
+  # BSD mv has no -T; the destination was required to be absent above.
+  if [ -e "$output" ]; then
+    echo "the site output appeared while it was being built: $output" >&2
+    exit 1
+  fi
+  mv -n -- "$staging" "$output"
+else
+  mv -T --no-clobber -- "$staging" "$output"
+fi
 if [ -e "$staging" ]; then
   echo "the site output appeared while it was being built: $output" >&2
   exit 1

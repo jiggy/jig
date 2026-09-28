@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHmac, randomBytes } from 'node:crypto'
 import { closeSync } from 'node:fs'
 import {
   access,
@@ -40,6 +40,41 @@ async function allocation() {
   await mkdir(mount, { mode: 0o700 })
   return { root, control, mount, token: randomBytes(32).toString('hex') }
 }
+
+native(
+  'retirement resumes after its authenticated volume journal was removed',
+  async () => {
+    const { root, control, mount, token } = await allocation()
+    try {
+      const volume = await createPrivateMacosVolume(control, token, mount, 16 * 1024 * 1024)
+      await volume.directory.close()
+      await recoverPrivateMacosVolume(control, token)
+      const intent = JSON.parse(await readFile(join(control, 'volume.json'), 'utf8'))
+      const name = 'storage.release.json'
+      const mac = createHmac('sha256', Buffer.from(token, 'hex'))
+        .update(`jig-macos-volume\0${name}\0`)
+        .update(JSON.stringify(intent.value))
+        .digest('hex')
+      await writeFile(join(root, name), `${JSON.stringify({ value: intent.value, mac })}\n`, {
+        mode: 0o600,
+        flag: 'wx',
+      })
+      await unlink(join(control, 'volume-image.json'))
+      await unlink(join(control, 'volume.json'))
+      await expect(releasePrivateMacosVolume(control, 'f'.repeat(64))).rejects.toThrow(
+        'authentication',
+      )
+      await recoverPrivateMacosVolume(control, token)
+      await releasePrivateMacosVolume(control, token)
+      await releasePrivateMacosVolume(control, token)
+      await expect(access(control)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(access(join(root, name))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  100_000,
+)
 
 native(
   'native volume enforces shared capacity, protects backing, and authenticates exact recovery',
@@ -180,9 +215,14 @@ native(
       await recoverPrivateMacosVolume(control, token)
       await expect(access(mount)).rejects.toMatchObject({ code: 'ENOENT' })
       await expect(access(join(control, 'volume.dmg'))).rejects.toMatchObject({ code: 'ENOENT' })
+      await writeFile(join(root, 'storage.release.pending'), 'interrupted', {
+        mode: 0o600,
+        flag: 'wx',
+      })
       await releasePrivateMacosVolume(control, token)
       await releasePrivateMacosVolume(control, token)
       await expect(access(control)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(access(join(root, 'storage.release.pending'))).rejects.toMatchObject({ code: 'ENOENT' })
       await rm(root, { recursive: true })
     }
   },

@@ -119,6 +119,7 @@ export async function planPrivateMacosOwnerStateAllocation(location: {
     control: FileHandle | undefined,
     lock: PrivateMacosOwnerLock | undefined,
     created = false
+  let createdIdentity: { dev: bigint; ino: bigint } | undefined
   let handlesClosed = false
   const closeHandles = async () => {
     if (handlesClosed) return
@@ -145,9 +146,13 @@ export async function planPrivateMacosOwnerStateAllocation(location: {
     }
     await mkdirPrivateFile(privateChildLocation(parent, location.name))
     created = true
+    const createdInfo = await statPrivateChild(parent, location.name)
+    createdIdentity = { dev: createdInfo.dev, ino: createdInfo.ino }
     root = await openPrivateChild(parent, location.name, DIRECTORY)
     const rootInfo = await root.stat({ bigint: true })
     privateDirectory(rootInfo)
+    if (rootInfo.dev !== createdInfo.dev || rootInfo.ino !== createdInfo.ino)
+      throw new Error('native execution allocation changed during creation')
     await mkdirPrivateFile(privateChildLocation(root, 'control'))
     control = await openPrivateChild(root, 'control', DIRECTORY)
     const controlInfo = await control.stat({ bigint: true })
@@ -175,7 +180,8 @@ export async function planPrivateMacosOwnerStateAllocation(location: {
     await closeHandles()
     return allocation
   } catch (error) {
-    if (created) {
+    if (created && createdIdentity !== undefined) {
+      const expectedIdentity = createdIdentity
       const cleanup = async () => {
         await lock?.close()
         lock = undefined
@@ -185,6 +191,9 @@ export async function planPrivateMacosOwnerStateAllocation(location: {
         root = undefined
         const reopened = await openPrivateChild(parent, location.name, DIRECTORY)
         try {
+          const reopenedInfo = await reopened.stat({ bigint: true })
+          if (reopenedInfo.dev !== expectedIdentity.dev || reopenedInfo.ino !== expectedIdentity.ino)
+            return
           const entries = []
           for await (const entry of privateDirectoryEntries(reopened)) entries.push(entry.name)
           if (entries.every((name) => ['control'].includes(name))) {

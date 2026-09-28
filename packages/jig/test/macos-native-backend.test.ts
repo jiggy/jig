@@ -98,12 +98,9 @@ native(
         storage: { mountPath: data, bytes: 16 * 1024 * 1024, collect: 'output' },
       }
       const sealed = await backend.seal(plan, allocation)
-      const observed = await openPrivateMacosBackendState(allocation)
-      try {
-        expect((await observed.read()).sealed).toEqual(sealed.identity)
-      } finally {
-        await observed.close()
-      }
+      await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow(
+        'native execution owner is still held by another coordinator',
+      )
       let prepared = ''
       const component = await sealed.admit(undefined, async (owner) => {
         prepared = owner.digest
@@ -116,6 +113,12 @@ native(
       expect(exit).toMatchObject({ exitCode: 0, fenced: true, stopReason: 'payload_exit' })
       expect(receipt.recovered).toBe(false)
       expect(receipt.evidence.samples).toBeGreaterThan(0)
+      const observed = await openPrivateMacosBackendState(allocation)
+      try {
+        expect((await observed.read()).sealed).toEqual(sealed.identity)
+      } finally {
+        await observed.close()
+      }
       const output = await resolvePrivateExecutionOutput(component.output)
       const files = readPrivateCapturedOutput(output as never)
       expect(files.map((file) => [file.path, file.contents.toString()])).toEqual([
@@ -151,8 +154,27 @@ native(
         },
         storage: { ...plan.storage!, mountPath: unusedData },
       }
-      const unusedOwner = await backend.seal(unusedPlan, unused)
-      const recovered = await backend.recoverFence(unusedOwner.identity)
+      const unusedIdentityPath = join(root, 'unused-identity.json')
+      const unusedFixturePath = join(root, 'unused-fixture.json')
+      await writeFile(unusedFixturePath, JSON.stringify({
+        mode: 'sealed',
+        identityPath: unusedIdentityPath,
+        options: {
+          bunPath: process.execPath,
+          supervisorPath: fileURLToPath(new URL('../src/internal/macos-native-supervisor.ts', import.meta.url)),
+          launcherPath: launcher,
+        },
+        allocation: unused,
+        plan: unusedPlan,
+      }), { mode: 0o600, flag: 'wx' })
+      const unusedChild = spawnSync(process.execPath, [
+        '--no-env-file', '--no-install', '--config=/dev/null',
+        fileURLToPath(new URL('./fixtures/macos-native-backend-loss.ts', import.meta.url)),
+        unusedFixturePath,
+      ], { env: {}, encoding: 'utf8', timeout: 20_000 })
+      expect(unusedChild.status).toBe(75)
+      const unusedIdentity = JSON.parse(await readFile(unusedIdentityPath, 'utf8'))
+      const recovered = await backend.recoverFence(unusedIdentity)
       expect(recovered).toMatchObject({ stopReason: 'recovered', recovered: true, fenced: true })
       await releasePrivateMacosOwnerState(unused, recovered as never)
       expect(await readdir(owners)).toEqual([])

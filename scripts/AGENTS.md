@@ -46,6 +46,9 @@ operational baselines, and public-site assembly.
   removal failures never replace the original failure or establish success.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
+- `require-macos-host-conformance.sh` owns the bounded, read-only check that an
+  exact publication revision passed the complete hosted Intel and Apple Silicon
+  Mac workflow.
 - `require-native-agent-api-qualification.sh` owns the bounded, read-only check
   that the exact main-push revision passed the separate live ACP client check
   before Agent/Jig npm publication; a manually dispatched check qualifies only

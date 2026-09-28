@@ -192,7 +192,7 @@ try {
     )
   }
   assert.deepEqual(installedManifest.os, ['linux', 'darwin'])
-  assert.deepEqual(installedManifest.cpu, ['x64'])
+  assert.deepEqual(installedManifest.cpu, ['x64', 'arm64'])
   assert.equal(Object.hasOwn(installedManifest, 'libc'), false)
   assert.equal(Object.hasOwn(installedManifest, 'scripts'), false)
 
@@ -443,6 +443,15 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
   if (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1') {
     const project = join(consumer, 'macos-greeting')
     await run([command, 'init', project], consumer)
+    const greetingPath = join(project, 'flows/hello/FLOW.ts')
+    const greeting = await readFile(greetingPath, 'utf8')
+    const scratchGreeting = greeting.replace(
+        '  return { outcome: "done", output: { message: `Hello, ${name}!` } };',
+        '  await Bun.write(`${run.scratch}/greeting.txt`, name);\n' +
+          '  return { outcome: "done", output: { message: `Hello, ${await Bun.file(`${run.scratch}/greeting.txt`).text()}!` } };',
+    )
+    assert.notEqual(scratchGreeting, greeting)
+    await writeFile(greetingPath, scratchGreeting)
     await run([command, 'review', '--allow-resolution-network', '--yes'], project, {}, 120_000)
     const result = await run(
       [command, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada')],
@@ -456,6 +465,49 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
       output: { message: 'Hello, Ada!' },
       status: 'succeeded',
     })
+
+    const child = join(project, 'flows/child')
+    await mkdir(child)
+    await writeFile(
+      join(child, 'package.json'),
+      await readFile(join(project, 'flows/hello/package.json')),
+    )
+    await writeFile(
+      join(child, 'FLOW.meta.json'),
+      JSON.stringify({ name: 'child', description: 'Verify isolated child scratch.' }),
+    )
+    await writeFile(join(child, 'FLOW.ts'), [
+      'import { handle } from "@jigging/flow";',
+      'await handle(async (run) => {',
+      '  const inherited = await Bun.file(`${run.scratch}/parent-marker`).exists();',
+      '  await Bun.write(`${run.scratch}/child-marker`, String(run.input));',
+      '  return { outcome: "done", output: { inherited, child: await Bun.file(`${run.scratch}/child-marker`).text() } };',
+      '});',
+    ].join('\n'))
+    await writeFile(greetingPath, [
+      'import { handle } from "@jigging/flow";',
+      'await handle(async (run) => {',
+      '  await Bun.write(`${run.scratch}/parent-marker`, "parent");',
+      '  return run.call({ operationId: "scratch-child", slot: "child", input: run.input });',
+      '});',
+    ].join('\n'))
+    await writeFile(join(project, 'bindings/with-child.ts'), [
+      'import { defineBinding } from "@jigging/jig";',
+      'export default defineBinding({ package: "flows/hello", slots: { child: "flow:flows/child" } });',
+    ].join('\n'))
+    await run(
+      [command, 'review', '--allow-resolution-network', '--allow-authority-changes', '--yes'],
+      project,
+      {},
+      120_000,
+    )
+    const composed = await run(
+      [command, 'run', 'binding:with-child', '--input', JSON.stringify('Ada')],
+      project,
+      {},
+      120_000,
+    )
+    assert.deepEqual(JSON.parse(composed.stdout).output, { inherited: false, child: 'Ada' })
   }
 
   await writeFile(

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Owns disposable Linux proof-host provisioning and rootless Mac candidate
+Owns disposable Linux proof-host provisioning and rootless Mac host
 qualification. Host preparation never becomes a consumer requirement.
 
 ## Ownership
@@ -10,9 +10,10 @@ qualification. Host preparation never becomes a consumer requirement.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
-  Intel/Apple Silicon 24G830 candidate profiles and
+  Intel/Apple Silicon 24G830 profiles and
   Bun 1.4.2 and real Node 22+ preflight, frozen same-revision archives with
-  digest rechecks, sequential native tests, installed-consumer checks, and
+  digest rechecks, an ordinary npm install on the native architecture,
+  sequential native tests, installed-consumer checks, and
   comparison of owned host residue before and after qualification.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
