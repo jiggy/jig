@@ -70,14 +70,27 @@ hostTest.each([false, true])(
       })
       // The host may retain Flow stderr until settlement, so it is not a
       // reliable signal that the held Run is still active.
-      const interruptTimer = interrupt ? setTimeout(() => child.kill('SIGTERM'), 20_000) : undefined
+      let interruptEvidence: { sent: boolean; error?: string } | undefined
+      const interruptTimer = interrupt
+        ? setTimeout(() => {
+            try {
+              process.kill(child.pid, 'SIGTERM')
+              interruptEvidence = { sent: true }
+            } catch (error) {
+              interruptEvidence = {
+                sent: false,
+                error: error instanceof Error ? error.message : String(error),
+              }
+            }
+          }, 20_000)
+        : undefined
       try {
         const [exit, stdout, stderr] = await Promise.all([
           child.exited,
           new Response(child.stdout).text(),
           new Response(child.stderr).text(),
         ])
-        return { exit, stdout, stderr }
+        return { exit, stdout, stderr, interruptEvidence }
       } finally {
         if (interruptTimer !== undefined) clearTimeout(interruptTimer)
       }
@@ -175,6 +188,7 @@ hostTest.each([false, true])(
         ['run', 'npm:echo-method', '--input', '"hold"', '--timeout', '120s', '--json'],
         true,
       )
+      expect(cancelled.interruptEvidence).toEqual({ sent: true })
       expect(cancelled.exit, cancelled.stderr).toBe(2)
       expect(JSON.parse(cancelled.stdout)).toMatchObject({
         status: 'failed',
