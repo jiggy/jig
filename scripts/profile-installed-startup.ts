@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFile, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { arch, platform, release } from 'node:os'
@@ -699,26 +699,37 @@ function stats(values: readonly number[]) {
 }
 
 async function collectMetadata() {
-  const [bun, bubblewrap, machine] = await Promise.all([
+  const [bun, machine] = await Promise.all([
     command(process.execPath, ['--version'], root, environment.child),
-    command('/usr/bin/bwrap', ['--version'], root, environment.child),
     command('uname', ['-m'], root, environment.child),
   ])
   await Promise.all([
     appendRecord(profileOutput.profile, commandEvidence('host-bun-version', bun)),
-    appendRecord(profileOutput.profile, commandEvidence('host-bubblewrap-version', bubblewrap)),
     appendRecord(profileOutput.profile, commandEvidence('host-architecture', machine)),
   ])
   assertCommand(bun, 'read Bun version')
-  assertCommand(bubblewrap, 'read Bubblewrap version')
   assertCommand(machine, 'read host architecture')
+  const mechanism =
+    platform() === 'linux'
+      ? await command('/usr/bin/bwrap', ['--version'], root, environment.child)
+      : await command('/usr/bin/sw_vers', ['-buildVersion'], root, environment.child)
+  await appendRecord(
+    profileOutput.profile,
+    commandEvidence(
+      platform() === 'linux' ? 'host-bubblewrap-version' : 'host-macos-build',
+      mechanism,
+    ),
+  )
+  assertCommand(mechanism, 'read host mechanism identity')
   return {
     os: platform(),
     osRelease: release(),
     architecture: arch(),
     machine: machine.stdout.trim(),
     bun: bun.stdout.trim(),
-    bubblewrap: bubblewrap.stdout.trim(),
+    ...(platform() === 'linux'
+      ? { bubblewrap: mechanism.stdout.trim() }
+      : { macosBuild: mechanism.stdout.trim() }),
     image: process.env.ImageOS ?? 'unknown',
     verification: 'cached (installed CLI default)',
   }
@@ -769,17 +780,32 @@ function assertCommand(result: CapturedCommand, task: string): void {
 }
 
 function requireProfileEnvironment() {
+  const linuxHost =
+    process.env.GITHUB_ACTIONS === 'true' &&
+    process.env.RUNNER_OS === 'Linux' &&
+    process.env.ImageOS === 'ubuntu24' &&
+    platform() === 'linux' &&
+    arch() === 'x64'
+  const macBuild =
+    platform() === 'darwin'
+      ? spawnSync('/usr/bin/sw_vers', ['-buildVersion'], {
+          encoding: 'utf8',
+          timeout: 5000,
+        }).stdout?.trim()
+      : undefined
+  const macHost =
+    platform() === 'darwin' &&
+    ((arch() === 'x64' && release() === '23.4.0' && macBuild === '23E224') ||
+      (['x64', 'arm64'].includes(arch()) && release() === '24.6.0' && macBuild === '24G830')) &&
+    Bun.version === '1.4.2' &&
+    Bun.revision === '744846f844374847c902b5e7fd59b4342a51ef99'
   if (
-    process.env.GITHUB_ACTIONS !== 'true' ||
-    process.env.RUNNER_OS !== 'Linux' ||
-    process.env.ImageOS !== 'ubuntu24' ||
-    platform() !== 'linux' ||
-    arch() !== 'x64' ||
+    (!linuxHost && !macHost) ||
     process.env.JIG_CI_BUN === undefined ||
     process.execPath !== process.env.JIG_CI_BUN
   ) {
     throw new Error(
-      'installed startup profiling requires the provisioned Ubuntu 24.04 x86-64 workflow host',
+      'installed startup profiling requires an exact supported Linux or Mac host and Bun',
     )
   }
   const runnerTemp = requiredAbsolute('RUNNER_TEMP')
@@ -794,6 +820,7 @@ function requireProfileEnvironment() {
     'XDG_RUNTIME_DIR',
     'DBUS_SESSION_BUS_ADDRESS',
     'BUN_INSTALL',
+    'JIG_AUTHORING_NODE_PATH',
   ]) {
     const value = process.env[key]
     if (value !== undefined) child[key] = value

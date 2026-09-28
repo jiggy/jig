@@ -2,6 +2,11 @@ name: macOS hosted candidates
 
 on:
   workflow_dispatch:
+    inputs:
+      include_startup_profile:
+        description: Profile installed startup on both Mac architectures (optional, up to 30 minutes)
+        type: boolean
+        default: false
   push:
     branches: [main, mac-support]
 
@@ -12,7 +17,7 @@ jobs:
   prerequisites:
     name: Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}
     runs-on: ${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}
-    timeout-minutes: 35
+    timeout-minutes: ${{ matrix.shard == 4 && inputs.include_startup_profile && 65 || 35 }}
     strategy:
       fail-fast: false
       max-parallel: 10
@@ -66,7 +71,7 @@ jobs:
           }
           snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
           status=0
-          bun test packages/jig/test/macos-process-controls.test.ts packages/jig/test/macos-execution.test.ts packages/jig/test/macos-descriptor-files.test.ts packages/jig/test/macos-descriptor-handoff.test.ts packages/jig/test/macos-volume.test.ts packages/jig/test/macos-backend-state.test.ts packages/jig/test/macos-native-backend.test.ts packages/jig/test/macos-guardian.test.ts --timeout 420000 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
+          bun test packages/jig/test/macos-process-controls.test.ts packages/jig/test/macos-execution.test.ts packages/jig/test/macos-descriptor-files.test.ts packages/jig/test/macos-descriptor-handoff.test.ts packages/jig/test/macos-volume.test.ts packages/jig/test/macos-backend-state.test.ts packages/jig/test/macos-native-backend.test.ts packages/jig/test/macos-guardian.test.ts --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
           snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
           diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
           exit "$status"
@@ -74,6 +79,9 @@ jobs:
         if: matrix.shard == 4
         run: bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
       - name: Qualify the complete rootless host and installed consumer
+        env:
+          JIG_MACOS_TEST_TIMINGS_DIRECTORY: ${{ runner.temp }}/mac-evidence
+          JIG_STARTUP_PROFILE_DIRECTORY: ${{ matrix.shard == 4 && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}
         run: |
           set -o pipefail
           scripts/ci/qualify-macos-host.sh --shard "${{ matrix.shard }}" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
@@ -87,7 +95,16 @@ jobs:
           path: |
             ${{ runner.temp }}/mac-evidence/*.txt
             ${{ runner.temp }}/mac-evidence/*.json
+            ${{ runner.temp }}/mac-evidence/*.xml
             ${{ runner.temp }}/mac-evidence/*.complete
+          retention-days: 7
+      - name: Retain optional installed startup profile
+        if: ${{ always() && matrix.shard == 4 && inputs.include_startup_profile }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-startup-profile-${{ matrix.arch }}-${{ github.sha }}
+          path: ${{ runner.temp }}/mac-startup-profile
+          if-no-files-found: ignore
           retention-days: 7
 
   qualified-architecture:

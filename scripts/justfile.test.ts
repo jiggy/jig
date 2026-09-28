@@ -40,7 +40,7 @@ test('startup profiler initializes its trace allowlist before execution and refu
   ])
   expect(code).not.toBe(0)
   expect(stdout).toBe('')
-  expect(stderr).toContain('requires the provisioned Ubuntu 24.04 x86-64 workflow host')
+  expect(stderr).toContain('requires an exact supported Linux or Mac host and Bun')
   expect(stderr).not.toContain('before initialization')
 })
 

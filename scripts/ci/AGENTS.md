@@ -17,9 +17,12 @@ qualification. Host preparation never becomes a consumer requirement.
   comparison of owned host residue before and after qualification. Its full
   mode remains the self-hosted entrypoint; hosted `--shard 0..4` runs one
   isolated portion of the same complete suite.
-- `macos-host-test-shards.mjs` discovers every Jig test file and assigns it to
-  exactly one hosted shard. The root Agent lifecycle file is partitioned by
-  exhaustive name patterns; timing hints affect balance, never membership.
+- `macos-host-test-shards.mjs` discovers every Jig test file. Eight native
+  prerequisite files run once in the dedicated containment step on shard zero;
+  every other file enters exactly one hosted shard. The root Agent lifecycle
+  file is partitioned by exhaustive name patterns; timing hints affect balance,
+  never membership. Hosted shards retain per-test JUnit timing artifacts and
+  command wall times.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
   prerequisites on hosted Intel and Apple Silicon candidates. It starts no

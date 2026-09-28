@@ -118,3 +118,8 @@ if [[ "$mode" == full || "$shard" == 4 ]]; then
   # Pack and install the result in a separate ordinary consumer, then use its CLI.
   bun packages/jig/test/package-smoke.ts
 fi
+if [[ -n "${JIG_STARTUP_PROFILE_DIRECTORY:-}" && "$shard" == 4 ]]; then
+  JIG_CI_BUN=$(bun -e 'console.log(process.execPath)') \
+    bun scripts/profile-installed-startup.ts ||
+    echo 'Optional installed startup profile failed; retained records may explain the failure.' >&2
+fi

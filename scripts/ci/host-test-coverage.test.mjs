@@ -5,6 +5,7 @@ import { test } from 'node:test'
 import {
   commandsForShard,
   discoverJigTests,
+  NATIVE_PREREQUISITE_TESTS,
   planMacHostTests,
   ROOT_PATTERNS,
   ROOT_TEST,
@@ -17,7 +18,7 @@ test('every current Jig test file belongs to exactly one Mac host shard', async 
   assert.equal(shards.length, SHARD_COUNT)
   assert.deepEqual(
     shards.flatMap((shard) => shard.files).sort(),
-    files.filter((file) => file !== ROOT_TEST),
+    files.filter((file) => file !== ROOT_TEST && !NATIVE_PREREQUISITE_TESTS.includes(file)),
   )
   for (const shard of shards) {
     assert.ok(shard.files.length > 0)
@@ -33,6 +34,13 @@ test('every current Jig test file belongs to exactly one Mac host shard', async 
       .flatMap((shard) => shard.files)
       .includes('packages/jig/test/package-provider-host.test.ts'),
   )
+  const workflow = await readFile(
+    resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
+    'utf8',
+  )
+  for (const file of NATIVE_PREREQUISITE_TESTS) {
+    assert.ok(workflow.includes(file), `${file} is absent from the native prerequisite step`)
+  }
   assert.ok(
     shards
       .flatMap((shard) => shard.files)

@@ -123,10 +123,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   tests sequential inside each host. One shard per architecture additionally
   checks genuine pinned clients offline, ordinary npm installation and packed
   consumer execution. Native containment/recovery and descriptor-handoff probes
-  run before the full suite on one shard. Per-architecture aggregate checks
+  run once in a dedicated step on shard zero. Per-architecture aggregate checks
   require exact-revision success markers from all five shards; prerequisite
   success alone is insufficient. Hosted setup installs no privileged helper
-  and uses no model credentials.
+  and uses no model credentials. Each shard retains per-test timing evidence;
+  optional manual dispatch profiles installed startup on both architectures
+  with the same fixed conversation used by Linux. The profile is non-gating,
+  bounded, and leaves archive identity and zero-residue checks mandatory.
 
 ## Verification
 

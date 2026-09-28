@@ -5,6 +5,16 @@ import { pathToFileURL } from 'node:url'
 
 export const SHARD_COUNT = 5
 export const ROOT_TEST = 'packages/jig/test/root-agent-run-lifecycle.test.ts'
+export const NATIVE_PREREQUISITE_TESTS = [
+  'packages/jig/test/macos-process-controls.test.ts',
+  'packages/jig/test/macos-execution.test.ts',
+  'packages/jig/test/macos-descriptor-files.test.ts',
+  'packages/jig/test/macos-descriptor-handoff.test.ts',
+  'packages/jig/test/macos-volume.test.ts',
+  'packages/jig/test/macos-backend-state.test.ts',
+  'packages/jig/test/macos-native-backend.test.ts',
+  'packages/jig/test/macos-guardian.test.ts',
+]
 
 // The three patterns partition the complete root Agent lifecycle file. New
 // tests enter the first shard unless they join one of the two named groups.
@@ -50,6 +60,9 @@ export function planMacHostTests(files) {
   if (unique.size !== files.length || !unique.has(ROOT_TEST)) {
     throw new Error('Mac host test inventory is missing the root lifecycle file or repeats a file')
   }
+  for (const file of NATIVE_PREREQUISITE_TESTS) {
+    if (!unique.has(file)) throw new Error(`Mac native prerequisite test is missing: ${file}`)
+  }
   const shards = Array.from({ length: SHARD_COUNT }, (_, index) => ({
     index,
     files: [],
@@ -59,7 +72,7 @@ export function planMacHostTests(files) {
     estimatedSeconds: [318, 472, 394, 0, 190][index],
   }))
   const ordinary = files
-    .filter((file) => file !== ROOT_TEST)
+    .filter((file) => file !== ROOT_TEST && !NATIVE_PREREQUISITE_TESTS.includes(file))
     .map((file) => ({ file, weight: WEIGHTS.get(basename(file)) ?? 2 }))
     .sort((a, b) => b.weight - a.weight || a.file.localeCompare(b.file))
   for (const { file, weight } of ordinary) {
@@ -109,8 +122,27 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const commands = commandsForShard(shard, process.env.JIG_CI_BUN || 'bun')
   console.log(JSON.stringify({ shard: index, files: shard.files, rootPattern: shard.rootPattern }))
   if (mode === 'run') {
-    for (const [command, ...args] of commands) {
-      const result = spawnSync(command, args, { stdio: 'inherit', env: process.env })
+    for (const [commandIndex, [command, ...args]] of commands.entries()) {
+      const timingDirectory = process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY
+      const reporter = timingDirectory
+        ? [
+            '--reporter=junit',
+            `--reporter-outfile=${join(timingDirectory, `shard-${index}-group-${commandIndex}.xml`)}`,
+          ]
+        : []
+      const started = performance.now()
+      const result = spawnSync(command, [...args, ...reporter], {
+        stdio: 'inherit',
+        env: process.env,
+      })
+      console.log(
+        JSON.stringify({
+          shard: index,
+          group: commandIndex,
+          elapsedMs: Math.round(performance.now() - started),
+          status: result.status,
+        }),
+      )
       if (result.error) throw result.error
       if (result.status !== 0) process.exit(result.status ?? 1)
     }
