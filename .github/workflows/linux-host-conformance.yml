@@ -274,6 +274,7 @@ jobs:
           "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE"
           "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE"
+          "JIG_AUTHORING_NODE_PATH=$(command -v node)"
           "$JIG_CI_BUN" packages/jig/test/package-smoke.ts
 
       - name: Run Operational Baseline/1 against the packed archive

@@ -81,7 +81,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   prevent that aggregate from succeeding.
 - Linux installed-evidence also runs the public workspace-dependency consumer
   and complete packed CLI composition under the proof host, in addition to
-  operational and hostile baselines.
+  operational and hostile baselines. Pass the runner's absolute Node executable
+  to the packed compiler smoke test because the acquisition host uses a fixed
+  path that excludes runner tool-cache binaries.
 - Native Agent API Qualification consumes the exact host archives from the
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
