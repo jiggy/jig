@@ -37,7 +37,8 @@ export interface PrivateRootLaunchExecutor {
    * Drive one durable root execution from its persisted state.
    *
    * The controller may repeat the complete invocation after the protected
-   * store reports `ADMISSION_STATE_BUSY`. Implementations must therefore
+   * store reports `ADMISSION_STATE_BUSY` or the same execution reports a
+   * pending fence. Implementations must therefore
    * reacquire durable ownership and resume idempotently; they must not make an
    * unrecorded external effect and then report that retryable store error.
    */
@@ -258,31 +259,39 @@ function createController(input: {
   }
 
   async function settleRun(runId: string): Promise<void> {
+    // A live guardian may still be finishing an exact child or root fence.
+    // Repeat only durable reacquisition, never a fresh dispatch, before
+    // reporting unresolved ownership to the caller.
+    const retryUntil = performance.now() + 30_000
     let settled: PrivateRootExecutionDisposition
-    try {
-      settled = await retryPrivateBusy(
-        async () => await input.execute(runId, input.coordinator, cancellation.signal),
-      )
-    } catch (error) {
-      // A pending-work snapshot may outlive the task that committed its
-      // terminal. Reacquisition then refuses execution; consume only the
-      // matching durable terminal, without dispatching again.
-      if (!(error instanceof CheckError) || error.code !== 'RUN_ALREADY_TERMINAL') throw error
-      const run = await retryPrivateBusy(() =>
-        loadPrivateRootRunForCoordinator({
-          coordinator: input.coordinator,
-          projectRoot: input.projectRoot,
-          runId,
-        }),
-      )
-      if (run.runId !== runId || run.state !== 'terminal') throw error
-      settled = { state: 'terminal', run }
-    }
-    if (settled.state === 'pending') {
-      throw new RootAdministrationError(
-        'PROJECT_BUSY',
-        'root Run cleanup has not confirmed its complete execution fence',
-      )
+    for (;;) {
+      try {
+        settled = await retryPrivateBusy(
+          async () => await input.execute(runId, input.coordinator, cancellation.signal),
+        )
+      } catch (error) {
+        // A pending-work snapshot may outlive the task that committed its
+        // terminal. Reacquisition then refuses execution; consume only the
+        // matching durable terminal, without dispatching again.
+        if (!(error instanceof CheckError) || error.code !== 'RUN_ALREADY_TERMINAL') throw error
+        const run = await retryPrivateBusy(() =>
+          loadPrivateRootRunForCoordinator({
+            coordinator: input.coordinator,
+            projectRoot: input.projectRoot,
+            runId,
+          }),
+        )
+        if (run.runId !== runId || run.state !== 'terminal') throw error
+        settled = { state: 'terminal', run }
+      }
+      if (settled.state !== 'pending') break
+      if (performance.now() >= retryUntil) {
+        throw new RootAdministrationError(
+          'PROJECT_BUSY',
+          'root Run cleanup has not confirmed its complete execution fence',
+        )
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 100))
     }
     if (settled.run.runId !== runId || settled.run.state !== 'terminal') {
       throw new Error('trusted root Run executor returned no matching terminal')

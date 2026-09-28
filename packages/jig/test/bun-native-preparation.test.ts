@@ -74,9 +74,13 @@ proofDescribe('private contained Bun dependency preparation', () => {
           const review = async (project: string, allowResolutionNetwork: boolean, apply = true) => {
             const sequence = ++reviewSequence
             const stages: string[] = []
+            let operationFailure: unknown
             const session = await openPrivateProjectSession({
               directory: join(root, 'apps', project),
               host: { ...host, allowResolutionNetwork, onStage: (stage) => stages.push(stage) },
+              onOperationFailure: (evidence) => {
+                operationFailure = evidence
+              },
             })
             try {
               const plan = await session.plan({ lockMode: 'update' })
@@ -85,7 +89,10 @@ proofDescribe('private contained Bun dependency preparation', () => {
               return { plan, stages }
             } catch (error) {
               const failure = error as { diagnostic?: { code?: unknown } }
-              if (failure?.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED') {
+              if (
+                failure?.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
+                (failure as { code?: unknown })?.code === 'INTERNAL'
+              ) {
                 console.error(
                   'workspace-preparation-failed',
                   JSON.stringify({
@@ -99,6 +106,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
                           ? 'reuse'
                           : 'other',
                     ),
+                    operationFailure,
                   }),
                 )
               }

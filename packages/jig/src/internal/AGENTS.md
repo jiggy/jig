@@ -401,8 +401,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Unconfirmed cleanup or fencing is fatal to the owning invocation even if code
   catches its operation error. A conclusively cleaned child failure remains
   recoverable with ordinary language handling; no result-acknowledgement ledger.
-- Root status reports a failed ownership-settlement attempt instead of silently
-  treating polling as permission to retry. A stale pending-work snapshot may
+- A current root Run may reacquire its exact pending fence for a bounded interval
+  inside one ownership-settlement attempt; exhaustion remains `PROJECT_BUSY`.
+  Root status reports that failed attempt instead of silently treating polling
+  as permission to retry. A stale pending-work snapshot may
   encounter `RUN_ALREADY_TERMINAL`; accept that refusal only after loading the
   matching durable terminal under the current coordinator, without redispatch.
   Keep failed durable work for coordinator recovery; polling

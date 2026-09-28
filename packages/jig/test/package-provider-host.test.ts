@@ -70,7 +70,7 @@ hostTest.each([false, true])(
       })
       // The host may retain Flow stderr until settlement, so it is not a
       // reliable signal that the held Run is still active.
-      const interruptTimer = interrupt ? setTimeout(() => child.kill('SIGINT'), 20_000) : undefined
+      const interruptTimer = interrupt ? setTimeout(() => child.kill('SIGTERM'), 20_000) : undefined
       try {
         const [exit, stdout, stderr] = await Promise.all([
           child.exited,
