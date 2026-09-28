@@ -369,6 +369,11 @@ jobs:
         with:
           bun-version: 1.3.3
 
+      - name: Retain the exact Bun executable
+        env:
+          JIG_CI_BUN: ${{ steps.setup-bun.outputs.bun-path }}
+        run: printf 'JIG_CI_BUN=%s\n' "$JIG_CI_BUN" >> "$GITHUB_ENV"
+
       - name: Provision ephemeral rootless host
         id: ab-host
         run: scripts/ci/provision-github-rootless-host.sh provision
