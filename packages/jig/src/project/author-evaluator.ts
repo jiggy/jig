@@ -29,6 +29,7 @@ import {
   PRIVATE_AUTHOR_EVALUATOR_MAX_ENTRIES,
   PRIVATE_AUTHOR_EVALUATOR_PROTOCOL,
   PRIVATE_AUTHOR_EVALUATOR_WORKER,
+  privateAuthorEvaluatorWallClockCeilingMs,
 } from '../internal/project-evaluator-policy.js'
 import {
   canonicalJson,
@@ -226,7 +227,10 @@ export async function evaluateAuthorClosureBatch(
       : PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS
   const limitPolicy = Object.freeze({
     ...EVALUATOR_LIMIT_POLICY,
-    wallClockCeilingMs: entryWallClockCeilingMs * entries.length,
+    wallClockCeilingMs: privateAuthorEvaluatorWallClockCeilingMs(
+      entries.length,
+      entryWallClockCeilingMs,
+    ),
   })
   const installedSupport = requirePrivateInstalledBunSupport(options.installedSupport)
   await privateProfileSpan('author-support-verification', () =>

@@ -128,14 +128,18 @@ reevaluates either.
 
 Review may share finite evaluator setup across the complete project declaration
 and its Bindings. Each declaration still receives a fresh guest realm, module
-graph and authoring SDK, with a three-second wall ceiling. A trusted contained
-manager enforces that ceiling independently of authored code; the independent
-supervisor bounds the complete batch by the sum of those ceilings. The batch
-shares the existing 256 MiB memory, 64-task and half-core CPU limits, never a
-separate resource allowance per declaration. Bootstrap discovery and the
-complete-closure consistency evaluation remain distinct. No evaluated result
-is cached by source identity. A failed batch supplies no admissible declarations;
-fencing and cleanup precede successful collection.
+graph and authoring SDK, with a three-second wall ceiling. In a batch, each
+declaration child receives only the captured modules reachable from its entry.
+A trusted contained manager enforces each declaration ceiling independently of
+authored code. The independent supervisor bounds a multi-declaration batch by
+the sum of those ceilings, plus two seconds and 500 ms per declaration for
+setup and settlement. A single declaration retains its three-second total
+ceiling.
+The batch shares the existing 256 MiB memory, 64-task and half-core CPU limits,
+never a separate resource allowance per declaration. Bootstrap discovery and
+the complete-closure consistency evaluation remain distinct. No evaluated
+result is cached by source identity. A failed batch supplies no admissible
+declarations; fencing and cleanup precede successful collection.
 
 If source changes during capture, Jig retries a bounded number of times and
 then reports the project busy or unavailable. It never combines an evaluated

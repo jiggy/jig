@@ -5,6 +5,7 @@ import {
   PrivateAuthorEvaluatorChildError,
   runPrivateAuthorEvaluatorChild,
 } from './project-evaluator-child.js'
+import { reachableAuthorModules } from './project-evaluator-modules.js'
 import {
   PRIVATE_AUTHOR_EVALUATOR_DIRECTORY,
   PRIVATE_AUTHOR_EVALUATOR_MAX_ENTRIES,
@@ -217,8 +218,13 @@ async function readRequest(): Promise<WorkerRequest> {
 
 /** Wait for the exact child to exit even after a timer, pipe or framing failure. */
 async function evaluateEntry(request: WorkerRequest, index: number): Promise<JsonValue> {
+  const entryProjectPath = request.entries[index]!
   const output = await runPrivateAuthorEvaluatorChild(
-    canonicalJson({ ...request, entries: [request.entries[index]!] } as unknown as JsonValue),
+    canonicalJson({
+      ...request,
+      entries: [entryProjectPath],
+      modules: reachableAuthorModules(request.modules, entryProjectPath),
+    } as unknown as JsonValue),
     process.argv[1]!,
     SDK_ENTRY,
   )

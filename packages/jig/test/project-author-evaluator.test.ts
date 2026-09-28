@@ -66,7 +66,7 @@ proofDescribe('finite isolated author declaration batches', () => {
         expect(evaluations[0]!.profile.sandbox.limits).toMatchObject({
           memoryBytes: 256 * 1024 * 1024,
           pids: 64,
-          wallClockCeilingMs: 9_000,
+          wallClockCeilingMs: 12_500,
         })
         for (const evaluation of evaluations)
           expect(evaluation.enforcement.terminal.fenced).toBeTrue()

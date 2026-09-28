@@ -22,12 +22,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   shutdown. Partial spans are not completion or machine-crash durability evidence.
 - The configuration evaluator shares only finite review-envelope setup. Its
   trusted manager runs fresh declaration subprocesses sequentially, enforcing
-  each three-second ceiling independently of guest code. Kernel resources stay
-  aggregate-bounded; the supervisor caps total lifetime by the sum of entry
-  ceilings. Worker and SDK bytes use the existing sealed file projection; later
-  children never reopen live installed support. Bootstrap consistency remains
-  a separate evaluation; collection requires whole-batch fencing and cleanup.
-  No result cache or resident service.
+  each host's declaration ceiling independently of guest code: three seconds on
+  Linux and ten seconds on Mac. Resources remain aggregate-limited under that
+  host's enforcement profile; the supervisor caps a multi-entry batch by the
+  sum of entry ceilings plus fixed and per-entry bounded setup and settlement
+  time. A single entry keeps its host's total ceiling. Each subprocess receives
+  only the captured modules reachable from its entry. Worker and SDK bytes use the
+  existing sealed file projection; later children never reopen live installed
+  support. Bootstrap consistency remains a separate evaluation; collection
+  requires whole-batch fencing and cleanup. No result cache or resident service.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.
@@ -189,8 +192,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   ownership alone does not establish process fencing or installed Mac support.
 - `macos-guardian-storage.ts` records bounded volume intent before job creation
   and attaches only after admission inside the guardian. Work, temporary and
-  output roots share that fixed capacity; their parent stays host-owned. After
-  payload fencing, an authenticated descriptor handoff permits at most 20 seconds
+  output roots share that fixed capacity; their parent stays host-owned.
+  A worker without write grants or collection may use its immutable input tree
+  as its read-only working directory. After payload fencing, an authenticated
+  descriptor handoff permits at most 20 seconds
   of collection. Close the borrowed collector and release it before awaiting
   full completion. Fencing alone is not storage-cleanup evidence; final publication
   also requires successful completion. Cancellation, expiry and connection loss
@@ -277,6 +282,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   never undergo path relocation. Intent alone grants no execution authority.
   `execution-plan.ts` lowers these requirements to the two host mechanisms;
   it imports no recipe, admission, provider, Run protocol or controller policy.
+  Read-only workers with captured inputs still allocate bounded Mac input storage
+  without payload write grants; workers using only retained projections need
+  no volume.
   Backend sealing still validates identities, live capabilities and enforcement.
   `flow-execution-intent.ts` translates Jig recipes for both root and child
   Flows; command, HTTP, ACP, preparation and evaluator callers select their own
