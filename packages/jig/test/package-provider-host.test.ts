@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { constants, Database } from 'bun:sqlite'
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -293,9 +294,15 @@ hostTest(
       const installed = join(tooling, 'node_modules/.bin/jig')
       let sequence = 0
       const invoke = async (args: string[]) => {
+        const command = ++sequence
+        const profile = join(directory, `${command}-profile.jsonl`)
         const child = Bun.spawn([installed, ...args], {
           cwd: project,
-          env: { ...process.env, NO_COLOR: '1' },
+          env: {
+            ...process.env,
+            NO_COLOR: '1',
+            ...(args[0] === 'run' ? { JIG_PRIVATE_PROFILE_FILE: profile } : {}),
+          },
           stdin: 'ignore',
           stdout: 'pipe',
           stderr: 'pipe',
@@ -307,14 +314,60 @@ hostTest(
           new Response(child.stderr).text(),
         ]).finally(() => clearTimeout(timer))
         await writeFile(
-          join(directory, `${++sequence}-${args[0]}.json`),
+          join(directory, `${command}-${args[0]}.json`),
           JSON.stringify({ args, exit, stdout, stderr }, null, 2),
         )
-        return { exit, stdout, stderr }
+        let failureEvidence = ''
+        if (exit !== 0 && args[0] === 'run') {
+          const phases = await readFile(profile, 'utf8')
+            .then((value) =>
+              value
+                .trim()
+                .split('\n')
+                .slice(1)
+                .map((line) => {
+                  const event = JSON.parse(line) as {
+                    kind: string
+                    phase?: string
+                    outcome?: string
+                    timeMs?: number
+                  }
+                  return [event.kind, event.phase, event.outcome, event.timeMs]
+                }),
+            )
+            .catch(() => 'unavailable')
+          let lifecycle: unknown = 'unavailable'
+          try {
+            const database = Database.open(
+              join(project, '.jig/jig.sqlite3'),
+              constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+            )
+            try {
+              lifecycle = database
+                .query(`SELECT
+                  plan_digest IS NOT NULL AS planned,
+                  backing_digest IS NOT NULL AS backed,
+                  sandbox_digest IS NOT NULL AS sealed,
+                  prepared_digest IS NOT NULL AS prepared,
+                  provisional_digest IS NOT NULL AS provisional,
+                  fence_digest IS NOT NULL AS fenced,
+                  release_digest IS NOT NULL AS released,
+                  admitted_digest IS NOT NULL AS admitted
+                  FROM root_execution_lifecycles ORDER BY rowid DESC LIMIT 1`)
+                .get()
+            } finally {
+              database.close()
+            }
+          } catch {
+            // A failed command need not have reached durable root submission.
+          }
+          failureEvidence = `\nPrivate Run phases: ${JSON.stringify(phases)}\nRoot checkpoints: ${JSON.stringify(lifecycle)}`
+        }
+        return { exit, stdout, stderr, failureEvidence }
       }
       const succeed = async (args: string[]) => {
         const result = await invoke(args)
-        expect(result.exit, result.stdout + result.stderr).toBe(0)
+        expect(result.exit, result.stdout + result.stderr + result.failureEvidence).toBe(0)
         return result
       }
       const declaration = (entrypoint: string) => `import {defineJig,discover} from '@jigging/jig';
