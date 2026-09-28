@@ -68,24 +68,19 @@ hostTest.each([false, true])(
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      const stderrText = async () => {
-        let text = '',
-          interrupted = false
-        for await (const chunk of child.stderr) {
-          text += new TextDecoder().decode(chunk)
-          if (interrupt && !interrupted && text.includes('dependency diagnostic')) {
-            interrupted = true
-            child.kill('SIGINT')
-          }
-        }
-        return text
+      // The host may retain Flow stderr until settlement, so it is not a
+      // reliable signal that the held Run is still active.
+      const interruptTimer = interrupt ? setTimeout(() => child.kill('SIGINT'), 20_000) : undefined
+      try {
+        const [exit, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ])
+        return { exit, stdout, stderr }
+      } finally {
+        if (interruptTimer !== undefined) clearTimeout(interruptTimer)
       }
-      const [exit, stdout, stderr] = await Promise.all([
-        child.exited,
-        new Response(child.stdout).text(),
-        stderrText(),
-      ])
-      return { exit, stdout, stderr }
     }
     let passed = false
     try {

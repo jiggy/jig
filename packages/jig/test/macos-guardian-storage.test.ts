@@ -192,6 +192,7 @@ native(
                 expect(fenced.result?.exitCode).toBe(0)
                 expect(fenced.outputFd).toBeDefined()
                 const fd = fenced.outputFd!
+                const outputIdentity = fstatSync(fd)
                 expect(privateMacosFilesystem(fd).capacityBytes).toBeLessThanOrEqual(
                   16n * 1024n * 1024n,
                 )
@@ -214,7 +215,18 @@ native(
                 expect(result.recovered).toBe(mode === 'guardian-loss-collecting')
                 if (['collection-timeout', 'cancel-collecting'].includes(mode))
                   expect(result.outputLost).toBe(true)
-                expect(() => fstatSync(fd)).toThrow()
+                // Another socket may reuse the integer after the collector closes it.
+                let current: ReturnType<typeof fstatSync> | undefined
+                try {
+                  current = fstatSync(fd)
+                } catch (error) {
+                  if ((error as NodeJS.ErrnoException).code !== 'EBADF') throw error
+                }
+                if (current !== undefined)
+                  expect([current.dev, current.ino]).not.toEqual([
+                    outputIdentity.dev,
+                    outputIdentity.ino,
+                  ])
               }
             }
             const result = await owner.completion
