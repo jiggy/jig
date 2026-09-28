@@ -21,8 +21,9 @@ qualification. Host preparation never becomes a consumer requirement.
   prerequisite files run once in the dedicated containment step on shard zero;
   every other file enters exactly one hosted shard. The root Agent lifecycle
   file is partitioned by exhaustive name patterns; timing hints affect balance,
-  never membership. Hosted shards retain per-test JUnit timing artifacts and
-  command wall times.
+  never membership. Each file runs in a fresh Bun process, sequentially within
+  its shard, to isolate test state. Hosted shards retain per-test JUnit timing
+  artifacts and per-file command wall times.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
   prerequisites on hosted Intel and Apple Silicon candidates. It starts no

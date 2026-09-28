@@ -90,7 +90,9 @@ export function planMacHostTests(files) {
 }
 
 export function commandsForShard(shard, bun = 'bun') {
-  const commands = [[bun, 'test', ...shard.files.map((file) => `./${file}`), '--timeout', '420000']]
+  // Each file gets a fresh Bun process. Host ownership tests still run
+  // sequentially, while a failure cannot leave JS state for the next file.
+  const commands = shard.files.map((file) => [bun, 'test', `./${file}`, '--timeout', '420000'])
   if (shard.rootPattern) {
     commands.push([
       bun,
@@ -139,6 +141,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         JSON.stringify({
           shard: index,
           group: commandIndex,
+          file: args.find((argument) => argument.startsWith('./packages/jig/test/')),
           elapsedMs: Math.round(performance.now() - started),
           status: result.status,
         }),

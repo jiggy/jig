@@ -120,7 +120,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   process prerequisites, ordinary build, frozen archive identity and ownership
   residue. The deterministic test plan covers every discovered Jig test file;
   it partitions the long root Agent lifecycle by disjoint name groups, with
-  tests sequential inside each host. One shard per architecture additionally
+  tests in fresh, sequential per-file Bun processes inside each host. One shard per architecture additionally
   checks genuine pinned clients offline, ordinary npm installation and packed
   consumer execution. Native containment/recovery and descriptor-handoff probes
   run once in a dedicated step on shard zero. Per-architecture aggregate checks
