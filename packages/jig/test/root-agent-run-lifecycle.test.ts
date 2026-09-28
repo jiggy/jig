@@ -1802,14 +1802,25 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           )
           const diagnostics = new Response(crashed.stderr).text()
           let receipt: StartRootRunReceipt
+          let failedBeforeCoordinatorExit = false
           try {
             receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt
             await waitForSandbox(receipt.runId)
             await waitForEvents(events, 'recovery', recoveryBefore + 1)
+          } catch (error) {
+            failedBeforeCoordinatorExit = true
+            throw error
           } finally {
             if (crashed.exitCode === null) crashed.kill('SIGKILL')
             await crashed.exited
-            await diagnostics
+            const coordinatorDiagnostics = await diagnostics
+            if (failedBeforeCoordinatorExit) {
+              const closedFailures = coordinatorDiagnostics
+                .split('\n')
+                .filter((line) => line.startsWith('agent-coordinator-root-execution-failure '))
+                .slice(0, 20)
+              console.error('agent-coordinator-root-failures', JSON.stringify(closedFailures))
+            }
           }
           expect(await crashed.exited).toBe(137)
           await waitForCgroups(initialCgroups)

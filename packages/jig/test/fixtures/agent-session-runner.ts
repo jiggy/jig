@@ -19,6 +19,8 @@ if (
 
 const session = await openPrivateProjectSession({
   directory: projectRoot,
+  onRootExecutionFailure: (evidence) =>
+    console.error('agent-coordinator-root-execution-failure', JSON.stringify(evidence)),
   host: fixtureHost(
     await (mode === 'acp' ? openDeterministicFiniteAcpHost : openPrivateInstalledBunHost)(
       {
