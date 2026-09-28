@@ -47,7 +47,9 @@ describe('private rootless Linux delegation', () => {
   test('reexecutes the prepared command once through the fixed manager', async () => {
     const environment = { KEEP: 'exact' }
     const commandLifetimeMs = 86_700_000
+    const signal = new AbortController().signal
     let request: unknown
+    let delegatedSignal: AbortSignal | undefined
     const dependencies = orchestrationDependencies({
       acquire: async () => {
         throw new PrivateRootlessLinuxAcquisitionError()
@@ -64,7 +66,9 @@ describe('private rootless Linux delegation', () => {
         directory,
         actualEnvironment,
         actualCommandLifetimeMs,
+        actualSignal,
       ) => {
+        delegatedSignal = actualSignal
         request = {
           managerPath,
           unit,
@@ -86,6 +90,7 @@ describe('private rootless Linux delegation', () => {
         dependencies,
         commandLifetimeMs,
         commandArguments: ['run', 'binding:factory'],
+        signal,
       }),
     ).resolves.toEqual({
       kind: 'private-rootless-linux-reexecuted/1',
@@ -100,6 +105,7 @@ describe('private rootless Linux delegation', () => {
       environment,
       commandLifetimeMs,
     })
+    expect(delegatedSignal).toBe(signal)
   })
 
   test('prepares only the marked child scope and acknowledges strict reacquisition', async () => {

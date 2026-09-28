@@ -363,6 +363,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
 ## Local Contracts
 
 - Every `Private*` export remains package-private and is not an extension SPI.
+- `linux-rootless-delegation.ts` forwards an outer installed-command interrupt
+  through its authenticated transient-scope lifetime socket to the inner CLI.
+  Keep that socket open for cooperative cancellation and confirmed cleanup;
+  its closure remains the independent emergency scope fence.
 - The optional installed-startup diagnostic accepts only a private local trace
   destination, activates after rootless-host acquisition, and removes its
   selector from operator configuration before opening a project session. It

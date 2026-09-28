@@ -59,6 +59,45 @@ hostile('prepares and collects one real transient delegated user scope', async (
   }
 })
 
+hostile('forwards an outer interruption to the authenticated inner command', async () => {
+  const manager = await fixedManager()
+  const unit = `jig-${randomBytes(12).toString('hex')}.scope`
+  const resultPath = `/tmp/jig-rootless-interrupt-${randomBytes(12).toString('hex')}.json`
+  const moduleUrl = new URL('../src/internal/linux-rootless-delegation.ts', import.meta.url).href
+  const script = [
+    `import { acquireOrReexecutePrivateRootlessLinux } from ${JSON.stringify(moduleUrl)};`,
+    "import { writeFile } from 'node:fs/promises';",
+    'const interrupted = new AbortController();',
+    "process.once('SIGTERM', () => interrupted.abort());",
+    'await acquireOrReexecutePrivateRootlessLinux();',
+    'if (!interrupted.signal.aborted) await new Promise((resolve, reject) => {',
+    "  const timer = setTimeout(() => reject(new Error('interrupt was not forwarded')), 10_000);",
+    "  interrupted.signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });",
+    '});',
+    `await writeFile(${JSON.stringify(resultPath)}, 'interrupted', { mode: 0o600 });`,
+    'process.exitCode = 2;',
+  ].join('\n')
+  const cancellation = new AbortController()
+  const timer = setTimeout(() => cancellation.abort(), 1_000)
+  try {
+    const execution = await reexecutePrivateRootlessLinuxCommand(
+      manager,
+      unit,
+      [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', script],
+      '/',
+      process.env,
+      5_000,
+      30_000,
+      cancellation.signal,
+    )
+    expect(execution).toMatchObject({ exitCode: 2, signal: null })
+    expect(await Bun.file(resultPath).text()).toBe('interrupted')
+  } finally {
+    clearTimeout(timer)
+    await rm(resultPath, { force: true })
+  }
+})
+
 hostile('keeps support identity stable while transient launch authority changes', async () => {
   const manager = await fixedManager()
   const delegationUrl = new URL('../src/internal/linux-rootless-delegation.ts', import.meta.url)

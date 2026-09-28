@@ -170,6 +170,7 @@ async function runWithEnvironment(
       const delegation = await acquireOrReexecutePrivateRootlessLinux({
         commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
         commandArguments: arguments_,
+        ...(signal === undefined ? {} : { signal }),
       })
       if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
     }
