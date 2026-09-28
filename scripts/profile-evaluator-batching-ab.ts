@@ -56,6 +56,8 @@ interface RecordEntry {
 
 const entries: RecordEntry[] = []
 let completed = false
+let currentOperation = 'setup'
+let failure: { readonly operation: string; readonly message: string } | undefined
 try {
   const paths = Object.fromEntries(
     arms.map((arm) => [arm, {
@@ -86,8 +88,10 @@ try {
         if (performance.now() >= totalDeadline) throw new Error('A/B reached its total time bound')
         const kind = pair < 0 ? 'warmup' : 'measured'
         const project = join(root, 'projects', `${variant}-${kind}-${pair + 1}-${arm}`)
+        currentOperation = `${variant}/${kind}/${pair + 1}/${arm}:prepare`
         await prepare(project, paths[arm].sdk, variant)
         const tracePath = join(project, 'review-profile.jsonl')
+        currentOperation = `${variant}/${kind}/${pair + 1}/${arm}:review`
         const review = await mustRun(paths[arm].cli, ['review', '--yes'], project, {
           ...env, JIG_PRIVATE_PROFILE_FILE: tracePath,
         })
@@ -108,6 +112,7 @@ try {
         entries.push(record)
         console.log(`${variant} ${kind} ${pair + 1} ${arm}: ${review.elapsedMs.toFixed(1)} ms`)
         if (pair === -1) {
+          currentOperation = `${variant}/${kind}/${pair + 1}/${arm}:run-smoke`
           const run = await mustRun(paths[arm].cli, [
             'run', 'binding:analysis', '--input', '@input.json', '--timeout', '5m', '--json',
           ], project)
@@ -119,12 +124,18 @@ try {
     }
   }
   completed = true
+} catch (error) {
+  failure = {
+    operation: currentOperation,
+    message: String(error instanceof Error ? error.message : error).slice(0, 4_096),
+  }
+  throw error
 } finally {
   const report = {
     protocol: 'local-evaluator-ab/1', complete: completed,
-    host: 'current local rootless-capable Linux, not provisioned Ubuntu CI',
+    host: process.env.JIG_AB_HOST_KIND ?? 'local rootless-capable Linux, not provisioned Ubuntu CI',
     beforeJigSha256: expected.before, afterJigSha256: expected.after,
-    sdkSha256: expected.sdk, entries,
+    sdkSha256: expected.sdk, entries, failure,
   }
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
 }

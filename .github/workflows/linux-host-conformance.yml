@@ -370,6 +370,7 @@ jobs:
           bun-version: 1.3.3
 
       - name: Provision ephemeral rootless host
+        id: ab-host
         run: scripts/ci/provision-github-rootless-host.sh provision
 
       - name: Download and verify the two frozen host archives
@@ -395,10 +396,11 @@ jobs:
           JIG_CI_BUN: ${{ steps.setup-bun.outputs.bun-path }}
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_AB_HOST_KIND=provisioned-ubuntu-24.04-x86-64
           "$JIG_CI_BUN" scripts/profile-evaluator-batching-ab.ts "$JIG_AB_ROOT"
 
       - name: Assert no Jig-owned host residue
-        if: always()
+        if: always() && steps.ab-host.outcome == 'success'
         run: scripts/ci/provision-github-rootless-host.sh assert-clean
 
       - name: Retain bounded comparison evidence
