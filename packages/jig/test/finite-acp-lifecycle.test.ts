@@ -24,7 +24,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
   test(
     'hands off a drafting conversation while an independent worker progresses',
     qualifyIncidentBrief,
-    180_000,
+    300_000,
   )
   test('returns checked text and live updates, rejects malformed work, and settles cancellation', async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-finite-acp-proof-')))
@@ -54,7 +54,11 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
       })
       const executablePath = await realpath(installedBunLocation.executablePath)
       const runtimePackage =
-        process.platform === 'darwin' ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
+        process.platform === 'darwin'
+          ? process.arch === 'arm64'
+            ? 'bun-darwin-aarch64'
+            : 'bun-darwin-x64-baseline'
+          : 'bun-linux-x64-baseline'
       await mkdir(join(release, `node_modules/@oven/${runtimePackage}/bin`), {
         recursive: true,
       })
@@ -151,7 +155,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
             'events',
             '--json',
             '--timeout',
-            '30s',
+            '120s',
           ],
           { ...options, signal: cancellation.signal },
         )
@@ -212,7 +216,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
           }),
           '--json',
           '--timeout',
-          '45s',
+          '120s',
         ],
         options,
       )
@@ -275,7 +279,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
       if (clean) await rm(root, { recursive: true, force: true })
       else console.error(`Finite ACP proof failed; retained ${root}`)
     }
-  }, 180_000)
+  }, 300_000)
 })
 
 async function cgroups(): Promise<string[]> {

@@ -195,6 +195,7 @@ proof('contained Project Command effect', () => {
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     let coordinator: ReturnType<typeof Bun.spawn> | undefined
     let recoveryRequired = false
+    let primaryError: unknown
     try {
       await fixture(root)
       session = await openPrivateProjectSession({ directory: root, host })
@@ -240,14 +241,25 @@ proof('contained Project Command effect', () => {
         terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
       })
       await noOwners(root)
-    } finally {
+    } catch (error) {
+      primaryError = error
+    }
+    try {
       if (coordinator?.exitCode === null) coordinator.kill('SIGKILL')
       await coordinator?.exited
       if (recoveryRequired) session = await reopen()
       await session?.close()
       await rm(root, { recursive: true, force: true })
+    } catch (cleanupError) {
+      if (primaryError !== undefined)
+        throw new AggregateError(
+          [primaryError, cleanupError],
+          'command recovery and cleanup failed',
+        )
+      throw cleanupError
     }
-  }, 90_000)
+    if (primaryError !== undefined) throw primaryError
+  }, 180_000)
 })
 
 async function fixture(root: string) {

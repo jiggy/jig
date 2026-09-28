@@ -70,7 +70,9 @@ proofDescribe('private contained Bun dependency preparation', () => {
         { ...process.env, JIG_VERIFICATION: 'cached', XDG_CACHE_HOME: join(root, 'cache') },
         async () => {
           const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+          let reviewSequence = 0
           const review = async (project: string, allowResolutionNetwork: boolean, apply = true) => {
+            const sequence = ++reviewSequence
             const stages: string[] = []
             const session = await openPrivateProjectSession({
               directory: join(root, 'apps', project),
@@ -81,6 +83,26 @@ proofDescribe('private contained Bun dependency preparation', () => {
               if (apply && plan.state === 'applicable')
                 await session.apply({ planDigest: plan.planDigest })
               return { plan, stages }
+            } catch (error) {
+              const failure = error as { diagnostic?: { code?: unknown } }
+              if (failure?.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED') {
+                console.error(
+                  'workspace-preparation-failed',
+                  JSON.stringify({
+                    sequence,
+                    project,
+                    allowResolutionNetwork,
+                    stages: stages.map((stage) =>
+                      stage.startsWith('Preparing dependencies')
+                        ? 'prepare'
+                        : stage.startsWith('Reusing approved dependencies')
+                          ? 'reuse'
+                          : 'other',
+                    ),
+                  }),
+                )
+              }
+              throw error
             } finally {
               await session.close()
             }

@@ -312,14 +312,23 @@ function createController(input: {
         }),
       )
       for (const item of work) {
-        const settled = await retryPrivateBusy(
-          async () => await input.execute(item.run.runId, input.coordinator, cancellation.signal),
-        )
-        if (settled.state === 'pending') {
-          throw new RootAdministrationError(
-            'PROJECT_BUSY',
-            'a prior root Run still has unconfirmed execution ownership',
+        // A dead coordinator can leave a guardian finishing its own fence.
+        // Reacquire the same durable Run, never dispatch a replacement, while
+        // that exact ownership proof has a bounded chance to settle.
+        const retryUntil = performance.now() + 30_000
+        let settled: PrivateRootExecutionDisposition
+        for (;;) {
+          settled = await retryPrivateBusy(
+            async () => await input.execute(item.run.runId, input.coordinator, cancellation.signal),
           )
+          if (settled.state !== 'pending') break
+          if (performance.now() >= retryUntil) {
+            throw new RootAdministrationError(
+              'PROJECT_BUSY',
+              'a prior root Run still has unconfirmed execution ownership',
+            )
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, 100))
         }
         if (settled.run.runId !== item.run.runId || settled.run.state !== 'terminal') {
           throw new Error('trusted root Run recovery returned no matching terminal')

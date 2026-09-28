@@ -2809,6 +2809,68 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
+  test('retries a transient unconfirmed older fence without creating another Run', async () => {
+    const fixture = await createFixture('ready')
+    let first: PrivateProjectCoordinator | undefined
+    let replacement: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    try {
+      await admit(fixture)
+      first = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const created = await submitReadyRun(fixture, first, 'recover-pending')
+      await first.dispose()
+      first = undefined
+      replacement = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      let attempts = 0
+      controller = await attachPrivateRootAdministrationController({
+        coordinator: replacement,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          attempts++
+          if (attempts === 1) return { state: 'pending', reason: 'fence-unconfirmed' }
+          const terminal = {
+            status: 'lost' as const,
+            code: 'COORDINATOR_LOST' as const,
+            message: 'the prior coordinator disappeared before a proved result',
+          }
+          await checkpoint(fixture, owner, runId, 'provisional', terminal as unknown as JsonValue)
+          await checkpoint(fixture, owner, runId, 'release', { released: true })
+          await checkpoint(fixture, owner, runId, 'admitted', terminal as unknown as JsonValue)
+          return {
+            state: 'terminal',
+            run: await closePrivateRootExecution({
+              coordinator: owner,
+              projectRoot: fixture.root,
+              runId,
+              terminal,
+            }),
+          }
+        },
+      })
+      expect(attempts).toBe(2)
+      expect(await controller.administration.runStatus({ runId: created.run.runId })).toMatchObject(
+        { state: 'terminal', terminal: { status: 'lost' } },
+      )
+      const database = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(database.query('SELECT count(*) AS count FROM root_runs').get()).toEqual({
+          count: 1,
+        })
+      } finally {
+        database.close(true)
+      }
+    } finally {
+      await controller?.dispose()
+      await replacement?.dispose()
+      await first?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('fails closed on current Candidate, Plan, admission, and terminal corruption', async () => {
     const candidate = await createFixture()
     try {

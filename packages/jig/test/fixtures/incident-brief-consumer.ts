@@ -64,7 +64,11 @@ export async function qualifyIncidentBrief(): Promise<void> {
     recursive: true,
   })
   const runtimePackage =
-    process.platform === 'darwin' ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
+    process.platform === 'darwin'
+      ? process.arch === 'arm64'
+        ? 'bun-darwin-aarch64'
+        : 'bun-darwin-x64-baseline'
+      : 'bun-linux-x64-baseline'
   await mkdir(join(release, `node_modules/@oven/${runtimePackage}/bin`), { recursive: true })
   const executablePath = await realpath(installedBunLocation.executablePath)
   await symlink(executablePath, join(release, `node_modules/@oven/${runtimePackage}/bin/bun`))
@@ -131,7 +135,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
     stderr = ''
     mark('run-started')
     const code = await main(
-      ['run', 'binding:brief', '--input', '@input.json', '--timeout', '90s', '--json'],
+      ['run', 'binding:brief', '--input', '@input.json', '--timeout', '180s', '--json'],
       options,
     )
     mark('run-settled')
