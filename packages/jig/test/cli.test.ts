@@ -1941,6 +1941,24 @@ describe('finite Jig project commands', () => {
     }
   })
 
+  test('run does not misidentify an operation result failure as a Flow contract mismatch', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'INVALID_RESULT',
+      message:
+        'Agent chat-completions endpoint returned HTTP 404. Check the reviewed endpoint URL and selected model availability.',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []))
+    expect(await main(['run', 'binding:agent'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain(
+      'A Flow or one of its operations rejected a returned result.',
+    )
+    expect(invocation.error).toContain('Agent chat-completions endpoint returned HTTP 404.')
+    expect(invocation.error).not.toContain('does not match its declared contract')
+    expect(JSON.parse(invocation.output)).toEqual(terminal)
+  })
+
   test('run rejects invalid target and JSON/0 before acquiring a project', async () => {
     const target = commandInvocation(unusedHost())
     expect(await main(['run', 'work'], target.options)).toBe(1)

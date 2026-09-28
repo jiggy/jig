@@ -1784,7 +1784,7 @@ function renderRunFailure(
     UNAVAILABLE: 'Required execution support was unavailable.',
     PERMISSION_DENIED: 'The requested action was outside the approved permissions.',
     RESOURCE_EXHAUSTED: 'Execution reached a resource limit.',
-    INVALID_RESULT: 'The Flow returned a result that does not match its declared contract.',
+    INVALID_RESULT: 'A Flow or one of its operations rejected a returned result.',
     UNCERTAIN: 'The operation may have produced effects; do not blindly repeat the Run.',
     EXECUTION_FAILED: 'The Flow could not complete execution.',
     CHANNEL_LOST: 'A required connection was lost.',
