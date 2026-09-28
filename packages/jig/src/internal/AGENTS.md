@@ -532,6 +532,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
   which require it.
+  The private project-session acquisition callback permits selected host tests
+  to observe only a fixed phase and bounded error class/code chain; never
+  include raw messages, paths, or rejected values in that evidence.
   Configuration evaluator failures preserve closed support, launch, envelope,
   settlement or protocol codes and the captured declaration location. Never
   project raw launcher exceptions or infer a timeout cause from unavailability.

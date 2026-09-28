@@ -200,7 +200,15 @@ describe('private finite project session', () => {
 
   test('maps acquisition failures to closed sanitized values', async () => {
     const root = join(tmpdir(), `jig-missing-${randomUUID()}`)
-    const failure = await openPrivateProjectSession({ directory: root, host: inertHost() }).then(
+    const evidence: unknown[] = []
+    const failure = await openPrivateProjectSession({
+      directory: root,
+      host: inertHost(),
+      onAcquisitionFailure(value) {
+        evidence.push(value)
+        throw new Error('diagnostic observer failed')
+      },
+    }).then(
       () => undefined,
       (error) => error,
     )
@@ -210,6 +218,10 @@ describe('private finite project session', () => {
       message: 'project directory is unavailable',
     })
     expect(JSON.stringify(failure)).not.toContain(root)
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({ phase: 'owner', causes: expect.any(Array) })
+    expect(JSON.stringify(evidence)).not.toContain(root)
+    expect(JSON.stringify(evidence)).not.toContain('diagnostic observer failed')
   })
 
   test('unreadable retained candidates fail distinctly without resetting state', async () => {

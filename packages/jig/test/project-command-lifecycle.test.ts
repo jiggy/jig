@@ -185,6 +185,13 @@ proof('contained Project Command effect', () => {
   test('coordinator loss fences two leaf commands and recovers both branches without replay', async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-loss-')))
     const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+    const reopen = () =>
+      openPrivateProjectSession({
+        directory: root,
+        host,
+        onAcquisitionFailure: (evidence) =>
+          console.error('command-loss-acquisition', JSON.stringify(evidence)),
+      })
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     let coordinator: ReturnType<typeof Bun.spawn> | undefined
     let recoveryRequired = false
@@ -227,7 +234,7 @@ proof('contained Project Command effect', () => {
       const receipt = JSON.parse(await readFile(join(root, 'receipt.json'), 'utf8'))
       coordinator.kill('SIGKILL')
       await coordinator.exited
-      session = await openPrivateProjectSession({ directory: root, host })
+      session = await reopen()
       recoveryRequired = false
       expect(await terminal(session.rootAdministration, receipt)).toMatchObject({
         terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
@@ -236,7 +243,7 @@ proof('contained Project Command effect', () => {
     } finally {
       if (coordinator?.exitCode === null) coordinator.kill('SIGKILL')
       await coordinator?.exited
-      if (recoveryRequired) session = await openPrivateProjectSession({ directory: root, host })
+      if (recoveryRequired) session = await reopen()
       await session?.close()
       await rm(root, { recursive: true, force: true })
     }

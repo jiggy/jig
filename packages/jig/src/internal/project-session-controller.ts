@@ -158,21 +158,30 @@ export async function recoverPrivateCheckpointRun(
 export async function openPrivateProjectSession(input: {
   readonly directory: string
   readonly host: PrivateProjectSessionHost
+  readonly onAcquisitionFailure?: (evidence: {
+    readonly phase: 'owner' | 'package-store' | 'preparation-recovery' | 'root-recovery'
+    readonly causes: readonly string[]
+  }) => void
 }): Promise<ProjectSession> {
   let owner: PrivateProjectSessionOwner | undefined
   let roots: PrivateRootAdministrationController | undefined
   let packageStore: PreparedPackageStore | undefined
   let projectIdentityLost = false
   let closeForIdentityLoss: (() => void) | undefined
+  let acquisitionPhase: 'owner' | 'package-store' | 'preparation-recovery' | 'root-recovery' =
+    'owner'
   try {
     owner = await openPrivateProjectSessionOwner(input.directory)
+    acquisitionPhase = 'package-store'
     packageStore = await preparePackageStore(owner)
     const packageStoreRoot = packageStore.root
+    acquisitionPhase = 'preparation-recovery'
     await recoverPrivateBunPreparationOwner({
       projectRoot: owner.root.requestedPath,
       coordinator: owner.coordinator,
       backend: input.host.backend,
     })
+    acquisitionPhase = 'root-recovery'
     roots = await attachPrivateRootAdministrationController({
       coordinator: owner.coordinator,
       projectRoot: owner.root.requestedPath,
@@ -211,6 +220,14 @@ export async function openPrivateProjectSession(input: {
     if (projectIdentityLost) created.projectIdentityLost()
     return created.session
   } catch (error) {
+    try {
+      input.onAcquisitionFailure?.({
+        phase: acquisitionPhase,
+        causes: closedTestErrorCauses(error),
+      })
+    } catch {
+      // Optional closed diagnostics cannot replace acquisition or cleanup.
+    }
     const failures: unknown[] = [error]
     try {
       await roots?.dispose()
@@ -235,6 +252,25 @@ export async function openPrivateProjectSession(input: {
     }
     throw projectError(error, 'acquire')
   }
+}
+
+/** Bounded host-test evidence. Never retain messages, paths, or rejected values. */
+function closedTestErrorCauses(error: unknown): readonly string[] {
+  const result: string[] = []
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 3 || result.length >= 8 || !(value instanceof Error)) return
+    const name = /^[A-Za-z][A-Za-z0-9]{0,79}$/.test(value.name) ? value.name : 'Error'
+    const code = (value as Error & { code?: unknown }).code
+    result.push(
+      typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? `${name}:${code}` : name,
+    )
+    if (value instanceof AggregateError) {
+      for (const nested of value.errors.slice(0, 4)) visit(nested, depth + 1)
+    }
+    visit(value.cause, depth + 1)
+  }
+  visit(error, 0)
+  return result
 }
 
 function createSession(
