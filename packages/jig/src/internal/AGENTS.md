@@ -409,7 +409,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   or draining does not clear that failure or authorize another dispatch.
 - A new coordinator may retry an older Run's unconfirmed fence for a bounded
   interval while reacquiring that same durable Run. It never creates another
-  Run or treats pending fencing as a terminal; exhaustion remains `PROJECT_BUSY`.
+  Run or treats pending fencing as a terminal; exhaustion remains `PROJECT_BUSY`
+  through the project-session boundary instead of becoming an internal error.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,

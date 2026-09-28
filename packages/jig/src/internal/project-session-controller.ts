@@ -9,7 +9,7 @@ import {
   type ProjectPlanResult,
   type ProjectSession,
 } from '../administration/project.js'
-import type { RootRunTerminal } from '../administration/root.js'
+import { RootAdministrationError, type RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
 import { validateJson1 } from '../json.js'
 import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
@@ -827,6 +827,12 @@ export function projectError(
   operation: 'acquire' | 'plan' | 'apply',
 ): ProjectAdministrationError {
   if (error instanceof ProjectAdministrationError) return error
+  if (error instanceof RootAdministrationError && error.code === 'PROJECT_BUSY') {
+    return new ProjectAdministrationError(
+      'PROJECT_BUSY',
+      'project changed or is busy; retry the operation',
+    )
+  }
   if (error instanceof CheckError) {
     if (
       error.code === 'COORDINATOR_BUSY' ||

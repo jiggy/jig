@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ProjectAdministrationError } from '../src/administration/project.js'
+import { RootAdministrationError } from '../src/administration/root.js'
 import { CheckError } from '../src/diagnostics.js'
 import { PrivateBunManifestError } from '../src/internal/bun-native-lock-policy.js'
 import {
@@ -222,6 +223,12 @@ describe('private finite project session', () => {
     expect(evidence[0]).toMatchObject({ phase: 'owner', causes: expect.any(Array) })
     expect(JSON.stringify(evidence)).not.toContain(root)
     expect(JSON.stringify(evidence)).not.toContain('diagnostic observer failed')
+    const pendingFence = projectError(
+      new RootAdministrationError('PROJECT_BUSY', 'private fence detail'),
+      'acquire',
+    )
+    expect(pendingFence.code).toBe('PROJECT_BUSY')
+    expect(JSON.stringify(pendingFence)).not.toContain('private fence detail')
   })
 
   test('unreadable retained candidates fail distinctly without resetting state', async () => {
