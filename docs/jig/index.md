@@ -16,6 +16,10 @@ hero:
     - theme: alt
       text: See it work
       link: "#showcase"
+heroVideo:
+  src: /jig-intro.mp4
+  poster: /jig-intro-poster.jpg
+  title: "Jig — Power under control video overview"
 showcase:
   kind: execution
   label: Explore request triage with code and Agents
@@ -80,6 +84,20 @@ showcase:
 <h2>Build the builders.<br />From one method to a fleet.</h2>
 <p className="section-description">A single method solves one task. When methods compose, capability compounds. Each specialist has explicit inputs, outputs, and bounded powers—enabling coordinated multi-agent systems with power under control.</p>
 </div>
+
+<div className="hero-video-container" style={{ margin: '32px auto 44px auto' }}>
+  <div className="hero-video-frame">
+    <video
+      src="/jig-compounding.mp4"
+      poster="/jig-compounding-poster.jpg"
+      controls
+      playsInline
+      className="hero-video-player"
+      aria-label="Capability compounding and extreme composability with Jig"
+    />
+  </div>
+</div>
+
 <div className="reader-grid">
 <a className="reader-card" href="/guide/request-triage"><span className="tile-index">01 · Method Boundary</span><h3>One caller, three implementations</h3><p>See how code, an Agent, and a hybrid Flow satisfy the exact same result contract.</p><span className="card-link">Explore walkthrough ↗</span></a>
 <a className="reader-card" href="/guide/support-case"><span className="tile-index">02 · Consequence Policy</span><h3>Handle a disputed charge</h3><p>An Agent interprets the claim, code checks records, and the caller receives eligibility.</p><span className="card-link">Explore walkthrough ↗</span></a>

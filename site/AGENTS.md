@@ -20,6 +20,9 @@ Jig public sites.
   counterparts are transparent 4× raster exports of the SVGs. These are
   downloadable brand assets, not replacements for the accessible live-text
   wordmarks in the site navigation.
+- Each site's `public/` directory also serves static hero overview assets
+  (`flow-intro.mp4`, `flow-intro-poster.jpg`, `jig-intro.mp4`, `jig-intro-poster.jpg`)
+  copied into dist outputs for the landing page hero video players.
 - Site headers compose those marks with the live product wordmarks in the shared
   theme. Keep the two sites' mark assets separate; their visual distinction is
   intentional, while wordmark typography and balanced lockup proportions are

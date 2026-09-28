@@ -57,7 +57,7 @@ shared reading experience.
 
 - Preserve default documentation navigation, search, and accessibility.
 - Keep the shared nav lockup monochrome and balanced: the Jig striped mark with
-  Quicksand SemiBold `Jig`, and the FLOW unstriped mark with Quicksand Bold
+  Quicksand SemiBold `jig`, and the FLOW unstriped mark with Quicksand Bold
   `FLOW`. Keep the accessible product names as live text; do not duplicate them
   inside the image assets.
 - Keep both sites independent; shared components contain no product prose.

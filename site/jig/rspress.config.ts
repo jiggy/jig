@@ -108,9 +108,17 @@ export default defineConfig({
     light: '/mark.svg',
     dark: '/mark-light.svg',
   },
-  logoText: 'Jig',
+  logoText: 'jig',
   builderConfig: {
-    output: { cleanDistPath: false },
+    server: {
+      publicDir: {
+        name: resolve(siteDirectory, 'public'),
+      },
+    },
+    output: {
+      cleanDistPath: false,
+      copy: [{ from: resolve(siteDirectory, 'public'), to: '.' }],
+    },
     tools: {
       rspack: {
         module: {
