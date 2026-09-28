@@ -122,7 +122,21 @@ export async function qualifyIncidentBrief(): Promise<void> {
       },
       host: {
         acquire: (directory, overrides) =>
-          openPrivateProjectSession({ directory, host: { ...host, ...overrides } }),
+          openPrivateProjectSession({
+            directory,
+            host: {
+              ...host,
+              ...overrides,
+              onStage(stage) {
+                mark(stage)
+                overrides.onStage?.(stage)
+              },
+            },
+            onAcquisitionFailure: (evidence) =>
+              console.error('incident-acquisition-failure', JSON.stringify(evidence)),
+            onOperationFailure: (evidence) =>
+              console.error('incident-operation-failure', JSON.stringify(evidence)),
+          }),
       },
     }
     mark('review-started')

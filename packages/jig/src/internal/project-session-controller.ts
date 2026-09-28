@@ -162,6 +162,10 @@ export async function openPrivateProjectSession(input: {
     readonly phase: 'owner' | 'package-store' | 'preparation-recovery' | 'root-recovery'
     readonly causes: readonly string[]
   }) => void
+  readonly onOperationFailure?: (evidence: {
+    readonly operation: 'plan' | 'apply'
+    readonly causes: readonly string[]
+  }) => void
 }): Promise<ProjectSession> {
   let owner: PrivateProjectSessionOwner | undefined
   let roots: PrivateRootAdministrationController | undefined
@@ -215,7 +219,7 @@ export async function openPrivateProjectSession(input: {
         closeForIdentityLoss?.()
       },
     })
-    const created = createSession(owner, roots, packageStore, input.host)
+    const created = createSession(owner, roots, packageStore, input.host, input.onOperationFailure)
     closeForIdentityLoss = created.projectIdentityLost
     if (projectIdentityLost) created.projectIdentityLost()
     return created.session
@@ -278,6 +282,10 @@ function createSession(
   roots: PrivateRootAdministrationController,
   packageStore: PreparedPackageStore,
   host: PrivateProjectSessionHost,
+  onOperationFailure?: (evidence: {
+    readonly operation: 'plan' | 'apply'
+    readonly causes: readonly string[]
+  }) => void,
 ): {
   readonly session: ProjectSession
   readonly projectIdentityLost: () => void
@@ -633,6 +641,7 @@ function createSession(
         validateJson1(publicResult)
         return publicResult
       } catch (error) {
+        reportOperationFailure('plan', error)
         throw handleOperationError(error, 'plan')
       } finally {
         preparationBudget?.dispose()
@@ -664,6 +673,7 @@ function createSession(
               },
         )
       } catch (error) {
+        reportOperationFailure('apply', error)
         throw handleOperationError(error, 'apply')
       } finally {
         leave()
@@ -747,6 +757,14 @@ function createSession(
       return new ProjectAdministrationError('PROJECT_CLOSED', 'project session is closed')
     }
     return projectError(error, operation)
+  }
+
+  function reportOperationFailure(operation: 'plan' | 'apply', error: unknown): void {
+    try {
+      onOperationFailure?.({ operation, causes: closedTestErrorCauses(error) })
+    } catch {
+      // Optional closed diagnostics cannot replace the operation failure.
+    }
   }
 }
 

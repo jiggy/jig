@@ -152,13 +152,27 @@ describe('private finite project session', () => {
 
   test('preserves an accepted apply error while close waits', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-project-session-'))
+    const evidence: unknown[] = []
     try {
-      const session = await openPrivateProjectSession({ directory: root, host: inertHost() })
+      const session = await openPrivateProjectSession({
+        directory: root,
+        host: inertHost(),
+        onOperationFailure(value) {
+          evidence.push(value)
+          throw new Error('private diagnostic detail')
+        },
+      })
+      await expect(session.plan(null as never)).rejects.toBeInstanceOf(ProjectAdministrationError)
       const applying = session.apply({ planDigest: missingPlan })
       const closing = session.close()
 
       await expect(applying).rejects.toMatchObject({ code: 'PLAN_NOT_FOUND' })
       await closing
+      expect(evidence).toEqual([
+        { operation: 'plan', causes: ['ProjectAdministrationError:INVALID_REQUEST'] },
+        { operation: 'apply', causes: ['CheckError:ADMISSION_PLAN_MISSING'] },
+      ])
+      expect(JSON.stringify(evidence)).not.toContain('private diagnostic detail')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
