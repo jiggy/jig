@@ -10,17 +10,15 @@ permissions:
 
 jobs:
   prerequisites:
-    name: Native host qualification — ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    name: Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}
+    runs-on: ${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}
+    timeout-minutes: 35
     strategy:
       fail-fast: false
+      max-parallel: 10
       matrix:
-        include:
-          - arch: x64
-            runner: macos-15-intel
-          - arch: arm64
-            runner: macos-15
+        shard: [0, 1, 2, 3, 4]
+        arch: [x64, arm64]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -58,6 +56,7 @@ jobs:
       - name: Build the ordinary candidate
         run: just --justfile packages/jig/justfile build
       - name: Test native containment and recovery
+        if: matrix.shard == 0
         env:
           JIG_MACOS_PROCESS_TEST: '1'
         run: |
@@ -72,17 +71,49 @@ jobs:
           diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
           exit "$status"
       - name: Prepare genuine pinned clients for offline startup
+        if: matrix.shard == 4
         run: bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
       - name: Qualify the complete rootless host and installed consumer
         run: |
           set -o pipefail
-          scripts/ci/qualify-macos-host.sh 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
+          scripts/ci/qualify-macos-host.sh --shard "${{ matrix.shard }}" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
+      - name: Record successful shard
+        run: printf '%s %s %s\n' '${{ github.sha }}' '${{ matrix.arch }}' '${{ matrix.shard }}' > "$RUNNER_TEMP/mac-evidence/shard-${{ matrix.shard }}.complete"
       - name: Retain candidate prerequisite evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: macos-prerequisites-${{ matrix.arch }}-${{ github.sha }}
+          name: macos-prerequisites-${{ matrix.arch }}-${{ matrix.shard }}-${{ github.sha }}
           path: |
             ${{ runner.temp }}/mac-evidence/*.txt
             ${{ runner.temp }}/mac-evidence/*.json
+            ${{ runner.temp }}/mac-evidence/*.complete
           retention-days: 7
+
+  qualified-architecture:
+    name: Native host qualification — ${{ matrix.arch }}
+    if: always()
+    needs: [prerequisites]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: Download this architecture's shard evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: macos-prerequisites-${{ matrix.arch }}-*-${{ github.sha }}
+          path: ${{ runner.temp }}/macos-evidence
+      - name: Require all five exact-revision shards
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          for shard in 0 1 2 3 4; do
+            marker="$RUNNER_TEMP/macos-evidence/macos-prerequisites-$EXPECTED_ARCH-$shard-$EXPECTED_SHA/shard-$shard.complete"
+            test -f "$marker"
+            test "$(cat "$marker")" = "$EXPECTED_SHA $EXPECTED_ARCH $shard"
+          done

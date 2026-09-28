@@ -79,6 +79,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   archive hashes, performs zero-residue verification, and contributes to the
   aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
   prevent that aggregate from succeeding.
+- Linux installed-evidence also runs the public workspace-dependency consumer
+  and complete packed CLI composition under the proof host, in addition to
+  operational and hostile baselines.
 - Native Agent API Qualification consumes the exact host archives from the
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
@@ -111,25 +114,26 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
   variables. This candidate workflow does not replace Linux publication gates
   or claim live model/API qualification.
-- `workflows/macos-hosted-candidates.yml` checks native prerequisites on
-  disposable GitHub-hosted Intel (`macos-15-intel`) and Apple Silicon
-  (`macos-15`) runners. Record exact kernel/build, native Bun architecture,
-  process/coalition ABI observations, and SDK layout assertions. These probes
-  neither authorize a backend nor establish full host conformance. Keep their
-  evidence separate from the qualified exact-kernel gate.
-  After prerequisites, build the ordinary candidate and execute native
-  containment/recovery and authenticated descriptor-handoff tests on each
-  architecture. A prerequisite pass must
-  not conceal a failed native job or stand in for installed-host conformance.
-  The complete gate freezes candidate archives, runs the sequential native
-  suite and installed consumer, checks pinned genuine clients offline, and
-  verifies archive identity and ownership residue. Hosted setup installs no
-  privileged helper and uses no model credentials.
+- `workflows/macos-hosted-candidates.yml` qualifies disposable GitHub-hosted
+  Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Each of five
+  isolated shards per architecture checks the exact kernel/build, native Bun,
+  process prerequisites, ordinary build, frozen archive identity and ownership
+  residue. The deterministic test plan covers every discovered Jig test file;
+  it partitions the long root Agent lifecycle by disjoint name groups, with
+  tests sequential inside each host. One shard per architecture additionally
+  checks genuine pinned clients offline, ordinary npm installation and packed
+  consumer execution. Native containment/recovery and descriptor-handoff probes
+  run before the full suite on one shard. Per-architecture aggregate checks
+  require exact-revision success markers from all five shards; prerequisite
+  success alone is insufficient. Hosted setup installs no privileged helper
+  and uses no model credentials.
 
 ## Verification
 
 - Validate the called script locally where possible and inspect the complete
   workflow permission and artifact flow after any automation change.
+- CI runs `node --test scripts/ci/host-test-coverage.test.mjs` to catch omitted
+  host-only cases and incomplete Mac shard assignment before host qualification.
 - `bun test scripts/npm-publish.test.ts` exercises the publisher's actual shell
   with controlled registry responses, including reverse completion and retries.
 

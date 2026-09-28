@@ -14,7 +14,12 @@ qualification. Host preparation never becomes a consumer requirement.
   Bun 1.4.2 and real Node 22+ preflight, frozen same-revision archives with
   digest rechecks, an ordinary npm install on the native architecture,
   sequential native tests, installed-consumer checks, and
-  comparison of owned host residue before and after qualification.
+  comparison of owned host residue before and after qualification. Its full
+  mode remains the self-hosted entrypoint; hosted `--shard 0..4` runs one
+  isolated portion of the same complete suite.
+- `macos-host-test-shards.mjs` discovers every Jig test file and assigns it to
+  exactly one hosted shard. The root Agent lifecycle file is partitioned by
+  exhaustive name patterns; timing hints affect balance, never membership.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
   prerequisites on hosted Intel and Apple Silicon candidates. It starts no
@@ -26,8 +31,9 @@ qualification. Host preparation never becomes a consumer requirement.
 ## Local Contracts
 
 - Mac qualification runs unprivileged without host provisioning. Require all
-  three genuine native client paths; missing prerequisites fail explicitly.
-  No model credentials or online model calls are part of this host check.
+  three genuine native client paths for full qualification and the installed
+  consumer shard; missing prerequisites fail explicitly. No model credentials
+  or online model calls are part of this host check.
 - Use `sudo` only while provisioning the disposable runner. Jig and package
   code run unprivileged.
 - Keep fetched host tools version- and digest-pinned.
@@ -43,6 +49,9 @@ qualification. Host preparation never becomes a consumer requirement.
 
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
+- `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
+  Mac file assignment, disjoint root lifecycle name groups, and that every
+  Linux hostile test file enters provisioned host conformance.
 
 ## Child DOX Index
 
