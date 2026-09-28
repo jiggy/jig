@@ -144,6 +144,8 @@ hostTest.each([false, true])(
         'npm:echo-method',
         '--input',
         '"declared package"',
+        '--timeout',
+        '120s',
         '--json',
       ])
       expect(result.exit, result.stdout + result.stderr).toBe(0)
@@ -158,6 +160,8 @@ hostTest.each([false, true])(
           target,
           '--input',
           '"through selected provider"',
+          '--timeout',
+          '120s',
           '--json',
         ])
         expect(invoked.exit, invoked.stdout + invoked.stderr).toBe(0)
@@ -172,7 +176,10 @@ hostTest.each([false, true])(
           stderrTruncated: false,
         })
       }
-      const cancelled = await run(['run', 'npm:echo-method', '--input', '"hold"', '--json'], true)
+      const cancelled = await run(
+        ['run', 'npm:echo-method', '--input', '"hold"', '--timeout', '120s', '--json'],
+        true,
+      )
       expect(cancelled.exit, cancelled.stderr).toBe(2)
       expect(JSON.parse(cancelled.stdout)).toMatchObject({
         status: 'failed',
@@ -189,7 +196,15 @@ hostTest.each([false, true])(
       const originalPatch = await readFile(join(directory, 'patches/is-number.patch'), 'utf8')
       await put('packages/echo/FLOW.ts', 'throw new Error("unreviewed source must not run")')
       await put('patches/is-number.patch', 'unreviewed patch must not replace retained bytes')
-      const pinned = await run(['run', 'npm:echo-method', '--input', '"retained"', '--json'])
+      const pinned = await run([
+        'run',
+        'npm:echo-method',
+        '--input',
+        '"retained"',
+        '--timeout',
+        '120s',
+        '--json',
+      ])
       expect(pinned.exit, pinned.stdout + pinned.stderr).toBe(0)
       expect(JSON.parse(pinned.stdout)).toMatchObject({ output: 'retained' })
       expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(before)
@@ -218,7 +233,7 @@ hostTest.each([false, true])(
       else console.error(`Preserved package-provider consumer: ${directory}`)
     }
   },
-  120_000,
+  240_000,
 )
 
 hostTest(

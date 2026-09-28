@@ -134,7 +134,8 @@ operational baselines, and public-site assembly.
   verify link ownership, shared environment updates, separate indexes, and
   refusals that preserve existing work and workspace state.
 - `just test-tooling` also checks recipe parsing, argument and working-directory
-  handling, example dependency versions against public package manifests,
+  handling, Linux host shard proof-step coverage and fail-closed aggregation,
+  example dependency versions against public package manifests,
   explicit packing, and build-tool refusal before cleanup or site staging. Its
   no-package-scripts rule covers repository tasks, not imported skill toolchains.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dir, '..')
+// Bun 1.3 parses YAML's unquoted `on` as a boolean; Bun 1.4 preserves its name.
+const workflowTriggers = (workflow: any) => workflow.on ?? workflow.true
 test('Agent candidate refuses malformed requests and missing tools before creating output', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agent-candidate-refusal-'))
   try {
@@ -117,6 +119,8 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
     'Prove retained progress and coordinator-loss delivery',
     'Prove ordinary ACP Agent progress and cancellation',
     'Prove installed Markdown and exact typed calls',
+    'Prove installed workspace dependency admission and execution',
+    'Prove complete packed CLI composition',
     'Run Operational Baseline/1 against the packed archive',
     'Attack the packed CLI inside the proved envelope',
   ])
@@ -129,7 +133,7 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   expect(aggregate.name).toBe('rootless-linux')
   expect(aggregate.if).toBe('always()')
   expect(aggregate.needs).toEqual(['host-artifacts', 'host-suite'])
-  expect(workflow['true'].workflow_dispatch?.inputs?.qualify_codex_api).toBeUndefined()
+  expect(workflowTriggers(workflow).workflow_dispatch?.inputs?.qualify_codex_api).toBeUndefined()
   expect(aggregate.steps[0].run).toContain('!= success')
   expect(
     artifacts.steps.some((step: any) => step.name === 'Retain exact Linux host artifacts'),
@@ -147,7 +151,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
     await Bun.file(join(root, '.github/workflows/npm-publish.yml')).text(),
   ) as any
   const pypi = await Bun.file(join(root, '.github/workflows/pypi-publish.yml')).text()
-  const trigger = live['true'].workflow_run
+  const trigger = workflowTriggers(live).workflow_run
   const qualification = live.jobs.qualification
   const matrix = qualification.strategy.matrix.include
   const codexInstall = qualification.steps.find(
@@ -175,7 +179,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(host.jobs['rootless-linux'].needs).toEqual(['host-artifacts', 'host-suite'])
   expect(trigger.workflows).toEqual(['Linux host conformance'])
   expect(trigger.types).toEqual(['completed'])
-  expect(live['true'].workflow_dispatch).toBeNull()
+  expect(workflowTriggers(live).workflow_dispatch).toBeNull()
   expect(live['run-name']).toContain('github.event.workflow_run.head_sha')
   expect(live['run-name']).toContain('github.sha')
   expect(live.env.JIG_NATIVE_API_MODEL).toBeUndefined()

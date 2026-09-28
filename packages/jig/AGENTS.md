@@ -314,9 +314,12 @@ admitted FLOW packages.
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics
   under the selected temporary root for investigation.
-- `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1`,
+- `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1` or
+  `JIG_MACOS_PROCESS_TEST=1`,
   exercises public installed review, inspection and direct/Binding/child invocation
   of an ordinary declared workspace dependency, including admitted-byte pinning.
+  It selects a two-minute Run budget so the test measures these installed
+  behaviors even when hosted startup exceeds the shorter production default.
   Its packed entrypoint consumer checks both string forms, noninteractive default
   selection, current input bytes, overrides, explicit-target bypass and output
   collision refusal. It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
