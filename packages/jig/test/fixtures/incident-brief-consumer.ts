@@ -158,7 +158,13 @@ export async function qualifyIncidentBrief(): Promise<void> {
     expect(code, stdout + stderr).toBe(0)
     const result = JSON.parse(stdout)
     expect(result.status).toBe('succeeded')
-    expect(result.outcome).toBe('done')
+    const branchCodes = result.output.results.map((entry: any) => ({
+      role: entry.role,
+      failure: entry.failure,
+      outcome: entry.result?.outcome,
+      failures: entry.result?.output?.failures,
+    }))
+    expect(result.outcome, JSON.stringify(branchCodes)).toBe('done')
     expect(events).toHaveLength(5)
     expect(result.output.results.map((entry: any) => entry.result.outcome)).toEqual([
       'done',

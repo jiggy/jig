@@ -283,21 +283,42 @@ proof('contained Project Command effect', () => {
 
 function macosFenceFailureKind(error: unknown): string {
   let cause = error
-  for (let depth = 0; depth < 4; depth++) {
-    if (!(cause instanceof Error) || !(cause.cause instanceof Error)) break
-    cause = cause.cause
-  }
-  if (!(cause instanceof Error)) return 'unknown'
+  let kind = 'unknown'
   const allowed = new Set([
     'macOS recovery guardian is still alive',
     'macOS recovery fencing is unconfirmed',
     'macOS guardian job removal is unconfirmed',
     'macOS guardian job is still present',
+    'macOS storage recovery guardian job is still present',
+    'macOS storage recovery is unconfirmed',
     'macOS coalition accounting is unavailable',
+    'macOS coalition accounting is invalid',
+    'macOS process enumeration is incomplete',
+    'macOS owned process signaling failed',
+    'macOS recovery boot does not match',
+    'macOS guardian storage allocation changed',
+    'macOS guardian identity changed',
     'native macOS sealed owner state changed',
+    'native macOS recovery mechanism changed',
+    'native macOS owner has no recoverable execution',
     'macOS recovery must run outside its former owner',
   ])
-  return allowed.has(cause.message) ? cause.message : cause.name
+  const errno = new Set([
+    'EACCES', 'EBUSY', 'ECONNREFUSED', 'ECONNRESET', 'EIO',
+    'EMFILE', 'ENOENT', 'ENOSPC', 'EPERM', 'ETIMEDOUT',
+  ])
+  for (let depth = 0; depth < 12 && cause instanceof Error; depth++) {
+    const code = (cause as NodeJS.ErrnoException).code
+    kind = allowed.has(cause.message)
+      ? cause.message
+      : typeof code === 'string' && errno.has(code)
+        ? `errno:${code}`
+        : kind === 'unknown'
+          ? cause.name
+          : kind
+    cause = cause.cause
+  }
+  return kind
 }
 
 async function fixture(root: string) {
