@@ -1,28 +1,22 @@
 # Reduce ordinary startup and settlement overhead
 
-Status: the source optimization passed CI and installed host qualification;
-the installed profile did not demonstrate an overall startup improvement.
-The installed-evidence shard can run the profile
-manually on Ubuntu 24.04 x86-64 from the exact frozen Jig and FLOW archives;
-its results do not gate the normal host check.
-The narrower trace has also completed on the supported host. Evaluation and
-dependency preparation dominate review; installed-support verification is small.
-A source candidate reuses one private capture-copy buffer instead of allocating
-it for every read. Local complete lease disposal met its preset improvement
-target with unchanged checks. Comparable installed command-level measurements
-completed: combined median was 7.116 seconds before and 7.237 seconds after.
-Workspace-capture spans were lower, but this small single-cohort comparison
-does not establish command-level benefit. Keep the narrower allocation correction
-and its local evidence; do not repeat the same campaign seeking a favorable result.
-No installed startup speedup is claimed. Broader performance work remains open
-and must select another demonstrated cost and target before implementation.
+Status: a capture-copy allocation correction passed qualification but did not
+demonstrate an installed command-level improvement. A separate finite evaluator
+batch reduced five-Binding `jig review` median paired time by 17.75% on one
+provisioned Ubuntu host, with no material one-Binding regression; it is retained.
+That fixture reused three Flow packages and does not establish benefits for
+larger or more diverse graphs. The exact comparisons are in
+`.tmp/purpose-driven-installed-profile-comparison-2026-09-27.md` and
+`.tmp/evaluator-batching-ab-plan-2026-09-28.md`. Broader performance work remains
+open, but no next target has been selected.
 
 ## Proposed scope
 
-Measure an installed deterministic conversation on a documented supported host,
-separating configuration evaluation, dependency preparation, containment startup,
-durable ownership, actual work and settlement. Choose one demonstrated dominant
-cost and a measurable target before changing its implementation.
+For a new consumer-relevant performance problem, choose a demonstrated cost and
+predeclare the whole-command target before changing its implementation. Keep
+configuration evaluation, dependency preparation, containment, work and
+settlement distinguishable. The previous profile is not an instruction to
+repeat a completed comparison or add cross-package preparation reuse.
 
 ## Completion
 
@@ -36,10 +30,4 @@ No blanket timeout increases, retries of uncertain work, telemetry framework or
 claim that a single host-pressure sample explains historical failures. Existing
 release-blocking failures must be addressed before merging, not parked here.
 
-Owners follow the measured phase; begin with the existing evaluator, compiler,
-materialization and lifecycle boundaries rather than a new subsystem.
-
-The current profile is diagnostic only: one warmup and five sequential
-fresh-project trials on a warm host. Package and fixture setup are excluded;
-phase spans may overlap. It cannot establish an improvement until a comparable
-before/after target is selected and measured.
+Owners follow the measured phase rather than adding a new performance subsystem.
