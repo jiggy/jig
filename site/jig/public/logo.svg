@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="270.55815384615386" height="108" viewBox="0 0 270.55815384615386 108" role="img" aria-labelledby="title description">
-  <title id="title">Jig</title>
-  <desc id="description">Jig emblem and wordmark, in Quicksand.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="249.32738461538463" height="108" viewBox="0 0 249.32738461538463 108" role="img" aria-labelledby="title description">
+  <title id="title">jig</title>
+  <desc id="description">jig emblem and wordmark, in Quicksand.</desc>
   <defs>
     <style>
       @font-face {
@@ -23,5 +23,5 @@
 <path d="M145.455 154.136C163.979 147.559 181.99 138.11 199.3 125.759C216.61 113.408 233.213 98.151 248.805 80L272.734 80C258.032 98.732 242.26 115.031 225.634 128.811C209.009 142.591 191.532 153.853 173.405 162.522Z"/>
 <path d="M188.668 167.1C224.758 147.659 257.889 118.322 286.595 80L309.424 80C295.485 99.955 280.388 117.889 264.259 133.668C248.129 149.448 230.965 163.073 212.922 174.377Z"/></g>
   </svg>
-  <text class="wordmark" x="0" y="0" fill="#20242C" transform="translate(145.0196923076923 77.53846153846155) scale(0.9230769230769231)">Jig</text>
+  <text class="wordmark" x="0" y="0" fill="#20242C" transform="translate(150.55815384615383 77.53846153846155) scale(0.9230769230769231)">jig</text>
 </svg>
