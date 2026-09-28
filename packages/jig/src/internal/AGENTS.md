@@ -184,6 +184,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   terminate collection and retain cleanup responsibility.
   Fresh storage recovery runs fixed image tools in a separate finite guardian,
   with a derived token and authenticated journal in the owner's `recovery` slot.
+  After the fixed tools return, drain and fence any remaining recovery-coalition
+  members within a five-second bound before reporting successful cleanup.
   Fence the preceding attempt, remove its exact job and sockets, then reset only
   the slot's known private records before reuse. Never erase a live attempt's
   journal or recursively delete a recovery path. Recovery tool admission has a

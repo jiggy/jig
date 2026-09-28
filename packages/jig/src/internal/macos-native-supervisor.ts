@@ -279,7 +279,15 @@ async function supervise(
         configuration.targetToken,
         cancellation.signal,
       )
-      if (!owner.empty()) throw new Error('macOS recovery tools are not fenced')
+      // Tool completion and coalition emptiness are separate observations.
+      // Fence every remaining member before admitting storage cleanup.
+      const fencedBy = performance.now() + 5000
+      while (!owner.empty()) {
+        owner.signalMembers('kill')
+        if (performance.now() >= fencedBy)
+          throw new Error('macOS recovery tools are not fenced')
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
       phase = 'terminal'
       stdin.destroy()
       stdout.end()

@@ -225,7 +225,9 @@ proof('contained Project Command effect', () => {
         import { openPrivateInstalledBunHost } from ${JSON.stringify(join(import.meta.dir, '../src/internal/installed-bun-host.ts'))};
         import { writeFile } from 'node:fs/promises';
         const session = await openPrivateProjectSession({ directory: ${JSON.stringify(root)},
-          host: await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)}, {}) });
+          host: await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)}, {}),
+          onRootExecutionFailure: evidence =>
+            console.error('command-loss-root-execution-failure', JSON.stringify(evidence)) });
         const receipt = await session.rootAdministration.startRun({ submissionId: 'lost-command',
           target: {kind:'binding',id:'pair'}, input:{command:'cli',files:{'src/cli.ts':'await Bun.sleep(60000)'}} });
         await writeFile(${JSON.stringify(join(root, 'receipt.json'))}, JSON.stringify(receipt));
