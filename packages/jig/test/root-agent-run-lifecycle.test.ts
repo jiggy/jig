@@ -398,7 +398,12 @@ proofDescribe('contained repair file application', () => {
                   runTimeoutMs?: number
                   files?: import('../src/internal/root-run-files.js').PrivateRootRunFiles
                 },
-              ) => openPrivateProjectSession({ directory, host: { ...installed, ...options } }),
+              ) => openPrivateProjectSession({
+                directory,
+                host: { ...installed, ...options },
+                onRootExecutionFailure: (evidence) =>
+                  console.error('repair-root-execution-failure', JSON.stringify(evidence)),
+              }),
               delivery: {
                 get checkpoint() {
                   return checkpoints?.latest ?? null
@@ -1626,6 +1631,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         ) =>
           runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested)
         const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 3 : 2)
+        const onRootExecutionFailure = (evidence: { phase: string; causes: readonly string[] }) =>
+          console.error('agent-root-execution-failure', JSON.stringify(evidence))
         const openHost = (location: PrivateInstalledBunLocation) =>
           acp
             ? openDeterministicFiniteAcpHost(location, environment, root)
@@ -1652,6 +1659,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           const plan = await session.plan({ lockMode: 'update' })
           if (plan.state !== 'applicable') throw new Error('Agent fixture did not produce a Plan')
@@ -1740,6 +1748,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
+            onRootExecutionFailure,
           })
           expect(await run('agent-deadline', 'slow', process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 10_000)).toMatchObject({
             state: 'terminal',
@@ -1751,6 +1760,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           const cancellation = await session.rootAdministration.startRun(
             request('agent-cancellation', 'slow'),
@@ -1760,6 +1770,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           expect(
             await session.rootAdministration.startRun(request('agent-cancellation', 'slow')),
@@ -1807,6 +1818,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           expect(
             await session.rootAdministration.startRun(

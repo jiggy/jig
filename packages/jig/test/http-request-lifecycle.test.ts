@@ -152,10 +152,12 @@ proof('delegated HTTP through contained root and child Runs', () => {
       }
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       let completed = false
+      const onRootExecutionFailure = (evidence: { phase: string; causes: readonly string[] }) =>
+        console.error('http-root-execution-failure', JSON.stringify(evidence))
       try {
         await fixture(root, grants)
         const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
-        session = await openPrivateProjectSession({ directory: root, host })
+        session = await openPrivateProjectSession({ directory: root, host, onRootExecutionFailure })
         const plan = await session.plan({ lockMode: 'update' })
         expect(plan.state).toBe('applicable')
         if (plan.state !== 'applicable') throw new Error(JSON.stringify(plan))
@@ -221,7 +223,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
           const stopped = await start({ ...valid, slot: 'wait' }, 'parent')
           await waitUntil(() => seen.some(({ path }) => path === '/wait'))
           await session.close()
-          session = await openPrivateProjectSession({ directory: root, host })
+          session = await openPrivateProjectSession({ directory: root, host, onRootExecutionFailure })
           expect(await terminal(session.rootAdministration, stopped)).toMatchObject({
             terminal: { status: 'failed', code: 'CANCELLED' },
           })
@@ -234,7 +236,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
             join(root, 'grants/document.json'),
             JSON.stringify({ kind: 'http', ...grants.document, responseBytes: 512 }),
           )
-          session = await openPrivateProjectSession({ directory: root, host })
+          session = await openPrivateProjectSession({ directory: root, host, onRootExecutionFailure })
           const requestsBefore = seen.length
           // Source changes propose new authority; the admitted generation continues unchanged.
           expect(await run(valid)).toMatchObject({ terminal: { status: 'succeeded' } })

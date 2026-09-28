@@ -100,6 +100,25 @@ export type PrivateRootExecutionDisposition =
   | { readonly state: 'terminal'; readonly run: PrivateRootRunSnapshot }
   | { readonly state: 'pending'; readonly reason: 'fence-unconfirmed' }
 
+export type PrivateRootExecutionFailurePhase =
+  | 'planning'
+  | 'materialization'
+  | 'support'
+  | 'projection'
+  | 'sealing'
+  | 'channels'
+  | 'admission'
+  | 'protocol'
+  | 'child-settlement'
+  | 'fence'
+  | 'settlement'
+  | 'child-flow-preparation'
+  | 'child-flow-sealing'
+  | 'child-flow-admission'
+  | 'child-flow-protocol'
+  | 'child-flow-settlement'
+  | 'child-flow-cleanup'
+
 interface PrivateDirectRootPlanRecord {
   readonly kind: typeof PLAN_KIND
   readonly requestDigest: string
@@ -140,6 +159,8 @@ export async function executePrivateRootRunLaunch(input: {
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly signal?: AbortSignal
+  /** Optional private host-test observation; never changes the Run terminal. */
+  readonly onFailure?: (phase: PrivateRootExecutionFailurePhase, error: unknown) => void
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify()
   const work = await reacquire(input)
@@ -184,6 +205,19 @@ async function startOrResumeCurrentExecution(
   let stopChannels: (() => void) | undefined
   let channelDeadline: ReturnType<typeof setTimeout> | undefined
   let boundFiles: Awaited<ReturnType<typeof openBoundAttachments>> | undefined
+  let failurePhase: PrivateRootExecutionFailurePhase = 'planning'
+  let reportedError: unknown
+  let hasReportedError = false
+  const reportFailure = (error: unknown): void => {
+    if (hasReportedError && Object.is(error, reportedError)) return
+    hasReportedError = true
+    reportedError = error
+    try {
+      input.onFailure?.(failurePhase, error)
+    } catch {
+      // Optional closed test evidence cannot replace the Run outcome.
+    }
+  }
   try {
     let recipe: PrivateDirectRunRecipe
     let plan: PrivateDirectRootPlanRecord
@@ -236,6 +270,7 @@ async function startOrResumeCurrentExecution(
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
 
+    failurePhase = 'materialization'
     let backing =
       work.lifecycle.backing === undefined ? undefined : parseBacking(work.lifecycle.backing.value)
     let lease: PrivatePackageMaterializationLease
@@ -261,10 +296,12 @@ async function startOrResumeCurrentExecution(
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
 
+    failurePhase = 'support'
     await revalidatePrivateInstalledBunSupport(recipe.installedSupport)
     if (stop.terminal !== undefined) {
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
+    failurePhase = 'projection'
     boundFiles = await openBoundAttachments(input.packageStoreRoot, recipe.request.boundAttachments)
     const fileProjection = (input.files ?? new PrivateRootRunFiles([], null)).projection(
       work.run.runId,
@@ -282,6 +319,7 @@ async function startOrResumeCurrentExecution(
       plan,
       fileProjection?.plan,
     )
+    failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(input.backend, launch, plan.ownerAllocation)
     work = await advanceCheckpoint(input, work, 'sandbox', {
       kind: SANDBOX_KIND,
@@ -302,6 +340,7 @@ async function startOrResumeCurrentExecution(
       )
     }
 
+    failurePhase = 'channels'
     channelPackage = await captureStoredPackage(input.packageStoreRoot, recipe.request.package)
     const channelInspected = await inspectCapturedPackage(channelPackage)
     const openedChannels = await PrivateRunChannels.open(
@@ -320,6 +359,7 @@ async function startOrResumeCurrentExecution(
     let provisional: RunHostTerminal
     let fence: PrivateExecutionConfirmedEnforcementReceipt
     try {
+      failurePhase = 'admission'
       const component = await privateProfileSpan('rootless-containment-startup', () => admitPrivateExecutionOwner(
         sealed,
         stop.enforcementSignal,
@@ -345,6 +385,7 @@ async function startOrResumeCurrentExecution(
         channelInspected,
         recipe,
       )
+      failurePhase = 'protocol'
       provisional = await privateProfileSpan('flow-execution', () => new RunHostSession(
         component,
         {
@@ -368,6 +409,7 @@ async function startOrResumeCurrentExecution(
       ).run())
       observedTerminal = provisional
       try {
+        failurePhase = 'child-settlement'
         await privateProfileSpan('operation-owner-settlement', () => recoverPrivateRootOperationOwners(input, parent))
       } catch (error) {
         if (!isPrivateExecutionFenceUnconfirmed(error)) throw error
@@ -382,6 +424,7 @@ async function startOrResumeCurrentExecution(
           provisional as unknown as JsonValue,
         )
         try {
+          failurePhase = 'fence'
           fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>('root-fence', () => component.enforcement)
         } catch (fenceError) {
           if (isPrivateExecutionFenceUnconfirmed(fenceError)) {
@@ -402,6 +445,7 @@ async function startOrResumeCurrentExecution(
         provisional as unknown as JsonValue,
       )
       try {
+        failurePhase = 'fence'
         fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>('root-fence', () => component.enforcement)
       } catch (error) {
         if (isPrivateExecutionFenceUnconfirmed(error)) {
@@ -410,6 +454,7 @@ async function startOrResumeCurrentExecution(
         throw error
       }
     } catch (error) {
+      reportFailure(error)
       let retryableBusy = isAdmissionStateBusy(error) ? error : undefined
       const knownTerminal = observedTerminal ?? stop.terminal
       if (knownTerminal !== undefined) {
@@ -461,6 +506,7 @@ async function startOrResumeCurrentExecution(
       }
     }
 
+    failurePhase = 'settlement'
     return await privateProfileSpan('root-settlement', async () => {
       work = await advanceCheckpoint(input, work, 'fence', {
         kind: FENCE_KIND,
@@ -469,6 +515,7 @@ async function startOrResumeCurrentExecution(
       return terminal(await releaseAdmitAndClose(input, work))
     })
   } catch (error) {
+    reportFailure(error)
     if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
     }
@@ -1278,6 +1325,7 @@ function operationDispatcher(
           () =>
             executePrivateRootFlowCall({
               ...operationInput(input, parent),
+              onFailure: (phase, error) => input.onFailure?.(`child-flow-${phase}`, error),
               channels: {
                 caller: channels.root,
                 broker: channels.broker,

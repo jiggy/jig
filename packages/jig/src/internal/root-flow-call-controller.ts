@@ -147,7 +147,16 @@ interface ChildInput {
   }
   readonly onDiagnostic?: (bytes: Uint8Array, operations?: readonly string[]) => void
   readonly diagnosticPath?: readonly string[]
+  readonly onFailure?: (phase: ChildFailurePhase, error: unknown) => void
 }
+
+type ChildFailurePhase =
+  | 'preparation'
+  | 'sealing'
+  | 'admission'
+  | 'protocol'
+  | 'settlement'
+  | 'cleanup'
 
 type ChildCallInput = ChildInput & {
   readonly call: RunHostCall
@@ -318,9 +327,11 @@ async function executePreparedChild(
   }
 
   let attemptedDispatch = false
+  let failurePhase: ChildFailurePhase = 'preparation'
   try {
     const lease = await materializeChild(input.packageStoreRoot, recipe, packageAllocation)
     await revalidateRecipe(recipe)
+    failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(
       input.backend,
       backendPlan(
@@ -361,10 +372,12 @@ async function executePreparedChild(
     let component: Awaited<ReturnType<typeof sealed.admit>>
     try {
       attemptedDispatch = true
+      failurePhase = 'admission'
       component = await admitPrivateExecutionOwner(sealed, startup.signal)
     } finally {
       startup.dispose()
     }
+    failurePhase = 'protocol'
     const provisional = await new RunHostSession(
       component,
       {
@@ -389,14 +402,25 @@ async function executePreparedChild(
         recipe,
       ),
     ).run()
+    failurePhase = 'settlement'
     const fence = await component.enforcement
     await releaseKnownChild(input, lifecycle, lease, fence)
     return await admitOperationResult(input.packageStoreRoot, selected.request.package, provisional)
   } catch (error) {
     try {
+      input.onFailure?.(failurePhase, error)
+    } catch {
+      // Test-only observation cannot change child operation settlement.
+    }
+    try {
       const active = await findLifecycle(input, input.call.operationId)
       if (active !== undefined) await recoverOne(input, active)
     } catch (cleanupError) {
+      try {
+        input.onFailure?.('cleanup', cleanupError)
+      } catch {
+        // Test-only observation cannot change child operation settlement.
+      }
       throw new RunHostFatalOperationError(
         isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },

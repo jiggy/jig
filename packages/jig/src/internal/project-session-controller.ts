@@ -83,7 +83,10 @@ import {
   attachPrivateRootAdministrationController,
   type PrivateRootAdministrationController,
 } from './root-administration-controller.js'
-import { executePrivateRootRunLaunch } from './root-run-controller.js'
+import {
+  executePrivateRootRunLaunch,
+  type PrivateRootExecutionFailurePhase,
+} from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
 import type { PrivateRunChannelOutput } from './run-channels.js'
 
@@ -166,6 +169,10 @@ export async function openPrivateProjectSession(input: {
     readonly operation: 'plan' | 'apply'
     readonly causes: readonly string[]
   }) => void
+  readonly onRootExecutionFailure?: (evidence: {
+    readonly phase: PrivateRootExecutionFailurePhase
+    readonly causes: readonly string[]
+  }) => void
 }): Promise<ProjectSession> {
   let owner: PrivateProjectSessionOwner | undefined
   let roots: PrivateRootAdministrationController | undefined
@@ -213,6 +220,13 @@ export async function openPrivateProjectSession(input: {
             ? {}
             : { channelOutput: input.host.channelOutput }),
           signal,
+          onFailure: (phase, error) => {
+            try {
+              input.onRootExecutionFailure?.({ phase, causes: closedTestErrorCauses(error) })
+            } catch {
+              // Optional closed test evidence cannot change execution.
+            }
+          },
         }),
       onProjectIdentityLoss: () => {
         projectIdentityLost = true
@@ -265,8 +279,12 @@ function closedTestErrorCauses(error: unknown): readonly string[] {
     if (depth > 3 || result.length >= 8 || !(value instanceof Error)) return
     const name = /^[A-Za-z][A-Za-z0-9]{0,79}$/.test(value.name) ? value.name : 'Error'
     const code = (value as Error & { code?: unknown }).code
+    const closedCode =
+      typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)
+        ? code
+        : closedNativeTestCause(value)
     result.push(
-      typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? `${name}:${code}` : name,
+      closedCode === undefined ? name : `${name}:${closedCode}`,
     )
     if (value instanceof AggregateError) {
       for (const nested of value.errors.slice(0, 4)) visit(nested, depth + 1)
@@ -275,6 +293,28 @@ function closedTestErrorCauses(error: unknown): readonly string[] {
   }
   visit(error, 0)
   return result
+}
+
+function closedNativeTestCause(error: Error): string | undefined {
+  switch (error.message) {
+    case 'macOS control deadline expired':
+      return 'MACOS_CONTROL_DEADLINE'
+    case 'macOS guardian bootstrap failed':
+      return 'MACOS_GUARDIAN_BOOTSTRAP'
+    case 'macOS guardian connection lost':
+      return 'MACOS_GUARDIAN_CONNECTION_LOST'
+    case 'macOS guardian job removal is unconfirmed':
+      return 'MACOS_GUARDIAN_REMOVAL_UNCONFIRMED'
+    case 'macOS prepared ownership does not match':
+      return 'MACOS_PREPARED_OWNER_MISMATCH'
+    case 'native macOS Run was cancelled before admission':
+      return 'MACOS_STARTUP_CANCELLED'
+    default:
+      return error.message.startsWith('macOS guardian ended before readiness (') &&
+        error.message.endsWith(')')
+        ? 'MACOS_GUARDIAN_BEFORE_READINESS'
+        : undefined
+  }
 }
 
 function createSession(
