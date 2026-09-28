@@ -545,9 +545,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   The private project-session acquisition and operation callbacks permit
   selected host tests to observe only a fixed phase or operation and bounded
   error class/code chain; never include raw messages, paths, or rejected values
-  in that evidence. Root-execution failure observation follows the same rule:
-  classify the active private phase and error chain before test output, without
-  changing terminal settlement, replay, or cleanup.
+  in that evidence. Root, child Flow, and contained-effect failure observation
+  follows the same rule: classify the active private phase and error chain
+  before test output, without changing terminal settlement, replay, or cleanup.
   Configuration evaluator failures preserve closed support, launch, envelope,
   settlement or protocol codes and the captured declaration location. Never
   project raw launcher exceptions or infer a timeout cause from unavailability.

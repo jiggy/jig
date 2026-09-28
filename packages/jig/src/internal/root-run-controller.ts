@@ -73,6 +73,7 @@ import { privateProfileSpan } from './private-profile.js'
 import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
 import {
   executePrivateContainedEffect,
+  type PrivateContainedEffectFailurePhase,
   recoverPrivateContainedEffectOwners,
 } from './root-contained-effect-controller.js'
 import {
@@ -118,6 +119,8 @@ export type PrivateRootExecutionFailurePhase =
   | 'child-flow-protocol'
   | 'child-flow-settlement'
   | 'child-flow-cleanup'
+  | `contained-effect-${PrivateContainedEffectFailurePhase}`
+  | `child-contained-effect-${PrivateContainedEffectFailurePhase}`
 
 interface PrivateDirectRootPlanRecord {
   readonly kind: typeof PLAN_KIND
@@ -1326,6 +1329,8 @@ function operationDispatcher(
             executePrivateRootFlowCall({
               ...operationInput(input, parent),
               onFailure: (phase, error) => input.onFailure?.(`child-flow-${phase}`, error),
+              onEffectFailure: (phase, error) =>
+                input.onFailure?.(`child-contained-effect-${phase}`, error),
               channels: {
                 caller: channels.root,
                 broker: channels.broker,
@@ -1395,6 +1400,8 @@ function operationDispatcher(
           () =>
             executePrivateContainedEffect({
               ...operationInput(input, parent),
+              onFailure: (phase, error) =>
+                input.onFailure?.(`contained-effect-${phase}`, error),
               call,
               parentDeadlineUnixMs,
               signal,

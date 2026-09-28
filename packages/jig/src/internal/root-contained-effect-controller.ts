@@ -72,11 +72,19 @@ import {
 const KIND = 'private-contained-effect-owner/1'
 const MACOS_EFFECT_SETUP_ALLOWANCE_MS = 15_000
 const ROOT = '/jig-input/project'
+export type PrivateContainedEffectFailurePhase =
+  | 'preparation'
+  | 'sealing'
+  | 'admission'
+  | 'collection'
+  | 'settlement'
+  | 'cleanup'
 interface Context extends PrivateInvocationContext {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateExecutionBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
+  readonly onFailure?: ((phase: PrivateContainedEffectFailurePhase, error: unknown) => void) | undefined
 }
 interface Allocation {
   readonly kind: typeof KIND
@@ -239,6 +247,7 @@ export async function executePrivateContainedEffect(
   const files: { readonly input: PrivateCapturedInput; readonly destination: string }[] = []
   let attempted = false
   let phase = 'preparing input'
+  let failurePhase: PrivateContainedEffectFailurePhase = 'preparation'
   try {
     for (const [path, source] of Object.entries(
       prepared.kind === 'command' ? prepared.value.input.files : {},
@@ -249,6 +258,7 @@ export async function executePrivateContainedEffect(
         destination: `${ROOT}/${path}`,
       })
     }
+    failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(
       input.backend,
       prepared.kind === 'command'
@@ -271,6 +281,7 @@ export async function executePrivateContainedEffect(
     })
     attempted = true
     phase = 'starting the worker'
+    failurePhase = 'admission'
     const component = await admitPrivateExecutionOwner(sealed, input.signal)
     let workloadDeadline = false
     const workloadTimer =
@@ -284,6 +295,7 @@ export async function executePrivateContainedEffect(
     let observed: Awaited<ReturnType<typeof collectEffect>>
     try {
       phase = 'collecting the worker result'
+      failurePhase = 'collection'
       observed = await collectEffect(
         component,
         stdin,
@@ -293,6 +305,7 @@ export async function executePrivateContainedEffect(
       clearTimeout(workloadTimer)
     }
     phase = 'fencing and cleanup'
+    failurePhase = 'settlement'
     await releaseEffect(input, lifecycle, observed.fence)
     phase = 'checking the collected result'
     const reason =
@@ -370,6 +383,11 @@ export async function executePrivateContainedEffect(
     }
   } catch (error) {
     try {
+      input.onFailure?.(failurePhase, error)
+    } catch {
+      // Test-only observation cannot change contained operation settlement.
+    }
+    try {
       const row = (await owners(input)).find(
         (row) =>
           row.operationId === input.call.operationId &&
@@ -377,6 +395,11 @@ export async function executePrivateContainedEffect(
       )
       if (row !== undefined) await releaseEffect(input, row)
     } catch (cleanupError) {
+      try {
+        input.onFailure?.('cleanup', cleanupError)
+      } catch {
+        // Test-only observation cannot change contained operation settlement.
+      }
       throw new RunHostFatalOperationError(
         isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },

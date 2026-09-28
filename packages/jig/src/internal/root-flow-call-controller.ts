@@ -88,6 +88,7 @@ import { admitPrivatePackageResult } from './package-result-admission.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
   executePrivateContainedEffect,
+  type PrivateContainedEffectFailurePhase,
   recoverPrivateContainedEffectOwners,
 } from './root-contained-effect-controller.js'
 import {
@@ -148,6 +149,7 @@ interface ChildInput {
   readonly onDiagnostic?: (bytes: Uint8Array, operations?: readonly string[]) => void
   readonly diagnosticPath?: readonly string[]
   readonly onFailure?: (phase: ChildFailurePhase, error: unknown) => void
+  readonly onEffectFailure?: (phase: PrivateContainedEffectFailurePhase, error: unknown) => void
 }
 
 type ChildFailurePhase =
@@ -532,6 +534,7 @@ function specialistDispatcher(
             return failed('UNAVAILABLE', 'this invocation has no supported channels')
           return await executePrivateContainedEffect({
             ...input,
+            onFailure: input.onEffectFailure,
             parentFlow: {
               operationId: input.call.operationId,
               target: selected.request.target,
@@ -769,7 +772,7 @@ async function recoverDescendants(
   }
   await recoverPrivateRootFlowCallOwners(context)
   await recoverPrivateRootFiniteAcpOwners(context)
-  await recoverPrivateContainedEffectOwners(context)
+  await recoverPrivateContainedEffectOwners({ ...context, onFailure: input.onEffectFailure })
 }
 
 async function recoverOne(
