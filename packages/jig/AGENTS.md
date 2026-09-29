@@ -45,7 +45,9 @@ admitted FLOW packages.
   Producer declarations are observation evidence, not execution authority.
 - `test/` owns unit, integration, fault-injection, packed-package, and
   proof-host evidence. `test/fixtures/agent-fixture-host.ts` keeps explicit
-  native composition budgets shared with independent coordinator fixtures. `test/fixtures/channel-conversation/` owns the synthetic
+  native composition budgets shared with independent coordinator fixtures and the
+  installed-package Agent composition smoke. The smoke passes the public
+  `--timeout` option and leaves production defaults unchanged. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.

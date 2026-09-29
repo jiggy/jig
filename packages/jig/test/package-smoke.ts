@@ -13,6 +13,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
+import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
@@ -785,6 +786,15 @@ void binding;
         environment,
         120000,
       )
+      // This checks composed installed behavior, not the production default deadline.
+      // Use the same explicit operator budget as the native composition fixtures.
+      const agentRun = [
+        command,
+        'run',
+        ...(process.platform === 'darwin' ? ['--timeout', `${MACOS_FIXTURE_RUN_MS}ms`] : []),
+      ]
+      const agentSettlementMs =
+        process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 120000
       const input = JSON.stringify({
         instructions: 'Classify this request: I need help.',
         responseSchema: {
@@ -796,10 +806,10 @@ void binding;
         },
       })
       const completed = await run(
-        [command, 'run', 'binding:agent', '--input', input],
+        [...agentRun, 'binding:agent', '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       const answer = JSON.parse(completed.stdout)
       assert.equal(answer.status, 'succeeded')
@@ -808,7 +818,7 @@ void binding;
       assert.doesNotMatch(completed.stdout + completed.stderr, /local-method-test-token/)
       mode = 'malformed'
       await assert.rejects(
-        run([command, 'run', 'binding:agent', '--input', input], agentProject, environment, 120000),
+        run([...agentRun, 'binding:agent', '--input', input], agentProject, environment, agentSettlementMs),
         /INVALID_RESULT/,
       )
       assert.equal(requests, 2) // One per invocation, including the unsuccessful one.
@@ -885,20 +895,20 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       const admittedDeclaration = await readFile(join(agentProject, 'jig.ts'))
       await writeFile(join(agentProject, 'jig.ts'), 'throw new Error("not admitted");')
       const composed = await run(
-        [command, 'run', 'binding:application', '--input', input],
+        [...agentRun, 'binding:application', '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.deepEqual(JSON.parse(composed.stdout).output.structured, { category: 'support' })
       assert.equal(JSON.parse(composed.stdout).status, 'succeeded')
       mode = 'malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'binding:application', '--input', input],
+          [...agentRun, 'binding:application', '--input', input],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -916,20 +926,20 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'markdown'
       const markdown = await run(
-        [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+        [...agentRun, 'flow:flows/markdown', '--input', 'null'],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.equal(JSON.parse(markdown.stdout).status, 'succeeded')
       assert.equal(JSON.parse(markdown.stdout).output, 'READY')
       mode = 'markdown-malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+          [...agentRun, 'flow:flows/markdown', '--input', 'null'],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -966,19 +976,19 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'answer'
       const response = await run(
-        [command, 'run', 'flow:flows/specialist', '--input', input],
+        [...agentRun, 'flow:flows/specialist', '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.deepEqual(JSON.parse(response.stdout).output.structured, { category: 'support' })
       mode = 'malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'flow:flows/specialist', '--input', input],
+          [...agentRun, 'flow:flows/specialist', '--input', input],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )

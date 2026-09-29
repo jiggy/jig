@@ -11,10 +11,10 @@
     "arm64"
   ],
   "sha256": {
-    "scripts/native-support.mjs": "bb4e437ea8babb08ab669a7ce95b95d0bfb265a079c2aa55a0cbe9fddc363ab3",
+    "scripts/native-support.mjs": "8f183c2937f32a36a2b516116f9f0f0163d6603642fc1768859b92578baa5c49",
     "support/macos-exec.c": "d1f55ec43c1eb2deeffa2e2ec56b2f5a0059dfe6af670b0b9ac2566b7d79fd8b",
-    "support/macos-exec-universal": "a67ae55268aff42d66e3e940c7b9ff0c5278c112a16d89d3860a2847aab18cfa",
+    "support/macos-exec-universal": "80dac3d3188457c4fcba74c22f7f66088ad104474a2dbdfba07f9c20d716cad3",
     "support/macos-descriptor-bridge.c": "405091f7b18f259cd95466a0360524c776c7975131611d65bf88a62f89cca8b0",
-    "support/macos-descriptor-bridge.dylib": "0c175f5a4cf860730f0819a705ab0745d5e0322a2ae38af45e07d70b8cb9d38f"
+    "support/macos-descriptor-bridge.dylib": "c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e"
   }
 }

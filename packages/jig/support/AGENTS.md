@@ -61,7 +61,8 @@ setup or package-held authority.
   Toolchain differences fail explicitly; a portable hash check does not prove
   source-to-binary equivalence. Changed native bytes need native host qualification.
 - `bun test packages/jig/test/native-support-build.test.ts` checks independent
-  source, recipe, binary and runtime-pin corruption refusal.
+  source, recipe, binary and runtime-pin corruption refusal, plus a nonzero
+  LC_UUID in both slices of each binary (required by newer Darwin loaders).
 
 - `JIG_MACOS_PROCESS_TEST=1 bun test packages/jig/test/macos-execution.test.ts`
   uses the candidate native Bun on the qualified Mac, outside an enclosing

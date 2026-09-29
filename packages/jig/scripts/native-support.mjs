@@ -77,7 +77,6 @@ function compile(mode) {
           '-Wextra',
           '-Werror',
           '-Wno-deprecated-declarations',
-          '-Wl,-no_uuid',
         ]
         if (binary.endsWith('.dylib'))
           flags.push('-dynamiclib', '-Wl,-install_name,@rpath/macos-descriptor-bridge.dylib')

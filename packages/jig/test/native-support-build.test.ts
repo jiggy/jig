@@ -54,3 +54,37 @@ for (const input of inputs.filter((path) => !path.endsWith('.json'))) {
     }
   })
 }
+
+for (const binary of ['macos-exec-universal', 'macos-descriptor-bridge.dylib']) {
+  test(`both ${binary} slices retain the UUID required by newer Darwin loaders`, () => {
+    const bytes = readFileSync(join(root, 'support', binary))
+    expect(bytes.readUInt32BE(0)).toBe(0xcafebabe)
+    expect(bytes.readUInt32BE(4)).toBe(2)
+    const architectures = []
+    for (let slice = 0; slice < 2; slice++) {
+      const entry = 8 + slice * 20
+      architectures.push(bytes.readUInt32BE(entry))
+      const start = bytes.readUInt32BE(entry + 8)
+      const end = start + bytes.readUInt32BE(entry + 12)
+      expect(end).toBeLessThanOrEqual(bytes.length)
+      expect(bytes.readUInt32LE(start)).toBe(0xfeedfacf)
+      const commands = bytes.readUInt32LE(start + 16)
+      let offset = start + 32
+      let uuids = 0
+      for (let command = 0; command < commands; command++) {
+        const kind = bytes.readUInt32LE(offset)
+        const size = bytes.readUInt32LE(offset + 4)
+        expect(size).toBeGreaterThanOrEqual(8)
+        expect(offset + size).toBeLessThanOrEqual(end)
+        if (kind === 0x1b) {
+          expect(size).toBe(24)
+          expect(bytes.subarray(offset + 8, offset + 24).some((byte) => byte !== 0)).toBe(true)
+          uuids++
+        }
+        offset += size
+      }
+      expect(uuids).toBe(1)
+    }
+    expect(architectures.sort()).toEqual([0x01000007, 0x0100000c])
+  })
+}
