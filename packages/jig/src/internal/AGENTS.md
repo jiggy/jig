@@ -281,6 +281,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   task limits and CPU throttling can overshoot; record sampling evidence and
   fail closed on sustained accounting uncertainty. Native exit status and
   kernel emptiness are independent requirements, including after crashes.
+  After admission, a payload's unread stdin may close with EPIPE without
+  invalidating its native exit evidence. Other stream errors still fail closed;
+  neither EPIPE nor pipe closure substitutes for the status frame or fencing.
 - `macos-native-supervisor.ts` and `macos-guardian-client.ts` own finite,
   unprivileged user-domain jobs. Keep control, stdin, stdout and stderr separate;
   kernel UID/PID/version bind every connection to its peer. Journal before
@@ -562,6 +565,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   in that evidence. Root, child Flow, and contained-effect failure observation
   follows the same rule: classify the active private phase and error chain
   before test output, without changing terminal settlement, replay, or cleanup.
+  Contained effects also report a confirmed fence's unexpected stop reason,
+  even when no exception occurred; payload output cannot replace missing native
+  terminal evidence. Project Command lifecycle proofs enable this observer.
   Configuration evaluator failures preserve closed support, launch, envelope,
   settlement or protocol codes and the captured declaration location. Never
   project raw launcher exceptions or infer a timeout cause from unavailability.
@@ -764,6 +770,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `macos-guardian.test.ts` qualifies the complete private guardian connection,
   gated native streams, cancellation, blocked output, and both coordinator and
   guardian loss. Portable framing cases live in `macos-control-channel.test.ts`.
+  Buffered unread stdin must preserve the payload's actual nonzero exit and
+  output after confirmed fencing.
   These checks are primitive evidence, not installed-host conformance.
   `macos-descriptor-files.test.ts` compiles SDK layout assertions and checks
   identity across directory replacement, raw enumeration and exclusive

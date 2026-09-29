@@ -312,11 +312,22 @@ export async function executePrivateContainedEffect(
       workloadDeadline && observed.fence.stopReason === 'cancelled'
         ? 'deadline'
         : observed.fence.stopReason
-    if (!['payload_exit', 'cancelled', 'deadline'].includes(reason))
+    if (!['payload_exit', 'cancelled', 'deadline'].includes(reason)) {
+      try {
+        input.onFailure?.(
+          'settlement',
+          Object.assign(new Error('contained operation has no proved terminal'), {
+            code: `CONTAINED_EFFECT_${reason.toUpperCase()}`,
+          }),
+        )
+      } catch {
+        // Test-only observation cannot change the confirmed settlement.
+      }
       return failed(
         'UNCERTAIN',
         'the operation was fenced without a proved terminal; effects may have occurred',
       )
+    }
     if (prepared.kind === 'http') {
       if (input.signal.aborted || reason === 'cancelled')
         return failed('CANCELLED', 'HTTP request cancelled; remote effects may have occurred')

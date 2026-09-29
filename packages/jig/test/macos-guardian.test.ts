@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto'
 import { access, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import {
   preparePrivateMacosGuardian,
@@ -336,4 +337,80 @@ native(
     }
   },
   60000,
+)
+
+native(
+  'guardian preserves native exit evidence when the payload leaves buffered stdin unread',
+  async () => {
+    const ownerDirectory = await realpath(await mkdtemp('/private/tmp/jig-guardian-stdin-owner-'))
+    const scratch = await realpath(await mkdtemp('/private/tmp/jig-guardian-stdin-data-'))
+    let owner: Awaited<ReturnType<typeof preparePrivateMacosGuardian>> | undefined
+    let fenced = false
+    try {
+      owner = await preparePrivateMacosGuardian({
+        bun: process.execPath,
+        supervisor: fileURLToPath(
+          new URL('../src/internal/macos-native-supervisor.ts', import.meta.url),
+        ),
+        configuration: {
+          type: 'start',
+          ownerDirectory,
+          ownerToken: randomBytes(32).toString('hex'),
+          launcher: fileURLToPath(new URL('../support/macos-exec-universal', import.meta.url)),
+          cwd: scratch,
+          command: [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            '-e',
+            'console.log("real result"); console.error("real diagnostic"); process.exit(17)',
+          ],
+          environment: {},
+          files: {
+            readOnlyFiles: [process.execPath],
+            readOnlyTrees: [],
+            writableTrees: [scratch],
+            protectedRoots: [ownerDirectory],
+            network: 'isolated',
+          },
+          limits: {
+            memoryBytes: 256 * 1024 * 1024,
+            pids: 4,
+            cpuQuotaMicros: 50_000,
+            cpuPeriodMicros: 100_000,
+            deadlineUnixMs: Date.now() + 30_000,
+            cleanupTimeoutMs: 5000,
+          },
+          maxOutputBytes: 4096,
+        },
+      })
+      const stdout = new Response(Readable.toWeb(owner.stdout) as ReadableStream).text()
+      const stderr = new Response(Readable.toWeb(owner.stderr) as ReadableStream).text()
+      await owner.admit()
+      owner.continue()
+      // Exceed the pipe capacity so the writer is still pending when the
+      // payload exits. This is private transport input, not a command grant limit.
+      owner.stdin.end(Buffer.alloc(1024 * 1024, 120))
+      const result = await owner.completion
+      fenced = result.fenced
+      expect(result).toMatchObject({
+        result: { reason: 'payload_exit', exitCode: 17, signal: null, fenced: true },
+        outputLost: false,
+        recovered: false,
+      })
+      expect(await stdout).toBe('real result\n')
+      expect(await stderr).toBe('real diagnostic\n')
+    } finally {
+      if (!fenced && owner !== undefined) {
+        owner.cancel()
+        fenced = (await owner.completion).fenced
+      }
+      if (fenced) {
+        await rm(ownerDirectory, { recursive: true })
+        await rm(scratch, { recursive: true })
+      }
+    }
+  },
+  40_000,
 )

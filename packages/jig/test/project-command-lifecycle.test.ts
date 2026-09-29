@@ -35,7 +35,12 @@ proof('contained Project Command effect', () => {
       try {
         await fixture(root)
         const host = fixtureHost(await openPrivateInstalledBunHost(installedBunLocation, {}))
-        session = await openPrivateProjectSession({ directory: root, host })
+        session = await openPrivateProjectSession({
+          directory: root,
+          host,
+          onRootExecutionFailure: (evidence) =>
+            console.error('command-root-execution-failure', JSON.stringify(evidence)),
+        })
         const plan = await session.plan({ lockMode: 'update' })
         expect(plan.state).toBe('applicable')
         if (plan.state !== 'applicable') throw new Error('command fixture is not reviewable')

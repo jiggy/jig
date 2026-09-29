@@ -260,7 +260,12 @@ export async function preparePrivateMacosScope(input: {
       stop('setup_failed')
     }
   })
-  for (const stream of [stdin, stdout, stderr, configuration, gate, frames])
+  // A payload may exit without consuming all input. EPIPE says only that its
+  // input reader closed; the trusted status pipe still proves its real exit.
+  stdin.on('error', (error: NodeJS.ErrnoException) => {
+    if (!admitted || error.code !== 'EPIPE') stop('setup_failed')
+  })
+  for (const stream of [stdout, stderr, configuration, gate, frames])
     stream.on('error', () => stop('setup_failed'))
   const frameEnd = new Promise<void>((resolve) => frames.once('end', resolve))
   const exit = new Promise<void>((resolve) => {
