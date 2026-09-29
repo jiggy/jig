@@ -72,6 +72,7 @@ const backend = {
       identity: owner,
       async admit() {
         step('admit')
+        if (mode === 'admission') throw new Error('admission failed')
         if (mode === 'snapshot-profile' || mode === 'snapshot-io')
           return {
             output: privateSnapshotExecutionOutput(
@@ -293,6 +294,30 @@ function before(a: string, b: string) {
   )
 }
 const run = async (value = input()) => await executePrivateRootFiniteAcp(value)
+for (const [failure, phase, message] of [
+  ['startup', 'sealing', 'startup failed'],
+  ['admission', 'admission', 'admission failed'],
+  ['native-failure', 'protocol', 'native failure'],
+]) {
+  reset(failure)
+  const failures: { phase: string; error: unknown }[] = []
+  const result = await run({
+    ...input(),
+    onFailure(phase: string, error: unknown) {
+      failures.push({ phase, error })
+      throw new Error('observer failure must not alter settlement')
+    },
+  })
+  assert.ok(result.status === 'failed')
+  assert.equal(result.code, failure === 'startup' ? 'EXECUTION_FAILED' : 'UNCERTAIN')
+  assert.equal(failures.length, 1)
+  const [reported] = failures
+  assert.ok(reported)
+  assert.equal(reported.phase, phase)
+  assert.ok(reported.error instanceof Error)
+  assert.equal(reported.error.message, message)
+  assert.equal(row, undefined, 'observer exceptions must not prevent owner cleanup')
+}
 for (const [failure, explanation] of [
   ['native-session-failure', 'native client reported a session failure'],
   ['native-protocol-failure', 'exchange violated its validated protocol'],

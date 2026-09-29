@@ -93,6 +93,7 @@ import {
 } from './root-contained-effect-controller.js'
 import {
   executePrivateRootFiniteAcp,
+  type PrivateFiniteAcpFailurePhase,
   recoverPrivateRootFiniteAcpOwners,
 } from './root-finite-acp-controller.js'
 import { isPrivateBranchDepth } from './root-operation-limits.js'
@@ -150,6 +151,7 @@ interface ChildInput {
   readonly diagnosticPath?: readonly string[]
   readonly onFailure?: (phase: ChildFailurePhase, error: unknown) => void
   readonly onEffectFailure?: (phase: PrivateContainedEffectFailurePhase, error: unknown) => void
+  readonly onAcpFailure?: (phase: PrivateFiniteAcpFailurePhase, error: unknown) => void
 }
 
 type ChildFailurePhase =
@@ -571,7 +573,11 @@ function specialistDispatcher(
           parentDeadlineUnixMs,
           signal,
         }
-        return await executePrivateRootFiniteAcp({ ...invocation, provider })
+        return await executePrivateRootFiniteAcp({
+          ...invocation,
+          provider,
+          onFailure: input.onAcpFailure,
+        })
       } finally {
         active = false
       }

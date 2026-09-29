@@ -133,6 +133,27 @@ type ProviderCallInput = AcpRecoveryInput & {
   readonly parentDeadlineUnixMs: number
   readonly signal: AbortSignal
   readonly channels?: { readonly caller: ChannelParticipant; readonly broker: ChannelBroker }
+  readonly onFailure?: ((phase: PrivateFiniteAcpFailurePhase, error: unknown) => void) | undefined
+}
+
+export type PrivateFiniteAcpFailurePhase =
+  | 'preparation'
+  | 'sealing'
+  | 'admission'
+  | 'protocol'
+  | 'settlement'
+  | 'cleanup'
+
+function reportFailure(
+  input: ProviderCallInput,
+  phase: PrivateFiniteAcpFailurePhase,
+  error: unknown,
+): void {
+  try {
+    input.onFailure?.(phase, error)
+  } catch {
+    // Optional private evidence cannot change execution or cleanup outcomes.
+  }
 }
 
 /** Effect IDs are local to their owning Flow, including the root's separate scope. */
@@ -172,7 +193,8 @@ export async function executePrivateRootFiniteAcp(
     recipe = await reproduceParentRecipe(input, provider)
     if (session !== undefined && provider.client !== 'openai-codex')
       return failed('UNAVAILABLE', 'this native client does not support retained sessions')
-  } catch {
+  } catch (error) {
+    reportFailure(input, 'preparation', error)
     return failed('UNAVAILABLE', 'the admitted finite ACP client cannot be reproduced')
   }
   let participant: ChannelParticipant | undefined
@@ -319,6 +341,7 @@ async function executeOwnedProvider(
   let credentialBootstrap: Uint8Array | undefined
   const runtime = privateAcpAgentRuntime(provider)
   const scopeDigest = nativeSessionScope(input, provider)
+  let failurePhase: PrivateFiniteAcpFailurePhase = 'preparation'
   try {
     await revalidateProviderSupport(recipe, provider, input)
     let restored: PrivateCodexSessionState | undefined
@@ -345,6 +368,7 @@ async function executeOwnedProvider(
       operation.session === undefined
         ? []
         : privateCodexSessionSecrets(runtime, credentialBootstrap)
+    failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(
       input.backend,
       backendPlan(
@@ -371,8 +395,10 @@ async function executeOwnedProvider(
       sandbox: sandbox as unknown as JsonValue,
     })
     attemptedDispatch = true
+    failurePhase = 'admission'
     const component = await admitPrivateExecutionOwner(sealed, input.signal)
     output = component.output
+    failurePhase = 'protocol'
     execution = await runPrivateFiniteAcpResource(
       component,
       runtime,
@@ -412,12 +438,15 @@ async function executeOwnedProvider(
         else throw error
       }
     }
+    failurePhase = 'settlement'
     await releaseKnownAcp(input, lifecycle, execution.fence)
   } catch (error) {
+    reportFailure(input, failurePhase, error)
     try {
       const active = await findLifecycle(input, input.call.operationId)
       if (active !== undefined) await recoverPrivateRootFiniteAcpOwner(input, active)
     } catch (cleanupError) {
+      reportFailure(input, 'cleanup', cleanupError)
       throw new RunHostFatalOperationError(
         isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         {

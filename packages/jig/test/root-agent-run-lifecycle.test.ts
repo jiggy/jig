@@ -1713,9 +1713,21 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           }
 
           for (let index = 0; index < 2; index += 1) {
-            expect(await run(`agent-repeat-${index}`, 'success')).toMatchObject({
+            const repeated = await run(`agent-repeat-${index}`, 'success')
+            expect(repeated, JSON.stringify(repeated)).toMatchObject({
               state: 'terminal',
-              terminal: { status: 'succeeded', outcome: 'done' },
+              terminal: {
+                status: 'succeeded',
+                outcome: 'done',
+                output: {
+                  status: 'succeeded',
+                  parentHasKey: false,
+                  agent: {
+                    outcome: 'done',
+                    output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT },
+                  },
+                },
+              },
             })
             await expectNoAgentOwner(root)
           }

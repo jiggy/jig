@@ -78,6 +78,7 @@ import {
 } from './root-contained-effect-controller.js'
 import {
   executePrivateRootFiniteAcp,
+  type PrivateFiniteAcpFailurePhase,
   recoverPrivateRootFiniteAcpOwners,
 } from './root-finite-acp-controller.js'
 import {
@@ -122,6 +123,8 @@ export type PrivateRootExecutionFailurePhase =
   | 'child-flow-cleanup'
   | `contained-effect-${PrivateContainedEffectFailurePhase}`
   | `child-contained-effect-${PrivateContainedEffectFailurePhase}`
+  | `finite-acp-${PrivateFiniteAcpFailurePhase}`
+  | `child-finite-acp-${PrivateFiniteAcpFailurePhase}`
 
 interface PrivateDirectRootPlanRecord {
   readonly kind: typeof PLAN_KIND
@@ -1335,6 +1338,7 @@ function operationDispatcher(
               onFailure: (phase, error) => input.onFailure?.(`child-flow-${phase}`, error),
               onEffectFailure: (phase, error) =>
                 input.onFailure?.(`child-contained-effect-${phase}`, error),
+              onAcpFailure: (phase, error) => input.onFailure?.(`child-finite-acp-${phase}`, error),
               channels: {
                 caller: channels.root,
                 broker: channels.broker,
@@ -1430,7 +1434,11 @@ function operationDispatcher(
             parentDeadlineUnixMs,
             signal,
           }
-          return executePrivateRootFiniteAcp({ ...invocation, provider })
+          return executePrivateRootFiniteAcp({
+            ...invocation,
+            provider,
+            onFailure: (phase, error) => input.onFailure?.(`finite-acp-${phase}`, error),
+          })
         },
         operationBusy(),
       )

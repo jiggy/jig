@@ -875,6 +875,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   subprocess. Unexpected lifecycle allocation failures report the `allocation`
   phase without changing the original exception; capacity refusal stays an
   ordinary resource-exhausted result, and observer failures cannot affect it.
+- Finite ACP failures report their private preparation, sealing, admission,
+  protocol, settlement or cleanup phase through the existing closed host-test
+  observer, including nested Flow calls. Observer exceptions cannot change
+  the terminal or interrupt cleanup. Lifecycle repeat-success checks assert
+  the Agent result as well as the outer Flow terminal.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing
   two/three-minute fixture budgets; production defaults remain unchanged.
