@@ -8,6 +8,8 @@ one method contract, using a suggested support queue as the bounded result.
 ## Ownership
 
 - `flows/intake/` owns the unchanged caller; `bindings/` chooses its classifier.
+- `bindings/model.ts` selects the ordinary ACP Agent with an editable Claude Code grant;
+  the contract-keyed project default supplies it to Agent and mixed classifiers.
 - `flows/code/`, `flows/agent/`, and `flows/mixed/` independently implement the
   same input, result, and outcome contract. Each package remains self-contained.
 - `fixtures/` contains synthetic requests; `test/` checks application behavior

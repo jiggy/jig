@@ -34,7 +34,9 @@ export function requirePrivateBunResolutionManifest(
   const manifest = ordinaryRecord(value)
   if (manifest === undefined) throw new PrivateBunManifestError('SHAPE', '')
   for (const field of [
-    ...(workspace === 'root' ? [] : ['workspaces']),
+    // Bun takes workspace membership only from the install root. A member
+    // may also be a standalone workspace; retain that inert declaration.
+    ...(workspace === undefined ? ['workspaces'] : []),
     ...(workspace === 'root' ? [] : ['patchedDependencies']),
     'overrides',
     'resolutions',

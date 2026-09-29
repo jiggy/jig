@@ -484,6 +484,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   of the new lock; the subsequent install stays frozen and script-disabled.
 - Workspace capture supports root applications and declared ancestor members,
   reading root metadata and selected dependency source, never installed links.
+  Preserve members' own `workspaces` declarations as inert metadata during an
+  ancestor-root install. Only that root's patterns define captured membership;
+  member declarations neither expand it nor invalidate unrelated consumers.
   Discover an ancestor workspace for exact versions as well as `workspace:`
   declarations; matching local members use Bun's normal substitution, while
   exact dependencies outside a declared workspace remain standalone. Recheck
