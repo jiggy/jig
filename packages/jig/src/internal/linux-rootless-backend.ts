@@ -1,3 +1,4 @@
+import { PRIVATE_OUTPUT_BYTES, PRIVATE_OUTPUT_PATH } from './execution-intent.js'
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync } from 'node:fs'
@@ -24,7 +25,7 @@ import { fileURLToPath } from 'node:url'
 import { types as utilTypes } from 'node:util'
 
 import type { JsonValue } from '../json.js'
-import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
+import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
 import { PRIVATE_FILE_LIMITS } from './file-input-policy.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
@@ -53,8 +54,6 @@ const PROC_SUPER_MAGIC = 0x9fa0n
 const SYSFS_SUPER_MAGIC = 0x6265_6572n
 const BUN_POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
 const authenticBackends = new WeakSet<object>()
-export const PRIVATE_OUTPUT_PATH = '/jig-output'
-export const PRIVATE_OUTPUT_BYTES = 16 * 1024 * 1024
 
 export interface PrivateLinuxCgroupLimits {
   readonly memoryBytes: number
@@ -314,7 +313,7 @@ interface RecoveredFinal {
 type SupervisorMessage = SupervisorPrepared | SupervisorReady | SupervisorTerminal
 type FinalRecord = SupervisorTerminal | RecoveredFinal
 
-export type PrivateLinuxComponentProcess = ExactComponentProcess & {
+export type PrivateLinuxComponentProcess = PrivateExecutionProcess & {
   /** Read only after enforcement settles. Close after collection, including failure. */
   readonly output?: { readonly kind: 'linux-directory'; readonly directory: FileHandle }
   readonly owner: PrivateLinuxPreparedOwnerIdentity
@@ -745,7 +744,7 @@ export class PrivateLinuxCgroupBackend {
           control?.destroy()
         })
       const completion = enforcement.then(
-        (receipt): ExactComponentExit =>
+        (receipt): PrivateExecutionExit =>
           Object.freeze({
             exitCode: receipt.exitCode,
             signal: receipt.signal,

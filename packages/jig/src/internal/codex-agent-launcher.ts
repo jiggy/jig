@@ -2,8 +2,8 @@ import { closeSync, mkdirSync, openSync, readSync, symlinkSync, writeSync } from
 import { dirname } from 'node:path'
 
 const STARTUP_INPUT_BYTES = 64 * 1024
-const CODEX_HOME = process.env.JIG_MACOS_AGENT_HOME
-  ? `${process.env.JIG_MACOS_AGENT_HOME}/codex-home`
+const CODEX_HOME = process.env.JIG_AGENT_HOME
+  ? `${process.env.JIG_AGENT_HOME}/codex-home`
   : '/tmp/codex-home'
 const OUTPUT_ROOT = process.env.JIG_OUTPUT_ROOT ?? '/jig-output'
 const ADAPTER_SPECIFIER = './codex-acp.js'
@@ -12,7 +12,7 @@ const AUTH_BOOTSTRAP = '__JIG_CODEX_AUTH_BOOTSTRAP__'
 if (import.meta.main) await main()
 
 async function main(): Promise<void> {
-  delete process.env.JIG_MACOS_AGENT_HOME
+  delete process.env.JIG_AGENT_HOME
   delete process.env.JIG_OUTPUT_ROOT
   mkdirSync(CODEX_HOME, { mode: 0o700 })
   materializeStartupFeatures()

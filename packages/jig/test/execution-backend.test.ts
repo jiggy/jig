@@ -42,7 +42,7 @@ test('execution backend boundary accepts only the two private implementations', 
   expect(isPrivateExecutionFenceUnconfirmed(new Error('lost'))).toBe(false)
 })
 
-test('execution launch rejects a backend-plan mismatch before dispatch', async () => {
+test('execution launch rejects a backend-allocation mismatch before dispatch', async () => {
   const root = await realpath(
     await mkdtemp(join(process.env.TMPDIR ?? '/tmp', 'jig-backend-union-')),
   )
@@ -57,8 +57,16 @@ test('execution launch rejects a backend-plan mismatch before dispatch', async (
       name: 'owner',
     })
     await expect(
-      sealPrivateExecutionOwner(linux, { kind: 'macos', plan: {} as never }, allocation),
-    ).rejects.toThrow('execution launch, backend and owner allocation do not match')
+      sealPrivateExecutionOwner(
+        new PrivateMacosBackend({
+          bunPath: '/private/runtime/bun',
+          supervisorPath: '/private/runtime/macos-supervisor',
+          launcherPath: '/private/runtime/macos-exec',
+        }),
+        {} as never,
+        allocation,
+      ),
+    ).rejects.toThrow('execution backend and owner allocation do not match')
   } finally {
     await rm(root, { recursive: true })
   }

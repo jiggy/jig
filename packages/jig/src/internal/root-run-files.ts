@@ -1,6 +1,7 @@
 import { posix } from 'node:path'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import type { PrivateActivationRequest } from '../project/package-resolution.js'
+import { PRIVATE_OUTPUT_PATH, type PrivateExecutionIntent } from './execution-intent.js'
 import { closePrivateExecutionOutput, type PrivateExecutionOutput } from './execution-output.js'
 import type { PrivateDeliveryConnection } from './file-delivery.js'
 import {
@@ -11,7 +12,6 @@ import {
   sha256,
 } from './file-input.js'
 import { privateDomainDigest } from './identity.js'
-import { PRIVATE_OUTPUT_PATH, type PrivateLinuxLaunchPlan } from './linux-rootless-backend.js'
 import {
   parseRunCheckpointInput,
   RUN_CHECKPOINT_CONTRACT_DIGEST,
@@ -158,7 +158,7 @@ export class PrivateRootRunFiles {
     identity: PrivateRunFileIdentity,
     bound: readonly Omit<PrivateCapturedAttachment, 'rootFd'>[] = [],
   ): {
-    readonly plan: Pick<PrivateLinuxLaunchPlan, 'capturedInputs' | 'inputDirectories' | 'output'>
+    readonly plan: Pick<PrivateExecutionIntent, 'capturedInputs' | 'inputDirectories' | 'output'>
     readonly attachments: Readonly<
       Record<string, { readonly path: string; readonly access: 'read' | 'read-write' }>
     >

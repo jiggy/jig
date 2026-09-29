@@ -226,7 +226,7 @@ test(
           CODEX_CONFIG: JSON.stringify({ features: { code_mode: false } }),
           CODEX_PATH: fixture,
           JIG_CODEX_STARTUP_INPUT: 'subscription',
-          JIG_MACOS_AGENT_HOME: state,
+          JIG_AGENT_HOME: state,
           RECORD_PATH: recording,
           RECORD_SCENARIO: 'completed',
         },

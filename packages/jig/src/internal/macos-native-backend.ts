@@ -5,7 +5,7 @@ import { lstat, mkdir, mkdtemp, realpath, rmdir } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { join, posix } from 'node:path'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
-import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
+import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
@@ -151,7 +151,7 @@ export interface PrivateMacosSealedOwner {
     beforeAdmission?: (prepared: PrivateMacosPreparedOwnerIdentity) => Promise<void>,
   ): Promise<PrivateMacosComponentProcess>
 }
-export type PrivateMacosComponentProcess = ExactComponentProcess & {
+export type PrivateMacosComponentProcess = PrivateExecutionProcess & {
   readonly output?: ReturnType<typeof retainPrivateMacosGuardianOutput>['output']
   readonly owner: PrivateMacosPreparedOwnerIdentity
   readonly process: Readonly<{ pid: number; version: number }>
@@ -444,7 +444,7 @@ export class PrivateMacosBackend {
           await state.close()
         })
       const completion = enforcement.then(
-        (receipt): ExactComponentExit =>
+        (receipt): PrivateExecutionExit =>
           Object.freeze({
             exitCode: receipt.exitCode,
             signal: signalName(receipt.signal),
@@ -994,7 +994,7 @@ function signalName(signal: number | null): string | null {
 
 function commonStopReason(
   reason: PrivateMacosConfirmedEnforcementReceipt['stopReason'],
-): NonNullable<ExactComponentExit['stopReason']> {
+): NonNullable<PrivateExecutionExit['stopReason']> {
   switch (reason) {
     case 'memory_limit':
     case 'process_limit':

@@ -115,7 +115,16 @@ proof('contained Project Command effect', () => {
         const args = await run(
           'command-args',
           { 'src/cli.ts': 'console.log(JSON.stringify(process.argv.slice(2)))' },
-          { args: ['--preload=/work/missing.ts', '$(touch unwanted)', '--file', '--sync-fd'] },
+          {
+            args: [
+              '--preload=/work/missing.ts',
+              '$(touch unwanted)',
+              '--file',
+              '--sync-fd',
+              '/jig-input/project/literal',
+              '/tmp/literal',
+            ],
+          },
         )
         expect(args).toMatchObject({
           terminal: {
@@ -123,7 +132,7 @@ proof('contained Project Command effect', () => {
             output: {
               exitCode: 0,
               stdout: {
-                text: '["--preload=/work/missing.ts","$(touch unwanted)","--file","--sync-fd"]\n',
+                text: '["--preload=/work/missing.ts","$(touch unwanted)","--file","--sync-fd","/jig-input/project/literal","/tmp/literal"]\n',
               },
             },
           },
