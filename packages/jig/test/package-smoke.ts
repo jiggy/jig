@@ -788,11 +788,8 @@ void binding;
       )
       // This checks composed installed behavior, not the production default deadline.
       // Use the same explicit operator budget as the native composition fixtures.
-      const agentRun = [
-        command,
-        'run',
-        ...(process.platform === 'darwin' ? ['--timeout', `${MACOS_FIXTURE_RUN_MS}ms`] : []),
-      ]
+      const agentRunOptions =
+        process.platform === 'darwin' ? ['--timeout', `${MACOS_FIXTURE_RUN_MS}ms`] : []
       const agentSettlementMs =
         process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 120000
       const input = JSON.stringify({
@@ -806,7 +803,7 @@ void binding;
         },
       })
       const completed = await run(
-        [...agentRun, 'binding:agent', '--input', input],
+        [command, 'run', 'binding:agent', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
         agentSettlementMs,
@@ -818,7 +815,7 @@ void binding;
       assert.doesNotMatch(completed.stdout + completed.stderr, /local-method-test-token/)
       mode = 'malformed'
       await assert.rejects(
-        run([...agentRun, 'binding:agent', '--input', input], agentProject, environment, agentSettlementMs),
+        run([command, 'run', 'binding:agent', ...agentRunOptions, '--input', input], agentProject, environment, agentSettlementMs),
         /INVALID_RESULT/,
       )
       assert.equal(requests, 2) // One per invocation, including the unsuccessful one.
@@ -895,7 +892,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       const admittedDeclaration = await readFile(join(agentProject, 'jig.ts'))
       await writeFile(join(agentProject, 'jig.ts'), 'throw new Error("not admitted");')
       const composed = await run(
-        [...agentRun, 'binding:application', '--input', input],
+        [command, 'run', 'binding:application', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
         agentSettlementMs,
@@ -905,7 +902,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       mode = 'malformed'
       await assert.rejects(
         run(
-          [...agentRun, 'binding:application', '--input', input],
+          [command, 'run', 'binding:application', ...agentRunOptions, '--input', input],
           agentProject,
           environment,
           agentSettlementMs,
@@ -926,7 +923,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'markdown'
       const markdown = await run(
-        [...agentRun, 'flow:flows/markdown', '--input', 'null'],
+        [command, 'run', 'flow:flows/markdown', ...agentRunOptions, '--input', 'null'],
         agentProject,
         environment,
         agentSettlementMs,
@@ -936,7 +933,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       mode = 'markdown-malformed'
       await assert.rejects(
         run(
-          [...agentRun, 'flow:flows/markdown', '--input', 'null'],
+          [command, 'run', 'flow:flows/markdown', ...agentRunOptions, '--input', 'null'],
           agentProject,
           environment,
           agentSettlementMs,
@@ -976,7 +973,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'answer'
       const response = await run(
-        [...agentRun, 'flow:flows/specialist', '--input', input],
+        [command, 'run', 'flow:flows/specialist', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
         agentSettlementMs,
@@ -985,7 +982,7 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       mode = 'malformed'
       await assert.rejects(
         run(
-          [...agentRun, 'flow:flows/specialist', '--input', input],
+          [command, 'run', 'flow:flows/specialist', ...agentRunOptions, '--input', input],
           agentProject,
           environment,
           agentSettlementMs,
