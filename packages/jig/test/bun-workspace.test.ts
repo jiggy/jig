@@ -188,6 +188,34 @@ test('workspace capture follows declared transitive members, not installation li
   }
 })
 
+test('member workspace declarations preserve bytes without expanding ancestor membership', async () => {
+  const value = await fixture()
+  try {
+    const manifest = { name: 'unrelated', version: '0.1.0', workspaces: ['nested/*'] }
+    await value.put('libs/unrelated/package.json', manifest)
+    await value.put('libs/unrelated/nested/hidden/package.json', {
+      name: 'hidden',
+      version: '0.1.0',
+    })
+    await value.put('libs/unrelated/nested/hidden/secret', 'outside root membership')
+    const captured = await value.capture()
+    try {
+      expect(captured).toBeDefined()
+      expect(
+        JSON.parse(
+          Buffer.from(await captured!.captured.read('libs/unrelated/package.json')).toString(),
+        ),
+      ).toEqual(manifest)
+      expect(captured!.members).not.toContain('libs/unrelated/nested/hidden')
+      expect(captured!.captured.files.some(({ path }) => path.includes('/nested/'))).toBe(false)
+    } finally {
+      await captured?.captured.dispose()
+    }
+  } finally {
+    await value.dispose()
+  }
+})
+
 test('exact matching versions select local members in a declared ancestor workspace', async () => {
   const value = await fixture(false, false, 'workspace:*', '0.1.0')
   try {
@@ -386,6 +414,7 @@ test('workspace lock resolution cannot introduce undeclared paths or names', () 
 // These tests prove capture/install semantics, not the containment envelope.
 test.each([
   'unlocked',
+  'unlocked-member-workspaces',
   'unlocked-versions',
   'locked',
   'stale',
@@ -413,6 +442,17 @@ test.each([
     )
     let captured: Awaited<ReturnType<typeof value.capture>>
     try {
+      if (mode === 'unlocked-member-workspaces') {
+        await value.put('libs/unrelated/package.json', {
+          name: 'unrelated',
+          version: '0.1.0',
+          workspaces: ['nested/*'],
+        })
+        await value.put('libs/unrelated/nested/hidden/package.json', {
+          name: 'hidden',
+          version: '0.1.0',
+        })
+      }
       if (patchMode) {
         await value.put('package.json', {
           private: true,

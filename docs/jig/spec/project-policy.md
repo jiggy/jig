@@ -226,6 +226,11 @@ relative to that root, without symlink traversal. The workspace root may be abov
 the Jig application; this grants capture of declared dependencies, not arbitrary
 ancestor contents. Explicit workspace requirements never fall back to a registry.
 
+A member may also declare `workspaces` for use as a standalone project. During
+an ancestor-root installation, Bun uses only that root's membership patterns.
+Jig retains member declarations unchanged; they do not add nested packages to
+the captured workspace or invalidate unrelated members.
+
 Library `files` paths and glob patterns select source when present, including
 `package.json`, README and license files. Otherwise ordinary package files are
 selected. `.git` and `node_modules` are excluded. Literal exported files must be
