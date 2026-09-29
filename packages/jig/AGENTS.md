@@ -54,6 +54,9 @@ admitted FLOW packages.
   for success, cancellation and coordinator loss. Their deadline case uses its
   own 30-second budget; fixture settlement/admission waits follow the selected
   test budget rather than the production default.
+  Forced-loss coordinators stay alive until explicitly killed, leave a Run
+  deadline margin beyond owner observation (60 seconds on Linux), and assert
+  the actual SIGKILL exit before claiming coordinator-loss recovery.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.
   Jig retains source admission, resource grants and owned execution, not Agent
   preparation or answer interpretation. Skill content is explicit caller data;

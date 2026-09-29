@@ -23,6 +23,8 @@ const proof =
     ? describe.serial
     : describe.skip
 
+const timeout = process.platform === 'darwin' ? 600_000 : 180_000
+
 proof('contained Project Command effect', () => {
   test(
     'collects real root and leaf command evidence without Agent authority and rejects forged success',
@@ -194,108 +196,127 @@ proof('contained Project Command effect', () => {
       await rm(root, { recursive: true, force: true })
       if (primaryError !== undefined) throw primaryError
     },
-    process.platform === 'darwin' ? 600_000 : 180_000,
+    timeout,
   )
 
-  test('coordinator loss fences two leaf commands and recovers both branches without replay', async () => {
-    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-loss-')))
-    const host = fixtureHost(await openPrivateInstalledBunHost(installedBunLocation, {}))
-    const fenceFailures: string[] = []
-    const originalRecoverFence = PrivateMacosBackend.prototype.recoverFence
-    const fenceSpy =
-      process.platform === 'darwin'
-        ? spyOn(PrivateMacosBackend.prototype, 'recoverFence').mockImplementation(async function (
-            this: PrivateMacosBackend,
-            owner: unknown,
-          ) {
-            try {
-              return await originalRecoverFence.call(this, owner)
-            } catch (error) {
-              if (fenceFailures.length < 8) fenceFailures.push(macosFenceFailureKind(error))
-              throw error
-            }
-          })
-        : undefined
-    const reopen = () =>
-      openPrivateProjectSession({
-        directory: root,
-        host,
-        onAcquisitionFailure: (evidence) =>
-          console.error('command-loss-acquisition', JSON.stringify({ ...evidence, fenceFailures })),
-      })
-    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
-    let coordinator: ReturnType<typeof Bun.spawn> | undefined
-    let recoveryRequired = false
-    let primaryError: unknown
-    try {
-      await fixture(root)
-      session = await openPrivateProjectSession({ directory: root, host })
-      const plan = await session.plan({ lockMode: 'update' })
-      if (plan.state !== 'applicable') throw new Error('loss fixture is not applicable')
-      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
-      await session.close()
-      const program = `
+  test(
+    'coordinator loss fences two leaf commands and recovers both branches without replay',
+    async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-loss-')))
+      const compositionHost = fixtureHost(
+        await openPrivateInstalledBunHost(installedBunLocation, {}),
+      )
+      // Linux observes owners for up to 30 seconds. Leave time to deliberately
+      // kill the coordinator before the Run deadline can settle the work.
+      const host = {
+        ...compositionHost,
+        runTimeoutMs: Math.max(compositionHost.runTimeoutMs, 60_000),
+      }
+      const fenceFailures: string[] = []
+      const originalRecoverFence = PrivateMacosBackend.prototype.recoverFence
+      const fenceSpy =
+        process.platform === 'darwin'
+          ? spyOn(PrivateMacosBackend.prototype, 'recoverFence').mockImplementation(async function (
+              this: PrivateMacosBackend,
+              owner: unknown,
+            ) {
+              try {
+                return await originalRecoverFence.call(this, owner)
+              } catch (error) {
+                if (fenceFailures.length < 8) fenceFailures.push(macosFenceFailureKind(error))
+                throw error
+              }
+            })
+          : undefined
+      const reopen = () =>
+        openPrivateProjectSession({
+          directory: root,
+          host,
+          onAcquisitionFailure: (evidence) =>
+            console.error(
+              'command-loss-acquisition',
+              JSON.stringify({ ...evidence, fenceFailures }),
+            ),
+        })
+      let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+      let coordinator: ReturnType<typeof Bun.spawn> | undefined
+      let recoveryRequired = false
+      let primaryError: unknown
+      try {
+        await fixture(root)
+        session = await openPrivateProjectSession({ directory: root, host })
+        const plan = await session.plan({ lockMode: 'update' })
+        if (plan.state !== 'applicable') throw new Error('loss fixture is not applicable')
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
+        await session.close()
+        const program = `
         import { openPrivateProjectSession } from ${JSON.stringify(join(import.meta.dir, '../src/internal/project-session-controller.ts'))};
         import { openPrivateInstalledBunHost } from ${JSON.stringify(join(import.meta.dir, '../src/internal/installed-bun-host.ts'))};
         import { fixtureHost } from ${JSON.stringify(join(import.meta.dir, './fixtures/agent-fixture-host.ts'))};
         import { writeFile } from 'node:fs/promises';
         const session = await openPrivateProjectSession({ directory: ${JSON.stringify(root)},
-          host: fixtureHost(await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)}, {})),
+          host: { ...fixtureHost(await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)}, {})),
+            runTimeoutMs: ${host.runTimeoutMs} },
           onRootExecutionFailure: evidence =>
             console.error('command-loss-root-execution-failure', JSON.stringify(evidence)) });
         const receipt = await session.rootAdministration.startRun({ submissionId: 'lost-command',
           target: {kind:'binding',id:'pair'}, input:{command:'cli',files:{'src/cli.ts':'await Bun.sleep(60000)'}} });
         await writeFile(${JSON.stringify(join(root, 'receipt.json'))}, JSON.stringify(receipt));
-        await Bun.sleep(${host.runTimeoutMs});
+        // Only the parent test may end this coordinator, including on failure.
+        await new Promise(() => setInterval(() => {}, 60_000));
       `
-      coordinator = Bun.spawn(
-        [
-          installedBunLocation.executablePath,
-          '--no-env-file',
-          '--no-install',
-          '--config=/dev/null',
-          '--eval',
-          program,
-        ],
-        {
-          stdin: 'ignore',
-          stdout: 'ignore',
-          stderr: 'inherit',
-        },
-      )
-      recoveryRequired = true
-      await waitForCommand(root, 2)
-      await checkAggregateEnvelopes()
-      const receipt = JSON.parse(await readFile(join(root, 'receipt.json'), 'utf8'))
-      coordinator.kill('SIGKILL')
-      await coordinator.exited
-      session = await reopen()
-      recoveryRequired = false
-      expect(await terminal(session.rootAdministration, receipt)).toMatchObject({
-        terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
-      })
-      await noOwners(root)
-    } catch (error) {
-      primaryError = error
-    }
-    try {
-      if (coordinator?.exitCode === null) coordinator.kill('SIGKILL')
-      await coordinator?.exited
-      if (recoveryRequired) session = await reopen()
-      await session?.close()
-      await rm(root, { recursive: true, force: true })
-    } catch (cleanupError) {
-      fenceSpy?.mockRestore()
-      if (primaryError !== undefined)
-        throw new AggregateError(
-          [primaryError, cleanupError],
-          'command recovery and cleanup failed',
+        coordinator = Bun.spawn(
+          [
+            installedBunLocation.executablePath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            '--eval',
+            program,
+          ],
+          {
+            stdin: 'ignore',
+            stdout: 'ignore',
+            stderr: 'inherit',
+          },
         )
-      throw cleanupError
-    }
-    fenceSpy?.mockRestore()
-    if (primaryError !== undefined) throw primaryError
-  }, 180_000)
+        recoveryRequired = true
+        await waitForCommand(root, 2)
+        await checkAggregateEnvelopes()
+        const receipt = JSON.parse(await readFile(join(root, 'receipt.json'), 'utf8'))
+        expect(coordinator.exitCode).toBeNull()
+        coordinator.kill('SIGKILL')
+        await coordinator.exited
+        expect(coordinator.signalCode).toBe('SIGKILL')
+        session = await reopen()
+        recoveryRequired = false
+        expect(await terminal(session.rootAdministration, receipt)).toMatchObject({
+          terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
+        })
+        await noOwners(root)
+      } catch (error) {
+        primaryError = error
+      }
+      try {
+        if (coordinator?.exitCode === null) coordinator.kill('SIGKILL')
+        await coordinator?.exited
+        if (recoveryRequired) session = await reopen()
+        await session?.close()
+        await rm(root, { recursive: true, force: true })
+      } catch (cleanupError) {
+        fenceSpy?.mockRestore()
+        if (primaryError !== undefined)
+          throw new AggregateError(
+            [primaryError, cleanupError],
+            'command recovery and cleanup failed',
+          )
+        throw cleanupError
+      }
+      fenceSpy?.mockRestore()
+      if (primaryError !== undefined) throw primaryError
+    },
+    timeout,
+  )
 })
 
 function macosFenceFailureKind(error: unknown): string {
