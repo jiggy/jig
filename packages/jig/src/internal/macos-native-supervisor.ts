@@ -239,17 +239,12 @@ async function supervise(
     // No child exists before the authenticated journal and explicit admission.
     phase = 'prepared'
     channel.send({ type: 'prepared', identity: owner.identity })
+    const operationDeadline = configuration.type === 'start'
+      ? configuration.limits.deadlineUnixMs
+      : configuration.deadlineUnixMs
     timer = setTimeout(
       () => stop('cancelled'),
-      Math.max(
-        0,
-        Math.min(
-          10_000,
-          (configuration.type === 'start'
-            ? configuration.limits.deadlineUnixMs
-            : configuration.deadlineUnixMs) - Date.now(),
-        ),
-      ),
+      Math.max(0, Math.min(10_000, operationDeadline - Date.now())),
     )
     const commands = (async () => {
       for (;;) {
@@ -257,6 +252,13 @@ async function supervise(
         if (next.type === 'cancel') stop('cancelled')
         else if (next.type === 'release' && currentPhase() === 'collecting') releaseCollection()
         else if (next.type === 'admit' && phase === 'prepared' && stopped === undefined) {
+          // The short timer bounds waiting for authority, not admitted work.
+          // Storage preparation remains inside the original operation deadline.
+          clearTimeout(timer)
+          timer = setTimeout(
+            () => stop('cancelled'),
+            Math.max(0, operationDeadline - Date.now()),
+          )
           phase = 'preparing'
           resolveAdmission()
         } else if (
@@ -273,11 +275,6 @@ async function supervise(
     await admission
     if (stopped !== undefined) throw new Error('macOS guardian stopped before preparation')
     if (configuration.type === 'recover-storage') {
-      clearTimeout(timer)
-      timer = setTimeout(
-        () => stop('cancelled'),
-        Math.max(0, configuration.deadlineUnixMs - Date.now()),
-      )
       await recoverPrivateMacosGuardianStorage(
         configuration.targetDirectory,
         configuration.targetToken,

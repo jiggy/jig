@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { access, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -214,4 +214,126 @@ native(
     }
   },
   90_000,
+)
+
+native(
+  'admitted preparation uses the Run deadline rather than the admission wait',
+  async () => {
+    const root = await realpath(await mkdtemp('/private/tmp/jig-guardian-deadline-'))
+    const launcher = join(root, 'macos-exec')
+    const payload = join(root, 'payload')
+    const supervisor = join(root, 'slow-supervisor.ts')
+    const sourceUrl = new URL('../src/internal/macos-native-supervisor.ts', import.meta.url)
+    const source = await readFile(sourceUrl, 'utf8')
+    const admission = '    await admission\n'
+    expect(source.split(admission)).toHaveLength(2)
+    // Delay trusted preparation, not the workload; keep cancellation observable.
+    await writeFile(
+      supervisor,
+      source.replaceAll("from './", `from '${fileURLToPath(new URL('.', sourceUrl))}`).replace(
+        admission,
+        `${admission}
+    await new Promise<void>((resolve, reject) => {
+      const delay = setTimeout(resolve, 11_000)
+      cancellation.signal.addEventListener('abort', () => {
+        clearTimeout(delay)
+        reject(new Error('delayed preparation cancelled'))
+      }, {once: true})
+    })
+`,
+      ),
+    )
+    try {
+      for (const [source, output] of [
+        [new URL('../support/macos-exec.c', import.meta.url), launcher],
+        [new URL('./fixtures/macos-scope-payload.c', import.meta.url), payload],
+      ] as const) {
+        const compiled = spawnSync(
+          '/usr/bin/clang',
+          [
+            '-O2',
+            '-Wall',
+            '-Wextra',
+            '-Werror',
+            '-Wno-deprecated-declarations',
+            fileURLToPath(source),
+            '-o',
+            output,
+          ],
+          { encoding: 'utf8', timeout: 15000 },
+        )
+        expect({ status: compiled.status, stderr: compiled.stderr }).toEqual({
+          status: 0,
+          stderr: '',
+        })
+      }
+      for (const expires of [false, true]) {
+        const ownerDirectory = await realpath(await mkdtemp('/private/tmp/jig-guardian-owner-'))
+        const scratch = await realpath(await mkdtemp('/private/tmp/jig-guardian-scratch-'))
+        const owner = await preparePrivateMacosGuardian({
+          bun: process.execPath,
+          supervisor,
+          configuration: {
+            type: 'start',
+            ownerDirectory,
+            ownerToken: randomBytes(32).toString('hex'),
+            launcher,
+            cwd: scratch,
+            command: [payload, 'echo', join(scratch, 'started')],
+            environment: {},
+            files: {
+              readOnlyFiles: [payload],
+              readOnlyTrees: [],
+              writableTrees: [scratch],
+              protectedRoots: [ownerDirectory],
+              network: 'isolated',
+            },
+            limits: {
+              memoryBytes: 32 * 1024 * 1024,
+              pids: 4,
+              cpuQuotaMicros: 50000,
+              cpuPeriodMicros: 100000,
+              deadlineUnixMs: Date.now() + (expires ? 3000 : 30000),
+              cleanupTimeoutMs: 5000,
+            },
+            maxOutputBytes: 4096,
+          },
+        })
+        owner.stdout.resume()
+        owner.stderr.resume()
+        let fenced = false
+        try {
+          if (expires) {
+            const started = performance.now()
+            await expect(owner.admit()).rejects.toThrow('before readiness')
+            expect(performance.now() - started).toBeLessThan(8000)
+          } else {
+            await owner.admit()
+            owner.continue()
+            owner.stdin.end('delayed-roundtrip\n')
+          }
+          const terminal = await owner.completion
+          fenced = terminal.fenced
+          expect(terminal.recovered).toBe(false)
+          if (expires) expect(terminal.result).toBeNull()
+          else
+            expect(terminal.result).toMatchObject({
+              reason: 'payload_exit',
+              exitCode: 0,
+              fenced: true,
+            })
+        } finally {
+          owner.cancel()
+          fenced = (await owner.completion).fenced
+          if (fenced) {
+            await rm(ownerDirectory, { recursive: true })
+            await rm(scratch, { recursive: true })
+          }
+        }
+      }
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  },
+  60000,
 )

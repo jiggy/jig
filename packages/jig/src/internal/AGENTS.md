@@ -281,7 +281,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   kernel UID/PID/version bind every connection to its peer. Journal before
   admission, apply the native profile before continuation, and retain cleanup
   ownership through cancellation, coordinator loss and blocked output. Bound
-  aggregate output before forwarding it. Recovery removes the authenticated
+  aggregate output before forwarding it. The ten-second admission wait ends at
+  admission; storage and input preparation then use the original operation
+  deadline, without extending it. Native readiness and image-tool bounds remain
+  separate. Recovery removes the authenticated
   job and socket allocation only after kernel fencing. `macos-control-channel.ts`
   bounds private frames and queued messages; none of these modules is a public
   backend extension point or an installed-support claim.
