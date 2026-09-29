@@ -186,6 +186,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   with a derived token and authenticated journal in the owner's `recovery` slot.
   After the fixed tools return, drain and fence any remaining recovery-coalition
   members within a five-second bound before reporting successful cleanup.
+  Recheck cancellation after this drain; expiry or cancellation during fencing
+  refuses the recovery receipt and preserves journals for a fresh attempt.
   Fence the preceding attempt, remove its exact job and sockets, then reset only
   the slot's known private records before reuse. Never erase a live attempt's
   journal or recursively delete a recovery path. Recovery tool admission has a
@@ -793,6 +795,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `macos-guardian-storage.test.ts` qualifies journal-before-tool admission,
   descriptor collection after detached-descendant fencing, collection lifetime,
   interrupted creation, coordinator/guardian loss and a failed recovery guardian.
+  Expiry during the final recovery drain refuses success, retains journals,
+  and permits an ordinary fresh guardian to finish cleanup before retirement.
   Every cleanup attempt keeps its exact journals until fencing is confirmed.
   `macos-guardian-input.test.ts` runs ordinary TypeScript relative imports and
   binary/empty reads from the immutable projection, denies source writes and
@@ -829,7 +833,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   The recovery fixture checks authenticated boot separation and keeps coalition
   fencing restricted to the current boot. Simulating a signed prior-boot journal
   does not qualify actual reboot, disk-image disappearance or post-boot reacquisition;
-  those require a controlled native reboot before public support promotion.
+  those require a controlled native reboot to claim actual reboot qualification.
+  Package-level support promotion and exact-revision release gates are owned by
+  `packages/jig/AGENTS.md` and `.github/AGENTS.md`; simulated boot evidence must
+  never be reported as a completed reboot test.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
 - Native installation regressions cover discovery, environment snapshots,
@@ -856,6 +863,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   three minutes before deliberate cancellation/loss. This covers nested native
   setup while production defaults and deliberate short-deadline checks stay
   unchanged; aggregate test bounds account for their multiple independent Runs.
+- `root-flow-call-controller.test.ts` isolates injected allocation failures in a
+  subprocess. Unexpected lifecycle allocation failures report the `allocation`
+  phase without changing the original exception; capacity refusal stays an
+  ordinary resource-exhausted result, and observer failures cannot affect it.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing
   two/three-minute fixture budgets; production defaults remain unchanged.

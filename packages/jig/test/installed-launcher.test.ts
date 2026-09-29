@@ -3,12 +3,71 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+test('installed launcher rejects unsupported OS/CPU pairs before selecting a runtime', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-launcher-hosts-'))
+  try {
+    const launcher = join(root, 'bin/jig')
+    const uname = join(root, 'uname')
+    const shell = await realpath(Bun.which('bash')!)
+    await mkdir(join(root, 'bin'))
+    await mkdir(join(root, 'libexec'))
+    await writeFile(join(root, 'libexec/installed-cli.js'), '')
+    const source = await readFile(new URL('../scripts/installed-jig.sh', import.meta.url), 'utf8')
+    await writeFile(
+      launcher,
+      source.replaceAll('/usr/bin/uname', uname).replaceAll('/bin/uname', uname),
+    )
+    for (const [system, architecture, expected] of [
+      ['Linux', 'x86_64', 'bun-linux-x64-baseline'],
+      ['Darwin', 'x86_64', 'bun-darwin-x64-baseline'],
+      ['Darwin', 'arm64', 'bun-darwin-aarch64'],
+      ['Linux', 'aarch64', undefined],
+      ['Linux', 'arm64', undefined],
+      ['Darwin', 'i386', undefined],
+      ['FreeBSD', 'x86_64', undefined],
+    ] as const) {
+      await writeFile(
+        uname,
+        `#!${shell}\ncase "$1" in -s) echo ${system};; -m) echo ${architecture};; esac\n`,
+        { mode: 0o755 },
+      )
+      for (const name of [
+        'bun-linux-x64-baseline',
+        'bun-darwin-x64-baseline',
+        'bun-darwin-aarch64',
+      ]) {
+        const runtime = join(root, 'node_modules/@oven', name, 'bin/bun')
+        await mkdir(join(runtime, '..'), { recursive: true })
+        await writeFile(runtime, `#!${shell}\necho ${name}\n`, { mode: 0o755 })
+      }
+      const child = Bun.spawn([shell, launcher, '--help'], { stdout: 'pipe', stderr: 'pipe' })
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code).toBe(expected === undefined ? 2 : 0)
+      expect(stdout).toBe(expected === undefined ? '' : `${expected}\n`)
+      if (expected === undefined) {
+        expect(stderr).toContain('This operating system and CPU combination is not supported.')
+        expect(stderr).not.toContain('Restore the complete Jig installation')
+      } else expect(stderr).toBe('')
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}, 20_000)
+
 test('installed launcher uses a fixed system tool, not ambient readlink or Bun', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-launcher-paths-'))
   try {
     const release = join(root, 'release')
     const runtimePackage =
-      process.platform === 'darwin' ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'
+      process.platform === 'darwin'
+        ? process.arch === 'arm64'
+          ? 'bun-darwin-aarch64'
+          : 'bun-darwin-x64-baseline'
+        : 'bun-linux-x64-baseline'
     const runtime = join(release, `node_modules/@oven/${runtimePackage}/bin/bun`)
     const systemReadlink = join(root, 'system/readlink')
     const shell = await realpath(Bun.which('bash')!)

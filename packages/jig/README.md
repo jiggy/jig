@@ -15,6 +15,8 @@ delegated cgroup v2 controllers. Mac needs no administrator setup or `sudo`;
 its supervised resource limits can briefly overshoot. See the
 [complete supported-host requirements](https://jig.md/guide/#supported-host).
 npm installs Jig's exact Bun runtime dependency alongside the package.
+Linux ARM64 is unsupported. npm's independent OS and CPU allowlists may permit
+installation there, but the launcher refuses execution before selecting a runtime.
 
 ## Get started
 

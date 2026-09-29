@@ -289,6 +289,7 @@ async function supervise(
           throw new Error('macOS recovery tools are not fenced')
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
+      cancellation.signal.throwIfAborted()
       phase = 'terminal'
       stdin.destroy()
       stdout.end()

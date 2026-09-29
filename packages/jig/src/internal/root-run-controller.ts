@@ -113,6 +113,7 @@ export type PrivateRootExecutionFailurePhase =
   | 'child-settlement'
   | 'fence'
   | 'settlement'
+  | 'child-flow-allocation'
   | 'child-flow-preparation'
   | 'child-flow-sealing'
   | 'child-flow-admission'

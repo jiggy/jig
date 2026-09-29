@@ -153,6 +153,7 @@ interface ChildInput {
 }
 
 type ChildFailurePhase =
+  | 'allocation'
   | 'preparation'
   | 'sealing'
   | 'admission'
@@ -324,6 +325,11 @@ async function executePreparedChild(
   } catch (error) {
     if (error instanceof CheckError && error.code === 'RUN_CHILD_CAPACITY') {
       return failed('RESOURCE_EXHAUSTED', 'the parent Run already has an active child operation')
+    }
+    try {
+      input.onFailure?.('allocation', error)
+    } catch {
+      // Test-only observation cannot replace the original allocation failure.
     }
     throw error
   }

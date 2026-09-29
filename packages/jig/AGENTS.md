@@ -134,6 +134,11 @@ admitted FLOW packages.
   are private composition or test seams.
 - Expose only the documented CLI and authoring surface; private host machinery
   is not a provider, runtime, or containment SPI.
+- The installed launcher checks OS/CPU pairs before selecting the pinned runtime:
+  Linux x86_64 and Darwin x86_64/arm64 only. npm's independent OS and CPU
+  allowlists cannot exclude Linux arm64 while admitting both Mac architectures;
+  the README exposes this installation limitation. Refuse unsupported pairs
+  with supported-host guidance, not a missing-installation repair instruction.
 - Default `init` writes a greeting Flow with a string input and a world fallback; `--bare` writes only the
   skeleton. Neither installs, networks, approves, or executes. Generated
   packages use the same dependency review as consumer-authored packages. The

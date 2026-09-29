@@ -8,11 +8,17 @@ fail() {
   else
     printf '%s\n' 'Error: Jig could not start' >&2
   fi
-  printf '%s\n' '' '  The installed Jig runtime is unavailable.' '' \
-    '  Next step: Restore the complete Jig installation.' \
-    '  See https://jig.md/guide/#install.' '' \
+  printf '%s\n' '' "  ${1:-The installed Jig runtime is unavailable.}" '' \
+    "  Next step: ${2:-Restore the complete Jig installation.}" \
+    "  See ${3:-https://jig.md/guide/#install.}" '' \
     '  Diagnostic code: JIG_COMMAND_UNAVAILABLE' >&2
   exit 2
+}
+
+unsupported_host() {
+  fail 'This operating system and CPU combination is not supported.' \
+    'Use qualified Linux x86_64 or an Intel or Apple Silicon Mac.' \
+    'https://jig.md/guide/#supported-host.'
 }
 
 case $0 in
@@ -71,10 +77,14 @@ case $($uname_command -s 2>/dev/null) in
     case $($uname_command -m 2>/dev/null) in
       x86_64) runtime_package=bun-darwin-x64-baseline ;;
       arm64) runtime_package=bun-darwin-aarch64 ;;
-      *) fail ;;
+      *) unsupported_host ;;
     esac ;;
-  Linux) runtime_package=bun-linux-x64-baseline ;;
-  *) fail ;;
+  Linux)
+    case $($uname_command -m 2>/dev/null) in
+      x86_64) runtime_package=bun-linux-x64-baseline ;;
+      *) unsupported_host ;;
+    esac ;;
+  *) unsupported_host ;;
 esac
 nested=$release/node_modules/@oven/$runtime_package/bin/bun
 hoisted=$release/../../@oven/$runtime_package/bin/bun
