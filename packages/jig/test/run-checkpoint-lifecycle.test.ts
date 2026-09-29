@@ -1,123 +1,144 @@
 import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { privateOwnFileCommand } from '../src/internal/file-command.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
-const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
+const proof =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? describe.serial
+    : describe.skip
 const jig = join(import.meta.dir, '../bin/jig')
 proof('root retained progress', () => {
-  test('installed command delivers normal output and retains saved files on deadline', async () => {
-    const root = await fixture()
-    try {
-      for (const mode of ['complete', 'deadline']) {
-        const result = await cli(root, [
-          'run',
-          'binding:root',
-          '--input',
-          JSON.stringify({ mode }),
-          '--out',
-          join(root, mode),
-          '--timeout',
-          // Leave the normal root budget for the first child and two durable
-          // saves. The second child waits 60s, so deadline fencing is still required.
-          '30s',
-        ])
-        expect(result.code, result.stderr + result.stdout).toBe(mode === 'complete' ? 0 : 1)
-        const packet = JSON.parse(await readFile(join(root, mode, 'result.json'), 'utf8'))
-        expect(JSON.parse(result.stdout)).toEqual(packet)
-        expect(packet.delivery.source).toBe(mode === 'complete' ? 'final' : 'checkpoint')
-        expect(packet.checkpoint.sequence).toBe(2)
-        expect(packet.checkpoint.identity.runId).toBe(packet.runId)
-        expect(packet.status).toBe(mode === 'complete' ? 'succeeded' : 'failed')
-        if (mode !== 'complete') expect(packet.code).toBe('DEADLINE_EXCEEDED')
-        expect(await readFile(join(root, mode, 'files/progress.txt'), 'utf8')).toBe(
-          mode === 'complete' ? 'final' : 'settled',
-        )
-        await noOwners(root, mode === 'complete' ? 1 : 2)
-      }
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 90_000)
-
-  for (const phase of ['before', 'accepted', 'acknowledged', 'replacement', 'cancel'] as const)
-    test(`independent owner recovers coordinator loss ${phase} acknowledgement without replay`, async () => {
+  test(
+    'installed command delivers normal output and retains saved files on deadline',
+    async () => {
       const root = await fixture()
-      const ready = join(root, 'coordinator.pid'),
-        destination = join(root, 'result')
-      let pid: number | undefined
-      let stopped = false
-      let finished = false
-      const cancellation = new AbortController()
-      const execution = privateOwnFileCommand(
-        [
-          installedBunLocation.executablePath,
-          '--no-env-file',
-          '--no-install',
-          '--config=/dev/null',
-          join(import.meta.dir, 'fixtures/checkpoint-coordinator.ts'),
-          root,
-          ready,
-          phase,
-        ],
-        [
-          'run',
-          'binding:root',
-          '--input',
-          '{"mode":"deadline"}',
-          '--out',
-          destination,
-          '--timeout',
-          '30s',
-        ],
-        cancellation.signal,
-        40_000,
-      ).finally(() => {
-        finished = true
-      })
       try {
-        const until = Date.now() + 20_000
-        while (!finished && Date.now() < until) {
-          try {
-            pid = Number(await readFile(ready, 'utf8'))
-            // The fixture writes its PID before SIGSTOP. Observe the pause
-            // before cancellation so SIGTERM cannot race that signal.
-            if (Number.isSafeInteger(pid) && pid >= 2) {
-              stopped = /^State:\s+T\s/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))
-              if (stopped) break
-            }
-          } catch {
-            // The PID marker or process status may not be available yet.
-          }
-          await Bun.sleep(20)
-        }
-        if (!stopped || !Number.isSafeInteger(pid) || pid! < 2)
-          throw new Error('fixture did not reach selected save boundary')
-        if (phase === 'cancel') cancellation.abort()
-        else process.kill(pid!, 'SIGKILL')
-        expect((await execution).signal).toBe('SIGKILL')
-        const packet = JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))
-        expect(packet.status).toBe('lost')
-        expect(packet.code).toBe('COORDINATOR_LOST')
-        if (phase === 'before') {
-          expect(packet.checkpoint).toBeNull()
-          expect(await readdir(join(destination, 'files'))).toEqual([])
-        } else {
-          expect(packet.checkpoint.sequence).toBe(phase === 'replacement' ? 2 : 1)
-          expect(await readFile(join(destination, 'files/progress.txt'), 'utf8')).toBe(
-            phase === 'replacement' ? 'settled' : 'initial',
+        for (const mode of ['complete', 'deadline']) {
+          const result = await cli(root, [
+            'run',
+            'binding:root',
+            '--input',
+            JSON.stringify({ mode }),
+            '--out',
+            join(root, mode),
+            '--timeout',
+            // Leave the normal root budget for the first child and two durable
+            // saves. The second child waits 60s, so deadline fencing is still required.
+            process.platform === 'darwin' ? '60s' : '30s',
+          ])
+          expect(result.code, result.stderr + result.stdout).toBe(mode === 'complete' ? 0 : 1)
+          const packet = JSON.parse(await readFile(join(root, mode, 'result.json'), 'utf8'))
+          expect(JSON.parse(result.stdout)).toEqual(packet)
+          expect(packet.delivery.source).toBe(mode === 'complete' ? 'final' : 'checkpoint')
+          expect(packet.checkpoint.sequence).toBe(2)
+          expect(packet.checkpoint.identity.runId).toBe(packet.runId)
+          expect(packet.status).toBe(mode === 'complete' ? 'succeeded' : 'failed')
+          if (mode !== 'complete') expect(packet.code).toBe('DEADLINE_EXCEEDED')
+          expect(await readFile(join(root, mode, 'files/progress.txt'), 'utf8')).toBe(
+            mode === 'complete' ? 'final' : 'settled',
           )
+          await noOwners(root, mode === 'complete' ? 1 : 2)
         }
-        await noOwners(root)
       } finally {
-        if (!finished && pid !== undefined) process.kill(pid, 'SIGKILL')
-        await execution
         await rm(root, { recursive: true, force: true })
       }
-    }, 60_000)
+    },
+    process.platform === 'darwin' ? 150_000 : 90_000,
+  )
+
+  for (const phase of ['before', 'accepted', 'acknowledged', 'replacement', 'cancel'] as const)
+    test(
+      `independent owner recovers coordinator loss ${phase} acknowledgement without replay`,
+      async () => {
+        const root = await fixture()
+        const ready = join(root, 'coordinator.pid'),
+          destination = join(root, 'result')
+        let pid: number | undefined
+        let stopped = false
+        let finished = false
+        const cancellation = new AbortController()
+        const execution = privateOwnFileCommand(
+          [
+            installedBunLocation.executablePath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            join(import.meta.dir, 'fixtures/checkpoint-coordinator.ts'),
+            root,
+            ready,
+            phase,
+          ],
+          [
+            'run',
+            'binding:root',
+            '--input',
+            '{"mode":"deadline"}',
+            '--out',
+            destination,
+            '--timeout',
+            process.platform === 'darwin' ? '60s' : '30s',
+          ],
+          cancellation.signal,
+          process.platform === 'darwin' ? 90_000 : 40_000,
+        ).finally(() => {
+          finished = true
+        })
+        try {
+          const until = Date.now() + (process.platform === 'darwin' ? 45_000 : 20_000)
+          while (!finished && Date.now() < until) {
+            try {
+              pid = Number(await readFile(ready, 'utf8'))
+              // The fixture writes its PID before SIGSTOP. Observe the pause
+              // before cancellation so SIGTERM cannot race that signal.
+              if (Number.isSafeInteger(pid) && pid >= 2) {
+                stopped =
+                  process.platform === 'darwin'
+                    ? /^T/.test(
+                        spawnSync('/bin/ps', ['-o', 'state=', '-p', String(pid)], {
+                          encoding: 'utf8',
+                          timeout: 1000,
+                        }).stdout.trim(),
+                      )
+                    : /^State:\s+T\s/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))
+                if (stopped) break
+              }
+            } catch {
+              // The PID marker or process status may not be available yet.
+            }
+            await Bun.sleep(20)
+          }
+          if (!stopped || !Number.isSafeInteger(pid) || pid! < 2)
+            throw new Error('fixture did not reach selected save boundary')
+          if (phase === 'cancel') cancellation.abort()
+          else process.kill(pid!, 'SIGKILL')
+          expect((await execution).signal).toBe('SIGKILL')
+          const packet = JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))
+          expect(packet.status).toBe('lost')
+          expect(packet.code).toBe('COORDINATOR_LOST')
+          if (phase === 'before') {
+            expect(packet.checkpoint).toBeNull()
+            expect(await readdir(join(destination, 'files'))).toEqual([])
+          } else {
+            expect(packet.checkpoint.sequence).toBe(phase === 'replacement' ? 2 : 1)
+            expect(await readFile(join(destination, 'files/progress.txt'), 'utf8')).toBe(
+              phase === 'replacement' ? 'settled' : 'initial',
+            )
+          }
+          await noOwners(root)
+        } finally {
+          if (!finished && pid !== undefined) process.kill(pid, 'SIGKILL')
+          await execution
+          await rm(root, { recursive: true, force: true })
+        }
+      },
+      process.platform === 'darwin' ? 120_000 : 60_000,
+    )
 })
 
 async function cli(root: string, args: string[]) {
@@ -130,7 +151,7 @@ async function cli(root: string, args: string[]) {
   return { code, stdout, stderr }
 }
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'jig-checkpoint-proof-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-checkpoint-proof-')))
   for (const name of ['root', 'worker']) {
     const path = join(root, 'flows', name)
     await mkdir(join(path, 'contracts'), { recursive: true })
@@ -203,8 +224,6 @@ async function noOwners(root: string, starts = 1) {
     db.close()
   }
   expect(
-    (await readdir(join(root, '.jig/private-root-linux-owners'))).filter((n) =>
-      /^(r-|x-|c-)/.test(n),
-    ),
+    (await readdir(join(root, '.jig/private-root-owners'))).filter((n) => /^(r-|x-|c-)/.test(n)),
   ).toEqual([])
 }

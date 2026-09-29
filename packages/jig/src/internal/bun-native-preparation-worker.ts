@@ -21,8 +21,13 @@ import {
   type Workspace,
 } from './bun-prepared-capture.js'
 
-const PACKAGE_ROOT = '/work/package'
-const CACHE_ROOT = '/work/cache'
+// The trusted launcher selects a bounded writable working directory on each host.
+const WORK_ROOT = process.cwd()
+const PACKAGE_ROOT = join(WORK_ROOT, 'package')
+const CACHE_ROOT = join(WORK_ROOT, 'cache')
+const CHILD_ENVIRONMENT: Readonly<Record<string, string>> = Object.freeze(
+  process.platform === 'linux' ? { LD_LIBRARY_PATH: '/jig-runtime/lib' } : { TMPDIR: WORK_ROOT },
+)
 
 let workspace: Workspace | undefined
 
@@ -138,7 +143,7 @@ async function requireSupportedLock(
   resolved: boolean,
   patches: Readonly<Record<string, string>>,
 ): Promise<void> {
-  const lockCopy = '/work/bun-lock.jsonc'
+  const lockCopy = join(WORK_ROOT, 'bun-lock.jsonc')
   await copyFile(join(PACKAGE_ROOT, 'bun.lock'), lockCopy)
   let value: unknown
   try {
@@ -152,8 +157,8 @@ async function requireSupportedLock(
         lockCopy,
       ],
       {
-        cwd: '/work',
-        env: { LD_LIBRARY_PATH: '/jig-runtime/lib' },
+        cwd: WORK_ROOT,
+        env: CHILD_ENVIRONMENT,
       },
       2 * 1024 * 1024,
       64 * 1024,
@@ -170,6 +175,7 @@ async function requireSupportedLock(
     requirePrivateBunLockPolicy(
       value,
       workspace === undefined ? undefined : new Set(workspace.members),
+      process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
     )
   } catch {
     if (resolved) {
@@ -278,7 +284,9 @@ async function resolveMissingLock(): Promise<void> {
       '--config=/dev/null',
       'install',
       '--lockfile-only',
-      '--production',
+      // Production mode freezes lock publication in the native Mac runtime.
+      // Omit development installs without suppressing the new native lock.
+      '--omit=dev',
       '--ignore-scripts',
       '--backend=copyfile',
       '--linker=hoisted',
@@ -288,7 +296,7 @@ async function resolveMissingLock(): Promise<void> {
       '--no-summary',
       ...workspaceFilter(),
     ],
-    { cwd: PACKAGE_ROOT, env: { LD_LIBRARY_PATH: '/jig-runtime/lib' } },
+    { cwd: PACKAGE_ROOT, env: CHILD_ENVIRONMENT },
     64 * 1024,
     64 * 1024,
   )
@@ -333,9 +341,7 @@ async function install(): Promise<void> {
     ],
     {
       cwd: PACKAGE_ROOT,
-      env: {
-        LD_LIBRARY_PATH: '/jig-runtime/lib',
-      },
+      env: CHILD_ENVIRONMENT,
     },
     64 * 1024,
     64 * 1024,

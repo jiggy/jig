@@ -20,7 +20,9 @@ import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
 import { main } from '../src/cli.js'
 import { requirePrivateBunResolutionManifest } from '../src/internal/bun-native-lock-policy.js'
+import type { PrivateExecutionOutput } from '../src/internal/execution-output.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
+import { withPrivateInstallationVerification } from '../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import type { PrivateInstalledBunLocation } from '../src/internal/installed-bun-support.js'
 import {
@@ -42,12 +44,20 @@ import {
   writeOrdinaryAcpAgent,
 } from './fixtures/ordinary-acp-agent.js'
 import { completedResponse, writeOrdinaryAgent } from './fixtures/ordinary-agent.js'
+import {
+  fixtureHost,
+  MACOS_FIXTURE_SETTLEMENT_MS,
+  MACOS_FIXTURE_ADMISSION_MS,
+} from './fixtures/agent-fixture-host.js'
 
-const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
+const HOSTILE =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+const temporaryRoot = await realpath(tmpdir())
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
 
 test('contact-import variants are valid current FLOW packages', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-contact-packages-'))
+  const root = await mkdtemp(join(temporaryRoot, 'jig-contact-packages-'))
   try {
     await cp(join(import.meta.dir, '../../../examples/contact-import/flows'), root, {
       recursive: true,
@@ -62,7 +72,7 @@ test('contact-import variants are valid current FLOW packages', async () => {
 })
 
 test('constructs the Agent fixture with the complete current SDK', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-agent-fixture-'))
+  const root = await mkdtemp(join(temporaryRoot, 'jig-agent-fixture-'))
   try {
     await writeProject(root)
     expect((await checkPackageDirectory(join(root, 'flows/router'))).entrypoint.path).toBe(
@@ -90,7 +100,7 @@ test('constructs a deterministic ACP peer without importing a private API worker
 })
 
 test('constructs the packed ACP Agent with an exact native grant and ordinary default', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-ordinary-acp-fixture-'))
+  const root = await mkdtemp(join(temporaryRoot, 'jig-ordinary-acp-fixture-'))
   try {
     await writeProject(root)
     await writeOrdinaryAcpAgent(root, 'codex')
@@ -142,7 +152,7 @@ test('constructs an ordinary workspace caller of the packed conversation helper'
 }, 60_000)
 
 test('constructs a locked local workspace for root and child Skill-delivery evidence', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-workspace-skill-fixture-'))
+  const root = await mkdtemp(join(temporaryRoot, 'jig-workspace-skill-fixture-'))
   try {
     await writeProject(root)
     await writeSpecialistParent(root)
@@ -196,7 +206,7 @@ async function addBatchRepairFixture(project: string) {
 }
 
 test('assembles the batch host fixture over the current repair application', async () => {
-  const project = await mkdtemp(join(tmpdir(), 'jig-batch-assembly-'))
+  const project = await mkdtemp(join(temporaryRoot, 'jig-batch-assembly-'))
   try {
     await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
       recursive: true,
@@ -225,7 +235,7 @@ test('assembles the batch host fixture over the current repair application', asy
   }
 })
 test('constructs unchanged packed HTTP Agent method siblings', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-agent-method-fixture-'))
+  const root = await mkdtemp(join(temporaryRoot, 'jig-agent-method-fixture-'))
   try {
     await writeAgentMethodProject(root, 'http://127.0.0.1:1/v1/chat/completions')
     const method = join(root, 'flows/method')
@@ -246,7 +256,7 @@ test('constructs unchanged packed HTTP Agent method siblings', async () => {
 }, 30_000)
 
 test('constructs the repair application with unchanged sources and ordinary workspace dependencies', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-repair-workspace-fixture-'))
+  const root = await mkdtemp(join(temporaryRoot, 'jig-repair-workspace-fixture-'))
   try {
     await writeRepairWorkspace(root, 'http://127.0.0.1:1/v1/responses')
     const authored = join(import.meta.dir, '../../../examples/tested-patch')
@@ -287,7 +297,7 @@ proofDescribe('contained repair file application', () => {
     test(
       `exports ${scenario} repair evidence through a JSON leaf and real contained commands`,
       async () => {
-        const root = await mkdtemp(join(tmpdir(), 'jig-repair-file-proof-'))
+        const root = await mkdtemp(join(temporaryRoot, 'jig-repair-file-proof-'))
         const project = join(root, 'project'),
           release = join(root, 'release'),
           out = join(root, 'review')
@@ -367,9 +377,6 @@ proofDescribe('contained repair file application', () => {
             `http://127.0.0.1:${address.port}/v1/responses`,
             batchScenario,
           )
-          const installed = await openPrivateInstalledBunHost(location, {
-            METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
-          })
           let stdout = '',
             stderr = ''
           const options = {
@@ -382,13 +389,25 @@ proofDescribe('contained repair file application', () => {
               stderr += text
             },
             host: {
-              acquire: (
+              acquire: async (
                 directory: string,
                 options?: {
                   runTimeoutMs?: number
                   files?: import('../src/internal/root-run-files.js').PrivateRootRunFiles
                 },
-              ) => openPrivateProjectSession({ directory, host: { ...installed, ...options } }),
+              ) => openPrivateProjectSession({
+                directory,
+                host: {
+                  ...(await openPrivateInstalledBunHost(location, {
+                    METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
+                  }, directory)),
+                  ...options,
+                },
+                onOperationFailure: (evidence) =>
+                  console.error('repair-operation-failure', JSON.stringify(evidence)),
+                onRootExecutionFailure: (evidence) =>
+                  console.error('repair-root-execution-failure', JSON.stringify(evidence)),
+              }),
               delivery: {
                 get checkpoint() {
                   return checkpoints?.latest ?? null
@@ -398,20 +417,33 @@ proofDescribe('contained repair file application', () => {
                 },
                 saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
                 prepare: (directory: string, roots: readonly number[]) =>
-                  owner.prepare(directory, process.pid, roots),
-                publish: (record: import('../src/json.js').JsonValue, fd: number | undefined) =>
+                  owner.prepare(directory, roots),
+                publish: async (
+                  record: import('../src/json.js').JsonValue,
+                  output: PrivateExecutionOutput | undefined,
+                ) =>
                   owner.publish(
                     { ...(record as any), checkpoint: checkpoints?.latest ?? null },
-                    process.pid,
-                    fd,
-                    checkpoints?.latest,
+                    output === undefined
+                      ? undefined
+                      : output.kind === 'linux-directory'
+                        ? { kind: 'linux-directory', fd: output.directory.fd }
+                        : { kind: 'snapshot', capture: await output.ready },
+                    checkpoints?.latest ?? undefined,
                     true,
                   ),
               },
             },
           }
+          // Match the installed entrypoint: one verification scope per command,
+          // with its cache outside the actual consumer project.
+          const runCommand = (args: readonly string[]) =>
+            withPrivateInstallationVerification(
+              { XDG_CACHE_HOME: join(root, 'verification-cache') },
+              () => main(args, options),
+            )
           expect(
-            await main(['review', '--yes', '--allow-authority-changes'], options),
+            await runCommand(['review', '--yes', '--allow-authority-changes']),
             stderr,
           ).toBe(0)
           stdout = ''
@@ -419,7 +451,7 @@ proofDescribe('contained repair file application', () => {
           const before = await readFile(join(project, 'fixtures/log-report/src/parse.ts'))
           if (scenario === 'successful') {
             expect(
-              await main(
+              await runCommand(
                 [
                   'run',
                   'binding:repair',
@@ -430,9 +462,8 @@ proofDescribe('contained repair file application', () => {
                   '--out',
                   out,
                   '--timeout',
-                  '120s',
+                  process.platform === 'darwin' ? '5m' : '120s',
                 ],
-                options,
               ),
               stdout + stderr,
             ).toBe(0)
@@ -466,7 +497,7 @@ proofDescribe('contained repair file application', () => {
           if (scenario === 'unsuccessful') {
             const failedOut = join(root, 'unsuccessful')
             expect(
-              await main(
+              await runCommand(
                 [
                   'run',
                   'binding:repair',
@@ -477,9 +508,8 @@ proofDescribe('contained repair file application', () => {
                   '--out',
                   failedOut,
                   '--timeout',
-                  '120s',
+                  process.platform === 'darwin' ? '5m' : '120s',
                 ],
-                options,
               ),
               stdout + stderr,
             ).toBe(0)
@@ -506,7 +536,7 @@ proofDescribe('contained repair file application', () => {
           if (batchScenario) {
             const batchOut = join(root, 'batch')
             expect(
-              await main(
+              await runCommand(
                 [
                   'run',
                   'binding:repair',
@@ -517,9 +547,8 @@ proofDescribe('contained repair file application', () => {
                   '--out',
                   batchOut,
                   '--timeout',
-                  '180s',
+                  process.platform === 'darwin' ? '5m' : '180s',
                 ],
-                options,
               ),
               stdout + stderr,
             ).toBe(0)
@@ -588,9 +617,11 @@ proofDescribe('contained repair file application', () => {
           }
         }
         // Each case owns one bounded Run. Leave setup/cleanup time outside its
-        // 120s/180s execution budget instead of killing a three-Run aggregate early.
+        // execution budget. Mac uses the documented five-minute repair invocation.
       },
-      scenario === 'batch' || scenario === 'mixed-batch' ? 240_000 : 180_000,
+      process.platform === 'darwin'
+        ? 420_000
+        : scenario === 'batch' || scenario === 'mixed-batch' ? 240_000 : 180_000,
     )
   }
 })
@@ -657,32 +688,35 @@ interface DispatchEvent {
 }
 
 proofDescribe('private contained Agent Run lifecycle', () => {
-  test('executes and cleans a five-level branch within the unchanged aggregate envelope', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-deep-composition-'))
-    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
-    try {
-      await writeProject(root)
-      await mkdir(join(root, 'bindings'))
-      await writeFile(
-        join(root, 'jig.ts'),
-        `import {defineJig, discover} from '@jigging/jig';
+  test(
+    'executes and cleans a five-level branch within the unchanged aggregate envelope',
+    () =>
+      withPrivateInstallationVerification({}, async () => {
+        const root = await mkdtemp(join(temporaryRoot, 'jig-deep-composition-'))
+        let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+        try {
+          await writeProject(root)
+          await mkdir(join(root, 'bindings'))
+          await writeFile(
+            join(root, 'jig.ts'),
+            `import {defineJig, discover} from '@jigging/jig';
         export default defineJig({flows: discover('flows'), bindings: discover('bindings')});`,
-      )
-      for (let level = 0; level <= 5; level++) {
-        const name = level === 0 ? 'router' : `level-${level}`
-        const directory = join(root, 'flows', name)
-        await mkdir(directory, { recursive: true })
-        if (level !== 0)
-          await cp(join(root, 'flows/router/flow-sdk'), join(directory, 'flow-sdk'), {
-            recursive: true,
-          })
-        await writeFile(
-          join(directory, 'FLOW.meta.json'),
-          JSON.stringify({ name, description: 'Finite composition lifecycle fixture.' }),
-        )
-        await writeFile(
-          join(directory, 'FLOW.ts'),
-          `import {handle} from './flow-sdk/index.ts';
+          )
+          for (let level = 0; level <= 5; level++) {
+            const name = level === 0 ? 'router' : `level-${level}`
+            const directory = join(root, 'flows', name)
+            await mkdir(directory, { recursive: true })
+            if (level !== 0)
+              await cp(join(root, 'flows/router/flow-sdk'), join(directory, 'flow-sdk'), {
+                recursive: true,
+              })
+            await writeFile(
+              join(directory, 'FLOW.meta.json'),
+              JSON.stringify({ name, description: 'Finite composition lifecycle fixture.' }),
+            )
+            await writeFile(
+              join(directory, 'FLOW.ts'),
+              `import {handle} from './flow-sdk/index.ts';
           await handle(async run => { ${
             level < 5
               ? `return await run.call({operationId: 'next', slot: 'next', input: run.input});`
@@ -690,55 +724,75 @@ proofDescribe('private contained Agent Run lifecycle', () => {
                if (run.input.scenario === 'malformed') throw new Error('leaf failed');
                return {outcome: 'done', output: {depth: 5}};`
           } });`,
-        )
-        await writeFile(
-          join(root, 'bindings', `${level === 0 ? 'parent' : name}.ts`),
-          `import {defineBinding} from '@jigging/jig'; export default defineBinding({
+            )
+            await writeFile(
+              join(root, 'bindings', `${level === 0 ? 'parent' : name}.ts`),
+              `import {defineBinding} from '@jigging/jig'; export default defineBinding({
             package: 'flows/${name}', slots: ${JSON.stringify(level < 5 ? { next: `binding:level-${level + 1}` } : {})}});`,
-        )
-      }
-      const host = Object.freeze({
-        ...(await openPrivateInstalledBunHost(installedBunLocation, {})),
-        runTimeoutMs: 120_000,
-      })
-      session = await openPrivateProjectSession({ directory: root, host })
-      const plan = await session.plan({ lockMode: 'update' })
-      if (plan.state !== 'applicable') throw new Error('Deep composition has no applicable Plan')
-      await session.apply({ planDigest: plan.planDigest })
-      expect(
-        await runToTerminal(session.rootAdministration, 'deep-done', 'success', 60000, true),
-      ).toMatchObject({
-        state: 'terminal',
-        terminal: { status: 'succeeded', output: { depth: 5 } },
-      })
-      await expectNoAgentOwner(root)
-      expect(
-        await runToTerminal(session.rootAdministration, 'deep-failed', 'malformed', 60000, true),
-      ).toMatchObject({ state: 'terminal', terminal: { status: 'failed' } })
-      await expectNoAgentOwner(root)
-      const pending = await session.rootAdministration.startRun(
-        runRequest('deep-cancel', 'slow', true),
-      )
-      await waitForAgentSandbox(root, pending.runId, 5, 60_000)
-      await session.close()
-      session = await openPrivateProjectSession({ directory: root, host })
-      expect(await waitForTerminal(session.rootAdministration, pending)).toMatchObject({
-        state: 'terminal',
-        terminal: { status: 'failed', code: 'CANCELLED' },
-      })
-      await expectNoAgentOwner(root)
-      await session.close()
-      session = undefined
-      await waitForCgroups(initialCgroups)
-      await waitForTemporaryState(initialTemporaryState)
-    } finally {
-      await session?.close()
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 300000)
+            )
+          }
+          const host = Object.freeze({
+            ...(await openPrivateInstalledBunHost(installedBunLocation, {}, root)),
+            runTimeoutMs: 120_000,
+          })
+          session = await openPrivateProjectSession({ directory: root, host })
+          const plan = await session.plan({ lockMode: 'update' })
+          if (plan.state !== 'applicable')
+            throw new Error('Deep composition has no applicable Plan')
+          await session.apply({ planDigest: plan.planDigest })
+          expect(
+            await runToTerminal(
+              session.rootAdministration,
+              'deep-done',
+              'success',
+              process.platform === 'darwin' ? 130_000 : 60_000,
+              true,
+            ),
+          ).toMatchObject({
+            state: 'terminal',
+            terminal: { status: 'succeeded', output: { depth: 5 } },
+          })
+          await expectNoAgentOwner(root)
+          expect(
+            await runToTerminal(
+              session.rootAdministration,
+              'deep-failed',
+              'malformed',
+              process.platform === 'darwin' ? 130_000 : 60_000,
+              true,
+            ),
+          ).toMatchObject({ state: 'terminal', terminal: { status: 'failed' } })
+          await expectNoAgentOwner(root)
+          const pending = await session.rootAdministration.startRun(
+            runRequest('deep-cancel', 'slow', true),
+          )
+          await waitForAgentSandbox(
+            root,
+            pending.runId,
+            5,
+            process.platform === 'darwin' ? 130_000 : 60_000,
+          )
+          await session.close()
+          session = await openPrivateProjectSession({ directory: root, host })
+          expect(await waitForTerminal(session.rootAdministration, pending)).toMatchObject({
+            state: 'terminal',
+            terminal: { status: 'failed', code: 'CANCELLED' },
+          })
+          await expectNoAgentOwner(root)
+          await session.close()
+          session = undefined
+          await waitForCgroups(initialCgroups)
+          await waitForTemporaryState(initialTemporaryState)
+        } finally {
+          await session?.close()
+          await rm(root, { recursive: true, force: true })
+        }
+      }),
+    process.platform === 'darwin' ? 420_000 : 300_000,
+  )
 
   test('runs a Bun subprocess and asynchronous I/O from root and child Flow recipes', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-flow-subprocess-'))
+    const root = await mkdtemp(join(temporaryRoot, 'jig-flow-subprocess-'))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     try {
       await writeProject(root)
@@ -756,7 +810,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         import { handle } from './flow-sdk/index.ts';
         await handle(async () => {
           const child = Bun.spawn([process.execPath, '--no-env-file', '--no-install',
-            '--config=/dev/null', '-e', 'await Bun.write("/work/check.txt", "42"); console.log(await Bun.file("/work/check.txt").text())'],
+            '--config=/dev/null', '-e', 'const file = process.cwd()+"/check.txt"; await Bun.write(file, "42"); console.log(await Bun.file(file).text())'],
             {stdin: 'ignore', stdout: 'pipe', stderr: 'pipe'});
           const [stdout, stderr, exitCode] = await Promise.all([
             new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
@@ -766,7 +820,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       )
       session = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation, {}),
+        host: fixtureHost(await openPrivateInstalledBunHost(installedBunLocation, {})),
       })
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state !== 'applicable') throw new Error('Subprocess fixture did not produce a Plan')
@@ -777,7 +831,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             session.rootAdministration,
             `subprocess-${nested}`,
             'success',
-            30_000,
+            process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
             nested,
           ),
         ).toMatchObject({
@@ -802,8 +856,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
 
   for (const nested of [false, true]) {
     test(`delivers complete selected Skill bytes from ${nested ? 'a workspace child Binding' : 'a workspace root Flow'}`, async () => {
-      const root = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-project-'))
-      const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-release-'))
+      const root = await mkdtemp(join(temporaryRoot, 'jig-skill-delivery-project-'))
+      const releaseRoot = await mkdtemp(join(temporaryRoot, 'jig-skill-delivery-release-'))
       const requests: { url: string | undefined; method: string | undefined; body: any }[] = []
       // The complete packed method and HTTP worker use an exact local grant.
       // No private provider, rewritten worker or ambient network reaches a Flow.
@@ -861,9 +915,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         await writeFile(join(selected, 'references/checklist.md'), reference)
         session = await openPrivateProjectSession({
           directory: root,
-          host: await openPrivateInstalledBunHost(location, {
+          host: fixtureHost(await openPrivateInstalledBunHost(location, {
             METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-          }),
+          })),
         })
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable') throw new Error('Skill fixture did not produce a Plan')
@@ -875,7 +929,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             session.rootAdministration,
             'skill-delivery',
             'success',
-            30_000,
+            process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
             nested,
           ),
         ).toMatchObject({
@@ -932,7 +986,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         await rm(root, { recursive: true, force: true })
         await rm(releaseRoot, { recursive: true, force: true })
       }
-    }, 90_000)
+    }, process.platform === 'darwin' ? 450_000 : 90_000)
   }
 
   for (const nested of [false, true]) {
@@ -942,8 +996,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         : 'runs unchanged packed HTTP Agent siblings without a native Agent provider',
       async () => {
         const expectedLanes = ['left', 'right']
-        const root = await mkdtemp(join(tmpdir(), 'jig-agent-method-project-'))
-        const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-method-release-'))
+        const root = await mkdtemp(join(temporaryRoot, 'jig-agent-method-project-'))
+        const releaseRoot = await mkdtemp(join(temporaryRoot, 'jig-agent-method-release-'))
         const requests: {
           at: number
           method: string | undefined
@@ -954,6 +1008,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         let simultaneousRequests = 0
         let hold = false
         let completed = false
+        let primaryFailure: unknown
         // This is a local transport fixture, not independent consumption or model-quality evidence.
         // The unchanged method and trusted HTTP worker run. No Agent provider is configured.
         const server = createServer(async (request, response) => {
@@ -1010,9 +1065,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           )
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location, {
+            host: fixtureHost(await openPrivateInstalledBunHost(location, {
               METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-            }),
+            })),
           })
           const plan = await session.plan({ lockMode: 'update' })
           if (plan.state !== 'applicable')
@@ -1026,8 +1081,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
               input: { scenario },
             })
             try {
-              // Observe settlement beyond the unchanged 30-second execution deadline.
-              return await waitForTerminal(session!.rootAdministration, receipt, 60_000)
+              // Observe settlement beyond the selected Run budget, including cleanup.
+              return await waitForTerminal(session!.rootAdministration, receipt,
+                process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 60_000)
             } catch (cause) {
               throw new Error(
                 `Agent method fixture did not settle: ${JSON.stringify({
@@ -1112,7 +1168,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           if (nested) {
             hold = true
             const waitForRequest = async (count: number) => {
-              const deadline = Date.now() + 25_000
+              const deadline = Date.now() + (process.platform === 'darwin' ? MACOS_FIXTURE_ADMISSION_MS : 25_000)
               while (requests.length < count && Date.now() < deadline) await Bun.sleep(25)
               expect(requests).toHaveLength(count)
             }
@@ -1125,9 +1181,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             await session.close()
             session = await openPrivateProjectSession({
               directory: root,
-              host: await openPrivateInstalledBunHost(location, {
+              host: fixtureHost(await openPrivateInstalledBunHost(location, {
                 METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-              }),
+              })),
             })
             expect(await waitForTerminal(session.rootAdministration, cancelled)).toMatchObject({
               terminal: { status: 'failed', code: 'CANCELLED' },
@@ -1165,9 +1221,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             await waitForCgroups(initialCgroups)
             session = await openPrivateProjectSession({
               directory: root,
-              host: await openPrivateInstalledBunHost(location, {
+              host: fixtureHost(await openPrivateInstalledBunHost(location, {
                 METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-              }),
+              })),
             })
             expect(await waitForTerminal(session.rootAdministration, receipt)).toMatchObject({
               terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
@@ -1180,9 +1236,19 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await waitForCgroups(initialCgroups)
           await waitForTemporaryState(initialTemporaryState)
           completed = true
+        } catch (error) {
+          primaryFailure = error
+          throw error
         } finally {
           try {
             await session?.close()
+          } catch (cleanupFailure) {
+            throw primaryFailure === undefined
+              ? cleanupFailure
+              : new AggregateError(
+                  [primaryFailure, cleanupFailure],
+                  'HTTP Agent assertion and fixture cleanup failed',
+                )
           } finally {
             for (const item of pending) item.response.destroy()
             await closeServer(server)
@@ -1193,14 +1259,14 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           }
         }
       },
-      nested ? 240_000 : 150_000,
+      process.platform === 'darwin' ? (nested ? 900_000 : 600_000) : nested ? 240_000 : 150_000,
     )
   }
 
   nativeCodexTest(
     'executes the ordinary ACP Agent with native Codex through ACP with an operator-provided file-backed subscription',
     async () => {
-      const root = await mkdtemp(join(tmpdir(), 'jig-native-codex-project-'))
+      const root = await mkdtemp(join(temporaryRoot, 'jig-native-codex-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
@@ -1260,7 +1326,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   nativeCodexApiTest(
     'executes the ordinary ACP Agent with native Codex through ACP with a Responses-compatible endpoint',
     async () => {
-      const root = await mkdtemp(join(tmpdir(), 'jig-native-codex-api-project-'))
+      const root = await mkdtemp(join(temporaryRoot, 'jig-native-codex-api-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
@@ -1422,7 +1488,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   nativeClaudeApiTest(
     'executes the ordinary ACP Agent with native Claude Code through ACP with an Anthropic-compatible endpoint',
     async () => {
-      const root = await mkdtemp(join(tmpdir(), 'jig-native-claude-api-project-'))
+      const root = await mkdtemp(join(temporaryRoot, 'jig-native-claude-api-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
@@ -1484,7 +1550,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   nativePiApiTest(
     'executes the ordinary ACP Agent with native Pi through ACP with an explicit built-in API provider',
     async () => {
-      const root = await mkdtemp(join(tmpdir(), 'jig-native-pi-api-project-'))
+      const root = await mkdtemp(join(temporaryRoot, 'jig-native-pi-api-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
         await writeProject(root)
@@ -1549,8 +1615,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
     test(
       `fences ${nested ? 'specialist' : 'root'} Agent ${acp ? 'ACP' : 'Run'} success, invalid output, cancellation, deadline, and loss`,
       async () => {
-        const root = await mkdtemp(join(tmpdir(), 'jig-agent-lifecycle-project-'))
-        const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-lifecycle-release-'))
+        const root = await mkdtemp(join(temporaryRoot, 'jig-agent-lifecycle-project-'))
+        const releaseRoot = await mkdtemp(join(temporaryRoot, 'jig-agent-lifecycle-release-'))
         const events: DispatchEvent[] = []
         const key = `synthetic-bearer-${basename(root)}`
         const server = await dispatchServer(events, key, acp)
@@ -1566,9 +1632,15 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
         let primaryFailure: unknown
         const request = (id: string, scenario: string) => runRequest(id, scenario, nested)
-        const run = (id: string, scenario: string, timeoutMs = 30_000) =>
+        const run = (
+          id: string,
+          scenario: string,
+          timeoutMs = process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
+        ) =>
           runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested)
         const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 3 : 2)
+        const onRootExecutionFailure = (evidence: { phase: string; causes: readonly string[] }) =>
+          console.error('agent-root-execution-failure', JSON.stringify(evidence))
         const openHost = (location: PrivateInstalledBunLocation) =>
           acp
             ? openDeterministicFiniteAcpHost(location, environment, root)
@@ -1594,7 +1666,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
 
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           const plan = await session.plan({ lockMode: 'update' })
           if (plan.state !== 'applicable') throw new Error('Agent fixture did not produce a Plan')
@@ -1640,9 +1713,21 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           }
 
           for (let index = 0; index < 2; index += 1) {
-            expect(await run(`agent-repeat-${index}`, 'success')).toMatchObject({
+            const repeated = await run(`agent-repeat-${index}`, 'success')
+            expect(repeated, JSON.stringify(repeated)).toMatchObject({
               state: 'terminal',
-              terminal: { status: 'succeeded', outcome: 'done' },
+              terminal: {
+                status: 'succeeded',
+                outcome: 'done',
+                output: {
+                  status: 'succeeded',
+                  parentHasKey: false,
+                  agent: {
+                    outcome: 'done',
+                    output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT },
+                  },
+                },
+              },
             })
             await expectNoAgentOwner(root)
           }
@@ -1683,8 +1768,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
+            onRootExecutionFailure,
           })
-          expect(await run('agent-deadline', 'slow', 10_000)).toMatchObject({
+          expect(await run('agent-deadline', 'slow', process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 10_000)).toMatchObject({
             state: 'terminal',
             terminal: { status: 'failed', code: 'DEADLINE_EXCEEDED' },
           })
@@ -1693,7 +1779,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           const cancellation = await session.rootAdministration.startRun(
             request('agent-cancellation', 'slow'),
@@ -1702,7 +1789,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           expect(
             await session.rootAdministration.startRun(request('agent-cancellation', 'slow')),
@@ -1734,14 +1822,25 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           )
           const diagnostics = new Response(crashed.stderr).text()
           let receipt: StartRootRunReceipt
+          let failedBeforeCoordinatorExit = false
           try {
             receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt
             await waitForSandbox(receipt.runId)
             await waitForEvents(events, 'recovery', recoveryBefore + 1)
+          } catch (error) {
+            failedBeforeCoordinatorExit = true
+            throw error
           } finally {
             if (crashed.exitCode === null) crashed.kill('SIGKILL')
             await crashed.exited
-            await diagnostics
+            const coordinatorDiagnostics = await diagnostics
+            if (failedBeforeCoordinatorExit) {
+              const closedFailures = coordinatorDiagnostics
+                .split('\n')
+                .filter((line) => line.startsWith('agent-coordinator-root-execution-failure '))
+                .slice(0, 20)
+              console.error('agent-coordinator-root-failures', JSON.stringify(closedFailures))
+            }
           }
           expect(await crashed.exited).toBe(137)
           await waitForCgroups(initialCgroups)
@@ -1749,7 +1848,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           delete environment.METHOD_TEST_TOKEN
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openHost(location),
+            host: fixtureHost(await openHost(location)),
+            onRootExecutionFailure,
           })
           expect(
             await session.rootAdministration.startRun(
@@ -1791,7 +1891,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           })
         }
       },
-      nested ? 240_000 : 180_000,
+      process.platform === 'darwin' ? 900_000 : nested ? 240_000 : 180_000,
     )
   }
 })
@@ -1802,6 +1902,9 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
     'libexec/installed-cli.js',
     'libexec/markdown-runtime.js',
     'libexec/linux-rootless-supervisor.js',
+    'libexec/macos-native-supervisor.js',
+    'libexec/macos-exec',
+    ...(process.platform === 'darwin' ? ['libexec/macos-descriptor-bridge.dylib'] : []),
     'libexec/http-request-worker.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
@@ -1813,12 +1916,18 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
       'libexec/agent',
       'libexec/evaluator',
       'libexec/preparation',
-      'node_modules/@oven/bun-linux-x64-baseline/bin',
+      `node_modules/@oven/${process.platform === 'darwin' ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'}/bin`,
     ].map((path) => mkdir(join(root, path), { recursive: true })),
   )
   await Promise.all(files.map((path) => copyFile(join(source, path), join(root, path))))
   const executablePath = await realpath(installedBunLocation.executablePath)
-  await symlink(executablePath, join(root, 'node_modules/@oven/bun-linux-x64-baseline/bin/bun'))
+  await symlink(
+    executablePath,
+    join(
+      root,
+      `node_modules/@oven/${process.platform === 'darwin' ? process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline' : 'bun-linux-x64-baseline'}/bin/bun`,
+    ),
+  )
   return Object.freeze({
     releaseRoot: root,
     executablePath,
@@ -2289,7 +2398,7 @@ async function runToTerminal(
   administration: RootAdministration,
   submissionId: string,
   scenario: string,
-  timeoutMs = 30_000,
+  timeoutMs = process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
   nested = false,
 ) {
   const receipt = await administration.startRun(runRequest(submissionId, scenario, nested))
@@ -2319,7 +2428,7 @@ function agentText(terminal: Awaited<ReturnType<typeof waitForTerminal>>): strin
 async function waitForTerminal(
   administration: RootAdministration,
   receipt: StartRootRunReceipt,
-  timeoutMs = 30_000,
+  timeoutMs = process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 30_000,
 ) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -2336,7 +2445,7 @@ async function waitForAgentSandbox(
   root: string,
   runId: string,
   expectedOwners = 1,
-  timeoutMs = 20_000,
+  timeoutMs = process.platform === 'darwin' ? 60_000 : 20_000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -2359,7 +2468,15 @@ async function waitForAgentSandbox(
     }
     await Bun.sleep(20)
   }
-  throw new Error('Agent fixture did not retain its sandbox owner')
+  const state = withStore(root, (database) => ({
+    owners: database
+      .query('SELECT scope_operation_id, operation_id, sandbox_digest IS NOT NULL AS sealed FROM root_child_owners WHERE parent_run_id = ?1')
+      .all(runId),
+    terminal: database
+      .query('SELECT CAST(terminal_bytes AS TEXT) AS terminal FROM root_terminals WHERE run_id = ?1')
+      .get(runId),
+  }))
+  throw new Error(`Agent fixture did not retain its sandbox owner: ${JSON.stringify(state)}`)
 }
 
 async function expectNoAgentOwner(root: string): Promise<void> {
@@ -2368,7 +2485,7 @@ async function expectNoAgentOwner(root: string): Promise<void> {
       Number(database.query('SELECT count(*) AS count FROM root_child_owners').get().count),
     ),
   ).toBe(0)
-  const path = join(root, '.jig', 'private-root-linux-owners')
+  const path = join(root, '.jig', 'private-root-owners')
   const values = await readdir(path).catch((error) => {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [] as string[]
     throw error
@@ -2475,7 +2592,7 @@ async function waitForEvents(
   scenario: string,
   count: number,
 ): Promise<void> {
-  const deadline = Date.now() + 10_000
+  const deadline = Date.now() + (process.platform === 'darwin' ? 60_000 : 10_000)
   while (Date.now() < deadline) {
     if (events.filter((event) => event.scenario === scenario).length >= count) return
     await Bun.sleep(20)
@@ -2494,6 +2611,7 @@ async function treeContains(root: string, needle: string): Promise<boolean> {
 }
 
 async function rootlessCgroups(): Promise<string[]> {
+  if (process.platform === 'darwin') return []
   const delegated = process.env.AGENT_DELEGATED_CGROUP
   if (delegated === undefined) {
     if (HOSTILE) throw new Error('Agent lifecycle proof has no delegated cgroup')

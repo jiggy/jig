@@ -2,7 +2,7 @@ import { type ClientRequest, request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
 import { httpRequestBody, normalizeHttpGrant } from './http-grants.js'
-import { httpCredentialEcho, type HttpWorkerResult } from './private-http-request.js'
+import { type HttpWorkerResult, httpCredentialEcho } from './private-http-request.js'
 
 /** Trusted transport only: no authored imports, ambient credentials or retry policy. */
 export async function requestGrantedHttp(value: unknown): Promise<HttpWorkerResult> {
@@ -111,7 +111,14 @@ export async function requestGrantedHttp(value: unknown): Promise<HttpWorkerResu
           })
         },
       )
-      request.on('error', () => finish({ failure: 'UNCERTAIN' }))
+      request.on('error', (error) =>
+        finish({
+          failure:
+            (error as NodeJS.ErrnoException).code === 'HPE_HEADER_OVERFLOW'
+              ? 'RESOURCE_EXHAUSTED'
+              : 'UNCERTAIN',
+        }),
+      )
       request.on('upgrade', (_response, socket) => {
         socket.destroy()
         finish({ failure: 'INVALID_RESULT' })

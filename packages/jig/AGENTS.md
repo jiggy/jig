@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Implements the `@jigging/jig` authoring API and installed Linux host for
+Implements the `@jigging/jig` authoring API and installed Linux and qualified native macOS hosts for
 admitted FLOW packages.
 
 ## Ownership
@@ -10,6 +10,16 @@ admitted FLOW packages.
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
+- `src/package/capture.ts` snapshots through held directory descriptors and
+  rechecks source identity and contents. Linux uses unnamed temporary files;
+  qualified Mac capture opens a private reader beside its sole writer, unlinks
+  the only pathname, and closes the writer before exposing streamed bytes.
+  Source renames cannot redirect opened-directory capture. This source adapter
+  does not independently qualify the installed Mac execution host.
+- Project source, declaration and static author-module capture use the same
+  closed descriptor operations on Linux and qualified Darwin. Workspace capture
+  preserves declared source/dependency selection and raw-name validation;
+  filesystem capture does not independently qualify Bun installation or execution.
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking, retained-lock decoding and dispatch. Dispatch
   caches longest paths per immutable candidate; repeated routes must not expand
@@ -34,9 +44,23 @@ admitted FLOW packages.
   sticky source failure, settle pending sends and preserve earlier clean seals.
   Producer declarations are observation evidence, not execution authority.
 - `test/` owns unit, integration, fault-injection, packed-package, and
-  proof-host evidence. `test/fixtures/channel-conversation/` owns the synthetic
+  proof-host evidence. `test/fixtures/agent-fixture-host.ts` keeps explicit
+  native composition budgets shared with independent coordinator fixtures and the
+  installed-package Agent composition smoke. The smoke passes the public
+  `--timeout` option and leaves production defaults unchanged. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
+- Project Command lifecycle proofs reuse the explicit native composition budget
+  for success, cancellation and coordinator loss. Their deadline case uses its
+  own 30-second budget; fixture settlement/admission waits follow the selected
+  test budget rather than the production default.
+  Forced-loss coordinators stay alive until explicitly killed, leave a Run
+  deadline margin beyond owner observation (60 seconds on Linux), and assert
+  the actual SIGKILL exit before claiming coordinator-loss recovery.
+- Repair CLI proofs use the installed entrypoint's command-scoped default
+  verification policy, acquire support for the actual consumer project, and
+  keep verification caches outside it. Result and cleanup assertions remain
+  independent of this installed-support optimization.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.
   Jig retains source admission, resource grants and owned execution, not Agent
   preparation or answer interpretation. Skill content is explicit caller data;
@@ -57,6 +81,13 @@ admitted FLOW packages.
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
   `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated.
+- `support/macos-exec.c` and the private Mac capture/process controls supply
+  the qualified native host boundaries; their ownership and qualification
+  procedure live in `src/internal/AGENTS.md`. Installed Mac consumers require
+  neither a compiler nor an administrator.
+- Package assembly checks native source/binary provenance before cleaning or
+  copying output. `support/AGENTS.md` owns the canonical Apple rebuild and exact
+  byte-comparison procedure; installed consumers still require no compiler.
 - Root licensing and pricing are canonical; the build copies their retained
   texts. Source delivery belongs to the matching GitHub release and its tagged
   repository archive. Never embed source archives or add source-assembly
@@ -73,7 +104,8 @@ admitted FLOW packages.
   interruption cannot disappear before the native turn ID exists. A turn-start
   reply allocates an ID; only its matching native `turn/started` event makes
   that turn interruptible. Preserve early completion and either event/reply
-  ordering without retries or synthetic settlement. Pi ACP
+  ordering without retries or synthetic settlement. Pi ACP invokes Jig’s private
+  launcher through the verified Bun interpreter and
   preserves RPC rejection and authoritative assistant stop reasons; never infer
   success or failure from answer length. Update the notice and adapter regression
   when changing its patch. Each patch has a same-basename `.md` note explaining
@@ -85,7 +117,10 @@ admitted FLOW packages.
   `support/authoring-install.json` and its generated npm lock pin the complete
   private compiler closure; authoring-source changes require a matching lock
   update. Packaging uses `npm ci` and fails on stale integrity. The final
-  tarball normalizes file order, timestamps and ownership.
+  tarball uses pinned build-only `tar` to normalize file order, timestamps and
+  ownership on both Linux and Mac. The local authoring archive lock admits the
+  exact Bun 1.3.3 and 1.4.2 gzip outputs of identical tar contents; neither
+  platform may refresh that integrity during packing.
   Consumers do not resolve the authoring workspace package from a registry.
 
 
@@ -115,6 +150,11 @@ admitted FLOW packages.
   are private composition or test seams.
 - Expose only the documented CLI and authoring surface; private host machinery
   is not a provider, runtime, or containment SPI.
+- The installed launcher checks OS/CPU pairs before selecting the pinned runtime:
+  Linux x86_64 and Darwin x86_64/arm64 only. npm's independent OS and CPU
+  allowlists cannot exclude Linux arm64 while admitting both Mac architectures;
+  the README exposes this installation limitation. Refuse unsupported pairs
+  with supported-host guidance, not a missing-installation repair instruction.
 - Default `init` writes a greeting Flow with a string input and a world fallback; `--bare` writes only the
   skeleton. Neither installs, networks, approves, or executes. Generated
   packages use the same dependency review as consumer-authored packages. The
@@ -205,6 +245,8 @@ admitted FLOW packages.
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
   presentation; launcher failures follow the same structure. Never introduce
   a separate raw diagnostic style or route machine output through styling.
+  Shell completion must work with macOS's system Bash 3.2 without installing
+  another shell; collect replies with portable array/read operations.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
   A heading must never have less emphasis than its subordinate details. Expanded
@@ -268,6 +310,14 @@ admitted FLOW packages.
 
 ## Verification
 
+- Package/project path NFC uses pinned Unicode 15.1 canonical decomposition,
+  combining classes and composition data, independently of host ICU. Keep
+  case folding and normalization at the same contract version. The official
+  normalization conformance vectors in `test/normalization-15.1.test.ts` and
+  path/workspace-preparation tests verify this boundary. Regenerate tables and
+  vectors with `scripts/generate-unicode-normalization.py` and its exact hashed
+  Unicode 15.1 inputs; the generator refuses changed data before writing.
+
 - `bun test packages/jig`
 - `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
@@ -285,12 +335,17 @@ admitted FLOW packages.
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics
   under the selected temporary root for investigation.
-- `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1`,
+- `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1` or
+  `JIG_MACOS_PROCESS_TEST=1`,
   exercises public installed review, inspection and direct/Binding/child invocation
   of an ordinary declared workspace dependency, including admitted-byte pinning.
+  It selects a two-minute Run budget so the test measures these installed
+  behaviors even when hosted startup exceeds the shorter production default.
   Its packed entrypoint consumer checks both string forms, noninteractive default
   selection, current input bytes, overrides, explicit-target bypass and output
-  collision refusal. It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
+  collision refusal. Its packed attachment consumer checks empty bound and
+  per-invocation roots, read-only enforcement, and the full relative path limits.
+  It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
@@ -321,6 +376,8 @@ admitted FLOW packages.
 
 ## Child DOX Index
 
+- [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
+  Mac pre-exec boundary; installed-platform promotion remains package-owned.
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,
   containment, execution, durable state, and Agent-provider boundary.
 - [test/fixtures/channel-conversation/AGENTS.md](test/fixtures/channel-conversation/AGENTS.md) —

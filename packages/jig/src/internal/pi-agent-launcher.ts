@@ -4,8 +4,9 @@ import { spawn } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, readSync, writeFileSync, writeSync } from 'node:fs'
 
 const STARTUP_INPUT_BYTES = 64 * 1024
-const PI_HOME = '/tmp/pi-home'
-const PI_AGENT_DIR = '/tmp/pi-agent'
+const PRIVATE_TEMP_ROOT = process.env.JIG_MACOS_AGENT_HOME ?? '/tmp'
+const PI_HOME = `${PRIVATE_TEMP_ROOT}/pi-home`
+const PI_AGENT_DIR = `${PRIVATE_TEMP_ROOT}/pi-agent`
 const CREDENTIAL_PATH = `${PI_AGENT_DIR}/auth.json`
 const SETTINGS_PATH = `${PI_AGENT_DIR}/settings.json`
 const MODELS_PATH = `${PI_AGENT_DIR}/models.json`
@@ -52,6 +53,7 @@ export const PRIVATE_PI_SETTINGS = Object.freeze({
 if (import.meta.main) await main()
 
 async function main(): Promise<void> {
+  delete process.env.JIG_MACOS_AGENT_HOME
   const startup = process.env.JIG_PI_STARTUP_INPUT
   if (startup === undefined) {
     await launchNativePi()
@@ -130,7 +132,7 @@ async function launchNativePi(): Promise<void> {
     requireNativeExecutable(process.env.JIG_PI_EXECUTABLE),
     [...PRIVATE_PI_NATIVE_ARGUMENTS, '--provider', provider, '--model', model],
     {
-      cwd: '/work',
+      cwd: process.env.JIG_MACOS_AGENT_WORK ?? '/work',
       // Keep Bun's own override for its launcher, not for the native client.
       env: Object.fromEntries(
         Object.entries(process.env).filter(([key]) => key !== 'LD_LIBRARY_PATH'),

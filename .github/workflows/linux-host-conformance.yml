@@ -257,6 +257,26 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/markdown-worker.test.ts
           --timeout 120000
 
+      - name: Prove installed workspace dependency admission and execution
+        if: matrix.suite == 'installed-evidence'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
+          "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
+          --timeout 180000
+
+      - name: Prove complete packed CLI composition
+        if: matrix.suite == 'installed-evidence'
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
+          "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE"
+          "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE"
+          "JIG_AUTHORING_NODE_PATH=$(command -v node)"
+          "$JIG_CI_BUN" packages/jig/test/package-smoke.ts
+
       - name: Run Operational Baseline/1 against the packed archive
         id: operational
         if: matrix.suite == 'installed-evidence'

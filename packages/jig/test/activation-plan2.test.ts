@@ -611,7 +611,7 @@ describe('private Plan/2', () => {
         operation: 'admission',
       }),
     ).toThrow('maximum encoded bytes exceeded')
-  }, 30_000)
+  }, process.platform === 'darwin' ? 90_000 : 30_000)
 })
 
 function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPackages = 0) {

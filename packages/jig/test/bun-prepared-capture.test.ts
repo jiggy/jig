@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from '../src/internal/bun-native-preparation-protocol.js'
@@ -7,7 +7,7 @@ import { capturePrivateBunPreparedTree } from '../src/internal/bun-prepared-capt
 import { privatePackageAliasText } from '../src/internal/package-aliases.js'
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'jig-prepared-capture-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-prepared-capture-')))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(root, path)), { recursive: true })
     await writeFile(join(root, path), typeof value === 'string' ? value : JSON.stringify(value))
@@ -207,28 +207,32 @@ test('ordinary preparation keeps its existing root layout and rejects links', as
   }
 })
 
-test('workspace aliases share the bounded prepared-file budget', async () => {
-  const value = await fixture()
-  try {
-    await value.put('libs/helper/package.json', { name: 'helper' })
-    // Four existing regular files plus these records exhaust the file budget.
-    for (let start = 0; start < PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles - 4; start += 64) {
-      const end = Math.min(start + 64, PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles - 4)
-      await Promise.all(
-        Array.from({ length: end - start }, (_, offset) =>
-          value.put(`flows/work/record-${start + offset}`, ''),
-        ),
-      )
+test(
+  'workspace aliases share the bounded prepared-file budget',
+  async () => {
+    const value = await fixture()
+    try {
+      await value.put('libs/helper/package.json', { name: 'helper' })
+      // Four existing regular files plus these records exhaust the file budget.
+      for (let start = 0; start < PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles - 4; start += 64) {
+        const end = Math.min(start + 64, PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles - 4)
+        await Promise.all(
+          Array.from({ length: end - start }, (_, offset) =>
+            value.put(`flows/work/record-${start + offset}`, ''),
+          ),
+        )
+      }
+      await value.link('node_modules/helper', 'libs/helper')
+      await expect(
+        capturePrivateBunPreparedTree(value.root, {
+          target: 'flows/work',
+          members: ['flows/work', 'libs/helper'],
+          selected: ['flows/work', 'libs/helper'],
+        }),
+      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_OUTPUT_LIMIT' })
+    } finally {
+      await value.dispose()
     }
-    await value.link('node_modules/helper', 'libs/helper')
-    await expect(
-      capturePrivateBunPreparedTree(value.root, {
-        target: 'flows/work',
-        members: ['flows/work', 'libs/helper'],
-        selected: ['flows/work', 'libs/helper'],
-      }),
-    ).rejects.toMatchObject({ code: 'PACKAGE_BUN_OUTPUT_LIMIT' })
-  } finally {
-    await value.dispose()
-  }
-})
+  },
+  process.platform === 'darwin' ? 20_000 : 5_000,
+)

@@ -1,3 +1,4 @@
+import { constants, Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -5,7 +6,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const hostTest = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? test : test.skip
+const hostTest =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? test
+    : test.skip
 const cli = fileURLToPath(new URL('../bin/jig', import.meta.url))
 const contract = {
   $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
@@ -64,24 +69,32 @@ hostTest.each([false, true])(
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      const stderrText = async () => {
-        let text = '',
-          interrupted = false
-        for await (const chunk of child.stderr) {
-          text += new TextDecoder().decode(chunk)
-          if (interrupt && !interrupted && text.includes('dependency diagnostic')) {
-            interrupted = true
-            child.kill('SIGINT')
-          }
-        }
-        return text
+      // The host may retain Flow stderr until settlement, so it is not a
+      // reliable signal that the held Run is still active.
+      let interruptEvidence: { sent: boolean; error?: string } | undefined
+      const interruptTimer = interrupt
+        ? setTimeout(() => {
+            try {
+              process.kill(child.pid, 'SIGTERM')
+              interruptEvidence = { sent: true }
+            } catch (error) {
+              interruptEvidence = {
+                sent: false,
+                error: error instanceof Error ? error.message : String(error),
+              }
+            }
+          }, 20_000)
+        : undefined
+      try {
+        const [exit, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ])
+        return { exit, stdout, stderr, interruptEvidence }
+      } finally {
+        if (interruptTimer !== undefined) clearTimeout(interruptTimer)
       }
-      const [exit, stdout, stderr] = await Promise.all([
-        child.exited,
-        new Response(child.stdout).text(),
-        stderrText(),
-      ])
-      return { exit, stdout, stderr }
     }
     let passed = false
     try {
@@ -140,6 +153,8 @@ hostTest.each([false, true])(
         'npm:echo-method',
         '--input',
         '"declared package"',
+        '--timeout',
+        '120s',
         '--json',
       ])
       expect(result.exit, result.stdout + result.stderr).toBe(0)
@@ -154,6 +169,8 @@ hostTest.each([false, true])(
           target,
           '--input',
           '"through selected provider"',
+          '--timeout',
+          '120s',
           '--json',
         ])
         expect(invoked.exit, invoked.stdout + invoked.stderr).toBe(0)
@@ -168,7 +185,11 @@ hostTest.each([false, true])(
           stderrTruncated: false,
         })
       }
-      const cancelled = await run(['run', 'npm:echo-method', '--input', '"hold"', '--json'], true)
+      const cancelled = await run(
+        ['run', 'npm:echo-method', '--input', '"hold"', '--timeout', '120s', '--json'],
+        true,
+      )
+      expect(cancelled.interruptEvidence).toEqual({ sent: true })
       expect(cancelled.exit, cancelled.stderr).toBe(2)
       expect(JSON.parse(cancelled.stdout)).toMatchObject({
         status: 'failed',
@@ -185,7 +206,15 @@ hostTest.each([false, true])(
       const originalPatch = await readFile(join(directory, 'patches/is-number.patch'), 'utf8')
       await put('packages/echo/FLOW.ts', 'throw new Error("unreviewed source must not run")')
       await put('patches/is-number.patch', 'unreviewed patch must not replace retained bytes')
-      const pinned = await run(['run', 'npm:echo-method', '--input', '"retained"', '--json'])
+      const pinned = await run([
+        'run',
+        'npm:echo-method',
+        '--input',
+        '"retained"',
+        '--timeout',
+        '120s',
+        '--json',
+      ])
       expect(pinned.exit, pinned.stdout + pinned.stderr).toBe(0)
       expect(JSON.parse(pinned.stdout)).toMatchObject({ output: 'retained' })
       expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(before)
@@ -214,7 +243,158 @@ hostTest.each([false, true])(
       else console.error(`Preserved package-provider consumer: ${directory}`)
     }
   },
-  120_000,
+  240_000,
+)
+
+hostTest(
+  'packed read attachments preserve empty roots and maximum relative paths',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jig-attachment-consumer-'))
+    const project = join(directory, 'project')
+    const tooling = join(directory, 'tooling')
+    const artifacts = join(directory, 'artifacts')
+    let passed = false
+    try {
+      await mkdir(tooling)
+      await mkdir(artifacts)
+      let archive = process.env.JIG_PACKAGE_ARCHIVE
+      if (!archive) {
+        const packageRoot = join(import.meta.dir, '..')
+        execFileSync(process.execPath, ['scripts/pack.ts', '--destination', artifacts], {
+          cwd: packageRoot,
+          stdio: 'pipe',
+          timeout: 120000,
+        })
+        const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+        archive = join(artifacts, `jigging-jig-${manifest.version}.tgz`)
+      }
+      await writeFile(
+        join(tooling, 'package.json'),
+        JSON.stringify({
+          private: true,
+          dependencies: { '@jigging/jig': `file:${archive}` },
+        }),
+      )
+      execFileSync(
+        process.execPath,
+        ['install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
+        {
+          cwd: tooling,
+          stdio: 'pipe',
+          timeout: 120000,
+        },
+      )
+      const installed = join(tooling, 'node_modules/.bin/jig')
+      const put = async (path: string, value: unknown) => {
+        await mkdir(dirname(join(project, path)), { recursive: true })
+        await writeFile(
+          join(project, path),
+          typeof value === 'string' ? value : JSON.stringify(value),
+        )
+      }
+      let sequence = 0
+      const invoke = async (args: string[]) => {
+        const child = Bun.spawn([installed, ...args], {
+          cwd: project,
+          env: { ...process.env, NO_COLOR: '1' },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const timer = setTimeout(() => child.kill('SIGTERM'), 120000)
+        const [exit, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ]).finally(() => clearTimeout(timer))
+        await writeFile(
+          join(directory, `${++sequence}.json`),
+          JSON.stringify({ args, exit, stdout, stderr }),
+        )
+        expect(exit, stdout + stderr).toBe(0)
+        return stdout
+      }
+      await put('package.json', { private: true, type: 'module' })
+      await put(
+        'jig.ts',
+        `import {defineJig,discover} from '@jigging/jig';
+export default defineJig({flows:discover('flows'),bindings:discover('bindings')});`,
+      )
+      await put(
+        'bindings/read.ts',
+        `import {defineBinding} from '@jigging/jig';
+export default defineBinding({package:'flows/read',attachments:{retained:'retained'}});`,
+      )
+      await put('flows/read/FLOW.contract.json', {
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+        attachments: { source: 'read', reference: 'read', retained: 'read' },
+      })
+      await put(
+        'flows/read/FLOW.ts',
+        `import {createInterface} from 'node:readline';
+import {readdir,readFile,writeFile} from 'node:fs/promises';
+for await (const line of createInterface({input:process.stdin})) {
+ const request=JSON.parse(line), output={};
+ for (const [name,attachment] of Object.entries(request.params.attachments)) {
+  const entries=(await readdir(attachment.path)).sort();
+  let writable=false;
+  try {await writeFile(attachment.path+'/forbidden','x');writable=true;} catch {}
+  output[name]={entries,writable};
+ }
+ output.contents=await Promise.all(request.params.input.map(path=>readFile(request.params.attachments.source.path+'/'+path,'utf8')));
+ console.log(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{outcome:'done',output}}));
+ break;
+}`,
+      )
+      for (const name of ['source', 'reference', 'retained']) await mkdir(join(project, name))
+      await invoke(['review', '--yes'])
+      const run = async (paths: string[]) =>
+        JSON.parse(
+          await invoke([
+            'run',
+            'binding:read',
+            '--attach',
+            'source=source',
+            '--attach',
+            'reference=reference',
+            '--input',
+            JSON.stringify(paths),
+            '--timeout',
+            '2m',
+            '--json',
+          ]),
+        )
+      // No descriptor handoff exists in this case; every declared root must still exist.
+      expect(await run([])).toMatchObject({
+        status: 'succeeded',
+        output: {
+          source: { entries: [], writable: false },
+          reference: { entries: [], writable: false },
+          retained: { entries: [], writable: false },
+          contents: [],
+        },
+      })
+      const depthPath = [...Array<string>(15).fill('d'), 'file'].join('/')
+      const bytePath = `${'a'.repeat(250)}/${'b'.repeat(250)}/result.txt`
+      await put(`source/${depthPath}`, 'depth boundary')
+      await put(`source/${bytePath}`, 'byte boundary')
+      // Empty bound and per-invocation roots also coexist with nonempty input.
+      expect(await run([depthPath, bytePath])).toMatchObject({
+        status: 'succeeded',
+        output: {
+          source: { entries: ['a'.repeat(250), 'd'], writable: false },
+          reference: { entries: [], writable: false },
+          retained: { entries: [], writable: false },
+          contents: ['depth boundary', 'byte boundary'],
+        },
+      })
+      passed = true
+    } finally {
+      if (passed) await rm(directory, { recursive: true, force: true })
+      else console.error(`Attachment consumer evidence retained at ${directory}`)
+    }
+  },
+  600000,
 )
 
 hostTest(
@@ -265,9 +445,15 @@ hostTest(
       const installed = join(tooling, 'node_modules/.bin/jig')
       let sequence = 0
       const invoke = async (args: string[]) => {
+        const command = ++sequence
+        const profile = join(directory, `${command}-profile.jsonl`)
         const child = Bun.spawn([installed, ...args], {
           cwd: project,
-          env: { ...process.env, NO_COLOR: '1' },
+          env: {
+            ...process.env,
+            NO_COLOR: '1',
+            ...(args[0] === 'run' ? { JIG_PRIVATE_PROFILE_FILE: profile } : {}),
+          },
           stdin: 'ignore',
           stdout: 'pipe',
           stderr: 'pipe',
@@ -279,14 +465,60 @@ hostTest(
           new Response(child.stderr).text(),
         ]).finally(() => clearTimeout(timer))
         await writeFile(
-          join(directory, `${++sequence}-${args[0]}.json`),
+          join(directory, `${command}-${args[0]}.json`),
           JSON.stringify({ args, exit, stdout, stderr }, null, 2),
         )
-        return { exit, stdout, stderr }
+        let failureEvidence = ''
+        if (exit !== 0 && args[0] === 'run') {
+          const phases = await readFile(profile, 'utf8')
+            .then((value) =>
+              value
+                .trim()
+                .split('\n')
+                .slice(1)
+                .map((line) => {
+                  const event = JSON.parse(line) as {
+                    kind: string
+                    phase?: string
+                    outcome?: string
+                    timeMs?: number
+                  }
+                  return [event.kind, event.phase, event.outcome, event.timeMs]
+                }),
+            )
+            .catch(() => 'unavailable')
+          let lifecycle: unknown = 'unavailable'
+          try {
+            const database = Database.open(
+              join(project, '.jig/jig.sqlite3'),
+              constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+            )
+            try {
+              lifecycle = database
+                .query(`SELECT
+                  plan_digest IS NOT NULL AS planned,
+                  backing_digest IS NOT NULL AS backed,
+                  sandbox_digest IS NOT NULL AS sealed,
+                  prepared_digest IS NOT NULL AS prepared,
+                  provisional_digest IS NOT NULL AS provisional,
+                  fence_digest IS NOT NULL AS fenced,
+                  release_digest IS NOT NULL AS released,
+                  admitted_digest IS NOT NULL AS admitted
+                  FROM root_execution_lifecycles ORDER BY rowid DESC LIMIT 1`)
+                .get()
+            } finally {
+              database.close()
+            }
+          } catch {
+            // A failed command need not have reached durable root submission.
+          }
+          failureEvidence = `\nPrivate Run phases: ${JSON.stringify(phases)}\nRoot checkpoints: ${JSON.stringify(lifecycle)}`
+        }
+        return { exit, stdout, stderr, failureEvidence }
       }
       const succeed = async (args: string[]) => {
         const result = await invoke(args)
-        expect(result.exit, result.stdout + result.stderr).toBe(0)
+        expect(result.exit, result.stdout + result.stderr + result.failureEvidence).toBe(0)
         return result
       }
       const declaration = (entrypoint: string) => `import {defineJig,discover} from '@jigging/jig';

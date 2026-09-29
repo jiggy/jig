@@ -35,8 +35,8 @@ operational baselines, and public-site assembly.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
   containment and binary-safe file Runs, invalid output, resource limits,
   failure suppression, publication collisions and execution-residue checks.
-- `profile-installed-startup.ts` is an opt-in, manual Ubuntu 24.04 x86-64
-  diagnostic using the exact frozen Jig and FLOW SDK archives and a deterministic
+- `profile-installed-startup.ts` is an opt-in diagnostic on the selected Ubuntu
+  24.04 x86-64 and exact Intel/Apple Silicon Mac hosts, using the exact frozen Jig and FLOW SDK archives and a deterministic
   three-Flow conversation. It excludes package/fixture setup, records one warmup
   plus five fresh-project trials, and preserves bounded failure evidence. It
   makes no provider calls and is not a performance claim or release threshold.
@@ -46,6 +46,9 @@ operational baselines, and public-site assembly.
   removal failures never replace the original failure or establish success.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
+- `require-macos-host-conformance.sh` owns the bounded, read-only check that an
+  exact publication revision passed the complete hosted Intel and Apple Silicon
+  Mac workflow.
 - `require-native-agent-api-qualification.sh` owns the bounded, read-only check
   that the exact main-push revision passed the separate live ACP client check
   before Agent/Jig npm publication; a manually dispatched check qualifies only
@@ -60,6 +63,9 @@ operational baselines, and public-site assembly.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
 - `ci/` owns disposable CI-host provisioning.
+- `generate-unicode-normalization.py` verifies the exact Unicode 15.1 source
+  digests before generating Jig's canonical normalization tables and official
+  conformance vectors. It makes no network requests or contract-version changes.
 - Site assembly verifies every public HTML page has indexed Markdown and
   full-text bundle coverage, rejects public `AGENTS.md` routes, and includes
   notices for bundled fonts.
@@ -109,9 +115,9 @@ operational baselines, and public-site assembly.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
-- `profile-installed-startup.ts` deliberately refuses non-GitHub, non-Ubuntu
-  24.04 x86-64 hosts; validate that refusal locally and obtain actual timing
-  evidence only from its opt-in provisioned-host workflow step.
+- `profile-installed-startup.ts` refuses hosts outside the exact Linux and Mac
+  qualification profiles; validate that refusal and obtain timing evidence from
+  the opt-in host workflow steps.
 - `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
   partial retries, registry failures, and immutable candidate/registry bytes.
 - `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
@@ -128,7 +134,8 @@ operational baselines, and public-site assembly.
   verify link ownership, shared environment updates, separate indexes, and
   refusals that preserve existing work and workspace state.
 - `just test-tooling` also checks recipe parsing, argument and working-directory
-  handling, example dependency versions against public package manifests,
+  handling, Linux host shard proof-step coverage and fail-closed aggregation,
+  example dependency versions against public package manifests,
   explicit packing, and build-tool refusal before cleanup or site staging. Its
   no-package-scripts rule covers repository tasks, not imported skill toolchains.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
@@ -136,5 +143,5 @@ operational baselines, and public-site assembly.
 
 ## Child DOX Index
 
-- [ci/AGENTS.md](ci/AGENTS.md) — Disposable privileged CI-host provisioning
-  and residue checks.
+- [ci/AGENTS.md](ci/AGENTS.md) — Disposable Linux proof-host provisioning,
+  rootless Mac candidate qualification, frozen archives, and residue checks.

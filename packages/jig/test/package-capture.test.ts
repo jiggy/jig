@@ -18,10 +18,10 @@ import { join } from 'node:path'
 
 import { CheckError } from '../src/diagnostics.js'
 import {
-  capturePackageDirectory,
-  captureOpenedPackageDirectory,
   type CapturedFile,
   type CapturedPackage,
+  captureOpenedPackageDirectory,
+  capturePackageDirectory,
 } from '../src/package/capture.js'
 import { packageDigest } from '../src/package/digest.js'
 
@@ -90,10 +90,15 @@ describe('Package/0 digest', () => {
   })
 })
 
+const captureTest =
+  process.platform === 'linux' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? test
+    : test.skip
 const linuxTest = process.platform === 'linux' ? test : test.skip
 
-describe('Linux Package/0 directory capture', () => {
-  linuxTest(
+describe('Native Package/0 directory capture', () => {
+  captureTest(
     'captures every regular file in canonical byte order and isolates staged bytes',
     async () => {
       await withDirectory(async (source) => {
@@ -119,7 +124,7 @@ describe('Linux Package/0 directory capture', () => {
     },
   )
 
-  linuxTest('ignores enumeration order and filesystem metadata in identity', async () => {
+  captureTest('ignores enumeration order and filesystem metadata in identity', async () => {
     await withDirectory(async (left) => {
       await withDirectory(async (right) => {
         await writeFile(join(left, 'FLOW.md'), metadata)
@@ -138,7 +143,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('changes identity for content, path, extra files, and line endings', async () => {
+  captureTest('changes identity for content, path, extra files, and line endings', async () => {
     const digests = new Set<string>()
     for (const files of [
       { 'FLOW.md': metadata, file: 'one' },
@@ -159,7 +164,7 @@ describe('Linux Package/0 directory capture', () => {
     expect(digests.size).toBe(5)
   })
 
-  linuxTest('accepts fully contained hardlinks as independent records', async () => {
+  captureTest('accepts fully contained hardlinks as independent records', async () => {
     await withDirectory(async (source) => {
       await writeFile(join(source, 'FLOW.md'), metadata)
       await writeFile(join(source, 'a'), 'shared')
@@ -171,7 +176,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('rejects symlinks, escaping hardlinks, and case-fold collisions', async () => {
+  captureTest('rejects symlinks and escaping hardlinks', async () => {
     await withDirectory(async (root) => {
       const outside = join(root, 'outside')
       await writeFile(outside, 'outside')
@@ -187,7 +192,11 @@ describe('Linux Package/0 directory capture', () => {
       await writeFile(join(hardlinkPackage, 'FLOW.md'), metadata)
       await link(outside, join(hardlinkPackage, 'linked'))
       await expectCaptureError(hardlinkPackage, 'PACKAGE_HARDLINK')
+    })
+  })
 
+  linuxTest('rejects case-fold collisions on a case-sensitive source filesystem', async () => {
+    await withDirectory(async (root) => {
       const collisionPackage = join(root, 'collision-package')
       await mkdir(collisionPackage)
       await writeFile(join(collisionPackage, 'FLOW.md'), metadata)
@@ -197,7 +206,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('rejects a symlink as the selected source root', async () => {
+  captureTest('rejects a symlink as the selected source root', async () => {
     await withDirectory(async (root) => {
       const source = join(root, 'source')
       const alias = join(root, 'alias')
@@ -208,7 +217,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('captures an opened directory identity rather than a replaced pathname', async () => {
+  captureTest('captures an opened directory identity rather than a replaced pathname', async () => {
     await withDirectory(async (root) => {
       const selected = join(root, 'selected')
       const moved = join(root, 'moved')
@@ -249,7 +258,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest(
+  captureTest(
     'rejects a file one byte above the absolute Package/0 ceiling before copying',
     async () => {
       await withDirectory(async (source) => {

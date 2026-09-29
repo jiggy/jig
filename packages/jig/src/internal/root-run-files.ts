@@ -1,16 +1,16 @@
-import type { FileHandle } from 'node:fs/promises'
 import { posix } from 'node:path'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import type { PrivateActivationRequest } from '../project/package-resolution.js'
+import { closePrivateExecutionOutput, type PrivateExecutionOutput } from './execution-output.js'
 import type { PrivateDeliveryConnection } from './file-delivery.js'
-import { privateDomainDigest } from './identity.js'
 import {
   PRIVATE_FILE_LIMITS,
   type PrivateCapturedAttachment,
   privateAttachmentName,
   privateFilePath,
   sha256,
-} from './linux-file-input.js'
+} from './file-input.js'
+import { privateDomainDigest } from './identity.js'
 import { PRIVATE_OUTPUT_PATH, type PrivateLinuxLaunchPlan } from './linux-rootless-backend.js'
 import {
   parseRunCheckpointInput,
@@ -130,7 +130,7 @@ export function requirePrivateRootFileMapping(
 export class PrivateRootRunFiles {
   readonly identity: PrivateRunFileIdentity
   #runId: string | undefined
-  #output: FileHandle | undefined
+  #output: PrivateExecutionOutput | undefined
   #checkpointBound = false
   #method:
     | {
@@ -147,7 +147,7 @@ export class PrivateRootRunFiles {
     this.identity = normalizePrivateRunFileIdentity({
       attachments: captured.map((item) => ({
         name: item.name,
-        files: item.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+        files: item.files.map(({ path, input: { bytes, digest } }) => ({ path, bytes, digest })),
       })),
       output,
     })
@@ -175,7 +175,7 @@ export class PrivateRootRunFiles {
     const boundIdentity = normalizePrivateRunFileIdentity({
       attachments: bound.map((item) => ({
         name: item.name,
-        files: item.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+        files: item.files.map(({ path, input: { bytes, digest } }) => ({ path, bytes, digest })),
       })),
       output: null,
     })
@@ -203,9 +203,7 @@ export class PrivateRootRunFiles {
       plan: {
         capturedInputs: [...this.captured, ...bound].flatMap((item) =>
           item.files.map((file) => ({
-            fd: file.fd,
-            bytes: file.bytes,
-            digest: file.digest,
+            input: file.input,
             destination: `/jig-input/${item.name}/${file.path}`,
           })),
         ),
@@ -233,11 +231,11 @@ export class PrivateRootRunFiles {
       ),
     })
   }
-  retainOutput(handle: FileHandle | undefined): void {
+  retainOutput(handle: PrivateExecutionOutput | undefined): void {
     if (this.#output !== undefined) throw new Error('output already has an owner')
     this.#output = handle
   }
-  get outputDirectory(): FileHandle | undefined {
+  get output(): PrivateExecutionOutput | undefined {
     return this.#output
   }
   get method() {
@@ -284,7 +282,7 @@ export class PrivateRootRunFiles {
     return await this.delivery.saveCheckpoint(parseRunCheckpointInput(value))
   }
   async close(): Promise<void> {
-    await this.#output?.close()
+    await closePrivateExecutionOutput(this.#output)
     this.#output = undefined
   }
 }

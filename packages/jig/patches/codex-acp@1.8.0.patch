@@ -15,7 +15,46 @@ diff --git a/dist/index.js b/dist/index.js
      connection.dispose();
    });
    return { connection, process: codex };
-@@ -29071,7 +29076,7 @@
+@@ -27900,9 +27905,21 @@
+ var CUSTOM_GATEWAY_PROVIDER_ID = "custom-gateway";
+ var OPENAI_PROVIDER_ID = "openai";
+ var DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
++var JIG_CODEX_AUTH_BOOTSTRAP = "__JIG_CODEX_AUTH_BOOTSTRAP__";
+ var SUPPORTED_GATEWAY_PROTOCOLS = {
+   openai: "responses"
+ };
++function consumeJigCodexAuthBootstrap() {
++  const bootstrap = globalThis[JIG_CODEX_AUTH_BOOTSTRAP];
++  if (bootstrap === void 0) return null;
++  delete globalThis[JIG_CODEX_AUTH_BOOTSTRAP];
++  if (typeof bootstrap !== "function") throw new Error("Codex startup authentication is invalid");
++  const value = bootstrap();
++  if (value === null || typeof value !== "object" || typeof value.accessToken !== "string" || value.accessToken.length === 0 || typeof value.chatgptAccountId !== "string" || value.chatgptAccountId.length === 0) {
++    throw new Error("Codex startup authentication is invalid");
++  }
++  return value;
++}
+ var CodexAcpClient = class {
+   codexClient;
+   config;
+@@ -27941,6 +27958,16 @@
+         title: request.clientInfo?.title ?? this.defaultClientInfo.title
+       }
+     });
++    const jigAuth = consumeJigCodexAuthBootstrap();
++    if (jigAuth !== null) {
++      const login = await this.codexClient.accountLogin({
++        type: "chatgptAuthTokens",
++        accessToken: jigAuth.accessToken,
++        chatgptAccountId: jigAuth.chatgptAccountId,
++        chatgptPlanType: null
++      });
++      if (login.type !== "chatgptAuthTokens") throw new Error("Codex startup authentication failed");
++    }
+     this.configPath = response?.codexHome ?? null;
+   }
+   getHomePath() {
+@@ -29071,7 +29098,7 @@
        if (this.handleStaleTurnNotification(serverNotification, routing)) {
          return;
        }
@@ -24,7 +63,7 @@ diff --git a/dist/index.js b/dist/index.js
        if (this.handleStaleTurnNotification(serverNotification, routing)) {
          return;
        }
-@@ -29150,19 +29155,33 @@
+@@ -29150,19 +29177,33 @@
    }
    async runTurn(params, onTurnStarted) {
      const capturedCompletions = [];
@@ -64,7 +103,7 @@ diff --git a/dist/index.js b/dist/index.js
        releaseCapture();
      }
    }
-@@ -29596,7 +29615,7 @@
+@@ -29596,7 +29637,7 @@
        capture();
      }
    }
@@ -73,7 +112,7 @@ diff --git a/dist/index.js b/dist/index.js
      if (routing.threadId === null || routing.turnId === null) {
        return;
      }
-@@ -29605,7 +29624,7 @@
+@@ -29605,7 +29646,7 @@
        return;
      }
      for (const capture of captures) {
@@ -82,7 +121,7 @@ diff --git a/dist/index.js b/dist/index.js
      }
    }
    handleStaleTurnNotification(notification, routing) {
-@@ -33448,6 +33467,7 @@
+@@ -33448,6 +33489,7 @@
        }
        return pendingTurnStart;
      };
@@ -90,7 +129,7 @@ diff --git a/dist/index.js b/dist/index.js
      const disposePromptRequestCancellation = this.observePromptRequestCancellation(signal, sessionState, activePrompt);
      let eventHandler = null;
      let promptNotificationsActive = true;
-@@ -33773,10 +33793,6 @@
+@@ -33773,10 +33815,6 @@
          agentFileChangeReportTurnId = turnCompleted.turn.id;
        }
        await clearRecoveredSessionFailure(eventHandler);
@@ -101,7 +140,7 @@ diff --git a/dist/index.js b/dist/index.js
        await this.publishFallbackSessionTitle(
          sessionState,
          this.createPromptFallbackTitle(params.prompt)
-@@ -34198,13 +34214,17 @@
+@@ -34198,13 +34236,17 @@
      stderr: ""
    };
    process.stdin.on("close", () => {

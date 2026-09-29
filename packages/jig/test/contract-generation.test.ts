@@ -1,6 +1,16 @@
 import { afterEach, expect, setDefaultTimeout, test } from 'bun:test'
 import { constants } from 'node:fs'
-import { mkdir, mkdtemp, open, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import {
+  type FileHandle,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -148,9 +158,11 @@ async function prepare(
   overrides: Partial<Parameters<typeof prepareContractGeneration>[0]> = {},
 ) {
   const project = await openPrivateProjectRoot(root)
-  const directory = await open(join(root, 'flow'), constants.O_RDONLY | constants.O_DIRECTORY)
-  const captured = await capturePackageDirectory(join(root, 'flow'))
+  let directory: FileHandle | undefined
+  let captured: Awaited<ReturnType<typeof capturePackageDirectory>> | undefined
   try {
+    directory = await open(join(root, 'flow'), constants.O_RDONLY | constants.O_DIRECTORY)
+    captured = await capturePackageDirectory(join(root, 'flow'))
     return await prepareContractGeneration({
       project,
       generate,
@@ -167,8 +179,8 @@ async function prepare(
       ...overrides,
     })(directory, { membership: 'exact', projectPath: 'flow' }, captured)
   } finally {
-    await captured.dispose()
-    await directory.close()
+    await captured?.dispose()
+    await directory?.close()
     await project.dispose()
   }
 }

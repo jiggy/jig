@@ -1,14 +1,15 @@
+import type { PrivateFileLocation } from '../internal/descriptor-files.js'
 import {
-  publishCapturedPackage,
   type PackageArtifactRef,
+  publishCapturedPackage,
 } from '../internal/package-artifact-store.js'
 import {
-  createCapturedPackage,
   type CapturedFile,
   type CapturedPackageBacking,
+  createCapturedPackage,
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
-import { isCapturedAuthorClosure, type CapturedAuthorClosure } from './author-module.js'
+import { type CapturedAuthorClosure, isCapturedAuthorClosure } from './author-module.js'
 
 export interface RetainedAuthorClosure {
   readonly kind: 'author-closure/1'
@@ -18,7 +19,7 @@ export interface RetainedAuthorClosure {
 
 /** Retain every byte of one authentic author closure in protected Package/0 storage. */
 export async function retainAuthorClosure(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   closure: CapturedAuthorClosure,
 ): Promise<RetainedAuthorClosure> {
   if (!isCapturedAuthorClosure(closure)) {

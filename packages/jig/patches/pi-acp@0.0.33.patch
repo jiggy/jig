@@ -1,6 +1,20 @@
 diff --git a/dist/index.js b/dist/index.js
 --- a/dist/index.js
 +++ b/dist/index.js
+@@ -134,11 +134,11 @@ var PiRpcProcess = class {
+     const cmd = getPiCommand(params.piCommand);
+     const args = ["--mode", "rpc", "--no-themes"];
+     if (params.sessionPath) args.push("--session", params.sessionPath);
+-    const child = spawn(cmd, args, {
++    const child = spawn(process.execPath, [cmd, ...args], {
+       cwd: params.cwd,
+       stdio: "pipe",
+       env: process.env,
+-      shell: shouldUseShellForPiCommand(cmd)
++      shell: false
+     });
+     try {
+       await new Promise((resolve4, reject) => {
 @@ -780,6 +780,8 @@ var PiAcpSession = class {
    // Used to map abort semantics to ACP stopReason.
    // Applies to the currently running turn.

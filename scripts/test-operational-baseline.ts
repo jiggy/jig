@@ -130,7 +130,7 @@ try {
   const preparationGuard = join(
     project,
     '.jig',
-    'private-preparation-linux-owners',
+    'private-preparation-owners',
     `prep-${(lockedPackage.digest as string).slice('sha256:'.length, 'sha256:'.length + 48)}`,
   )
   await mkdir(preparationGuard, { mode: 0o700 })

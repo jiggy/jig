@@ -1,12 +1,14 @@
 // Separate process: module mocks must not affect other host tests.
 import { mock } from 'bun:test'
 import assert from 'node:assert/strict'
+import { Readable } from 'node:stream'
 import * as store from '../src/internal/activation-admission-store.js'
 import * as direct from '../src/internal/direct-run.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
 import * as installed from '../src/internal/installed-bun-support.js'
 import * as context from '../src/internal/invocation-context.js'
-import * as linux from '../src/internal/linux-rootless-backend.js'
+import * as execution from '../src/internal/execution-backend.js'
+import * as capture from '../src/internal/input-capture.js'
 import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_CONTRACT_ID,
@@ -20,6 +22,8 @@ const operationId = 'same-operation'
 const events: string[] = []
 let row: any
 let failAfterPhysicalRelease = false
+let dispatch = false
+let stopReason = 'setup_failed'
 const step = (name: string) => events.push(name)
 const backend = {
   recoverFence: async () => {
@@ -63,6 +67,10 @@ mock.module('../src/internal/direct-run.js', () => ({
     digest: digest(6),
     observation: { digest: digest(7) },
     execution: {},
+    bunPolicy: [],
+    resourceCeilings: {},
+    installedSupport: { runtimeMounts: [] },
+    sandboxExecutablePath: '/bun',
   }),
 }))
 mock.module('../src/internal/installed-bun-support.js', () => ({
@@ -81,9 +89,21 @@ mock.module('../src/internal/activation-admission-store.js', () => ({
     step('owners-read')
     return row === undefined ? [] : [row]
   },
-  allocatePrivateRootChildOwner: async () => {
+  allocatePrivateRootChildOwner: async (input: any) => {
     step('allocate-owner')
+    if (dispatch) {
+      row = {
+        parentRunId: runId,
+        operationId,
+        allocation: { digest: digest(3), value: input.allocation },
+      }
+      return row
+    }
     throw new Error('the expired call must not allocate a new owner')
+  },
+  recordPrivateRootChildSandbox: async (input: any) => {
+    row = { ...row, sandbox: { digest: digest(11), value: input.sandbox } }
+    return row
   },
   recordPrivateRootChildCleanup: async (input: any) => {
     step('record-cleanup')
@@ -100,18 +120,48 @@ mock.module('../src/internal/activation-admission-store.js', () => ({
     row = undefined
   },
 }))
-mock.module('../src/internal/linux-rootless-backend.js', () => ({
-  ...linux,
-  normalizePrivateLinuxOwnerStateAllocationIdentity: (value: unknown) => value,
-  normalizePrivateLinuxSealedOwnerIdentity: (value: unknown) => value,
-  normalizePrivateLinuxConfirmedEnforcementReceipt: (value: unknown) => value,
-  normalizePrivateLinuxPreparedOwnerIdentity: () => {},
-  normalizePrivateLinuxOwnerStateReleaseReceipt: (value: unknown) => value,
-  cancelPrivateLinuxOwnerStateAllocation: async () => {
+mock.module('../src/internal/execution-backend.js', () => ({
+  ...execution,
+  privateExecutionBackendKind: () => 'linux',
+  planPrivateExecutionOwnerStateAllocation: async (_backend: unknown, input: any) => ({
+    ...input,
+    digest: digest(8),
+  }),
+  sealPrivateExecutionOwner: async (_backend: unknown, plan: any, owner: any) => ({
+    identity: {
+      kind: 'private-linux-sealed-owner/1',
+      ownerStateAllocationDigest: owner.digest,
+      runId: plan.plan.runId,
+      deadlineUnixMs: plan.plan.limits.deadlineUnixMs,
+    },
+  }),
+  admitPrivateExecutionOwner: async () => ({
+    stdout: Readable.from([Buffer.from('untrusted success')]),
+    stderr: Readable.from([]),
+    completion: Promise.resolve({ signal: null }),
+    evidence: Promise.resolve({}),
+    terminationReason: Promise.resolve(stopReason),
+    enforcement: Promise.resolve({
+      ownerDigest: digest(12),
+      stopReason,
+      exitCode: 17,
+      signal: null,
+    }),
+    closeInput: async () => {},
+  }),
+  recoverPrivateExecutionFence: async () => backend.recoverFence(),
+  privateExecutionOwnerAllocationDigest: (value: any) =>
+    value.ownerStateAllocationDigest ?? value.digest,
+  normalizePrivateExecutionOwnerStateAllocationIdentity: (value: unknown) => value,
+  normalizePrivateExecutionSealedOwnerIdentity: (value: unknown) => value,
+  normalizePrivateExecutionConfirmedEnforcementReceipt: (value: unknown) => value,
+  privateExecutionPreparedOwnerDigest: () => digest(12),
+  normalizePrivateExecutionOwnerStateReleaseReceipt: (value: unknown) => value,
+  cancelPrivateExecutionOwnerStateAllocation: async () => {
     step('cancel-unused-owner')
     return { stopReason: 'cancelled' }
   },
-  releasePrivateLinuxOwnerState: async () => {
+  releasePrivateExecutionOwnerState: async () => {
     step('release-owner-state')
     if (failAfterPhysicalRelease) {
       failAfterPhysicalRelease = false
@@ -119,6 +169,10 @@ mock.module('../src/internal/linux-rootless-backend.js', () => ({
     }
     return { digest: digest(9) }
   },
+}))
+mock.module('../src/internal/input-capture.js', () => ({
+  ...capture,
+  capturePrivateInput: () => ({ close: () => step('close-input') }),
 }))
 
 const { executePrivateContainedEffect } = await import(
@@ -184,6 +238,7 @@ row = {
   sandbox: {
     digest: digest(11),
     value: {
+      kind: 'private-linux-sealed-owner/1',
       ownerStateAllocationDigest: priorOwnerAllocation.digest,
       runId: `effect-${identity.slice(7, 47)}`,
       deadlineUnixMs,
@@ -246,6 +301,7 @@ row = {
   sandbox: {
     digest: digest(15),
     value: {
+      kind: 'private-linux-sealed-owner/1',
       ownerStateAllocationDigest: recoveryOwner.digest,
       runId: `effect-${recoveryIdentity.slice(7, 47)}`,
       deadlineUnixMs: input.parent.intent.deadlineUnixMs,
@@ -308,5 +364,32 @@ assert.ok(events.includes('release-owner-state'))
 assert.ok(events.includes('close-owner'))
 assert.ok(!events.includes('recover-fence'))
 assert.equal(row, undefined)
+
+// An authentic fence can carry a non-terminal reason without throwing. Keep
+// that reason observable while refusing to promote payload output to success.
+dispatch = true
+for (const reason of ['setup_failed', 'accounting_failed', 'recovered', 'memory_limit']) {
+  events.length = 0
+  stopReason = reason
+  const failures: unknown[] = []
+  const deadline = Date.now() + 30_000
+  const result = await executePrivateContainedEffect({
+    ...input,
+    parent: { ...input.parent, intent: { ...input.parent.intent, deadlineUnixMs: deadline } },
+    parentDeadlineUnixMs: deadline,
+    onFailure(phase: string, error: any) {
+      failures.push({ phase, code: error.code })
+      throw new Error('observer failure must not affect settlement')
+    },
+  } as any)
+  assert.equal(result.status, 'failed')
+  assert.equal((result as any).code, 'UNCERTAIN')
+  assert.deepEqual(failures, [
+    { phase: 'settlement', code: `CONTAINED_EFFECT_${reason.toUpperCase()}` },
+  ])
+  assert.equal(row, undefined)
+  assert.ok(events.includes('close-owner'))
+  assert.ok(events.includes('close-input'))
+}
 
 process.stdout.write('contained effect deadline/prior-owner ordering checks passed\n')

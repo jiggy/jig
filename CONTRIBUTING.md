@@ -23,6 +23,42 @@ applicable path's terms. Include third-party provenance and required notices.
 
 ## Development shell
 
+### macOS
+
+Use **Bun 1.4.2**, Node 22 or newer, and Just 1.43.1. The Mac candidate's
+build checks the exact Bun version; the Linux Nix shell below pins a different
+qualified runtime and is not the Mac setup path.
+
+With an older Bun installation, install the pinned version using Bun's
+[official installer](https://bun.sh/docs/installation):
+
+```sh
+curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
+export PATH="$HOME/.bun/bin:$PATH"
+bun --version # must print 1.4.2
+export JIG_AUTHORING_NODE_PATH="$(node -p 'process.execPath')"
+bun i
+just jig::build
+./packages/jig/bin/jig --version
+```
+
+This builds and runs Jig directly from the checkout; no npm installation of
+Jig is needed. To use that build in another project, add the checkout's launcher
+directory to `PATH` before changing directories:
+
+```sh
+export PATH="$PWD/packages/jig/bin:$PATH"
+cd /path/to/your/project
+jig --help
+```
+
+Run installation and build commands from the repository root. Bun 1.1.6 cannot discover the
+nested Flow workspace pattern and reports `semantic-router-flow` as missing,
+even though it exists in `examples/software-factory/flows/router`. Upgrade
+Bun; do not remove that workspace or install it from the registry.
+
+### Linux with Nix
+
 With Nix and direnv installed and direnv hooked into your shell, enter the
 repository and approve its environment:
 

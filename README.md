@@ -38,7 +38,7 @@ annual revenue are free. Larger groups need company coverage for operational
 use. [Jig's prices](PRICING.md) buy permanent rights to covered releases across
 applications, including twelve months of new official releases.
 
-Install the developer alpha on a [supported Linux host](docs/jig/guide/index.md#supported-host):
+Install the developer alpha on a [supported Linux or Mac host](docs/jig/guide/index.md#supported-host):
 
 ```sh
 npm install --global @jigging/jig@alpha

@@ -36,7 +36,7 @@ import {
   privateCaptureAttachments,
   privateReadOperatorFile,
   sha256,
-} from './internal/linux-file-input.js'
+} from './internal/file-input.js'
 import { privateProfileSpan } from './internal/private-profile.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
@@ -1043,7 +1043,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         delivery = await runtime.host.delivery!.publish(
           record,
           !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
-            ? files.outputDirectory?.fd
+            ? files.output
             : undefined,
           runtime.signal,
         )

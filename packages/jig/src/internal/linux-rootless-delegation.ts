@@ -91,6 +91,7 @@ export interface PrivateRootlessLinuxDelegationDependencies {
     directory: string,
     environment: NodeJS.ProcessEnv,
     commandLifetimeMs: number,
+    signal?: AbortSignal,
   ) => Promise<PrivateRootlessLinuxReexecution>
 }
 
@@ -120,6 +121,7 @@ export async function acquireOrReexecutePrivateRootlessLinux(
   input: {
     readonly commandLifetimeMs?: number
     readonly commandArguments?: readonly string[]
+    readonly signal?: AbortSignal
     readonly dependencies?: PrivateRootlessLinuxDelegationDependencies
   } = {},
 ): Promise<PrivateRootlessLinuxDelegation> {
@@ -170,6 +172,7 @@ export async function acquireOrReexecutePrivateRootlessLinux(
       directory,
       environment,
       commandLifetimeMs,
+      input.signal,
     )
   } catch {
     throw new PrivateRootlessLinuxAcquisitionError()
@@ -376,6 +379,7 @@ export async function reexecutePrivateRootlessLinuxCommand(
   environment: NodeJS.ProcessEnv,
   startupTimeoutMs = STARTUP_TIMEOUT_MS,
   commandLifetimeMs = COMMAND_LIFETIME_MS,
+  signal?: AbortSignal,
 ): Promise<PrivateRootlessLinuxReexecution> {
   if (
     !UNIT.test(unit) ||
@@ -388,10 +392,14 @@ export async function reexecutePrivateRootlessLinuxCommand(
   ) {
     throw new Error('invalid transient scope timing policy')
   }
+  signal?.throwIfAborted()
   const controlPath = await resolveControl()
   const socketPath = `jig-rootless-acquisition-${randomBytes(16).toString('hex')}`
   const token = randomBytes(32).toString('hex')
   const ready = readinessServer(socketPath, token)
+  const interrupt = () => ready.requestInterrupt()
+  signal?.addEventListener('abort', interrupt, { once: true })
+  if (signal?.aborted) interrupt()
   const lifetimeTimer = `${unit.slice(0, -'.scope'.length)}-lifetime`
   const controlEnvironment = { ...environment }
   let child: ReturnType<typeof spawn> | undefined
@@ -470,6 +478,7 @@ export async function reexecutePrivateRootlessLinuxCommand(
       signal: outcome.signal,
     })
   } finally {
+    signal?.removeEventListener('abort', interrupt)
     try {
       await ready.close()
     } finally {
@@ -783,6 +792,7 @@ function readinessServer(
   readonly listening: Promise<Server>
   readonly acknowledged: Promise<boolean>
   readonly lifetimeEnded: Promise<void>
+  readonly requestInterrupt: () => void
   readonly close: () => Promise<void>
 } {
   let resolveAcknowledged!: (value: boolean) => void
@@ -790,6 +800,7 @@ function readinessServer(
   let settled = false
   let lifetimeSettled = false
   let lifetimeSocket: Socket | undefined
+  let interruptionRequested = false
   const acknowledged = new Promise<boolean>((resolve) => {
     resolveAcknowledged = resolve
   })
@@ -810,6 +821,7 @@ function readinessServer(
         lifetimeSocket = socket
         resolveAcknowledged(true)
         socket.write('ready\n')
+        if (interruptionRequested) socket.write('interrupt\n')
       } else if (Buffer.byteLength(input) >= 65) {
         socket.destroy()
       }
@@ -832,6 +844,11 @@ function readinessServer(
     listening,
     acknowledged,
     lifetimeEnded,
+    requestInterrupt: () => {
+      if (interruptionRequested) return
+      interruptionRequested = true
+      lifetimeSocket?.write('interrupt\n')
+    },
     close: async () => {
       if (!settled) {
         settled = true
@@ -862,14 +879,27 @@ async function acknowledgeReady(marker: DelegationMarker, delegatedCgroup: strin
     socket.once('connect', () => socket.write(`${marker.token}\n`))
     socket.on('data', (chunk) => {
       input += chunk
-      if (input === 'ready\n' && !acknowledged) {
-        acknowledged = true
-        clearTimeout(timeout)
-        retainedLifetimeSockets.add(socket)
-        socket.unref()
-        resolve()
-      } else if (Buffer.byteLength(input) >= 7) {
+      if (Buffer.byteLength(input) > 32) {
         socket.destroy(new Error('invalid rootless acquisition acknowledgement'))
+        return
+      }
+      for (let end = input.indexOf('\n'); end !== -1; end = input.indexOf('\n')) {
+        const frame = input.slice(0, end)
+        input = input.slice(end + 1)
+        if (!acknowledged && frame === 'ready') {
+          acknowledged = true
+          clearTimeout(timeout)
+          retainedLifetimeSockets.add(socket)
+          socket.unref()
+          resolve()
+        } else if (acknowledged && frame === 'interrupt') {
+          // The authenticated outer command requests cooperative Jig cleanup.
+          // Closing this channel would instead trigger the emergency scope kill.
+          process.kill(process.pid, 'SIGTERM')
+        } else {
+          socket.destroy(new Error('invalid rootless acquisition acknowledgement'))
+          return
+        }
       }
     })
     socket.once('error', (error) => {
@@ -936,6 +966,7 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
     directory: string,
     environment: NodeJS.ProcessEnv,
     commandLifetimeMs: number,
+    signal?: AbortSignal,
   ) =>
     reexecutePrivateRootlessLinuxCommand(
       managerPath,
@@ -945,6 +976,7 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
       environment,
       STARTUP_TIMEOUT_MS,
       commandLifetimeMs,
+      signal,
     ),
 })
 

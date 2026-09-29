@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { clearTimeout, setTimeout } from 'node:timers'
 import {
   FiniteAcpFrames,
@@ -20,15 +21,15 @@ import {
   type ResolvedChannelContract,
 } from '../run/channels.js'
 import type { PrivateAcpAgentRuntime } from './acp-agent-provider.js'
+import type {
+  PrivateExecutionComponentProcess,
+  PrivateExecutionConfirmedEnforcementReceipt,
+} from './execution-backend.js'
 import {
   PRIVATE_FINITE_ACP_LIMITS,
   PrivateFiniteAcpPolicy,
   PrivateFiniteAcpPolicyError,
 } from './finite-acp-policy.js'
-import type {
-  PrivateLinuxComponentProcess,
-  PrivateLinuxConfirmedEnforcementReceipt,
-} from './linux-rootless-backend.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', { fatal: true })
@@ -76,7 +77,7 @@ export interface PrivateFiniteAcpEndpoints {
 
 /** Data-plane seam only. The caller must admit, own, fence and release the process. */
 export async function runPrivateFiniteAcpResource(
-  component: PrivateLinuxComponentProcess,
+  component: PrivateExecutionComponentProcess,
   runtime: PrivateAcpAgentRuntime,
   endpoints: PrivateFiniteAcpEndpoints,
   signal: AbortSignal,
@@ -87,11 +88,14 @@ export async function runPrivateFiniteAcpResource(
     readonly credentialBootstrap?: Uint8Array
   },
 ): Promise<{
-  readonly fence: PrivateLinuxConfirmedEnforcementReceipt
+  readonly fence: PrivateExecutionConfirmedEnforcementReceipt
   readonly closed: boolean
   readonly sessionId?: string
 }> {
   const local = new AbortController()
+  const enforcement = component.enforcement.then(
+    (receipt): PrivateExecutionConfirmedEnforcementReceipt => receipt,
+  )
   const stopped = (): void => local.abort(signal.reason)
   const policy = new PrivateFiniteAcpPolicy({
     maxTurns,
@@ -189,13 +193,25 @@ export async function runPrivateFiniteAcpResource(
           },
         }
       }
+      if (
+        component.owner.kind === 'private-macos-prepared-owner/1' &&
+        ['session/new', 'session/load'].includes(accepted.method as string)
+      ) {
+        native = {
+          ...native,
+          params: {
+            ...(native.params as JsonObject),
+            cwd: join(component.owner.owner.allocation.directory, 'data', 'work'),
+          },
+        }
+      }
       await write(native)
     }
     frames.finish()
     policy.assertSettled()
     await writes
     await component.closeInput()
-    const natural = await within(component.enforcement, CLOSE_GRACE_MS, local.signal)
+    const natural = await within(enforcement, CLOSE_GRACE_MS, local.signal)
     if (natural === undefined) {
       local.signal.throwIfAborted()
       closed = true
@@ -281,11 +297,11 @@ export async function runPrivateFiniteAcpResource(
     await endpoints.owner.send(endpoints.responses, ready as unknown as JsonValue, local.signal)
     track(requests())
     track(responses())
-    track(component.enforcement)
+    track(enforcement)
     await Promise.all(tasks)
     const sessionId = policy.settledSessionId
     return Object.freeze({
-      fence: await component.enforcement,
+      fence: await enforcement,
       closed,
       ...(sessionId === undefined ? {} : { sessionId }),
     })

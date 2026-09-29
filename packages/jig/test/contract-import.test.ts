@@ -181,7 +181,7 @@ test('imports an exact complete closure from an installed-style symlink without 
     join(root, 'installed/FLOW.contract.json'),
     join(root, 'copied'),
   )
-  expect(await readdir(join(root, 'copied'))).toEqual(['FLOW.contract.json', 'contracts'])
+  expect((await readdir(join(root, 'copied'))).sort()).toEqual(['FLOW.contract.json', 'contracts'])
   expect(await readFile(join(root, 'copied/FLOW.contract.json'), 'utf8')).toBe(descriptor)
   expect(await readFile(join(root, 'copied/contracts/events.json'), 'utf8')).toBe(agreement)
   expect(result).toMatchObject({

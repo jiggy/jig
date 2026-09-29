@@ -728,8 +728,8 @@ Package schema roots use FLOW Schema/0 and therefore declare exactly
 `"$schema": "https://flow.jig.md/schemas/schema-0.json"`. This is a portable
 package rule, not Jig project authoring metadata.
 
-The host launches one Run/0 process from the exact admitted package bytes in a
-rootless Linux envelope. It validates the returned outcome and the complete
+The host launches one Run/0 process from the exact admitted package bytes in
+the selected contained host envelope. It validates the returned outcome and the complete
 result against `FLOW.contract.json` outcomes and its `result` schema. A success is
 published only after the complete process tree is fenced, reaped, and cleaned.
 
@@ -871,8 +871,9 @@ Unicode paths, and nested mounts. Descriptor-relative acquisition prevents
 pathname substitution from changing the selected root. Protected paths and
 resolved mount-source aliases into `/proc`, `/sys`, `/dev`, `/run`, or `.jig`
 are refused. Supported source and destination-parent filesystems
-are ext4, XFS, Btrfs, and tmpfs, with Linux `openat2` and no-replace rename support;
-unsupported semantics have no fallback. These checks exclude a malicious host
+on Linux are ext4, XFS, Btrfs, and tmpfs, with `openat2` and no-replace rename
+support. Qualified Macs use descriptor-relative no-follow acquisition and
+no-replace publication; unsupported semantics have no fallback. These checks exclude a malicious host
 administrator or same-user process, as specified in the security boundary.
 
 Limits are aggregate across input attachments: eight declared attachments
@@ -900,7 +901,8 @@ creates a new submission, not a replay or export-resumption request.
 
 The single writable attachment is initially empty, on a 16 MiB anonymous tmpfs
 inside the completed execution envelope. Its runtime metadata and allocation
-are subject to the scope's aggregate memory ceiling. A trusted descriptor
+are subject to the scope's Linux aggregate memory ceiling or Mac supervised
+limit. A trusted descriptor
 handoff retains this bounded filesystem beyond complete writer fencing and
 execution cleanup. The host validates its final tree before copying: at most
 64 singly linked regular files, 16 MiB logical bytes, and the same entry, depth,
@@ -912,7 +914,7 @@ an existing anchored parent, outside every per-run selected input root and prote
 state. A separate command owner owns destination staging before allocation,
 survives coordinator failure, and removes unpublished staging without another
 invocation. Output storage, its bounded read buffer, and destination copies
-remain accounted for after the Run cgroup is removed; see the security ceilings.
+remain bounded after the Run execution owner is removed; see the security ceilings.
 
 Publication uses one no-replace atomic directory rename. Directories have mode
 `0700`, files `0600`; empty directories and source permissions are not preserved.
@@ -1002,12 +1004,13 @@ compromised host administrator, same-user process, runtime or containment tool.
 
 ### Containment and lifetime
 
-The direct alpha has one Linux rootless containment mechanism. Before package
+The direct alpha has a Linux rootless containment mechanism and a qualified
+native Mac mechanism. On Linux, before package
 bytes execute, it establishes one Run-owned cgroup and configures aggregate
 memory, PID, and CPU limits. The same pre-exec path then enters isolated user,
 mount, PID, IPC, UTS, cgroup, and network namespaces.
 
-Package code receives:
+On Linux, package code receives:
 
 - the admitted package tree, read-only;
 - the root's immutable read attachments and optional bounded empty output;
@@ -1016,7 +1019,7 @@ Package code receives:
 - only the minimal read-only process and device views required by the pinned
   Bun runtime.
 
-It does not receive the host environment, network, host process tree, writable
+On Linux it does not receive the host environment, network, host process tree, writable
 cgroup controls, general devices, inherited descriptors, project source,
 `.jig`, or host-control channels.
 
@@ -1044,8 +1047,8 @@ FLOW skills become bounded instruction text only. No Agent implementation can
 widen the Flow's exact admitted child slots, and none creates a public provider
 registry or SPI.
 
-Dependency preparation uses the same ownership, cgroup, filesystem, process,
-and cleanup boundary. Only Jig's fixed installer and worker execute there;
+Dependency preparation uses the selected host's ownership, filesystem,
+process, and cleanup boundary. Only Jig's fixed installer and worker execute there;
 package source is handled as data and lifecycle scripts are disabled. That
 trusted preparation process may inherit host networking long enough to fetch
 the validated lock from the fixed registry, or perform explicitly permitted
@@ -1056,10 +1059,23 @@ CPU throttling is not a deadline, so the trusted owner also enforces a hard
 wall-clock limit. Root Runs default to 30 seconds; the installed CLI accepts a
 positive integer duration with `ms`, `s`, `m`, or `h`, up to 24 hours. This
 deadline begins with the accepted root Run. Project acquisition precedes it,
-and mandatory fencing and cleanup may settle afterward. Every completion,
-failure, session close, and coordinator loss kills the whole cgroup, waits
-until it is unpopulated, removes its resources, and surfaces cleanup failure.
-There is no weaker fallback path.
+and mandatory fencing and cleanup may settle afterward. On Linux, every
+completion, failure, session close, and coordinator loss kills the whole
+cgroup, waits until it is unpopulated, removes its resources, and surfaces
+cleanup failure. There is no weaker fallback path.
+
+On qualified Macs, a private launchd guardian establishes an exclusive
+resource coalition and a restrictive sandbox before package bytes execute.
+The operator needs no `sudo`, helper installation, or managed execution
+account. Each scope receives only its projected read-only files, private
+writable storage, selected network policy, and its authenticated Run channel;
+unselected file descriptors and Mach rights are closed before execution.
+Cancellation, deadline, coordinator loss, and recovery fence the complete
+owned coalition and confirm storage cleanup before reporting settlement.
+CPU, memory, and process limits use supervised sampling and termination rather
+than Linux cgroup hard quotas, so short overshoot is possible. The qualified
+profiles are Intel Darwin 23.4.0 build 23E224 and Intel or Apple Silicon
+Darwin 24.6.0 build 24G830; other builds fail closed until qualified.
 
 Containment and system-management executables default to `/usr/bin`, `/bin`, and the NixOS system profile
 `/run/current-system/sw/bin`. The operator may select Bubblewrap through an
@@ -1119,10 +1135,11 @@ The direct-alpha project implementation must prove at least:
     redispatch or invented success.
 12. Session close linearizes with in-flight operations, rejects new work,
     settles or fences live Runs, and releases exclusive project ownership.
-13. Hostile descendants cannot escape aggregate resource limits, namespace or
+13. Hostile descendants cannot escape the selected host's process ownership,
     filesystem isolation, deadline enforcement, cancellation, or whole-tree
-    cleanup.
-14. Repeated Runs leave no process, cgroup, scratch, or private-device residue.
+    cleanup. Linux enforces hard aggregate resource limits; Mac reports
+    supervised limit overshoot rather than claiming hard quotas.
+14. Repeated Runs leave no process, owner state, scratch, or private-device residue.
 15. Direct-Flow and Binding child calls resolve only exact same-generation Flow
     or bounded Binding targets, receive their own admitted settings and routes and empty attachments,
     cannot exceed the parent deadline, and leave no separately addressable

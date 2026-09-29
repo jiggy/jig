@@ -92,6 +92,9 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 ## Verification
 
+- Synthetic SDK subprocesses use the running test executable, not ambient PATH
+  discovery, so protocol evidence stays bound to the selected Bun runtime.
+
 - The build clears only generated `dist/` before compiling, so removed source
   cannot survive in the packed runtime or declaration files.
 

@@ -53,8 +53,9 @@ the operator's authority and execution ownership intact.
 - `bun test packages/jig/test/markdown-parser.test.ts packages/jig/test/markdown-runtime.test.ts packages/jig/test/markdown-worker.test.ts`
 - Worker tests build current source, exchange ordinary FLOW/0 messages and
   validate the actual native Agent response-schema profile without a provider.
-- The installed public-CLI regression is gated by `JIG_LINUX_ROOTLESS_HOSTILE=1`;
-  run it only on the provisioned proof host. It reuses the canonical regular
+- The installed public-CLI regression runs on the provisioned Linux proof host
+  with `JIG_LINUX_ROOTLESS_HOSTILE=1`, or the qualified rootless Mac with
+  `JIG_MACOS_PROCESS_TEST=1`. It reuses the canonical regular
   `.tgz` from `JIG_PACKAGE_ARCHIVE` when supplied; otherwise build the Jig
   package first so the regression can pack its current generated artifacts.
   This gate proves Markdown's Agent-admission requirement and Agent-free code

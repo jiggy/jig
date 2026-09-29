@@ -20,13 +20,13 @@ export function validateProjectPath(path: unknown, label: string): asserts path 
     throw new TypeError(`${label} must be a project-relative slash path`)
   }
   assertUnicodeScalarString(path, label)
+  if (encoder.encode(path).byteLength > MAX_PROJECT_PATH_BYTES) {
+    throw new TypeError(`${label} exceeds ${MAX_PROJECT_PATH_BYTES} UTF-8 bytes`)
+  }
   if (!isNfc15_1(path)) throw new TypeError(`${label} must be Unicode 15.1 NFC`)
   const segments = path.split('/')
   if (segments.length > MAX_PROJECT_PATH_SEGMENTS) {
     throw new TypeError(`${label} exceeds ${MAX_PROJECT_PATH_SEGMENTS} segments`)
-  }
-  if (encoder.encode(path).byteLength > MAX_PROJECT_PATH_BYTES) {
-    throw new TypeError(`${label} exceeds ${MAX_PROJECT_PATH_BYTES} UTF-8 bytes`)
   }
   for (const segment of segments) {
     if (segment.length === 0 || segment === '.' || segment === '..') {

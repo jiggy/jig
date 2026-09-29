@@ -1,11 +1,12 @@
 import { describe, expect, setDefaultTimeout, spyOn, test } from 'bun:test'
 import { createHash } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 import {
   chmod,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   rename,
   rm,
   stat,
@@ -14,7 +15,9 @@ import {
 } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { main, privateCliPrepareArguments } from '../src/cli.js'
+import { CheckError } from '../src/diagnostics.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -52,8 +55,6 @@ import {
   submitPrivateRootRun,
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
-import { main, privateCliPrepareArguments } from '../src/cli.js'
-import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
@@ -64,6 +65,7 @@ import {
   encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../src/internal/project-local-lock.js'
+import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
 
@@ -580,7 +582,115 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  for (const scenario of ['pending', 'throws'] as const) {
+  test('root controller consumes a durable terminal when pending-work reacquisition loses the race', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    let executions = 0
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      controller = await attachPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        coordinator,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          executions++
+          const terminal = successTerminal({ accepted: true })
+          await settleExecution(fixture, owner, runId, terminal)
+          await closePrivateRootExecution({
+            coordinator: owner,
+            projectRoot: fixture.root,
+            runId,
+            terminal,
+          })
+          // Model a stale pending-work observation reaching the real
+          // reacquisition boundary after another task committed completion.
+          await reacquirePrivateRootExecutionWork({
+            coordinator: owner,
+            projectRoot: fixture.root,
+            packageStoreRoot: fixture.store,
+            runId,
+          })
+          throw new Error('terminal reacquisition unexpectedly succeeded')
+        },
+      })
+      const { runId } = await controller.administration.startRun({
+        submissionId: 'terminal-race',
+        target: { kind: 'flow', path: 'flows/run' },
+        input: { value: 'first' },
+      })
+      await controller.drain()
+      for (let poll = 0; poll < 4; poll++) {
+        expect(await controller.administration.runStatus({ runId })).toMatchObject({
+          runId,
+          state: 'terminal',
+          terminal: { status: 'succeeded', output: { accepted: true } },
+        })
+      }
+      expect(executions).toBe(1)
+      await controller.dispose()
+    } finally {
+      await controller?.dispose().catch(() => undefined)
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('current root work reacquires a transient pending fence without another Run', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    let attempts = 0
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      controller = await attachPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        coordinator,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          attempts++
+          if (attempts === 1) return { state: 'pending', reason: 'fence-unconfirmed' }
+          const terminal = successTerminal({ accepted: true })
+          await settleExecution(fixture, owner, runId, terminal)
+          return {
+            state: 'terminal',
+            run: await closePrivateRootExecution({
+              coordinator: owner,
+              projectRoot: fixture.root,
+              runId,
+              terminal,
+            }),
+          }
+        },
+      })
+      const { runId } = await controller.administration.startRun({
+        submissionId: 'transient-pending-fence',
+        target: { kind: 'flow', path: 'flows/run' },
+        input: { value: 'first' },
+      })
+      await controller.drain()
+      expect(await controller.administration.runStatus({ runId })).toMatchObject({
+        runId,
+        state: 'terminal',
+        terminal: { status: 'succeeded', output: { accepted: true } },
+      })
+      expect(attempts).toBe(2)
+    } finally {
+      await controller?.dispose().catch(() => undefined)
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  for (const scenario of ['pending', 'throws', 'terminal-refusal-without-terminal'] as const) {
     test(`root status exposes ${scenario} settlement without silently rescheduling`, async () => {
       const fixture = await createFixture('ready')
       let coordinator: PrivateProjectCoordinator | undefined
@@ -599,6 +709,9 @@ describe.serial('direct alpha activation store', () => {
           async execute() {
             executions++
             if (scenario === 'throws') throw new Error('private cleanup cause')
+            if (scenario === 'terminal-refusal-without-terminal') {
+              throw new CheckError('invalid', 'RUN_ALREADY_TERMINAL', 'unproved terminal')
+            }
             return { state: 'pending', reason: 'fence-unconfirmed' }
           },
         })
@@ -608,12 +721,15 @@ describe.serial('direct alpha activation store', () => {
           input: { value: 'first' },
         })
         await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+        const settledAttempts = executions
         for (let poll = 0; poll < 4; poll++) {
           const error = await controller.administration.runStatus({ runId }).catch((error) => error)
           expect(error.code).toBe(scenario === 'pending' ? 'PROJECT_BUSY' : 'INTERNAL')
           expect(JSON.stringify(error)).not.toContain('private cleanup cause')
         }
-        expect(executions).toBe(1)
+        if (scenario === 'pending') expect(settledAttempts).toBeGreaterThan(1)
+        else expect(settledAttempts).toBe(1)
+        expect(executions).toBe(settledAttempts)
         expect(
           (
             await loadPrivateRootRunForCoordinator({
@@ -625,21 +741,23 @@ describe.serial('direct alpha activation store', () => {
         ).toBe('spawn-intent')
         // A second admitted root is independent; the first failure does not
         // turn the controller into a global execution lock.
-        await controller.administration.startRun({
-          submissionId: 'independent-settlement',
-          target: { kind: 'flow', path: 'flows/run' },
-          input: { value: 'second' },
-        })
-        await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
-        expect(executions).toBe(2)
+        if (scenario !== 'pending') {
+          await controller.administration.startRun({
+            submissionId: 'independent-settlement',
+            target: { kind: 'flow', path: 'flows/run' },
+            input: { value: 'second' },
+          })
+          await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+          expect(executions).toBe(2)
+        }
         await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
-        expect(executions).toBe(2)
+        expect(executions).toBe(scenario === 'pending' ? settledAttempts : 2)
       } finally {
         await controller?.dispose().catch(() => undefined)
         await coordinator?.dispose()
         await fixture.dispose()
       }
-    })
+    }, scenario === 'pending' ? 75_000 : 60_000)
   }
   test('entrypoint selection uses approval, survives explicit overrides, and refuses a newer admission', async () => {
     const original = await createFixture('ready', 'flow:flows/run --input @job.json --timeout 8m')
@@ -2746,6 +2864,68 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
+  test('retries a transient unconfirmed older fence without creating another Run', async () => {
+    const fixture = await createFixture('ready')
+    let first: PrivateProjectCoordinator | undefined
+    let replacement: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    try {
+      await admit(fixture)
+      first = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const created = await submitReadyRun(fixture, first, 'recover-pending')
+      await first.dispose()
+      first = undefined
+      replacement = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      let attempts = 0
+      controller = await attachPrivateRootAdministrationController({
+        coordinator: replacement,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          attempts++
+          if (attempts === 1) return { state: 'pending', reason: 'fence-unconfirmed' }
+          const terminal = {
+            status: 'lost' as const,
+            code: 'COORDINATOR_LOST' as const,
+            message: 'the prior coordinator disappeared before a proved result',
+          }
+          await checkpoint(fixture, owner, runId, 'provisional', terminal as unknown as JsonValue)
+          await checkpoint(fixture, owner, runId, 'release', { released: true })
+          await checkpoint(fixture, owner, runId, 'admitted', terminal as unknown as JsonValue)
+          return {
+            state: 'terminal',
+            run: await closePrivateRootExecution({
+              coordinator: owner,
+              projectRoot: fixture.root,
+              runId,
+              terminal,
+            }),
+          }
+        },
+      })
+      expect(attempts).toBe(2)
+      expect(await controller.administration.runStatus({ runId: created.run.runId })).toMatchObject(
+        { state: 'terminal', terminal: { status: 'lost' } },
+      )
+      const database = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(database.query('SELECT count(*) AS count FROM root_runs').get()).toEqual({
+          count: 1,
+        })
+      } finally {
+        database.close(true)
+      }
+    } finally {
+      await controller?.dispose()
+      await replacement?.dispose()
+      await first?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('fails closed on current Candidate, Plan, admission, and terminal corruption', async () => {
     const candidate = await createFixture()
     try {
@@ -3482,7 +3662,8 @@ function openSqlite(path: string, mode: 'readonly' | 'readwrite'): any {
     mode === 'readonly'
       ? sqlite.constants.SQLITE_OPEN_READONLY
       : sqlite.constants.SQLITE_OPEN_READWRITE
-  return sqlite.Database.open(path, access | sqlite.constants.SQLITE_OPEN_NOFOLLOW)
+  const visible = join(realpathSync(dirname(path)), basename(path))
+  return sqlite.Database.open(visible, access | sqlite.constants.SQLITE_OPEN_NOFOLLOW)
 }
 
 function json1(value: JsonValue): Uint8Array {

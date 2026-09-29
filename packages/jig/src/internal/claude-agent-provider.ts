@@ -5,15 +5,16 @@ import {
   type PrivateAcpAgentProvider,
   type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
-import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const CLAUDE_CLIENT = 'anthropic-claude-code'
 const DEFAULT_MODEL = 'default'
 const SANDBOX_LAUNCHER_PATH = '/agent/claude-agent-launcher.js'
 const SANDBOX_ADAPTER_PATH = '/agent/claude-agent-acp.js'
-const HOST_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
+const HOST_CERTIFICATES_PATH =
+  process.platform === 'darwin' ? '/etc/ssl/cert.pem' : '/etc/ssl/certs/ca-certificates.crt'
 const SANDBOX_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
 const MAX_TOKEN_BYTES = 16 * 1024
 const MAX_BASE_URL_CHARACTERS = 4_096

@@ -1,5 +1,4 @@
 import { type BigIntStats, constants } from 'node:fs'
-import { lstat, mkdir, open } from 'node:fs/promises'
 import {
   normalizeProjectApplyRequest,
   normalizeProjectPlanRequest,
@@ -10,7 +9,7 @@ import {
   type ProjectPlanResult,
   type ProjectSession,
 } from '../administration/project.js'
-import type { RootRunTerminal } from '../administration/root.js'
+import { RootAdministrationError, type RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
 import { validateJson1 } from '../json.js'
 import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
@@ -53,12 +52,19 @@ import {
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
 import { prepareContractGeneration } from './contract-generation.js'
 import { captureDependencyFlows } from './dependency-flows.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
+import {
+  statPrivateFile as lstat,
+  mkdirPrivateFile,
+  openPrivateFile as open,
+  privateChildLocation,
+} from './descriptor-files.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
+import type { PrivateExecutionBackend } from './execution-backend.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
-import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
 import {
   captureStoredPackage,
   type PackageArtifactRef,
@@ -77,14 +83,17 @@ import {
   attachPrivateRootAdministrationController,
   type PrivateRootAdministrationController,
 } from './root-administration-controller.js'
-import { executePrivateRootRunLaunch } from './root-run-controller.js'
+import {
+  executePrivateRootRunLaunch,
+  type PrivateRootExecutionFailurePhase,
+} from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
 import type { PrivateRunChannelOutput } from './run-channels.js'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
   readonly expectedAdmissionDigest?: string
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
   readonly httpGrants?: PrivateHttpGrants | undefined
@@ -104,6 +113,7 @@ export async function recoverPrivateCheckpointRun(
   host: PrivateProjectSessionHost,
 ): Promise<RootRunTerminal> {
   const owner = await openPrivateProjectSessionOwner(selected.project)
+  let store: PreparedPackageStore | undefined
   try {
     if (
       String(owner.root.information.dev) !== selected.device ||
@@ -117,9 +127,10 @@ export async function recoverPrivateCheckpointRun(
     })
     if (run.coordinatorEpoch !== selected.epoch || run.coordinatorEpoch >= owner.coordinator.epoch)
       throw new Error('recovery cannot execute a current or substituted Run')
+    store = await preparePackageStore(owner)
     const settled = await executePrivateRootRunLaunch({
       projectRoot: selected.project,
-      packageStoreRoot: await preparePackageStore(owner),
+      packageStoreRoot: store.root,
       runId: selected.runId,
       coordinator: owner.coordinator,
       installedSupport: host.installedBunSupport,
@@ -138,7 +149,11 @@ export async function recoverPrivateCheckpointRun(
         }
       : terminal
   } finally {
-    await owner.dispose()
+    try {
+      await store?.dispose()
+    } finally {
+      await owner.dispose()
+    }
   }
 }
 
@@ -146,19 +161,38 @@ export async function recoverPrivateCheckpointRun(
 export async function openPrivateProjectSession(input: {
   readonly directory: string
   readonly host: PrivateProjectSessionHost
+  readonly onAcquisitionFailure?: (evidence: {
+    readonly phase: 'owner' | 'package-store' | 'preparation-recovery' | 'root-recovery'
+    readonly causes: readonly string[]
+  }) => void
+  readonly onOperationFailure?: (evidence: {
+    readonly operation: 'plan' | 'apply'
+    readonly causes: readonly string[]
+  }) => void
+  readonly onRootExecutionFailure?: (evidence: {
+    readonly phase: PrivateRootExecutionFailurePhase
+    readonly causes: readonly string[]
+  }) => void
 }): Promise<ProjectSession> {
   let owner: PrivateProjectSessionOwner | undefined
   let roots: PrivateRootAdministrationController | undefined
+  let packageStore: PreparedPackageStore | undefined
   let projectIdentityLost = false
   let closeForIdentityLoss: (() => void) | undefined
+  let acquisitionPhase: 'owner' | 'package-store' | 'preparation-recovery' | 'root-recovery' =
+    'owner'
   try {
     owner = await openPrivateProjectSessionOwner(input.directory)
-    const packageStoreRoot = await preparePackageStore(owner)
+    acquisitionPhase = 'package-store'
+    packageStore = await preparePackageStore(owner)
+    const packageStoreRoot = packageStore.root
+    acquisitionPhase = 'preparation-recovery'
     await recoverPrivateBunPreparationOwner({
       projectRoot: owner.root.requestedPath,
       coordinator: owner.coordinator,
       backend: input.host.backend,
     })
+    acquisitionPhase = 'root-recovery'
     roots = await attachPrivateRootAdministrationController({
       coordinator: owner.coordinator,
       projectRoot: owner.root.requestedPath,
@@ -186,20 +220,40 @@ export async function openPrivateProjectSession(input: {
             ? {}
             : { channelOutput: input.host.channelOutput }),
           signal,
+          onFailure: (phase, error) => {
+            try {
+              input.onRootExecutionFailure?.({ phase, causes: closedTestErrorCauses(error) })
+            } catch {
+              // Optional closed test evidence cannot change execution.
+            }
+          },
         }),
       onProjectIdentityLoss: () => {
         projectIdentityLost = true
         closeForIdentityLoss?.()
       },
     })
-    const created = createSession(owner, roots, packageStoreRoot, input.host)
+    const created = createSession(owner, roots, packageStore, input.host, input.onOperationFailure)
     closeForIdentityLoss = created.projectIdentityLost
     if (projectIdentityLost) created.projectIdentityLost()
     return created.session
   } catch (error) {
+    try {
+      input.onAcquisitionFailure?.({
+        phase: acquisitionPhase,
+        causes: closedTestErrorCauses(error),
+      })
+    } catch {
+      // Optional closed diagnostics cannot replace acquisition or cleanup.
+    }
     const failures: unknown[] = [error]
     try {
       await roots?.dispose()
+    } catch (cleanup) {
+      failures.push(cleanup)
+    }
+    try {
+      await packageStore?.dispose()
     } catch (cleanup) {
       failures.push(cleanup)
     }
@@ -218,15 +272,65 @@ export async function openPrivateProjectSession(input: {
   }
 }
 
+/** Bounded host-test evidence. Never retain messages, paths, or rejected values. */
+function closedTestErrorCauses(error: unknown): readonly string[] {
+  const result: string[] = []
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 3 || result.length >= 8 || !(value instanceof Error)) return
+    const name = /^[A-Za-z][A-Za-z0-9]{0,79}$/.test(value.name) ? value.name : 'Error'
+    const code = (value as Error & { code?: unknown }).code
+    const closedCode =
+      typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)
+        ? code
+        : closedNativeTestCause(value)
+    result.push(
+      closedCode === undefined ? name : `${name}:${closedCode}`,
+    )
+    if (value instanceof AggregateError) {
+      for (const nested of value.errors.slice(0, 4)) visit(nested, depth + 1)
+    }
+    visit(value.cause, depth + 1)
+  }
+  visit(error, 0)
+  return result
+}
+
+function closedNativeTestCause(error: Error): string | undefined {
+  switch (error.message) {
+    case 'macOS control deadline expired':
+      return 'MACOS_CONTROL_DEADLINE'
+    case 'macOS guardian bootstrap failed':
+      return 'MACOS_GUARDIAN_BOOTSTRAP'
+    case 'macOS guardian connection lost':
+      return 'MACOS_GUARDIAN_CONNECTION_LOST'
+    case 'macOS guardian job removal is unconfirmed':
+      return 'MACOS_GUARDIAN_REMOVAL_UNCONFIRMED'
+    case 'macOS prepared ownership does not match':
+      return 'MACOS_PREPARED_OWNER_MISMATCH'
+    case 'native macOS Run was cancelled before admission':
+      return 'MACOS_STARTUP_CANCELLED'
+    default:
+      return error.message.startsWith('macOS guardian ended before readiness (') &&
+        error.message.endsWith(')')
+        ? 'MACOS_GUARDIAN_BEFORE_READINESS'
+        : undefined
+  }
+}
+
 function createSession(
   owner: PrivateProjectSessionOwner,
   roots: PrivateRootAdministrationController,
-  packageStoreRoot: string,
+  packageStore: PreparedPackageStore,
   host: PrivateProjectSessionHost,
+  onOperationFailure?: (evidence: {
+    readonly operation: 'plan' | 'apply'
+    readonly causes: readonly string[]
+  }) => void,
 ): {
   readonly session: ProjectSession
   readonly projectIdentityLost: () => void
 } {
+  const packageStoreRoot = packageStore.root
   const planningCancellation = new AbortController()
   const operations = new Set<Promise<void>>()
   let state: 'open' | 'closing' | 'closed' = 'open'
@@ -577,6 +681,7 @@ function createSession(
         validateJson1(publicResult)
         return publicResult
       } catch (error) {
+        reportOperationFailure('plan', error)
         throw handleOperationError(error, 'plan')
       } finally {
         preparationBudget?.dispose()
@@ -608,6 +713,7 @@ function createSession(
               },
         )
       } catch (error) {
+        reportOperationFailure('apply', error)
         throw handleOperationError(error, 'apply')
       } finally {
         leave()
@@ -661,6 +767,11 @@ function createSession(
       failures.push(error)
     }
     try {
+      await packageStore.dispose()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
       await owner.dispose()
     } catch (error) {
       failures.push(error)
@@ -687,24 +798,39 @@ function createSession(
     }
     return projectError(error, operation)
   }
+
+  function reportOperationFailure(operation: 'plan' | 'apply', error: unknown): void {
+    try {
+      onOperationFailure?.({ operation, causes: closedTestErrorCauses(error) })
+    } catch {
+      // Optional closed diagnostics cannot replace the operation failure.
+    }
+  }
 }
 
-async function preparePackageStore(owner: PrivateProjectSessionOwner): Promise<string> {
+interface PreparedPackageStore {
+  readonly root: PrivateFileLocation
+  dispose(): Promise<void>
+}
+
+async function preparePackageStore(
+  owner: PrivateProjectSessionOwner,
+): Promise<PreparedPackageStore> {
   await owner.verify()
-  const statePath = `/proc/self/fd/${owner.root.handle.fd}/.jig`
+  const statePath = privateChildLocation(owner.root.handle, '.jig')
   const state = await open(
     statePath,
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   )
   try {
-    const storePath = `/proc/self/fd/${state.fd}/${STORE_DIRECTORY}`
+    const storePath = privateChildLocation(state, STORE_DIRECTORY)
     try {
-      await mkdir(storePath, { mode: 0o700 })
+      await mkdirPrivateFile(storePath)
     } catch (error) {
       if (!hasCode(error, 'EEXIST')) throw error
     }
     await state.sync()
-    const observed = await lstat(storePath, { bigint: true })
+    const observed = await lstat(storePath)
     requireProtectedStore(observed, owner.root.information.dev)
     const store = await open(
       storePath,
@@ -722,11 +848,20 @@ async function preparePackageStore(owner: PrivateProjectSessionOwner): Promise<s
     } finally {
       await store.close()
     }
-  } finally {
+    await owner.verify()
+    let closed = false
+    return Object.freeze({
+      root: storePath,
+      async dispose(): Promise<void> {
+        if (closed) return
+        closed = true
+        await state.close()
+      },
+    })
+  } catch (error) {
     await state.close()
+    throw error
   }
-  await owner.verify()
-  return `/proc/self/fd/${owner.root.handle.fd}/.jig/${STORE_DIRECTORY}`
 }
 
 function requireProtectedStore(information: BigIntStats, projectDevice: bigint): void {
@@ -750,6 +885,12 @@ export function projectError(
   operation: 'acquire' | 'plan' | 'apply',
 ): ProjectAdministrationError {
   if (error instanceof ProjectAdministrationError) return error
+  if (error instanceof RootAdministrationError && error.code === 'PROJECT_BUSY') {
+    return new ProjectAdministrationError(
+      'PROJECT_BUSY',
+      'project changed or is busy; retry the operation',
+    )
+  }
   if (error instanceof CheckError) {
     if (
       error.code === 'COORDINATOR_BUSY' ||

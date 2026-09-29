@@ -13,10 +13,25 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
+import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
 let completed = false
+const installedRuntime =
+  process.platform === 'darwin'
+    ? Object.freeze({
+        package: process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline',
+        version: '1.4.2',
+        revision: '1.4.2+744846f84',
+        sha256: process.arch === 'arm64' ? '35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5' : '2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
+      })
+    : Object.freeze({
+        package: 'bun-linux-x64-baseline',
+        version: '1.3.3',
+        revision: '1.3.3+274e01c73',
+        sha256: 'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+      })
 const expectedInstalledFiles = [
   'LICENSE.md',
   'PRICING.md',
@@ -56,6 +71,9 @@ const expectedInstalledFiles = [
   'libexec/evaluator/project-evaluator-worker.js',
   'libexec/preparation/bun-native-preparation-worker.js',
   'libexec/linux-rootless-supervisor.js',
+  'libexec/macos-native-supervisor.js',
+  'libexec/macos-exec',
+  'libexec/macos-descriptor-bridge.dylib',
   'package.json',
 ].sort()
 
@@ -76,7 +94,7 @@ try {
   )
   await run(
     [
-      'bun',
+      process.execPath,
       'install',
       '--ignore-scripts',
       '--no-progress',
@@ -88,6 +106,7 @@ try {
     consumer,
   )
   const installed = join(consumer, 'node_modules', '@jigging', 'jig')
+  const runtime = join(consumer, 'node_modules', '@oven', installedRuntime.package, 'bin', 'bun')
   const installedFiles = await listFiles(installed)
   const installedManifest = JSON.parse(
     await readFile(join(installed, 'package.json'), 'utf8'),
@@ -117,7 +136,9 @@ try {
   await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.bin')), {
     code: 'ENOENT',
   })
-  assert.deepEqual(installedManifest.dependencies, {
+  assert.deepEqual(installedManifest.optionalDependencies, {
+    '@oven/bun-darwin-x64-baseline': '1.4.2',
+    '@oven/bun-darwin-aarch64': '1.4.2',
     '@oven/bun-linux-x64-baseline': '1.3.3',
   })
   assert.equal(Object.hasOwn(installedManifest, 'private'), false)
@@ -171,9 +192,9 @@ try {
       retained,
     )
   }
-  assert.deepEqual(installedManifest.os, ['linux'])
-  assert.deepEqual(installedManifest.cpu, ['x64'])
-  assert.deepEqual(installedManifest.libc, ['glibc'])
+  assert.deepEqual(installedManifest.os, ['linux', 'darwin'])
+  assert.deepEqual(installedManifest.cpu, ['x64', 'arm64'])
+  assert.equal(Object.hasOwn(installedManifest, 'libc'), false)
   assert.equal(Object.hasOwn(installedManifest, 'scripts'), false)
 
   const executable = join(installed, 'bin', 'jig')
@@ -337,17 +358,13 @@ using FLOW;
     await compiler.exited
   }
 
-  const runtime = join(consumer, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
   const runtimeBytes = await readFile(runtime)
-  assert.equal(
-    createHash('sha256').update(runtimeBytes).digest('hex'),
-    'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
-  )
+  assert.equal(createHash('sha256').update(runtimeBytes).digest('hex'), installedRuntime.sha256)
   const bun = await run([runtime, '--version'], consumer)
-  assert.equal(bun.stdout, '1.3.3\n')
+  assert.equal(bun.stdout, `${installedRuntime.version}\n`)
   assert.equal(bun.stderr, '')
   const revision = await run([runtime, '--revision'], consumer)
-  assert.equal(revision.stdout, '1.3.3+274e01c73\n')
+  assert.equal(revision.stdout, `${installedRuntime.revision}\n`)
   assert.match(
     await readFile(join(installed, 'THIRD_PARTY_NOTICES'), 'utf8'),
     /EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED/,
@@ -390,6 +407,7 @@ using FLOW;
 
   for (const relative of [
     'libexec/linux-rootless-supervisor.js',
+    'libexec/macos-native-supervisor.js',
     'libexec/markdown-runtime.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
@@ -421,7 +439,77 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
 }
 `,
   )
-  await run(['bun', 'smoke.mjs'], consumer)
+  await run([runtime, 'smoke.mjs'], consumer)
+
+  if (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1') {
+    const project = join(consumer, 'macos-greeting')
+    await run([command, 'init', project], consumer)
+    const greetingPath = join(project, 'flows/hello/FLOW.ts')
+    const greeting = await readFile(greetingPath, 'utf8')
+    const scratchGreeting = greeting.replace(
+        '  return { outcome: "done", output: { message: `Hello, ${name}!` } };',
+        '  await Bun.write(`${run.scratch}/greeting.txt`, name);\n' +
+          '  return { outcome: "done", output: { message: `Hello, ${await Bun.file(`${run.scratch}/greeting.txt`).text()}!` } };',
+    )
+    assert.notEqual(scratchGreeting, greeting)
+    await writeFile(greetingPath, scratchGreeting)
+    await run([command, 'review', '--allow-resolution-network', '--yes'], project, {}, 120_000)
+    const result = await run(
+      [command, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada')],
+      project,
+      {},
+      120_000,
+    )
+    assert.deepEqual(JSON.parse(result.stdout), {
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+      outcome: 'done',
+      output: { message: 'Hello, Ada!' },
+      status: 'succeeded',
+    })
+
+    const child = join(project, 'flows/child')
+    await mkdir(child)
+    await writeFile(
+      join(child, 'package.json'),
+      await readFile(join(project, 'flows/hello/package.json')),
+    )
+    await writeFile(
+      join(child, 'FLOW.meta.json'),
+      JSON.stringify({ name: 'child', description: 'Verify isolated child scratch.' }),
+    )
+    await writeFile(join(child, 'FLOW.ts'), [
+      'import { handle } from "@jigging/flow";',
+      'await handle(async (run) => {',
+      '  const inherited = await Bun.file(`${run.scratch}/parent-marker`).exists();',
+      '  await Bun.write(`${run.scratch}/child-marker`, String(run.input));',
+      '  return { outcome: "done", output: { inherited, child: await Bun.file(`${run.scratch}/child-marker`).text() } };',
+      '});',
+    ].join('\n'))
+    await writeFile(greetingPath, [
+      'import { handle } from "@jigging/flow";',
+      'await handle(async (run) => {',
+      '  await Bun.write(`${run.scratch}/parent-marker`, "parent");',
+      '  return run.call({ operationId: "scratch-child", slot: "child", input: run.input });',
+      '});',
+    ].join('\n'))
+    await writeFile(join(project, 'bindings/with-child.ts'), [
+      'import { defineBinding } from "@jigging/jig";',
+      'export default defineBinding({ package: "flows/hello", slots: { child: "flow:flows/child" } });',
+    ].join('\n'))
+    await run(
+      [command, 'review', '--allow-resolution-network', '--allow-authority-changes', '--yes'],
+      project,
+      {},
+      120_000,
+    )
+    const composed = await run(
+      [command, 'run', 'binding:with-child', '--input', JSON.stringify('Ada')],
+      project,
+      {},
+      120_000,
+    )
+    assert.deepEqual(JSON.parse(composed.stdout).output, { inherited: false, child: 'Ada' })
+  }
 
   await writeFile(
     join(consumer, 'smoke.ts'),
@@ -461,7 +549,10 @@ void binding;
     ],
     packageRoot,
   )
-  if (process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+  if (
+    process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+    (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+  ) {
     const project = join(consumer, 'granted-command')
     for (const path of ['flows/check', 'bindings', 'grants', 'libs/flow'])
       await mkdir(join(project, path), { recursive: true })
@@ -695,6 +786,12 @@ void binding;
         environment,
         120000,
       )
+      // This checks composed installed behavior, not the production default deadline.
+      // Use the same explicit operator budget as the native composition fixtures.
+      const agentRunOptions =
+        process.platform === 'darwin' ? ['--timeout', `${MACOS_FIXTURE_RUN_MS}ms`] : []
+      const agentSettlementMs =
+        process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 120000
       const input = JSON.stringify({
         instructions: 'Classify this request: I need help.',
         responseSchema: {
@@ -706,10 +803,10 @@ void binding;
         },
       })
       const completed = await run(
-        [command, 'run', 'binding:agent', '--input', input],
+        [command, 'run', 'binding:agent', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       const answer = JSON.parse(completed.stdout)
       assert.equal(answer.status, 'succeeded')
@@ -718,7 +815,7 @@ void binding;
       assert.doesNotMatch(completed.stdout + completed.stderr, /local-method-test-token/)
       mode = 'malformed'
       await assert.rejects(
-        run([command, 'run', 'binding:agent', '--input', input], agentProject, environment, 120000),
+        run([command, 'run', 'binding:agent', ...agentRunOptions, '--input', input], agentProject, environment, agentSettlementMs),
         /INVALID_RESULT/,
       )
       assert.equal(requests, 2) // One per invocation, including the unsuccessful one.
@@ -795,20 +892,20 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       const admittedDeclaration = await readFile(join(agentProject, 'jig.ts'))
       await writeFile(join(agentProject, 'jig.ts'), 'throw new Error("not admitted");')
       const composed = await run(
-        [command, 'run', 'binding:application', '--input', input],
+        [command, 'run', 'binding:application', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.deepEqual(JSON.parse(composed.stdout).output.structured, { category: 'support' })
       assert.equal(JSON.parse(composed.stdout).status, 'succeeded')
       mode = 'malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'binding:application', '--input', input],
+          [command, 'run', 'binding:application', ...agentRunOptions, '--input', input],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -826,20 +923,20 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'markdown'
       const markdown = await run(
-        [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+        [command, 'run', 'flow:flows/markdown', ...agentRunOptions, '--input', 'null'],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.equal(JSON.parse(markdown.stdout).status, 'succeeded')
       assert.equal(JSON.parse(markdown.stdout).output, 'READY')
       mode = 'markdown-malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+          [command, 'run', 'flow:flows/markdown', ...agentRunOptions, '--input', 'null'],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -876,19 +973,19 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'answer'
       const response = await run(
-        [command, 'run', 'flow:flows/specialist', '--input', input],
+        [command, 'run', 'flow:flows/specialist', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.deepEqual(JSON.parse(response.stdout).output.structured, { category: 'support' })
       mode = 'malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'flow:flows/specialist', '--input', input],
+          [command, 'run', 'flow:flows/specialist', ...agentRunOptions, '--input', input],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -925,7 +1022,7 @@ async function selectArchive(
     return canonical
   }
   await run(
-    packageName !== 'flow-sdk'
+    packageName === 'jig'
       ? ['bun', 'scripts/pack.ts', '--destination', artifacts]
       : ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
     resolve(packageRoot, '..', packageName),

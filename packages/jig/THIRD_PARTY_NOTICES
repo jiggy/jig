@@ -18,14 +18,16 @@ not bundled in the archive.
 EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED
 ------------------------------------------
 
-`@jigging/jig` declares an exact dependency on
-`@oven/bun-linux-x64-baseline@1.3.3`. Package managers obtain that package
-separately; its bytes are not included or bundled in the Jig archive.
+`@jigging/jig` declares exact, platform-selected optional dependencies on
+`@oven/bun-linux-x64-baseline@1.3.3` and
+`@oven/bun-darwin-x64-baseline@1.4.2`. Package managers obtain the matching
+package separately; its bytes are not included or bundled in the Jig archive.
 
 Bun and the third-party components contained in Bun are governed by their
 respective terms:
 
 https://github.com/oven-sh/bun/blob/bun-v1.3.3/LICENSE.md
+https://github.com/oven-sh/bun/blob/bun-v1.4.2/LICENSE.md
 
 yaml 2.9.0
 ----------
@@ -88,7 +90,8 @@ adapter exit. It also registers pending turns before asynchronous prompt setup
 so immediate cancellation waits for and interrupts the correct native turn.
 The adapter waits for the matching native turn-start notification before
 exposing the turn as interruptible; a start reply alone does not establish it.
-See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
+It also accepts Jig’s one-use in-memory ChatGPT token bootstrap so subscription
+credentials need no sandbox-readable file. See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
 note for the correction and removal condition.
 
 Copyright 2025 JetBrains s.r.o.
@@ -120,6 +123,7 @@ runtime-support files.
 
 Jig carries a version-pinned dependency patch preserving failed RPC prompts,
 assistant errors, cancellation, and token limits as distinct ACP results.
+It also invokes Jig's private launcher with the verified Bun interpreter.
 The patch is maintained at `packages/jig/patches/pi-acp@0.0.33.patch` in source;
 the installed bundle includes that correction.
 
@@ -289,11 +293,14 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Unicode 15.1.0 CaseFolding data
+Unicode 15.1.0 case folding and normalization data
 --------------------------------
 
 `src/package/case-fold-15.1.ts` is generated from the C and F mappings in
-Unicode 15.1.0 `CaseFolding.txt`. Unicode data files are licensed under the
+Unicode 15.1.0 `CaseFolding.txt`. `src/package/normalization-data-15.1.ts`
+is generated from `UnicodeData.txt` and `DerivedNormalizationProps.txt`;
+the normalization test fixture retains vectors from `NormalizationTest.txt`.
+Unicode data files are licensed under the
 Unicode License v3 unless a file identifies different terms.
 
 UNICODE LICENSE V3

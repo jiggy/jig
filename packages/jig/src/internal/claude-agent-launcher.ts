@@ -24,6 +24,8 @@ async function main(): Promise<void> {
     bytes.fill(0)
   }
   process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = MAX_OUTPUT_TOKENS
+  if (process.env.JIG_MACOS_AGENT_HOME !== undefined)
+    process.env.CLAUDE_CODE_TMPDIR = process.env.JIG_MACOS_AGENT_HOME
   delete process.env.JIG_CLAUDE_STARTUP_INPUT
   // Bun's private loader override must not select the native client's ABI.
   delete process.env.LD_LIBRARY_PATH

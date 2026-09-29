@@ -4,15 +4,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { main, type PrivateCliOptions } from '../src/cli.js'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
-import { installedBunLocation } from './fixtures/installed-bun-location.js'
-import { qualifyIncidentBrief } from './fixtures/incident-brief-consumer.js'
-import { writeOrdinaryAcpAgent, writeConversationCaller } from './fixtures/ordinary-acp-agent.js'
 import {
   openDeterministicFiniteAcpHost,
   writeDeterministicAcpAgent,
 } from './fixtures/deterministic-acp-agent.js'
+import { qualifyIncidentBrief } from './fixtures/incident-brief-consumer.js'
+import { installedBunLocation } from './fixtures/installed-bun-location.js'
+import { writeConversationCaller, writeOrdinaryAcpAgent } from './fixtures/ordinary-acp-agent.js'
 
-const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
+const proof =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? describe.serial
+    : describe.skip
 
 // The external native peer is deterministic; package, channels, authentication
 // mediation, command owner, containment and cleanup are the production path.
@@ -20,10 +24,10 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
   test(
     'hands off a drafting conversation while an independent worker progresses',
     qualifyIncidentBrief,
-    180_000,
+    300_000,
   )
   test('returns checked text and live updates, rejects malformed work, and settles cancellation', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-finite-acp-proof-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-finite-acp-proof-')))
     const project = join(root, 'project')
     const release = join(root, 'release')
     const key = 'synthetic-finite-acp-only-key'
@@ -49,13 +53,16 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
         recursive: true,
       })
       const executablePath = await realpath(installedBunLocation.executablePath)
-      await mkdir(join(release, 'node_modules/@oven/bun-linux-x64-baseline/bin'), {
+      const runtimePackage =
+        process.platform === 'darwin'
+          ? process.arch === 'arm64'
+            ? 'bun-darwin-aarch64'
+            : 'bun-darwin-x64-baseline'
+          : 'bun-linux-x64-baseline'
+      await mkdir(join(release, `node_modules/@oven/${runtimePackage}/bin`), {
         recursive: true,
       })
-      await symlink(
-        executablePath,
-        join(release, 'node_modules/@oven/bun-linux-x64-baseline/bin/bun'),
-      )
+      await symlink(executablePath, join(release, `node_modules/@oven/${runtimePackage}/bin/bun`))
       const location = {
         releaseRoot: release,
         executablePath,
@@ -148,7 +155,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
             'events',
             '--json',
             '--timeout',
-            '30s',
+            '120s',
           ],
           { ...options, signal: cancellation.signal },
         )
@@ -189,7 +196,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
         expect(stdout).not.toContain(key)
         expect(stderr).not.toContain(key)
         await settledCgroups(before)
-        for (const name of ['private-root-linux-owners', 'private-root-materializations']) {
+        for (const name of ['private-root-owners', 'private-root-materializations']) {
           const entries = await readdir(join(project, '.jig', name))
           expect(entries.filter((entry) => /^(a-|c-|x-|child-)/.test(entry))).toEqual([])
         }
@@ -209,7 +216,7 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
           }),
           '--json',
           '--timeout',
-          '45s',
+          '120s',
         ],
         options,
       )
@@ -272,10 +279,11 @@ proof('ordinary packed ACP Agent with a finite resource', () => {
       if (clean) await rm(root, { recursive: true, force: true })
       else console.error(`Finite ACP proof failed; retained ${root}`)
     }
-  }, 180_000)
+  }, 300_000)
 })
 
 async function cgroups(): Promise<string[]> {
+  if (process.platform === 'darwin') return []
   const path = process.env.AGENT_DELEGATED_CGROUP
   if (!path) throw new Error('The finite ACP proof requires a delegated host')
   return (await readdir(path)).filter((name) => name.startsWith('jig-run-')).sort()
