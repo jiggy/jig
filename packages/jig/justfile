@@ -6,7 +6,7 @@
     just --list
 
 # Build the installed CLI, inert authoring SDK, and private workers
-@build: verify-build-bun clean
+@build: verify-build-bun check-native-support clean
     just --justfile ../flow-sdk/justfile build
     just --justfile ../agent-method/justfile build
     just --justfile ../agent-acp/justfile build
@@ -103,3 +103,17 @@ check: build test
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/finite-acp-lifecycle.test.ts --timeout 180000
     bun test test/native-agent-startup.test.ts --timeout 60000
+
+# Verify checked-in native sources, binaries, recipe and runtime digest agree
+@check-native-support:
+    bun scripts/native-support.mjs check
+
+# Rebuild universal native assets and refresh their manifest and runtime digest
+[macos]
+@build-native-support:
+    bun scripts/native-support.mjs build
+
+# Compare rebuilt bytes using the exact recorded Apple toolchain
+[macos]
+@verify-native-rebuild:
+    bun scripts/native-support.mjs verify-rebuild

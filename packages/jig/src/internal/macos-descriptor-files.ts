@@ -48,7 +48,7 @@ function calls(): Native {
     : join(dirname(modulePath), modulePath.includes('/internal/') ? '../../support/macos-descriptor-bridge.dylib' : '../support/macos-descriptor-bridge.dylib')
   const canonical = realpathSync(bridge)
   const metadata = lstatSync(bridge)
-  if (canonical !== bridge || !metadata.isFile() || metadata.size > 1024 * 1024 || (metadata.mode & 0o022) !== 0 || createHash('sha256').update(readFileSync(bridge)).digest('hex') !== '025fef6db394ca776da58294e93bb98d7484962bc3718a3c434a980a069570ca')
+  if (canonical !== bridge || !metadata.isFile() || metadata.size > 1024 * 1024 || (metadata.mode & 0o022) !== 0 || createHash('sha256').update(readFileSync(bridge)).digest('hex') !== '0c175f5a4cf860730f0819a705ab0745d5e0322a2ae38af45e07d70b8cb9d38f')
     throw new Error('native descriptor bridge identity is invalid')
   const declarations = {
     openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },

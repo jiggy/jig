@@ -45,9 +45,23 @@ setup or package-held authority.
 
 - Follow `../src/internal/AGENTS.md` for the host's containment and authority
   contracts. Keep the native code small and use SDK declarations where available.
+- `../scripts/native-support.mjs` owns the canonical two-architecture Apple
+  build. `just jig::build-native-support` regenerates both binaries, their
+  `macos-native-build.json` provenance manifest, and both descriptor digest pins.
+  Review all of these together. The manifest records source/recipe/output hashes
+  and the compiler, linker and SDK; it is a consistency record, not an attestation.
 - Private ABI changes require native executable evidence on the selected kernel.
 
 ## Verification
+
+- Every ordinary Jig build runs `just jig::check-native-support` before cleaning
+  output. This portable check rejects stale sources, recipes, binaries and pins.
+- `just jig::verify-native-rebuild` requires the recorded Apple toolchain and
+  compares freshly compiled universal bytes with both checked-in binaries.
+  Toolchain differences fail explicitly; a portable hash check does not prove
+  source-to-binary equivalence. Changed native bytes need native host qualification.
+- `bun test packages/jig/test/native-support-build.test.ts` checks independent
+  source, recipe, binary and runtime-pin corruption refusal.
 
 - `JIG_MACOS_PROCESS_TEST=1 bun test packages/jig/test/macos-execution.test.ts`
   uses the candidate native Bun on the qualified Mac, outside an enclosing

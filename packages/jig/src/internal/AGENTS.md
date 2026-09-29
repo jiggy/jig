@@ -733,6 +733,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 ## Verification
 
+- `../../scripts/native-support.mjs` regenerates and checks both descriptor bridge
+  digest pins (`macos-descriptor-files.ts` and `installed-bun-support.ts`) together
+  with the checked-in native assets. `../../support/AGENTS.md` owns the canonical
+  rebuild and exact-toolchain byte comparison. Never refresh only one pin.
+
 - Native Mac profiles are closed to Intel Darwin 23.4.0 build
   23E224 and hosted Intel/Apple Silicon Darwin 24.6.0 build 24G830. Select
   architecture-native Bun and Mach-O slices; never

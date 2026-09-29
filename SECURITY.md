@@ -147,7 +147,7 @@ descendant fencing still apply on both hosts.
 | Each Flow execution scope | root deadline, at most 24 hours | 256 MiB | 64 | 50% of one CPU |
 | Each Agent provider scope | parent's remaining root deadline | 256 MiB | 128 | 50% of one CPU |
 | Each project-command scope | 10 seconds, within its parent deadline | 256 MiB | 64 | 50% of one CPU |
-| Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
+| Project evaluation | Linux: 3 seconds; Mac: 10 seconds | 256 MiB | 64 | 50% of one CPU |
 | One dependency resolution and preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
 Root Runs default to 30 seconds. The trusted CLI caller may select a positive

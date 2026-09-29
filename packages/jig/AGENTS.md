@@ -72,6 +72,9 @@ admitted FLOW packages.
   the qualified native host boundaries; their ownership and qualification
   procedure live in `src/internal/AGENTS.md`. Installed Mac consumers require
   neither a compiler nor an administrator.
+- Package assembly checks native source/binary provenance before cleaning or
+  copying output. `support/AGENTS.md` owns the canonical Apple rebuild and exact
+  byte-comparison procedure; installed consumers still require no compiler.
 - Root licensing and pricing are canonical; the build copies their retained
   texts. Source delivery belongs to the matching GitHub release and its tagged
   repository archive. Never embed source archives or add source-assembly

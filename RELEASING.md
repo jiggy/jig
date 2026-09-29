@@ -215,3 +215,46 @@ A new source revision is a new candidate. Never move an existing source tag or
 replace existing release notes automatically. After live publication, verify
 an ordinary clean PyPI install; local qualification is not proof of registry
 availability or account configuration.
+
+## Native Mac support provenance and reboot evidence
+
+`just jig::check-native-support` runs during ordinary Jig builds on either OS.
+It verifies the checked-in source, build recipe, universal binaries and runtime
+pins against `packages/jig/support/macos-native-build.json`. This detects stale
+or independently modified inputs; it is not independent source attestation.
+On a Mac with the recorded Apple compiler, linker and SDK, run
+`just jig::verify-native-rebuild` for byte-for-byte source rebuild verification.
+To intentionally change native assets, run `just jig::build-native-support`,
+review the regenerated binaries, manifest and runtime pins together, then rerun
+native host qualification on both architectures. Consumers never compile them.
+
+The existing prior-boot journal fixture simulates authenticated boot separation.
+It does **not** establish actual reboot recovery, disk-image disappearance or
+post-boot reacquisition. Ordinary hosted conformance must not be described as
+real reboot qualification. Record that gap in the PR/release evidence until a
+controlled test completes; this does not silently alter the release gates above.
+
+A real reboot test requires an explicitly designated disposable Mac and permission
+to interrupt it. Preserve evidence outside the disposable allocation:
+
+1. Record the exact revision, installed archive hashes, OS/kernel, architecture,
+   Bun identity and boot-session identity. Install the retained candidate archives
+   into an ordinary external consumer; keep its approved project across reboot.
+2. Start an admitted, bounded Run with a live descendant and private writable
+   storage. Record its durable allocation identity and the active process/mount
+   observations before the authorized reboot. Do not rewrite the boot identity.
+3. Reboot that host, then record the new boot-session identity and process, image
+   and mount observations before invoking Jig. Do not assume an image or mount
+   disappeared merely because its earlier process did.
+4. Reacquire the same retained project through the installed CLI. Require bounded
+   recovery, no stale-PID/coalition signaling, and complete retirement of the old
+   allocation before accepting a new Run. Retain failure receipts as failures.
+5. Complete a fresh Run and verify no owned process, mounted image, allocation or
+   unresolved journal remains. Repeat recovery to check that retirement is stable.
+6. Attach both sides of the reboot and the final residue observations to the exact
+   candidate revision. Missing pre-boot evidence, an unchanged boot identity,
+   manual journal edits or incomplete cleanup make the qualification incomplete.
+
+Do not reboot an active development machine or a shared CI runner to obtain this
+proof without its owner's explicit authorization. A test procedure is not evidence
+that the test ran.

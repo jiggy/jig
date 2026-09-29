@@ -145,7 +145,7 @@ export async function openPrivateInstalledBunSupport(
   if (
     descriptorBridgeDigest !== null &&
     descriptorBridgeDigest !==
-      'sha256:025fef6db394ca776da58294e93bb98d7484962bc3718a3c434a980a069570ca'
+      'sha256:0c175f5a4cf860730f0819a705ab0745d5e0322a2ae38af45e07d70b8cb9d38f'
   )
     throw new PrivateInstalledBundleError()
   const evaluatorFiles = await Promise.all(

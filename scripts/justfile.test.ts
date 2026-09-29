@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -184,7 +184,8 @@ test('packing explicitly builds first and preserves the destination argument', a
   ])
   expect(result.code).toBe(0)
   expect(result.stderr).not.toContain('--compile')
-  expect(result.stderr.indexOf('Bun.version')).toBeLessThan(result.stderr.indexOf('await rm'))
+  expect(result.stderr.indexOf('Bun.version')).toBeLessThan(result.stderr.indexOf('bun scripts/native-support.mjs check'))
+  expect(result.stderr.indexOf('bun scripts/native-support.mjs check')).toBeLessThan(result.stderr.indexOf('await rm'))
   expect(result.stderr.indexOf('--outfile=libexec/installed-cli.js')).toBeLessThan(
     result.stderr.indexOf('bun scripts/pack.ts'),
   )
@@ -260,7 +261,7 @@ test('hostile files remain separate ordered invocations', async () => {
 async function withFixture(
   work: (directory: string, environment: NodeJS.ProcessEnv) => Promise<void>,
 ) {
-  const directory = await mkdtemp(join(tmpdir(), 'jig just recipes '))
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig just recipes ')))
   try {
     for (const path of justfiles) {
       const target = join(directory, path)
