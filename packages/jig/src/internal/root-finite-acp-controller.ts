@@ -54,16 +54,19 @@ import {
   observePrivateExecutionBackendMechanism,
   type PrivateExecutionBackend,
   type PrivateExecutionConfirmedEnforcementReceipt,
-  type PrivateExecutionLaunchPlan,
   type PrivateExecutionOwnerStateAllocationIdentity,
   type PrivateExecutionOwnerStateReleaseReceipt,
   type PrivateExecutionSealedOwnerIdentity,
   planPrivateExecutionOwnerStateAllocation,
-  privateExecutionBackendKind,
   recoverPrivateExecutionFence,
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
+import {
+  type PrivateExecutionIntent,
+  privateExecutionFileProjections,
+  privateExecutionPath,
+} from './execution-intent.js'
 import {
   closePrivateExecutionOutput,
   type PrivateExecutionOutput,
@@ -371,13 +374,11 @@ async function executeOwnedProvider(
     failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(
       input.backend,
-      backendPlan(
-        input.backend,
+      agentExecutionIntent(
         recipe,
         provider,
         effectiveDeadlineUnixMs,
         identity,
-        ownerAllocation,
         operation.session !== undefined,
       ),
       ownerAllocation,
@@ -704,126 +705,55 @@ function selectedRecipeProvider(
   return recipe.acp[input.call.slot]
 }
 
-function backendPlan(
-  backend: PrivateExecutionBackend,
+function agentExecutionIntent(
   recipe: PrivateDirectRunRecipe,
   provider: PrivateAcpAgentProvider,
   deadlineUnixMs: number,
   identity: string,
-  allocation: PrivateExecutionOwnerStateAllocationIdentity,
   retainSession = false,
-): PrivateExecutionLaunchPlan {
+): PrivateExecutionIntent {
   const acp = privateAcpAgentRuntime(provider)
-  const runId = `agent-${identity.slice(0, 42)}`
-  const limits = Object.freeze({
-    ...recipe.resourceCeilings,
-    pids: PRIVATE_AGENT_PROVIDER_PIDS,
-    deadlineUnixMs,
-    cancellationGraceMs: CANCELLATION_GRACE_MS,
-  })
-  if (privateExecutionBackendKind(backend) === 'linux')
-    return Object.freeze({
-      kind: 'linux',
-      plan: Object.freeze({
-        runId,
-        limits,
-        readOnlyMounts: Object.freeze([
-          ...recipe.installedSupport.runtimeMounts,
-          { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
-          { source: acp.adapterPath, destination: acp.sandboxAdapterPath },
-          { source: acp.executablePath, destination: acp.sandboxExecutablePath },
-          ...acp.readOnlyMounts.filter((mount) => {
-            const runtime = recipe.installedSupport.runtimeMounts.find(
-              (existing) => existing.destination === mount.destination,
-            )
-            return runtime === undefined || runtime.source !== mount.source
-          }),
-        ]),
-        command: Object.freeze([
-          recipe.sandboxExecutablePath,
-          ...recipe.bunPolicy,
-          acp.sandboxAdapterPath,
-        ]) as readonly [string, ...string[]],
-        environment: retainSession
-          ? { ...acp.environment, JIG_CODEX_SESSION_STATE: '1' }
-          : acp.environment,
-        ...(retainSession ? { output: true } : {}),
-        network: 'inherited',
-        ...(acp.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
-      }),
-    })
-  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
-    throw new TypeError('native macOS Agent requires a native owner allocation')
-  const data = join(allocation.directory, 'data')
-  const temporary = join(data, 'tmp')
-  const output = join(data, 'output')
-  const mappings = new Map([
-    [recipe.sandboxExecutablePath, recipe.installedSupport.executablePath],
-    [acp.sandboxAdapterPath, acp.adapterPath],
-    [acp.sandboxExecutablePath, acp.executablePath],
-    ...acp.readOnlyMounts.map((mount) => [mount.destination, mount.source] as const),
-  ])
-  const environment = Object.fromEntries(
-    Object.entries(
-      retainSession ? { ...acp.environment, JIG_CODEX_SESSION_STATE: '1' } : acp.environment,
-    ).map(([name, value]) => [name, translateMacosAgentValue(value, mappings, temporary, output)]),
-  )
-  environment.JIG_MACOS_AGENT_HOME = temporary
-  environment.TMPDIR = temporary
-  environment.JIG_MACOS_AGENT_WORK = join(data, 'work')
-  if (retainSession) environment.JIG_OUTPUT_ROOT = output
-  const readOnlyFiles = [
-    recipe.installedSupport.executablePath,
-    acp.adapterPath,
-    acp.executablePath,
-    ...acp.readOnlyMounts.map((mount) => mount.source),
+  const mounts = [
+    ...recipe.installedSupport.runtimeMounts,
+    { source: acp.adapterPath, destination: acp.sandboxAdapterPath },
+    { source: acp.executablePath, destination: acp.sandboxExecutablePath },
+    ...acp.readOnlyMounts.filter(
+      (mount) =>
+        !recipe.installedSupport.runtimeMounts.some(
+          (existing) =>
+            existing.destination === mount.destination && existing.source === mount.source,
+        ),
+    ),
   ]
-  return Object.freeze({
-    kind: 'macos',
-    plan: Object.freeze({
-      runId,
-      limits: {
-        memoryBytes: limits.memoryBytes,
-        pids: limits.pids,
-        cpuQuotaMicros: limits.cpuQuotaMicros,
-        cpuPeriodMicros: limits.cpuPeriodMicros,
-        deadlineUnixMs: limits.deadlineUnixMs,
-        cleanupTimeoutMs: limits.cleanupTimeoutMs,
-      },
-      command: [
-        recipe.installedSupport.executablePath,
-        ...recipe.bunPolicy,
-        acp.adapterPath,
-      ] as readonly [string, ...string[]],
-      cwd: join(data, 'work'),
-      environment,
-      files: {
-        readOnlyFiles: [...new Set(readOnlyFiles)],
-        readOnlyTrees: [],
-        writableTrees: [join(data, 'work'), temporary, ...(retainSession ? [output] : [])],
-        protectedRoots: [join(allocation.directory, 'control')],
-        network: 'inherited' as const,
-      },
-      maxOutputBytes: 64 * 1024 * 1024,
-      storage: {
-        mountPath: data,
-        bytes: 512 * 1024 * 1024,
-        collect: retainSession ? ('output' as const) : null,
-      },
-    }),
-  })
-}
-
-function translateMacosAgentValue(
-  value: string,
-  mappings: ReadonlyMap<string, string>,
-  temporary: string,
-  output: string,
-): string {
-  let translated = value
-  for (const [destination, source] of mappings)
-    translated = translated.split(destination).join(source)
-  return translated.split('/jig-output').join(output).split('/tmp/').join(`${temporary}/`)
+  return {
+    runId: `agent-${identity.slice(0, 42)}`,
+    limits: {
+      ...recipe.resourceCeilings,
+      pids: PRIVATE_AGENT_PROVIDER_PIDS,
+      deadlineUnixMs,
+      cancellationGraceMs: CANCELLATION_GRACE_MS,
+    },
+    projections: privateExecutionFileProjections(mounts),
+    command: [
+      privateExecutionPath(recipe.sandboxExecutablePath),
+      ...recipe.bunPolicy,
+      privateExecutionPath(acp.sandboxAdapterPath),
+    ],
+    environment: retainSession
+      ? { ...acp.environment, JIG_CODEX_SESSION_STATE: '1' }
+      : acp.environment,
+    relocateEnvironment: true,
+    relocatedEnvironment: {
+      JIG_AGENT_HOME: '/tmp',
+      JIG_AGENT_WORK: '/work',
+      ...(retainSession ? { JIG_OUTPUT_ROOT: '/jig-output' } : {}),
+    },
+    ...(retainSession ? { output: true } : {}),
+    network: 'inherited',
+    ...(acp.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
+    maxOutputBytes: 64 * 1024 * 1024,
+    storageBytes: 512 * 1024 * 1024,
+  }
 }
 
 type ProviderExecution = Awaited<ReturnType<typeof runPrivateFiniteAcpResource>>

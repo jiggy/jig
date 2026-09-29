@@ -261,10 +261,29 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Report supervised sampling and possible resource overshoot explicitly; never
   project Linux cgroup or hard-quota claims. Installed support selects this
   backend only on exact qualified native Mac kernels.
+- `execution-intent.ts` owns inert execution requirements: exact command and
+  explicit path arguments, read-only projections, captured input capabilities,
+  network choice, resource limits, storage and output bounds. Literal arguments
+  never undergo path relocation. Intent alone grants no execution authority.
+  `execution-plan.ts` lowers these requirements to the two host mechanisms;
+  it imports no recipe, admission, provider, Run protocol or controller policy.
+  Backend sealing still validates identities, live capabilities and enforcement.
+  `flow-execution-intent.ts` translates Jig recipes for both root and child
+  Flows; command, HTTP, ACP, preparation and evaluator callers select their own
+  requirements without constructing host plans. Keep budgets and grants with
+  those callers, and physical paths, resolver mounts and volume layout with
+  host translation. Preserve platform-specific receipt evidence.
+  `execution-process.ts` owns protocol-independent process streams, exit and
+  fencing evidence. Run/0 consumes that interface; backends never depend on
+  the Run session implementation. Agent launcher location bindings use private
+  `JIG_AGENT_HOME` and `JIG_AGENT_WORK`; their fallback locations remain unchanged.
 - `execution-backend.ts` is the closed private Linux/macOS selection boundary.
   Persist each backend's discriminated owner and receipt records without flattening
   their evidence. Dispatch sealing, admission, recovery, cancellation and exact
-  release only when the backend, launch plan and owner allocation agree. Logical
+  release only when the backend and authenticated owner allocation agree.
+  Lower an intent only for that selected backend. Execution locations and
+  mechanism setup allowances are queried through this boundary; they confer
+  no filesystem authority and never extend caller-owned parent deadlines. Logical
   recipe identity remains separate from the backend's physical launch paths;
   this is not a public backend or extension interface. Shared owner journals live
   under `.jig/private-root-owners`; prerelease hosts must not recreate the former
@@ -759,6 +778,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   than calling variadic libc through FFI. Verify its exact digest before dlopen
   and bind it into installed-support identity; no consumer compiler is required.
 
+- `execution-intent.test.ts` checks cross-host lowering, literal/path separation,
+  empty input roots, output locations, network authority, and read-only workers.
+  `execution-backend.test.ts` rejects mismatched owner allocations before dispatch.
+  Native and installed-consumer qualification still establish actual enforcement.
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.
 - On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables

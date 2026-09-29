@@ -4,11 +4,11 @@ import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import * as store from '../src/internal/activation-admission-store.js'
 import * as direct from '../src/internal/direct-run.js'
+import * as execution from '../src/internal/execution-backend.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
+import * as capture from '../src/internal/input-capture.js'
 import * as installed from '../src/internal/installed-bun-support.js'
 import * as context from '../src/internal/invocation-context.js'
-import * as execution from '../src/internal/execution-backend.js'
-import * as capture from '../src/internal/input-capture.js'
 import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_CONTRACT_ID,
@@ -122,7 +122,7 @@ mock.module('../src/internal/activation-admission-store.js', () => ({
 }))
 mock.module('../src/internal/execution-backend.js', () => ({
   ...execution,
-  privateExecutionBackendKind: () => 'linux',
+  privateExecutionSetupAllowance: () => 0,
   planPrivateExecutionOwnerStateAllocation: async (_backend: unknown, input: any) => ({
     ...input,
     digest: digest(8),
@@ -131,8 +131,8 @@ mock.module('../src/internal/execution-backend.js', () => ({
     identity: {
       kind: 'private-linux-sealed-owner/1',
       ownerStateAllocationDigest: owner.digest,
-      runId: plan.plan.runId,
-      deadlineUnixMs: plan.plan.limits.deadlineUnixMs,
+      runId: plan.runId,
+      deadlineUnixMs: plan.limits.deadlineUnixMs,
     },
   }),
   admitPrivateExecutionOwner: async () => ({

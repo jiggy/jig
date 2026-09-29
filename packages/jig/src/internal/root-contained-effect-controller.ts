@@ -29,16 +29,20 @@ import {
   type PrivateExecutionBackend,
   type PrivateExecutionComponentProcess,
   type PrivateExecutionConfirmedEnforcementReceipt,
-  type PrivateExecutionLaunchPlan,
   type PrivateExecutionOwnerStateAllocationIdentity,
   planPrivateExecutionOwnerStateAllocation,
-  privateExecutionBackendKind,
   privateExecutionOwnerAllocationDigest,
   privateExecutionPreparedOwnerDigest,
+  privateExecutionSetupAllowance,
   recoverPrivateExecutionFence,
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
+import {
+  type PrivateExecutionIntent,
+  privateExecutionFileProjections,
+  privateExecutionPath,
+} from './execution-intent.js'
 import { httpCredential, type PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { capturePrivateInput, type PrivateCapturedInput } from './input-capture.js'
@@ -70,7 +74,6 @@ import {
 } from './private-project-command.js'
 
 const KIND = 'private-contained-effect-owner/1'
-const MACOS_EFFECT_SETUP_ALLOWANCE_MS = 15_000
 const ROOT = '/jig-input/project'
 export type PrivateContainedEffectFailurePhase =
   | 'preparation'
@@ -84,7 +87,9 @@ interface Context extends PrivateInvocationContext {
   readonly backend: PrivateExecutionBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
-  readonly onFailure?: ((phase: PrivateContainedEffectFailurePhase, error: unknown) => void) | undefined
+  readonly onFailure?:
+    | ((phase: PrivateContainedEffectFailurePhase, error: unknown) => void)
+    | undefined
 }
 interface Allocation {
   readonly kind: typeof KIND
@@ -165,9 +170,8 @@ export async function executePrivateContainedEffect(
   }
   const operationTimeoutMs =
     prepared.kind === 'http' ? prepared.value.grant.timeoutMs : PROJECT_COMMAND_LIMITS.timeoutMs
-  const macosSetupAllowanceMs =
-    privateExecutionBackendKind(input.backend) === 'macos' ? MACOS_EFFECT_SETUP_ALLOWANCE_MS : 0
-  const ownDeadlineUnixMs = Date.now() + operationTimeoutMs + macosSetupAllowanceMs
+  const setupAllowanceMs = privateExecutionSetupAllowance(input.backend)
+  const ownDeadlineUnixMs = Date.now() + operationTimeoutMs + setupAllowanceMs
   const deadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
@@ -262,16 +266,8 @@ export async function executePrivateContainedEffect(
     const sealed = await sealPrivateExecutionOwner(
       input.backend,
       prepared.kind === 'command'
-        ? commandPlan(
-            input.backend,
-            recipe,
-            prepared.value,
-            files,
-            identity,
-            deadlineUnixMs,
-            ownerAllocation,
-          )
-        : httpPlan(input.backend, recipe, identity, deadlineUnixMs, ownerAllocation),
+        ? commandPlan(recipe, prepared.value, files, identity, deadlineUnixMs)
+        : httpPlan(recipe, identity, deadlineUnixMs),
       ownerAllocation,
     )
     lifecycle = await recordPrivateRootChildSandbox({
@@ -285,7 +281,7 @@ export async function executePrivateContainedEffect(
     const component = await admitPrivateExecutionOwner(sealed, input.signal)
     let workloadDeadline = false
     const workloadTimer =
-      macosSetupAllowanceMs === 0
+      setupAllowanceMs === 0
         ? undefined
         : setTimeout(() => {
             workloadDeadline = true
@@ -479,162 +475,66 @@ export function privateContainedDeadlineBeforeDispatchMessage(
 }
 
 function httpPlan(
-  backend: PrivateExecutionBackend,
   recipe: PrivateDirectRunRecipe,
   identity: string,
   deadlineUnixMs: number,
-  allocation: PrivateExecutionOwnerStateAllocationIdentity,
-): PrivateExecutionLaunchPlan {
-  const runId = `effect-${identity.slice(0, 40)}`
-  const limits = { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 }
-  if (privateExecutionBackendKind(backend) === 'linux')
-    return {
-      kind: 'linux',
-      plan: {
-        runId,
-        limits,
-        readOnlyMounts: [
-          ...recipe.installedSupport.runtimeMounts,
-          {
-            source: recipe.installedSupport.httpWorkerPath,
-            destination: recipe.installedSupport.sandboxHttpWorkerPath,
-          },
-          { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
-        ],
-        command: [
-          recipe.sandboxExecutablePath,
-          ...recipe.bunPolicy,
-          recipe.installedSupport.sandboxHttpWorkerPath,
-        ],
-        network: 'inherited',
-      },
-    }
-  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
-    throw new TypeError('native macOS effect requires a native owner allocation')
-  const data = `${allocation.directory}/data`
+): PrivateExecutionIntent {
   return {
-    kind: 'macos',
-    plan: {
-      runId,
-      limits: macosLimits(limits),
-      command: [
-        recipe.installedSupport.executablePath,
-        ...recipe.bunPolicy,
-        recipe.installedSupport.httpWorkerPath,
-      ],
-      cwd: `${data}/work`,
-      environment: { TMPDIR: `${data}/tmp` },
-      files: {
-        readOnlyFiles: [
-          recipe.installedSupport.executablePath,
-          recipe.installedSupport.httpWorkerPath,
-        ],
-        readOnlyTrees: [],
-        writableTrees: [`${data}/work`, `${data}/tmp`],
-        protectedRoots: [`${allocation.directory}/control`],
-        network: 'inherited',
+    runId: `effect-${identity.slice(0, 40)}`,
+    limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
+    projections: privateExecutionFileProjections([
+      ...recipe.installedSupport.runtimeMounts,
+      {
+        source: recipe.installedSupport.httpWorkerPath,
+        destination: recipe.installedSupport.sandboxHttpWorkerPath,
       },
-      maxOutputBytes: JSON_1_LIMITS.bytes + PROJECT_COMMAND_LIMITS.streamBytes,
-      storage: { mountPath: data, bytes: 16 * 1024 * 1024, collect: null },
-    },
+    ]),
+    command: [
+      privateExecutionPath(recipe.sandboxExecutablePath),
+      ...recipe.bunPolicy,
+      privateExecutionPath(recipe.installedSupport.sandboxHttpWorkerPath),
+    ],
+    network: 'inherited',
+    storageBytes: 16 * 1024 * 1024,
+    maxOutputBytes: JSON_1_LIMITS.bytes + PROJECT_COMMAND_LIMITS.streamBytes,
   }
 }
 
 function commandPlan(
-  backend: PrivateExecutionBackend,
   recipe: PrivateDirectRunRecipe,
   prepared: PreparedProjectCommand,
   files: readonly { readonly input: PrivateCapturedInput; readonly destination: string }[],
   identity: string,
   deadlineUnixMs: number,
-  allocation: PrivateExecutionOwnerStateAllocationIdentity,
-): PrivateExecutionLaunchPlan {
+): PrivateExecutionIntent {
   const policy = prepared.policy
   const args =
     'run' in policy
       ? [
           ...recipe.bunPolicy,
           '--cwd',
-          ROOT,
-          `${ROOT}/${policy.run}`,
+          privateExecutionPath(ROOT),
+          privateExecutionPath(`${ROOT}/${policy.run}`),
           ...(prepared.input.args ?? []),
         ]
       : [
           'test',
           ...recipe.bunPolicy,
           '--cwd',
-          ROOT,
-          ...policy.test.map((path) => `${ROOT}/${path}`),
+          privateExecutionPath(ROOT),
+          ...policy.test.map((path) => privateExecutionPath(`${ROOT}/${path}`)),
         ]
-  const runId = `effect-${identity.slice(0, 40)}`
-  const limits = { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 }
-  if (privateExecutionBackendKind(backend) === 'linux')
-    return {
-      kind: 'linux',
-      plan: {
-        runId,
-        limits,
-        readOnlyMounts: recipe.installedSupport.runtimeMounts,
-        capturedInputs: files,
-        inputDirectories: [ROOT],
-        command: [recipe.sandboxExecutablePath, ...args],
-        network: 'isolated',
-      },
-    }
-  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
-    throw new TypeError('native macOS effect requires a native owner allocation')
-  const data = `${allocation.directory}/data`
-  const physicalRoot = `${data}/inputs/project`
   return {
-    kind: 'macos',
-    plan: {
-      runId,
-      limits: macosLimits(limits),
-      command: [
-        recipe.installedSupport.executablePath,
-        ...args.map((part) =>
-          part === ROOT || part.startsWith(`${ROOT}/`)
-            ? `${physicalRoot}${part.slice(ROOT.length)}`
-            : part,
-        ),
-      ],
-      cwd: `${data}/work`,
-      environment: { TMPDIR: `${data}/tmp` },
-      files: {
-        readOnlyFiles: [recipe.installedSupport.executablePath],
-        readOnlyTrees: [`${data}/inputs`],
-        writableTrees: [`${data}/work`, `${data}/tmp`],
-        protectedRoots: [`${allocation.directory}/control`],
-        network: 'isolated',
-      },
-      // Transport capacity is separate from the result's retained prefixes.
-      // The collector must drain discarded output without cancelling ordinary commands.
-      maxOutputBytes: 64 * 1024 * 1024,
-      storage: { mountPath: data, bytes: 512 * 1024 * 1024, collect: null },
-      capturedInputs: files.map(({ input, destination }) => ({
-        input,
-        path: destination.slice('/jig-input/'.length),
-      })),
-      inputDirectories: ['project'],
-    },
-  }
-}
-
-function macosLimits(limits: {
-  readonly memoryBytes: number
-  readonly pids: number
-  readonly cpuQuotaMicros: number
-  readonly cpuPeriodMicros: number
-  readonly deadlineUnixMs: number
-  readonly cleanupTimeoutMs: number
-}) {
-  return {
-    memoryBytes: limits.memoryBytes,
-    pids: limits.pids,
-    cpuQuotaMicros: limits.cpuQuotaMicros,
-    cpuPeriodMicros: limits.cpuPeriodMicros,
-    deadlineUnixMs: limits.deadlineUnixMs,
-    cleanupTimeoutMs: limits.cleanupTimeoutMs,
+    runId: `effect-${identity.slice(0, 40)}`,
+    limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
+    projections: privateExecutionFileProjections(recipe.installedSupport.runtimeMounts),
+    capturedInputs: files,
+    inputDirectories: [ROOT],
+    command: [privateExecutionPath(recipe.sandboxExecutablePath), ...args],
+    network: 'isolated',
+    storageBytes: 512 * 1024 * 1024,
+    // Draining capacity is independent of retained result prefixes.
+    maxOutputBytes: 64 * 1024 * 1024,
   }
 }
 

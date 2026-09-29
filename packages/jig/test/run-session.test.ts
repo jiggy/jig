@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+import type {
+  PrivateExecutionExit,
+  PrivateExecutionProcess,
+} from '../src/internal/execution-process.js'
 
 import {
   canonicalJson,
@@ -9,8 +13,6 @@ import {
 } from '../src/json.js'
 import { ChannelBroker, type ChannelGrant, ChannelOperationError } from '../src/run/channels.js'
 import {
-  type ExactComponentExit,
-  type ExactComponentProcess,
   type RunHostCall,
   RunHostFatalOperationError,
   type RunHostInvocation,
@@ -1298,12 +1300,12 @@ function rpcCode(value: JsonValue): number {
   return ((value as JsonObject).error as JsonObject).code as number
 }
 
-class FakeProcess implements ExactComponentProcess {
+class FakeProcess implements PrivateExecutionProcess {
   readonly stdout = new BytePipe()
   readonly stderr = new BytePipe()
-  readonly completion: Promise<ExactComponentExit>
+  readonly completion: Promise<PrivateExecutionExit>
   private readonly host = new ValuePipe()
-  private readonly complete: (exit: ExactComponentExit) => void
+  private readonly complete: (exit: PrivateExecutionExit) => void
   private readonly rejectCompletion: (error: unknown) => void
   private blocked?: Promise<void>
   private release?: () => void
@@ -1315,7 +1317,7 @@ class FakeProcess implements ExactComponentProcess {
     private readonly blockAfter = Number.POSITIVE_INFINITY,
     private readonly holdAfterDeliveryAt = Number.POSITIVE_INFINITY,
   ) {
-    let complete!: (exit: ExactComponentExit) => void
+    let complete!: (exit: PrivateExecutionExit) => void
     let rejectCompletion!: (error: unknown) => void
     this.completion = new Promise((resolve, reject) => {
       complete = resolve
@@ -1417,7 +1419,7 @@ class FakeProcess implements ExactComponentProcess {
   finish(
     exitCode: number | null,
     signal: string | null = null,
-    stopReason?: ExactComponentExit['stopReason'],
+    stopReason?: PrivateExecutionExit['stopReason'],
   ): void {
     if (this.finished) return
     this.finished = true

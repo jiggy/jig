@@ -1,14 +1,17 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-
 import { invalid, unavailable } from '../diagnostics.js'
 import {
   launchPrivateExecution,
-  type PrivateAutomaticExecutionLaunchPlan,
   type PrivateExecutionBackend,
   privateExecutionBackendKind,
 } from '../internal/execution-backend.js'
+import {
+  type PrivateExecutionIntent,
+  privateExecutionFileProjections,
+  privateExecutionPath,
+} from '../internal/execution-intent.js'
 import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
@@ -232,7 +235,7 @@ export async function evaluateAuthorClosure(
   const limits = evaluatorLimits(policy)
   const component = await launchPrivateExecution(
     options.backend,
-    evaluatorLaunchPlan(options.backend, installedSupport, runId, limits),
+    evaluatorLaunchPlan(installedSupport, runId, limits),
     signal,
   ).catch((error) => {
     return unavailable(
@@ -527,59 +530,26 @@ function contextualAuthorSchema(
 }
 
 function evaluatorLaunchPlan(
-  backend: PrivateExecutionBackend,
   support: PrivateInstalledBunSupport,
   runId: string,
   limits: ReturnType<typeof evaluatorLimits>,
-): PrivateAutomaticExecutionLaunchPlan {
-  if (privateExecutionBackendKind(backend) === 'linux') {
-    return Object.freeze({
-      kind: 'linux',
-      plan: Object.freeze({
-        runId,
-        limits,
-        readOnlyMounts: [
-          ...support.runtimeMounts,
-          { source: support.evaluatorSupportPath, destination: '/jig-evaluator' },
-        ],
-        command: [
-          support.sandboxExecutablePath,
-          '/jig-evaluator/project-evaluator-worker.js',
-        ] as readonly [string, ...string[]],
-      }),
-    })
+): PrivateExecutionIntent {
+  return {
+    runId,
+    limits,
+    projections: [
+      ...privateExecutionFileProjections(support.runtimeMounts),
+      { source: support.evaluatorSupportPath, destination: '/jig-evaluator', kind: 'tree' },
+    ],
+    command: [
+      privateExecutionPath(support.sandboxExecutablePath),
+      privateExecutionPath('/jig-evaluator/project-evaluator-worker.js'),
+    ],
+    readOnlyCwd: '/jig-evaluator',
+    relocatedEnvironment: { JIG_EVALUATOR_SDK: '/jig-evaluator/project-evaluator-sdk.bundle.js' },
+    maxOutputBytes: MAX_STDOUT_BYTES + MAX_STDERR_BYTES,
+    storageBytes: 0,
   }
-  return Object.freeze({
-    kind: 'macos',
-    plan: (allocation) =>
-      Object.freeze({
-        runId,
-        limits: {
-          memoryBytes: limits.memoryBytes,
-          pids: limits.pids,
-          cpuQuotaMicros: limits.cpuQuotaMicros,
-          cpuPeriodMicros: limits.cpuPeriodMicros,
-          deadlineUnixMs: limits.deadlineUnixMs,
-          cleanupTimeoutMs: limits.cleanupTimeoutMs,
-        },
-        command: [
-          support.executablePath,
-          join(support.evaluatorSupportPath, 'project-evaluator-worker.js'),
-        ] as readonly [string, ...string[]],
-        cwd: support.evaluatorSupportPath,
-        environment: {
-          JIG_EVALUATOR_SDK: join(support.evaluatorSupportPath, 'project-evaluator-sdk.bundle.js'),
-        },
-        files: {
-          readOnlyFiles: [support.executablePath],
-          readOnlyTrees: [support.evaluatorSupportPath],
-          writableTrees: [],
-          protectedRoots: [join(allocation.directory, 'control')],
-          network: 'isolated' as const,
-        },
-        maxOutputBytes: MAX_STDOUT_BYTES + MAX_STDERR_BYTES,
-      }),
-  })
 }
 
 function exactKeys(value: object, expected: readonly string[]): boolean {

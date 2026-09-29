@@ -1,6 +1,5 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
-
 import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import {
@@ -44,11 +43,9 @@ import {
   type PrivateExecutionBackend,
   type PrivateExecutionComponentProcess,
   type PrivateExecutionConfirmedEnforcementReceipt,
-  type PrivateExecutionLaunchPlan,
   type PrivateExecutionOwnerStateAllocationIdentity,
   type PrivateExecutionSealedOwnerIdentity,
   planPrivateExecutionOwnerStateAllocation,
-  privateExecutionBackendKind,
   privateExecutionOwnerAllocationDigest,
   privateExecutionPreparedOwnerDigest,
   recoverPrivateExecutionFence,
@@ -56,6 +53,11 @@ import {
   requirePrivateExecutionBackend,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
+import {
+  type PrivateExecutionIntent,
+  privateExecutionFileProjections,
+  privateExecutionPath,
+} from './execution-intent.js'
 import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
@@ -151,9 +153,7 @@ export async function preparePrivateBunPackage(input: {
     name: `prep-${input.captured.digest.slice('sha256:'.length, 'sha256:'.length + 48)}`,
   })
   const plan = preparationPlan(
-    backend,
     installedSupport,
-    allocation,
     classification.state === 'unlocked',
     now,
     input.deadlineUnixMs,
@@ -361,88 +361,40 @@ export async function recoverPrivateBunPreparationOwner(input: {
 }
 
 function preparationPlan(
-  backend: PrivateExecutionBackend,
   support: PrivateInstalledBunSupport,
-  allocation: PrivateExecutionOwnerStateAllocationIdentity,
   allowResolutionNetwork: boolean,
   now: number,
   requestedDeadlineUnixMs: number | undefined,
-): PrivateExecutionLaunchPlan {
+): PrivateExecutionIntent {
   const deadlineUnixMs = Math.min(
     now + PREPARATION_WALL_MS,
     requestedDeadlineUnixMs ?? Number.MAX_SAFE_INTEGER,
   )
-  const limits = {
-    memoryBytes: 512 * 1024 * 1024,
-    pids: 64,
-    cpuQuotaMicros: 100_000,
-    cpuPeriodMicros: 100_000,
-    deadlineUnixMs,
-    cancellationGraceMs: 1_000,
-    cleanupTimeoutMs: 5_000,
-  } as const
-  if (privateExecutionBackendKind(backend) === 'linux') {
-    return Object.freeze({
-      kind: 'linux',
-      plan: Object.freeze({
-        runId: `prep-${process.pid.toString(36)}-${now.toString(36)}`,
-        limits,
-        readOnlyMounts: [
-          ...support.runtimeMounts,
-          { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
-          {
-            source: support.preparationWorkerPath,
-            destination: support.sandboxPreparationWorkerPath,
-          },
-        ],
-        command: [
-          support.sandboxExecutablePath,
-          ...BUN_POLICY,
-          support.sandboxPreparationWorkerPath,
-          ...(allowResolutionNetwork ? ['--allow-resolution-network'] : []),
-        ] as readonly [string, ...string[]],
-        network: 'inherited',
-      }),
-    })
+  return {
+    runId: `prep-${process.pid.toString(36)}-${now.toString(36)}`,
+    limits: {
+      memoryBytes: 512 * 1024 * 1024,
+      pids: 64,
+      cpuQuotaMicros: 100_000,
+      cpuPeriodMicros: 100_000,
+      deadlineUnixMs,
+      cancellationGraceMs: 1000,
+      cleanupTimeoutMs: 5000,
+    },
+    projections: privateExecutionFileProjections([
+      ...support.runtimeMounts,
+      { source: support.preparationWorkerPath, destination: support.sandboxPreparationWorkerPath },
+    ]),
+    command: [
+      privateExecutionPath(support.sandboxExecutablePath),
+      ...BUN_POLICY,
+      privateExecutionPath(support.sandboxPreparationWorkerPath),
+      ...(allowResolutionNetwork ? ['--allow-resolution-network'] : []),
+    ],
+    network: 'inherited',
+    maxOutputBytes: PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
+    storageBytes: 512 * 1024 * 1024,
   }
-  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
-    throw new TypeError('native preparation requires a native owner allocation')
-  const data = join(allocation.directory, 'data')
-  return Object.freeze({
-    kind: 'macos',
-    plan: Object.freeze({
-      runId: `prep-${process.pid.toString(36)}-${now.toString(36)}`,
-      limits: {
-        memoryBytes: limits.memoryBytes,
-        pids: limits.pids,
-        cpuQuotaMicros: limits.cpuQuotaMicros,
-        cpuPeriodMicros: limits.cpuPeriodMicros,
-        deadlineUnixMs,
-        cleanupTimeoutMs: limits.cleanupTimeoutMs,
-      },
-      command: [
-        support.executablePath,
-        ...BUN_POLICY,
-        support.preparationWorkerPath,
-        ...(allowResolutionNetwork ? ['--allow-resolution-network'] : []),
-      ] as readonly [string, ...string[]],
-      cwd: join(data, 'work'),
-      environment: { TMPDIR: join(data, 'tmp') },
-      files: {
-        readOnlyFiles: [support.executablePath, support.preparationWorkerPath],
-        readOnlyTrees: [],
-        writableTrees: [join(data, 'work'), join(data, 'tmp')],
-        protectedRoots: [join(allocation.directory, 'control')],
-        network: 'inherited' as const,
-      },
-      maxOutputBytes: PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
-      storage: {
-        mountPath: data,
-        bytes: 512 * 1024 * 1024,
-        collect: null,
-      },
-    }),
-  })
 }
 
 interface PreparationCheckpoint {

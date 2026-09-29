@@ -298,8 +298,8 @@ async function qualifyMacosStartup(
       environment: {
         ...environment,
         TMPDIR: temporary,
-        JIG_MACOS_AGENT_HOME: temporary,
-        JIG_MACOS_AGENT_WORK: cwd,
+        JIG_AGENT_HOME: temporary,
+        JIG_AGENT_WORK: cwd,
       },
       files: {
         readOnlyFiles: [

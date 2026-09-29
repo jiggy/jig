@@ -54,16 +54,16 @@ import {
   observePrivateExecutionBackendMechanism,
   type PrivateExecutionBackend,
   type PrivateExecutionConfirmedEnforcementReceipt,
-  type PrivateExecutionLaunchPlan,
   type PrivateExecutionOwnerStateAllocationIdentity,
   type PrivateExecutionOwnerStateReleaseReceipt,
   type PrivateExecutionSealedOwnerIdentity,
   planPrivateExecutionOwnerStateAllocation,
-  privateExecutionBackendKind,
+  privateExecutionLocations,
   recoverPrivateExecutionFence,
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
+import { privateFlowExecutionIntent } from './flow-execution-intent.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -344,13 +344,13 @@ async function executePreparedChild(
     failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(
       input.backend,
-      backendPlan(
-        input.backend,
+      privateFlowExecutionIntent(
         recipe,
         lease.root,
-        identity,
+        `child-${identity.slice(0, 42)}`,
         effectiveDeadlineUnixMs,
-        ownerAllocation,
+        CANCELLATION_GRACE_MS,
+        64 * 1024 * 1024,
       ),
       ownerAllocation,
     )
@@ -395,10 +395,7 @@ async function executePreparedChild(
         settings: selected.request.settings,
         attachments: Object.freeze({}),
         ...(grants === undefined ? {} : { channels: grants }),
-        scratch:
-          ownerAllocation.kind === 'private-macos-owner-state-allocation/1'
-            ? join(ownerAllocation.directory, 'data', 'work')
-            : recipe.scratch,
+        scratch: privateExecutionLocations(ownerAllocation).scratch,
         deadlineUnixMs: effectiveDeadlineUnixMs,
         signal: input.signal,
       },
@@ -631,83 +628,6 @@ async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
   if (mechanism.support.digest !== recipe.mechanismDigest) {
     throw new Error('child recipe no longer matches retained host support')
   }
-}
-
-function backendPlan(
-  backend: PrivateExecutionBackend,
-  recipe: PrivateDirectRunRecipe,
-  packageRoot: string,
-  identity: string,
-  deadlineUnixMs: number,
-  allocation: PrivateExecutionOwnerStateAllocationIdentity,
-): PrivateExecutionLaunchPlan {
-  const runId = `child-${identity.slice(0, 42)}`
-  const limits = Object.freeze({
-    ...recipe.resourceCeilings,
-    deadlineUnixMs,
-    cancellationGraceMs: CANCELLATION_GRACE_MS,
-  })
-  if (privateExecutionBackendKind(backend) === 'linux')
-    return Object.freeze({
-      kind: 'linux',
-      plan: Object.freeze({
-        runId,
-        limits,
-        readOnlyMounts: Object.freeze([
-          ...recipe.runtimeMounts,
-          { source: packageRoot, destination: recipe.packageDestination },
-        ]),
-        command: recipe.command,
-      }),
-    })
-  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
-    throw new TypeError('native macOS child requires a native owner allocation')
-  const data = join(allocation.directory, 'data')
-  const command = recipe.command.map((part) => {
-    if (part === recipe.sandboxExecutablePath) return recipe.installedSupport.executablePath
-    if (part === recipe.installedSupport.sandboxMarkdownRuntimePath)
-      return recipe.installedSupport.markdownRuntimePath
-    if (part === recipe.packageDestination) return packageRoot
-    if (part.startsWith(`${recipe.packageDestination}/`))
-      return `${packageRoot}${part.slice(recipe.packageDestination.length)}`
-    return part
-  }) as [string, ...string[]]
-  return Object.freeze({
-    kind: 'macos',
-    plan: Object.freeze({
-      runId,
-      limits: {
-        memoryBytes: limits.memoryBytes,
-        pids: limits.pids,
-        cpuQuotaMicros: limits.cpuQuotaMicros,
-        cpuPeriodMicros: limits.cpuPeriodMicros,
-        deadlineUnixMs: limits.deadlineUnixMs,
-        cleanupTimeoutMs: limits.cleanupTimeoutMs,
-      },
-      command,
-      cwd: join(data, 'work'),
-      environment: { TMPDIR: join(data, 'tmp') },
-      files: {
-        readOnlyFiles: [
-          recipe.installedSupport.executablePath,
-          ...(recipe.request.entrypoint.suffix === 'md'
-            ? [
-                recipe.installedSupport.markdownRuntimePath,
-                ...(recipe.installedSupport.descriptorBridgePath === null
-                  ? []
-                  : [recipe.installedSupport.descriptorBridgePath]),
-              ]
-            : []),
-        ],
-        readOnlyTrees: [packageRoot],
-        writableTrees: [join(data, 'work'), join(data, 'tmp')],
-        protectedRoots: [join(allocation.directory, 'control')],
-        network: 'isolated' as const,
-      },
-      maxOutputBytes: 64 * 1024 * 1024,
-      storage: { mountPath: data, bytes: 512 * 1024 * 1024, collect: null },
-    }),
-  })
 }
 
 async function releaseKnownChild(

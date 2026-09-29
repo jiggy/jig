@@ -1,4 +1,7 @@
+import { join } from 'node:path'
 import type { JsonValue } from '../json.js'
+import type { PrivateExecutionIntent } from './execution-intent.js'
+import { privateLinuxExecutionPlan, privateMacosExecutionPlan } from './execution-plan.js'
 import { privateDomainDigest } from './identity.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
@@ -14,7 +17,6 @@ import {
   type PrivateLinuxComponentProcess,
   type PrivateLinuxConfirmedEnforcementReceipt,
   PrivateLinuxFenceUnconfirmedError,
-  type PrivateLinuxLaunchPlan,
   type PrivateLinuxOwnerStateAllocationIdentity,
   type PrivateLinuxOwnerStateCancellation,
   type PrivateLinuxOwnerStateReleaseReceipt,
@@ -46,7 +48,6 @@ import {
   type PrivateMacosComponentProcess,
   type PrivateMacosConfirmedEnforcementReceipt,
   PrivateMacosFenceUnconfirmedError,
-  type PrivateMacosLaunchPlan,
   type PrivateMacosPreparedOwnerIdentity,
   type PrivateMacosSealedOwner,
   type PrivateMacosSealedOwnerIdentity,
@@ -83,18 +84,6 @@ export type PrivateExecutionSealedOwner = PrivateLinuxSealedOwner | PrivateMacos
 export type PrivateExecutionComponentProcess =
   | PrivateLinuxComponentProcess
   | PrivateMacosComponentProcess
-export type PrivateExecutionLaunchPlan =
-  | { readonly kind: 'linux'; readonly plan: PrivateLinuxLaunchPlan }
-  | { readonly kind: 'macos'; readonly plan: PrivateMacosLaunchPlan }
-export type PrivateAutomaticExecutionLaunchPlan =
-  | { readonly kind: 'linux'; readonly plan: PrivateLinuxLaunchPlan }
-  | {
-      readonly kind: 'macos'
-      readonly plan: (
-        allocation: PrivateMacosOwnerStateAllocationIdentity,
-      ) => PrivateMacosLaunchPlan
-    }
-
 export class PrivateExecutionFenceUnconfirmedError extends Error {
   override readonly cause: unknown
   constructor(cause: unknown) {
@@ -246,42 +235,60 @@ export function normalizePrivateExecutionOwnerStateReleaseReceipt(
 
 export async function sealPrivateExecutionOwner(
   backendValue: PrivateExecutionBackend,
-  launch: PrivateExecutionLaunchPlan,
+  intent: PrivateExecutionIntent,
   allocationValue: PrivateExecutionOwnerStateAllocationIdentity,
 ): Promise<PrivateExecutionSealedOwner> {
   const backend = requirePrivateExecutionBackend(backendValue)
   const allocation = normalizePrivateExecutionOwnerStateAllocationIdentity(allocationValue)
   const kind = privateExecutionBackendKind(backend)
-  if (kind !== launch.kind || !allocation.kind.startsWith(`private-${kind}-`))
-    throw new TypeError('execution launch, backend and owner allocation do not match')
+  if (!allocation.kind.startsWith(`private-${kind}-`))
+    throw new TypeError('execution backend and owner allocation do not match')
   return kind === 'linux'
     ? await (backend as PrivateLinuxCgroupBackend).seal(
-        (launch as Extract<PrivateExecutionLaunchPlan, { kind: 'linux' }>).plan,
+        privateLinuxExecutionPlan(intent),
         allocation as PrivateLinuxOwnerStateAllocationIdentity,
       )
     : await (backend as PrivateMacosBackend).seal(
-        (launch as Extract<PrivateExecutionLaunchPlan, { kind: 'macos' }>).plan,
+        privateMacosExecutionPlan(intent, allocation as PrivateMacosOwnerStateAllocationIdentity),
         allocation as PrivateMacosOwnerStateAllocationIdentity,
       )
 }
 
 export async function launchPrivateExecution(
   backendValue: PrivateExecutionBackend,
-  launch: PrivateAutomaticExecutionLaunchPlan,
+  intent: PrivateExecutionIntent,
   signal?: AbortSignal,
 ): Promise<PrivateExecutionComponentProcess> {
   const backend = requirePrivateExecutionBackend(backendValue)
-  const kind = privateExecutionBackendKind(backend)
-  if (kind !== launch.kind) throw new TypeError('execution launch plan belongs to another backend')
-  return kind === 'linux'
-    ? await (backend as PrivateLinuxCgroupBackend).launch(
-        (launch as Extract<PrivateExecutionLaunchPlan, { kind: 'linux' }>).plan,
-        signal,
-      )
+  return privateExecutionBackendKind(backend) === 'linux'
+    ? await (backend as PrivateLinuxCgroupBackend).launch(privateLinuxExecutionPlan(intent), signal)
     : await (backend as PrivateMacosBackend).launch(
-        (launch as Extract<PrivateAutomaticExecutionLaunchPlan, { kind: 'macos' }>).plan,
+        (allocation) => privateMacosExecutionPlan(intent, allocation),
         signal,
       )
+}
+
+/** Logical invocation locations, without exposing a host's storage layout to controllers. */
+export function privateExecutionLocations(
+  allocation: PrivateExecutionOwnerStateAllocationIdentity,
+) {
+  const data = join(allocation.directory, 'data')
+  if (allocation.kind === 'private-macos-owner-state-allocation/1')
+    return {
+      scratch: join(data, 'work'),
+      attachment: (name: string, access: 'read' | 'read-write') =>
+        access === 'read' ? join(data, 'inputs', name) : join(data, 'output'),
+    }
+  return {
+    scratch: '/work',
+    attachment: (name: string, access: 'read' | 'read-write') =>
+      access === 'read' ? `/jig-input/${name}` : '/jig-output',
+  }
+}
+
+/** Mechanism startup allowance; workload and parent deadlines remain caller-owned. */
+export function privateExecutionSetupAllowance(backend: PrivateExecutionBackend): number {
+  return privateExecutionBackendKind(backend) === 'macos' ? 15_000 : 0
 }
 
 export async function admitPrivateExecutionOwner(

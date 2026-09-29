@@ -43,6 +43,11 @@ admitted FLOW packages.
   A writer may declare `LAGGED` on close; check its held rights before recording
   sticky source failure, settle pending sends and preserve earlier clean seals.
   Producer declarations are observation evidence, not execution authority.
+- Execution requests and process evidence are private host-neutral contracts in
+  `src/internal/execution-intent.ts` and `execution-process.ts`. Jig controllers
+  retain policy and durable lifecycle; host translation owns physical launch
+  layout. `src/run/session.ts` consumes process evidence without owning backend
+  types. No package export, FLOW wire contract or host plugin interface is added.
 - `test/` owns unit, integration, fault-injection, packed-package, and
   proof-host evidence. `test/fixtures/agent-fixture-host.ts` keeps explicit
   native composition budgets shared with independent coordinator fixtures and the

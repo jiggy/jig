@@ -40,21 +40,20 @@ import {
   type PrivateExecutionBackend,
   type PrivateExecutionConfirmedEnforcementReceipt,
   PrivateExecutionFenceUnconfirmedError,
-  type PrivateExecutionLaunchPlan,
   type PrivateExecutionOwnerStateAllocationIdentity,
   type PrivateExecutionOwnerStateReleaseReceipt,
   type PrivateExecutionSealedOwnerIdentity,
   planPrivateExecutionOwnerStateAllocation,
-  privateExecutionBackendKind,
+  privateExecutionLocations,
   privateExecutionOwnerAllocationDigest,
   recoverPrivateExecutionFence,
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
+import { PRIVATE_OUTPUT_BYTES } from './execution-intent.js'
+import { privateFlowExecutionIntent } from './flow-execution-intent.js'
 import type { PrivateHttpGrants } from './http-grants.js'
-import type { PrivateCapturedInput } from './input-capture.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
-import { PRIVATE_OUTPUT_BYTES } from './linux-rootless-backend.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
   allocatePrivatePackageMaterialization,
@@ -318,12 +317,13 @@ async function startOrResumeCurrentExecution(
     )
     if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
       throw new Error('root attachment authority is unavailable')
-    const launch = backendPlan(
-      input.backend,
+    const launch = privateFlowExecutionIntent(
       recipe,
       lease.root,
-      work.run.runId,
-      plan,
+      backendRunLabel(work.run.runId),
+      plan.effectiveDeadlineUnixMs,
+      plan.cancellationGraceMs,
+      PRIVATE_OUTPUT_BYTES,
       fileProjection?.plan,
     )
     failurePhase = 'sealing'
@@ -367,16 +367,14 @@ async function startOrResumeCurrentExecution(
     let fence: PrivateExecutionConfirmedEnforcementReceipt
     try {
       failurePhase = 'admission'
-      const component = await privateProfileSpan('rootless-containment-startup', () => admitPrivateExecutionOwner(
-        sealed,
-        stop.enforcementSignal,
-        async (prepared) => {
+      const component = await privateProfileSpan('rootless-containment-startup', () =>
+        admitPrivateExecutionOwner(sealed, stop.enforcementSignal, async (prepared) => {
           work = await advanceCheckpoint(input, work, 'prepared', {
             kind: PREPARED_KIND,
             prepared,
           } as unknown as JsonValue)
-        },
-      ))
+        }),
+      )
       // The signal passed to Backend admission is startup-only. Once the
       // component is ready, RunHost owns cooperative cancellation/deadline
       // delivery and the helper's absolute timer owns the hard fence after
@@ -393,31 +391,39 @@ async function startOrResumeCurrentExecution(
         recipe,
       )
       failurePhase = 'protocol'
-      provisional = await privateProfileSpan('flow-execution', () => new RunHostSession(
-        component,
-        {
-          input: work.run.input,
-          settings: recipe.request.settings,
-          attachments: executionAttachments(
-            input.backend,
-            plan.ownerAllocation,
-            fileProjection?.attachments ?? Object.freeze({}),
-          ),
-          channels: openedChannels.grants,
-          scratch:
-            plan.ownerAllocation.kind === 'private-macos-owner-state-allocation/1'
-              ? join(plan.ownerAllocation.directory, 'data', 'work')
-              : recipe.scratch,
-          deadlineUnixMs: plan.effectiveDeadlineUnixMs,
-          ...(input.signal === undefined ? {} : { signal: input.signal }),
-        },
-        { cancellationGraceMs: plan.cancellationGraceMs },
-        dispatcher,
-      ).run())
+      provisional = await privateProfileSpan('flow-execution', () =>
+        new RunHostSession(
+          component,
+          {
+            input: work.run.input,
+            settings: recipe.request.settings,
+            attachments: Object.fromEntries(
+              Object.entries(fileProjection?.attachments ?? {}).map(([name, attachment]) => [
+                name,
+                {
+                  ...attachment,
+                  path: privateExecutionLocations(plan.ownerAllocation).attachment(
+                    name,
+                    attachment.access,
+                  ),
+                },
+              ]),
+            ),
+            channels: openedChannels.grants,
+            scratch: privateExecutionLocations(plan.ownerAllocation).scratch,
+            deadlineUnixMs: plan.effectiveDeadlineUnixMs,
+            ...(input.signal === undefined ? {} : { signal: input.signal }),
+          },
+          { cancellationGraceMs: plan.cancellationGraceMs },
+          dispatcher,
+        ).run(),
+      )
       observedTerminal = provisional
       try {
         failurePhase = 'child-settlement'
-        await privateProfileSpan('operation-owner-settlement', () => recoverPrivateRootOperationOwners(input, parent))
+        await privateProfileSpan('operation-owner-settlement', () =>
+          recoverPrivateRootOperationOwners(input, parent),
+        )
       } catch (error) {
         if (!isPrivateExecutionFenceUnconfirmed(error)) throw error
         // The root result is known, but it cannot become terminal while a
@@ -432,7 +438,10 @@ async function startOrResumeCurrentExecution(
         )
         try {
           failurePhase = 'fence'
-          fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>('root-fence', () => component.enforcement)
+          fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>(
+            'root-fence',
+            () => component.enforcement,
+          )
         } catch (fenceError) {
           if (isPrivateExecutionFenceUnconfirmed(fenceError)) {
             return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
@@ -453,7 +462,10 @@ async function startOrResumeCurrentExecution(
       )
       try {
         failurePhase = 'fence'
-        fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>('root-fence', () => component.enforcement)
+        fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>(
+          'root-fence',
+          () => component.enforcement,
+        )
       } catch (error) {
         if (isPrivateExecutionFenceUnconfirmed(error)) {
           return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
@@ -827,133 +839,6 @@ async function reproduceRecipe(
     throw new ReviewRequiredError()
   }
   return recipe
-}
-
-function backendPlan(
-  backend: PrivateExecutionBackend,
-  recipe: PrivateDirectRunRecipe,
-  packageRoot: string,
-  runId: string,
-  plan: PrivateDirectRootPlanRecord,
-  files?: {
-    readonly capturedInputs?: readonly {
-      readonly input: PrivateCapturedInput
-      readonly destination: string
-    }[]
-    readonly inputDirectories?: readonly string[]
-    readonly output?: boolean
-  },
-): PrivateExecutionLaunchPlan {
-  const readOnlyMounts = [
-    ...recipe.runtimeMounts,
-    { source: packageRoot, destination: recipe.packageDestination },
-  ]
-  const limits = Object.freeze({
-    ...recipe.resourceCeilings,
-    deadlineUnixMs: plan.effectiveDeadlineUnixMs,
-    cancellationGraceMs: plan.cancellationGraceMs,
-  })
-  if (privateExecutionBackendKind(backend) === 'linux') {
-    return Object.freeze({
-      kind: 'linux',
-      plan: Object.freeze({
-        runId: backendRunLabel(runId),
-        limits,
-        readOnlyMounts,
-        command: recipe.command,
-        ...files,
-      }),
-    })
-  }
-  const allocation = plan.ownerAllocation
-  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
-    throw new TypeError('native macOS launch requires a native owner allocation')
-  const data = join(allocation.directory, 'data')
-  const output = join(data, 'output')
-  const hasOutput = files?.output === true
-  const command = recipe.command.map((part) => {
-    if (part === recipe.sandboxExecutablePath) return recipe.installedSupport.executablePath
-    if (part === recipe.installedSupport.sandboxMarkdownRuntimePath)
-      return recipe.installedSupport.markdownRuntimePath
-    if (part === recipe.packageDestination) return packageRoot
-    if (part.startsWith(`${recipe.packageDestination}/`))
-      return `${packageRoot}${part.slice(recipe.packageDestination.length)}`
-    return part
-  }) as [string, ...string[]]
-  return Object.freeze({
-    kind: 'macos',
-    plan: Object.freeze({
-      runId: backendRunLabel(runId),
-      limits: {
-        memoryBytes: limits.memoryBytes,
-        pids: limits.pids,
-        cpuQuotaMicros: limits.cpuQuotaMicros,
-        cpuPeriodMicros: limits.cpuPeriodMicros,
-        deadlineUnixMs: limits.deadlineUnixMs,
-        cleanupTimeoutMs: limits.cleanupTimeoutMs,
-      },
-      command,
-      cwd: join(data, 'work'),
-      environment: { TMPDIR: join(data, 'tmp') },
-      files: {
-        readOnlyFiles: [
-          recipe.installedSupport.executablePath,
-          ...(recipe.request.entrypoint.suffix === 'md'
-            ? [
-                recipe.installedSupport.markdownRuntimePath,
-                ...(recipe.installedSupport.descriptorBridgePath === null
-                  ? []
-                  : [recipe.installedSupport.descriptorBridgePath]),
-              ]
-            : []),
-        ],
-        readOnlyTrees: [
-          packageRoot,
-          ...((files?.inputDirectories?.length ?? 0) > 0 ? [join(data, 'inputs')] : []),
-        ],
-        writableTrees: [join(data, 'work'), join(data, 'tmp'), ...(hasOutput ? [output] : [])],
-        protectedRoots: [join(allocation.directory, 'control')],
-        network: 'isolated' as const,
-      },
-      maxOutputBytes: PRIVATE_OUTPUT_BYTES,
-      storage: {
-        mountPath: data,
-        bytes: 512 * 1024 * 1024,
-        collect: hasOutput ? ('output' as const) : null,
-      },
-      capturedInputs: (files?.capturedInputs ?? []).map(({ input, destination }) => ({
-        input,
-        path: destination.slice('/jig-input/'.length),
-      })),
-      inputDirectories: (files?.inputDirectories ?? []).map((path) =>
-        path.slice('/jig-input/'.length),
-      ),
-    }),
-  })
-}
-
-function executionAttachments(
-  backend: PrivateExecutionBackend,
-  allocation: PrivateExecutionOwnerStateAllocationIdentity,
-  attachments: Readonly<
-    Record<string, { readonly path: string; readonly access: 'read' | 'read-write' }>
-  >,
-) {
-  if (privateExecutionBackendKind(backend) === 'linux') return attachments
-  if (allocation.kind !== 'private-macos-owner-state-allocation/1')
-    throw new TypeError('native macOS attachments require a native owner allocation')
-  const data = join(allocation.directory, 'data')
-  return Object.freeze(
-    Object.fromEntries(
-      Object.entries(attachments).map(([name, attachment]) => [
-        name,
-        Object.freeze({
-          access: attachment.access,
-          path: attachment.access === 'read' ? join(data, 'inputs', name) : join(data, 'output'),
-        }),
-      ]),
-    ),
-  )
 }
 
 async function closeFromAdmitted(
@@ -1408,8 +1293,7 @@ function operationDispatcher(
           () =>
             executePrivateContainedEffect({
               ...operationInput(input, parent),
-              onFailure: (phase, error) =>
-                input.onFailure?.(`contained-effect-${phase}`, error),
+              onFailure: (phase, error) => input.onFailure?.(`contained-effect-${phase}`, error),
               call,
               parentDeadlineUnixMs,
               signal,
