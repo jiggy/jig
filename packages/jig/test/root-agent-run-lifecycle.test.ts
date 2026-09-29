@@ -377,9 +377,6 @@ proofDescribe('contained repair file application', () => {
             `http://127.0.0.1:${address.port}/v1/responses`,
             batchScenario,
           )
-          const installed = await openPrivateInstalledBunHost(location, {
-            METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
-          })
           let stdout = '',
             stderr = ''
           const options = {
@@ -392,7 +389,7 @@ proofDescribe('contained repair file application', () => {
               stderr += text
             },
             host: {
-              acquire: (
+              acquire: async (
                 directory: string,
                 options?: {
                   runTimeoutMs?: number
@@ -400,7 +397,14 @@ proofDescribe('contained repair file application', () => {
                 },
               ) => openPrivateProjectSession({
                 directory,
-                host: { ...installed, ...options },
+                host: {
+                  ...(await openPrivateInstalledBunHost(location, {
+                    METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
+                  }, directory)),
+                  ...options,
+                },
+                onOperationFailure: (evidence) =>
+                  console.error('repair-operation-failure', JSON.stringify(evidence)),
                 onRootExecutionFailure: (evidence) =>
                   console.error('repair-root-execution-failure', JSON.stringify(evidence)),
               }),
@@ -431,8 +435,15 @@ proofDescribe('contained repair file application', () => {
               },
             },
           }
+          // Match the installed entrypoint: one verification scope per command,
+          // with its cache outside the actual consumer project.
+          const runCommand = (args: readonly string[]) =>
+            withPrivateInstallationVerification(
+              { XDG_CACHE_HOME: join(root, 'verification-cache') },
+              () => main(args, options),
+            )
           expect(
-            await main(['review', '--yes', '--allow-authority-changes'], options),
+            await runCommand(['review', '--yes', '--allow-authority-changes']),
             stderr,
           ).toBe(0)
           stdout = ''
@@ -440,7 +451,7 @@ proofDescribe('contained repair file application', () => {
           const before = await readFile(join(project, 'fixtures/log-report/src/parse.ts'))
           if (scenario === 'successful') {
             expect(
-              await main(
+              await runCommand(
                 [
                   'run',
                   'binding:repair',
@@ -453,7 +464,6 @@ proofDescribe('contained repair file application', () => {
                   '--timeout',
                   process.platform === 'darwin' ? '5m' : '120s',
                 ],
-                options,
               ),
               stdout + stderr,
             ).toBe(0)
@@ -487,7 +497,7 @@ proofDescribe('contained repair file application', () => {
           if (scenario === 'unsuccessful') {
             const failedOut = join(root, 'unsuccessful')
             expect(
-              await main(
+              await runCommand(
                 [
                   'run',
                   'binding:repair',
@@ -500,7 +510,6 @@ proofDescribe('contained repair file application', () => {
                   '--timeout',
                   process.platform === 'darwin' ? '5m' : '120s',
                 ],
-                options,
               ),
               stdout + stderr,
             ).toBe(0)
@@ -527,7 +536,7 @@ proofDescribe('contained repair file application', () => {
           if (batchScenario) {
             const batchOut = join(root, 'batch')
             expect(
-              await main(
+              await runCommand(
                 [
                   'run',
                   'binding:repair',
@@ -540,7 +549,6 @@ proofDescribe('contained repair file application', () => {
                   '--timeout',
                   process.platform === 'darwin' ? '5m' : '180s',
                 ],
-                options,
               ),
               stdout + stderr,
             ).toBe(0)

@@ -96,12 +96,20 @@ export function planMacHostTests(files) {
 export function commandsForShard(shard, bun = 'bun') {
   // Each file gets a fresh Bun process. Host ownership tests still run
   // sequentially, while a failure cannot leave JS state for the next file.
-  const commands = shard.files.map((file) => [bun, 'test', `./${file}`, '--timeout', '420000'])
+  const commands = shard.files.map((file) => [
+    bun,
+    'test',
+    `./${file}`,
+    '--bail=1',
+    '--timeout',
+    '420000',
+  ])
   if (shard.rootPattern) {
     commands.unshift([
       bun,
       'test',
       `./${ROOT_TEST}`,
+      '--bail=1',
       '--test-name-pattern',
       shard.rootPattern,
       '--timeout',

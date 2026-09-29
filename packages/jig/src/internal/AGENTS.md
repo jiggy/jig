@@ -860,12 +860,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   acquisition and residue checks intentionally reject other concurrent Runs;
   the ordinary suite also includes host tests when delegation is present.
 
-- Command, HTTP and Agent lifecycle observation waits cover native setup and
+- Basic HTTP and Agent lifecycle observation waits cover native setup and
   settlement: Mac uses 60 seconds for admission observations and 75 seconds
   for terminal settlement, including cleanup. Linux retains its existing waits.
   Aggregate scenario tests allow each independently bounded Run to settle;
   these test windows never expand workload enforcement limits.
-- Mac Agent composition fixtures explicitly select five-minute Runs and allow
+- Mac command and Agent composition fixtures explicitly select five-minute Runs and allow
   75 seconds of settlement observation afterward. Their independent coordinator
   fixtures select the same budget; deep branch admission observation allows
   three minutes before deliberate cancellation/loss. This covers nested native

@@ -57,6 +57,10 @@ admitted FLOW packages.
   Forced-loss coordinators stay alive until explicitly killed, leave a Run
   deadline margin beyond owner observation (60 seconds on Linux), and assert
   the actual SIGKILL exit before claiming coordinator-loss recovery.
+- Repair CLI proofs use the installed entrypoint's command-scoped default
+  verification policy, acquire support for the actual consumer project, and
+  keep verification caches outside it. Result and cleanup assertions remain
+  independent of this installed-support optimization.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.
   Jig retains source admission, resource grants and owned execution, not Agent
   preparation or answer interpretation. Skill content is explicit caller data;

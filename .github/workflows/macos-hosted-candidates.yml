@@ -77,7 +77,7 @@ jobs:
           }
           snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
           status=0
-          bun test packages/jig/test/macos-process-controls.test.ts packages/jig/test/macos-execution.test.ts packages/jig/test/macos-descriptor-files.test.ts packages/jig/test/macos-descriptor-handoff.test.ts packages/jig/test/macos-volume.test.ts packages/jig/test/macos-backend-state.test.ts packages/jig/test/macos-native-backend.test.ts packages/jig/test/macos-guardian.test.ts --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
+          bun test packages/jig/test/macos-process-controls.test.ts packages/jig/test/macos-execution.test.ts packages/jig/test/macos-descriptor-files.test.ts packages/jig/test/macos-descriptor-handoff.test.ts packages/jig/test/macos-volume.test.ts packages/jig/test/macos-backend-state.test.ts packages/jig/test/macos-native-backend.test.ts packages/jig/test/macos-guardian.test.ts --bail=1 --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
           snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
           diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
           exit "$status"

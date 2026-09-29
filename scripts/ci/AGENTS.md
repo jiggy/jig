@@ -26,6 +26,8 @@ qualification. Host preparation never becomes a consumer requirement.
   artifacts and per-file command wall times. Balance includes native prerequisites
   and installed-consumer work; run expensive lifecycle groups before portable
   checks to expose failures earlier without reducing membership.
+  Bun exits each test process on its first failure so a failed case does not
+  wait for the remaining expensive scenarios before the matrix can stop.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
   prerequisites on hosted Intel and Apple Silicon candidates. It starts no

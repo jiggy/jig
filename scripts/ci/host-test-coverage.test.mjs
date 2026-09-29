@@ -31,6 +31,7 @@ test('every current Jig test file belongs to exactly one Mac host shard', async 
     )
     for (const command of commandsForShard(shard)) {
       assert.equal(command[1], 'test')
+      assert.ok(command.includes('--bail=1'))
       assert.ok(command.includes('--timeout'))
       assert.equal(command.filter((part) => part.startsWith('./packages/jig/test/')).length, 1)
     }
