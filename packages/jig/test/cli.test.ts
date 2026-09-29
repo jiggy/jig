@@ -1334,7 +1334,7 @@ describe('finite Jig project commands', () => {
 
     expect(await main(['run', 'flow:./flows/work'], invocation.options)).toBe(0)
     expect(acquisition).toMatchObject({
-      runTimeoutMs: process.platform === 'darwin' ? 60_000 : 30_000,
+      runTimeoutMs: 30_000,
       channelOutput: { receive: [] },
     })
     expect(request).toEqual({
@@ -1650,7 +1650,7 @@ describe('finite Jig project commands', () => {
       await symlink(root, alias)
       const args = ['run', 'flow:flows/work', '--input', `@${join(alias, 'issue.json')}`]
       expect(privateCliCommandLifetimeMs(args)).toBe(
-        process.platform === 'darwin' ? 360_000 : 330_000,
+        330_000,
       )
       await writeFile(file, '{"captured":true}')
       let request: StartRootRunRequest | undefined
@@ -1882,7 +1882,7 @@ describe('finite Jig project commands', () => {
 
   test('installed command lifetime encloses Run cleanup without extending invalid commands', () => {
     expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'])).toBe(
-      process.platform === 'darwin' ? 360_000 : 330_000,
+      330_000,
     )
     expect(
       privateCliCommandLifetimeMs(['run', 'flow:flows/work', '--input', '{}', '--timeout', '24h']),

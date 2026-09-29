@@ -1,7 +1,7 @@
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateAttachmentName, privateFilePath } from './internal/file-input.js'
 import {
-  privateDefaultRootRunTimeout,
+  PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
 } from './internal/root-run-timeout-policy.js'
 import { decodeJson1, type JsonValue } from './json.js'
@@ -31,7 +31,7 @@ export function parseRun(
   let inputFile: string | undefined, output: string | undefined
   const attachments = new Map<string, string>(),
     selectors = new Map<string, string[]>()
-  let timeoutMs = privateDefaultRootRunTimeout()
+  let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
   let json = false
   let sawInput = false
   let sawTimeout = false

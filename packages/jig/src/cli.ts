@@ -41,7 +41,6 @@ import { privateProfileSpan } from './internal/private-profile.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
-  privateDefaultRootRunTimeout,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'

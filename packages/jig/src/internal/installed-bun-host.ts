@@ -14,7 +14,7 @@ import { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
 import { PrivateMacosBackend } from './macos-native-backend.js'
 import { openPrivateAcpResources } from './private-acp-resources.js'
 import type { PrivateProjectSessionHost } from './project-session-controller.js'
-import { privateDefaultRootRunTimeout } from './root-run-timeout-policy.js'
+import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
 
 /** Read-only comparison against the same resource-aware identity used by planning. */
 export function privateInstalledEnvironmentCheck(
@@ -86,7 +86,7 @@ export async function openPrivateInstalledBunHost(
   return Object.freeze({
     backend,
     installedBunSupport,
-    runTimeoutMs: privateDefaultRootRunTimeout(),
+    runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
     acpResources: openPrivateAcpResources(
       installedBunSupport,
       operatorEnvironment,

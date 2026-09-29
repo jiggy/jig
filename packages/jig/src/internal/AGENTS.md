@@ -18,6 +18,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+- `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
+  Linux and Mac. Installed host acquisition and CLI parsing use that same value;
+  explicit operator timeouts remain separate from bounded cleanup settlement.
 - Admission storage uses the closed native descriptor operations while SQLite
   retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
   Darwin resolves system ancestor aliases only for SQLite's visible filename;
