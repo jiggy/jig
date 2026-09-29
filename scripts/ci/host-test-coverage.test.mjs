@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
 import {
@@ -68,6 +70,63 @@ test('root Agent name patterns partition fixture, repair, lifecycle and fence te
   }
   assert.equal(ROOT_PATTERNS.length, 3)
   assert.throws(() => planMacHostTests([ROOT_TEST, ROOT_TEST]))
+})
+
+test('expensive host cases run before portable checks without dropping work', async () => {
+  const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
+  const shards = planMacHostTests(files)
+  assert.deepEqual(planMacHostTests([...files].reverse()), shards)
+  for (const shard of shards) {
+    const commands = commandsForShard(shard)
+    if (shard.rootPattern) assert.equal(commands[0][2], `./${ROOT_TEST}`)
+    const commandIndex = commands.findIndex((command) =>
+      command[2].endsWith('/project-command-lifecycle.test.ts'),
+    )
+    if (commandIndex !== -1) {
+      // The previous alphabetical schedule buried this failure after 21 files.
+      assert.ok(commandIndex <= 1, `command lifecycle was scheduled at ${commandIndex}`)
+    }
+  }
+})
+
+test('Mac qualification rejects cancelled, incomplete and wrong-revision shards', async () => {
+  const workflow = await readFile(
+    resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
+    'utf8',
+  )
+  const script = workflow
+    .split('name: Require all five exact-revision shards')[1]
+    .split('run: |\n')[1]
+    .replace(/^          /gm, '')
+  const root = await mkdtemp(resolve(tmpdir(), 'jig-mac-aggregate-'))
+  // Use the actual workflow shell with isolated evidence, including its naming.
+  const path = (shard) =>
+    resolve(
+      root,
+      'macos-evidence',
+      `macos-prerequisites-x64-${shard}-current`,
+      `shard-${shard}.complete`,
+    )
+  const run = () =>
+    spawnSync('/bin/sh', ['-c', script], {
+      env: { ...process.env, RUNNER_TEMP: root, EXPECTED_ARCH: 'x64', EXPECTED_SHA: 'current' },
+    }).status
+  try {
+    assert.notEqual(run(), 0)
+    for (let shard = 0; shard < SHARD_COUNT; shard++) {
+      await mkdir(resolve(path(shard), '..'), { recursive: true })
+      await writeFile(path(shard), `current x64 ${shard}\n`)
+    }
+    assert.equal(run(), 0)
+    await rm(path(3))
+    assert.notEqual(run(), 0)
+    await writeFile(path(3), 'previous x64 3\n')
+    assert.notEqual(run(), 0)
+    await writeFile(path(3), 'current arm64 3\n')
+    assert.notEqual(run(), 0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('every Linux hostile Jig test file enters provisioned host conformance', async () => {

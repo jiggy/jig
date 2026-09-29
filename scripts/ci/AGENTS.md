@@ -23,7 +23,9 @@ qualification. Host preparation never becomes a consumer requirement.
   file is partitioned by exhaustive name patterns; timing hints affect balance,
   never membership. Each file runs in a fresh Bun process, sequentially within
   its shard, to isolate test state. Hosted shards retain per-test JUnit timing
-  artifacts and per-file command wall times.
+  artifacts and per-file command wall times. Balance includes native prerequisites
+  and installed-consumer work; run expensive lifecycle groups before portable
+  checks to expose failures earlier without reducing membership.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
   prerequisites on hosted Intel and Apple Silicon candidates. It starts no

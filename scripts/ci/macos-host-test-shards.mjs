@@ -30,11 +30,14 @@ const WEIGHTS = new Map([
   ['run-checkpoint-lifecycle.test.ts', 237],
   ['http-request-lifecycle.test.ts', 204],
   ['project-command-lifecycle.test.ts', 190],
-  ['package-provider-host.test.ts', 158],
+  ['package-provider-host.test.ts', 172],
   ['finite-acp-lifecycle.test.ts', 123],
   ['bun-native-preparation.test.ts', 64],
   ['macos-guardian-storage.test.ts', 56],
   ['contract-generation.test.ts', 26],
+  ['markdown-worker.test.ts', 35],
+  ['codex-acp-dispatch.test.ts', 9],
+  ['finite-acp-resource.test.ts', 9],
 ])
 const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
 
@@ -67,9 +70,9 @@ export function planMacHostTests(files) {
     index,
     files: [],
     rootPattern: ROOT_PATTERNS[index] ?? null,
-    // Root lifecycle groups take about 5, 8 and 7 minutes on hosted Intel.
-    // The last shard also owns native startup and packed consumer smoke.
-    estimatedSeconds: [318, 472, 394, 0, 190][index],
+    // Include native prerequisites in shard zero and the installed smoke tail
+    // in shard four. These costs must participate in balancing, too.
+    estimatedSeconds: [430, 472, 394, 0, 240][index],
   }))
   const ordinary = files
     .filter((file) => file !== ROOT_TEST && !NATIVE_PREREQUISITE_TESTS.includes(file))
@@ -82,7 +85,8 @@ export function planMacHostTests(files) {
     target.files.push(file)
     target.estimatedSeconds += weight
   }
-  for (const shard of shards) shard.files.sort()
+  // Keep the expensive containment cases first so failures do not wait behind
+  // unrelated portable checks. Assignment remains exhaustive and deterministic.
   if (shards.some((shard) => shard.files.length === 0)) {
     throw new Error('Mac host test inventory leaves an empty shard')
   }
@@ -94,7 +98,7 @@ export function commandsForShard(shard, bun = 'bun') {
   // sequentially, while a failure cannot leave JS state for the next file.
   const commands = shard.files.map((file) => [bun, 'test', `./${file}`, '--timeout', '420000'])
   if (shard.rootPattern) {
-    commands.push([
+    commands.unshift([
       bun,
       'test',
       `./${ROOT_TEST}`,

@@ -132,6 +132,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   optional manual dispatch profiles installed startup on both architectures
   with the same fixed conversation used by Linux. The profile is non-gating,
   bounded, and leaves archive identity and zero-residue checks mandatory.
+  Schedule slower Intel shards before Apple Silicon, with the installed-consumer
+  shard first. Fail fast after a shard fails; cancelled shards cannot qualify.
+  Cancel superseded runs on feature branches, but retain main-push qualification.
 
 ## Verification
 

@@ -13,17 +13,23 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: macos-hosted-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   prerequisites:
     name: Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}
     runs-on: ${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: ${{ matrix.shard == 4 && inputs.include_startup_profile && 65 || 35 }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       max-parallel: 10
       matrix:
-        shard: [0, 1, 2, 3, 4]
+        # Intel jobs take roughly twice as long. Start them first, with the
+        # installed-consumer tail first, instead of queueing it behind short jobs.
         arch: [x64, arm64]
+        shard: [4, 0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

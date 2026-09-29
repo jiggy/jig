@@ -10,6 +10,11 @@ import { projectCommandCandidateDigest } from '../src/internal/private-project-c
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { PRIVATE_ROOT_RESOURCE_POLICY } from '../src/internal/root-operation-limits.js'
 import type { JsonValue } from '../src/json.js'
+import {
+  fixtureHost,
+  MACOS_FIXTURE_ADMISSION_MS,
+  MACOS_FIXTURE_SETTLEMENT_MS,
+} from './fixtures/agent-fixture-host.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const proof =
@@ -27,7 +32,7 @@ proof('contained Project Command effect', () => {
       let primaryError: unknown
       try {
         await fixture(root)
-        const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+        const host = fixtureHost(await openPrivateInstalledBunHost(installedBunLocation, {}))
         session = await openPrivateProjectSession({ directory: root, host })
         const plan = await session.plan({ lockMode: 'update' })
         expect(plan.state).toBe('applicable')
@@ -149,6 +154,13 @@ proof('contained Project Command effect', () => {
           },
         })
         await noOwners(root)
+        // Deadline enforcement has its own budget; composition must not depend
+        // on the product default or spend the full composition budget idle.
+        await session.close()
+        session = await openPrivateProjectSession({
+          directory: root,
+          host: { ...host, runTimeoutMs: 30_000 },
+        })
         const deadline = await run('command-deadline', {
           'src/cli.ts': `Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', 'await Bun.sleep(60000)'], {stdin:'ignore', stdout:'ignore', stderr:'ignore'}); console.log('started'); await Bun.sleep(60000)`,
         })
@@ -156,6 +168,8 @@ proof('contained Project Command effect', () => {
           terminal: { status: 'failed', code: 'DEADLINE_EXCEEDED' },
         })
         await noOwners(root)
+        await session.close()
+        session = await openPrivateProjectSession({ directory: root, host })
         const stopped = await session.rootAdministration.startRun({
           submissionId: 'command-cancel',
           target: { kind: 'binding', id: 'pair' },
@@ -185,7 +199,7 @@ proof('contained Project Command effect', () => {
 
   test('coordinator loss fences two leaf commands and recovers both branches without replay', async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-loss-')))
-    const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+    const host = fixtureHost(await openPrivateInstalledBunHost(installedBunLocation, {}))
     const fenceFailures: string[] = []
     const originalRecoverFence = PrivateMacosBackend.prototype.recoverFence
     const fenceSpy =
@@ -223,15 +237,16 @@ proof('contained Project Command effect', () => {
       const program = `
         import { openPrivateProjectSession } from ${JSON.stringify(join(import.meta.dir, '../src/internal/project-session-controller.ts'))};
         import { openPrivateInstalledBunHost } from ${JSON.stringify(join(import.meta.dir, '../src/internal/installed-bun-host.ts'))};
+        import { fixtureHost } from ${JSON.stringify(join(import.meta.dir, './fixtures/agent-fixture-host.ts'))};
         import { writeFile } from 'node:fs/promises';
         const session = await openPrivateProjectSession({ directory: ${JSON.stringify(root)},
-          host: await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)}, {}),
+          host: fixtureHost(await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)}, {})),
           onRootExecutionFailure: evidence =>
             console.error('command-loss-root-execution-failure', JSON.stringify(evidence)) });
         const receipt = await session.rootAdministration.startRun({ submissionId: 'lost-command',
           target: {kind:'binding',id:'pair'}, input:{command:'cli',files:{'src/cli.ts':'await Bun.sleep(60000)'}} });
         await writeFile(${JSON.stringify(join(root, 'receipt.json'))}, JSON.stringify(receipt));
-        await Bun.sleep(60000);
+        await Bun.sleep(${host.runTimeoutMs});
       `
       coordinator = Bun.spawn(
         [
@@ -306,8 +321,16 @@ function macosFenceFailureKind(error: unknown): string {
     'macOS recovery must run outside its former owner',
   ])
   const errno = new Set([
-    'EACCES', 'EBUSY', 'ECONNREFUSED', 'ECONNRESET', 'EIO',
-    'EMFILE', 'ENOENT', 'ENOSPC', 'EPERM', 'ETIMEDOUT',
+    'EACCES',
+    'EBUSY',
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'EIO',
+    'EMFILE',
+    'ENOENT',
+    'ENOSPC',
+    'EPERM',
+    'ETIMEDOUT',
   ])
   for (let depth = 0; depth < 12 && cause instanceof Error; depth++) {
     const code = (cause as NodeJS.ErrnoException).code
@@ -380,7 +403,7 @@ async function fixture(root: string) {
 }
 
 async function terminal(administration: RootAdministration, receipt: StartRootRunReceipt) {
-  const until = Date.now() + (process.platform === 'darwin' ? 75_000 : 35_000)
+  const until = Date.now() + (process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 35_000)
   while (Date.now() < until) {
     const status = await administration.runStatus(receipt)
     if (status.state === 'terminal') return status
@@ -408,9 +431,9 @@ function ownerRows(root: string): number {
   }
 }
 async function waitForCommand(root: string, count = 1) {
-  // Allow the ordinary root budget to observe both nested owners; this tests
+  // Allow the explicit composition budget to observe both nested owners; this tests
   // loss and recovery, not startup performance.
-  const until = Date.now() + (process.platform === 'darwin' ? 60_000 : 30_000)
+  const until = Date.now() + (process.platform === 'darwin' ? MACOS_FIXTURE_ADMISSION_MS : 30_000)
   while (Date.now() < until) {
     if (ownerRows(root) >= count) return
     await Bun.sleep(20)
