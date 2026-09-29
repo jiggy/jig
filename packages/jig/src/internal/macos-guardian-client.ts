@@ -236,6 +236,7 @@ async function prepareGuardian(input: {
   )
   const identities = normalizePrivateMacosInputs(
     configuration.type === 'start' ? (configuration.inputs ?? []) : [],
+    configuration.type === 'start' ? (configuration.inputDirectories ?? []) : [],
   )
   const descriptors = () => {
     const held = captures.map((file) => ({
@@ -244,6 +245,7 @@ async function prepareGuardian(input: {
     }))
     const observed = normalizePrivateMacosInputs(
       held.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+      configuration.type === 'start' ? (configuration.inputDirectories ?? []) : [],
     )
     if (JSON.stringify(observed) !== JSON.stringify(identities))
       throw new Error('macOS input captures do not match the admitted manifest')

@@ -1,6 +1,11 @@
 import { constants, fstatSync, readSync } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
-import { PRIVATE_FILE_LIMITS, privateFilePath, sha256 } from './file-input-policy.js'
+import {
+  PRIVATE_FILE_LIMITS,
+  privateAttachmentName,
+  privateFilePath,
+  sha256,
+} from './file-input-policy.js'
 import { privateMacosMkdirAt, privateMacosOpenAt } from './macos-descriptor-files.js'
 import {
   type PrivateMacosReceivedDescriptors,
@@ -14,10 +19,21 @@ export interface PrivateMacosInputIdentity {
 }
 const DIRECTORY = constants.O_RDONLY | constants.O_DIRECTORY | 0x20000000 | 0x01000000
 
+/** Attachment roots are host-owned namespaces, outside the relative file-path budget. */
+export function normalizePrivateMacosInputDirectories(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length > 8 || new Set(value).size !== value.length)
+    throw new TypeError('invalid macOS input directories')
+  return Object.freeze(value.map((name) => privateFilePath(privateAttachmentName(name))))
+}
+
 /** Inert identities only. The sender must separately retain authentic live captures. */
-export function normalizePrivateMacosInputs(value: unknown): readonly PrivateMacosInputIdentity[] {
+export function normalizePrivateMacosInputs(
+  value: unknown,
+  inputDirectories: readonly string[],
+): readonly PrivateMacosInputIdentity[] {
   if (!Array.isArray(value) || value.length > PRIVATE_FILE_LIMITS.files)
     throw new TypeError('invalid macOS input manifest')
+  const roots = new Set(normalizePrivateMacosInputDirectories(inputDirectories))
   let bytes = 0
   const names = new Set<string>(),
     directories = new Set<string>()
@@ -33,13 +49,19 @@ export function normalizePrivateMacosInputs(value: unknown): readonly PrivateMac
       !/^sha256:[0-9a-f]{64}$/.test(entry.digest)
     )
       throw new TypeError('invalid macOS input identity')
-    const path = privateFilePath(entry.path)
+    if (typeof entry.path !== 'string') throw new TypeError('invalid macOS input path')
+    const separator = entry.path.indexOf('/')
+    if (separator < 1 || !roots.has(entry.path.slice(0, separator)))
+      throw new TypeError('macOS input is outside its declared root')
+    privateFilePath(entry.path.slice(separator + 1))
+    const path = entry.path
     bytes += entry.bytes
     if (names.has(path) || bytes > PRIVATE_FILE_LIMITS.bytes)
       throw new TypeError('macOS captured input exceeds its bounds')
     names.add(path)
     const parts = path.split('/')
-    for (let count = 1; count < parts.length; count++)
+    // Count captured descendants, not the separately bounded attachment roots.
+    for (let count = 2; count < parts.length; count++)
       directories.add(parts.slice(0, count).join('/'))
     return Object.freeze({ path, bytes: entry.bytes, digest: entry.digest })
   })
@@ -56,16 +78,23 @@ export function normalizePrivateMacosInputs(value: unknown): readonly PrivateMac
 export async function projectPrivateMacosInputs(
   volume: FileHandle,
   manifest: readonly PrivateMacosInputIdentity[],
-  bundle: PrivateMacosReceivedDescriptors,
+  inputDirectories: readonly string[],
+  bundle: PrivateMacosReceivedDescriptors | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  const files = normalizePrivateMacosInputs(manifest)
-  const descriptors = requirePrivateMacosReceivedDescriptors(bundle)
+  const roots = normalizePrivateMacosInputDirectories(inputDirectories)
+  const files = normalizePrivateMacosInputs(manifest, roots)
+  const descriptors = bundle === undefined ? [] : requirePrivateMacosReceivedDescriptors(bundle)
   if (files.length !== descriptors.length) throw new Error('macOS input handoff count changed')
   const root = await privateMacosOpenAt(volume.fd, 'inputs', DIRECTORY)
   const directories = new Map<string, FileHandle>([['', root]])
   const failures: unknown[] = []
   try {
+    for (const name of roots) {
+      signal.throwIfAborted()
+      privateMacosMkdirAt(root.fd, name, 0o700)
+      directories.set(name, await privateMacosOpenAt(root.fd, name, DIRECTORY))
+    }
     for (const [index, file] of files.entries()) {
       signal.throwIfAborted()
       const fd = descriptors[index]!

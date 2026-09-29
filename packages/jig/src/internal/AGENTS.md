@@ -206,8 +206,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   again in the guardian. Keep immutable inputs separate from writable roots;
   close every writer and transferred descriptor before native execution. Root
   launch plans grant read-only access to the bounded `data/inputs` projection
-  when captured inputs exist; this tree never joins writable payload grants. Input
-  names, aggregate bytes, directory entries and file count retain common bounds.
+  for declared input roots, including empty attachments; this tree never joins
+  writable payload grants. Retain those exact root names in the sealed plan and
+  guardian configuration, create them before execution, and reject files outside
+  them. Apply file-path depth and byte limits relative to each root; the separately
+  bounded root names do not consume the captured-entry budget. Input names,
+  aggregate bytes, directory entries and file count retain common bounds.
   Recovery receives only its own fixed configuration, never stale input handles
   or other payload launch fields from the failed attempt.
 - `macos-owner-state.ts` writes the guardian's authenticated boot, coalition and

@@ -15,6 +15,7 @@ import {
   requirePrivateMacosGuardianStorage,
 } from './macos-guardian-storage.js'
 import {
+  normalizePrivateMacosInputDirectories,
   normalizePrivateMacosInputs,
   type PrivateMacosInputIdentity,
   projectPrivateMacosInputs,
@@ -49,6 +50,7 @@ export interface PrivateMacosGuardianStart {
   readonly maxOutputBytes: number
   readonly storage?: PrivateMacosGuardianStorage
   readonly inputs?: readonly PrivateMacosInputIdentity[]
+  readonly inputDirectories?: readonly string[]
 }
 export interface PrivateMacosGuardianRecovery {
   readonly type: 'recover-storage'
@@ -98,6 +100,7 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
     `type,ownerDirectory,ownerToken,launcher,cwd,command,environment,files,limits,maxOutputBytes${[
       'storage',
       'inputs',
+      'inputDirectories',
     ]
       .filter((key) => value !== null && typeof value === 'object' && Object.hasOwn(value, key))
       .map((key) => `,${key}`)
@@ -132,8 +135,9 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
       record.files as unknown as PrivateMacosSandboxFiles,
       record.cwd,
     )
-  if (record.inputs !== undefined) {
-    normalizePrivateMacosInputs(record.inputs)
+  if (record.inputs !== undefined || record.inputDirectories !== undefined) {
+    const roots = normalizePrivateMacosInputDirectories(record.inputDirectories)
+    normalizePrivateMacosInputs(record.inputs, roots)
     if (
       record.storage === undefined ||
       !(record.files as unknown as PrivateMacosSandboxFiles).readOnlyTrees.includes(
@@ -314,14 +318,15 @@ async function supervise(
       collector = storage.collector
       storageRoot = storage.directory
     }
-    if (inputBundle !== undefined) {
+    if ((configuration.inputDirectories?.length ?? 0) > 0) {
       await projectPrivateMacosInputs(
         storageRoot!,
         configuration.inputs!,
+        configuration.inputDirectories!,
         inputBundle,
         cancellation.signal,
       )
-      inputBundle.close()
+      inputBundle?.close()
       inputBundle = undefined
     }
     await storageRoot?.close()

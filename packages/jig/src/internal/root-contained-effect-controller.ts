@@ -604,6 +604,7 @@ function commandPlan(
         input,
         path: destination.slice('/jig-input/'.length),
       })),
+      inputDirectories: ['project'],
     },
   }
 }

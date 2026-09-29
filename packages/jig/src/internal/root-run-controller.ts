@@ -905,7 +905,7 @@ function backendPlan(
         ],
         readOnlyTrees: [
           packageRoot,
-          ...((files?.capturedInputs?.length ?? 0) > 0 ? [join(data, 'inputs')] : []),
+          ...((files?.inputDirectories?.length ?? 0) > 0 ? [join(data, 'inputs')] : []),
         ],
         writableTrees: [join(data, 'work'), join(data, 'tmp'), ...(hasOutput ? [output] : [])],
         protectedRoots: [join(allocation.directory, 'control')],
@@ -921,6 +921,9 @@ function backendPlan(
         input,
         path: destination.slice('/jig-input/'.length),
       })),
+      inputDirectories: (files?.inputDirectories ?? []).map((path) =>
+        path.slice('/jig-input/'.length),
+      ),
     }),
   })
 }

@@ -10,33 +10,91 @@ import {
   type PrivateCapturedOutput,
   readPrivateCapturedOutput,
 } from '../src/internal/captured-output.js'
-import { privateReadRegularFile, sha256 } from '../src/internal/file-input.js'
+import { privateFilePath, privateReadRegularFile, sha256 } from '../src/internal/file-input.js'
 import { capturePrivateInput } from '../src/internal/input-capture.js'
 import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
 } from '../src/internal/macos-guardian-client.js'
 import { retainPrivateMacosGuardianOutput } from '../src/internal/macos-guardian-output.js'
-import { normalizePrivateMacosInputs } from '../src/internal/macos-input-projection.js'
+import {
+  normalizePrivateMacosInputDirectories,
+  normalizePrivateMacosInputs,
+} from '../src/internal/macos-input-projection.js'
 import type { PrivateMacosGuardianStart } from '../src/internal/macos-native-supervisor.js'
 
 test('native input manifest rejects aliases, file/directory conflicts and aggregate excess', () => {
-  const file = { path: 'a', bytes: 1, digest: sha256(Buffer.from('x')) }
-  expect(normalizePrivateMacosInputs([file])).toEqual([file])
+  const file = { path: 'source/a', bytes: 1, digest: sha256(Buffer.from('x')) }
+  expect(normalizePrivateMacosInputs([file], ['source'])).toEqual([file])
   for (const value of [
     null,
     [file, file],
-    [file, { ...file, path: 'a/b' }],
+    [file, { ...file, path: 'source/a/b' }],
+    [{ ...file, path: 'other/a' }],
+    [{ ...file, path: 'source' }],
     [{ ...file, path: '../outside' }],
     [{ ...file, path: '.jig/private' }],
     [{ ...file, bytes: 8 * 1024 * 1024 + 1 }],
     [{ ...file, bytes: -1 }],
     [{ ...file, digest: 'untrusted' }],
     [{ ...file, extra: true }],
-    Array.from({ length: 65 }, (_, i) => ({ ...file, path: `f${i}` })),
-    Array.from({ length: 64 }, (_, i) => ({ ...file, path: `d${i}/one/two/three/four/file` })),
+    Array.from({ length: 65 }, (_, i) => ({ ...file, path: `source/f${i}` })),
+    Array.from({ length: 64 }, (_, i) => ({
+      ...file,
+      path: `source/d${i}/one/two/three/four/file`,
+    })),
   ])
-    expect(() => normalizePrivateMacosInputs(value)).toThrow()
+    expect(() => normalizePrivateMacosInputs(value, ['source'])).toThrow()
+})
+
+test('native input roots are bounded exact names even when they contain no files', () => {
+  expect(normalizePrivateMacosInputDirectories(['source', 'empty'])).toEqual(['source', 'empty'])
+  expect(normalizePrivateMacosInputs([], ['source', 'empty'])).toEqual([])
+  for (const roots of [
+    null,
+    ['source', 'source'],
+    ['../outside'],
+    ['source/child'],
+    ['.jig'],
+    ['source\n'],
+    ['a'.repeat(65)],
+    Array.from({ length: 9 }, (_, i) => `root${i}`),
+  ])
+    expect(() => normalizePrivateMacosInputDirectories(roots)).toThrow()
+})
+
+test('native attachment roots do not consume the enumerated entry budget', () => {
+  const files = Array.from({ length: 64 }, (_, i) => ({
+    path: `source/d${i}/one/two/file`,
+    bytes: 0,
+    digest: sha256(Buffer.alloc(0)),
+  }))
+  expect(normalizePrivateMacosInputs(files, ['source', 'empty'])).toEqual(files)
+  expect(() =>
+    normalizePrivateMacosInputs(
+      files.map((file, index) =>
+        index === 0 ? { ...file, path: 'source/d0/one/two/extra/file' } : file,
+      ),
+      ['source'],
+    ),
+  ).toThrow()
+})
+
+test('native attachment projection preserves the full relative path budget', () => {
+  const root = 'a'.repeat(64)
+  const paths = [
+    [...Array<string>(15).fill('dir'), 'file'].join('/'),
+    `${'a'.repeat(250)}/${'b'.repeat(250)}/result.txt`,
+  ]
+  for (const path of paths) {
+    expect(privateFilePath(path)).toBe(path)
+    const file = { path: `${root}/${path}`, bytes: 0, digest: sha256(Buffer.alloc(0)) }
+    expect(normalizePrivateMacosInputs([file], [root])).toEqual([file])
+  }
+  for (const path of [`${paths[0]}/extra`, `${paths[1]}x`, '../outside', '.jig/private']) {
+    const file = { path: `${root}/${path}`, bytes: 0, digest: sha256(Buffer.alloc(0)) }
+    expect(() => normalizePrivateMacosInputs([file], [root])).toThrow()
+  }
 })
 
 const native = test.skipIf(
@@ -140,6 +198,7 @@ console.log('native-input-complete')
             bytes: input.bytes + (mode === 'manifest-mismatch' ? 1 : 0),
             digest: input.digest,
           })),
+          inputDirectories: ['source'],
         }
         const input = {
           bun: process.execPath,

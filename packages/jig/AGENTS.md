@@ -322,7 +322,9 @@ admitted FLOW packages.
   behaviors even when hosted startup exceeds the shorter production default.
   Its packed entrypoint consumer checks both string forms, noninteractive default
   selection, current input bytes, overrides, explicit-target bypass and output
-  collision refusal. It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
+  collision refusal. Its packed attachment consumer checks empty bound and
+  per-invocation roots, read-only enforcement, and the full relative path limits.
+  It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete

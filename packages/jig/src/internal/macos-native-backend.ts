@@ -30,6 +30,10 @@ import {
   type PrivateMacosGuardianStorage,
   requirePrivateMacosGuardianStorage,
 } from './macos-guardian-storage.js'
+import {
+  normalizePrivateMacosInputDirectories,
+  normalizePrivateMacosInputs,
+} from './macos-input-projection.js'
 import type { PrivateMacosGuardianStart } from './macos-native-supervisor.js'
 import { PRIVATE_MACOS_MAX_OUTPUT_BYTES } from './macos-output-policy.js'
 import { privateMacosCurrentProcessIdentity } from './macos-process-controls.js'
@@ -86,6 +90,7 @@ export interface PrivateMacosLaunchPlan {
   readonly maxOutputBytes: number
   readonly storage?: PrivateMacosGuardianStorage
   readonly capturedInputs?: readonly PrivateMacosCapturedInput[]
+  readonly inputDirectories?: readonly string[]
 }
 interface SealedInput {
   readonly path: string
@@ -101,6 +106,7 @@ interface SealedImmutablePath {
 interface SealedPlan extends Omit<PrivateMacosLaunchPlan, 'capturedInputs' | 'environment'> {
   readonly environment: Readonly<Record<string, string>>
   readonly capturedInputs: readonly SealedInput[]
+  readonly inputDirectories: readonly string[]
   readonly immutablePaths: readonly SealedImmutablePath[]
 }
 export interface PrivateMacosSealedOwnerIdentity {
@@ -733,18 +739,20 @@ async function sealPlan(
   if (storage === undefined && files.writableTrees.length !== 0)
     throw new TypeError('native macOS writable paths require bounded storage')
   if (storage !== undefined) requirePrivateMacosGuardianStorage(storage, files, value.cwd)
-  const captures = (value.capturedInputs ?? []).map(({ path, input }) => {
-    const captured = requirePrivateCapturedInput(input)
-    return Object.freeze({ path, bytes: captured.bytes, digest: captured.digest })
-  })
+  const inputDirectories = normalizePrivateMacosInputDirectories(value.inputDirectories ?? [])
+  const captures = normalizePrivateMacosInputs(
+    (value.capturedInputs ?? []).map(({ path, input }) => {
+      const captured = requirePrivateCapturedInput(input)
+      return Object.freeze({ path, bytes: captured.bytes, digest: captured.digest })
+    }),
+    inputDirectories,
+  )
   const projectedInputs =
     storage === undefined ? undefined : posix.join(storage.mountPath, 'inputs')
-  if (
-    projectedInputs !== undefined &&
-    files.readOnlyTrees.includes(projectedInputs) &&
-    captures.length === 0
-  )
-    throw new TypeError('native macOS input projection has no captured inputs')
+  const hasInputGrant =
+    projectedInputs !== undefined && files.readOnlyTrees.includes(projectedInputs)
+  if (hasInputGrant !== (inputDirectories.length > 0))
+    throw new TypeError('native macOS input directories require an immutable bounded projection')
   const immutablePaths: SealedImmutablePath[] = []
   for (const [path, type] of [
     ...files.readOnlyFiles.map((path) => [path, 'file'] as const),
@@ -775,6 +783,7 @@ async function sealPlan(
     maxOutputBytes: value.maxOutputBytes,
     ...(storage === undefined ? {} : { storage }),
     capturedInputs: Object.freeze(captures),
+    inputDirectories,
     immutablePaths: Object.freeze(immutablePaths),
   })
   await revalidatePlan(sealed)
@@ -814,9 +823,12 @@ function guardianConfiguration(
     limits: data.sealedPlan.limits,
     maxOutputBytes: data.sealedPlan.maxOutputBytes,
     ...(data.sealedPlan.storage === undefined ? {} : { storage: data.sealedPlan.storage }),
-    ...(data.sealedPlan.capturedInputs.length === 0
+    ...(data.sealedPlan.inputDirectories.length === 0
       ? {}
-      : { inputs: data.sealedPlan.capturedInputs }),
+      : {
+          inputs: data.sealedPlan.capturedInputs,
+          inputDirectories: data.sealedPlan.inputDirectories,
+        }),
   })
 }
 
