@@ -382,13 +382,32 @@ for (const failure of [
 ]) {
   reset(failure)
   saved = { scope: originalScope, reference }
+  const failures: string[] = []
+  const request = {
+    ...input({ restore: reference }),
+    onFailure(phase: string) {
+      failures.push(phase)
+      throw new Error('observer failure must not replace the original failure')
+    },
+  }
   let result: any, error: any
   try {
-    result = await run(input({ restore: reference }))
+    result = await run(request)
   } catch (caught) {
     error = caught
   }
   assert.ok(error || result?.status === 'failed', failure)
+  if (failure === 'descriptor') {
+    assert.deepEqual(failures, ['cleanup'])
+    assert.equal(error.cause.message, 'descriptor failed')
+  }
+  if (failure === 'storage') {
+    assert.deepEqual(failures, ['settlement'])
+    assert.equal(error.message, 'storage failed')
+  }
+  if (failure === 'receipt-loss') assert.deepEqual(failures, ['settlement'])
+  if (['collection-bug', 'snapshot-io'].includes(failure))
+    assert.deepEqual(failures, ['settlement'])
   before('claim', 'seal')
   assert.equal(saved !== undefined, failure === 'receipt-loss', failure)
   if (['cleanup', 'descriptor'].includes(failure))

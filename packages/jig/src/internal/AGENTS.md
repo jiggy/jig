@@ -878,7 +878,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Finite ACP failures report their private preparation, sealing, admission,
   protocol, settlement or cleanup phase through the existing closed host-test
   observer, including nested Flow calls. Observer exceptions cannot change
-  the terminal or interrupt cleanup. Lifecycle repeat-success checks assert
+  the terminal or interrupt cleanup. Post-protocol collection, session storage
+  and receipt cancellation report settlement; output descriptor-close failures
+  report cleanup. Lifecycle repeat-success checks assert
   the Agent result as well as the outer Flow terminal.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing

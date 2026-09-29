@@ -415,6 +415,7 @@ async function executeOwnedProvider(
             },
           ]),
     )
+    failurePhase = 'settlement'
     if (
       operation.session !== undefined &&
       !execution.closed &&
@@ -438,7 +439,6 @@ async function executeOwnedProvider(
         else throw error
       }
     }
-    failurePhase = 'settlement'
     await releaseKnownAcp(input, lifecycle, execution.fence)
   } catch (error) {
     reportFailure(input, failurePhase, error)
@@ -480,6 +480,7 @@ async function executeOwnedProvider(
     try {
       await closePrivateExecutionOutput(output)
     } catch (error) {
+      reportFailure(input, 'cleanup', error)
       // Descriptor release is owned cleanup. A failure here must not mask a
       // fatal fence failure with an ordinary, catchable operation exception.
       // biome-ignore lint/correctness/noUnsafeFinally: Owned cleanup failure must remain fatal to the Run.
@@ -514,8 +515,16 @@ async function executeOwnedProvider(
             scopeDigest,
             ...retained,
             ...(lifetime === undefined ? {} : { lifetime }),
+          }).catch((error) => {
+            reportFailure(input, 'settlement', error)
+            throw error
           })
-    input.signal.throwIfAborted()
+    try {
+      input.signal.throwIfAborted()
+    } catch (error) {
+      reportFailure(input, 'settlement', error)
+      throw error
+    }
     sessionReceipt =
       saved === undefined
         ? { status: 'unavailable', reason: retained === undefined ? unavailableReason : 'capacity' }
