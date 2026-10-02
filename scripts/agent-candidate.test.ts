@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { spawnSync } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -6,6 +7,71 @@ import { join, resolve } from 'node:path'
 const root = resolve(import.meta.dir, '..')
 // Bun 1.3 parses YAML's unquoted `on` as a boolean; Bun 1.4 preserves its name.
 const workflowTriggers = (workflow: any) => workflow.on ?? workflow.true
+test('PRs start complete hosted Mac qualification and quick checks finish independently', async () => {
+  const load = async (file: string) =>
+    Bun.YAML.parse(await Bun.file(join(root, '.github/workflows', file)).text()) as any
+  const mac = await load('macos-hosted-candidates.yml')
+  const ci = await load('ci.yml')
+  expect(Object.hasOwn(workflowTriggers(mac), 'pull_request')).toBeTrue()
+  const macPaths = workflowTriggers(mac).pull_request.paths as string[]
+  for (const input of [
+    'packages/jig/test/new-host-case.test.ts',
+    'packages/agent-method/src/api.ts',
+    'packages/agent-acp/src/flow.ts',
+    'packages/flow-authoring/src/index.ts',
+    'packages/flow-sdk/src/index.ts',
+    'docs/flow/spec/machine/invocation-contract-0.schema.json',
+    'docs/jig/spec/contracts/agent-run/contract.json',
+    'examples/incident-brief/flows/worker/FLOW.ts',
+    'scripts/ci/qualify-macos-host.sh',
+    'scripts/test-installed-hostile-baseline.ts',
+    '.github/workflows/macos-hosted-candidates.yml',
+    'justfile',
+    'package.json',
+    'LICENSE.md',
+    'PRICING.md',
+    'LICENSES.md',
+    'LICENSES/MPL-2.0.txt',
+    'RELEASING.md',
+  ]) {
+    expect(macPaths.some((pattern) => new Bun.Glob(pattern).match(input))).toBeTrue()
+  }
+  expect(
+    macPaths.some((pattern) => new Bun.Glob(pattern).match('docs/jig/guide/teams.md')),
+  ).toBeFalse()
+  expect(workflowTriggers(mac).push.branches).toEqual(['main'])
+  expect(mac.permissions).toEqual({ contents: 'read' })
+  expect(mac.jobs.prerequisites.environment).toBeUndefined()
+  expect(mac.jobs.prerequisites.strategy.matrix.arch).toEqual(['x64', 'arm64'])
+  expect(mac.concurrency['cancel-in-progress']).toContain("github.ref != 'refs/heads/main'")
+  for (const job of ['quick-checks', 'sites', 'source-tests', 'npm-candidate']) {
+    expect(ci.jobs[job].needs).toBeUndefined()
+  }
+  expect(
+    ci.jobs['quick-checks'].steps.some((step: any) => step.run === 'just test-tooling'),
+  ).toBeTrue()
+  const preflight = ci.jobs['npm-candidate'].steps.find((step: any) =>
+    step.run?.includes('npm-candidate-preflight.mjs'),
+  )
+  expect(preflight.env.SOURCE_REVISION).toBe('${{ github.sha }}')
+  expect(
+    ci.jobs['source-tests'].steps.some((step: any) =>
+      step.run?.includes('scripts/test-release.sh'),
+    ),
+  ).toBeTrue()
+  expect(ci.jobs.test.if).toBe('always()')
+  expect(ci.jobs.test.needs).toEqual(['quick-checks', 'sites', 'source-tests'])
+  const script = ci.jobs.test.steps[0].run
+  for (const key of ['QUICK', 'SITES', 'SOURCE']) {
+    for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
+      const child = spawnSync('/bin/sh', ['-c', script], {
+        env: { QUICK: 'success', SITES: 'success', SOURCE: 'success', [key]: result },
+      })
+      expect(child.status).toBe(result === 'success' ? 0 : 1)
+    }
+  }
+})
+
 test('Agent candidate refuses malformed requests and missing tools before creating output', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'agent-candidate-refusal-'))
   try {
@@ -315,7 +381,10 @@ test('Mac publication gate accepts only a successful exact main-push host run', 
     await chmod(join(bin, 'sleep'), 0o755)
     const response = join(directory, 'response.json')
     const run = async (value: unknown) => {
-      await writeFile(response, JSON.stringify({ workflow_runs: Array.isArray(value) ? value : [value] }))
+      await writeFile(
+        response,
+        JSON.stringify({ workflow_runs: Array.isArray(value) ? value : [value] }),
+      )
       const child = Bun.spawn(['/bin/sh', script, 'jiggy/jig', revision], {
         cwd: directory,
         env: {
@@ -340,10 +409,14 @@ test('Mac publication gate accepts only a successful exact main-push host run', 
     }
     expect((await run(matching)).exit).toBe(0)
     expect((await run({ ...matching, conclusion: 'failure' })).exit).toBe(1)
-    expect((await run([
-      { ...matching, head_sha: 'b'.repeat(40) },
-      { ...matching, conclusion: 'failure' },
-    ])).exit).toBe(1)
+    expect(
+      (
+        await run([
+          { ...matching, head_sha: 'b'.repeat(40) },
+          { ...matching, conclusion: 'failure' },
+        ])
+      ).exit,
+    ).toBe(1)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

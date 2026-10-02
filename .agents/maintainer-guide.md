@@ -519,6 +519,13 @@ the affected task; keep working on every other task that can progress. Commit
 stable in-scope work and retain unstable evidence on a separate experimental
 branch only when worth keeping.
 
+Batch related outcomes into a useful review milestone. Keep distinct stable
+commits where they help review, but do not make every commit a separate PR or
+owner checkpoint. Run quick local checks before pushing; start full CI at the
+milestone and continue independent work while it runs. Re-run completed checks
+only for changed inputs or unresolved failures. Waiting for CI or review does
+not by itself pause other authorized work.
+
 For a blocker requiring owner help, first record it in
 `.tmp/current-blockers.md`, including the missing prerequisite or decision,
 alternatives already exhausted, and the specific owner action. Then continue

@@ -12,6 +12,12 @@ publish a missing version newer than its channel tag, refetch the registry bytes
 create package-specific annotated source tags. A missing older candidate is
 superseded without publication.
 
+Candidate CI also checks the exact public registry version read-only before
+merge. An existing version must match the complete candidate archive, including
+source, documentation and dependency metadata. A collision fails CI with an
+instruction to advance the version and its affected dependents. This early
+check does not replace publication's complete preflight or final rechecks.
+
 There is no release button, version input, npm token, or separately rebuilt
 archive. The workflow publishes through npm trusted publishing in the `npm`
 GitHub environment. Packages converge in dependency order: FLOW SDK, HTTP Agent,

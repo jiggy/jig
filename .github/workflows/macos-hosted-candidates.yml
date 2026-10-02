@@ -1,6 +1,25 @@
 name: macOS hosted candidates
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'packages/jig/**'
+      - 'packages/agent-method/**'
+      - 'packages/agent-acp/**'
+      - 'packages/flow-authoring/**'
+      - 'packages/flow-sdk/**'
+      - 'docs/jig/spec/**'
+      - 'docs/flow/spec/**'
+      - 'examples/**'
+      - 'scripts/**'
+      - 'justfile'
+      - 'package.json'
+      - 'LICENSE.md'
+      - 'PRICING.md'
+      - 'LICENSES.md'
+      - 'LICENSES/**'
+      - 'RELEASING.md'
   workflow_dispatch:
     inputs:
       include_startup_profile:
@@ -8,7 +27,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main, mac-support]
+    branches: [main]
 
 permissions:
   contents: read
