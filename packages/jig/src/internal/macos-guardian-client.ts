@@ -12,6 +12,11 @@ import {
   sendPrivateMacosDescriptors,
 } from './macos-descriptor-handoff.js'
 import {
+  type PrivateMacosGuardianPhase,
+  type PrivateMacosGuardianRecoveryStep,
+  reportPrivateMacosGuardianRecovery,
+} from './macos-guardian-diagnostics.js'
+import {
   allocatePrivateMacosGuardianStorage,
   releasePrivateMacosGuardianStorage,
   requirePrivateMacosGuardianStorage,
@@ -283,7 +288,7 @@ async function prepareGuardian(input: {
   let storageAllocated = false
   const transferCancellation = new AbortController()
   let finished = false
-  let phase: 'prepared' | 'admitted' | 'ready' | 'running' | 'collecting' | 'terminal' = 'prepared'
+  let phase: PrivateMacosGuardianPhase = 'prepared'
   const currentPhase = (): string => phase
   const endpoint = async (suffix: string): Promise<{ accepted: Promise<Socket> }> => {
     const server = createServer()
@@ -453,9 +458,12 @@ async function prepareGuardian(input: {
       channel.send({ type: 'release' })
     }
     const completion = (async (): Promise<PrivateMacosGuardianResult> => {
+      let step: PrivateMacosGuardianRecoveryStep = 'receive'
       try {
         for (;;) {
+          step = 'receive'
           const message = (await channel.receive()) as Record<string, unknown>
+          step = 'validate'
           if (
             message?.type === 'ready' &&
             currentPhase() === 'admitted' &&
@@ -485,6 +493,7 @@ async function prepareGuardian(input: {
                 message.outputLost
               )
                 throw new Error('macOS collector has no successful fenced owner')
+              step = 'output-transfer'
               received = await descriptorReceiver.receive(
                 guardian!,
                 5000,
@@ -530,6 +539,7 @@ async function prepareGuardian(input: {
                 `macOS guardian ended before readiness (${normalizedResult?.reason ?? 'recovery'})`,
               ),
             )
+            step = 'terminal-cleanup'
             closeCollector()
             await cleanup()
             control?.destroy()
@@ -544,7 +554,8 @@ async function prepareGuardian(input: {
             return terminal
           } else throw new Error('invalid macOS guardian response')
         }
-      } catch {
+      } catch (error) {
+        reportPrivateMacosGuardianRecovery(phase, step, error)
         phase = 'terminal'
         rejectReady(new Error('macOS guardian connection lost'))
         try {

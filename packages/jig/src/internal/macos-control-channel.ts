@@ -7,8 +7,8 @@ export function privateMacosControlChannel(socket: Socket) {
   let ended = false
   let failure: Error | undefined
   let pending: { resolve(value: unknown): void; reject(error: Error): void } | undefined
-  const fail = () => {
-    failure ??= new Error('macOS control channel lost or malformed')
+  const fail = (reason: 'socket failed' | 'capacity exceeded' | 'malformed' | 'truncated') => {
+    failure ??= new Error(`macOS control channel ${reason}`)
     ended = true
     messages.length = 0
     pending?.reject(failure)
@@ -16,7 +16,7 @@ export function privateMacosControlChannel(socket: Socket) {
     socket.destroy()
   }
   const end = () => {
-    if (buffer.length !== 0) return fail()
+    if (buffer.length !== 0) return fail('truncated')
     ended = true
     failure ??= new Error('macOS control channel ended')
     pending?.reject(failure)
@@ -24,7 +24,8 @@ export function privateMacosControlChannel(socket: Socket) {
   }
   socket.on('data', (data: Buffer) => {
     try {
-      if (ended || buffer.length + data.length > 65536) return fail()
+      if (ended) return fail('socket failed')
+      if (buffer.length + data.length > 65536) return fail('capacity exceeded')
       buffer = Buffer.concat([buffer, data])
       for (;;) {
         const newline = buffer.indexOf(10)
@@ -32,7 +33,7 @@ export function privateMacosControlChannel(socket: Socket) {
         const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, newline))
         buffer = buffer.subarray(newline + 1)
         const message = JSON.parse(text) as unknown
-        if (messages.length >= 8) return fail()
+        if (messages.length >= 8) return fail('capacity exceeded')
         if (pending !== undefined) {
           const waiter = pending
           pending = undefined
@@ -40,10 +41,10 @@ export function privateMacosControlChannel(socket: Socket) {
         } else messages.push(message)
       }
     } catch {
-      fail()
+      fail('malformed')
     }
   })
-  socket.on('error', fail)
+  socket.on('error', () => fail('socket failed'))
   socket.on('end', end)
   socket.on('close', end)
   return Object.freeze({

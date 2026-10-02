@@ -315,6 +315,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   job and socket allocation only after kernel fencing. `macos-control-channel.ts`
   bounds private frames and queued messages; none of these modules is a public
   backend extension point or an installed-support claim.
+- `macos-guardian-diagnostics.ts` supplies opt-in, asynchronous-scope host-test
+  evidence when the guardian client enters recovery. Record its phase, failing
+  step and a closed cause before discarding the original error. Never emit raw
+  errors, paths, tokens, payloads or received frames. Observer failures cannot
+  affect settlement; the evidence grants no authority and changes no public
+  terminal, receipt or recovery rule. Project Command qualification logs these
+  events. Portable tests cover redaction and scope isolation; the native
+  guardian-loss test verifies reporting and recovery with a throwing observer.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
   under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
   projections cannot overlap these runtime roots. Host control remains excluded.
