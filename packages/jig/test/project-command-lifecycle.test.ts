@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
+import { withPrivateMacosGuardianDiagnostics } from '../src/internal/macos-guardian-diagnostics.js'
 import { PrivateMacosBackend } from '../src/internal/macos-native-backend.js'
 import { projectCommandCandidateDigest } from '../src/internal/private-project-command.js'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
@@ -25,10 +26,16 @@ const proof =
 
 const timeout = process.platform === 'darwin' ? 600_000 : 180_000
 
+const observeGuardianRecovery = (run: () => Promise<void>) => () =>
+  withPrivateMacosGuardianDiagnostics(
+    (event) => console.error('command-guardian-recovery', JSON.stringify(event)),
+    run,
+  )
+
 proof('contained Project Command effect', () => {
   test(
     'collects real root and leaf command evidence without Agent authority and rejects forged success',
-    async () => {
+    observeGuardianRecovery(async () => {
       const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-proof-')))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       let primaryError: unknown
@@ -209,7 +216,7 @@ proof('contained Project Command effect', () => {
       }
       await rm(root, { recursive: true, force: true })
       if (primaryError !== undefined) throw primaryError
-    },
+    }),
     timeout,
   )
 

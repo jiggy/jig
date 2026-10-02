@@ -10,6 +10,10 @@ import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
 } from '../src/internal/macos-guardian-client.js'
+import {
+  type PrivateMacosGuardianRecoveryDiagnostic,
+  withPrivateMacosGuardianDiagnostics,
+} from '../src/internal/macos-guardian-diagnostics.js'
 import type { PrivateMacosGuardianStart } from '../src/internal/macos-native-supervisor.js'
 
 const native = test.skipIf(
@@ -122,7 +126,15 @@ native(
             settled = true
             continue
           }
-          owner = await preparePrivateMacosGuardian(input)
+          const recoveryEvents: PrivateMacosGuardianRecoveryDiagnostic[] = []
+          owner = await withPrivateMacosGuardianDiagnostics(
+            (event) => {
+              recoveryEvents.push(event)
+              // A failed diagnostic sink must not prevent actual native recovery.
+              throw new Error('diagnostic sink failed')
+            },
+            () => preparePrivateMacosGuardian(input),
+          )
           let output = '',
             errors = ''
           if (mode !== 'blocked-output')
@@ -185,6 +197,11 @@ native(
           const result = await owner.completion
           settled = result.fenced
           expect(result.recovered).toBe(mode === 'guardian-loss')
+          if (mode === 'guardian-loss') {
+            expect(recoveryEvents).toHaveLength(1)
+            expect(recoveryEvents[0]).toMatchObject({ phase: 'running', step: 'receive' })
+            expect(['CONTROL_EOF', 'CONTROL_SOCKET']).toContain(recoveryEvents[0]!.cause)
+          } else expect(recoveryEvents).toEqual([])
           if (mode === 'complete') {
             expect(result.result?.exitCode).toBe(0)
             expect(result.result?.reason).toBe('payload_exit')

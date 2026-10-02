@@ -52,16 +52,16 @@ test('private guardian framing preserves fragmented UTF-8 and queued terminal fr
 })
 
 test('private guardian framing rejects malformed, oversized, truncated and excessive queued messages', async () => {
-  for (const input of [
-    Buffer.from([0xff, 10]),
-    Buffer.alloc(65537, 32),
-    Buffer.from('{"type":'),
-    Buffer.from('{}\n'.repeat(9)),
-  ]) {
+  for (const [input, reason] of [
+    [Buffer.from([0xff, 10]), 'malformed'],
+    [Buffer.alloc(65537, 32), 'capacity exceeded'],
+    [Buffer.from('{"type":'), 'truncated'],
+    [Buffer.from('{}\n'.repeat(9)), 'capacity exceeded'],
+  ] as const) {
     await pair(async (sender, reader) => {
       sender.end(input)
       await Bun.sleep(20)
-      await expect(reader.receive()).rejects.toThrow('lost or malformed')
+      await expect(reader.receive()).rejects.toThrow(`macOS control channel ${reason}`)
     })
   }
 })
