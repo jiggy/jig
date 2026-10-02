@@ -13,6 +13,8 @@ operational baselines, and public-site assembly.
   workspace entries. Tracked source stays local to each checkout; parent links
   into the primary checkout stay unchanged. It does not copy environment files,
   create shared tool state, install dependencies, or choose another workspace.
+  Use portable BSD/GNU link creation and refuse collisions while retaining a
+  partially created checkout for inspection.
 - Justfiles own task composition; scripts retain substantive orchestration.
   TypeScript candidate and site scripts invoke the relevant justfile, not
   package scripts. Python Just tasks expose the packaging orchestrator, which
@@ -23,6 +25,7 @@ operational baselines, and public-site assembly.
   It freezes complete SDK, HTTP Agent, ACP Agent and Jig archives through their package-owned
   packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE` and
   `JIG_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes afterward.
+  Hash verification uses the already-qualified Node executable on Linux and Mac.
   The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
   it maps applications' declared SDK/Agent dependencies to the exact frozen
   archives in disposable copies, including nested Flow and application-local
@@ -138,6 +141,8 @@ operational baselines, and public-site assembly.
   example dependency versions against public package manifests,
   explicit packing, and build-tool refusal before cleanup or site staging. Its
   no-package-scripts rule covers repository tasks, not imported skill toolchains.
+  It includes all quick CI checks and the protected npm publisher's controlled
+  registry tests; the publisher uses Node hashing so these checks also run on Mac.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
 

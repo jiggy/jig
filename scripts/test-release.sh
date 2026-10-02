@@ -35,6 +35,17 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
   exit 1
 fi
 
+archive_digests() {
+  "$FLOW_NODE" --input-type=module -e '
+    import { createHash } from "node:crypto";
+    import { readFile } from "node:fs/promises";
+    for (const path of process.argv.slice(1)) {
+      const digest = createHash("sha256").update(await readFile(path)).digest("hex");
+      console.log(`${digest} ${JSON.stringify(path)}`);
+    }
+  ' "$@"
+}
+
 just flow::build
 just authoring::test
 just jig::build
@@ -66,7 +77,7 @@ set -- "$release_tmp"/artifacts/jig/*.tgz
 test "$#" -eq 1 && test -f "$1"
 JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
-sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
 for application in tested-patch software-factory request-triage support-case contact-import incident-brief; do
   application_copy="$release_tmp/$application"
@@ -150,4 +161,8 @@ PYTHONDONTWRITEBYTECODE=1 \
 "$python_bin" scripts/build-python-sdk.py "$release_tmp/python-dist"
 "$python_bin" -m unittest discover -s scripts -p 'test_pypi_release.py' -v
 
-sha256sum --check "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"
+cmp "$release_tmp/archive-digests" "$release_tmp/verified-digests" || {
+  echo "release tests changed the frozen package archives" >&2
+  exit 1
+}

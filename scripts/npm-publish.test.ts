@@ -234,6 +234,16 @@ test('FLOW publishes independently even when a host candidate is invalid', async
   })
 }, 45_000)
 
+test('changed candidate digest sidecars fail before any registry mutation', async () => {
+  await fixture('0.1.0-alpha.16', async ({ state, archives, root }) => {
+    await writeFile(`${archives['@jigging/agent-method']}.sha256`, 'wrong digest\n')
+    const result = await run(root, state, 'host')
+    expect(result.result.status).not.toBe(0)
+    expect(result.result.stderr).toContain('candidate digest sidecar does not match')
+    expect(result.state.calls).toEqual([])
+  })
+})
+
 test('publication and tagging use separate SDK and host qualification paths', async () => {
   const workflow = Bun.YAML.parse(
     await Bun.file(join(import.meta.dir, '../.github/workflows/npm-publish.yml')).text(),
