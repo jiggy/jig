@@ -127,6 +127,30 @@ The example's client is a choice, not a Jig default; `codex`, `claude` and `pi`
 use the same grant interface. The operator configures the native installation, model and
 authentication described in [Choose an Agent](https://jig.md/guide/agents).
 
+To call this Agent from a new Flow, install the declared project dependency
+with `bun install`, then select its complete contract when creating the caller:
+
+```sh
+jig new worker --use agent=npm:@jigging/agent-acp
+```
+
+For an existing caller, create its `contracts/` parent and import the bundle:
+
+```sh
+mkdir -p flows/worker/contracts
+jig import-contract npm:@jigging/agent-acp flows/worker/contracts/agent
+```
+
+Declare `uses.agent.contract: './contracts/agent/FLOW.contract.json'` in that
+caller's metadata. Selection uses the nearest ordinary project or member-local
+installation, copies all referenced channel descriptors offline, and runs no
+package code. The copied contract belongs to the caller: an installation update
+does not replace it or grant new authority. An existing destination is refused;
+choose a new directory to inspect a changed contract before updating the caller.
+See the [conversation walkthrough](https://jig.md/guide/conversations) for a
+complete two-turn caller and the separate native turn grant. These authoring
+commands require the matching Jig source candidate until its alpha is published.
+
 ```sh
 jig review
 jig run binding:agent --input '{"instructions":"Explain one useful check."}' --receive events

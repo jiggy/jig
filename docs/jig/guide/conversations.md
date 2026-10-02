@@ -33,7 +33,7 @@ jig init conversation-demo --agent codex
 cd conversation-demo
 bun install
 jig new worker --use agent=npm:@jigging/agent-acp
-bun add --cwd flows/worker @jigging/agent-method@0.1.0-alpha.5
+bun add --cwd flows/worker @jigging/agent-method@0.1.0-alpha.6
 ```
 
 The Bun command installs an authoring dependency and records it in the worker's
