@@ -35,6 +35,18 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! "$python_bin" -c 'import build, twine, mypy' >/dev/null 2>&1; then
+  echo "Install release test tools for $python_bin: build==1.3.0 twine==6.2.0 mypy==1.18.2" >&2
+  exit 1
+fi
+if ! (cd conformance/run-0 && bun --no-env-file -e '
+  import.meta.resolve("ajv/dist/2020.js");
+  import.meta.resolve("@jigging/sley");
+') >/dev/null 2>&1; then
+  echo "Install protocol fixture dependencies: bun install --cwd conformance/run-0 --frozen-lockfile" >&2
+  exit 1
+fi
+
 archive_digests() {
   "$FLOW_NODE" --input-type=module -e '
     import { createHash } from "node:crypto";
@@ -50,7 +62,10 @@ just flow::build
 just authoring::test
 just jig::build
 
-release_tmp=$(mktemp -d "${TMPDIR:-/tmp}/jig-release.XXXXXX")
+# Installed artifact checks require canonical archive paths, including Mac's
+# temporary-directory aliases.
+temporary_parent=$(CDPATH= cd -- "${TMPDIR:-/tmp}" && pwd -P)
+release_tmp=$(mktemp -d "$temporary_parent/jig-release.XXXXXX")
 trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 
 # Test authored applications against the exact local package candidates, including

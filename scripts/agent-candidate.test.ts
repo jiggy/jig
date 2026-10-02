@@ -7,6 +7,50 @@ import { join, resolve } from 'node:path'
 const root = resolve(import.meta.dir, '..')
 // Bun 1.3 parses YAML's unquoted `on` as a boolean; Bun 1.4 preserves its name.
 const workflowTriggers = (workflow: any) => workflow.on ?? workflow.true
+test('the source gate refuses missing prerequisites before starting builds', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'source-gate-preflight-'))
+  const node = Bun.which('node')
+  if (!node) throw new Error('source gate tests require genuine Node')
+  try {
+    const bin = join(directory, 'bin')
+    const calls = join(directory, 'build-calls')
+    await mkdir(bin)
+    await mkdir(join(directory, 'conformance/run-0'), { recursive: true })
+    for (const [name, body] of [
+      ['bun', 'exit "$MOCK_DEPENDENCY_STATUS"'],
+      ['python', 'if [ "$1" = --version ]; then exit 0; fi; exit "$MOCK_PYTHON_STATUS"'],
+      ['just', 'echo build >> "$MOCK_BUILD_CALLS"; exit 79'],
+    ]) {
+      await writeFile(join(bin, name), `#!/bin/sh\n${body}\n`)
+      await chmod(join(bin, name), 0o755)
+    }
+    for (const [pythonStatus, dependencyStatus, expected, diagnostic] of [
+      ['1', '0', 1, 'Install release test tools'],
+      ['0', '1', 1, 'Install protocol fixture dependencies'],
+      ['0', '0', 79, ''],
+    ] as const) {
+      await writeFile(calls, '')
+      const result = spawnSync('/bin/sh', [join(root, 'scripts/test-release.sh')], {
+        cwd: directory,
+        env: {
+          PATH: `${bin}:${process.env.PATH}`,
+          FLOW_NODE: node,
+          PYTHON: join(bin, 'python'),
+          MOCK_BUILD_CALLS: calls,
+          MOCK_PYTHON_STATUS: pythonStatus,
+          MOCK_DEPENDENCY_STATUS: dependencyStatus,
+        },
+        encoding: 'utf8',
+      })
+      expect(result.status).toBe(expected)
+      expect(result.stderr).toContain(diagnostic)
+      expect(await Bun.file(calls).text()).toBe(expected === 79 ? 'build\n' : '')
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('PRs start complete hosted Mac qualification and quick checks finish independently', async () => {
   const load = async (file: string) =>
     Bun.YAML.parse(await Bun.file(join(root, '.github/workflows', file)).text()) as any
