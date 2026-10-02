@@ -194,32 +194,7 @@ if [ -e "$staging/$forbidden_page" ]; then
   exit 1
 fi
 
-if [ "$(uname -s)" = Darwin ]; then
-  # BSD mv has no -T. If a competing builder creates the destination after
-  # the check, mv nests staging inside it; verify the promoted inode instead
-  # of treating disappearance from the staging path as success.
-  staging_identity=$(stat -f '%d:%i' "$staging")
-  staging_name=$(basename -- "$staging")
-  if [ -e "$output" ]; then
-    echo "the site output appeared while it was being built: $output" >&2
-    exit 1
-  fi
-  mv -n -- "$staging" "$output"
-  if [ ! -e "$output" ] || [ "$(stat -f '%d:%i' "$output")" != "$staging_identity" ]; then
-    nested="$output/$staging_name"
-    if [ -d "$nested" ] && [ "$(stat -f '%d:%i' "$nested")" = "$staging_identity" ]; then
-      rm -rf -- "$nested"
-    fi
-    echo "the site output appeared while it was being built: $output" >&2
-    exit 1
-  fi
-else
-  mv -T --no-clobber -- "$staging" "$output"
-fi
-if [ -e "$staging" ]; then
-  echo "the site output appeared while it was being built: $output" >&2
-  exit 1
-fi
+"$javascript" "$repository/scripts/promote-directory.mjs" "$staging" "$output"
 staging=
 
 printf '%s\n' "$output"

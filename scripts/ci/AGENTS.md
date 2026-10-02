@@ -68,6 +68,8 @@ host qualification. Host preparation never becomes a consumer requirement.
 - `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
   and identical versions, immutable collisions, registry errors and changed
   candidate evidence without credentials or registry mutations.
+- `node --test scripts/ci/promote-directory.test.mjs` verifies exact directory
+  promotion and preservation of existing or racing outputs on Linux and Mac.
 
 ## Child DOX Index
 
