@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -13,7 +13,9 @@ afterEach(async () => {
   for (const root of temporary.splice(0)) await rm(root, { recursive: true, force: true })
 })
 const fixture = async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agent-method-test-'))
+  // macOS's temporary-directory spelling can itself traverse /var's symlink.
+  // Supply a canonical root so the reader still tests package symlink refusal.
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'agent-method-test-')))
   temporary.push(root)
   await mkdir(join(root, 'skills', 'check'), { recursive: true })
   await writeFile(join(root, 'skills', 'check', 'SKILL.md'), 'Exact guidance.\n')
