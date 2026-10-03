@@ -90,6 +90,7 @@ import {
   requireParentTarget,
 } from './invocation-context.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
+import { privateProfileSpan } from './private-profile.js'
 import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 
 const ALLOCATION_KIND = 'private-root-agent-owner-allocation/1'
@@ -333,6 +334,7 @@ async function executeOwnedProvider(
   }
 
   let attemptedDispatch = false
+  let phase = 'verifying the admitted runtime'
   let execution: ProviderExecution
   let output: PrivateExecutionOutput | undefined
   let retained: PrivateCodexSessionState | undefined
@@ -346,9 +348,12 @@ async function executeOwnedProvider(
   const scopeDigest = nativeSessionScope(input, provider)
   let failurePhase: PrivateFiniteAcpFailurePhase = 'preparation'
   try {
-    await revalidateProviderSupport(recipe, provider, input)
+    await privateProfileSpan('finite-acp-revalidation', () =>
+      revalidateProviderSupport(recipe, provider, input),
+    )
     let restored: PrivateCodexSessionState | undefined
     if (operation.session !== undefined && 'restore' in operation.session) {
+      phase = 'restoring the authorized session'
       const snapshot = await claimPrivateNativeSession({
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
@@ -371,17 +376,20 @@ async function executeOwnedProvider(
       operation.session === undefined
         ? []
         : privateCodexSessionSecrets(runtime, credentialBootstrap)
+    phase = 'preparing containment'
     failurePhase = 'sealing'
-    const sealed = await sealPrivateExecutionOwner(
-      input.backend,
-      agentExecutionIntent(
-        recipe,
-        provider,
-        effectiveDeadlineUnixMs,
-        identity,
-        operation.session !== undefined,
+    const sealed = await privateProfileSpan('finite-acp-containment', () =>
+      sealPrivateExecutionOwner(
+        input.backend,
+        agentExecutionIntent(
+          recipe,
+          provider,
+          effectiveDeadlineUnixMs,
+          identity,
+          operation.session !== undefined,
+        ),
+        ownerAllocation,
       ),
-      ownerAllocation,
     )
     const sandbox: AcpSandbox = Object.freeze({ kind: SANDBOX_KIND, owner: sealed.identity })
     lifecycle = await recordPrivateRootChildSandbox({
@@ -396,25 +404,31 @@ async function executeOwnedProvider(
       sandbox: sandbox as unknown as JsonValue,
     })
     attemptedDispatch = true
+    phase = 'starting the native client'
     failurePhase = 'admission'
-    const component = await admitPrivateExecutionOwner(sealed, input.signal)
+    const component = await privateProfileSpan('finite-acp-launch', () =>
+      admitPrivateExecutionOwner(sealed, input.signal),
+    )
     output = component.output
+    phase = 'exchanging native messages'
     failurePhase = 'protocol'
-    execution = await runPrivateFiniteAcpResource(
-      component,
-      runtime,
-      endpoints,
-      input.signal,
-      operation.maxTurns,
-      ...(operation.session === undefined
-        ? []
-        : [
-            {
-              bootstrap: privateCodexSessionBootstrap(restored),
-              ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
-              ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
-            },
-          ]),
+    execution = await privateProfileSpan('finite-acp-exchange', () =>
+      runPrivateFiniteAcpResource(
+        component,
+        runtime,
+        endpoints,
+        input.signal,
+        operation.maxTurns,
+        ...(operation.session === undefined
+          ? []
+          : [
+              {
+                bootstrap: privateCodexSessionBootstrap(restored),
+                ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
+                ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
+              },
+            ]),
+      ),
     )
     failurePhase = 'settlement'
     if (
@@ -425,6 +439,7 @@ async function executeOwnedProvider(
       execution.fence.signal === null &&
       !input.signal.aborted
     ) {
+      phase = 'collecting authorized session state'
       if (output === undefined || execution.sessionId === undefined)
         throw new Error('Clean native retention lacks owned output or session identity')
       try {
@@ -440,12 +455,18 @@ async function executeOwnedProvider(
         else throw error
       }
     }
-    await releaseKnownAcp(input, lifecycle, execution.fence)
+    phase = 'fencing and cleanup'
+    await privateProfileSpan('finite-acp-release', () =>
+      releaseKnownAcp(input, lifecycle, execution.fence),
+    )
   } catch (error) {
     reportFailure(input, failurePhase, error)
     try {
       const active = await findLifecycle(input, input.call.operationId)
-      if (active !== undefined) await recoverPrivateRootFiniteAcpOwner(input, active)
+      if (active !== undefined)
+        await privateProfileSpan('finite-acp-recovery', () =>
+          recoverPrivateRootFiniteAcpOwner(input, active),
+        )
     } catch (cleanupError) {
       reportFailure(input, 'cleanup', cleanupError)
       throw new RunHostFatalOperationError(
@@ -458,9 +479,13 @@ async function executeOwnedProvider(
         },
       )
     }
-    if (input.signal.aborted) return failed('CANCELLED', 'the finite ACP operation was cancelled')
+    if (input.signal.aborted)
+      return failed('CANCELLED', `the finite ACP operation was cancelled while ${phase}`)
     if (Date.now() >= effectiveDeadlineUnixMs) {
-      return failed('DEADLINE_EXCEEDED', 'the finite ACP operation deadline elapsed')
+      return failed(
+        'DEADLINE_EXCEEDED',
+        `the finite ACP operation deadline elapsed while ${phase}; ${attemptedDispatch ? 'dispatch may have occurred and no result was proved' : 'dispatch was not attempted'}`,
+      )
     }
     if (error instanceof NativeSessionUnavailable)
       return failed('UNAVAILABLE', 'the retained session is unavailable for this admitted caller')
@@ -473,9 +498,9 @@ async function executeOwnedProvider(
     return attemptedDispatch
       ? failed(
           'UNCERTAIN',
-          `Finite ACP dispatch may have occurred but no result was proved.${explanation}`,
+          `Finite ACP dispatch may have occurred but no result was proved while ${phase}.${explanation}`,
         )
-      : failed('EXECUTION_FAILED', 'finite ACP execution failed before dispatch')
+      : failed('EXECUTION_FAILED', `finite ACP execution failed before dispatch while ${phase}`)
   } finally {
     credentialBootstrap?.fill(0)
     try {

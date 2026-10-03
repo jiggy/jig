@@ -107,7 +107,12 @@ describe('private Candidate/5', () => {
     const first = readyCandidateFixture('prepared', undefined, digest('workspace-input'))
     const reopened = decodePrivateActivationCandidateV5(encodePrivateActivationCandidateV5(first))
     expect(reopened.candidate.targets[0]!.disposition).toMatchObject({
-      execution: { preparationInputDigest: digest('workspace-input') },
+      execution: {
+        preparation: {
+          inputDigest: digest('workspace-input'),
+          package: { kind: 'flow-package/0', digest: digest('prepared') },
+        },
+      },
     })
     const second = readyCandidateFixture('prepared', undefined, digest('changed-input'))
     expect(first.candidate.activationMeaningDigest).not.toBe(
@@ -706,7 +711,12 @@ function readyCandidateFixture(
     execution: privateBunExecutionArtifact(
       { kind: 'flow-package/0', digest: digest(executionPackage) },
       executionLayout,
-      preparationInputDigest,
+      preparationInputDigest === undefined
+        ? undefined
+        : {
+            inputDigest: preparationInputDigest,
+            package: { kind: 'flow-package/0', digest: digest(executionPackage) },
+          },
     ),
   }
   candidate.activationMeaningDigest = activationMeaningDigest(

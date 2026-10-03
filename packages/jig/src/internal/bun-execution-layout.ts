@@ -84,38 +84,46 @@ export function assertPrivateBunExecutionLayoutFiles(
 export interface PrivateBunExecutionArtifact {
   readonly package: PackageArtifactRef
   readonly layout: PrivateBunExecutionLayout
-  /** Exact captured preparation inputs; evidence for reuse, never execution authority. */
-  readonly preparationInputDigest?: string
+  /** Verified installer output, separate from authored source and execution authority. */
+  readonly preparation?: PrivateBunPreparationEvidence
+}
+
+export interface PrivateBunPreparationEvidence {
+  readonly inputDigest: string
+  readonly package: PackageArtifactRef
 }
 
 export function normalizePrivateBunExecutionArtifact(value: unknown): PrivateBunExecutionArtifact {
-  const record = exact(value, ['package', 'layout'], ['preparationInputDigest'])
-  if (
-    Object.hasOwn(record, 'preparationInputDigest') &&
-    (typeof record.preparationInputDigest !== 'string' ||
-      !/^sha256:[0-9a-f]{64}$/.test(record.preparationInputDigest))
-  )
-    invalid()
+  const record = exact(value, ['package', 'layout'], ['preparation'])
+  let preparation: PrivateBunPreparationEvidence | undefined
+  if (Object.hasOwn(record, 'preparation')) {
+    const evidence = exact(record.preparation, ['inputDigest', 'package'])
+    if (
+      typeof evidence.inputDigest !== 'string' ||
+      !/^sha256:[0-9a-f]{64}$/.test(evidence.inputDigest)
+    )
+      invalid()
+    preparation = Object.freeze({
+      inputDigest: evidence.inputDigest,
+      package: normalizePackageArtifactRef(exact(evidence.package, ['kind', 'digest'])),
+    })
+  }
   return Object.freeze({
     package: normalizePackageArtifactRef(exact(record.package, ['kind', 'digest'])),
     layout: normalizePrivateBunExecutionLayout(record.layout),
-    ...(record.preparationInputDigest === undefined
-      ? {}
-      : {
-          preparationInputDigest: record.preparationInputDigest as string,
-        }),
+    ...(preparation === undefined ? {} : { preparation }),
   })
 }
 
 export function privateBunExecutionArtifact(
   artifact: PackageArtifactRef,
   layout: PrivateBunExecutionLayout = EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-  preparationInputDigest?: string,
+  preparation?: PrivateBunPreparationEvidence,
 ): PrivateBunExecutionArtifact {
   return normalizePrivateBunExecutionArtifact({
     package: artifact,
     layout,
-    ...(preparationInputDigest === undefined ? {} : { preparationInputDigest }),
+    ...(preparation === undefined ? {} : { preparation }),
   })
 }
 

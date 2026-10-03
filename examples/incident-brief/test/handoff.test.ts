@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import {
   AgentConversationError,
   type AgentTurn,
@@ -124,6 +124,37 @@ const converse: typeof withAgentConversation = async (_run, _options, use) => {
 
 test('the sibling channel uses identical offline contracts', () =>
   expect(projectContract).toEqual(workerContract))
+
+test('phase diagnostics precede answers without echoing supplied context or claiming dispatch', async () => {
+  const f = fixture()
+  const run = { ...f.run, channels: {} }
+  const pending = deferred<AgentTurn>()
+  const messages: string[] = []
+  const log = spyOn(console, 'log').mockImplementation((message) => messages.push(String(message)))
+  try {
+    const execution = work(run, async (_run, _options, use) => ({
+      value: await use({
+        initial: pending.promise,
+        prompt: async () => {
+          throw new Error('No follow-up expected')
+        },
+        interrupt: async () => 'not-running',
+      }),
+      turns: [],
+      settlement: { outcome: 'done', output: { turns: 1 } },
+    }))
+    expect(messages).toEqual(['draft: requesting turn 1/3.'])
+    pending.resolve(turn('private answer not for diagnostic output'))
+    expect((await execution).outcome).toBe('done')
+    expect(messages).toEqual([
+      'draft: requesting turn 1/3.',
+      'draft: initial turn result; awaiting context decision.',
+    ])
+  } finally {
+    pending.resolve(turn('settled'))
+    log.mockRestore()
+  }
+})
 
 test('review commentary continues the same conversation without interruption or a successor', async () => {
   const f = fixture()
@@ -426,6 +457,52 @@ test('failed initial call does not wait forever for a revision producer', async 
   expect(f.calls).toHaveLength(0)
 })
 
+test('unsuccessful work retains public operation causes but not arbitrary exception text', async () => {
+  const f = fixture()
+  Object.assign(f.run, { channels: {} })
+  const terminal = await work(f.run, async () => {
+    throw new AgentConversationError(
+      [
+        new OperationError(
+          'UNCERTAIN',
+          'Native dispatch may have occurred while starting the client.',
+        ),
+        new OperationError('DISCONNECTED', 'The replies connection was lost.'),
+        new Error('/private/secret-token'),
+      ],
+      [turn('retained draft')],
+    )
+  })
+  expect(terminal.outcome).toBe('blocked')
+  expect(terminal.output).toMatchObject({
+    predecessor: null,
+    successor: null,
+    received: [turn('retained draft')],
+    failures: ['UNCERTAIN', 'DISCONNECTED', 'INCOMPLETE_WORK'],
+    failureDetails: [
+      {
+        code: 'UNCERTAIN',
+        message: 'Native dispatch may have occurred while starting the client.',
+      },
+      { code: 'DISCONNECTED', message: 'The replies connection was lost.' },
+      {
+        code: 'INCOMPLETE_WORK',
+        message: 'Application work did not complete; no further cause was retained.',
+      },
+    ],
+  })
+  expect(JSON.stringify(terminal)).not.toContain('secret-token')
+})
+
+test('retained public failure messages are bounded without splitting a Unicode scalar', async () => {
+  const f = fixture()
+  Object.assign(f.run, { channels: {} })
+  const terminal = await work(f.run, async () => {
+    throw new OperationError('EXECUTION_FAILED', '😀'.repeat(1025))
+  })
+  expect((terminal.output as any).failureDetails[0].message).toBe('😀'.repeat(1024))
+})
+
 test('insufficient budget stops before work; unsuccessful successor retains its outcome and budget', async () => {
   const f = fixture()
   Object.assign(f.run, { input: { role: 'draft', context: { ...input, turnBudget: 2 } } })
@@ -487,7 +564,7 @@ test('root connects sibling endpoints and retains independent work after draft f
       calls.push(call)
       if (call.operationId === 'draft') {
         await releaseDraft.promise
-        throw new OperationError('UNCERTAIN')
+        throw new OperationError('UNCERTAIN', 'The drafting worker did not prove settlement.')
       }
       siblingDone.resolve()
       return result('independent questions')
@@ -501,6 +578,11 @@ test('root connects sibling endpoints and retains independent work after draft f
   const terminal = await pending
   expect(terminal.outcome).toBe('blocked')
   expect((terminal.output as any).results[1].result).toEqual(result('independent questions'))
+  expect((terminal.output as any).results[0]).toEqual({
+    role: 'draft',
+    failure: 'UNCERTAIN',
+    message: 'The drafting worker did not prove settlement.',
+  })
 })
 
 test('the reviewer continues while drafting settles, without waiting for its successor', async () => {

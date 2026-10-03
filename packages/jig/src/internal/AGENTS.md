@@ -18,6 +18,19 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+- `private-profile.ts` owns opt-in bounded phase-only diagnostics, written before
+  shutdown. Partial spans are not completion or machine-crash durability evidence.
+- The configuration evaluator shares only finite review-envelope setup. Its
+  trusted manager runs fresh declaration subprocesses sequentially, enforcing
+  each host's declaration ceiling independently of guest code: three seconds on
+  Linux and ten seconds on Mac. Resources remain aggregate-limited under that
+  host's enforcement profile; the supervisor caps a multi-entry batch by the
+  sum of entry ceilings plus fixed and per-entry bounded setup and settlement
+  time. A single entry keeps its host's total ceiling. Each subprocess receives
+  only the captured modules reachable from its entry. Worker and SDK bytes use the
+  existing sealed file projection; later children never reopen live installed
+  support. Bootstrap consistency remains a separate evaluation; collection
+  requires whole-batch fencing and cleanup. No result cache or resident service.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.
@@ -179,8 +192,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   ownership alone does not establish process fencing or installed Mac support.
 - `macos-guardian-storage.ts` records bounded volume intent before job creation
   and attaches only after admission inside the guardian. Work, temporary and
-  output roots share that fixed capacity; their parent stays host-owned. After
-  payload fencing, an authenticated descriptor handoff permits at most 20 seconds
+  output roots share that fixed capacity; their parent stays host-owned.
+  A worker without write grants or collection may use its immutable input tree
+  as its read-only working directory. After payload fencing, an authenticated
+  descriptor handoff permits at most 20 seconds
   of collection. Close the borrowed collector and release it before awaiting
   full completion. Fencing alone is not storage-cleanup evidence; final publication
   also requires successful completion. Cancellation, expiry and connection loss
@@ -267,6 +282,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   never undergo path relocation. Intent alone grants no execution authority.
   `execution-plan.ts` lowers these requirements to the two host mechanisms;
   it imports no recipe, admission, provider, Run protocol or controller policy.
+  Read-only workers with captured inputs still allocate bounded Mac input storage
+  without payload write grants; workers using only retained projections need
+  no volume.
   Backend sealing still validates identities, live capabilities and enforcement.
   `flow-execution-intent.ts` translates Jig recipes for both root and child
   Flows; command, HTTP, ACP, preparation and evaluator callers select their own
@@ -366,6 +384,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   authoritative errors remain failures even before session creation or after a turn.
   Preserve closed native-session/protocol failure explanations after possible
   dispatch without exposing exception text or weakening uncertainty and cleanup.
+  Failed finite ACP operations identify the last host execution phase using
+  fixed text; starting a client does not establish remote dispatch.
 - Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or finite ACP resource endpoints. Unused incoming
   rights may move onward; each child and effect retains its own participant identity.
@@ -419,6 +439,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   environment values, provider output, or filesystem paths. Capture failure
   must not change the Run outcome. This is maintainer-only profiling, not
   telemetry, a runtime option, or a supported extension point.
+  Its planning trace distinguishes support verification, envelope startup,
+  execution/settlement and workspace capture; nested spans must not be summed.
+  Finite ACP phases separate revalidation, containment, launch, exchange, release
+  and recovery; they neither record native content nor establish remote dispatch.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
   coordinator. Reuse filesystem identity and retained-artifact verification;
@@ -517,10 +541,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   no enclosing workspace remains standalone; explicit workspace requests still
   require declared membership.
   Reuse workspace preparation only from this Jig project's active admission:
-  match freshly captured complete workspace inputs to the artifact's retained
-  preparation fingerprint and reproduce its recipe/observation. Never share
+  match freshly captured installer inputs and current preparation support to
+  retained dependency evidence. Assemble fresh source with verified installed
+  bytes, then plan and review the new execution identity independently. Never share
   preparation between Jig projects under one workspace. Recapture source on
-  every review; source, manifest, lock or membership changes invalidate reuse.
+  every review; manifest, lock, patch, membership or preparation-support changes
+  invalidate reuse. Source-only edits reuse dependencies, never source or authority.
   Missing evidence requires preparation; missing/corrupt admitted bytes fail
   closed. Reuse performs no network activity and does not retain a network grant.
 - Provider credentials are host configuration and must not enter Flow input,
@@ -634,6 +660,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   live filesystem scan, and cannot grant authority or select a replacement.
 - Deadlines and cancellation fence descendants, settle each terminal once,
   and complete bounded cleanup. Do not replay uncertain operations.
+- The independent Linux supervisor polls bounded owned kernel process state.
+  Confirmed core dumping fences that exact cgroup without waiting for the Run
+  deadline. Keep the private crash reason separate from the actual reaped signal;
+  neither payload stderr nor a reused foreign PID establishes an owned crash.
 - Durable transitions use exact identities and conflict-safe commits;
   recovery must not create duplicate owners or official Runs.
 - Root attachments use invocation-owned descriptors and canonical file identity;

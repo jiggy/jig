@@ -5,8 +5,9 @@ title: Run a small software factory
 # Run a small software factory
 
 Turn a fixed set of one or two authorized issues into separate tested patch
-packets. A reusable Semantic Router selects a reviewed repair configuration from
-the issue and its work preferences, or abstains. Each factory-owned worker reproduces
+packets. Explicit method IDs select reviewed repair budgets; an optional Semantic
+Router can choose from issue text when the choice is unknown, or abstain.
+Each factory-owned worker reproduces
 the defect, requests bounded source replacements, executes reviewed commands, and
 checks unchanged acceptance cases. You still decide whether any patch should be
 combined, merged, or released.
@@ -101,12 +102,12 @@ one job while its peer may finish; root cancellation still stops all owned work.
 
 The supplied issues express different work preferences: the log repair gets one
 proposal, while the timesheet repair can use check feedback for a correction.
-The supplied `batch.json` leaves `method` unset, so an ordinary `jig run`
-exercises the Semantic Router for both jobs. Inspect `routing` in the result
-packet to see its actual choices; these are judgments, not guaranteed routes.
+The supplied `batch.json` selects `"method": "p1"` for logs and `"method": "p2"`
+for timesheet, so an ordinary `jig run` spends no Agent calls on selection.
+Inspect `routing` in the result packet to see the exact chosen configuration.
 `flows/factory/methods.ts` supplies opaque IDs and descriptions and maps them to
 reviewed slots. A second proposal is a work budget choice, not weaker acceptance.
-With no preference, the candidate data describes checked correction as the
+When semantic selection is requested with no preference, candidate data describes checked correction as the
 default; the router prompt asks the Agent to apply that default only when the
 method suits the stated requirements. This remains model judgment, not a
 deterministic guarantee.

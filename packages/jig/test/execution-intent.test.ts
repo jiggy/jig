@@ -9,6 +9,7 @@ import {
   privateMacosExecutionPlan,
 } from '../src/internal/execution-plan.js'
 import type { PrivateMacosOwnerStateAllocationIdentity } from '../src/internal/macos-backend-state.js'
+import { requirePrivateMacosGuardianStorage } from '../src/internal/macos-guardian-storage.js'
 
 // Pure lowering requires no live allocation authority; sealing authenticates it later.
 const allocation = {
@@ -145,4 +146,37 @@ test('read-only workers allocate no volume or writable authority', () => {
   expect(mac.files.writableTrees).toEqual([])
   expect(mac.cwd).toBe('/retained/package')
   expect(mac.environment).toEqual({ SDK: '/retained/package/sdk.js' })
+})
+
+test('read-only captured workers allocate bounded input storage without write grants', () => {
+  const mac = privateMacosExecutionPlan(
+    {
+      ...intent,
+      readOnlyCwd: '/jig-input/evaluator',
+      inputDirectories: ['/jig-input/evaluator'],
+      storageBytes: 16 * 1024 * 1024,
+      relocatedEnvironment: { SDK: '/jig-input/evaluator/sdk.js' },
+    },
+    allocation,
+  )
+  expect(mac.storage).toEqual({
+    mountPath: '/owner/data',
+    bytes: 16 * 1024 * 1024,
+    collect: null,
+  })
+  expect(mac.files.readOnlyTrees).toContain('/owner/data/inputs')
+  expect(mac.files.writableTrees).toEqual([])
+  expect(mac.cwd).toBe('/owner/data/inputs/evaluator')
+  expect(mac.environment).toEqual({ SDK: '/owner/data/inputs/evaluator/sdk.js' })
+  expect(() => requirePrivateMacosGuardianStorage(mac.storage!, mac.files, mac.cwd)).not.toThrow()
+  expect(() =>
+    requirePrivateMacosGuardianStorage(mac.storage!, { ...mac.files, readOnlyTrees: [] }, mac.cwd),
+  ).toThrow('outside bounded storage')
+  expect(() =>
+    requirePrivateMacosGuardianStorage(
+      mac.storage!,
+      { ...mac.files, writableTrees: ['/owner/data/work'] },
+      mac.cwd,
+    ),
+  ).toThrow('outside bounded storage')
 })

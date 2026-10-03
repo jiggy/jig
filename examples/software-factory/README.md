@@ -1,9 +1,10 @@
 # Run a small software factory
 
 This application takes one or two preselected Bun-project issues and produces
-separate tested patch packets for human review. A reusable Semantic Router chooses
-one checked proposal or up to two proposals with corrective feedback according to
-the issue and work preferences. It can also abstain. The project owns its repair
+separate tested patch packets for human review. Each supplied issue selects one
+checked proposal or up to two proposals with corrective feedback explicitly.
+An optional Semantic Router can judge the choice when it is not already known.
+The project owns its repair
 method and evidence checks. Original projects stay read-only; a person decides
 whether to apply, merge, or release any patch.
 
@@ -58,11 +59,12 @@ again after Flow, entrypoint, command, case, Agent, or grant changes. New job in
 and source files are captured for each Run without another review.
 
 The reviewed configurations permit one or two Agent proposals and share the same
-acceptance checks. The supplied batch omits `method`, so each job asks the
-Semantic Router to choose between `p1` (one proposal) and `p2` (one proposal
-plus a possible correction). Set a job's optional `method` to one of these IDs
-when the operator already knows which configuration to use; that exact reviewed
-choice skips the router. `cancelAfterMs`
+acceptance checks. The supplied batch selects `"method": "p1"` for logs (one
+proposal) and `"method": "p2"` for timesheet (one proposal plus a possible
+correction). These exact reviewed choices skip the router. Remove a job's
+`method` to ask the Semantic Router to choose from its issue and work preferences;
+that optional step adds an Agent call and may abstain or choose incorrectly.
+`cancelAfterMs`
 covers the complete per-job routing-and-repair
 interval and may stop one selected job without stopping a healthy peer; root cancellation still stops
 all owned work. Keep acceptance policy outside editable source and never relax

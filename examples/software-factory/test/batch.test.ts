@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext } from '@jigging/flow'
 import sampleBatch from '../batch.json'
 import { batchJobs, patchConflicts, repairBatch } from '../flows/factory/batch.ts'
-import { syntheticRepair } from './fixture.ts'
+import { digest } from '../flows/repair/policy.ts'
+import { input as repairInput, syntheticRepair } from './fixture.ts'
 
 const job = {
   id: 'first',
@@ -14,12 +15,12 @@ const job = {
   issue: 'Repair both defects.',
   editPaths: ['src/parse.ts', 'src/report.ts'],
 }
-test('the shipped batch validates and leaves both method choices to the router', () => {
+test('the shipped batch validates and selects its known repair budgets explicitly', () => {
   expect(batchJobs(sampleBatch)).toEqual(sampleBatch.jobs)
   expect(sampleBatch.jobs).toHaveLength(2)
-  expect(sampleBatch.jobs.every((entry) => !Object.hasOwn(entry, 'method'))).toBe(true)
+  expect(sampleBatch.jobs.map((entry) => entry.method)).toEqual(['p1', 'p2'])
 })
-test('the shipped batch invokes the router for both jobs and honors abstention', async () => {
+test('omitting exact choices invokes the optional router and honors abstention', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-shipped-batch-'))
   try {
     const source = join(root, 'source')
@@ -28,7 +29,7 @@ test('the shipped batch invokes the router for both jobs and honors abstention',
     await mkdir(out)
     const routes: string[] = []
     const actual = await repairBatch({
-      input: sampleBatch,
+      input: { jobs: sampleBatch.jobs.map(({ method: _method, ...entry }) => entry) },
       attachments: {
         source: { access: 'read', path: source },
         deliverables: { access: 'read-write', path: out },
@@ -113,6 +114,29 @@ test('factory-owned repair reports observed baseline, proposal, check, and finis
     { phase: 'finished', attempt: 1 },
   ])
   expect(closed).toBe(1)
+})
+
+test('factory repair keeps collaborator failure details distinct from its retained proposals', async () => {
+  for (const code of ['CANCELLED', 'UNCERTAIN', 'DEADLINE_EXCEEDED']) {
+    const details = { command: { cleanup: 'complete' }, attempts: ['external evidence'] }
+    try {
+      await syntheticRepair(2, false, {}, new OperationError(code, 'Command stopped.', details))
+      throw new Error('Expected failure')
+    } catch (error) {
+      expect(error).toBeInstanceOf(OperationError)
+      const failure = error as OperationError
+      expect(failure.code).toBe(code)
+      expect(failure.message).toBe('Command stopped.')
+      expect(failure.details).toMatchObject({
+        baseDigest: digest(repairInput.files),
+        operationDetails: details,
+      })
+      const evidence = failure.details as { attempts: { evaluation?: unknown }[] }
+      expect(evidence.attempts).toHaveLength(1)
+      expect(evidence.attempts[0]?.evaluation).toBeUndefined()
+      expect(details.attempts).toEqual(['external evidence'])
+    }
+  }
 })
 
 test('a missing second check set prevents every worker dispatch', async () => {

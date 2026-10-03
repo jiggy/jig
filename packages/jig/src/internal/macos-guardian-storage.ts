@@ -39,10 +39,16 @@ export function requirePrivateMacosGuardianStorage(
   )
     throw new TypeError('invalid macOS guardian storage')
   const roots = ['work', 'tmp', 'output'].map((name) => join(storage.mountPath, name))
+  const inputs = join(storage.mountPath, 'inputs')
+  const readOnlyInputCwd =
+    files.writableTrees.length === 0 &&
+    storage.collect === null &&
+    files.readOnlyTrees.includes(inputs) &&
+    (cwd === inputs || cwd.startsWith(`${inputs}/`))
   // The mount root stays host-owned so the payload cannot rename the held roots.
   if (
     files.writableTrees.some((path) => !roots.includes(path)) ||
-    !roots.some((root) => cwd === root || cwd.startsWith(`${root}/`))
+    (!roots.some((root) => cwd === root || cwd.startsWith(`${root}/`)) && !readOnlyInputCwd)
   )
     throw new TypeError('macOS writable projection is outside bounded storage')
 }

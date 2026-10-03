@@ -14,7 +14,13 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
+import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
 import { privateCaptureAttachments } from '../src/internal/file-input.js'
+import {
+  PRIVATE_FINITE_ACP_CHANNELS,
+  runPrivateFiniteAcpResource,
+} from '../src/internal/finite-acp-resource.js'
 import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
 import {
   PrivateLinuxCgroupBackend,
@@ -25,7 +31,10 @@ import {
   releasePrivateLinuxOwnerState,
   requirePrivateLinuxMechanismUnchanged,
 } from '../src/internal/linux-rootless-backend.js'
+import type { JsonObject, JsonValue } from '../src/json.js'
+import { ChannelBroker } from '../src/run/channels.js'
 import { RunHostSession } from '../src/run/session.js'
+import { deterministicAcpProgram } from './fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
@@ -79,7 +88,322 @@ test('constructs the unavailable-descriptor-restriction fixture from current tru
   }
 })
 
+test('constructs the deliberately signalled inner fixture from current trusted source', async () => {
+  const fixture = await deliberatelySignalledInnerSupervisor()
+  try {
+    const source = await readFile(fixture.path, 'utf8')
+    expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(source)).not.toThrow()
+    expect(source).toContain("console.error('fixture: inner deliberately raising SIGSEGV')")
+    expect(source).toContain("process.kill(process.pid, 'SIGSEGV')")
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
 delegatedDescribe('private rootless Linux Run', () => {
+  test.each(['exit', 'signal', 'linger'] as const)(
+    'settles a contained finite ACP peer: %s',
+    async (scenario) => {
+      const host = await hostConfiguration()
+      const fixture = await createFixture(deterministicAcpProgram())
+      const evidence = await mkdtemp(join(tmpdir(), 'jig-acp-settlement-evidence-'))
+      const started = performance.now()
+      const phases: { phase: string; timeMs: number }[] = []
+      const mark = (phase: string) =>
+        phases.push({ phase, timeMs: Math.round(performance.now() - started) })
+      const key = 'synthetic-settlement-only'
+      const abort = new AbortController()
+      const server = Bun.serve({
+        hostname: '127.0.0.1',
+        port: 0,
+        async fetch(request) {
+          expect(new URL(request.url).pathname).toBe('/dispatch')
+          expect(request.headers.get('authorization')).toBe(`Bearer ${key}`)
+          const event = (await request.json()) as {
+            scenario: string
+            phase?: string
+            keyInEnvironment?: boolean
+          }
+          expect(event.scenario).toBe(scenario)
+          if (event.phase === undefined) expect(event.keyInEnvironment).toBe(false)
+          mark(event.phase ?? 'prompt-dispatched')
+          return new Response('recorded')
+        },
+      })
+      let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+      let work:
+        | Promise<{
+            result?: Awaited<ReturnType<typeof runPrivateFiniteAcpResource>>
+            error?: unknown
+          }>
+        | undefined
+      let clean = false
+      try {
+        component = await host.backend.launch({
+          ...plan(host, fixture, `acp-${scenario}`, { deadlineMs: 30_000 }),
+          network: 'inherited',
+        })
+        mark('contained-peer-started')
+        const runtime: PrivateAcpAgentRuntime = {
+          adapterPath: join(fixture, 'FLOW.ts'),
+          sandboxAdapterPath: '/package/FLOW.ts',
+          adapterExecutable: false,
+          executablePath: host.bun,
+          sandboxExecutablePath: '/jig-runtime/bun',
+          environment: {},
+          configuration: [],
+          nestedUserNamespaces: false,
+          readOnlyMounts: [],
+          authentication: {
+            identity: { method: 'fixture' },
+            request: {
+              methodId: 'fixture',
+              _meta: { endpoint: `http://127.0.0.1:${server.port}/dispatch`, credential: key },
+            },
+          },
+        }
+        const broker = new ChannelBroker()
+        const app = broker.participant('app', {
+          resolveContract: (path) =>
+            PRIVATE_FINITE_ACP_CHANNELS[path === './requests.json' ? 'requests' : 'responses']!
+              .contract!,
+        })
+        const owner = broker.participant('resource')
+        const requests = await app.create({ contract: './requests.json' })
+        const responses = await app.create({ contract: './responses.json' })
+        const grants = app.transfer(
+          owner,
+          { requests: requests.receive.endpoint, responses: responses.send.endpoint },
+          PRIVATE_FINITE_ACP_CHANNELS,
+        )
+        work = runPrivateFiniteAcpResource(
+          component,
+          runtime,
+          { owner, requests: grants.requests!.endpoint, responses: grants.responses!.endpoint },
+          abort.signal,
+        ).then(
+          (result) => ({ result }),
+          (error) => ({ error }),
+        )
+        const frames = new FiniteAcpFrames('responses')
+        const next = async (): Promise<JsonObject> => {
+          for (;;) {
+            const item = (await app.next(responses.receive.endpoint)) as JsonObject
+            if (item.end !== undefined)
+              throw new Error('finite responses ended before the expected reply')
+            const value = (item.item as JsonObject).value as JsonObject
+            if (value.kind === 'ready') return value
+            const text = frames.accept(value)
+            if (text !== undefined) return JSON.parse(text)
+          }
+        }
+        const request = async (id: number, method: string, params: JsonObject) => {
+          for (const fragment of fragmentFiniteAcpFrame(
+            JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+          ))
+            await app.send(requests.send.endpoint, fragment as unknown as JsonValue)
+        }
+        expect((await next()).kind).toBe('ready')
+        await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
+        expect((await next()).id).toBe(1)
+        await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
+        expect((await next()).result).toEqual({ sessionId: 'fixture-session' })
+        await request(3, 'session/prompt', {
+          sessionId: 'fixture-session',
+          prompt: [{ type: 'text', text: `scenario:${scenario}` }],
+        })
+        if (scenario === 'linger') {
+          expect((await next()).method).toBe('session/update')
+          expect((await next()).result).toEqual({ stopReason: 'end_turn' })
+          mark('turn-completed')
+          app.close(requests.send.endpoint)
+        } else {
+          await expect(next()).rejects.toThrow()
+        }
+        const settled = await work
+        mark('resource-settled')
+        const fence = await component.enforcement
+        await writeFile(
+          join(evidence, 'result.json'),
+          JSON.stringify({
+            scenario,
+            phases,
+            result: settled.result ?? null,
+            error: settled.error instanceof Error ? settled.error.name : null,
+            fence,
+          }),
+          { flag: 'wx', mode: 0o600 },
+        )
+        expect(fence.fenced).toBe(true)
+        expect(fence.stopReason).not.toBe('deadline')
+        expect(phases.filter((item) => item.phase === 'prompt-dispatched')).toHaveLength(1)
+        if (scenario === 'linger') {
+          expect(settled.result).toMatchObject({ closed: true, fence: { stopReason: 'cancelled' } })
+          expect(phases.map((item) => item.phase)).toContain('stdin-eof')
+        } else {
+          expect(settled.error).toBeDefined()
+          expect(fence.exitCode === 0 && fence.signal === null).toBe(false)
+          if (scenario === 'exit')
+            expect(fence).toMatchObject({ stopReason: 'payload_exit', exitCode: 17, signal: null })
+          if (scenario === 'signal') {
+            expect(['payload_exit', 'core_dump']).toContain(fence.stopReason)
+            expect(abort.signal.aborted).toBe(false)
+            const dispatched = phases.find((item) => item.phase === 'prompt-dispatched')
+            const completed = phases.at(-1)
+            if (dispatched === undefined || completed === undefined)
+              throw new Error('The native crash proof omitted its phase observations')
+            expect(completed.timeMs - dispatched.timeMs).toBeLessThan(5_000)
+          }
+        }
+        expect(await missing(component.cgroup.runCgroup)).toBe(true)
+        expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
+        clean = true
+      } finally {
+        abort.abort()
+        try {
+          await work
+          await component?.terminate()
+        } finally {
+          await server.stop(true)
+          if (clean) await rm(fixture, { recursive: true, force: true })
+          else console.error(`Finite ACP settlement proof failed; retained ${fixture}`)
+          console.error(`Finite ACP settlement evidence retained ${evidence}`)
+          await waitForNoRunCgroups()
+        }
+      }
+    },
+    45_000,
+  )
+
+  test.each(['payload', 'inner'] as const)(
+    'records and fences deliberate SIGSEGV in %s',
+    async (origin) => {
+      const host = await hostConfiguration()
+      const fixture = await createFixture(
+        origin === 'inner'
+          ? "throw new Error('payload must not start');"
+          : `
+      console.error('fixture: payload deliberately raising SIGSEGV');
+      process.kill(process.pid, 'SIGSEGV');
+    `,
+      )
+      const supervisor =
+        origin === 'inner' ? await deliberatelySignalledInnerSupervisor() : undefined
+      const backend =
+        supervisor === undefined
+          ? host.backend
+          : new PrivateLinuxCgroupBackend({
+              bunPath: host.bun,
+              bunHostLibraryPath: host.bunHostLibraryPath,
+              supervisorPath: supervisor.path,
+            })
+      let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+      let settled = false
+      const evidence = await mkdtemp(join(tmpdir(), 'jig-signal-evidence-'))
+      let crashObservedAt: number | undefined
+      try {
+        component = await backend.launch(
+          plan(host, fixture, 'signal-provenance', { deadlineMs: 30_000 }),
+        )
+        await component.closeInput()
+        const [stdout, stderr, receipt] = await Promise.all([
+          collect(component.stdout, 65_536),
+          (async () => {
+            let text = ''
+            let sampled = false
+            for await (const bytes of component!.stderr) {
+              text += Buffer.from(bytes).toString('utf8')
+              if (Buffer.byteLength(text) > 65_536)
+                throw new Error('signal diagnostic output exceeded its bound')
+              if (!sampled && text.includes('Segmentation fault')) {
+                sampled = true
+                crashObservedAt = performance.now()
+                await Bun.sleep(200)
+                const pids = (
+                  await readFile(join(component!.cgroup.runCgroup, 'cgroup.procs'), 'utf8').catch(
+                    (error) => {
+                      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+                      throw error
+                    },
+                  )
+                )
+                  .trim()
+                  .split('\n')
+                  .filter(Boolean)
+                const states = await Promise.all(
+                  pids.map(async (pid) => {
+                    try {
+                      const status = await readFile(`/proc/${pid}/status`, 'utf8')
+                      return {
+                        pid,
+                        status: status
+                          .split('\n')
+                          .filter((line) =>
+                            /^(Name|State|Pid|PPid|NSpid|Threads|CoreDumping):/.test(line),
+                          ),
+                        wait: (await readFile(`/proc/${pid}/wchan`, 'utf8')).trim(),
+                      }
+                    } catch (error) {
+                      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+                        return { pid, exited: true }
+                      throw error
+                    }
+                  }),
+                )
+                await writeFile(join(evidence, 'process-state.json'), JSON.stringify(states), {
+                  flag: 'wx',
+                  mode: 0o600,
+                })
+              }
+            }
+            return text
+          })(),
+          component.enforcement,
+        ])
+        await writeFile(
+          join(evidence, 'result.json'),
+          JSON.stringify({ origin, stdout, stderr, receipt }),
+          {
+            flag: 'wx',
+            mode: 0o600,
+          },
+        )
+        expect(stdout).toBe('')
+        expect(stderr).toContain(`fixture: ${origin} deliberately raising SIGSEGV`)
+        if (origin === 'inner') {
+          expect(stderr).toContain('/jig/linux-rootless-supervisor.ts')
+          expect(stderr).toContain('--inner')
+          expect(stderr).not.toContain('payload must not start')
+        }
+        // A Bun handler may report the payload, or forwarding may report the
+        // trampoline. Preserve the actual text; neither names the cause alone.
+        expect(stderr).toContain('Segmentation fault')
+        // Preserve natural exit versus explicit crash fencing, never wait for
+        // the thirty-second Run deadline or infer a signal from the panic text.
+        expect(receipt.fenced).toBe(true)
+        expect(['payload_exit', 'core_dump']).toContain(receipt.stopReason)
+        expect(crashObservedAt).toBeDefined()
+        if (crashObservedAt === undefined) throw new Error('The signal diagnostic was not observed')
+        expect(performance.now() - crashObservedAt).toBeLessThan(5_000)
+        expect(receipt.exitCode === 0 && receipt.signal === null).toBe(false)
+        expect(receipt.evidence.memoryEvents.oom_kill ?? 0).toBe(0)
+        expect(receipt.evidence.pidsEvents.max ?? 0).toBe(0)
+        expect(await missing(component.cgroup.runCgroup)).toBe(true)
+        expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
+        settled = true
+      } finally {
+        await component?.terminate()
+        if (settled) {
+          await rm(fixture, { recursive: true, force: true })
+          if (supervisor) await rm(supervisor.root, { recursive: true, force: true })
+        } else console.error(`Signal provenance proof failed; retained ${fixture}`)
+        console.error(`Signal provenance evidence retained ${evidence}`)
+        await waitForNoRunCgroups()
+      }
+    },
+    45_000,
+  )
+
   test('refuses execution and fences when inherited descriptor restriction is unavailable', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture("throw new Error('package must not execute');")
@@ -1086,6 +1410,27 @@ async function unavailableDescriptorRestrictionSupervisor(): Promise<{
   }
 }
 
+/** Crash only after the real inner descriptor restriction, before package code. */
+async function deliberatelySignalledInnerSupervisor(): Promise<{ path: string; root: string }> {
+  const source = replaceOnce(
+    await readFile(
+      fileURLToPath(new URL('../src/internal/linux-rootless-supervisor.ts', import.meta.url)),
+      'utf8',
+    ),
+    '  restrictInheritedDescriptors(SANDBOX_LIBRARY_PATH, [])\n',
+    "  restrictInheritedDescriptors(SANDBOX_LIBRARY_PATH, [])\n  console.error('fixture: inner deliberately raising SIGSEGV');\n  process.kill(process.pid, 'SIGSEGV');\n",
+  )
+  const root = await mkdtemp(join(tmpdir(), 'jig-rootless-delayed-supervisor-'))
+  const path = join(root, 'linux-rootless-supervisor.ts')
+  try {
+    await writeFile(path, source, { mode: 0o600 })
+    return { root, path: await realpath(path) }
+  } catch (error) {
+    await rm(root, { recursive: true, force: true })
+    throw error
+  }
+}
+
 async function delayedReadinessSupervisor(
   enteredMarker: string,
   settledMarker: string,
@@ -1218,9 +1563,17 @@ function replaceOnce(source: string, pattern: string, replacement: string): stri
   return `${source.slice(0, offset)}${replacement}${source.slice(offset + pattern.length)}`
 }
 
-async function collect(stream: AsyncIterable<Uint8Array>): Promise<string> {
+async function collect(
+  stream: AsyncIterable<Uint8Array>,
+  maximumBytes = Number.POSITIVE_INFINITY,
+): Promise<string> {
   let result = ''
-  for await (const bytes of stream) result += Buffer.from(bytes).toString('utf8')
+  let total = 0
+  for await (const bytes of stream) {
+    total += bytes.byteLength
+    if (total > maximumBytes) throw new Error('diagnostic output exceeded its bound')
+    result += Buffer.from(bytes).toString('utf8')
+  }
   return result
 }
 

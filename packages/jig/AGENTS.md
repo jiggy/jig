@@ -55,6 +55,10 @@ admitted FLOW packages.
   `--timeout` option and leaves production defaults unchanged. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
+- `src/package/capture.ts` owns descriptor-confined immutable snapshots. Its
+  serial copy traversal reuses one private bounded buffer per attempt; yielded
+  snapshot chunks remain independently owned. Source rechecks and digest gates
+  are unchanged by buffer reuse.
 - Project Command lifecycle proofs reuse the explicit native composition budget
   for success, cancellation and coordinator loss. Their deadline case uses its
   own 30-second budget; fixture settlement/admission waits follow the selected
@@ -179,6 +183,8 @@ admitted FLOW packages.
   Review also separates source capture, per-package dependency capture,
   preparation/reuse and review retention, with stage-local timing. Prepared
   workspace artifact reuse stays within the approving Jig project.
+  Configuration-evaluator memory, process and wall-clock refusals retain their
+  distinct verified codes; generic limits do not imply host pressure.
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required
   and unverifiable comparisons as unchecked. It does not evaluate source,
@@ -351,6 +357,8 @@ admitted FLOW packages.
   collision refusal. Its packed attachment consumer checks empty bound and
   per-invocation roots, read-only enforcement, and the full relative path limits.
   It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
+  It also verifies prompt failed settlement of a deliberately crashing Flow
+  through the installed CLI, followed by ordinary use of the same project.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
@@ -376,6 +384,10 @@ admitted FLOW packages.
   branches, predecessor settlement, one successor and residue, not model quality.
   Failed handoff fixtures retain bounded phase/dispatch timing with their results;
   timing is diagnostic evidence, not permission to extend execution deadlines.
+- `linux-rootless-run.test.ts` isolates real finite ACP exit, automatic crash
+  fencing and shutdown-grace fencing with a synthetic authenticated peer.
+  Its deliberate payload/launcher SIGSEGV probes retain bounded process-state
+  and fencing evidence, not native-client qualification or crash-origin proof.
 - Test diagnostic usefulness as well as redaction, and human-facing output
   alongside its machine-readable contract.
 

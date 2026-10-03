@@ -124,6 +124,11 @@ A protocol error means the Flow did not complete Run/0 correctly. Check its
 SDK revision and stdout use, then inspect the result and any effects before
 running again. After changing source or dependencies, review the changes first.
 
+`INVALID_RESULT` can mean that a Flow's final value failed its declared contract
+or that a method rejected a result from one of its operations. Read the reported
+cause before changing a schema: for example, an Agent method can reject an HTTP
+provider response while the Flow's own result contract is unchanged.
+
 Execution completion is different from task success: a method can execute
 correctly and return an application outcome such as `blocked`. Inspect the
 outcome, output, and exit status. With `--out`, also inspect the separate

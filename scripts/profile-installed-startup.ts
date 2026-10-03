@@ -18,6 +18,10 @@ const projectDeadlineMs = 5 * 60_000
 
 type TracePhase =
   | 'author-configuration-evaluation'
+  | 'author-support-verification'
+  | 'author-envelope-startup'
+  | 'author-execution-settlement'
+  | 'dependency-workspace-capture'
   | 'project-planning'
   | 'installed-host-opening'
   | 'project-session-opening'
@@ -27,9 +31,17 @@ type TracePhase =
   | 'linux-owner-state-initialization'
   | 'rootless-containment-startup'
   | 'flow-execution'
+  | 'finite-acp-revalidation'
+  | 'finite-acp-containment'
+  | 'finite-acp-launch'
+  | 'finite-acp-exchange'
+  | 'finite-acp-release'
+  | 'finite-acp-recovery'
   | 'operation-owner-settlement'
   | 'root-fence'
   | 'root-settlement'
+  | 'root-package-release'
+  | 'root-owner-release'
   | 'project-session-close'
 
 interface CapturedCommand {
@@ -51,6 +63,10 @@ interface CapturedCommand {
 // Initialize the allowlist before top-level profiling calls its trace readers.
 const tracePhases = new Set<TracePhase>([
   'author-configuration-evaluation',
+  'author-support-verification',
+  'author-envelope-startup',
+  'author-execution-settlement',
+  'dependency-workspace-capture',
   'project-planning',
   'installed-host-opening',
   'project-session-opening',
@@ -60,9 +76,17 @@ const tracePhases = new Set<TracePhase>([
   'linux-owner-state-initialization',
   'rootless-containment-startup',
   'flow-execution',
+  'finite-acp-revalidation',
+  'finite-acp-containment',
+  'finite-acp-launch',
+  'finite-acp-exchange',
+  'finite-acp-release',
+  'finite-acp-recovery',
   'operation-owner-settlement',
   'root-fence',
   'root-settlement',
+  'root-package-release',
+  'root-owner-release',
   'project-session-close',
 ])
 

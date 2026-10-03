@@ -24,6 +24,32 @@ import {
 const encoder = new TextEncoder()
 
 describe('private RunHostSession', () => {
+  test('a confirmed crash explains pre-terminal EOF without fabricating its original signal', async () => {
+    const process = new FakeProcess()
+    const running = new RunHostSession(process, invocation()).run()
+    await process.nextHost()
+    process.closeStdout()
+    process.finish(null, 'SIGKILL', 'core_dump')
+    expect(await running).toMatchObject({
+      status: 'failed',
+      code: 'EXECUTION_FAILED',
+      message: 'owned execution crashed and was fenced during core dumping',
+    })
+  })
+
+  test('a valid result and zero launcher exit cannot conceal an owned descendant crash', async () => {
+    const process = new FakeProcess()
+    const running = new RunHostSession(process, invocation()).run()
+    await process.nextHost()
+    process.emit(result({ claimed: 'done' }))
+    process.finish(0, null, 'core_dump')
+    expect(await running).toMatchObject({
+      status: 'failed',
+      code: 'EXECUTION_FAILED',
+      message: 'owned execution crashed and was fenced during core dumping',
+    })
+  })
+
   test('a caught reply cannot conceal trusted unfinished cleanup or seal a clean interval', async () => {
     const process = new FakeProcess()
     const broker = new ChannelBroker()

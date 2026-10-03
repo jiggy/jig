@@ -126,7 +126,13 @@ describe('private Bun direct Run', () => {
     const plan = (layout: typeof executionLayout, preparationInputDigest?: string) =>
       planPrivateBunDirectRun({
         request,
-        execution: privateBunExecutionArtifact(executionPackage, layout, preparationInputDigest),
+        execution: privateBunExecutionArtifact(
+          executionPackage,
+          layout,
+          preparationInputDigest === undefined
+            ? undefined
+            : { inputDigest: preparationInputDigest, package: executionPackage },
+        ),
         installedSupport,
         backend,
       })
