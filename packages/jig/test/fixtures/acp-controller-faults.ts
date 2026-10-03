@@ -2,19 +2,21 @@
 // This checks the real controller's ordering/scope, not kernel or SQLite behavior.
 import { mock } from 'bun:test'
 import assert from 'node:assert/strict'
-import * as store from '../../src/internal/activation-admission-store.js'
 import * as acp from '../../src/internal/acp-agent-provider.js'
+import * as store from '../../src/internal/activation-admission-store.js'
+import { PrivateOutputProfileError } from '../../src/internal/captured-output.js'
+import * as history from '../../src/internal/codex-session-state.js'
 import * as direct from '../../src/internal/direct-run.js'
+import * as execution from '../../src/internal/execution-backend.js'
+import { privateSnapshotExecutionOutput } from '../../src/internal/execution-output.js'
+import { PrivateFiniteAcpPolicyError } from '../../src/internal/finite-acp-policy.js'
+import * as resource from '../../src/internal/finite-acp-resource.js'
 import * as installed from '../../src/internal/installed-bun-support.js'
 import * as context from '../../src/internal/invocation-context.js'
-import * as linux from '../../src/internal/linux-rootless-backend.js'
-import * as resource from '../../src/internal/finite-acp-resource.js'
-import * as history from '../../src/internal/codex-session-state.js'
-import { PrivateFiniteAcpPolicyError } from '../../src/internal/finite-acp-policy.js'
 import {
+  FINITE_ACP_CONTRACT_DIGEST,
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
-  FINITE_ACP_CONTRACT_DIGEST,
 } from '../../src/internal/private-finite-acp-contract.js'
 
 const digest = (n: number) => `sha256:${n.toString(16).repeat(64)}`
@@ -71,11 +73,25 @@ const backend = {
       async admit() {
         step('admit')
         if (mode === 'launch') throw new Error('/private/secret-token')
+        if (mode === 'admission') throw new Error('admission failed')
+        if (mode === 'snapshot-profile' || mode === 'snapshot-io')
+          return {
+            output: privateSnapshotExecutionOutput(
+              Promise.reject(
+                mode === 'snapshot-profile'
+                  ? new PrivateOutputProfileError()
+                  : new Error('unexpected snapshot I/O failure'),
+              ),
+            ),
+          }
         return {
-          outputDirectory: {
-            async close() {
-              step('descriptor-close')
-              if (mode === 'descriptor') throw new Error('descriptor failed')
+          output: {
+            kind: 'linux-directory',
+            directory: {
+              async close() {
+                step('descriptor-close')
+                if (mode === 'descriptor') throw new Error('descriptor failed')
+              },
             },
           },
         }
@@ -117,18 +133,27 @@ mock.module('../../src/internal/invocation-context.js', () => ({
   requireParentFlowOwner: async () => {},
   protectedOwnerRoot: async () => '/protected/owners',
 }))
-mock.module('../../src/internal/linux-rootless-backend.js', () => ({
-  ...linux,
-  planPrivateLinuxOwnerStateAllocation: async (value: any) => ({ ...allocationOwner, ...value }),
-  normalizePrivateLinuxOwnerStateAllocationIdentity: (value: unknown) => value,
-  normalizePrivateLinuxSealedOwnerIdentity: (value: unknown) => value,
-  normalizePrivateLinuxConfirmedEnforcementReceipt: (value: unknown) => value,
-  normalizePrivateLinuxOwnerStateReleaseReceipt: (value: unknown) => value,
-  cancelPrivateLinuxOwnerStateAllocation: async () => {
+mock.module('../../src/internal/execution-backend.js', () => ({
+  ...execution,
+  privateExecutionBackendKind: () => 'linux',
+  observePrivateExecutionBackendMechanism: () => backend.observeMechanism(),
+  sealPrivateExecutionOwner: (_backend: unknown, plan: any, owner: any) =>
+    backend.seal(plan.plan, owner),
+  admitPrivateExecutionOwner: (owner: any) => owner.admit(),
+  recoverPrivateExecutionFence: () => backend.recoverFence(),
+  planPrivateExecutionOwnerStateAllocation: async (_backend: unknown, value: any) => ({
+    ...allocationOwner,
+    ...value,
+  }),
+  normalizePrivateExecutionOwnerStateAllocationIdentity: (value: unknown) => value,
+  normalizePrivateExecutionSealedOwnerIdentity: (value: unknown) => value,
+  normalizePrivateExecutionConfirmedEnforcementReceipt: (value: unknown) => value,
+  normalizePrivateExecutionOwnerStateReleaseReceipt: (value: unknown) => value,
+  cancelPrivateExecutionOwnerStateAllocation: async () => {
     step('cancel-unused')
     return fence
   },
-  releasePrivateLinuxOwnerState: async () => {
+  releasePrivateExecutionOwnerState: async () => {
     step('release')
     if (mode === 'cleanup' || mode === 'native-session-cleanup') throw new Error('cleanup failed')
     return { digest: digest(9) }
@@ -146,11 +171,13 @@ mock.module('../../src/internal/activation-admission-store.js', () => ({
     (row = { ...row, sandbox: { value: value.sandbox, digest: digest(2) } }),
   recordPrivateRootChildFence: async (value: any) => {
     step('fence')
-    return (row = { ...row, fence: { value: value.fence, digest: digest(3) } })
+    row = { ...row, fence: { value: value.fence, digest: digest(3) } }
+    return row
   },
   recordPrivateRootChildCleanup: async (value: any) => {
     step('cleanup')
-    return (row = { ...row, cleanup: { value: value.cleanup, digest: digest(5) } })
+    row = { ...row, cleanup: { value: value.cleanup, digest: digest(5) } }
+    return row
   },
   closePrivateRootChildOwner: async () => {
     step('owner-close')
@@ -268,6 +295,30 @@ function before(a: string, b: string) {
   )
 }
 const run = async (value = input()) => await executePrivateRootFiniteAcp(value)
+for (const [failure, phase, message] of [
+  ['startup', 'sealing', 'startup failed'],
+  ['admission', 'admission', 'admission failed'],
+  ['native-failure', 'protocol', 'native failure'],
+]) {
+  reset(failure)
+  const failures: { phase: string; error: unknown }[] = []
+  const result = await run({
+    ...input(),
+    onFailure(phase: string, error: unknown) {
+      failures.push({ phase, error })
+      throw new Error('observer failure must not alter settlement')
+    },
+  })
+  assert.ok(result.status === 'failed')
+  assert.equal(result.code, failure === 'startup' ? 'EXECUTION_FAILED' : 'UNCERTAIN')
+  assert.equal(failures.length, 1)
+  const [reported] = failures
+  assert.ok(reported)
+  assert.equal(reported.phase, phase)
+  assert.ok(reported.error instanceof Error)
+  assert.equal(reported.error.message, message)
+  assert.equal(row, undefined, 'observer exceptions must not prevent owner cleanup')
+}
 for (const [failure, explanation] of [
   ['native-session-failure', 'native client reported a session failure'],
   ['native-protocol-failure', 'exchange violated its validated protocol'],
@@ -326,6 +377,7 @@ before('descriptor-close', 'save')
 for (const [failure, reason] of [
   ['controlled', 'not-cleanly-closed'],
   ['invalid-history', 'unsupported-history'],
+  ['snapshot-profile', 'unsupported-history'],
   ['missing-history', 'missing-history'],
   ['capacity', 'capacity'],
 ]) {
@@ -339,6 +391,7 @@ for (const failure of [
   'startup',
   'native-failure',
   'collection-bug',
+  'snapshot-io',
   'cancel',
   'cleanup',
   'descriptor',
@@ -347,13 +400,32 @@ for (const failure of [
 ]) {
   reset(failure)
   saved = { scope: originalScope, reference }
+  const failures: string[] = []
+  const request = {
+    ...input({ restore: reference }),
+    onFailure(phase: string) {
+      failures.push(phase)
+      throw new Error('observer failure must not replace the original failure')
+    },
+  }
   let result: any, error: any
   try {
-    result = await run(input({ restore: reference }))
+    result = await run(request)
   } catch (caught) {
     error = caught
   }
   assert.ok(error || result?.status === 'failed', failure)
+  if (failure === 'descriptor') {
+    assert.deepEqual(failures, ['cleanup'])
+    assert.equal(error.cause.message, 'descriptor failed')
+  }
+  if (failure === 'storage') {
+    assert.deepEqual(failures, ['settlement'])
+    assert.equal(error.message, 'storage failed')
+  }
+  if (failure === 'receipt-loss') assert.deepEqual(failures, ['settlement'])
+  if (['collection-bug', 'snapshot-io'].includes(failure))
+    assert.deepEqual(failures, ['settlement'])
   before('claim', 'seal')
   assert.equal(saved !== undefined, failure === 'receipt-loss', failure)
   if (['cleanup', 'descriptor'].includes(failure))

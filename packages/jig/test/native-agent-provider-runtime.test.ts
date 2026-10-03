@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,6 +10,7 @@ import {
 import { openPrivateClaudeAgentProvider } from '../src/internal/claude-agent-provider.js'
 import { openPrivatePiAgentProvider } from '../src/internal/pi-agent-provider.js'
 import { nativeElf } from './fixtures/native-elf.js'
+import { nativeMachO } from './fixtures/native-macho.js'
 
 const temporary: string[] = []
 afterEach(async () => {
@@ -90,30 +91,35 @@ for (const client of ['claude', 'pi'] as const) {
         await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
       })
     } else {
-      test('retains and revalidates a declarative native wrapper target', async () => {
-        const f = await fixture(client)
-        const wrapped = join(f.root, '.claude-wrapped')
-        await writeFile(wrapped, nativeElf(), { mode: 0o700 })
-        await writeFile(
-          f.executable,
-          nativeElf({
-            wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '/operator/bin'\n\n`,
-          }),
-        )
-        const provider = await f.open()
-        expect(privateAcpAgentRuntime(provider).readOnlyMounts).toContainEqual({
-          source: wrapped,
-          destination: wrapped,
-        })
-        await writeFile(wrapped, nativeElf({ needed: ['changed.so'] }))
-        await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
-      })
+      test.skipIf(process.platform !== 'linux')(
+        'retains and revalidates a declarative native wrapper target',
+        async () => {
+          const f = await fixture(client)
+          const wrapped = join(f.root, '.claude-wrapped')
+          await writeFile(wrapped, nativeElf(), { mode: 0o700 })
+          await writeFile(
+            f.executable,
+            nativeElf({
+              wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '/operator/bin'\n\n`,
+            }),
+          )
+          const provider = await f.open()
+          expect(privateAcpAgentRuntime(provider).readOnlyMounts).toContainEqual({
+            source: wrapped,
+            destination: wrapped,
+          })
+          await writeFile(wrapped, nativeElf({ needed: ['changed.so'] }))
+          await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow(
+            'support changed',
+          )
+        },
+      )
     }
   })
 }
 
 async function fixture(client: 'claude' | 'pi') {
-  const root = await mkdtemp(join(tmpdir(), 'jig-native-provider-runtime-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-native-provider-runtime-')))
   temporary.push(root)
   const project = join(root, 'project')
   const install = join(root, 'operator')
@@ -134,10 +140,16 @@ async function fixture(client: 'claude' | 'pi') {
     light: join(install, 'theme', 'light.json'),
   }
   await Promise.all([
-    writeFile(executable, nativeElf({ needed: ['libfixture.so'], search: '$ORIGIN' }), {
-      mode: 0o700,
-    }),
-    writeFile(library, nativeElf()),
+    writeFile(
+      executable,
+      process.platform === 'darwin'
+        ? nativeMachO({ needed: ['@loader_path/libfixture.so'] })
+        : nativeElf({ needed: ['libfixture.so'], search: '$ORIGIN' }),
+      {
+        mode: 0o700,
+      },
+    ),
+    writeFile(library, process.platform === 'darwin' ? nativeMachO({ library }) : nativeElf()),
     writeFile(paths.launcher!, 'launcher', { mode: 0o700 }),
     writeFile(paths.adapter!, 'adapter'),
     writeFile(

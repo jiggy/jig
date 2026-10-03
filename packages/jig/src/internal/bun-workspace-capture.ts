@@ -1,5 +1,5 @@
 import { constants } from 'node:fs'
-import { type FileHandle, open, opendir } from 'node:fs/promises'
+import { type FileHandle, open } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import {
@@ -16,6 +16,7 @@ import {
   requirePrivateBunResolutionManifest,
 } from './bun-native-lock-policy.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
+import { openPrivateChild, privateDirectoryEntries } from './descriptor-files.js'
 
 const MANIFEST_BYTES = 1024 * 1024
 const MAX_MEMBERS = 256
@@ -432,7 +433,7 @@ async function discover(
     signal.throwIfAborted()
     if (depth >= MAX_DEPTH)
       fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace discovery exceeded its depth bound')
-    for await (const entry of await opendir(`/proc/self/fd/${directory.fd}`)) {
+    for await (const entry of privateDirectoryEntries(directory)) {
       if (++count > MAX_ENTRIES)
         fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace discovery exceeded its entry bound')
       if (entry.name === 'node_modules' || entry.name === '.git') continue
@@ -464,8 +465,9 @@ async function openBeneath(root: FileHandle, path: string): Promise<FileHandle> 
   let current = root
   try {
     for (const part of path.split('/')) {
-      const next = await open(
-        `/proc/self/fd/${current.fd}/${part}`,
+      const next = await openPrivateChild(
+        current,
+        part,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
       )
       if (current !== root) await current.close()
@@ -485,8 +487,9 @@ async function readOptional(
 ): Promise<Uint8Array | undefined> {
   let handle: FileHandle
   try {
-    handle = await open(
-      `/proc/self/fd/${directory.fd}/${name}`,
+    handle = await openPrivateChild(
+      directory,
+      name,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
   } catch (error) {

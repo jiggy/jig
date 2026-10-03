@@ -24,27 +24,36 @@ import {
 } from './activation-admission-store.js'
 import { openBoundAttachments } from './bound-attachments.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import {
+  admitPrivateExecutionOwner,
+  cancelPrivateExecutionOwnerStateAllocation,
+  isPrivateExecutionFenceUnconfirmed,
+  normalizePrivateExecutionConfirmedEnforcementReceipt,
+  normalizePrivateExecutionOwnerStateAllocationIdentity,
+  normalizePrivateExecutionSealedOwnerIdentity,
+  type PrivateExecutionBackend,
+  type PrivateExecutionConfirmedEnforcementReceipt,
+  PrivateExecutionFenceUnconfirmedError,
+  type PrivateExecutionOwnerStateAllocationIdentity,
+  type PrivateExecutionOwnerStateReleaseReceipt,
+  type PrivateExecutionSealedOwnerIdentity,
+  planPrivateExecutionOwnerStateAllocation,
+  privateExecutionLocations,
+  privateExecutionOwnerAllocationDigest,
+  recoverPrivateExecutionFence,
+  releasePrivateExecutionOwnerState,
+  sealPrivateExecutionOwner,
+} from './execution-backend.js'
+import { PRIVATE_OUTPUT_BYTES } from './execution-intent.js'
+import { privateFlowExecutionIntent } from './flow-execution-intent.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
-import {
-  cancelPrivateLinuxOwnerStateAllocation,
-  normalizePrivateLinuxOwnerStateAllocationIdentity,
-  normalizePrivateLinuxSealedOwnerIdentity,
-  type PrivateLinuxCgroupBackend,
-  type PrivateLinuxConfirmedEnforcementReceipt,
-  PrivateLinuxFenceUnconfirmedError,
-  type PrivateLinuxLaunchPlan,
-  type PrivateLinuxOwnerStateAllocationIdentity,
-  type PrivateLinuxOwnerStateReleaseReceipt,
-  type PrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
-} from './linux-rootless-backend.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
   allocatePrivatePackageMaterialization,
@@ -63,10 +72,12 @@ import { privateProfileSpan } from './private-profile.js'
 import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
 import {
   executePrivateContainedEffect,
+  type PrivateContainedEffectFailurePhase,
   recoverPrivateContainedEffectOwners,
 } from './root-contained-effect-controller.js'
 import {
   executePrivateRootFiniteAcp,
+  type PrivateFiniteAcpFailurePhase,
   recoverPrivateRootFiniteAcpOwners,
 } from './root-finite-acp-controller.js'
 import {
@@ -90,6 +101,30 @@ export type PrivateRootExecutionDisposition =
   | { readonly state: 'terminal'; readonly run: PrivateRootRunSnapshot }
   | { readonly state: 'pending'; readonly reason: 'fence-unconfirmed' }
 
+export type PrivateRootExecutionFailurePhase =
+  | 'planning'
+  | 'materialization'
+  | 'support'
+  | 'projection'
+  | 'sealing'
+  | 'channels'
+  | 'admission'
+  | 'protocol'
+  | 'child-settlement'
+  | 'fence'
+  | 'settlement'
+  | 'child-flow-allocation'
+  | 'child-flow-preparation'
+  | 'child-flow-sealing'
+  | 'child-flow-admission'
+  | 'child-flow-protocol'
+  | 'child-flow-settlement'
+  | 'child-flow-cleanup'
+  | `contained-effect-${PrivateContainedEffectFailurePhase}`
+  | `child-contained-effect-${PrivateContainedEffectFailurePhase}`
+  | `finite-acp-${PrivateFiniteAcpFailurePhase}`
+  | `child-finite-acp-${PrivateFiniteAcpFailurePhase}`
+
 interface PrivateDirectRootPlanRecord {
   readonly kind: typeof PLAN_KIND
   readonly requestDigest: string
@@ -99,7 +134,7 @@ interface PrivateDirectRootPlanRecord {
   readonly effectiveDeadlineUnixMs: number
   readonly cancellationGraceMs: number
   readonly packageAllocation: PrivatePackageMaterializationAllocationIdentity
-  readonly ownerAllocation: PrivateLinuxOwnerStateAllocationIdentity
+  readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
 }
 
 interface PrivateDirectRootBackingRecord {
@@ -109,34 +144,36 @@ interface PrivateDirectRootBackingRecord {
 
 interface PrivateDirectRootSandboxRecord {
   readonly kind: typeof SANDBOX_KIND
-  readonly owner: PrivateLinuxSealedOwnerIdentity
+  readonly owner: PrivateExecutionSealedOwnerIdentity
 }
 
 interface PrivateDirectRootFenceRecord {
   readonly kind: typeof FENCE_KIND
-  readonly receipt: PrivateLinuxConfirmedEnforcementReceipt
+  readonly receipt: PrivateExecutionConfirmedEnforcementReceipt
 }
 
 /** Drive one exact durable root execution from its persisted lifecycle. */
 export async function executePrivateRootRunLaunch(input: {
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly runId: string
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly signal?: AbortSignal
+  /** Optional private host-test observation; never changes the Run terminal. */
+  readonly onFailure?: (phase: PrivateRootExecutionFailurePhase, error: unknown) => void
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify()
   const work = await reacquire(input)
   try {
-    await recoverPrivateRootOperationOwners(operationInput(input, work))
+    await recoverPrivateRootOperationOwners(input, work)
   } catch (error) {
-    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+    if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
     }
     throw error
@@ -174,6 +211,19 @@ async function startOrResumeCurrentExecution(
   let stopChannels: (() => void) | undefined
   let channelDeadline: ReturnType<typeof setTimeout> | undefined
   let boundFiles: Awaited<ReturnType<typeof openBoundAttachments>> | undefined
+  let failurePhase: PrivateRootExecutionFailurePhase = 'planning'
+  let reportedError: unknown
+  let hasReportedError = false
+  const reportFailure = (error: unknown): void => {
+    if (hasReportedError && Object.is(error, reportedError)) return
+    hasReportedError = true
+    reportedError = error
+    try {
+      input.onFailure?.(failurePhase, error)
+    } catch {
+      // Optional closed test evidence cannot replace the Run outcome.
+    }
+  }
   try {
     let recipe: PrivateDirectRunRecipe
     let plan: PrivateDirectRootPlanRecord
@@ -198,7 +248,7 @@ async function startOrResumeCurrentExecution(
           ...privateBunExecutionMaterialization(recipe.execution),
           ownerToken: work.lifecycle.allocation.digest,
         }),
-        planPrivateLinuxOwnerStateAllocation({
+        planPrivateExecutionOwnerStateAllocation(input.backend, {
           parent: roots.owners,
           name: `r-${hexadecimal.slice(0, 62)}`,
         }),
@@ -226,6 +276,7 @@ async function startOrResumeCurrentExecution(
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
 
+    failurePhase = 'materialization'
     let backing =
       work.lifecycle.backing === undefined ? undefined : parseBacking(work.lifecycle.backing.value)
     let lease: PrivatePackageMaterializationLease
@@ -251,10 +302,12 @@ async function startOrResumeCurrentExecution(
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
 
+    failurePhase = 'support'
     await revalidatePrivateInstalledBunSupport(recipe.installedSupport)
     if (stop.terminal !== undefined) {
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
+    failurePhase = 'projection'
     boundFiles = await openBoundAttachments(input.packageStoreRoot, recipe.request.boundAttachments)
     const fileProjection = (input.files ?? new PrivateRootRunFiles([], null)).projection(
       work.run.runId,
@@ -264,10 +317,17 @@ async function startOrResumeCurrentExecution(
     )
     if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
       throw new Error('root attachment authority is unavailable')
-    const sealed = await input.backend.seal(
-      { ...backendPlan(recipe, lease.root, work.run.runId, plan), ...fileProjection?.plan },
-      plan.ownerAllocation,
+    const launch = privateFlowExecutionIntent(
+      recipe,
+      lease.root,
+      backendRunLabel(work.run.runId),
+      plan.effectiveDeadlineUnixMs,
+      plan.cancellationGraceMs,
+      PRIVATE_OUTPUT_BYTES,
+      fileProjection?.plan,
     )
+    failurePhase = 'sealing'
+    const sealed = await sealPrivateExecutionOwner(input.backend, launch, plan.ownerAllocation)
     work = await advanceCheckpoint(input, work, 'sandbox', {
       kind: SANDBOX_KIND,
       owner: sealed.identity,
@@ -287,6 +347,7 @@ async function startOrResumeCurrentExecution(
       )
     }
 
+    failurePhase = 'channels'
     channelPackage = await captureStoredPackage(input.packageStoreRoot, recipe.request.package)
     const channelInspected = await inspectCapturedPackage(channelPackage)
     const openedChannels = await PrivateRunChannels.open(
@@ -303,10 +364,11 @@ async function startOrResumeCurrentExecution(
       Math.max(0, plan.effectiveDeadlineUnixMs - Date.now()),
     )
     let provisional: RunHostTerminal
-    let fence: PrivateLinuxConfirmedEnforcementReceipt
+    let fence: PrivateExecutionConfirmedEnforcementReceipt
     try {
+      failurePhase = 'admission'
       const component = await privateProfileSpan('rootless-containment-startup', () =>
-        sealed.admit(stop.enforcementSignal, async (prepared) => {
+        admitPrivateExecutionOwner(sealed, stop.enforcementSignal, async (prepared) => {
           work = await advanceCheckpoint(input, work, 'prepared', {
             kind: PREPARED_KIND,
             prepared,
@@ -318,7 +380,7 @@ async function startOrResumeCurrentExecution(
       // delivery and the helper's absolute timer owns the hard fence after
       // grace; aborting the Backend signal here would skip that protocol.
       stop.releaseStartupEnforcement()
-      input.files?.retainOutput(component.outputDirectory)
+      input.files?.retainOutput(component.output)
       const parent = work
       const dispatcher = operationDispatcher(
         input,
@@ -328,15 +390,27 @@ async function startOrResumeCurrentExecution(
         channelInspected,
         recipe,
       )
+      failurePhase = 'protocol'
       provisional = await privateProfileSpan('flow-execution', () =>
         new RunHostSession(
           component,
           {
             input: work.run.input,
             settings: recipe.request.settings,
-            attachments: fileProjection?.attachments ?? Object.freeze({}),
+            attachments: Object.fromEntries(
+              Object.entries(fileProjection?.attachments ?? {}).map(([name, attachment]) => [
+                name,
+                {
+                  ...attachment,
+                  path: privateExecutionLocations(plan.ownerAllocation).attachment(
+                    name,
+                    attachment.access,
+                  ),
+                },
+              ]),
+            ),
             channels: openedChannels.grants,
-            scratch: recipe.scratch,
+            scratch: privateExecutionLocations(plan.ownerAllocation).scratch,
             deadlineUnixMs: plan.effectiveDeadlineUnixMs,
             ...(input.signal === undefined ? {} : { signal: input.signal }),
           },
@@ -346,11 +420,12 @@ async function startOrResumeCurrentExecution(
       )
       observedTerminal = provisional
       try {
+        failurePhase = 'child-settlement'
         await privateProfileSpan('operation-owner-settlement', () =>
-          recoverPrivateRootOperationOwners(operationInput(input, parent)),
+          recoverPrivateRootOperationOwners(input, parent),
         )
       } catch (error) {
-        if (!(error instanceof PrivateLinuxFenceUnconfirmedError)) throw error
+        if (!isPrivateExecutionFenceUnconfirmed(error)) throw error
         // The root result is known, but it cannot become terminal while a
         // possibly dispatched child still lacks a confirmed fence. Preserve
         // that result, fence the parent, and let the next owner resume child
@@ -362,9 +437,13 @@ async function startOrResumeCurrentExecution(
           provisional as unknown as JsonValue,
         )
         try {
-          fence = await privateProfileSpan('root-fence', () => component.enforcement)
+          failurePhase = 'fence'
+          fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>(
+            'root-fence',
+            () => component.enforcement,
+          )
         } catch (fenceError) {
-          if (fenceError instanceof PrivateLinuxFenceUnconfirmedError) {
+          if (isPrivateExecutionFenceUnconfirmed(fenceError)) {
             return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
           }
           throw fenceError
@@ -382,14 +461,19 @@ async function startOrResumeCurrentExecution(
         provisional as unknown as JsonValue,
       )
       try {
-        fence = await privateProfileSpan('root-fence', () => component.enforcement)
+        failurePhase = 'fence'
+        fence = await privateProfileSpan<PrivateExecutionConfirmedEnforcementReceipt>(
+          'root-fence',
+          () => component.enforcement,
+        )
       } catch (error) {
-        if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+        if (isPrivateExecutionFenceUnconfirmed(error)) {
           return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
         }
         throw error
       }
     } catch (error) {
+      reportFailure(error)
       let retryableBusy = isAdmissionStateBusy(error) ? error : undefined
       const knownTerminal = observedTerminal ?? stop.terminal
       if (knownTerminal !== undefined) {
@@ -408,11 +492,9 @@ async function startOrResumeCurrentExecution(
         }
       }
       try {
-        fence = await privateProfileSpan('root-fence', () =>
-          input.backend.recoverFence(sealed.identity),
-        )
+        fence = await recoverPrivateExecutionFence(input.backend, sealed.identity)
       } catch (fenceError) {
-        if (fenceError instanceof PrivateLinuxFenceUnconfirmedError) {
+        if (isPrivateExecutionFenceUnconfirmed(fenceError)) {
           return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
         }
         throw fenceError
@@ -443,6 +525,7 @@ async function startOrResumeCurrentExecution(
       }
     }
 
+    failurePhase = 'settlement'
     return await privateProfileSpan('root-settlement', async () => {
       work = await advanceCheckpoint(input, work, 'fence', {
         kind: FENCE_KIND,
@@ -451,7 +534,8 @@ async function startOrResumeCurrentExecution(
       return terminal(await releaseAdmitAndClose(input, work))
     })
   } catch (error) {
-    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+    reportFailure(error)
+    if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
     }
     if (isAdmissionStateBusy(error)) throw error
@@ -490,7 +574,7 @@ async function startOrResumeCurrentExecution(
 async function settleSealedWithoutAdmission(
   input: RootExecutionInput,
   initial: PrivateReacquiredRootExecutionWork,
-  owner: PrivateLinuxSealedOwnerIdentity,
+  owner: PrivateExecutionSealedOwnerIdentity,
   provisional: PrivateRootRunTerminal,
 ): Promise<PrivateRootExecutionDisposition> {
   let work = await advanceCheckpoint(
@@ -499,11 +583,11 @@ async function settleSealedWithoutAdmission(
     'provisional',
     provisional as unknown as JsonValue,
   )
-  let fence: PrivateLinuxConfirmedEnforcementReceipt
+  let fence: PrivateExecutionConfirmedEnforcementReceipt
   try {
-    fence = await input.backend.recoverFence(owner)
+    fence = await recoverPrivateExecutionFence(input.backend, owner)
   } catch (error) {
-    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+    if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
     }
     throw error
@@ -534,11 +618,11 @@ async function recoverCurrentExecution(
   }
   if (work.lifecycle.sandbox !== undefined && work.lifecycle.fence === undefined) {
     const sandbox = parseSandbox(work.lifecycle.sandbox.value)
-    let receipt: PrivateLinuxConfirmedEnforcementReceipt
+    let receipt: PrivateExecutionConfirmedEnforcementReceipt
     try {
-      receipt = await input.backend.recoverFence(sandbox.owner)
+      receipt = await recoverPrivateExecutionFence(input.backend, sandbox.owner)
     } catch (error) {
-      if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+      if (isPrivateExecutionFenceUnconfirmed(error)) {
         return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
       }
       throw error
@@ -561,7 +645,7 @@ async function recoverCurrentExecution(
   try {
     return terminal(await releaseAdmitAndClose(input, work))
   } catch (error) {
-    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+    if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
     }
     throw error
@@ -575,11 +659,11 @@ async function recoverOlderExecution(
   let work = initial
   if (work.lifecycle.sandbox !== undefined && work.lifecycle.fence === undefined) {
     const sandbox = parseSandbox(work.lifecycle.sandbox.value)
-    let receipt: PrivateLinuxConfirmedEnforcementReceipt
+    let receipt: PrivateExecutionConfirmedEnforcementReceipt
     try {
-      receipt = await input.backend.recoverFence(sandbox.owner)
+      receipt = await recoverPrivateExecutionFence(input.backend, sandbox.owner)
     } catch (error) {
-      if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+      if (isPrivateExecutionFenceUnconfirmed(error)) {
         return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
       }
       throw error
@@ -600,7 +684,7 @@ async function recoverOlderExecution(
   try {
     return terminal(await releaseAdmitAndClose(input, work))
   } catch (error) {
-    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+    if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
     }
     throw error
@@ -617,7 +701,7 @@ async function settleBeforeSandbox(
   try {
     return terminal(await releaseAdmitAndClose(input, work))
   } catch (error) {
-    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+    if (isPrivateExecutionFenceUnconfirmed(error)) {
       return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
     }
     throw error
@@ -651,10 +735,10 @@ async function releaseAdmitAndClose(
   if (work.lifecycle.release === undefined) {
     const plan =
       work.lifecycle.plan === undefined ? undefined : parsePlan(work.lifecycle.plan.value)
-    let ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null = null
+    let ownerRelease: PrivateExecutionOwnerStateReleaseReceipt | null = null
     if (plan !== undefined) {
       if (work.lifecycle.sandbox !== undefined && work.lifecycle.fence === undefined) {
-        throw new PrivateLinuxFenceUnconfirmedError(
+        throw new PrivateExecutionFenceUnconfirmedError(
           new Error('sandbox backing cannot be released before fencing'),
         )
       }
@@ -679,12 +763,12 @@ async function releaseAdmitAndClose(
         const sandbox = parseSandbox(work.lifecycle.sandbox.value)
         const fence = parseFence(work.lifecycle.fence!.value)
         ownerRelease = await privateProfileSpan('root-owner-release', () =>
-          releasePrivateLinuxOwnerState(sandbox.owner, fence.receipt),
+          releasePrivateExecutionOwnerState(sandbox.owner, fence.receipt),
         )
       } else {
         ownerRelease = await privateProfileSpan('root-owner-release', async () => {
-          const cancelled = await cancelPrivateLinuxOwnerStateAllocation(plan.ownerAllocation)
-          return await releasePrivateLinuxOwnerState(plan.ownerAllocation, cancelled)
+          const cancelled = await cancelPrivateExecutionOwnerStateAllocation(plan.ownerAllocation)
+          return await releasePrivateExecutionOwnerState(plan.ownerAllocation, cancelled)
         })
       }
     }
@@ -765,29 +849,6 @@ async function reproduceRecipe(
   return recipe
 }
 
-function backendPlan(
-  recipe: PrivateDirectRunRecipe,
-  packageRoot: string,
-  runId: string,
-  plan: PrivateDirectRootPlanRecord,
-): PrivateLinuxLaunchPlan {
-  const readOnlyMounts = [
-    ...recipe.runtimeMounts,
-    { source: packageRoot, destination: recipe.packageDestination },
-  ]
-  const limits = Object.freeze({
-    ...recipe.resourceCeilings,
-    deadlineUnixMs: plan.effectiveDeadlineUnixMs,
-    cancellationGraceMs: plan.cancellationGraceMs,
-  })
-  return Object.freeze({
-    runId: backendRunLabel(runId),
-    limits,
-    readOnlyMounts,
-    command: recipe.command,
-  })
-}
-
 async function closeFromAdmitted(
   input: RootExecutionInput,
   work: PrivateReacquiredRootExecutionWork,
@@ -866,7 +927,7 @@ async function protectedWorkRoots(projectRoot: string): Promise<{
 }> {
   const state = await realpath(join(projectRoot, '.jig'))
   const materializations = join(state, 'private-root-materializations')
-  const owners = join(state, 'private-root-linux-owners')
+  const owners = join(state, 'private-root-owners')
   await Promise.all([ensureProtectedDirectory(materializations), ensureProtectedDirectory(owners)])
   return Object.freeze({ materializations, owners })
 }
@@ -922,7 +983,7 @@ function parsePlan(value: JsonValue): PrivateDirectRootPlanRecord {
     cancellationGraceMs: record.cancellationGraceMs as number,
     packageAllocation:
       record.packageAllocation as unknown as PrivatePackageMaterializationAllocationIdentity,
-    ownerAllocation: normalizePrivateLinuxOwnerStateAllocationIdentity(record.ownerAllocation),
+    ownerAllocation: normalizePrivateExecutionOwnerStateAllocationIdentity(record.ownerAllocation),
   })
 }
 
@@ -940,7 +1001,7 @@ function parseSandbox(value: JsonValue): PrivateDirectRootSandboxRecord {
   if (record.kind !== SANDBOX_KIND) throw new TypeError('direct root sandbox is invalid')
   return Object.freeze({
     kind: SANDBOX_KIND,
-    owner: normalizePrivateLinuxSealedOwnerIdentity(record.owner),
+    owner: normalizePrivateExecutionSealedOwnerIdentity(record.owner),
   })
 }
 
@@ -949,7 +1010,7 @@ function parseFence(value: JsonValue): PrivateDirectRootFenceRecord {
   if (record.kind !== FENCE_KIND) throw new TypeError('direct root fence is invalid')
   return Object.freeze({
     kind: FENCE_KIND,
-    receipt: record.receipt as unknown as PrivateLinuxConfirmedEnforcementReceipt,
+    receipt: normalizePrivateExecutionConfirmedEnforcementReceipt(record.receipt),
   })
 }
 
@@ -1099,11 +1160,13 @@ function operationInput(input: RootExecutionInput, parent: PrivateReacquiredRoot
 }
 
 async function recoverPrivateRootOperationOwners(
-  input: ReturnType<typeof operationInput>,
+  input: RootExecutionInput,
+  parent: PrivateReacquiredRootExecutionWork,
 ): Promise<void> {
-  await recoverPrivateRootFlowCallOwners(input)
-  await recoverPrivateRootFiniteAcpOwners(input)
-  await recoverPrivateContainedEffectOwners(input)
+  const operation = operationInput(input, parent)
+  await recoverPrivateRootFlowCallOwners(operation)
+  await recoverPrivateRootFiniteAcpOwners(operation)
+  await recoverPrivateContainedEffectOwners(operation)
 }
 
 function operationDispatcher(
@@ -1165,6 +1228,10 @@ function operationDispatcher(
           () =>
             executePrivateRootFlowCall({
               ...operationInput(input, parent),
+              onFailure: (phase, error) => input.onFailure?.(`child-flow-${phase}`, error),
+              onEffectFailure: (phase, error) =>
+                input.onFailure?.(`child-contained-effect-${phase}`, error),
+              onAcpFailure: (phase, error) => input.onFailure?.(`child-finite-acp-${phase}`, error),
               channels: {
                 caller: channels.root,
                 broker: channels.broker,
@@ -1234,6 +1301,7 @@ function operationDispatcher(
           () =>
             executePrivateContainedEffect({
               ...operationInput(input, parent),
+              onFailure: (phase, error) => input.onFailure?.(`contained-effect-${phase}`, error),
               call,
               parentDeadlineUnixMs,
               signal,
@@ -1258,7 +1326,11 @@ function operationDispatcher(
             parentDeadlineUnixMs,
             signal,
           }
-          return executePrivateRootFiniteAcp({ ...invocation, provider })
+          return executePrivateRootFiniteAcp({
+            ...invocation,
+            provider,
+            onFailure: (phase, error) => input.onFailure?.(`finite-acp-${phase}`, error),
+          })
         },
         operationBusy(),
       )
@@ -1315,13 +1387,13 @@ function deadlineExceededTerminal(): RunHostTerminal {
 
 function terminalAfterConfirmedFence(
   error: unknown,
-  fence: PrivateLinuxConfirmedEnforcementReceipt,
+  fence: PrivateExecutionConfirmedEnforcementReceipt,
 ): RunHostTerminal {
   return fence.stopReason === 'deadline' ? deadlineExceededTerminal() : executionFailed(error)
 }
 
 function terminalAfterRecoveredFence(
-  fence: PrivateLinuxConfirmedEnforcementReceipt | undefined,
+  fence: PrivateExecutionConfirmedEnforcementReceipt | undefined,
   fallbackError?: unknown,
 ): RunHostTerminal {
   // A receipt alone proves why the tree was fenced, not whether a response

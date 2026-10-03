@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { chmod, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   createPrivateAcpAgentProvider,
@@ -210,7 +210,7 @@ async function files(): Promise<{
   readonly adapter: string
   readonly executable: string
 }> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-acp-provider-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-acp-provider-')))
   temporary.add(root)
   const adapter = join(root, 'adapter.js')
   const executable = join(root, 'client')

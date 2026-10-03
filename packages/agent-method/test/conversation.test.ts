@@ -27,7 +27,7 @@ test('conversation failure summary preserves a bounded already-exposed cause wit
 
 /** Synthetic Agent host, real public SDK subprocess. No native-client qualification. */
 async function exercise(mode: string) {
-  const process = Bun.spawn([Bun.which('bun')!, `${import.meta.dir}/conversation-fixture.ts`], {
+  const process = Bun.spawn([globalThis.process.execPath, `${import.meta.dir}/conversation-fixture.ts`], {
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',

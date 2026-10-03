@@ -9,10 +9,14 @@ import { captureFlowSource, deriveDirectRunTargetCandidates } from '../src/proje
 import { SchemaDiagnostic } from '../src/schema/index.js'
 
 const schemaUri = 'https://flow.jig.md/schemas/schema-0.json'
-const linuxTest = process.platform === 'linux' ? test : test.skip
+const sourceTest =
+  process.platform === 'linux' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? test
+    : test.skip
 
 describe('private project Flow source capture', () => {
-  linuxTest('application development dependencies do not enter Flow capture', async () => {
+  sourceTest('application development dependencies do not enter Flow capture', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/worker', {
         'FLOW.ts': 'export {};\n',
@@ -30,7 +34,7 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('records a missing discovery root as an empty source', async () => {
+  sourceTest('records a missing discovery root as an empty source', async () => {
     await withProject(async (root) => {
       const source = await captureFlowSource(root, discover('flows'))
       try {
@@ -49,7 +53,7 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest(
+  sourceTest(
     'discovers only immediate real directories with canonical Flow implementations',
     async () => {
       await withProject(async (root) => {
@@ -79,32 +83,35 @@ describe('private project Flow source capture', () => {
     },
   )
 
-  linuxTest('canonicalizes exact members before capture and records their provenance', async () => {
-    await withProject(async (root) => {
-      await packageFiles(root, 'flows/a', { 'FLOW.ts': 'export {};\n' })
-      await packageFiles(root, 'flows/z', { 'FLOW.py': 'pass\n' })
-      const paths = ['flows/z', 'flows/a']
-      const capture = captureFlowSource(root, { kind: 'members', paths })
-      paths[0] = 'flows/missing'
-      const source = await capture
-      try {
-        expect(source.members.map((member) => member.provenance)).toEqual([
-          { membership: 'exact', projectPath: 'flows/a' },
-          { membership: 'exact', projectPath: 'flows/z' },
-        ])
-        expect(source.observations).toEqual([
-          {
-            kind: 'members',
-            members: ['flows/a', 'flows/z'],
-          },
-        ])
-      } finally {
-        await source.dispose()
-      }
-    })
-  })
+  sourceTest(
+    'canonicalizes exact members before capture and records their provenance',
+    async () => {
+      await withProject(async (root) => {
+        await packageFiles(root, 'flows/a', { 'FLOW.ts': 'export {};\n' })
+        await packageFiles(root, 'flows/z', { 'FLOW.py': 'pass\n' })
+        const paths = ['flows/z', 'flows/a']
+        const capture = captureFlowSource(root, { kind: 'members', paths })
+        paths[0] = 'flows/missing'
+        const source = await capture
+        try {
+          expect(source.members.map((member) => member.provenance)).toEqual([
+            { membership: 'exact', projectPath: 'flows/a' },
+            { membership: 'exact', projectPath: 'flows/z' },
+          ])
+          expect(source.observations).toEqual([
+            {
+              kind: 'members',
+              members: ['flows/a', 'flows/z'],
+            },
+          ])
+        } finally {
+          await source.dispose()
+        }
+      })
+    },
+  )
 
-  linuxTest('keeps exact membership strict and project-confined', async () => {
+  sourceTest('keeps exact membership strict and project-confined', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/ok', { 'FLOW.ts': 'export {};\n' })
       await expectCode(
@@ -133,7 +140,7 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('rejects source symlinks and ignores unrelated discovered symlinks', async () => {
+  sourceTest('rejects source symlinks and ignores unrelated discovered symlinks', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'outside', { 'FLOW.md': metadata('outside') })
       await symlink(join(root, 'outside'), join(root, 'flows'))
@@ -151,19 +158,35 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('rejects overlapping and case-fold-colliding membership', async () => {
+  sourceTest('rejects overlapping and case-fold-colliding declared membership', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/a', { 'FLOW.md': metadata('a') })
       await expectCode(
         () => captureFlowSource(root, { kind: 'discover', roots: ['flows', 'flows'] }),
         'PROJECT_SOURCE_COLLISION',
       )
-      await packageFiles(root, 'flows/A', { 'FLOW.md': metadata('other') })
-      await expectCode(() => captureFlowSource(root, discover('flows')), 'PROJECT_SOURCE_COLLISION')
+      await expectCode(
+        () => captureFlowSource(root, { kind: 'members', paths: ['flows/a', 'flows/A'] }),
+        'PROJECT_SOURCE_COLLISION',
+      )
     })
   })
 
-  linuxTest('rejects malformed selected packages instead of hiding them', async () => {
+  ;(process.platform === 'linux' ? test : test.skip)(
+    'rejects discovered case-fold collisions on a case-sensitive filesystem',
+    async () => {
+      await withProject(async (root) => {
+        await packageFiles(root, 'flows/a', { 'FLOW.md': metadata('a') })
+        await packageFiles(root, 'flows/A', { 'FLOW.md': metadata('other') })
+        await expectCode(
+          () => captureFlowSource(root, discover('flows')),
+          'PROJECT_SOURCE_COLLISION',
+        )
+      })
+    },
+  )
+
+  sourceTest('rejects malformed selected packages instead of hiding them', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/bad', { 'FLOW.md': '---\nname: broken\n' })
       const failure = await captureFlowSource(root, discover('flows')).then(
@@ -178,7 +201,7 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('scopes malformed package schemas to one project-relative location', async () => {
+  sourceTest('scopes malformed package schemas to one project-relative location', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/bad-schema', {
         'FLOW.ts': 'export {};\n',
@@ -196,7 +219,7 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('excludes generated node_modules before generic package capture', async () => {
+  sourceTest('excludes generated node_modules before generic package capture', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/locked', {
         'FLOW.ts': 'export {};\n',
@@ -212,21 +235,22 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('cleans prior member snapshots and descriptors after a partial failure', async () => {
+  sourceTest('cleans prior member snapshots and descriptors after a partial failure', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/a-good', {
         'FLOW.ts': 'export {};\n',
       })
       await packageFiles(root, 'flows/z-bad', { 'FLOW.md': '---\nname: broken\n' })
-      const before = (await readdir('/proc/self/fd')).length
+      const descriptors = process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'
+      const before = (await readdir(descriptors)).length
       for (let attempt = 0; attempt < 8; attempt += 1) {
         await expectCode(() => captureFlowSource(root, discover('flows')), 'METADATA_DELIMITER')
       }
-      expect((await readdir('/proc/self/fd')).length).toBe(before)
+      expect((await readdir(descriptors)).length).toBe(before)
     })
   })
 
-  linuxTest('retains exact bytes after visible source mutation', async () => {
+  sourceTest('retains exact bytes after visible source mutation', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/a', {
         'FLOW.ts': 'export {};\n',
@@ -247,7 +271,7 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('derives only exact zero-configuration Run targets', async () => {
+  sourceTest('derives only exact zero-configuration Run targets', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/direct', {
         'FLOW.ts': 'export {};\n',

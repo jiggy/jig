@@ -1,0 +1,142 @@
+name: macOS hosted candidates
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_startup_profile:
+        description: Profile installed startup on both Mac architectures (optional, up to 30 minutes)
+        type: boolean
+        default: false
+  push:
+    branches: [main, mac-support]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-hosted-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  prerequisites:
+    name: Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}
+    runs-on: ${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}
+    timeout-minutes: ${{ matrix.shard == 4 && inputs.include_startup_profile && 65 || 35 }}
+    strategy:
+      fail-fast: true
+      max-parallel: 10
+      matrix:
+        # Intel jobs take roughly twice as long. Start them first, with the
+        # installed-consumer tail first, instead of queueing it behind short jobs.
+        arch: [x64, arm64]
+        shard: [4, 0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.2'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: '1.43.1'
+      - name: Record exact host and verify native process prerequisites
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/mac-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/mac-evidence/source.txt"
+          uname -a > "$RUNNER_TEMP/mac-evidence/host.txt"
+          sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
+          xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
+          bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
+          bun scripts/ci/probe-macos-host.ts | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
+      - name: Compile the native launcher and validate SDK descriptor layouts
+        run: |
+          set -o pipefail
+          clang -Wall -Wextra -Werror -Wno-deprecated-declarations packages/jig/support/macos-exec.c -o "$RUNNER_TEMP/mac-evidence/macos-exec"
+          clang -Wall -Wextra -Werror packages/jig/test/fixtures/macos-file-abi.c -o "$RUNNER_TEMP/mac-evidence/file-abi"
+          "$RUNNER_TEMP/mac-evidence/file-abi" | tee "$RUNNER_TEMP/mac-evidence/file-abi.txt"
+          file "$RUNNER_TEMP/mac-evidence/macos-exec" >> "$RUNNER_TEMP/mac-evidence/host.txt"
+      - name: Install build dependencies without lifecycle scripts
+        run: bun install --ignore-scripts
+      - name: Build the ordinary candidate
+        run: just --justfile packages/jig/justfile build
+      - name: Test native containment and recovery
+        if: matrix.shard == 0
+        env:
+          JIG_MACOS_PROCESS_TEST: '1'
+        run: |
+          set -o pipefail
+          snapshot() {
+            { launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'; mount | awk '/jig-/ {print "mount " $0}'; } | LC_ALL=C sort
+          }
+          snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
+          status=0
+          bun test packages/jig/test/macos-process-controls.test.ts packages/jig/test/macos-execution.test.ts packages/jig/test/macos-descriptor-files.test.ts packages/jig/test/macos-descriptor-handoff.test.ts packages/jig/test/macos-volume.test.ts packages/jig/test/macos-backend-state.test.ts packages/jig/test/macos-native-backend.test.ts packages/jig/test/macos-guardian.test.ts --bail=1 --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
+          snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
+          diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
+          exit "$status"
+      - name: Prepare genuine pinned clients for offline startup
+        if: matrix.shard == 4
+        run: bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
+      - name: Qualify the complete rootless host and installed consumer
+        env:
+          JIG_MACOS_TEST_TIMINGS_DIRECTORY: ${{ runner.temp }}/mac-evidence
+          JIG_STARTUP_PROFILE_DIRECTORY: ${{ matrix.shard == 4 && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}
+        run: |
+          set -o pipefail
+          scripts/ci/qualify-macos-host.sh --shard "${{ matrix.shard }}" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
+      - name: Record successful shard
+        run: printf '%s %s %s\n' '${{ github.sha }}' '${{ matrix.arch }}' '${{ matrix.shard }}' > "$RUNNER_TEMP/mac-evidence/shard-${{ matrix.shard }}.complete"
+      - name: Retain candidate prerequisite evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-prerequisites-${{ matrix.arch }}-${{ matrix.shard }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/mac-evidence/*.txt
+            ${{ runner.temp }}/mac-evidence/*.json
+            ${{ runner.temp }}/mac-evidence/*.xml
+            ${{ runner.temp }}/mac-evidence/*.complete
+          retention-days: 7
+      - name: Retain optional installed startup profile
+        if: ${{ always() && matrix.shard == 4 && inputs.include_startup_profile }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-startup-profile-${{ matrix.arch }}-${{ github.sha }}
+          path: ${{ runner.temp }}/mac-startup-profile
+          if-no-files-found: ignore
+          retention-days: 7
+
+  qualified-architecture:
+    name: Native host qualification — ${{ matrix.arch }}
+    if: always()
+    needs: [prerequisites]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: Download this architecture's shard evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: macos-prerequisites-${{ matrix.arch }}-*-${{ github.sha }}
+          path: ${{ runner.temp }}/macos-evidence
+      - name: Require all five exact-revision shards
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          for shard in 0 1 2 3 4; do
+            marker="$RUNNER_TEMP/macos-evidence/macos-prerequisites-$EXPECTED_ARCH-$shard-$EXPECTED_SHA/shard-$shard.complete"
+            test -f "$marker"
+            test "$(cat "$marker")" = "$EXPECTED_SHA $EXPECTED_ARCH $shard"
+          done

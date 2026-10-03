@@ -16,11 +16,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
 import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
+import { privateCaptureAttachments } from '../src/internal/file-input.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
   runPrivateFiniteAcpResource,
 } from '../src/internal/finite-acp-resource.js'
-import { privateCaptureAttachments } from '../src/internal/linux-file-input.js'
 import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
 import {
   PrivateLinuxCgroupBackend,
@@ -513,7 +513,7 @@ delegatedDescribe('private rootless Linux Run', () => {
       expect(facts.leaks).toEqual([])
       expect(facts.input).toEqual([0, 255, 128])
       expect([
-        ...(await readFile(`/proc/self/fd/${component.outputDirectory!.fd}/result.bin`)),
+        ...(await readFile(`/proc/self/fd/${component.output!.directory.fd}/result.bin`)),
       ]).toEqual([0, 255, 128])
       expect(await missing(component.cgroup.runCgroup)).toBe(true)
       expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
@@ -526,7 +526,7 @@ delegatedDescribe('private rootless Linux Run', () => {
       try {
         await component?.terminate()
       } finally {
-        await component?.outputDirectory?.close()
+        await component?.output?.directory.close()
         capture.close()
         await secretFile.close()
         await secretDirectory.close()
@@ -654,7 +654,7 @@ delegatedDescribe('private rootless Linux Run', () => {
       expect(receipt).toMatchObject({ exitCode: 0, fenced: true })
       expect(JSON.parse(stdout)).toEqual(Array.from({ length: 24 }, (_, index) => `value-${index}`))
     } finally {
-      await component?.outputDirectory?.close()
+      await component?.output?.directory.close()
       capture.close()
       await rm(fixture, { recursive: true, force: true })
     }
@@ -680,12 +680,12 @@ delegatedDescribe('private rootless Linux Run', () => {
       expect({ stdout, stderr }).toEqual({ stdout: '', stderr: '' })
       expect(receipt).toMatchObject({ exitCode: 0, fenced: true, stopReason: 'payload_exit' })
       expect(await missing(component.cgroup.runCgroup)).toBe(true)
-      const fd = component.outputDirectory!.fd
+      const fd = component.output!.directory.fd
       expect([...(await readFile(`/proc/self/fd/${fd}/result.bin`))]).toEqual([0, 255, 128, 10])
-      await component.outputDirectory!.close()
+      await component.output!.directory.close()
       expect(await missing(`/proc/self/fd/${fd}`)).toBe(true)
     } finally {
-      await component?.outputDirectory?.close()
+      await component?.output?.directory.close()
       await rm(fixture, { recursive: true, force: true })
     }
   })

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -190,3 +190,115 @@ for (const scenario of [
     }
   }, 12_000)
 }
+
+test(
+  'Codex subscription startup stays in memory and selects ephemeral credential storage',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-bootstrap-'))
+    const state = join(root, 'state')
+    const fixture = join(root, 'codex')
+    const recording = join(root, 'requests.ndjson')
+    const launcher = join(root, 'codex-agent-launcher.ts')
+    const adapter = join(root, 'codex-acp.js')
+    await mkdir(state)
+    await Promise.all([
+      writeFile(
+        fixture,
+        `#!${process.execPath}\n${await readFile(new URL('./fixtures/codex-app-server-recording.ts', import.meta.url), 'utf8')}`,
+        { mode: 0o700 },
+      ),
+      writeFile(
+        launcher,
+        await readFile(new URL('../src/internal/codex-agent-launcher.ts', import.meta.url)),
+      ),
+      writeFile(
+        adapter,
+        await readFile(fileURLToPath(import.meta.resolve('@agentclientprotocol/codex-acp'))),
+      ),
+    ])
+    const child = Bun.spawn(
+      [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', launcher],
+      {
+        cwd: root,
+        env: {
+          HOME: root,
+          PATH: root,
+          CODEX_CONFIG: JSON.stringify({ features: { code_mode: false } }),
+          CODEX_PATH: fixture,
+          JIG_CODEX_STARTUP_INPUT: 'subscription',
+          JIG_AGENT_HOME: state,
+          RECORD_PATH: recording,
+          RECORD_SCENARIO: 'completed',
+        },
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const deadline = setTimeout(() => child.kill(), process.platform === 'darwin' ? 20_000 : 8_000)
+    const diagnostics = new Response(child.stderr).text()
+    const lines = child.stdout.getReader()
+    let buffer = ''
+    const decoder = new TextDecoder()
+    const credential = new TextEncoder().encode(
+      JSON.stringify({
+        auth_mode: 'chatgptAuthTokens',
+        tokens: { access_token: 'in-memory-access', account_id: 'account-one' },
+      }),
+    )
+    const header = new Uint8Array(4)
+    new DataView(header.buffer).setUint32(0, credential.byteLength, false)
+    child.stdin.write(header)
+    child.stdin.write(credential)
+    const request = async (id: number, method: string, params: unknown) => {
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      await child.stdin.flush()
+      for (;;) {
+        const split = buffer.indexOf('\n')
+        if (split >= 0) {
+          const frame = JSON.parse(buffer.slice(0, split))
+          buffer = buffer.slice(split + 1)
+          if (frame.id === id) return frame
+        } else {
+          const part = await lines.read()
+          if (part.done) throw new Error(`ACP ended: ${await diagnostics}`)
+          buffer += decoder.decode(part.value, { stream: true })
+        }
+      }
+    }
+    try {
+      expect(
+        (await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })).error,
+      ).toBeUndefined()
+      await child.stdin.end()
+      expect(await child.exited, await diagnostics).toBe(0)
+      expect(await Bun.file(join(state, 'codex-home', 'auth.json')).exists()).toBe(false)
+      expect(await readFile(join(state, 'codex-home', 'config.toml'), 'utf8')).toBe(
+        'cli_auth_credentials_store = "ephemeral"\n\n[features]\ncode_mode = false\n',
+      )
+      const login = (await readFile(recording, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+        .find((record) => record.method === 'account/login/start')
+      expect(login?.params).toEqual({
+        type: 'chatgptAuthTokens',
+        accessToken: 'in-memory-access',
+        chatgptAccountId: 'account-one',
+        chatgptPlanType: null,
+      })
+    } finally {
+      try {
+        await child.stdin.end()
+      } catch {
+        /* already exited */
+      }
+      await child.exited
+      clearTimeout(deadline)
+      await lines.cancel()
+      await diagnostics
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  process.platform === 'darwin' ? 25_000 : 12_000,
+)

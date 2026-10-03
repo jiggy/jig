@@ -248,6 +248,17 @@ do not weaken the product or turn the development host into architecture.
 A second containment implementation may eventually reveal a stable public
 Backend boundary. One mechanism alone has not earned it.
 
+Additional hosts preserve native workload parity: ordinary Flows,
+dependencies, and native Agent clients need no host-specific rewrites.
+Keep native workload compatibility distinct from resource-exhaustion protection.
+Qualified Macs use supervised resource accounting and termination with explicit
+overshoot limitations instead of Linux-equivalent aggregate hard quotas. Exact
+admission, authority isolation, complete descendant ownership and truthful
+cleanup remain required. The installed Mac path needs no `sudo`, privileged
+helper installation, or managed execution accounts. Exact qualified kernels
+and their evidence belong in the host implementation and public guidance;
+new kernel profiles require their own qualification before support expands.
+
 ### Composition
 
 A Binding gives one Flow package a reusable project-local configuration.

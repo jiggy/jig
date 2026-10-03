@@ -13,7 +13,8 @@ import {
 import { basename, join, resolve } from 'node:path'
 import { CheckError } from './diagnostics.js'
 import { importContract } from './internal/contract-import.js'
-import { privatePublishDirectory } from './internal/linux-file-input.js'
+import { openPrivateChild } from './internal/descriptor-files.js'
+import { privatePublishDirectory } from './internal/file-input.js'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -185,8 +186,8 @@ export async function createFlow(
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       )
       try {
-        const flowsDirectory = await open(
-          `/proc/self/fd/${projectDirectory.fd}/flows`,
+        const flowsDirectory = await openPrivateChild(
+          projectDirectory, 'flows',
           constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
         )
         try {

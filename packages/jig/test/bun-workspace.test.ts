@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-execution-layout.js'
@@ -79,7 +79,7 @@ async function fixture(
   rootDependency = 'workspace:*',
   memberDependency = 'workspace:*',
 ) {
-  const root = await mkdtemp(join(tmpdir(), 'jig-workspace-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-workspace-')))
   const put = async (path: string, value: unknown) => {
     await mkdir(dirname(join(root, path)), { recursive: true })
     await writeFile(join(root, path), typeof value === 'string' ? value : JSON.stringify(value))
@@ -182,6 +182,34 @@ test('workspace capture follows declared transitive members, not installation li
       }
     } finally {
       await captured.captured.dispose()
+    }
+  } finally {
+    await value.dispose()
+  }
+})
+
+test('member workspace declarations preserve bytes without expanding ancestor membership', async () => {
+  const value = await fixture()
+  try {
+    const manifest = { name: 'unrelated', version: '0.1.0', workspaces: ['nested/*'] }
+    await value.put('libs/unrelated/package.json', manifest)
+    await value.put('libs/unrelated/nested/hidden/package.json', {
+      name: 'hidden',
+      version: '0.1.0',
+    })
+    await value.put('libs/unrelated/nested/hidden/secret', 'outside root membership')
+    const captured = await value.capture()
+    try {
+      expect(captured).toBeDefined()
+      expect(
+        JSON.parse(
+          Buffer.from(await captured!.captured.read('libs/unrelated/package.json')).toString(),
+        ),
+      ).toEqual(manifest)
+      expect(captured!.members).not.toContain('libs/unrelated/nested/hidden')
+      expect(captured!.captured.files.some(({ path }) => path.includes('/nested/'))).toBe(false)
+    } finally {
+      await captured?.captured.dispose()
     }
   } finally {
     await value.dispose()
@@ -382,10 +410,12 @@ test('workspace lock resolution cannot introduce undeclared paths or names', () 
   ).toThrow()
 })
 
-// Real pinned Bun worker, with only /work relocated into a disposable fixture.
+// Real pinned Bun worker, launched with a disposable working directory.
 // These tests prove capture/install semantics, not the containment envelope.
 test.each([
   'unlocked',
+  'unlocked-member-workspaces',
+  'unlocked-versions',
   'locked',
   'stale',
   'topology',
@@ -405,13 +435,24 @@ test.each([
     const patchMode = mode === 'patched' || mode.startsWith('patch-')
     const rootApplication = mode === 'root' || mode === 'root-pinned' || mode === 'root-stale'
     const value = await fixture(
-      mode === 'versions' || patchMode,
+      mode === 'versions' || mode === 'unlocked-versions' || patchMode,
       rootApplication,
       mode === 'root-pinned' ? '0.1.0' : 'workspace:*',
       mode === 'member-pinned' ? '0.1.0' : 'workspace:*',
     )
     let captured: Awaited<ReturnType<typeof value.capture>>
     try {
+      if (mode === 'unlocked-member-workspaces') {
+        await value.put('libs/unrelated/package.json', {
+          name: 'unrelated',
+          version: '0.1.0',
+          workspaces: ['nested/*'],
+        })
+        await value.put('libs/unrelated/nested/hidden/package.json', {
+          name: 'hidden',
+          version: '0.1.0',
+        })
+      }
       if (patchMode) {
         await value.put('package.json', {
           private: true,
@@ -467,7 +508,7 @@ test.each([
         })
         await value.put('libs/side/index.js', 'export { marker } from "leaf"')
       }
-      if (mode !== 'unlocked') {
+      if (!mode.startsWith('unlocked')) {
         const child = Bun.spawn(
           [
             process.execPath,
@@ -528,7 +569,7 @@ test.each([
         target: 'bun',
       })
       expect(build.success, JSON.stringify(build.logs)).toBeTrue()
-      await writeFile(worker, (await build.outputs[0]!.text()).replaceAll('/work', work))
+      await writeFile(worker, await build.outputs[0]!.text())
       await mkdir(work)
       const files = await Promise.all(
         captured!.captured.files
@@ -545,9 +586,9 @@ test.each([
           '--no-install',
           '--config=/dev/null',
           worker,
-          ...(mode === 'unlocked' ? ['--allow-resolution-network'] : []),
+          ...(mode.startsWith('unlocked') ? ['--allow-resolution-network'] : []),
         ],
-        { cwd: value.root, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+        { cwd: work, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
       )
       child.stdin.write(
         `${JSON.stringify({ type: 'source', files, workspace: { target: captured!.target, members: captured!.members, selected: captured!.selected } })}\n`,
@@ -634,7 +675,7 @@ test.each([
       ])
       expect(runExit, error).toBe(0)
       expect(output).toBe(
-        mode === 'versions' || mode === 'patched'
+        mode === 'versions' || mode === 'unlocked-versions' || mode === 'patched'
           ? '["6.3.1","7.7.2"]\n'
           : mode === 'topology'
             ? '{"same":true,"cyclic":true,"asset":"retained resource"}\n'

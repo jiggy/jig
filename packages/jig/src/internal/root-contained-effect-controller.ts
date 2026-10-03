@@ -1,4 +1,3 @@
-import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
 import { decodeJson1, JSON_1_LIMITS, type JsonObject, type JsonValue } from '../json.js'
 import type { ProjectCommand } from '../project/commands.js'
@@ -19,8 +18,34 @@ import {
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import {
+  admitPrivateExecutionOwner,
+  cancelPrivateExecutionOwnerStateAllocation,
+  isPrivateExecutionFenceUnconfirmed,
+  normalizePrivateExecutionConfirmedEnforcementReceipt,
+  normalizePrivateExecutionOwnerStateAllocationIdentity,
+  normalizePrivateExecutionOwnerStateReleaseReceipt,
+  normalizePrivateExecutionSealedOwnerIdentity,
+  type PrivateExecutionBackend,
+  type PrivateExecutionComponentProcess,
+  type PrivateExecutionConfirmedEnforcementReceipt,
+  type PrivateExecutionOwnerStateAllocationIdentity,
+  planPrivateExecutionOwnerStateAllocation,
+  privateExecutionOwnerAllocationDigest,
+  privateExecutionPreparedOwnerDigest,
+  privateExecutionSetupAllowance,
+  recoverPrivateExecutionFence,
+  releasePrivateExecutionOwnerState,
+  sealPrivateExecutionOwner,
+} from './execution-backend.js'
+import {
+  type PrivateExecutionIntent,
+  privateExecutionFileProjections,
+  privateExecutionPath,
+} from './execution-intent.js'
 import { httpCredential, type PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
+import { capturePrivateInput, type PrivateCapturedInput } from './input-capture.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   normalizeParentFlow,
@@ -29,24 +54,6 @@ import {
   requireParentFlowOwner,
   requireParentTarget,
 } from './invocation-context.js'
-import { privateSealedBytes, sha256 } from './linux-file-input.js'
-import {
-  cancelPrivateLinuxOwnerStateAllocation,
-  normalizePrivateLinuxConfirmedEnforcementReceipt,
-  normalizePrivateLinuxOwnerStateAllocationIdentity,
-  normalizePrivateLinuxOwnerStateReleaseReceipt,
-  normalizePrivateLinuxPreparedOwnerIdentity,
-  normalizePrivateLinuxSealedOwnerIdentity,
-  type PrivateLinuxCapturedInput,
-  type PrivateLinuxCgroupBackend,
-  type PrivateLinuxComponentProcess,
-  type PrivateLinuxConfirmedEnforcementReceipt,
-  PrivateLinuxFenceUnconfirmedError,
-  type PrivateLinuxLaunchPlan,
-  type PrivateLinuxOwnerStateAllocationIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
-} from './linux-rootless-backend.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 import {
   encodeHttpWorkerInput,
@@ -68,11 +75,21 @@ import {
 
 const KIND = 'private-contained-effect-owner/1'
 const ROOT = '/jig-input/project'
+export type PrivateContainedEffectFailurePhase =
+  | 'preparation'
+  | 'sealing'
+  | 'admission'
+  | 'collection'
+  | 'settlement'
+  | 'cleanup'
 interface Context extends PrivateInvocationContext {
   readonly installedSupport: PrivateDirectRunInstalledSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
+  readonly onFailure?:
+    | ((phase: PrivateContainedEffectFailurePhase, error: unknown) => void)
+    | undefined
 }
 interface Allocation {
   readonly kind: typeof KIND
@@ -84,7 +101,7 @@ interface Allocation {
   readonly parentFlow: NonNullable<Context['parentFlow']> | null
   readonly requestDigest: string
   readonly deadlineUnixMs: number
-  readonly ownerAllocation: PrivateLinuxOwnerStateAllocationIdentity
+  readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
 }
 
 /** Shared durable ownership for command and credential-bearing HTTP workers. */
@@ -151,9 +168,10 @@ export async function executePrivateContainedEffect(
   } catch {
     return failed('UNAVAILABLE', 'the admitted contained-operation runtime cannot be reproduced')
   }
-  const ownDeadlineUnixMs =
-    Date.now() +
-    (prepared.kind === 'http' ? prepared.value.grant.timeoutMs : PROJECT_COMMAND_LIMITS.timeoutMs)
+  const operationTimeoutMs =
+    prepared.kind === 'http' ? prepared.value.grant.timeoutMs : PROJECT_COMMAND_LIMITS.timeoutMs
+  const setupAllowanceMs = privateExecutionSetupAllowance(input.backend)
+  const ownDeadlineUnixMs = Date.now() + operationTimeoutMs + setupAllowanceMs
   const deadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
@@ -190,7 +208,7 @@ export async function executePrivateContainedEffect(
     input.call.operationId,
     input.parentFlow?.operationId,
   )
-  const ownerAllocation = await planPrivateLinuxOwnerStateAllocation({
+  const ownerAllocation = await planPrivateExecutionOwnerStateAllocation(input.backend, {
     parent: await protectedOwnerRoot(input.projectRoot),
     name: `x-${identity.slice(0, 62)}`,
   })
@@ -218,13 +236,11 @@ export async function executePrivateContainedEffect(
     })
   } catch (error) {
     try {
-      const cancelled = await cancelPrivateLinuxOwnerStateAllocation(ownerAllocation)
-      await releasePrivateLinuxOwnerState(ownerAllocation, cancelled)
+      const cancelled = await cancelPrivateExecutionOwnerStateAllocation(ownerAllocation)
+      await releasePrivateExecutionOwnerState(ownerAllocation, cancelled)
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
-        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
-          ? 'UNCERTAIN'
-          : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation allocation cleanup failed') },
       )
     }
@@ -232,22 +248,23 @@ export async function executePrivateContainedEffect(
       return failed('RESOURCE_EXHAUSTED', 'the parent already has an active operation')
     throw error
   }
-  const files: PrivateLinuxCapturedInput[] = []
+  const files: { readonly input: PrivateCapturedInput; readonly destination: string }[] = []
   let attempted = false
   let phase = 'preparing input'
+  let failurePhase: PrivateContainedEffectFailurePhase = 'preparation'
   try {
     for (const [path, source] of Object.entries(
       prepared.kind === 'command' ? prepared.value.input.files : {},
     )) {
       const bytes = Buffer.from(source)
       files.push({
-        fd: privateSealedBytes(bytes),
+        input: capturePrivateInput(bytes),
         destination: `${ROOT}/${path}`,
-        bytes: bytes.length,
-        digest: sha256(bytes),
       })
     }
-    const sealed = await input.backend.seal(
+    failurePhase = 'sealing'
+    const sealed = await sealPrivateExecutionOwner(
+      input.backend,
       prepared.kind === 'command'
         ? commandPlan(recipe, prepared.value, files, identity, deadlineUnixMs)
         : httpPlan(recipe, identity, deadlineUnixMs),
@@ -260,23 +277,53 @@ export async function executePrivateContainedEffect(
     })
     attempted = true
     phase = 'starting the worker'
-    const component = await sealed.admit(input.signal)
+    failurePhase = 'admission'
+    const component = await admitPrivateExecutionOwner(sealed, input.signal)
+    let workloadDeadline = false
+    const workloadTimer =
+      setupAllowanceMs === 0
+        ? undefined
+        : setTimeout(() => {
+            workloadDeadline = true
+            void component.terminate().catch(() => undefined)
+          }, operationTimeoutMs)
     const stdin = prepared.kind === 'command' ? (prepared.value.input.stdin ?? '') : httpInput!
-    phase = 'collecting the worker result'
-    const observed = await collectEffect(
-      component,
-      stdin,
-      prepared.kind === 'http' ? JSON_1_LIMITS.bytes : PROJECT_COMMAND_LIMITS.streamBytes,
-    )
+    let observed: Awaited<ReturnType<typeof collectEffect>>
+    try {
+      phase = 'collecting the worker result'
+      failurePhase = 'collection'
+      observed = await collectEffect(
+        component,
+        stdin,
+        prepared.kind === 'http' ? JSON_1_LIMITS.bytes : PROJECT_COMMAND_LIMITS.streamBytes,
+      )
+    } finally {
+      clearTimeout(workloadTimer)
+    }
     phase = 'fencing and cleanup'
+    failurePhase = 'settlement'
     await releaseEffect(input, lifecycle, observed.fence)
     phase = 'checking the collected result'
-    const reason = observed.fence.stopReason
-    if (!['payload_exit', 'cancelled', 'deadline'].includes(reason))
+    const reason =
+      workloadDeadline && observed.fence.stopReason === 'cancelled'
+        ? 'deadline'
+        : observed.fence.stopReason
+    if (!['payload_exit', 'cancelled', 'deadline'].includes(reason)) {
+      try {
+        input.onFailure?.(
+          'settlement',
+          Object.assign(new Error('contained operation has no proved terminal'), {
+            code: `CONTAINED_EFFECT_${reason.toUpperCase()}`,
+          }),
+        )
+      } catch {
+        // Test-only observation cannot change the confirmed settlement.
+      }
       return failed(
         'UNCERTAIN',
         'the operation was fenced without a proved terminal; effects may have occurred',
       )
+    }
     if (prepared.kind === 'http') {
       if (input.signal.aborted || reason === 'cancelled')
         return failed('CANCELLED', 'HTTP request cancelled; remote effects may have occurred')
@@ -324,7 +371,7 @@ export async function executePrivateContainedEffect(
       stdout: observed.stdout,
       stderr: observed.stderr,
       exitCode: observed.fence.exitCode,
-      signal: observed.fence.signal,
+      signal: observed.completion.signal,
       stopReason: reason === 'payload_exit' ? 'exited' : (reason as 'cancelled' | 'deadline'),
       cleanup: 'complete',
     })
@@ -343,6 +390,11 @@ export async function executePrivateContainedEffect(
     }
   } catch (error) {
     try {
+      input.onFailure?.(failurePhase, error)
+    } catch {
+      // Test-only observation cannot change contained operation settlement.
+    }
+    try {
       const row = (await owners(input)).find(
         (row) =>
           row.operationId === input.call.operationId &&
@@ -350,10 +402,13 @@ export async function executePrivateContainedEffect(
       )
       if (row !== undefined) await releaseEffect(input, row)
     } catch (cleanupError) {
+      try {
+        input.onFailure?.('cleanup', cleanupError)
+      } catch {
+        // Test-only observation cannot change contained operation settlement.
+      }
       throw new RunHostFatalOperationError(
-        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
-          ? 'UNCERTAIN'
-          : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
@@ -370,7 +425,7 @@ export async function executePrivateContainedEffect(
         : 'contained operation setup failed before dispatch',
     )
   } finally {
-    for (const file of files) closeSync(file.fd)
+    for (const file of files) file.input.close()
   }
 }
 
@@ -423,59 +478,63 @@ function httpPlan(
   recipe: PrivateDirectRunRecipe,
   identity: string,
   deadlineUnixMs: number,
-): PrivateLinuxLaunchPlan {
+): PrivateExecutionIntent {
   return {
     runId: `effect-${identity.slice(0, 40)}`,
     limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
-    readOnlyMounts: [
+    projections: privateExecutionFileProjections([
       ...recipe.installedSupport.runtimeMounts,
       {
         source: recipe.installedSupport.httpWorkerPath,
         destination: recipe.installedSupport.sandboxHttpWorkerPath,
       },
-      { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
-    ],
+    ]),
     command: [
-      recipe.sandboxExecutablePath,
+      privateExecutionPath(recipe.sandboxExecutablePath),
       ...recipe.bunPolicy,
-      recipe.installedSupport.sandboxHttpWorkerPath,
+      privateExecutionPath(recipe.installedSupport.sandboxHttpWorkerPath),
     ],
     network: 'inherited',
+    storageBytes: 16 * 1024 * 1024,
+    maxOutputBytes: JSON_1_LIMITS.bytes + PROJECT_COMMAND_LIMITS.streamBytes,
   }
 }
 
 function commandPlan(
   recipe: PrivateDirectRunRecipe,
   prepared: PreparedProjectCommand,
-  files: readonly PrivateLinuxCapturedInput[],
+  files: readonly { readonly input: PrivateCapturedInput; readonly destination: string }[],
   identity: string,
   deadlineUnixMs: number,
-): PrivateLinuxLaunchPlan {
+): PrivateExecutionIntent {
   const policy = prepared.policy
   const args =
     'run' in policy
       ? [
           ...recipe.bunPolicy,
           '--cwd',
-          ROOT,
-          `${ROOT}/${policy.run}`,
+          privateExecutionPath(ROOT),
+          privateExecutionPath(`${ROOT}/${policy.run}`),
           ...(prepared.input.args ?? []),
         ]
       : [
           'test',
           ...recipe.bunPolicy,
           '--cwd',
-          ROOT,
-          ...policy.test.map((path) => `${ROOT}/${path}`),
+          privateExecutionPath(ROOT),
+          ...policy.test.map((path) => privateExecutionPath(`${ROOT}/${path}`)),
         ]
   return {
     runId: `effect-${identity.slice(0, 40)}`,
     limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
-    readOnlyMounts: recipe.installedSupport.runtimeMounts,
+    projections: privateExecutionFileProjections(recipe.installedSupport.runtimeMounts),
     capturedInputs: files,
     inputDirectories: [ROOT],
-    command: [recipe.sandboxExecutablePath, ...args],
+    command: [privateExecutionPath(recipe.sandboxExecutablePath), ...args],
     network: 'isolated',
+    storageBytes: 512 * 1024 * 1024,
+    // Draining capacity is independent of retained result prefixes.
+    maxOutputBytes: 64 * 1024 * 1024,
   }
 }
 
@@ -499,7 +558,7 @@ export async function collectProjectCommandStream(
 }
 
 async function collectEffect(
-  component: PrivateLinuxComponentProcess,
+  component: PrivateExecutionComponentProcess,
   stdin: string,
   stdoutLimit: number,
 ) {
@@ -517,8 +576,14 @@ async function collectEffect(
     await component.closeInput()
   })()
   try {
-    const [out, err, fence] = await Promise.all([stdout, stderr, component.enforcement, send])
-    return { stdout: out, stderr: err, fence }
+    const [out, err, fence, completion] = await Promise.all([
+      stdout,
+      stderr,
+      component.enforcement,
+      component.completion,
+      send,
+    ])
+    return { stdout: out, stderr: err, fence, completion }
   } catch (error) {
     await component.terminate().catch(() => undefined)
     await Promise.allSettled([stdout, stderr, send, component.enforcement])
@@ -549,7 +614,7 @@ function isEffectOwner(row: PrivateRootChildOwnerLifecycle): boolean {
 async function releaseEffect(
   input: Context,
   row: PrivateRootChildOwnerLifecycle,
-  knownFence?: PrivateLinuxConfirmedEnforcementReceipt,
+  knownFence?: PrivateExecutionConfirmedEnforcementReceipt,
 ): Promise<void> {
   let lifecycle = row
   const allocation = parseAllocation(row)
@@ -586,25 +651,23 @@ async function releaseEffect(
   if (lifecycle.sandbox === undefined) {
     if (lifecycle.fence !== undefined || lifecycle.cleanup !== undefined)
       throw new Error('operation fence precedes sandbox')
-    const cancelled = await cancelPrivateLinuxOwnerStateAllocation(allocation.ownerAllocation)
-    await releasePrivateLinuxOwnerState(allocation.ownerAllocation, cancelled)
+    const cancelled = await cancelPrivateExecutionOwnerStateAllocation(allocation.ownerAllocation)
+    await releasePrivateExecutionOwnerState(allocation.ownerAllocation, cancelled)
   } else {
-    const owner = normalizePrivateLinuxSealedOwnerIdentity(lifecycle.sandbox.value)
+    const owner = normalizePrivateExecutionSealedOwnerIdentity(lifecycle.sandbox.value)
     if (
-      owner.ownerStateAllocationDigest !== allocation.ownerAllocation.digest ||
+      privateExecutionOwnerAllocationDigest(owner) !== allocation.ownerAllocation.digest ||
       owner.runId !== `effect-${identity.slice(0, 40)}` ||
-      owner.deadlineUnixMs !== allocation.deadlineUnixMs
+      (owner.kind === 'private-linux-sealed-owner/1' &&
+        owner.deadlineUnixMs !== allocation.deadlineUnixMs)
     )
       throw new Error('operation sandbox differs from its allocation')
     const fence =
       lifecycle.fence === undefined
-        ? (knownFence ?? (await input.backend.recoverFence(owner)))
-        : normalizePrivateLinuxConfirmedEnforcementReceipt(lifecycle.fence.value)
-    normalizePrivateLinuxPreparedOwnerIdentity({
-      kind: 'private-linux-prepared-owner/1',
-      digest: fence.ownerDigest,
-      owner,
-    })
+        ? (knownFence ?? (await recoverPrivateExecutionFence(input.backend, owner)))
+        : normalizePrivateExecutionConfirmedEnforcementReceipt(lifecycle.fence.value)
+    if (fence.ownerDigest !== privateExecutionPreparedOwnerDigest(owner))
+      throw new Error('operation fence belongs to another prepared owner')
     if (lifecycle.fence === undefined)
       lifecycle = await recordPrivateRootChildFence({
         ...key,
@@ -612,7 +675,7 @@ async function releaseEffect(
         sandboxDigest: lifecycle.sandbox!.digest,
         fence: fence as unknown as JsonValue,
       })
-    const released = await releasePrivateLinuxOwnerState(owner, fence)
+    const released = await releasePrivateExecutionOwnerState(owner, fence)
     if (lifecycle.cleanup === undefined)
       lifecycle = await recordPrivateRootChildCleanup({
         ...key,
@@ -622,7 +685,7 @@ async function releaseEffect(
         cleanup: released as unknown as JsonValue,
       })
     else if (
-      normalizePrivateLinuxOwnerStateReleaseReceipt(lifecycle.cleanup.value).digest !==
+      normalizePrivateExecutionOwnerStateReleaseReceipt(lifecycle.cleanup.value).digest !==
       released.digest
     )
       throw new Error('operation cleanup receipt changed')
@@ -679,7 +742,7 @@ function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
   return {
     ...value,
     parentFlow: normalizeParentFlow(value.parentFlow, row.parentOperationId),
-    ownerAllocation: normalizePrivateLinuxOwnerStateAllocationIdentity(value.ownerAllocation),
+    ownerAllocation: normalizePrivateExecutionOwnerStateAllocationIdentity(value.ownerAllocation),
   } as unknown as Allocation
 }
 

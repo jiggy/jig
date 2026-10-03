@@ -51,7 +51,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   newer tag exists; absent older versions are superseded without publication,
   tags, or releases. Recheck registry state before each ordered mutation.
 - Publish Agent/Jig npm candidates only after CI, complete Linux Host Conformance,
-  and Native Agent API Qualification succeed for the exact source revision. FLOW
+  complete hosted Intel and Apple Silicon Mac conformance, and Native Agent API
+  Qualification succeed for the exact source revision. FLOW
   SDK npm publication and source tagging are independent of those Jig gates;
   Python also uses its own CI-qualified artifacts. Each group preflights its own
   archives before mutation. A host failure cannot block FLOW publication.
@@ -78,6 +79,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   archive hashes, performs zero-residue verification, and contributes to the
   aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
   prevent that aggregate from succeeding.
+- Linux installed-evidence also runs the public workspace-dependency consumer
+  and complete packed CLI composition under the proof host, in addition to
+  operational and hostile baselines. Pass the runner's absolute Node executable
+  to the packed compiler smoke test because the acquisition host uses a fixed
+  path that excludes runner tool-cache binaries.
 - Native Agent API Qualification consumes the exact host archives from the
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
@@ -102,10 +108,40 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   private authoring closure. Agent source rebuilds use ordinary declared
   dependencies; frozen archives are test inputs, never embedded dependencies.
 
+- `workflows/macos-host-conformance.yml` qualifies the rootless candidate only
+  on a self-hosted Intel runner labeled `jig-macos-23E224`. Keep manual dispatch
+  restricted to this repository's main or mac-support branch and the protected
+  `macos-host-conformance` environment. Never run arbitrary PR code on this
+  runner. Configure absolute native executable paths through the environment's
+  `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
+  variables. This candidate workflow does not replace Linux publication gates
+  or claim live model/API qualification.
+- `workflows/macos-hosted-candidates.yml` qualifies disposable GitHub-hosted
+  Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Each of five
+  isolated shards per architecture checks the exact kernel/build, native Bun,
+  process prerequisites, ordinary build, frozen archive identity and ownership
+  residue. The deterministic test plan covers every discovered Jig test file;
+  it partitions the long root Agent lifecycle by disjoint name groups, with
+  tests in fresh, sequential per-file Bun processes inside each host. One shard per architecture additionally
+  checks genuine pinned clients offline, ordinary npm installation and packed
+  consumer execution. Native containment/recovery and descriptor-handoff probes
+  run once in a dedicated step on shard zero. Per-architecture aggregate checks
+  require exact-revision success markers from all five shards; prerequisite
+  success alone is insufficient. Hosted setup installs no privileged helper
+  and uses no model credentials. Each shard retains per-test timing evidence;
+  optional manual dispatch profiles installed startup on both architectures
+  with the same fixed conversation used by Linux. The profile is non-gating,
+  bounded, and leaves archive identity and zero-residue checks mandatory.
+  Schedule slower Intel shards before Apple Silicon, with the installed-consumer
+  shard first. Fail fast after a shard fails; cancelled shards cannot qualify.
+  Cancel superseded runs on feature branches, but retain main-push qualification.
+
 ## Verification
 
 - Validate the called script locally where possible and inspect the complete
   workflow permission and artifact flow after any automation change.
+- CI runs `node --test scripts/ci/host-test-coverage.test.mjs` to catch omitted
+  host-only cases and incomplete Mac shard assignment before host qualification.
 - `bun test scripts/npm-publish.test.ts` exercises the publisher's actual shell
   with controlled registry responses, including reverse completion and retries.
 

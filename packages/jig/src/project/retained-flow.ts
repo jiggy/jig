@@ -1,6 +1,7 @@
+import type { PrivateFileLocation } from '../internal/descriptor-files.js'
 import {
-  publishCapturedPackage,
   type PackageArtifactRef,
+  publishCapturedPackage,
 } from '../internal/package-artifact-store.js'
 import type { InspectedPackage } from '../package/inspect.js'
 import type { CapturedFlowSource, FlowMemberProvenance } from './flow-source.js'
@@ -18,7 +19,7 @@ export interface RetainedFlowInput {
  * owns and must dispose the source. Publication does not imply admission.
  */
 export async function retainFlowSourcePackages(
-  storeRoot: string,
+  storeRoot: PrivateFileLocation,
   source: CapturedFlowSource,
 ): Promise<readonly RetainedFlowInput[]> {
   const retained: RetainedFlowInput[] = []

@@ -1,11 +1,12 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ProjectAdministrationError } from '../src/administration/project.js'
+import { RootAdministrationError } from '../src/administration/root.js'
 import { CheckError } from '../src/diagnostics.js'
 import { PrivateBunManifestError } from '../src/internal/bun-native-lock-policy.js'
 import {
@@ -137,8 +138,13 @@ describe('private finite project session', () => {
         code: 'PROJECT_CLOSED',
       })
 
-      const reopened = await openPrivateProjectSession({ directory: root, host: inertHost() })
-      await reopened.close()
+      const descriptors = process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'
+      const before = (await readdir(descriptors)).length
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const reopened = await openPrivateProjectSession({ directory: root, host: inertHost() })
+        await reopened.close()
+      }
+      expect((await readdir(descriptors)).length).toBe(before)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -146,13 +152,27 @@ describe('private finite project session', () => {
 
   test('preserves an accepted apply error while close waits', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-project-session-'))
+    const evidence: unknown[] = []
     try {
-      const session = await openPrivateProjectSession({ directory: root, host: inertHost() })
+      const session = await openPrivateProjectSession({
+        directory: root,
+        host: inertHost(),
+        onOperationFailure(value) {
+          evidence.push(value)
+          throw new Error('private diagnostic detail')
+        },
+      })
+      await expect(session.plan(null as never)).rejects.toBeInstanceOf(ProjectAdministrationError)
       const applying = session.apply({ planDigest: missingPlan })
       const closing = session.close()
 
       await expect(applying).rejects.toMatchObject({ code: 'PLAN_NOT_FOUND' })
       await closing
+      expect(evidence).toEqual([
+        { operation: 'plan', causes: ['ProjectAdministrationError:INVALID_REQUEST'] },
+        { operation: 'apply', causes: ['CheckError:ADMISSION_PLAN_MISSING'] },
+      ])
+      expect(JSON.stringify(evidence)).not.toContain('private diagnostic detail')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -195,7 +215,15 @@ describe('private finite project session', () => {
 
   test('maps acquisition failures to closed sanitized values', async () => {
     const root = join(tmpdir(), `jig-missing-${randomUUID()}`)
-    const failure = await openPrivateProjectSession({ directory: root, host: inertHost() }).then(
+    const evidence: unknown[] = []
+    const failure = await openPrivateProjectSession({
+      directory: root,
+      host: inertHost(),
+      onAcquisitionFailure(value) {
+        evidence.push(value)
+        throw new Error('diagnostic observer failed')
+      },
+    }).then(
       () => undefined,
       (error) => error,
     )
@@ -205,6 +233,16 @@ describe('private finite project session', () => {
       message: 'project directory is unavailable',
     })
     expect(JSON.stringify(failure)).not.toContain(root)
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({ phase: 'owner', causes: expect.any(Array) })
+    expect(JSON.stringify(evidence)).not.toContain(root)
+    expect(JSON.stringify(evidence)).not.toContain('diagnostic observer failed')
+    const pendingFence = projectError(
+      new RootAdministrationError('PROJECT_BUSY', 'private fence detail'),
+      'acquire',
+    )
+    expect(pendingFence.code).toBe('PROJECT_BUSY')
+    expect(JSON.stringify(pendingFence)).not.toContain('private fence detail')
   })
 
   test('unreadable retained candidates fail distinctly without resetting state', async () => {

@@ -15,6 +15,14 @@ describe.serial('trusted declaration subprocess settlement', () => {
     })
   }, 10_000)
 
+  test('passes the relocated SDK path to the exact trusted child', async () => {
+    await fixture(`process.stdout.write(process.env.JIG_EVALUATOR_SDK);`, async (worker) => {
+      const sdkPath = '/captured/evaluator/project-evaluator-sdk.bundle.js'
+      const bytes = await runPrivateAuthorEvaluatorChild(new Uint8Array(), worker, sdkPath)
+      expect(new TextDecoder().decode(bytes)).toBe(sdkPath)
+    })
+  }, 10_000)
+
   test('reaps a stalled child at its individual ceiling, without borrowing batch time', async () => {
     await fixture(
       `
@@ -30,7 +38,7 @@ describe.serial('trusted declaration subprocess settlement', () => {
         expect(() => process.kill(pid, 0)).toThrow()
       },
     )
-  }, 10_000)
+  }, 20_000)
 
   test.each([
     ["process.stdout.write('answer'); process.exit(2);", 'PROJECT_EVALUATION_FAILED'],

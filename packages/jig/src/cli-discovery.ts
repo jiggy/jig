@@ -116,10 +116,11 @@ export function completionScript(shell: string): string | undefined {
     word=2
   fi
   COMPREPLY=()
+  local reply
   if (( COMP_CWORD == 1 )); then
-    mapfile -t COMPREPLY < <(compgen -W '${commands} --help --version' -- "$cur")
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
   elif [[ "$prev" == --verification ]]; then
-    mapfile -t COMPREPLY < <(compgen -W 'cached strict fast' -- "$cur")
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
   elif [[ "$cur" == -* ]]; then
     local opts='--help'
     case "$command" in
@@ -128,9 +129,9 @@ export function completionScript(shell: string): string | undefined {
       inspect) opts='--help --json --verification';;
       init) opts='--help --bare --agent';;
     esac
-    mapfile -t COMPREPLY < <(compgen -W "$opts" -- "$cur")
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W "$opts" -- "$cur")
   elif (( word == 2 )) && [[ "$command" == run || "$command" == inspect ]]; then
-    mapfile -t COMPREPLY < <(jig completion targets "$cur" 2>/dev/null)
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(jig completion targets "$cur" 2>/dev/null)
     # Bash treats ':' as a word break; keep only the suffix it will replace.
     if [[ "$cur" == *:* && "$COMP_WORDBREAKS" == *:* ]]; then
       COMPREPLY=("\${COMPREPLY[@]#*:}")

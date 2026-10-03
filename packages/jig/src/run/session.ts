@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto'
+import type {
+  PrivateExecutionExit,
+  PrivateExecutionProcess,
+} from '../internal/execution-process.js'
 
 import {
   canonicalJson,
@@ -130,31 +134,6 @@ export interface RunHostLimits {
   readonly capturedStderrBytes: number
 }
 
-export interface ExactComponentExit {
-  readonly exitCode: number | null
-  readonly signal: string | null
-  readonly fenced: boolean
-  readonly stopReason?:
-    | 'cancelled'
-    | 'coordinator_lost'
-    | 'deadline'
-    | 'payload_exit'
-    | 'core_dump'
-    | 'setup_failed'
-    | 'recovered'
-  readonly cleanupError?: unknown
-}
-
-/** Private seam supplied by the Sandbox Backend after exact activation. */
-export interface ExactComponentProcess {
-  readonly stdout: AsyncIterable<Uint8Array>
-  readonly stderr: AsyncIterable<Uint8Array>
-  readonly completion: Promise<ExactComponentExit>
-  write(bytes: Uint8Array): Promise<void>
-  closeInput(): Promise<void>
-  terminate(): Promise<void>
-}
-
 export interface RunDiagnostics {
   readonly stderr: string
   readonly stderrBytes: number
@@ -284,7 +263,7 @@ export class RunHostSession {
   private abortListener?: () => void
 
   constructor(
-    private readonly process: ExactComponentProcess,
+    private readonly process: PrivateExecutionProcess,
     private readonly invocation: RunHostInvocation,
     limits: Partial<RunHostLimits> = {},
     private readonly dispatcher?: RunHostOperationDispatcher,
@@ -1005,7 +984,7 @@ export class RunHostSession {
     )
   }
 
-  private finish(exit: ExactComponentExit | undefined): RunHostTerminal {
+  private finish(exit: PrivateExecutionExit | undefined): RunHostTerminal {
     const diagnostics = this.diagnostics()
     const failure = (
       code: RunHostFailureCode,

@@ -90,10 +90,15 @@ describe('Package/0 digest', () => {
   })
 })
 
+const captureTest =
+  process.platform === 'linux' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? test
+    : test.skip
 const linuxTest = process.platform === 'linux' ? test : test.skip
 
-describe('Linux Package/0 directory capture', () => {
-  linuxTest(
+describe('Native Package/0 directory capture', () => {
+  captureTest(
     'captures every regular file in canonical byte order and isolates staged bytes',
     async () => {
       await withDirectory(async (source) => {
@@ -119,7 +124,7 @@ describe('Linux Package/0 directory capture', () => {
     },
   )
 
-  linuxTest('ignores enumeration order and filesystem metadata in identity', async () => {
+  captureTest('ignores enumeration order and filesystem metadata in identity', async () => {
     await withDirectory(async (left) => {
       await withDirectory(async (right) => {
         await writeFile(join(left, 'FLOW.md'), metadata)
@@ -138,61 +143,65 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('isolates reused copy bytes across chunks, files and concurrent captures', async () => {
-    await withDirectory(async (left) => {
-      await withDirectory(async (right) => {
-        const chunk = 1024 * 1024
-        const large = new Uint8Array(2 * chunk + 17)
-        large.fill(0xa1, 0, chunk)
-        large.fill(0xb2, chunk, 2 * chunk)
-        large.fill(0xc3, 2 * chunk)
-        const files = new Map([
-          ['large.bin', large],
-          ['short.bin', Uint8Array.of(0, 255, 1)],
-          ['empty.bin', new Uint8Array(0)],
-        ])
-        for (const [path, bytes] of files) await writeFile(join(left, path), bytes)
-        await writeFile(join(right, 'other.bin'), new Uint8Array(chunk + 3).fill(0xd4))
+  captureTest(
+    'isolates reused copy bytes across chunks, files and concurrent captures',
+    async () => {
+      await withDirectory(async (left) => {
+        await withDirectory(async (right) => {
+          const chunk = 1024 * 1024
+          const large = new Uint8Array(2 * chunk + 17)
+          large.fill(0xa1, 0, chunk)
+          large.fill(0xb2, chunk, 2 * chunk)
+          large.fill(0xc3, 2 * chunk)
+          const files = new Map([
+            ['large.bin', large],
+            ['short.bin', Uint8Array.of(0, 255, 1)],
+            ['empty.bin', new Uint8Array(0)],
+          ])
+          for (const [path, bytes] of files) await writeFile(join(left, path), bytes)
+          await writeFile(join(right, 'other.bin'), new Uint8Array(chunk + 3).fill(0xd4))
 
-        const [firstCapture, secondCapture] = await Promise.all([
-          capturePackageDirectory(left),
-          capturePackageDirectory(right),
-        ])
-        try {
-          for (const [path, bytes] of files) expect(await firstCapture.read(path)).toEqual(bytes)
-          expect(await secondCapture.read('other.bin')).toEqual(
-            new Uint8Array(chunk + 3).fill(0xd4),
-          )
-          expect(firstCapture.digest).toBe(
-            await packageDigest(
-              [...files].map(([path, bytes]) => ({ path, size: bytes.byteLength })),
-              async function* (file) {
-                const bytes = files.get(file.path)
-                if (bytes === undefined) throw new Error('Unexpected fixture file.')
-                yield bytes
-              },
-            ),
-          )
-          // Snapshot streams own their yielded chunks, unlike the private copier.
-          const iterator = firstCapture.stream('large.bin')[Symbol.asyncIterator]()
+          const [firstCapture, secondCapture] = await Promise.all([
+            capturePackageDirectory(left),
+            capturePackageDirectory(right),
+          ])
           try {
-            const first = await iterator.next()
-            if (first.done || first.value === undefined) throw new Error('Missing captured chunk.')
-            const saved = first.value.slice()
-            await iterator.next()
-            await firstCapture.read('short.bin')
-            expect(first.value).toEqual(saved)
+            for (const [path, bytes] of files) expect(await firstCapture.read(path)).toEqual(bytes)
+            expect(await secondCapture.read('other.bin')).toEqual(
+              new Uint8Array(chunk + 3).fill(0xd4),
+            )
+            expect(firstCapture.digest).toBe(
+              await packageDigest(
+                [...files].map(([path, bytes]) => ({ path, size: bytes.byteLength })),
+                async function* (file) {
+                  const bytes = files.get(file.path)
+                  if (bytes === undefined) throw new Error('Unexpected fixture file.')
+                  yield bytes
+                },
+              ),
+            )
+            // Snapshot streams own their yielded chunks, unlike the private copier.
+            const iterator = firstCapture.stream('large.bin')[Symbol.asyncIterator]()
+            try {
+              const first = await iterator.next()
+              if (first.done || first.value === undefined)
+                throw new Error('Missing captured chunk.')
+              const saved = first.value.slice()
+              await iterator.next()
+              await firstCapture.read('short.bin')
+              expect(first.value).toEqual(saved)
+            } finally {
+              await iterator.return?.()
+            }
           } finally {
-            await iterator.return?.()
+            await Promise.all([firstCapture.dispose(), secondCapture.dispose()])
           }
-        } finally {
-          await Promise.all([firstCapture.dispose(), secondCapture.dispose()])
-        }
+        })
       })
-    })
-  })
+    },
+  )
 
-  linuxTest('changes identity for content, path, extra files, and line endings', async () => {
+  captureTest('changes identity for content, path, extra files, and line endings', async () => {
     const digests = new Set<string>()
     for (const files of [
       { 'FLOW.md': metadata, file: 'one' },
@@ -213,7 +222,7 @@ describe('Linux Package/0 directory capture', () => {
     expect(digests.size).toBe(5)
   })
 
-  linuxTest('accepts fully contained hardlinks as independent records', async () => {
+  captureTest('accepts fully contained hardlinks as independent records', async () => {
     await withDirectory(async (source) => {
       await writeFile(join(source, 'FLOW.md'), metadata)
       await writeFile(join(source, 'a'), 'shared')
@@ -225,7 +234,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('rejects symlinks, escaping hardlinks, and case-fold collisions', async () => {
+  captureTest('rejects symlinks and escaping hardlinks', async () => {
     await withDirectory(async (root) => {
       const outside = join(root, 'outside')
       await writeFile(outside, 'outside')
@@ -241,7 +250,11 @@ describe('Linux Package/0 directory capture', () => {
       await writeFile(join(hardlinkPackage, 'FLOW.md'), metadata)
       await link(outside, join(hardlinkPackage, 'linked'))
       await expectCaptureError(hardlinkPackage, 'PACKAGE_HARDLINK')
+    })
+  })
 
+  linuxTest('rejects case-fold collisions on a case-sensitive source filesystem', async () => {
+    await withDirectory(async (root) => {
       const collisionPackage = join(root, 'collision-package')
       await mkdir(collisionPackage)
       await writeFile(join(collisionPackage, 'FLOW.md'), metadata)
@@ -251,7 +264,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('rejects a symlink as the selected source root', async () => {
+  captureTest('rejects a symlink as the selected source root', async () => {
     await withDirectory(async (root) => {
       const source = join(root, 'source')
       const alias = join(root, 'alias')
@@ -262,7 +275,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest('captures an opened directory identity rather than a replaced pathname', async () => {
+  captureTest('captures an opened directory identity rather than a replaced pathname', async () => {
     await withDirectory(async (root) => {
       const selected = join(root, 'selected')
       const moved = join(root, 'moved')
@@ -303,7 +316,7 @@ describe('Linux Package/0 directory capture', () => {
     })
   })
 
-  linuxTest(
+  captureTest(
     'rejects a file one byte above the absolute Package/0 ceiling before copying',
     async () => {
       await withDirectory(async (source) => {

@@ -283,7 +283,7 @@ proofDescribe('private rootless project session', () => {
           }
         }
         await expectNoChildResidue(root)
-        expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+        expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
         await waitForRootlessCgroups(initialRootlessCgroups)
         await waitForRootlessTemporaryState(initialRootlessTemporaryState)
       } finally {
@@ -486,7 +486,7 @@ proofDescribe('private rootless project session', () => {
           .every((record) => record.result.status !== 'succeeded'),
       ).toBeTrue()
       await expectNoChildResidue(root)
-      expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+      expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
       await waitForRootlessCgroups(initialRootlessCgroups)
       await waitForRootlessTemporaryState(initialRootlessTemporaryState)
     } finally {
@@ -625,7 +625,7 @@ proofDescribe('private rootless project session', () => {
       ).toEqual(terminals[0].result)
       expect(await readdir(join(root, 'cancelled-result/files'))).toEqual([])
       await expectNoChildResidue(root)
-      expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+      expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
       await waitForRootlessCgroups(initialRootlessCgroups)
       await waitForRootlessTemporaryState(initialRootlessTemporaryState)
     } finally {
@@ -840,7 +840,7 @@ proofDescribe('private rootless project session', () => {
             await session.close()
             session = undefined
             await expectNoChildResidue(root)
-            expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+            expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
             await waitForRootlessCgroups(initialRootlessCgroups)
             await waitForRootlessTemporaryState(initialRootlessTemporaryState)
           } finally {
@@ -2700,7 +2700,7 @@ async function expectNoChildResidue(root: string): Promise<void> {
   expect(inspectChildOwnerCount(root)).toBe(0)
   const [materializations, owners] = await Promise.all([
     directoryEntries(join(root, '.jig', 'private-root-materializations')),
-    directoryEntries(join(root, '.jig', 'private-root-linux-owners')),
+    directoryEntries(join(root, '.jig', 'private-root-owners')),
   ])
   expect(materializations.filter((entry) => entry.startsWith('child-'))).toEqual([])
   expect(owners.filter((entry) => /^(c-|a-|x-)/.test(entry))).toEqual([])

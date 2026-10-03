@@ -15,7 +15,10 @@ import {
 const PROTOCOL = PRIVATE_AUTHOR_EVALUATOR_PROTOCOL
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const VM_TIMEOUT_MS = 1_000
-const SDK_ENTRY = `${PRIVATE_AUTHOR_EVALUATOR_DIRECTORY}/project-evaluator-sdk.bundle.js`
+const SDK_ENTRY =
+  process.env.JIG_EVALUATOR_SDK ??
+  `${PRIVATE_AUTHOR_EVALUATOR_DIRECTORY}/project-evaluator-sdk.bundle.js`
+delete process.env.JIG_EVALUATOR_SDK
 type AuthoringProfile = 'project-authoring/1'
 const EVALUATION_CODES = new Set([
   'PROJECT_AUTHORING_VALUE',
@@ -222,6 +225,8 @@ async function evaluateEntry(request: WorkerRequest, index: number): Promise<Jso
       entries: [entryProjectPath],
       modules: reachableAuthorModules(request.modules, entryProjectPath),
     } as unknown as JsonValue),
+    process.argv[1]!,
+    SDK_ENTRY,
   )
   const response = decodeJson1(output)
   if (!isRecord(response) || response.protocol !== PROTOCOL) {

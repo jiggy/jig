@@ -1,17 +1,17 @@
 import { expect } from 'bun:test'
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { basename, join, resolve } from 'node:path'
 import { main, type PrivateCliOptions } from '../../src/cli.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
-import { installedBunLocation } from './installed-bun-location.js'
 import {
-  openDeterministicFiniteAcpHost,
   deterministicAcpProgram,
+  openDeterministicFiniteAcpHost,
 } from './deterministic-acp-agent.js'
+import { installedBunLocation } from './installed-bun-location.js'
 
 export async function qualifyIncidentBrief(): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-incident-contained-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-incident-contained-')))
   const started = performance.now()
   const trace: { elapsedMs: number; stage: string }[] = []
   const mark = (stage: string) => {
@@ -63,9 +63,15 @@ export async function qualifyIncidentBrief(): Promise<void> {
   await cp(join(installedBunLocation.releaseRoot, 'libexec'), join(release, 'libexec'), {
     recursive: true,
   })
-  await mkdir(join(release, 'node_modules/@oven/bun-linux-x64-baseline/bin'), { recursive: true })
+  const runtimePackage =
+    process.platform === 'darwin'
+      ? process.arch === 'arm64'
+        ? 'bun-darwin-aarch64'
+        : 'bun-darwin-x64-baseline'
+      : 'bun-linux-x64-baseline'
+  await mkdir(join(release, `node_modules/@oven/${runtimePackage}/bin`), { recursive: true })
   const executablePath = await realpath(installedBunLocation.executablePath)
-  await symlink(executablePath, join(release, 'node_modules/@oven/bun-linux-x64-baseline/bin/bun'))
+  await symlink(executablePath, join(release, `node_modules/@oven/${runtimePackage}/bin/bun`))
   await writeFile(
     join(release, 'libexec/agent/fixture-acp.js'),
     deterministicAcpProgram().replace(
@@ -116,7 +122,21 @@ export async function qualifyIncidentBrief(): Promise<void> {
       },
       host: {
         acquire: (directory, overrides) =>
-          openPrivateProjectSession({ directory, host: { ...host, ...overrides } }),
+          openPrivateProjectSession({
+            directory,
+            host: {
+              ...host,
+              ...overrides,
+              onStage(stage) {
+                mark(stage)
+                overrides.onStage?.(stage)
+              },
+            },
+            onAcquisitionFailure: (evidence) =>
+              console.error('incident-acquisition-failure', JSON.stringify(evidence)),
+            onOperationFailure: (evidence) =>
+              console.error('incident-operation-failure', JSON.stringify(evidence)),
+          }),
       },
     }
     mark('review-started')
@@ -129,7 +149,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
     stderr = ''
     mark('run-started')
     const code = await main(
-      ['run', 'binding:brief', '--input', '@input.json', '--timeout', '90s', '--json'],
+      ['run', 'binding:brief', '--input', '@input.json', '--timeout', '180s', '--json'],
       options,
     )
     mark('run-settled')
@@ -138,7 +158,13 @@ export async function qualifyIncidentBrief(): Promise<void> {
     expect(code, stdout + stderr).toBe(0)
     const result = JSON.parse(stdout)
     expect(result.status).toBe('succeeded')
-    expect(result.outcome).toBe('done')
+    const branchCodes = result.output.results.map((entry: any) => ({
+      role: entry.role,
+      failure: entry.failure,
+      outcome: entry.result?.outcome,
+      failures: entry.result?.output?.failures,
+    }))
+    expect(result.outcome, JSON.stringify(branchCodes)).toBe('done')
     expect(events).toHaveLength(5)
     expect(result.output.results.map((entry: any) => entry.result.outcome)).toEqual([
       'done',
@@ -153,12 +179,13 @@ export async function qualifyIncidentBrief(): Promise<void> {
     expect(result.output.results[1].result.output.requestedTurns).toBe(2)
     expect(result.output.results[0].result.output.revision).toBe(1)
     expect(result.output.results[1].result.output.publication.status).toBe('submitted')
-    expect(
-      (await readdir(process.env.AGENT_DELEGATED_CGROUP!)).filter((name) =>
-        name.startsWith('jig-run-'),
-      ),
-    ).toEqual([])
-    for (const name of ['private-root-linux-owners', 'private-root-materializations']) {
+    if (process.platform === 'linux')
+      expect(
+        (await readdir(process.env.AGENT_DELEGATED_CGROUP!)).filter((name) =>
+          name.startsWith('jig-run-'),
+        ),
+      ).toEqual([])
+    for (const name of ['private-root-owners', 'private-root-materializations']) {
       expect(
         (await readdir(join(project, '.jig', name))).filter((entry) =>
           /^(a-|c-|x-|child-)/.test(entry),

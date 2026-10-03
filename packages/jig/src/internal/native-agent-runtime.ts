@@ -6,8 +6,9 @@ import {
   type PrivateAcpReadOnlyMount,
   verifyPrivateAcpAgentFileDigests,
 } from './acp-agent-provider.js'
-import { privateInstallationFileDigest } from './installation-verification.js'
 import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { privateInstallationFileDigest } from './installation-verification.js'
+import { inspectPrivateMacosAgentRuntime } from './macos-agent-runtime.js'
 import { privateNativeAgentSupportResolver } from './native-agent-executable.js'
 
 interface Elf {
@@ -29,6 +30,8 @@ export async function inspectPrivateNativeAgentRuntime(
   readonly mounts: readonly PrivateAcpReadOnlyMount[]
   readonly verifyProvider: (provider: PrivateAcpAgentProvider) => void
 }> {
+  if (process.platform === 'darwin')
+    return inspectPrivateMacosAgentRuntime(executable, projectDirectory)
   const outsideProject = await privateNativeAgentSupportResolver(projectDirectory)
   const mounts = new Map<string, PrivateAcpReadOnlyMount>()
   const inspected = new Set<string>()
@@ -58,7 +61,9 @@ export async function inspectPrivateNativeAgentRuntime(
     inspected.add(source)
     digests.set(source, await privateInstallationFileDigest(source))
     const elf = await readElf(source)
-    if (elf === undefined) throw new Error('native Agent runtime is not ELF')
+    if (elf === undefined) {
+      throw new Error('native Agent runtime is not a qualified executable')
+    }
     const search = elf.search.map((path) => {
       const expanded = path.replace(/\$\{ORIGIN\}|\$ORIGIN/g, dirname(destination))
       requirePath(expanded)

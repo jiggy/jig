@@ -18,6 +18,7 @@ import {
   type PrivateRootRunSnapshot,
   submitPrivateRootRun,
 } from './activation-admission-store.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import { privateProfileSpan } from './private-profile.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
@@ -36,7 +37,8 @@ export interface PrivateRootLaunchExecutor {
    * Drive one durable root execution from its persisted state.
    *
    * The controller may repeat the complete invocation after the protected
-   * store reports `ADMISSION_STATE_BUSY`. Implementations must therefore
+   * store reports `ADMISSION_STATE_BUSY` or the same execution reports a
+   * pending fence. Implementations must therefore
    * reacquire durable ownership and resume idempotently; they must not make an
    * unrecorded external effect and then report that retryable store error.
    */
@@ -55,7 +57,7 @@ export interface PrivateRootLaunchExecutor {
  */
 export async function openPrivateRootAdministrationController(input: {
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
@@ -97,7 +99,7 @@ export async function openPrivateRootAdministrationController(input: {
 export async function attachPrivateRootAdministrationController(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
@@ -127,7 +129,7 @@ export async function attachPrivateRootAdministrationController(input: {
 
 function createController(input: {
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly expectedAdmissionDigest?: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
@@ -257,14 +259,39 @@ function createController(input: {
   }
 
   async function settleRun(runId: string): Promise<void> {
-    const settled = await retryPrivateBusy(
-      async () => await input.execute(runId, input.coordinator, cancellation.signal),
-    )
-    if (settled.state === 'pending') {
-      throw new RootAdministrationError(
-        'PROJECT_BUSY',
-        'root Run cleanup has not confirmed its complete execution fence',
-      )
+    // A live guardian may still be finishing an exact child or root fence.
+    // Repeat only durable reacquisition, never a fresh dispatch, before
+    // reporting unresolved ownership to the caller.
+    const retryUntil = performance.now() + 30_000
+    let settled: PrivateRootExecutionDisposition
+    for (;;) {
+      try {
+        settled = await retryPrivateBusy(
+          async () => await input.execute(runId, input.coordinator, cancellation.signal),
+        )
+      } catch (error) {
+        // A pending-work snapshot may outlive the task that committed its
+        // terminal. Reacquisition then refuses execution; consume only the
+        // matching durable terminal, without dispatching again.
+        if (!(error instanceof CheckError) || error.code !== 'RUN_ALREADY_TERMINAL') throw error
+        const run = await retryPrivateBusy(() =>
+          loadPrivateRootRunForCoordinator({
+            coordinator: input.coordinator,
+            projectRoot: input.projectRoot,
+            runId,
+          }),
+        )
+        if (run.runId !== runId || run.state !== 'terminal') throw error
+        settled = { state: 'terminal', run }
+      }
+      if (settled.state !== 'pending') break
+      if (performance.now() >= retryUntil) {
+        throw new RootAdministrationError(
+          'PROJECT_BUSY',
+          'root Run cleanup has not confirmed its complete execution fence',
+        )
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 100))
     }
     if (settled.run.runId !== runId || settled.run.state !== 'terminal') {
       throw new Error('trusted root Run executor returned no matching terminal')
@@ -294,14 +321,23 @@ function createController(input: {
         }),
       )
       for (const item of work) {
-        const settled = await retryPrivateBusy(
-          async () => await input.execute(item.run.runId, input.coordinator, cancellation.signal),
-        )
-        if (settled.state === 'pending') {
-          throw new RootAdministrationError(
-            'PROJECT_BUSY',
-            'a prior root Run still has unconfirmed execution ownership',
+        // A dead coordinator can leave a guardian finishing its own fence.
+        // Reacquire the same durable Run, never dispatch a replacement, while
+        // that exact ownership proof has a bounded chance to settle.
+        const retryUntil = performance.now() + 30_000
+        let settled: PrivateRootExecutionDisposition
+        for (;;) {
+          settled = await retryPrivateBusy(
+            async () => await input.execute(item.run.runId, input.coordinator, cancellation.signal),
           )
+          if (settled.state !== 'pending') break
+          if (performance.now() >= retryUntil) {
+            throw new RootAdministrationError(
+              'PROJECT_BUSY',
+              'a prior root Run still has unconfirmed execution ownership',
+            )
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, 100))
         }
         if (settled.run.runId !== item.run.runId || settled.run.state !== 'terminal') {
           throw new Error('trusted root Run recovery returned no matching terminal')

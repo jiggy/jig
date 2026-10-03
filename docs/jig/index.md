@@ -7,7 +7,7 @@ hero:
   eyebrow: "Jig · Run code and Agents together"
   text: "Build with Agents\nas naturally as you\nbuild with code."
   tagline: "Invoke Agent reasoning as naturally as ordinary code. Jig runs your methods locally with explicit powers, strict containment, accountable cancellation, and zero license surveillance."
-  status: "Developer alpha · Linux hosts · Bread source-available 🍞"
+  status: "Developer alpha · Linux and Mac hosts · Bread source-available 🍞"
   statusLink: "/guide/#supported-host"
   actions:
     - theme: brand
@@ -87,6 +87,6 @@ showcase:
 </div>
 </section>
 
-<section className="closing-cta"><h2>Run one Flow.<br />Build with confidence.</h2><p>Create a small project, run a method, and inspect its result in your terminal. The first run uses ordinary code and needs no Agent.</p><a className="action action--brand" href="/guide/">Start building <span aria-hidden="true">↗</span></a><p className="start-note">Developer alpha · <a href="/guide/#supported-host">Check supported Linux hosts and prerequisites</a></p></section>
+<section className="closing-cta"><h2>Run one Flow.<br />Build with confidence.</h2><p>Create a small project, run a method, and inspect its result in your terminal. The first run uses ordinary code and needs no Agent.</p><a className="action action--brand" href="/guide/">Start building <span aria-hidden="true">↗</span></a><p className="start-note">Developer alpha · <a href="/guide/#supported-host">Check supported hosts and prerequisites</a></p></section>
 <details className="honest-details"><summary>What to know about this alpha</summary><p>Jig is Bread source-available, not open source. Personal non-business use and genuine evaluation are free; qualifying business groups below $1M annual revenue also have a free grant. See <a href="/pricing">pricing</a> and the <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">license</a> for terms. FLOW is independently licensed. Agents can hallucinate or follow injected instructions; Jig does not guarantee correct judgment. Harmful decisions within granted authority remain possible. Remote Agents receive the data intentionally sent to them. Cancellation cannot retract accepted remote requests or undo completed effects. Production-scale performance is not established.</p><p><a href="/guide/agents">Agent choices</a> · <a href="/spec/project-policy">Execution guarantees</a></p></details>
 <nav className="landing-routes" aria-label="More Jig resources"><a href="/guide/overview">Documentation</a><a href="/guide/teams">With your team</a><a href="/guide/for-agents">For Agents</a><a href="/spec/project-policy">Execution specification</a><a href="/pricing">Pricing</a></nav>

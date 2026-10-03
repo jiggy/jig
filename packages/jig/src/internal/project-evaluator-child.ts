@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { JSON_1_LIMITS } from '../json.js'
 import {
   PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS,
+  PRIVATE_AUTHOR_EVALUATOR_MACOS_ENTRY_MS,
   PRIVATE_AUTHOR_EVALUATOR_WORKER,
 } from './project-evaluator-policy.js'
 
@@ -21,12 +22,20 @@ export async function runPrivateAuthorEvaluatorChild(
   request: Uint8Array,
   // Package-private fault-test seam; authored declarations cannot select this.
   workerPath = PRIVATE_AUTHOR_EVALUATOR_WORKER,
+  sdkPath?: string,
 ): Promise<Uint8Array> {
+  const entryWallClockCeilingMs =
+    process.platform === 'darwin'
+      ? PRIVATE_AUTHOR_EVALUATOR_MACOS_ENTRY_MS
+      : PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS
   const started = performance.now()
   const child = spawn(
     process.execPath,
     ['--no-env-file', '--no-install', '--config=/dev/null', workerPath],
-    { stdio: ['pipe', 'pipe', 'pipe'], env: process.env },
+    {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: sdkPath === undefined ? process.env : { ...process.env, JIG_EVALUATOR_SDK: sdkPath },
+    },
   )
   let timedOut = false
   let closed = false
@@ -40,7 +49,7 @@ export async function runPrivateAuthorEvaluatorChild(
   const timer = setTimeout(() => {
     timedOut = true
     child.kill('SIGKILL')
-  }, PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS)
+  }, entryWallClockCeilingMs)
   const stdout = collect(child.stdout, JSON_1_LIMITS.bytes)
   const stderr = collect(child.stderr, 64 * 1024)
   const input = new Promise<void>((resolve, reject) => {
@@ -49,7 +58,7 @@ export async function runPrivateAuthorEvaluatorChild(
   })
   try {
     const [output, , exit] = await Promise.all([stdout, stderr, exited, input])
-    if (timedOut || performance.now() - started >= PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS) {
+    if (timedOut || performance.now() - started >= entryWallClockCeilingMs) {
       throw failure('PROJECT_EVALUATOR_DEADLINE', 'declaration reached its hard wall deadline')
     }
     if (exit.code !== 0 || exit.signal !== null) {

@@ -11,13 +11,11 @@ to see how Agent work fits into the same model.
 
 ## Install
 
-Use a [supported Linux host](#supported-host). Jig is developed primarily on
-NixOS with manual maintainer smoke testing, while automated CI test suites and
-conformance qualification run on provisioned Ubuntu 24.04 x86_64 with the
-isolation prerequisites listed below; a stock Linux installation may need host
-configuration. If you do not administer the host, ask its administrator to
-check that list before installing. Jig reports missing execution support rather
-than weakening isolation.
+Use a [supported host](#supported-host). Linux may need the isolation
+configuration listed below; if you do not administer that host, ask its
+administrator to check it. The qualified Mac path needs no administrator setup
+or `sudo`. Jig reports missing execution support rather than weakening its
+boundary.
 
 Install the CLI:
 
@@ -182,18 +180,28 @@ and grants with you. See [conversations](./conversations.md) for a complete call
 
 ## Supported host
 
-Jig requires a Linux x86_64 environment with container isolation facilities.
-Jig is developed primarily on NixOS, which serves as the maintainer's primary
-manual smoke-testing environment. Automated CI test suites and host conformance
-qualification run on provisioned Ubuntu 24.04 x86_64. Manual smoke testing on
-NixOS and automated CI runs on Ubuntu do not establish macOS, Windows, or aarch64
-support. Jig checks required invocation contracts and reports missing support.
+Jig qualifies Linux x86_64 and selected native Macs. It checks the exact host
+mechanism before execution and refuses unqualified kernels or missing support.
+
+On Linux, Jig is developed primarily on NixOS and qualified in automated CI on
+provisioned Ubuntu 24.04 x86_64. This host needs:
 
 - Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
 - Bubblewrap 0.12 or newer and GNU `readlink -f`.
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers.
 - A systemd user manager supporting transient scopes with `Delegate=yes`.
 - Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
+
+On Mac, the qualified profiles are Intel Darwin 23.4.0 build 23E224 and
+Intel or Apple Silicon Darwin 24.6.0 build 24G830. These are exact kernel
+profiles, not a promise for every macOS release. Install through the same npm
+command above; npm selects the matching pinned Bun runtime. No privileged
+helper, managed execution account, separate Bun installation, or `sudo` is
+required. Jig uses a private native sandbox and an owned process coalition to
+contain and stop work. Resource limits are supervised and sampled on Mac, so
+CPU, memory, and process use can briefly exceed the requested ceiling before
+Jig terminates the scope. See the [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
+when deciding whether this tradeoff fits your workload.
 
 Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
 `/run/current-system/sw/bin`. An absolute `JIG_BWRAP_PATH` selects another

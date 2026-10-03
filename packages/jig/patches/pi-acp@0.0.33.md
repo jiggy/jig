@@ -12,6 +12,11 @@ It also lets `agent_settled` race a rejected prompt RPC and manufacture success.
 Successful command acceptance, settled execution, and a successful Agent answer
 are different facts; Jig must preserve that distinction.
 
+Jig's adapter invokes its private Pi launcher with the current verified Bun
+runtime explicitly. Its script interpreter must not depend on a Linux mount
+path or ambient executable discovery on macOS. The launcher then starts the
+reviewed native Pi executable with the existing constrained arguments.
+
 The patch waits for prompt acceptance before handling successful settlement,
 tracks the final assistant's authoritative stop reason, and preserves errors,
 cancellation and token exhaustion. An error becomes a generic JSON-RPC internal

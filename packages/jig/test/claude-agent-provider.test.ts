@@ -16,6 +16,7 @@ import {
 } from '../src/internal/claude-agent-provider.js'
 
 import { nativeElf } from './fixtures/native-elf.js'
+import { nativeMachO } from './fixtures/native-macho.js'
 
 const temporary = new Set<string>()
 afterEach(async () => {
@@ -406,7 +407,7 @@ async function files(): Promise<{
   readonly certificatesPath: string
   readonly runtimeMounts: readonly PrivateAcpReadOnlyMount[]
 }> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-claude-provider-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-claude-provider-')))
   temporary.add(root)
   const releaseRoot = join(root, 'release')
   const agentRoot = join(releaseRoot, 'libexec', 'agent')
@@ -419,7 +420,9 @@ async function files(): Promise<{
   await Promise.all([
     writeFile(launcherPath, 'launcher\n'),
     writeFile(adapterPath, 'adapter\n'),
-    writeFile(executablePath, nativeElf(), { mode: 0o700 }),
+    writeFile(executablePath, process.platform === 'darwin' ? nativeMachO() : nativeElf(), {
+      mode: 0o700,
+    }),
   ])
   return {
     releaseRoot,
@@ -432,5 +435,7 @@ async function files(): Promise<{
 }
 
 async function realHostCertificates(): Promise<string> {
-  return await realpath('/etc/ssl/certs/ca-certificates.crt')
+  return await realpath(
+    process.platform === 'darwin' ? '/etc/ssl/cert.pem' : '/etc/ssl/certs/ca-certificates.crt',
+  )
 }

@@ -1,5 +1,5 @@
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
-import { privateAttachmentName, privateFilePath } from './internal/linux-file-input.js'
+import { privateAttachmentName, privateFilePath } from './internal/file-input.js'
 import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,

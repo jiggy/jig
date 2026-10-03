@@ -1,9 +1,13 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { link, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { writeSync } from 'node:fs'
+import { link, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { captureBoundAttachments, openBoundAttachments } from '../src/internal/bound-attachments.js'
+import {
+  readPrivateCapturedInput,
+  requirePrivateCapturedInput,
+} from '../src/internal/input-capture.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
@@ -25,7 +29,7 @@ import { retainFlowSourcePackages } from '../src/project/retained-flow.js'
 import { openPrivateProjectRoot } from '../src/project/root.js'
 
 async function fixture(work: (root: string, store: string) => Promise<void>) {
-  const root = await mkdtemp(join(tmpdir(), 'jig-bound-attachments-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-bound-attachments-')))
   const store = join(root, 'store')
   try {
     await mkdir(store, { mode: 0o700 })
@@ -70,9 +74,11 @@ test('review captures binary resources; edited and removed originals do not chan
         const opened = await openBoundAttachments(store, original)
         try {
           const files = opened.attachments[0]!.files
-          expect([...readFileSync(`/proc/self/fd/${files[0]!.fd}`)]).toEqual([0, 255, 128, 10])
-          expect(files[1]!.bytes).toBe(0)
-          await expect(writeFile(`/proc/self/fd/${files[0]!.fd}`, 'overwrite')).rejects.toThrow()
+          expect([...readPrivateCapturedInput(files[0]!.input)]).toEqual([0, 255, 128, 10])
+          expect(files[1]!.input.bytes).toBe(0)
+          expect(() =>
+            writeSync(requirePrivateCapturedInput(files[0]!.input).fd, Buffer.from('overwrite')),
+          ).toThrow()
         } finally {
           opened.close()
         }

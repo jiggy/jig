@@ -72,7 +72,10 @@ it does not require the caller to manage an Agent conversation.
 
 Follow [installation and supported-host setup](./index.md), then prepare the
 checkout using [workspace setup](./dependencies.md#local-workspace-packages).
-Configure an [Agent](./agents.md) for the Agent-capable packages before review.
+Check the [Agent](./agents.md) selected in `bindings/model.ts` before review.
+The example declares the ordinary ACP package and selects Claude Code; install and
+authenticate Claude Code or edit the client grant. Its contract-keyed project default
+supplies that Agent to the Agent and mixed classifiers.
 The checked-in example includes those packages even when you select the code
 Binding; the code classifier itself makes no Agent call.
 

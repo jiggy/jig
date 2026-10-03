@@ -1,6 +1,5 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
-
 import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import {
@@ -35,26 +34,35 @@ import {
   inspectPrivateBunPackageInput,
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
-import { privateDomainDigest } from './identity.js'
+import {
+  admitPrivateExecutionOwner,
+  cancelPrivateExecutionOwnerStateAllocation,
+  normalizePrivateExecutionConfirmedEnforcementReceipt,
+  normalizePrivateExecutionOwnerStateAllocationIdentity,
+  normalizePrivateExecutionSealedOwnerIdentity,
+  type PrivateExecutionBackend,
+  type PrivateExecutionComponentProcess,
+  type PrivateExecutionConfirmedEnforcementReceipt,
+  type PrivateExecutionOwnerStateAllocationIdentity,
+  type PrivateExecutionSealedOwnerIdentity,
+  planPrivateExecutionOwnerStateAllocation,
+  privateExecutionOwnerAllocationDigest,
+  privateExecutionPreparedOwnerDigest,
+  recoverPrivateExecutionFence,
+  releasePrivateExecutionOwnerState,
+  requirePrivateExecutionBackend,
+  sealPrivateExecutionOwner,
+} from './execution-backend.js'
+import {
+  type PrivateExecutionIntent,
+  privateExecutionFileProjections,
+  privateExecutionPath,
+} from './execution-intent.js'
 import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
-import {
-  cancelPrivateLinuxOwnerStateAllocation,
-  normalizePrivateLinuxConfirmedEnforcementReceipt,
-  normalizePrivateLinuxOwnerStateAllocationIdentity,
-  normalizePrivateLinuxSealedOwnerIdentity,
-  type PrivateLinuxCgroupBackend,
-  type PrivateLinuxComponentProcess,
-  type PrivateLinuxConfirmedEnforcementReceipt,
-  type PrivateLinuxOwnerStateAllocationIdentity,
-  type PrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
-  requirePrivateLinuxCgroupBackend,
-} from './linux-rootless-backend.js'
 
 const PREPARATION_WALL_MS = 60_000
 const BUN_POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
@@ -87,7 +95,7 @@ export interface PrivatePreparedBunPackage {
 export async function preparePrivateBunPackage(input: {
   readonly captured: CapturedPackage
   readonly installedSupport: PrivateInstalledBunSupport
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
   readonly projectRoot: string
   readonly coordinator: PrivateProjectCoordinator
   readonly deadlineUnixMs?: number
@@ -116,7 +124,7 @@ export async function preparePrivateBunPackage(input: {
   input.signal?.throwIfAborted()
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
   await revalidatePrivateInstalledBunSupport(installedSupport)
-  const backend = requirePrivateLinuxCgroupBackend(input.backend)
+  const backend = requirePrivateExecutionBackend(input.backend)
   const source = {
     ...(await sourceMessage(input.captured)),
     ...(input.workspace === undefined
@@ -139,41 +147,17 @@ export async function preparePrivateBunPackage(input: {
   }
   await recoverPrivateBunPreparationOwner(input)
   const now = Date.now()
-  const plan = {
-    runId: `prep-${process.pid.toString(36)}-${now.toString(36)}`,
-    limits: {
-      memoryBytes: 512 * 1024 * 1024,
-      pids: 64,
-      cpuQuotaMicros: 100_000,
-      cpuPeriodMicros: 100_000,
-      deadlineUnixMs: Math.min(
-        now + PREPARATION_WALL_MS,
-        input.deadlineUnixMs ?? Number.MAX_SAFE_INTEGER,
-      ),
-      cancellationGraceMs: 1_000,
-      cleanupTimeoutMs: 5_000,
-    },
-    readOnlyMounts: [
-      ...installedSupport.runtimeMounts,
-      { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
-      {
-        source: installedSupport.preparationWorkerPath,
-        destination: installedSupport.sandboxPreparationWorkerPath,
-      },
-    ],
-    command: [
-      installedSupport.sandboxExecutablePath,
-      ...BUN_POLICY,
-      installedSupport.sandboxPreparationWorkerPath,
-      ...(classification.state === 'unlocked' ? ['--allow-resolution-network'] : []),
-    ],
-    network: 'inherited',
-  } as const
   const parent = await preparationOwnerParent(input.projectRoot)
-  const allocation = await planPrivateLinuxOwnerStateAllocation({
+  const allocation = await planPrivateExecutionOwnerStateAllocation(backend, {
     parent,
     name: `prep-${input.captured.digest.slice('sha256:'.length, 'sha256:'.length + 48)}`,
   })
+  const plan = preparationPlan(
+    installedSupport,
+    classification.state === 'unlocked',
+    now,
+    input.deadlineUnixMs,
+  )
   let fact = await replacePrivateBunPreparationOwner({
     projectRoot: input.projectRoot,
     coordinator: input.coordinator,
@@ -182,10 +166,10 @@ export async function preparePrivateBunPackage(input: {
   })
   if (fact === null) throw new Error('Bun preparation allocation was not retained')
   let terminal: PrivatePreparedBunPackage | CheckError | undefined
-  let component: PrivateLinuxComponentProcess | undefined
+  let component: PrivateExecutionComponentProcess | undefined
 
   try {
-    const sealed = await backend.seal(plan, allocation)
+    const sealed = await sealPrivateExecutionOwner(backend, plan, allocation)
     fact = await requireFact(
       replacePrivateBunPreparationOwner({
         projectRoot: input.projectRoot,
@@ -194,7 +178,7 @@ export async function preparePrivateBunPackage(input: {
         value: checkpointValue({ allocation, owner: sealed.identity }),
       }),
     )
-    component = await sealed.admit(input.signal)
+    component = await admitPrivateExecutionOwner(sealed, input.signal)
     const interaction = await interact(component, sourceBytes, input)
     terminal = interaction.terminal
     fact = await requireFact(
@@ -209,7 +193,7 @@ export async function preparePrivateBunPackage(input: {
         }),
       }),
     )
-    await releasePrivateLinuxOwnerState(sealed.identity, interaction.fence)
+    await releasePrivateExecutionOwnerState(sealed.identity, interaction.fence)
     await replacePrivateBunPreparationOwner({
       projectRoot: input.projectRoot,
       coordinator: input.coordinator,
@@ -234,7 +218,7 @@ export async function preparePrivateBunPackage(input: {
 }
 
 async function interact(
-  component: PrivateLinuxComponentProcess,
+  component: PrivateExecutionComponentProcess,
   sourceBytes: Uint8Array,
   input: {
     readonly captured: CapturedPackage
@@ -242,7 +226,7 @@ async function interact(
   },
 ): Promise<{
   readonly terminal: PrivatePreparedBunPackage | CheckError
-  readonly fence: PrivateLinuxConfirmedEnforcementReceipt
+  readonly fence: PrivateExecutionConfirmedEnforcementReceipt
 }> {
   let terminal: PrivatePreparedBunPackage | CheckError | undefined
   const stderr = collectBounded(component.stderr, 64 * 1024)
@@ -342,19 +326,20 @@ async function interact(
 export async function recoverPrivateBunPreparationOwner(input: {
   readonly projectRoot: string
   readonly coordinator: PrivateProjectCoordinator
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly backend: PrivateExecutionBackend
 }): Promise<void> {
   let fact = await readPrivateBunPreparationOwner(input)
   if (fact === null) return
-  const backend = requirePrivateLinuxCgroupBackend(input.backend)
+  const backend = requirePrivateExecutionBackend(input.backend)
   let checkpoint = normalizeCheckpoint(fact.value)
   if (checkpoint.owner === undefined) {
-    const cancellation = await cancelPrivateLinuxOwnerStateAllocation(checkpoint.allocation)
-    await releasePrivateLinuxOwnerState(checkpoint.allocation, cancellation)
+    const cancellation = await cancelPrivateExecutionOwnerStateAllocation(checkpoint.allocation)
+    await releasePrivateExecutionOwnerState(checkpoint.allocation, cancellation)
   } else {
+    const owner = checkpoint.owner
     let fence = checkpoint.fence
     if (fence === undefined) {
-      fence = await backend.recoverFence(checkpoint.owner)
+      fence = await recoverPrivateExecutionFence(backend, owner)
       checkpoint = Object.freeze({ ...checkpoint, fence })
       fact = await requireFact(
         replacePrivateBunPreparationOwner({
@@ -365,7 +350,7 @@ export async function recoverPrivateBunPreparationOwner(input: {
         }),
       )
     }
-    await releasePrivateLinuxOwnerState(checkpoint.owner, fence)
+    await releasePrivateExecutionOwnerState(owner, fence)
   }
   await replacePrivateBunPreparationOwner({
     projectRoot: input.projectRoot,
@@ -375,10 +360,47 @@ export async function recoverPrivateBunPreparationOwner(input: {
   })
 }
 
+function preparationPlan(
+  support: PrivateInstalledBunSupport,
+  allowResolutionNetwork: boolean,
+  now: number,
+  requestedDeadlineUnixMs: number | undefined,
+): PrivateExecutionIntent {
+  const deadlineUnixMs = Math.min(
+    now + PREPARATION_WALL_MS,
+    requestedDeadlineUnixMs ?? Number.MAX_SAFE_INTEGER,
+  )
+  return {
+    runId: `prep-${process.pid.toString(36)}-${now.toString(36)}`,
+    limits: {
+      memoryBytes: 512 * 1024 * 1024,
+      pids: 64,
+      cpuQuotaMicros: 100_000,
+      cpuPeriodMicros: 100_000,
+      deadlineUnixMs,
+      cancellationGraceMs: 1000,
+      cleanupTimeoutMs: 5000,
+    },
+    projections: privateExecutionFileProjections([
+      ...support.runtimeMounts,
+      { source: support.preparationWorkerPath, destination: support.sandboxPreparationWorkerPath },
+    ]),
+    command: [
+      privateExecutionPath(support.sandboxExecutablePath),
+      ...BUN_POLICY,
+      privateExecutionPath(support.sandboxPreparationWorkerPath),
+      ...(allowResolutionNetwork ? ['--allow-resolution-network'] : []),
+    ],
+    network: 'inherited',
+    maxOutputBytes: PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
+    storageBytes: 512 * 1024 * 1024,
+  }
+}
+
 interface PreparationCheckpoint {
-  readonly allocation: PrivateLinuxOwnerStateAllocationIdentity
-  readonly owner?: PrivateLinuxSealedOwnerIdentity
-  readonly fence?: PrivateLinuxConfirmedEnforcementReceipt
+  readonly allocation: PrivateExecutionOwnerStateAllocationIdentity
+  readonly owner?: PrivateExecutionSealedOwnerIdentity
+  readonly fence?: PrivateExecutionConfirmedEnforcementReceipt
 }
 
 function checkpointValue(checkpoint: PreparationCheckpoint): JsonValue {
@@ -393,29 +415,24 @@ function checkpointValue(checkpoint: PreparationCheckpoint): JsonValue {
 function normalizeCheckpoint(value: JsonValue): PreparationCheckpoint {
   const record = ordinaryRecord(value, 'Bun preparation owner')
   const keys = Object.keys(record).sort().join('\0')
-  const allocation = normalizePrivateLinuxOwnerStateAllocationIdentity(record.allocation)
+  const allocation = normalizePrivateExecutionOwnerStateAllocationIdentity(record.allocation)
   if (record.kind !== 'private-bun-preparation-owner/1')
     throw new TypeError('Bun preparation owner is invalid')
   if (keys === 'allocation\0kind') return Object.freeze({ allocation })
   if (keys !== 'allocation\0fence\0kind\0owner' && keys !== 'allocation\0kind\0owner') {
     throw new TypeError('Bun preparation owner is invalid')
   }
-  const owner = normalizePrivateLinuxSealedOwnerIdentity(record.owner)
+  const owner = normalizePrivateExecutionSealedOwnerIdentity(record.owner)
   if (
-    owner.ownerStateAllocationDigest !== allocation.digest ||
-    owner.ownerStateParent !== allocation.parent ||
-    owner.ownerStateName !== allocation.name ||
-    owner.ownerStateDirectory !== allocation.directory ||
-    owner.ownerToken !== allocation.ownerToken
+    privateExecutionOwnerAllocationDigest(owner) !== allocation.digest ||
+    (owner.kind.includes('-linux-') ? 'linux' : 'macos') !==
+      (allocation.kind.includes('-linux-') ? 'linux' : 'macos')
   ) {
     throw new TypeError('Bun preparation owner does not match its allocation')
   }
   if (keys === 'allocation\0kind\0owner') return Object.freeze({ allocation, owner })
-  const fence = normalizePrivateLinuxConfirmedEnforcementReceipt(record.fence)
-  const expectedOwnerDigest = privateDomainDigest(
-    'JIG-Rootless-Linux-Prepared-Owner/1',
-    owner as unknown as JsonValue,
-  )
+  const fence = normalizePrivateExecutionConfirmedEnforcementReceipt(record.fence)
+  const expectedOwnerDigest = privateExecutionPreparedOwnerDigest(owner)
   if (fence.ownerDigest !== expectedOwnerDigest) {
     throw new TypeError('Bun preparation fence does not match its owner')
   }
@@ -424,7 +441,7 @@ function normalizeCheckpoint(value: JsonValue): PreparationCheckpoint {
 
 async function preparationOwnerParent(projectRoot: string): Promise<string> {
   const state = await realpath(join(projectRoot, '.jig'))
-  const parent = join(state, 'private-preparation-linux-owners')
+  const parent = join(state, 'private-preparation-owners')
   await mkdir(parent, { mode: 0o700 }).catch((error) => {
     if (!hasCode(error, 'EEXIST')) throw error
   })

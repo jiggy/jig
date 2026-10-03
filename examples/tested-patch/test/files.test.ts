@@ -60,6 +60,17 @@ test('only verified successful evidence earns a review patch', async () => {
   expect(patch).not.toContain('--- a/test/')
   await expect(writeRepairDeliverables(root, input, result)).rejects.toThrow()
 })
+test('decoded JSON evidence accepts null-prototype records and rejects changed verdicts', async () => {
+  const { result } = await syntheticRepair()
+  const decoded = JSON.parse(JSON.stringify(result), (_key, value) =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? Object.assign(Object.create(null), value)
+      : value,
+  )
+  expect(() => inspect(input, decoded)).not.toThrow()
+  decoded.output.attempts[0].evaluation.acceptance[0].passed = false
+  expect(() => inspect(input, decoded)).toThrow('contradicts collected command behavior')
+})
 test('failed attempts remain inspectable and are never renamed review-ready', async () => {
   const root = await directory(),
     { result } = await syntheticRepair({ success: false })

@@ -1,3 +1,4 @@
+import { privateMacosKernelPlatform, type PrivateMacosPlatform } from './macos-process-controls.js'
 import { constants } from 'node:fs'
 import { access, lstat, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -17,16 +18,24 @@ const LIBRARIES = Object.freeze([
 ] as const)
 const BUN_DESTINATION = '/jig-runtime/bun'
 const LIBRARY_DESTINATION = '/jig-runtime/lib'
-const EVALUATOR_DESTINATION = '/jig-evaluator'
 const PREPARATION_WORKER_DESTINATION = '/jig-preparation-worker.js'
 const HTTP_WORKER_DESTINATION = '/jig-http-worker.js'
 const MARKDOWN_RUNTIME_DESTINATION = '/jig-markdown-runtime.js'
-const BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
-const BUN_VERSION = '1.3.3'
-const BUN_REVISION = '274e01c737e85f8142070a9745b43a2ba09fce4c'
-const BUN_DIGEST = 'sha256:e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839'
+const LINUX_BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
+const MACOS_BUN_PACKAGE = join('@oven', 'bun-darwin-x64-baseline', 'bin', 'bun')
+const LINUX_BUN = Object.freeze({
+  version: '1.3.3',
+  revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+  digest: 'sha256:e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+})
+const MACOS_BUN = Object.freeze({
+  version: '1.4.2',
+  revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+  digest: 'sha256:2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
+})
 const authenticSupports = new WeakSet<object>()
 
+export type PrivateInstalledBunPlatform = 'linux-x64-glibc' | PrivateMacosPlatform
 /** Closed evidence that the installed release is incomplete or invalid. */
 export class PrivateInstalledBundleError extends Error {
   constructor() {
@@ -43,6 +52,7 @@ export interface PrivateInstalledBunLocation {
 export interface PrivateInstalledBunSupport {
   readonly kind: 'private-installed-bun-support/1'
   readonly digest: string
+  readonly platform: PrivateInstalledBunPlatform
   readonly releaseRoot: string
   readonly executablePath: string
   readonly executableDigest: string
@@ -53,6 +63,9 @@ export interface PrivateInstalledBunSupport {
   readonly runtimeMounts: readonly PrivateLinuxReadOnlyMount[]
   readonly supervisorPath: string
   readonly supervisorDigest: string
+  readonly launcherPath: string | null
+  readonly launcherDigest: string | null
+  readonly descriptorBridgePath: string | null
   readonly evaluatorSupportPath: string
   readonly evaluatorSupportDigest: string
   readonly preparationWorkerPath: string
@@ -66,48 +79,75 @@ export interface PrivateInstalledBunSupport {
   readonly sandboxMarkdownRuntimePath: typeof MARKDOWN_RUNTIME_DESTINATION
 }
 
-/**
- * Resolve the one fixed Linux-x64 release layout and exact npm-supplied Bun.
- */
+/** Resolve the fixed qualified release layout and exact npm-supplied Bun. */
 export async function openPrivateInstalledBunSupport(
   location: PrivateInstalledBunLocation,
 ): Promise<PrivateInstalledBunSupport> {
-  if (process.platform !== 'linux' || process.arch !== 'x64') {
-    throw new Error('the installed Bun host requires Linux x64')
-  }
+  const platform = installedPlatform()
+  const runtime =
+    platform === 'linux-x64-glibc'
+      ? LINUX_BUN
+      : process.arch === 'arm64'
+        ? {
+            ...MACOS_BUN,
+            digest: 'sha256:35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5',
+          }
+        : MACOS_BUN
   const releaseRoot = await installedDirectory(location.releaseRoot, 'installed Jig release')
-  if (releaseRoot !== location.releaseRoot) {
-    throw new PrivateInstalledBundleError()
-  }
+  if (releaseRoot !== location.releaseRoot) throw new PrivateInstalledBundleError()
   const executablePath = await installedRegularFile(
     location.executablePath,
     true,
     'installed Bun executable',
   )
-  if (executablePath !== location.executablePath) {
+  if (executablePath !== location.executablePath) throw new PrivateInstalledBundleError()
+  if (executablePath !== (await resolveInstalledBun(releaseRoot, platform)))
     throw new PrivateInstalledBundleError()
-  }
-  const selectedExecutable = await resolveInstalledBun(releaseRoot)
-  if (executablePath !== selectedExecutable) {
-    throw new PrivateInstalledBundleError()
-  }
   const installedCliPath = await installedRegularFile(
     join(releaseRoot, 'libexec', 'installed-cli.js'),
     false,
     'installed Jig command',
   )
-  if (installedCliPath !== location.installedCliPath) {
-    throw new PrivateInstalledBundleError()
-  }
+  if (installedCliPath !== location.installedCliPath) throw new PrivateInstalledBundleError()
   const supervisorPath = await installedRegularFile(
-    join(releaseRoot, 'libexec', 'linux-rootless-supervisor.js'),
+    join(
+      releaseRoot,
+      'libexec',
+      platform === 'linux-x64-glibc'
+        ? 'linux-rootless-supervisor.js'
+        : 'macos-native-supervisor.js',
+    ),
     false,
-    'installed rootless supervisor',
+    'installed execution supervisor',
   )
+  const launcherPath =
+    platform === 'linux-x64-glibc'
+      ? null
+      : await installedRegularFile(
+          join(releaseRoot, 'libexec', 'macos-exec'),
+          true,
+          'installed macOS execution launcher',
+        )
   const evaluatorSupportPath = await installedDirectory(
     join(releaseRoot, 'libexec', 'evaluator'),
     'installed evaluator support',
   )
+  const descriptorBridgePath =
+    platform === 'linux-x64-glibc'
+      ? null
+      : await installedRegularFile(
+          join(releaseRoot, 'libexec', 'macos-descriptor-bridge.dylib'),
+          false,
+          'installed macOS descriptor bridge',
+        )
+  const descriptorBridgeDigest =
+    descriptorBridgePath === null ? null : await privateInstallationFileDigest(descriptorBridgePath)
+  if (
+    descriptorBridgeDigest !== null &&
+    descriptorBridgeDigest !==
+      'sha256:c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e'
+  )
+    throw new PrivateInstalledBundleError()
   const evaluatorFiles = await Promise.all(
     [
       'project-evaluator-worker.js',
@@ -139,29 +179,35 @@ export async function openPrivateInstalledBunSupport(
     false,
     'installed Markdown interpreter',
   )
-
-  const loaderPath = await exactRegularFile(
-    await resolvePrivateLinuxHostLoader(),
-    true,
-    'supported-host ELF interpreter',
-  )
-  const hostLibraryDirectory = dirname(loaderPath)
-  const libraries = await Promise.all(
-    LIBRARIES.map(async (name) =>
-      Object.freeze({
-        name,
-        path: await exactRegularFile(
-          join(hostLibraryDirectory, name),
-          false,
-          `supported-host library ${name}`,
-        ),
-      }),
-    ),
-  )
+  const loaderPath =
+    platform === 'linux-x64-glibc'
+      ? await installedRegularFile(
+          await resolvePrivateLinuxHostLoader(),
+          true,
+          'supported-host ELF interpreter',
+        )
+      : null
+  const hostLibraryDirectory = loaderPath === null ? dirname(executablePath) : dirname(loaderPath)
+  const libraries =
+    loaderPath === null
+      ? []
+      : await Promise.all(
+          LIBRARIES.map(async (name) =>
+            Object.freeze({
+              name,
+              path: await installedRegularFile(
+                join(hostLibraryDirectory, name),
+                false,
+                `supported-host library ${name}`,
+              ),
+            }),
+          ),
+        )
   const [
     executableDigest,
     installedCliDigest,
     supervisorDigest,
+    launcherDigest,
     loaderDigest,
     libraryDigests,
     evaluatorDigests,
@@ -172,21 +218,16 @@ export async function openPrivateInstalledBunSupport(
     privateInstallationFileDigest(executablePath),
     privateInstallationFileDigest(installedCliPath),
     privateInstallationFileDigest(supervisorPath),
-    privateInstallationFileDigest(loaderPath),
+    launcherPath === null ? null : privateInstallationFileDigest(launcherPath),
+    loaderPath === null ? null : privateInstallationFileDigest(loaderPath),
     Promise.all(
       libraries.map(async ({ name, path }) =>
-        Object.freeze({
-          name,
-          digest: await privateInstallationFileDigest(path),
-        }),
+        Object.freeze({ name, digest: await privateInstallationFileDigest(path) }),
       ),
     ),
     Promise.all(
       evaluatorFiles.map(async ({ name, path }) =>
-        Object.freeze({
-          name,
-          digest: await privateInstallationFileDigest(path),
-        }),
+        Object.freeze({ name, digest: await privateInstallationFileDigest(path) }),
       ),
     ),
     privateInstallationFileDigest(preparationWorkerPath),
@@ -199,23 +240,27 @@ export async function openPrivateInstalledBunSupport(
     }
   ).Bun
   if (
-    bun?.version !== BUN_VERSION ||
-    bun.revision !== BUN_REVISION ||
-    executableDigest !== BUN_DIGEST
-  ) {
+    bun?.version !== runtime.version ||
+    bun.revision !== runtime.revision ||
+    executableDigest !== runtime.digest
+  )
     throw new PrivateInstalledBundleError()
-  }
   const evaluatorSupportDigest = privateDomainDigest(
     'JIG-Installed-Evaluator-Support/1',
     evaluatorDigests as unknown as JsonValue,
   )
   const identity = Object.freeze({
     kind: 'private-installed-bun-support/1' as const,
-    platform: 'linux-x64-glibc',
+    platform,
     executableDigest,
     installedCliDigest,
     supervisorDigest,
-    loader: Object.freeze({ destination: ELF_INTERPRETER, digest: loaderDigest }),
+    launcherDigest,
+    loader:
+      loaderDigest === null
+        ? null
+        : Object.freeze({ destination: ELF_INTERPRETER, digest: loaderDigest }),
+    descriptorBridgeDigest,
     libraries: libraryDigests,
     evaluatorSupportDigest,
     preparationWorkerDigest,
@@ -224,17 +269,17 @@ export async function openPrivateInstalledBunSupport(
   })
   const runtimeMounts = Object.freeze([
     Object.freeze({ source: executablePath, destination: BUN_DESTINATION }),
-    Object.freeze({ source: loaderPath, destination: ELF_INTERPRETER }),
+    ...(loaderPath === null
+      ? []
+      : [Object.freeze({ source: loaderPath, destination: ELF_INTERPRETER })]),
     ...libraries.map(({ name, path }) =>
-      Object.freeze({
-        source: path,
-        destination: `${LIBRARY_DESTINATION}/${name}`,
-      }),
+      Object.freeze({ source: path, destination: `${LIBRARY_DESTINATION}/${name}` }),
     ),
   ])
   const support = Object.freeze({
     kind: identity.kind,
     digest: privateDomainDigest('JIG-Installed-Bun-Support/1', identity as unknown as JsonValue),
+    platform,
     releaseRoot,
     executablePath,
     executableDigest,
@@ -243,8 +288,11 @@ export async function openPrivateInstalledBunSupport(
     installedCliDigest,
     hostLibraryDirectory,
     runtimeMounts,
+    descriptorBridgePath,
     supervisorPath,
     supervisorDigest,
+    launcherPath,
+    launcherDigest,
     evaluatorSupportPath,
     evaluatorSupportDigest,
     preparationWorkerPath,
@@ -267,9 +315,8 @@ export function requirePrivateInstalledBunSupport(value: unknown): PrivateInstal
     typeof value !== 'object' ||
     !Object.isFrozen(value) ||
     !authenticSupports.has(value)
-  ) {
+  )
     throw new TypeError('installed Bun support was not produced by the fixed host factory')
-  }
   return value as PrivateInstalledBunSupport
 }
 
@@ -286,25 +333,41 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
     current.executablePath !== support.executablePath ||
     current.installedCliPath !== support.installedCliPath ||
     current.supervisorPath !== support.supervisorPath ||
+    current.launcherPath !== support.launcherPath ||
+    current.descriptorBridgePath !== support.descriptorBridgePath ||
     current.evaluatorSupportPath !== support.evaluatorSupportPath ||
     current.preparationWorkerPath !== support.preparationWorkerPath ||
     current.httpWorkerPath !== support.httpWorkerPath ||
     current.markdownRuntimePath !== support.markdownRuntimePath
-  ) {
+  )
     throw new Error('installed Bun support changed after selection')
-  }
 }
 
-async function resolveInstalledBun(releaseRoot: string): Promise<string> {
+function installedPlatform(): PrivateInstalledBunPlatform {
+  if (process.platform === 'linux' && process.arch === 'x64') return 'linux-x64-glibc'
+  if (process.platform === 'darwin') return privateMacosKernelPlatform()
+  throw new Error('the installed Bun host is unavailable on this platform')
+}
+
+async function resolveInstalledBun(
+  releaseRoot: string,
+  platform: PrivateInstalledBunPlatform,
+): Promise<string> {
+  const packagePath =
+    platform === 'linux-x64-glibc'
+      ? LINUX_BUN_PACKAGE
+      : process.arch === 'arm64'
+        ? join('@oven', 'bun-darwin-aarch64', 'bin', 'bun')
+        : MACOS_BUN_PACKAGE
   const candidates = [
-    join(releaseRoot, 'node_modules', BUN_PACKAGE),
-    join(releaseRoot, '..', '..', BUN_PACKAGE),
+    join(releaseRoot, 'node_modules', packagePath),
+    join(releaseRoot, '..', '..', packagePath),
   ]
   for (const candidate of candidates) {
     try {
       return await installedRegularFile(candidate, true, 'installed Bun executable')
     } catch {
-      // npm may install the exact direct dependency nested or hoisted.
+      // npm may install the exact platform dependency nested or hoisted.
     }
   }
   throw new PrivateInstalledBundleError()
@@ -337,9 +400,8 @@ async function exactRegularFile(path: string, executable: boolean, label: string
     !information.isFile() ||
     information.isSymbolicLink() ||
     (executable && (information.mode & 0o111) === 0)
-  ) {
+  )
     throw new Error(`${label} is unavailable`)
-  }
   if (executable) await access(resolved, constants.X_OK)
   return resolved
 }
@@ -347,8 +409,7 @@ async function exactRegularFile(path: string, executable: boolean, label: string
 async function exactDirectory(path: string, label: string): Promise<string> {
   const resolved = await realpath(path)
   const information = await lstat(resolved)
-  if (!information.isDirectory() || information.isSymbolicLink()) {
+  if (!information.isDirectory() || information.isSymbolicLink())
     throw new Error(`${label} is unavailable`)
-  }
   return resolved
 }
