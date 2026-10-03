@@ -57,34 +57,47 @@ test('existing directories, files and dangling symlinks are preserved', async ()
   }
 })
 
-test('a racing destination cannot qualify or retain a nested staging tree', async () => {
-  await fixture(async ({ root, staging, output }) => {
-    const bin = join(root, 'bin')
-    await mkdir(bin)
-    const wrapper = join(bin, 'mv')
-    // Force creation after the helper's precheck, then run the real platform mv.
-    await writeFile(
-      wrapper,
-      `#!${process.execPath}
+for (const mode of ['platform-move', 'move-refusal']) {
+  test(`a racing destination cannot qualify or retain a nested staging tree: ${mode}`, async () => {
+    await fixture(async ({ root, staging, output }) => {
+      const bin = join(root, 'bin')
+      await mkdir(bin)
+      const wrapper = join(bin, 'mv')
+      // Exercise the real platform move and a direct refusal, as GNU mv can
+      // reject an existing directory before the helper checks the final inode.
+      await writeFile(
+        wrapper,
+        `#!${process.execPath}
 const fs = require('node:fs');
 const child = require('node:child_process');
 const args = process.argv.slice(2);
 const output = args[args.length - 1];
 fs.mkdirSync(output);
 fs.writeFileSync(output + '/existing', 'existing bytes');
+fs.writeFileSync(${JSON.stringify(join(root, 'output-inode'))}, String(fs.lstatSync(output, {bigint: true}).ino));
+if (${JSON.stringify(mode)} === 'move-refusal') {
+  process.stderr.write('move refused existing output\\n');
+  process.exit(1);
+}
 const result = child.spawnSync('/bin/mv', args, {stdio:'inherit'});
 process.exit(result.status);
 `,
-    )
-    await chmod(wrapper, 0o755)
-    const result = spawnSync(
-      process.execPath,
-      [resolve(import.meta.dirname, '../promote-directory.mjs'), staging, output],
-      { env: { PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' },
-    )
-    assert.equal(result.status, 1, result.stderr)
-    assert.match(result.stderr, /output appeared during directory promotion/)
-    assert.deepEqual(await readdir(output), ['existing'])
-    assert.equal(await readFile(join(output, 'existing'), 'utf8'), 'existing bytes')
+      )
+      await chmod(wrapper, 0o755)
+      const result = spawnSync(
+        process.execPath,
+        [resolve(import.meta.dirname, '../promote-directory.mjs'), staging, output],
+        { env: { PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' },
+      )
+      assert.equal(result.status, 1, result.stderr)
+      assert.equal(
+        String((await lstat(output, { bigint: true })).ino),
+        await readFile(join(root, 'output-inode'), 'utf8'),
+      )
+      assert.deepEqual(await readdir(output), ['existing'])
+      assert.equal(await readFile(join(output, 'existing'), 'utf8'), 'existing bytes')
+      if (mode === 'move-refusal')
+        assert.equal(await readFile(join(staging, 'candidate'), 'utf8'), 'exact bytes')
+    })
   })
-})
+}
