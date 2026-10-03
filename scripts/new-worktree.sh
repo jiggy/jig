@@ -67,7 +67,9 @@ fi
 # removal of potentially changed work. Git handles its own creation failures.
 trap 'log "Setup incomplete; worktree retained for inspection: $wt"' ERR
 for name in "${shared_names[@]}"; do
-  ln -sT -- "../$name" "$wt/$name"
+  # Directory form derives the same basename and refuses an existing entry on
+  # both BSD and GNU ln, without GNU's -T option or following a colliding entry.
+  ln -s -- "../$name" "$wt/"
 done
 trap - ERR
 

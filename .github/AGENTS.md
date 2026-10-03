@@ -41,6 +41,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - CI freezes npm and Python candidates while source gates run. The protected
   publication workflows download those exact successful push-run artifacts;
   they do not rebuild or accept artifacts from a different CI run.
+- CI reports quick development/release checks and site builds independently
+  of the longer source suite. Candidate jobs retain their archives, then check
+  exact public registry bytes read-only so a reused version fails before merge.
+  This does not replace publication's complete group preflight and rechecks.
+  Preserve the existing `test` check as a fail-closed aggregate of quick, site
+  and source jobs; skipped or cancelled inputs cannot produce a successful check.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
   dependency order. FLOW publishes after its successful main-push CI run;
   the Agent/Jig group additionally requires same-revision host and native gates.
@@ -134,13 +140,16 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   bounded, and leaves archive identity and zero-residue checks mandatory.
   Schedule slower Intel shards before Apple Silicon, with the installed-consumer
   shard first. Fail fast after a shard fails; cancelled shards cannot qualify.
-  Cancel superseded runs on feature branches, but retain main-push qualification.
+  Run automatically for PRs changing host/build/test inputs and every main push;
+  public-guide-only PRs do not allocate the Mac matrix. Manual dispatch remains available
+  for diagnostics. Cancel superseded PR/feature runs, but retain main-push
+  qualification. PR results do not qualify a different merged revision.
 
 ## Verification
 
 - Validate the called script locally where possible and inspect the complete
   workflow permission and artifact flow after any automation change.
-- CI runs `node --test scripts/ci/host-test-coverage.test.mjs` to catch omitted
+- `just test-tooling` runs the host coverage checks to catch omitted
   host-only cases and incomplete Mac shard assignment before host qualification.
 - `bun test scripts/npm-publish.test.ts` exercises the publisher's actual shell
   with controlled registry responses, including reverse completion and retries.

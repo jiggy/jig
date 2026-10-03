@@ -35,11 +35,37 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! "$python_bin" -c 'import build, twine, mypy' >/dev/null 2>&1; then
+  echo "Install release test tools for $python_bin: build==1.3.0 twine==6.2.0 mypy==1.18.2" >&2
+  exit 1
+fi
+if ! (cd conformance/run-0 && bun --no-env-file -e '
+  import.meta.resolve("ajv/dist/2020.js");
+  import.meta.resolve("@jigging/sley");
+') >/dev/null 2>&1; then
+  echo "Install protocol fixture dependencies: bun install --cwd conformance/run-0 --frozen-lockfile" >&2
+  exit 1
+fi
+
+archive_digests() {
+  "$FLOW_NODE" --input-type=module -e '
+    import { createHash } from "node:crypto";
+    import { readFile } from "node:fs/promises";
+    for (const path of process.argv.slice(1)) {
+      const digest = createHash("sha256").update(await readFile(path)).digest("hex");
+      console.log(`${digest} ${JSON.stringify(path)}`);
+    }
+  ' "$@"
+}
+
 just flow::build
 just authoring::test
 just jig::build
 
-release_tmp=$(mktemp -d "${TMPDIR:-/tmp}/jig-release.XXXXXX")
+# Installed artifact checks require canonical archive paths, including Mac's
+# temporary-directory aliases.
+temporary_parent=$(CDPATH= cd -- "${TMPDIR:-/tmp}" && pwd -P)
+release_tmp=$(mktemp -d "$temporary_parent/jig-release.XXXXXX")
 trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 
 # Test authored applications against the exact local package candidates, including
@@ -66,7 +92,7 @@ set -- "$release_tmp"/artifacts/jig/*.tgz
 test "$#" -eq 1 && test -f "$1"
 JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
-sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
 for application in tested-patch software-factory request-triage support-case contact-import incident-brief; do
   application_copy="$release_tmp/$application"
@@ -150,4 +176,8 @@ PYTHONDONTWRITEBYTECODE=1 \
 "$python_bin" scripts/build-python-sdk.py "$release_tmp/python-dist"
 "$python_bin" -m unittest discover -s scripts -p 'test_pypi_release.py' -v
 
-sha256sum --check "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"
+cmp "$release_tmp/archive-digests" "$release_tmp/verified-digests" || {
+  echo "release tests changed the frozen package archives" >&2
+  exit 1
+}

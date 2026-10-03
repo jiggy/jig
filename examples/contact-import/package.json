@@ -7,6 +7,6 @@
     "csv-parse": "6.1.0"
   },
   "dependencies": {
-    "@jigging/agent-acp": "0.1.0-alpha.5"
+    "@jigging/agent-acp": "0.1.0-alpha.6"
   }
 }

@@ -19,6 +19,8 @@ or newer instructions. Keep the reviewer advancing independently.
   instructions and an optional replacement. The root sends that replacement
   only to the reviewer to publish; model output never supplies its contents.
   `test/` owns deterministic application checks.
+  The README teaches ordinary project execution and reusing its complete Agent
+  boundary through offline package-selected import, without installer paths.
 
 ## Local Contracts
 

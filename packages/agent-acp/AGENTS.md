@@ -33,6 +33,8 @@ retains credential, process, and dispatch authority.
 - Jig consumers may select this declared dependency with `npm:@jigging/agent-acp`
   in a local Binding; the Binding still grants the exact native client.
   Contract-keyed project selection does not create that grant or choose a vendor.
+  The README teaches package-selected caller creation and offline contract import
+  from ordinary root/member installs; consumers do not name physical installer paths.
 - Reuse `@jigging/agent-method` for prompt preparation and result validation.
   Complete ACP dialogue and resource settlement are separate requirements.
 - Locally detected invalid ACP cancels the resource while preserving that

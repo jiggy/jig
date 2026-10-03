@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Owns disposable Linux proof-host provisioning and rootless Mac host
-qualification. Host preparation never becomes a consumer requirement.
+Owns quick CI checks, disposable Linux proof-host provisioning and rootless Mac
+host qualification. Host preparation never becomes a consumer requirement.
 
 ## Ownership
 
@@ -29,6 +29,11 @@ qualification. Host preparation never becomes a consumer requirement.
   Bun exits each test process on its first failure so a failed case does not
   wait for the remaining expensive scenarios before the matrix can stop.
 - The matching Linux and Mac host-conformance workflows own runner selection.
+- `npm-candidate-preflight.mjs` checks a frozen candidate's source revision,
+  digest and manifest, then compares any existing exact public npm version's
+  whole archive bytes. Only an explicit registry E404 means unpublished.
+  It executes no package code, publishes nothing, and cannot replace the
+  protected publisher's later group and channel reconciliation.
 - `probe-macos-host.ts` observes native process identity and coalition accounting
   prerequisites on hosted Intel and Apple Silicon candidates. It starts no
   package work and does not bypass the backend's qualified-platform checks.
@@ -60,6 +65,11 @@ qualification. Host preparation never becomes a consumer requirement.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
   Mac file assignment, disjoint root lifecycle name groups, and that every
   Linux hostile test file enters provisioned host conformance.
+- `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
+  and identical versions, immutable collisions, registry errors and changed
+  candidate evidence without credentials or registry mutations.
+- `node --test scripts/ci/promote-directory.test.mjs` verifies exact directory
+  promotion and preservation of existing or racing outputs on Linux and Mac.
 
 ## Child DOX Index
 

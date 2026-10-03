@@ -22,6 +22,24 @@ see [dependencies](https://jig.md/guide/dependencies).
 In a Jig source checkout, the ordinary workspace setup supplies matching local
 packages instead of requiring publication.
 
+The included worker already carries its complete Agent contract; no contract
+copy is needed to run this project. To reuse that boundary in your own existing
+Flow, install its declared `@jigging/agent-acp` dependency with `bun install` and
+import from the package, without specifying an installation directory:
+
+```sh
+mkdir -p flows/worker/contracts
+jig import-contract npm:@jigging/agent-acp flows/worker/contracts/agent-run
+```
+
+This copies the complete offline bundle for the caller's
+`uses.agent.contract: './contracts/agent-run/FLOW.contract.json'`. Require
+`conversation` for the handoff method; the native Binding separately grants two
+turns per invocation. The importer resolves project-root or worker-local installs,
+executes no package code, and refuses an existing destination. Installed dependency
+updates do not silently replace this project-owned contract. The compact importer
+requires the matching Jig source candidate until its alpha is published.
+
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
 Successful output contains a proposed brief, independent questions, actual
