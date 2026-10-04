@@ -38,6 +38,10 @@ filesystem context are not supplied.
 
 Native warnings are separate, sanitized console diagnostics rather than answer
 text or Agent events. Authoritative native errors remain invocation failures.
+Rejected native requests report the failed ACP step, such as `session/new` or
+`session/prompt`, with `EXECUTION_FAILED`. The client's private error text and
+data are withheld. The step identifies where the rejection was received; it
+does not establish its cause, remote effects, or permission to repeat the call.
 
 For conversational use, add `conversation: true` to input and connect direct
 `commands` and `replies` channels from the complete contract bundle. Initial
