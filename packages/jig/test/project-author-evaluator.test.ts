@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import {
+  type EvaluatedAuthorDeclaration,
   evaluateAuthorClosure,
   evaluateAuthorClosureBatch,
   type PrivateAuthorEvaluatorOptions,
@@ -13,7 +14,10 @@ import { captureAuthorClosure } from '../src/project/author-module.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const proofDescribe =
-  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' || process.env.JIG_MACOS_PROCESS_TEST === '1'
+    ? describe.serial
+    : describe.skip
+const entryWallClockCeilingMs = process.platform === 'darwin' ? 10_000 : 3_000
 
 proofDescribe('finite isolated author declaration batches', () => {
   test('shares envelope setup but not guest globals, module state, SDK instances or source bytes', async () => {
@@ -55,27 +59,23 @@ proofDescribe('finite isolated author declaration batches', () => {
         expect(evaluations[0]!.value).toMatchObject({ flows: { kind: 'members', paths: [] } })
         expect(evaluations[1]!.value).toMatchObject({ settings: { count: 1 } })
         expect(evaluations[2]!.value).toMatchObject({ settings: { count: 1 } })
-        expect(
-          new Set(evaluations.map(({ enforcement }) => enforcement.cgroup.runCgroup)).size,
-        ).toBe(1)
+        expect(new Set(evaluations.map(evaluationOwner)).size).toBe(1)
         expect(evaluations[0]!.profile.evaluation).toEqual({
           kind: 'finite-isolated-declarations/1',
           entries: 3,
-          entryWallClockCeilingMs: 3_000,
+          entryWallClockCeilingMs,
         })
         expect(evaluations[0]!.profile.sandbox.limits).toMatchObject({
           memoryBytes: 256 * 1024 * 1024,
           pids: 64,
-          wallClockCeilingMs: 12_500,
+          wallClockCeilingMs: process.platform === 'darwin' ? 33_500 : 12_500,
         })
         for (const evaluation of evaluations)
           expect(evaluation.enforcement.terminal.fenced).toBeTrue()
         const fresh = await evaluateAuthorClosure(options, captured, 'bindings/b.ts', 'binding')
         expect(fresh.value).toMatchObject({ settings: { count: 1 } })
-        expect(fresh.enforcement.cgroup.runCgroup).not.toBe(
-          evaluations[0]!.enforcement.cgroup.runCgroup,
-        )
-        expect(fresh.profile.sandbox.limits.wallClockCeilingMs).toBe(3_000)
+        expect(evaluationOwner(fresh)).not.toBe(evaluationOwner(evaluations[0]!))
+        expect(fresh.profile.sandbox.limits.wallClockCeilingMs).toBe(entryWallClockCeilingMs)
       },
     )
   }, 30_000)
@@ -203,6 +203,12 @@ proofDescribe('finite isolated author declaration batches', () => {
     )
   }, 30_000)
 })
+
+function evaluationOwner({ enforcement }: EvaluatedAuthorDeclaration): string {
+  return enforcement.owner.kind === 'linux-cgroup'
+    ? enforcement.owner.runCgroup
+    : `${enforcement.owner.pid}:${enforcement.owner.version}`
+}
 
 async function fixture(
   sources: Record<string, string>,

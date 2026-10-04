@@ -55,6 +55,10 @@ admitted FLOW packages.
   `--timeout` option and leaves production defaults unchanged. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
+- `src/package/capture.ts` owns descriptor-confined immutable snapshots. Its
+  serial copy traversal reuses one private bounded buffer per attempt; yielded
+  snapshot chunks remain independently owned. Source rechecks and digest gates
+  are unchanged by buffer reuse.
 - Project Command lifecycle proofs reuse the explicit native composition budget
   for success, cancellation and coordinator loss. Their deadline case uses its
   own 30-second budget; fixture settlement/admission waits follow the selected
@@ -66,10 +70,6 @@ admitted FLOW packages.
   verification policy, acquire support for the actual consumer project, and
   keep verification caches outside it. Result and cleanup assertions remain
   independent of this installed-support optimization.
-- `src/package/capture.ts` owns descriptor-confined immutable snapshots. Its
-  serial copy traversal reuses one private bounded buffer per attempt; yielded
-  snapshot chunks remain independently owned. Source rechecks and digest gates
-  are unchanged by buffer reuse.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.
   Jig retains source admission, resource grants and owned execution, not Agent
   preparation or answer interpretation. Skill content is explicit caller data;
@@ -357,7 +357,6 @@ admitted FLOW packages.
   collision refusal. Its packed attachment consumer checks empty bound and
   per-invocation roots, read-only enforcement, and the full relative path limits.
   It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
-  collision refusal. It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
   It also verifies prompt failed settlement of a deliberately crashing Flow
   through the installed CLI, followed by ordinary use of the same project.
   The sequential host gate includes this consumer; it does not qualify model behavior.
