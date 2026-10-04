@@ -14,7 +14,6 @@ import {
 
 const PROTOCOL = PRIVATE_AUTHOR_EVALUATOR_PROTOCOL
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
-const VM_TIMEOUT_MS = 1_000
 const SDK_ENTRY =
   process.env.JIG_EVALUATOR_SDK ??
   `${PRIVATE_AUTHOR_EVALUATOR_DIRECTORY}/project-evaluator-sdk.bundle.js`
@@ -397,16 +396,12 @@ function evaluate(code: string): JsonValue {
     codeGeneration: { strings: false, wasm: false },
     name: 'jig-author-declaration',
   })
-  new vm.Script(guestBootstrap(), { filename: '/jig-bootstrap.js' }).runInContext(context, {
-    timeout: VM_TIMEOUT_MS,
-  })
+  // The independent child watchdog and containing supervisor enforce the
+  // declaration ceiling even when guest execution blocks this event loop.
+  new vm.Script(guestBootstrap(), { filename: '/jig-bootstrap.js' }).runInContext(context)
   const invocation = `${code}\n(__jigModule.exports, __jigRequire, __jigModule, "/author.ts", "/");`
-  new vm.Script(invocation, { filename: '/author.ts' }).runInContext(context, {
-    timeout: VM_TIMEOUT_MS,
-  })
-  const exports = new vm.Script('__jigModule.exports').runInContext(context, {
-    timeout: VM_TIMEOUT_MS,
-  }) as unknown
+  new vm.Script(invocation, { filename: '/author.ts' }).runInContext(context)
+  const exports = new vm.Script('__jigModule.exports').runInContext(context) as unknown
   if (!isRecord(exports) || Object.keys(exports).length !== 1 || !('default' in exports)) {
     throw tagged(
       'PROJECT_DEFAULT_EXPORT',
@@ -491,14 +486,6 @@ function tagged(code: string, message: string): Error & { readonly code: string 
 function errorCode(error: unknown): string {
   // Guest-thrown code strings are not independently observed deadline facts.
   if (error instanceof PrivateAuthorEvaluatorChildError) return error.code
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT'
-  ) {
-    return 'PROJECT_EVALUATION_LIMIT'
-  }
   if (
     typeof error === 'object' &&
     error !== null &&

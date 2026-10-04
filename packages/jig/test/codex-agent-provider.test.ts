@@ -38,6 +38,21 @@ afterEach(async () => {
 })
 
 describe('private native Codex Agent provider', () => {
+  test('Codex opening preserves a recognized tool-dispatcher wrapper refusal', async () => {
+    const fixture = await files()
+    const shim = join(fixture.root, 'volta-shim')
+    await writeFile(shim, 'dispatcher must not execute', { mode: 0o700 })
+    await rm(fixture.executablePath)
+    await symlink(shim, fixture.executablePath)
+    await expect(
+      openPrivateCodexAgentProvider(
+        fixture.root,
+        { CODEX_PATH: fixture.executablePath },
+        fixture.root,
+      ),
+    ).rejects.toMatchObject({ stage: 'wrapper' })
+  })
+
   linuxTest(
     'an unsupported wrapper retains its actionable stage without exposing wrapper contents',
     async () => {

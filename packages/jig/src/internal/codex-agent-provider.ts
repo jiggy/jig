@@ -102,7 +102,8 @@ export async function openPrivateCodexAgentProvider(
       environment,
       projectDirectory,
     )
-  } catch {
+  } catch (error) {
+    if (error instanceof PrivateAcpSetupError) throw error
     throw new PrivateCodexExecutableUnavailableError('the native Codex executable is unavailable')
   }
   let runtime: Awaited<ReturnType<typeof inspectPrivateNativeAgentRuntime>>

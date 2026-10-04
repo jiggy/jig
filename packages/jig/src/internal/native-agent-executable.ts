@@ -1,6 +1,7 @@
 import { constants } from 'node:fs'
 import { access, lstat, readlink, realpath } from 'node:fs/promises'
-import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 type NativeClient = 'codex' | 'claude' | 'pi' | 'bwrap'
 
@@ -39,7 +40,8 @@ export async function resolvePrivateNativeAgentExecutable(
         if (!absent(error) && (error as NodeJS.ErrnoException).code !== 'EACCES') throw error
       }
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof PrivateAcpSetupError) throw error
     throw new PrivateNativeAgentExecutableUnavailableError(client)
   }
   throw new PrivateNativeAgentExecutableUnavailableError(client)
@@ -98,6 +100,9 @@ async function outsideProject(
 
 async function executable(candidate: string): Promise<string> {
   const path = await realpath(candidate)
+  // Volta dispatches by the symlink's argv[0] and reads its host installation
+  // state. The canonical dispatcher cannot serve as a contained native client.
+  if (basename(path) === 'volta-shim') throw new PrivateAcpSetupError('wrapper')
   const information = await lstat(path)
   if (!information.isFile() || (information.mode & 0o111) === 0) {
     throw Object.assign(new Error('not an executable file'), { code: 'EACCES' })

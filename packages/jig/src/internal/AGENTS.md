@@ -31,6 +31,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   existing sealed file projection; later children never reopen live installed
   support. Bootstrap consistency remains a separate evaluation; collection
   requires whole-batch fencing and cleanup. No result cache or resident service.
+  The child watchdog and independent supervisor own time enforcement. Guest VM
+  execution has no shorter timer that can reject work within that entry ceiling.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.
@@ -615,6 +617,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
   which require it.
+  Recognized Volta dispatchers are unsupported wrappers, not native clients;
+  refuse them during selection with the existing wrapper diagnostic. Preserve
+  that cause through Codex opening, without executing the dispatcher or choosing
+  a different installation. The operator may select the actual native binary.
   The private project-session acquisition and operation callbacks permit
   selected host tests to observe only a fixed phase or operation and bounded
   error class/code chain; never include raw messages, paths, or rejected values

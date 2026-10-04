@@ -311,6 +311,8 @@ admitted FLOW packages.
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
 - Keep fault-injection seams private.
+- Attach expected rejection handlers before cancellation or asynchronous teardown
+  can settle pending test operations; still await both rejection and cleanup.
 - Test fixtures use canonical dependency paths, including through Bun workspace
   symlinks. Source-tree proof commands reuse `test/fixtures/installed-bun-location.ts`
   rather than defining their own runtime locations. Source-rewriting hostile
