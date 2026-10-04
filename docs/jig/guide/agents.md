@@ -161,6 +161,11 @@ it uses the installation's matching `codex-resources/bwrap`. You do not need tha
 bundled directory when your package supplies Bubblewrap separately.
 `JIG_BWRAP_PATH` configures only Jig's outer containment tool.
 
+On qualified Macs, Codex uses the system `/usr/bin/sandbox-exec` helper.
+Select a native installation for your Mac's architecture; no separate
+Bubblewrap installation is needed. A missing or unverifiable system helper
+requires repairing the supported host, not replacing it with another helper.
+
 The current adapter reads a file-backed login from `$CODEX_HOME/auth.json`,
 defaulting to `~/.codex/auth.json`. Configure Codex with
 `cli_auth_credentials_store = "file"` before signing in. Jig does not currently
@@ -168,6 +173,26 @@ read Codex's OS-keyring credentials.
 
 The current adapter supplies a short-lived credential to the contained client;
 it does not give it your full authentication store or refresh credentials.
+
+## Repair a client check
+
+If `jig review` cannot verify a selected client, its error names the failed
+prerequisite and the Binding slot that selected it. Correct that prerequisite
+and review again; this check has not started a Flow or called a model.
+
+An **installation** error means the executable or its required runtime files
+could not be verified. Use a supported Linux x86-64 installation on Linux,
+or a native installation matching your architecture on a qualified Mac.
+Pi requires its standalone 0.84.4 distribution, including `package.json`
+and the theme directory beside its executable. A **sandbox** error identifies
+Codex's separate helper check; follow the host-specific instructions above.
+An unsupported **wrapper** requires selecting the underlying native executable
+with the appropriate absolute path override.
+
+Review checks local prerequisites. It cannot prove that a later native
+session or model call will succeed. If a Run fails after the client starts,
+use its retained result and [failure guidance](results.md); an uncertain
+operation must not be repeated merely to diagnose setup.
 
 ## Continue a conversation
 
