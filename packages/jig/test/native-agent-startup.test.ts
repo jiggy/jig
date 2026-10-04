@@ -9,6 +9,11 @@ import {
 } from '../src/internal/acp-agent-provider.js'
 import { openPrivateClaudeAgentProvider } from '../src/internal/claude-agent-provider.js'
 import { openPrivateCodexAgentProvider } from '../src/internal/codex-agent-provider.js'
+import {
+  privateExecutionFileProjections,
+  privateExecutionPath,
+} from '../src/internal/execution-intent.js'
+import { privateMacosExecutionPlan } from '../src/internal/execution-plan.js'
 import { openPrivateInstalledBunSupport } from '../src/internal/installed-bun-support.js'
 import {
   privateLinuxHostToolCandidates,
@@ -267,57 +272,47 @@ async function qualifyMacosStartup(
     supervisorPath: support.supervisorPath,
     launcherPath: support.launcherPath,
   })
-  const mappings = new Map([
-    [runtime.sandboxAdapterPath, runtime.adapterPath],
-    [runtime.sandboxExecutablePath, runtime.executablePath],
-    ...runtime.readOnlyMounts.map((mount) => [mount.destination, mount.source] as const),
-  ])
   let cwd = ''
   const component = await backend.launch((allocation) => {
-    const data = join(allocation.directory, 'data')
-    const temporary = join(data, 'tmp')
-    cwd = join(data, 'work')
-    const environment = Object.fromEntries(
-      Object.entries(runtime.environment).map(([name, value]) => {
-        for (const [destination, source] of mappings) value = value.split(destination).join(source)
-        return [name, value.split('/tmp/').join(`${temporary}/`)]
-      }),
-    )
-    return {
-      runId: 'native-agent-startup',
-      limits: {
-        memoryBytes: 512 * 1024 * 1024,
-        pids: 64,
-        cpuQuotaMicros: 100_000,
-        cpuPeriodMicros: 100_000,
-        deadlineUnixMs: Date.now() + 45_000,
-        cleanupTimeoutMs: 5_000,
-      },
-      command: [support.executablePath, '--no-env-file', '--no-install', runtime.adapterPath],
-      cwd,
-      environment: {
-        ...environment,
-        TMPDIR: temporary,
-        JIG_AGENT_HOME: temporary,
-        JIG_AGENT_WORK: cwd,
-      },
-      files: {
-        readOnlyFiles: [
-          ...new Set([
-            support.executablePath,
-            runtime.adapterPath,
-            runtime.executablePath,
-            ...runtime.readOnlyMounts.map((mount) => mount.source),
-          ]),
+    const plan = privateMacosExecutionPlan(
+      {
+        runId: 'native-agent-startup',
+        limits: {
+          memoryBytes: 512 * 1024 * 1024,
+          pids: 64,
+          cpuQuotaMicros: 100_000,
+          cpuPeriodMicros: 100_000,
+          deadlineUnixMs: Date.now() + 45_000,
+          cancellationGraceMs: 1000,
+          cleanupTimeoutMs: 5_000,
+        },
+        command: [
+          privateExecutionPath(support.sandboxExecutablePath),
+          '--no-env-file',
+          '--no-install',
+          privateExecutionPath(runtime.sandboxAdapterPath),
         ],
-        readOnlyTrees: [],
-        writableTrees: [cwd, temporary],
-        protectedRoots: [join(allocation.directory, 'control')],
+        projections: privateExecutionFileProjections([
+          ...support.runtimeMounts,
+          { source: support.executablePath, destination: support.sandboxExecutablePath },
+          { source: runtime.adapterPath, destination: runtime.sandboxAdapterPath },
+          { source: runtime.executablePath, destination: runtime.sandboxExecutablePath },
+          ...runtime.readOnlyMounts,
+        ]),
+        environment: runtime.environment,
+        relocateEnvironment: true,
+        relocatedEnvironment: {
+          JIG_AGENT_HOME: '/tmp',
+          JIG_AGENT_WORK: '/work',
+        },
         network: 'isolated',
+        maxOutputBytes: 1024 * 1024,
+        storageBytes: 512 * 1024 * 1024,
       },
-      maxOutputBytes: 1024 * 1024,
-      storage: { mountPath: data, bytes: 512 * 1024 * 1024, collect: null },
-    }
+      allocation,
+    )
+    cwd = plan.cwd
+    return plan
   })
   const stderr = (async () => {
     let text = ''

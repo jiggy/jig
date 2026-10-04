@@ -132,6 +132,48 @@ test('network and native environment projection carry only selected authority', 
   expect(mac.files.network).toBe('inherited')
 })
 
+test('native environment paths relocate once without corrupting physical paths or JSON', () => {
+  const executable = '/private/tmp/native-tools/codex'
+  const argv = [
+    '/runtime/bun',
+    '/package/main.ts',
+    '/tmp/config',
+    '/tmp',
+    '/runtime/bun-sibling',
+    '/private/tmp/unrelated/file',
+    'text /tmp/literal',
+  ]
+  const request = {
+    ...intent,
+    projections: [
+      { source: '/private/tmp/tools/bun', destination: '/runtime/bun', kind: 'file' as const },
+      { source: '/private/tmp/package "quoted"', destination: '/package', kind: 'tree' as const },
+      { source: executable, destination: executable, kind: 'file' as const },
+    ],
+    environment: {
+      CODEX_PATH: executable,
+      ARGV: JSON.stringify(argv),
+      CONFIG: JSON.stringify({ log: '/tmp/log', literal: 'text /tmp/literal' }),
+    },
+    relocateEnvironment: true,
+  }
+  const mac = privateMacosExecutionPlan(request, allocation)
+  expect(mac.environment?.CODEX_PATH).toBe(executable)
+  expect(JSON.parse(mac.environment!.ARGV!)).toEqual([
+    '/private/tmp/tools/bun',
+    '/private/tmp/package "quoted"/main.ts',
+    '/owner/data/tmp/config',
+    '/owner/data/tmp',
+    ...argv.slice(4),
+  ])
+  expect(JSON.parse(mac.environment!.CONFIG!)).toEqual({
+    log: '/owner/data/tmp/log',
+    literal: 'text /tmp/literal',
+  })
+  expect(mac.files.readOnlyFiles).toContain(executable)
+  expect(privateLinuxExecutionPlan(request).environment).toEqual(request.environment)
+})
+
 test('read-only workers allocate no volume or writable authority', () => {
   const mac = privateMacosExecutionPlan(
     {

@@ -284,6 +284,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   never undergo path relocation. Intent alone grants no execution authority.
   `execution-plan.ts` lowers these requirements to the two host mechanisms;
   it imports no recipe, admission, provider, Run protocol or controller policy.
+  Selected native environment paths relocate once as absolute scalar paths or
+  JSON string values. Preserve physical installation paths, component boundaries,
+  JSON escaping and literal text; replacement output must never be relocated again.
+  Native Mac startup qualification consumes this lowering instead of a second translator.
   Read-only workers with captured inputs still allocate bounded Mac input storage
   without payload write grants; workers using only retained projections need
   no volume.
