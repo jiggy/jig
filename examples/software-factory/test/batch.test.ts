@@ -386,6 +386,45 @@ async function batchFixture(check: (run: RunContext, out: string) => Promise<voi
   }
 }
 
+test('factory accepts serialized FLOW records and still rejects a forged verdict', async () => {
+  const { result } = await syntheticRepair()
+  for (const forged of [false, true])
+    await batchFixture(async (run, out) => {
+      // FLOW protocol object records have null prototypes; only JSON meaning travels.
+      const received = JSON.parse(JSON.stringify(result), (_key, value) =>
+        value !== null && typeof value === 'object' && !Array.isArray(value)
+          ? Object.assign(Object.create(null), value)
+          : value,
+      )
+      expect(Object.getPrototypeOf(received.output.baseline.acceptance[0])).toBeNull()
+      if (forged) received.output.attempts[0].evaluation.acceptance[0].passed = false
+      const actual = await repairBatch({
+        ...run,
+        call: async (request) =>
+          request.slot === 'router'
+            ? { outcome: 'done', output: { candidateId: 'p2', reason: 'Synthetic choice.' } }
+            : request.slot === 'checkpoint'
+              ? { outcome: 'done', output: null }
+              : received,
+      })
+      if (forged) {
+        expect(actual.outcome).toBe('blocked')
+        expect((actual.output as any).jobs[0]).toMatchObject({
+          status: 'failed',
+          stage: 'validation',
+          code: 'INVALID_RESULT',
+          message: 'The reported verdict contradicts collected command behavior.',
+        })
+      } else {
+        expect(actual.outcome).toBe('done')
+        expect((actual.output as any).jobs.every((entry: any) => entry.ready)).toBe(true)
+        expect(await readFile(join(out, 'first/review.patch'), 'utf8')).toContain(
+          '--- a/src/report.ts',
+        )
+      }
+    })
+})
+
 test('factory validates exact routing, dispatches distinct slots and checkpoints decision context', async () => {
   await batchFixture(async (run, out) => {
     const { result } = await syntheticRepair()

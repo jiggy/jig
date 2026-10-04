@@ -50,6 +50,8 @@ patch authority and every merge decision stays with a person.
   checked proposal, the other permits one correction.
 - Keep invocation constraints within Jig's supported FLOW Schema/0 vocabulary;
   enforce syntax checks in the owning Flow when the schema cannot express them.
+- Compare retained verdict records by their JSON meaning, including exact fields
+  and array order, independently of JavaScript object prototypes at the FLOW boundary.
 - Check each patch separately. Report overlaps and block conflicting output;
   never claim that separately passing patches pass as a combined change.
 - Checkpoints retain only settled evidence and patches. Pending or failed work
