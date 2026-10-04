@@ -7,6 +7,10 @@ const MAX_RECORD_BYTES = 192
 
 export type PrivateProfilePhase =
   | 'author-configuration-evaluation'
+  | 'author-support-verification'
+  | 'author-envelope-startup'
+  | 'author-execution-settlement'
+  | 'dependency-workspace-capture'
   | 'project-planning'
   | 'installed-host-opening'
   | 'project-session-opening'
@@ -16,9 +20,17 @@ export type PrivateProfilePhase =
   | 'linux-owner-state-initialization'
   | 'rootless-containment-startup'
   | 'flow-execution'
+  | 'finite-acp-revalidation'
+  | 'finite-acp-containment'
+  | 'finite-acp-launch'
+  | 'finite-acp-exchange'
+  | 'finite-acp-release'
+  | 'finite-acp-recovery'
   | 'operation-owner-settlement'
   | 'root-fence'
   | 'root-settlement'
+  | 'root-package-release'
+  | 'root-owner-release'
   | 'project-session-close'
 
 interface PrivateProfileSpan {
@@ -29,12 +41,13 @@ interface PrivateProfileSpan {
 
 /**
  * Bounded local trace for maintainer diagnostics. It records fixed phase names
- * and monotonic times only; it is not runtime telemetry or a package API.
+ * and monotonic times only, retaining partial records before shutdown. It is
+ * not fsynced durability, runtime telemetry or a package API.
  */
 export class PrivateProfileCapture {
   readonly #fd: number
   readonly #startedAtMs = performance.now()
-  readonly #events: string[] = []
+  #recordCount = 0
   #nextSpanId = 1
   #truncated = false
   #closed = false
@@ -51,7 +64,7 @@ export class PrivateProfileCapture {
       timeOriginMs: performance.timeOrigin,
     }
     try {
-      writeSync(this.#fd, `${JSON.stringify(header)}\n`)
+      this.#write(JSON.stringify(header))
     } catch (error) {
       closeSync(this.#fd)
       throw error
@@ -64,7 +77,7 @@ export class PrivateProfileCapture {
       return undefined
     }
     const span = { spanId: this.#nextSpanId++, phase, startMs: elapsed(this.#startedAtMs) }
-    this.#events.push(
+    this.#record(
       JSON.stringify({ kind: 'start', spanId: span.spanId, phase, timeMs: span.startMs }),
     )
     return span
@@ -72,7 +85,7 @@ export class PrivateProfileCapture {
 
   end(span: PrivateProfileSpan, outcome: 'returned' | 'failed'): void {
     if (this.#closed) return
-    this.#events.push(
+    this.#record(
       JSON.stringify({
         kind: 'end',
         spanId: span.spanId,
@@ -84,27 +97,17 @@ export class PrivateProfileCapture {
   }
 
   instant(phase: PrivateProfilePhase): void {
-    if (this.#closed || this.#events.length >= MAX_SPANS * 2) {
-      this.#truncated = true
-      return
-    }
+    if (this.#closed) return
     const timeMs = elapsed(this.#startedAtMs)
-    this.#events.push(JSON.stringify({ kind: 'instant', phase, timeMs }))
+    this.#record(JSON.stringify({ kind: 'instant', phase, timeMs }))
   }
 
   finish(): void {
     if (this.#closed) return
     this.#closed = true
     try {
-      for (const event of this.#events) {
-        if (Buffer.byteLength(event) > MAX_RECORD_BYTES) {
-          this.#truncated = true
-          continue
-        }
-        writeSync(this.#fd, `${event}\n`)
-      }
       if (this.#truncated) {
-        writeSync(this.#fd, `${JSON.stringify({ kind: 'truncated', phaseLimit: MAX_SPANS })}\n`)
+        this.#write(JSON.stringify({ kind: 'truncated', phaseLimit: MAX_SPANS }))
       }
     } finally {
       closeSync(this.#fd)
@@ -115,6 +118,27 @@ export class PrivateProfileCapture {
     if (this.#closed) return
     this.#closed = true
     closeSync(this.#fd)
+  }
+
+  #record(event: string): void {
+    if (this.#recordCount >= MAX_SPANS * 2 || Buffer.byteLength(event) > MAX_RECORD_BYTES) {
+      this.#truncated = true
+      return
+    }
+    this.#recordCount++
+    // Retain partial diagnostics before a process can die. This is not fsynced
+    // durability, and an unmatched start is never a completed operation.
+    this.#write(event)
+  }
+
+  #write(event: string): void {
+    const bytes = Buffer.from(`${event}\n`)
+    let offset = 0
+    while (offset < bytes.length) {
+      const written = writeSync(this.#fd, bytes, offset, bytes.length - offset)
+      if (written === 0) throw new Error('private profile write made no progress')
+      offset += written
+    }
   }
 }
 

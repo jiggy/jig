@@ -228,6 +228,7 @@ export interface PrivateLinuxConfirmedEnforcementReceipt {
     | 'coordinator_lost'
     | 'deadline'
     | 'payload_exit'
+    | 'core_dump'
     | 'setup_failed'
     | 'recovered'
   readonly exitCode: number | null
@@ -1305,6 +1306,7 @@ const STOP_REASONS = new Set<PrivateLinuxConfirmedEnforcementReceipt['stopReason
   'coordinator_lost',
   'deadline',
   'payload_exit',
+  'core_dump',
   'setup_failed',
   'recovered',
 ])
@@ -2240,6 +2242,7 @@ const SUPERVISOR_STOP_REASONS = new Set<SupervisorTerminal['stopReason']>([
   'coordinator_lost',
   'deadline',
   'payload_exit',
+  'core_dump',
   'setup_failed',
 ])
 

@@ -7,6 +7,7 @@ export interface PrivateExecutionExit {
     | 'coordinator_lost'
     | 'deadline'
     | 'payload_exit'
+    | 'core_dump'
     | 'setup_failed'
     | 'recovered'
   readonly cleanupError?: unknown

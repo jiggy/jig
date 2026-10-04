@@ -1001,6 +1001,17 @@ export class RunHostSession {
     if (this.protocolFailure !== undefined) {
       return failure('PROTOCOL_ERROR', this.protocolFailure)
     }
+    if (
+      exit?.stopReason === 'core_dump' &&
+      exit.fenced &&
+      exit.cleanupError === undefined &&
+      this.localTerminal === undefined
+    ) {
+      return failure(
+        'EXECUTION_FAILED',
+        'owned execution crashed and was fenced during core dumping',
+      )
+    }
     if (this.channelFailure !== undefined) {
       if (this.rootResponse === undefined && exit?.stopReason === 'deadline') {
         return failure(

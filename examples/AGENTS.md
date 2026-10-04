@@ -10,7 +10,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 - `README.md` routes readers through the examples by useful outcome.
 
-- Each application owns its domain method, fixtures, local tests, and exact
+- Each application owns its domain policy, fixtures, local tests, and exact
   Flow and Binding declarations.
 - Public instructions belong in `docs/jig/`; each code package's `README.md`
   explains its procedure, `FLOW.ts` implements it, `FLOW.meta.json` owns optional
@@ -19,13 +19,17 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Local Contracts
 
-- Keep each Flow self-contained and invoke collaborators only through the
-  public FLOW SDK. Do not import sibling package source or host internals.
-- Each example project stands on its own: its Flows, Bindings, helpers, and tests
-  must not import or bind packages under another `examples/<project>/` directory.
-  Keep the methods it exercises inside that example or depend on a separately
-  owned public package. A root workspace link does not make a sibling example
-  part of the project's own source.
+- Each example must be independently understandable and usable through public
+  FLOW and Jig interfaces. Self-contained means a complete application, not a
+  local implementation of every dependency. Do not import host internals.
+- Foundational examples keep the demonstrated method local. Composition examples
+  may reuse independently maintained FLOW packages through ordinary, explicitly
+  versioned public dependencies. Choose by teaching purpose, not code size;
+  keep application wiring, acceptance policy, grants and outcome handling local,
+  and explain the external methods' contracts and setup.
+- Examples must not import or bind another `examples/<project>/` implementation
+  or require a sibling checkout. A root workspace link does not make another
+  example part of the project's source or grant its packages authority.
 - Use `run.call()` for every declared slot and inspect the complete `RunResult`.
   Copy named native contract bundles with their descriptor-relative channel
   paths intact; declarations never substitute for native host authority.
@@ -91,8 +95,8 @@ authored examples, not independent consumer evidence or promoted Starters.
 - [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
   repair with contained commands and independently checked patch evidence.
 - [software-factory/AGENTS.md](software-factory/AGENTS.md) — A bounded two-issue
-  factory using a Semantic Router by default or exact reviewed method IDs when
-  requested, with checkpoints and a human merge gate.
+  factory using exact reviewed method IDs by default or optional semantic routing,
+  with checkpoints and a human merge gate.
 - [contact-import/AGENTS.md](contact-import/AGENTS.md) — A CSV preview with
   interchangeable code, Agent, and mixed column-mapping methods.
 - [incident-brief/AGENTS.md](incident-brief/AGENTS.md) — Internal drafting with

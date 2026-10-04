@@ -68,6 +68,7 @@ import {
 import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
+import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
 
 const TABLES = [
   'admission_head',
@@ -691,73 +692,79 @@ describe.serial('direct alpha activation store', () => {
   })
 
   for (const scenario of ['pending', 'throws', 'terminal-refusal-without-terminal'] as const) {
-    test(`root status exposes ${scenario} settlement without silently rescheduling`, async () => {
-      const fixture = await createFixture('ready')
-      let coordinator: PrivateProjectCoordinator | undefined
-      let controller:
-        | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
-        | undefined
-      let executions = 0
-      try {
-        await admit(fixture)
-        coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-        controller = await attachPrivateRootAdministrationController({
-          projectRoot: fixture.root,
-          packageStoreRoot: fixture.store,
-          coordinator,
-          runTimeoutMs: 60_000,
-          async execute() {
-            executions++
-            if (scenario === 'throws') throw new Error('private cleanup cause')
-            if (scenario === 'terminal-refusal-without-terminal') {
-              throw new CheckError('invalid', 'RUN_ALREADY_TERMINAL', 'unproved terminal')
-            }
-            return { state: 'pending', reason: 'fence-unconfirmed' }
-          },
-        })
-        const { runId } = await controller.administration.startRun({
-          submissionId: 'failed-settlement',
-          target: { kind: 'flow', path: 'flows/run' },
-          input: { value: 'first' },
-        })
-        await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
-        const settledAttempts = executions
-        for (let poll = 0; poll < 4; poll++) {
-          const error = await controller.administration.runStatus({ runId }).catch((error) => error)
-          expect(error.code).toBe(scenario === 'pending' ? 'PROJECT_BUSY' : 'INTERNAL')
-          expect(JSON.stringify(error)).not.toContain('private cleanup cause')
-        }
-        if (scenario === 'pending') expect(settledAttempts).toBeGreaterThan(1)
-        else expect(settledAttempts).toBe(1)
-        expect(executions).toBe(settledAttempts)
-        expect(
-          (
-            await loadPrivateRootRunForCoordinator({
-              coordinator,
-              projectRoot: fixture.root,
-              runId,
-            })
-          ).state,
-        ).toBe('spawn-intent')
-        // A second admitted root is independent; the first failure does not
-        // turn the controller into a global execution lock.
-        if (scenario !== 'pending') {
-          await controller.administration.startRun({
-            submissionId: 'independent-settlement',
+    test(
+      `root status exposes ${scenario} settlement without silently rescheduling`,
+      async () => {
+        const fixture = await createFixture('ready')
+        let coordinator: PrivateProjectCoordinator | undefined
+        let controller:
+          | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+          | undefined
+        let executions = 0
+        try {
+          await admit(fixture)
+          coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+          controller = await attachPrivateRootAdministrationController({
+            projectRoot: fixture.root,
+            packageStoreRoot: fixture.store,
+            coordinator,
+            runTimeoutMs: 60_000,
+            async execute() {
+              executions++
+              if (scenario === 'throws') throw new Error('private cleanup cause')
+              if (scenario === 'terminal-refusal-without-terminal') {
+                throw new CheckError('invalid', 'RUN_ALREADY_TERMINAL', 'unproved terminal')
+              }
+              return { state: 'pending', reason: 'fence-unconfirmed' }
+            },
+          })
+          const { runId } = await controller.administration.startRun({
+            submissionId: 'failed-settlement',
             target: { kind: 'flow', path: 'flows/run' },
-            input: { value: 'second' },
+            input: { value: 'first' },
           })
           await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
-          expect(executions).toBe(2)
+          const settledAttempts = executions
+          for (let poll = 0; poll < 4; poll++) {
+            const error = await controller.administration
+              .runStatus({ runId })
+              .catch((error) => error)
+            expect(error.code).toBe(scenario === 'pending' ? 'PROJECT_BUSY' : 'INTERNAL')
+            expect(JSON.stringify(error)).not.toContain('private cleanup cause')
+          }
+          if (scenario === 'pending') expect(settledAttempts).toBeGreaterThan(1)
+          else expect(settledAttempts).toBe(1)
+          expect(executions).toBe(settledAttempts)
+          expect(
+            (
+              await loadPrivateRootRunForCoordinator({
+                coordinator,
+                projectRoot: fixture.root,
+                runId,
+              })
+            ).state,
+          ).toBe('spawn-intent')
+          // A second admitted root is independent; the first failure does not
+          // turn the controller into a global execution lock.
+          if (scenario !== 'pending') {
+            await controller.administration.startRun({
+              submissionId: 'independent-settlement',
+              target: { kind: 'flow', path: 'flows/run' },
+              input: { value: 'second' },
+            })
+            await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+            expect(executions).toBe(2)
+          }
+          await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
+          expect(executions).toBe(scenario === 'pending' ? settledAttempts : 2)
+        } finally {
+          await controller?.dispose().catch(() => undefined)
+          await coordinator?.dispose()
+          await fixture.dispose()
         }
-        await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
-        expect(executions).toBe(scenario === 'pending' ? settledAttempts : 2)
-      } finally {
-        await controller?.dispose().catch(() => undefined)
-        await coordinator?.dispose()
-        await fixture.dispose()
-      }
-    }, scenario === 'pending' ? 75_000 : 60_000)
+      },
+      scenario === 'pending' ? 75_000 : 60_000,
+    )
   }
   test('entrypoint selection uses approval, survives explicit overrides, and refuses a newer admission', async () => {
     const original = await createFixture('ready', 'flow:flows/run --input @job.json --timeout 8m')
@@ -2318,10 +2325,34 @@ describe.serial('direct alpha activation store', () => {
       await admit(fixture)
       const after = await capturePrivateActivationPlanningBase({ projectRoot: fixture.root })
       expect(readPrivateAdmittedExecutionReuse({ planningBase: after, request })).toEqual({
-        recipeDigest: digest('direct-recipe'),
-        observationDigest: digest('direct-observation'),
         execution: { package: fixture.flow, layout: { flowRoot: '', members: [], aliases: [] } },
       })
+      const changed = (changes: Record<string, unknown>) => {
+        const { digest: _, ...fields } = request
+        return restorePrivateActivationRequest(activationRequest({ ...fields, ...changes }))
+      }
+      // Dependency reuse does not carry the old request's source/settings approval.
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({
+            settings: { changed: true },
+            package: { ...request.package, digest: digest('new-source') },
+          }),
+        })?.execution.package,
+      ).toEqual(fixture.flow)
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({ packagePath: 'flows/other' }),
+        }),
+      ).toBeUndefined()
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({ target: { kind: 'binding', id: 'other' } }),
+        }),
+      ).toBeUndefined()
     } finally {
       await fixture.dispose()
     }
@@ -2395,31 +2426,43 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  test('corrupt execution Package fails before Candidate, Plan, or admission mutation', async () => {
-    const fixture = await createFixture('ready')
-    try {
-      const executionPackage = await retainDistinctExecutionPackage(fixture, 'corrupt')
-      const candidate = insertExecutionCandidate(fixture, executionPackage, 'corrupt')
-      const plan = seedPlan(fixture, candidate, {
-        baseGeneration: null,
-        observedLock: 'absent',
-        operation: 'admission',
-      })
-      const artifact = packageArtifactPath(fixture.store, executionPackage)
-      await chmod(artifact, 0o600)
-      await writeFile(artifact, 'corrupt\n')
-      await chmod(artifact, 0o400)
-      const before = activationAuthoritySnapshot(fixture.database)
+  test.each(['execution', 'dependencies'] as const)(
+    'corrupt %s Package fails before Candidate, Plan, or admission mutation',
+    async (kind) => {
+      const fixture = await createFixture('ready')
+      try {
+        const executionPackage = await retainDistinctExecutionPackage(fixture, 'corrupt')
+        const dependencies =
+          kind === 'dependencies'
+            ? await retainDistinctExecutionPackage(fixture, 'dependencies')
+            : undefined
+        const candidate = insertExecutionCandidate(
+          fixture,
+          executionPackage,
+          'corrupt',
+          dependencies,
+        )
+        const plan = seedPlan(fixture, candidate, {
+          baseGeneration: null,
+          observedLock: 'absent',
+          operation: 'admission',
+        })
+        const artifact = packageArtifactPath(fixture.store, dependencies ?? executionPackage)
+        await chmod(artifact, 0o600)
+        await writeFile(artifact, 'corrupt\n')
+        await chmod(artifact, 0o400)
+        const before = activationAuthoritySnapshot(fixture.database)
 
-      await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
-        code: 'PACKAGE_ARTIFACT_CORRUPT',
-      })
-      expect(activationAuthoritySnapshot(fixture.database)).toEqual(before)
-      await expect(stat(join(fixture.root, 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
-    } finally {
-      await fixture.dispose()
-    }
-  })
+        await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
+          code: 'PACKAGE_ARTIFACT_CORRUPT',
+        })
+        expect(activationAuthoritySnapshot(fixture.database)).toEqual(before)
+        await expect(stat(join(fixture.root, 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
+      } finally {
+        await fixture.dispose()
+      }
+    },
+  )
 
   test('repairs the visible lock without creating another authority record', async () => {
     const fixture = await createFixture()
@@ -3235,6 +3278,7 @@ function insertExecutionCandidate(
   fixture: Fixture,
   executionPackage: PackageArtifactRef,
   label: string,
+  dependencies?: PackageArtifactRef,
 ): PrivateActivationCandidateArtifactV5 {
   const database = openSqlite(fixture.database, 'readonly')
   const revision = database.query('SELECT revision FROM candidate_head WHERE singleton = 1').get()
@@ -3249,7 +3293,15 @@ function insertExecutionCandidate(
         ...target.disposition,
         recipeDigest: digest(`direct-recipe:${label}`),
         observationDigest: digest(`direct-observation:${label}`),
-        execution: { ...target.disposition.execution, package: executionPackage },
+        execution: {
+          ...target.disposition.execution,
+          package: executionPackage,
+          ...(dependencies === undefined
+            ? {}
+            : {
+                preparation: { inputDigest: digest('preparation-inputs'), package: dependencies },
+              }),
+        },
       },
     },
   ]

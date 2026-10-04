@@ -33,7 +33,7 @@ export interface PrivateExecutionIntent {
   readonly output?: boolean
   readonly storageBytes: number
   readonly maxOutputBytes: number
-  /** No writable storage is needed by this finite read-only worker. */
+  /** No payload write grants; captured inputs may still require bounded storage. */
   readonly readOnlyCwd?: string
 }
 

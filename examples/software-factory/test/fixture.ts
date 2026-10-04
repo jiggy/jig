@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ChannelEndpoint } from '@jigging/flow'
+import type { ChannelEndpoint, OperationError } from '@jigging/flow'
 import cases from '../flows/factory/logs-cases.json'
 import { digest, type RepairInput, sha256 } from '../flows/repair/policy.ts'
 import { repair } from '../flows/repair/repair.ts'
@@ -83,6 +83,7 @@ export async function syntheticRepair(
   maxProposals: 1 | 2 = 2,
   failFirstProposal = false,
   channels: Readonly<Record<string, ChannelEndpoint>> = {},
+  commandFailure?: OperationError,
 ) {
   let agents = 0
   const result = await repair({
@@ -95,6 +96,7 @@ export async function syntheticRepair(
         agents++
         return { outcome: 'done', output: { text: 'Synthetic proposal.', structured: proposal } }
       }
+      if (agents > 0 && commandFailure) throw commandFailure
       const value = call.input as {
         files: Record<string, string>
         args: string[]

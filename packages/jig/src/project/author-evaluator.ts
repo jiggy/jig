@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+
 import { invalid, unavailable } from '../diagnostics.js'
 import {
   launchPrivateExecution,
@@ -12,11 +13,24 @@ import {
   privateExecutionFileProjections,
   privateExecutionPath,
 } from '../internal/execution-intent.js'
+import { privateDomainDigest } from '../internal/identity.js'
+import { capturePrivateInput } from '../internal/input-capture.js'
 import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
 } from '../internal/installed-bun-support.js'
+import { privateProfileSpan } from '../internal/private-profile.js'
+import {
+  PRIVATE_AUTHOR_EVALUATOR_DIRECTORY,
+  PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS,
+  PRIVATE_AUTHOR_EVALUATOR_LIMITS,
+  PRIVATE_AUTHOR_EVALUATOR_MACOS_ENTRY_MS,
+  PRIVATE_AUTHOR_EVALUATOR_MAX_ENTRIES,
+  PRIVATE_AUTHOR_EVALUATOR_PROTOCOL,
+  PRIVATE_AUTHOR_EVALUATOR_WORKER,
+  privateAuthorEvaluatorWallClockCeilingMs,
+} from '../internal/project-evaluator-policy.js'
 import {
   canonicalJson,
   decodeJson1,
@@ -34,19 +48,10 @@ import {
 } from './author.js'
 import { type CapturedAuthorClosure, isCapturedAuthorClosure } from './author-module.js'
 
-const PROTOCOL = 'jig-author-evaluator/1'
+const PROTOCOL = PRIVATE_AUTHOR_EVALUATOR_PROTOCOL
 const MAX_STDERR_BYTES = 64 * 1024
 const MAX_STDOUT_BYTES = JSON_1_LIMITS.bytes + 16 * 1024
-const EVALUATOR_LIMIT_POLICY = Object.freeze({
-  memoryBytes: 256 * 1024 * 1024,
-  pids: 64,
-  cpuQuotaMicros: 50_000,
-  cpuPeriodMicros: 100_000,
-  wallClockCeilingMs: 3_000,
-  cancellationGraceMs: 1_000,
-  cleanupTimeoutMs: 5_000,
-})
-const MACOS_EVALUATOR_WALL_CLOCK_CEILING_MS = 10_000
+const EVALUATOR_LIMIT_POLICY = PRIVATE_AUTHOR_EVALUATOR_LIMITS
 type EvaluatorLimitPolicy = Readonly<{
   memoryBytes: number
   pids: number
@@ -64,6 +69,7 @@ const EVALUATION_CODES = new Set([
   'PROJECT_EVALUATOR_COMPILE',
   'PROJECT_EVALUATOR_IMPORT',
   'PROJECT_EVALUATOR_PROTOCOL',
+  'PROJECT_EVALUATOR_DEADLINE',
 ])
 const decoder = new TextDecoder('utf-8', { fatal: true })
 let evaluationSequence = 0
@@ -92,6 +98,11 @@ export interface EvaluatorProfile {
     readonly digest: string
   }
   readonly buildOptions: 'bun-cjs-closed-static-closure/1'
+  readonly evaluation: {
+    readonly kind: 'finite-isolated-declarations/1'
+    readonly entries: number
+    readonly entryWallClockCeilingMs: number
+  }
   readonly sandbox:
     | {
         readonly kind: 'linux-rootless-cgroup-v2-bubblewrap/1'
@@ -172,18 +183,59 @@ export async function evaluateAuthorClosure(
   expected: AuthorEvaluationExpectation,
   signal?: AbortSignal,
 ): Promise<EvaluatedAuthorDeclaration> {
+  const results = await evaluateAuthorClosureBatch(
+    options,
+    captured,
+    [{ entryProjectPath, expected }],
+    signal,
+  )
+  return results[0]!
+}
+
+/** Share finite envelope setup, never guest state or declaration results. */
+export async function evaluateAuthorClosureBatch(
+  options: PrivateAuthorEvaluatorOptions,
+  captured: CapturedAuthorClosure,
+  requestedEntries: readonly {
+    readonly entryProjectPath: string
+    readonly expected: AuthorEvaluationExpectation
+  }[],
+  signal?: AbortSignal,
+): Promise<readonly EvaluatedAuthorDeclaration[]> {
+  const entries = Object.freeze(
+    requestedEntries.map(({ entryProjectPath, expected }) =>
+      Object.freeze({ entryProjectPath, expected }),
+    ),
+  )
   if (!isCapturedAuthorClosure(captured)) {
     invalid('PROJECT_AUTHOR_CAPTURE', 'author closure was not produced by the capture boundary')
   }
-  if (!captured.entries.includes(entryProjectPath)) {
-    invalid(
-      'PROJECT_AUTHOR_CAPTURE',
-      'selected entry is outside the author closure',
-      entryProjectPath,
-    )
+  if (entries.length === 0 || entries.length > PRIVATE_AUTHOR_EVALUATOR_MAX_ENTRIES) {
+    invalid('PROJECT_AUTHOR_CAPTURE', 'evaluator batch has an invalid declaration count')
   }
+  const selected = new Set<string>()
+  for (const { entryProjectPath } of entries) {
+    if (!captured.entries.includes(entryProjectPath) || selected.has(entryProjectPath)) {
+      invalid('PROJECT_AUTHOR_CAPTURE', 'selected entry is absent or repeated', entryProjectPath)
+    }
+    selected.add(entryProjectPath)
+  }
+  const entryProjectPath = entries[0]!.entryProjectPath
+  const entryWallClockCeilingMs =
+    privateExecutionBackendKind(options.backend) === 'macos'
+      ? PRIVATE_AUTHOR_EVALUATOR_MACOS_ENTRY_MS
+      : PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS
+  const limitPolicy = Object.freeze({
+    ...EVALUATOR_LIMIT_POLICY,
+    wallClockCeilingMs: privateAuthorEvaluatorWallClockCeilingMs(
+      entries.length,
+      entryWallClockCeilingMs,
+    ),
+  })
   const installedSupport = requirePrivateInstalledBunSupport(options.installedSupport)
-  await revalidatePrivateInstalledBunSupport(installedSupport).catch((error) =>
+  await privateProfileSpan('author-support-verification', () =>
+    revalidatePrivateInstalledBunSupport(installedSupport),
+  ).catch((error) =>
     unavailable(
       'PROJECT_EVALUATOR_SUPPORT',
       `installed evaluator support is unavailable: ${errorText(error)}`,
@@ -203,6 +255,18 @@ export async function evaluateAuthorClosure(
     ),
   )
   const authoringProfile = 'project-authoring/1' as const
+  const capturedSupportDigest = privateDomainDigest('JIG-Installed-Evaluator-Support/1', [
+    { name: 'project-evaluator-worker.js', digest: digestBytes(workerBytes) },
+    { name: 'project-evaluator-sdk.bundle.js', digest: digestBytes(sdkBytes) },
+    { name: 'project-authoring-1.schema.json', digest: digestBytes(schemaBytes) },
+  ])
+  if (capturedSupportDigest !== installedSupport.evaluatorSupportDigest) {
+    unavailable(
+      'PROJECT_EVALUATOR_SUPPORT',
+      'evaluator support changed during capture',
+      entryProjectPath,
+    )
+  }
   const profileBase = Object.freeze({
     protocol: PROTOCOL,
     authoringProfile,
@@ -218,6 +282,11 @@ export async function evaluateAuthorClosure(
       digest: installedSupport.digest,
     }),
     buildOptions: 'bun-cjs-closed-static-closure/1' as const,
+    evaluation: Object.freeze({
+      kind: 'finite-isolated-declarations/1' as const,
+      entries: entries.length,
+      entryWallClockCeilingMs,
+    }),
   })
   const modules = captured.modules.map((module) => ({
     projectPath: module.projectPath,
@@ -227,236 +296,290 @@ export async function evaluateAuthorClosure(
   const request = canonicalJson({
     protocol: PROTOCOL,
     authoringProfile,
-    entryProjectPath,
+    entries: entries.map(({ entryProjectPath }) => entryProjectPath),
     modules,
   })
   const runId = `config-${process.pid.toString(36)}-${(++evaluationSequence).toString(36)}`
-  const policy = evaluatorLimitPolicy(options.backend)
-  const limits = evaluatorLimits(policy)
-  const component = await launchPrivateExecution(
-    options.backend,
-    evaluatorLaunchPlan(installedSupport, runId, limits),
-    signal,
-  ).catch((error) => {
-    return unavailable(
-      'PROJECT_EVALUATOR_LAUNCH',
-      `cannot launch evaluator envelope: ${errorText(error)}`,
-      entryProjectPath,
-    )
-  })
-  const validEnvelope =
-    component.envelope.kind === 'linux-rootless-cgroup-v2-bubblewrap/1'
-      ? component.envelope.privateProcessFilesystem &&
-        component.envelope.privateRuntimeDevices &&
-        sameEvaluatorLimits(component.envelope.limits, limits) &&
-        component.envelope.trustedCoordinatorBunDigest === installedSupport.executableDigest
-      : component.envelope.resourceAccounting === 'supervised-sampled-with-termination' &&
-        component.envelope.resourceOvershoot === true &&
-        sameEvaluatorLimits(component.envelope.limits, limits)
-  if (!validEnvelope) {
-    await component.terminate().catch(() => undefined)
-    const completion = await component.completion.catch((error) =>
-      unavailable(
-        'PROJECT_EVALUATOR_CLEANUP',
-        `evaluator envelope lost while rejecting its predicates: ${errorText(error)}`,
-        entryProjectPath,
-      ),
-    )
-    if (!completion.fenced || completion.cleanupError !== undefined) {
-      unavailable(
-        'PROJECT_EVALUATOR_CLEANUP',
-        'evaluator envelope predicates were absent and cleanup was not proven',
-        entryProjectPath,
-      )
-    }
-    unavailable(
-      'PROJECT_EVALUATOR_ENVELOPE',
-      'evaluator envelope did not preserve its sealed runtime or root-only predicates',
-      entryProjectPath,
-    )
-  }
-  const profile: EvaluatorProfile = Object.freeze({
-    ...profileBase,
-    sandbox:
-      component.envelope.kind === 'linux-rootless-cgroup-v2-bubblewrap/1'
-        ? Object.freeze({
-            kind: component.envelope.kind,
-            mechanismDigest: component.envelope.mechanismDigest,
-            sealedPlanDigest: component.envelope.sealedPlanDigest,
-            bubblewrapPath: component.envelope.trustedBubblewrapPath,
-            bubblewrapDigest: component.envelope.trustedBubblewrapDigest,
-            coordinatorRuntimePath: component.envelope.trustedCoordinatorBunPath,
-            coordinatorRuntimeDigest: component.envelope.trustedCoordinatorBunDigest,
-            supervisorPath: component.envelope.trustedSupervisorPath,
-            supervisorDigest: component.envelope.trustedSupervisorDigest,
-            payloadUid: component.envelope.payloadUid,
-            payloadGid: component.envelope.payloadGid,
-            limits: policy,
-            privateProcessFilesystem: component.envelope.privateProcessFilesystem,
-            privateRuntimeDevices: component.envelope.privateRuntimeDevices,
-          })
-        : Object.freeze({
-            kind: component.envelope.kind,
-            mechanismDigest: component.envelope.mechanismDigest,
-            sealedPlanDigest: component.envelope.sealedPlanDigest,
-            supervisorPath: installedSupport.supervisorPath,
-            supervisorDigest: installedSupport.supervisorDigest,
-            launcherPath: installedSupport.launcherPath!,
-            launcherDigest: installedSupport.launcherDigest!,
-            limits: policy,
-            resourceAccounting: component.envelope.resourceAccounting,
-            resourceOvershoot: component.envelope.resourceOvershoot,
-          }),
-  })
-
-  const stdout = collectBounded(component.stdout, MAX_STDOUT_BYTES, component.terminate)
-  const stderr = collectBounded(component.stderr, MAX_STDERR_BYTES, component.terminate)
+  const limits = evaluatorLimits(limitPolicy)
+  // Children must reuse these exact verified bytes, not reopen live installed
+  // support during a longer batch. Existing sealed file projection pins them.
+  const inputs: NonNullable<PrivateExecutionIntent['capturedInputs']>[number][] = []
+  let operationFailure: unknown
   try {
-    await component.write(request)
-    await component.closeInput()
-    const [output, diagnostics, exit, evidence, terminationReason] = await Promise.all([
-      stdout,
-      stderr,
-      component.completion,
-      component.evidence,
-      component.terminationReason,
-    ])
-    if (exit.cleanupError !== undefined || !exit.fenced) {
-      unavailable(
-        'PROJECT_EVALUATOR_CLEANUP',
-        `evaluator cleanup was not proven: ${exit.cleanupError ?? 'not fenced'}`,
-        entryProjectPath,
-      )
-    }
-    if (
-      ('memoryEvents' in evidence && (evidence.memoryEvents.max ?? 0) > 0) ||
-      terminationReason === 'memory_limit'
-    ) {
-      invalid(
-        'PROJECT_EVALUATION_LIMIT',
-        'evaluator reached its hard memory limit',
-        entryProjectPath,
-      )
-    }
-    if (
-      ('pidsEvents' in evidence && (evidence.pidsEvents.max ?? 0) > 0) ||
-      terminationReason === 'process_limit'
-    ) {
-      invalid(
-        'PROJECT_EVALUATION_LIMIT',
-        'evaluator reached its hard process limit',
-        entryProjectPath,
-      )
-    }
-    if (terminationReason === 'deadline') {
-      invalid(
-        'PROJECT_EVALUATION_LIMIT',
-        'evaluator reached its hard wall deadline',
-        entryProjectPath,
-      )
-    }
-    if (terminationReason !== 'payload_exit') {
-      unavailable(
-        'PROJECT_EVALUATOR_INTERRUPTED',
-        `evaluator ended for an unexpected reason: ${terminationReason}`,
-        entryProjectPath,
-      )
-    }
-    if (exit.exitCode !== 0 || exit.signal !== null) {
-      invalid(
-        'PROJECT_EVALUATION_FAILED',
-        `evaluator exited ${exit.exitCode ?? exit.signal}${diagnostics.length === 0 ? '' : `: ${safeText(diagnostics)}`}`,
-        entryProjectPath,
-      )
-    }
-    let response: JsonValue
     try {
-      response = decodeJson1(output)
+      for (const [name, bytes] of [
+        ['project-evaluator-worker.js', workerBytes],
+        ['project-evaluator-sdk.bundle.js', sdkBytes],
+      ] as const) {
+        inputs.push({
+          input: capturePrivateInput(bytes),
+          destination: `${PRIVATE_AUTHOR_EVALUATOR_DIRECTORY}/${name}`,
+        })
+      }
+    } catch {
+      unavailable('PROJECT_EVALUATOR_SUPPORT', 'cannot seal evaluator support', entryProjectPath)
+    }
+    const component = await privateProfileSpan('author-envelope-startup', () =>
+      launchPrivateExecution(
+        options.backend,
+        evaluatorLaunchPlan(installedSupport, runId, limits, inputs),
+        signal,
+      ),
+    ).catch((error) => {
+      return unavailable(
+        'PROJECT_EVALUATOR_LAUNCH',
+        `cannot launch evaluator envelope: ${errorText(error)}`,
+        entryProjectPath,
+      )
+    })
+    const validEnvelope =
+      component.envelope.kind === 'linux-rootless-cgroup-v2-bubblewrap/1'
+        ? component.envelope.privateProcessFilesystem &&
+          component.envelope.privateRuntimeDevices &&
+          sameEvaluatorLimits(component.envelope.limits, limits) &&
+          component.envelope.trustedCoordinatorBunDigest === installedSupport.executableDigest
+        : component.envelope.resourceAccounting === 'supervised-sampled-with-termination' &&
+          component.envelope.resourceOvershoot === true &&
+          sameEvaluatorLimits(component.envelope.limits, limits)
+    if (!validEnvelope) {
+      await component.terminate().catch(() => undefined)
+      const completion = await component.completion.catch((error) =>
+        unavailable(
+          'PROJECT_EVALUATOR_CLEANUP',
+          `evaluator envelope lost while rejecting its predicates: ${errorText(error)}`,
+          entryProjectPath,
+        ),
+      )
+      if (!completion.fenced || completion.cleanupError !== undefined) {
+        unavailable(
+          'PROJECT_EVALUATOR_CLEANUP',
+          'evaluator envelope predicates were absent and cleanup was not proven',
+          entryProjectPath,
+        )
+      }
+      unavailable(
+        'PROJECT_EVALUATOR_ENVELOPE',
+        'evaluator envelope did not preserve its sealed runtime or root-only predicates',
+        entryProjectPath,
+      )
+    }
+    const profile: EvaluatorProfile = Object.freeze({
+      ...profileBase,
+      sandbox:
+        component.envelope.kind === 'linux-rootless-cgroup-v2-bubblewrap/1'
+          ? Object.freeze({
+              kind: component.envelope.kind,
+              mechanismDigest: component.envelope.mechanismDigest,
+              sealedPlanDigest: component.envelope.sealedPlanDigest,
+              bubblewrapPath: component.envelope.trustedBubblewrapPath,
+              bubblewrapDigest: component.envelope.trustedBubblewrapDigest,
+              coordinatorRuntimePath: component.envelope.trustedCoordinatorBunPath,
+              coordinatorRuntimeDigest: component.envelope.trustedCoordinatorBunDigest,
+              supervisorPath: component.envelope.trustedSupervisorPath,
+              supervisorDigest: component.envelope.trustedSupervisorDigest,
+              payloadUid: component.envelope.payloadUid,
+              payloadGid: component.envelope.payloadGid,
+              limits: limitPolicy,
+              privateProcessFilesystem: component.envelope.privateProcessFilesystem,
+              privateRuntimeDevices: component.envelope.privateRuntimeDevices,
+            })
+          : Object.freeze({
+              kind: component.envelope.kind,
+              mechanismDigest: component.envelope.mechanismDigest,
+              sealedPlanDigest: component.envelope.sealedPlanDigest,
+              supervisorPath: installedSupport.supervisorPath,
+              supervisorDigest: installedSupport.supervisorDigest,
+              launcherPath: installedSupport.launcherPath!,
+              launcherDigest: installedSupport.launcherDigest!,
+              limits: limitPolicy,
+              resourceAccounting: component.envelope.resourceAccounting,
+              resourceOvershoot: component.envelope.resourceOvershoot,
+            }),
+    })
+
+    const stdout = collectBounded(component.stdout, MAX_STDOUT_BYTES, component.terminate)
+    const stderr = collectBounded(component.stderr, MAX_STDERR_BYTES, component.terminate)
+    try {
+      await component.write(request)
+      await component.closeInput()
+      const [output, diagnostics, exit, evidence, terminationReason] = await privateProfileSpan(
+        'author-execution-settlement',
+        () =>
+          Promise.all([
+            stdout,
+            stderr,
+            component.completion,
+            component.evidence,
+            component.terminationReason,
+          ]),
+      )
+      if (exit.cleanupError !== undefined || !exit.fenced) {
+        unavailable(
+          'PROJECT_EVALUATOR_CLEANUP',
+          `evaluator cleanup was not proven: ${exit.cleanupError ?? 'not fenced'}`,
+          entryProjectPath,
+        )
+      }
+      if (
+        ('memoryEvents' in evidence && (evidence.memoryEvents.max ?? 0) > 0) ||
+        terminationReason === 'memory_limit'
+      ) {
+        invalid(
+          'PROJECT_EVALUATOR_MEMORY_LIMIT',
+          'evaluator reached its hard memory limit',
+          entryProjectPath,
+        )
+      }
+      if (
+        ('pidsEvents' in evidence && (evidence.pidsEvents.max ?? 0) > 0) ||
+        terminationReason === 'process_limit'
+      ) {
+        invalid(
+          'PROJECT_EVALUATOR_PROCESS_LIMIT',
+          'evaluator reached its hard process limit',
+          entryProjectPath,
+        )
+      }
+      if (terminationReason === 'deadline') {
+        invalid(
+          'PROJECT_EVALUATOR_DEADLINE',
+          'evaluator reached its hard wall deadline',
+          entryProjectPath,
+        )
+      }
+      if (terminationReason !== 'payload_exit') {
+        unavailable(
+          'PROJECT_EVALUATOR_INTERRUPTED',
+          `evaluator ended for an unexpected reason: ${terminationReason}`,
+          entryProjectPath,
+        )
+      }
+      if (exit.exitCode !== 0 || exit.signal !== null) {
+        invalid(
+          'PROJECT_EVALUATION_FAILED',
+          `evaluator exited ${exit.exitCode ?? exit.signal}${diagnostics.length === 0 ? '' : `: ${safeText(diagnostics)}`}`,
+          entryProjectPath,
+        )
+      }
+      let response: JsonValue
+      try {
+        response = decodeJson1(output)
+      } catch (error) {
+        if (error instanceof Json1Error) {
+          unavailable('PROJECT_EVALUATOR_PROTOCOL', error.message, entryProjectPath)
+        }
+        throw error
+      }
+      const values = checkedResponse(response, entries)
+      return Object.freeze(
+        entries.map(({ entryProjectPath, expected }, index) => {
+          const value = values[index]!
+          contextualAuthorSchema(schemaBytes, expected, entryProjectPath).validate(
+            value,
+            'PROJECT_AUTHORING_SCHEMA_INVALID',
+          )
+          let normalized: JigDefinition | BindingDefinition
+          try {
+            normalized =
+              expected === 'project'
+                ? normalizeJigDefinition(value)
+                : normalizePackageBindingDefinition(value)
+          } catch (error) {
+            invalid('PROJECT_DECLARATION_INVALID', errorText(error), entryProjectPath)
+          }
+          const outputBytes = canonicalJson(normalized as unknown as JsonValue)
+          return Object.freeze({
+            expected,
+            source: Object.freeze({
+              entryProjectPath,
+              bytes: captured.sourceBytes,
+              digest: captured.closureDigest,
+              modules: Object.freeze(
+                captured.modules.map((module) =>
+                  Object.freeze({
+                    projectPath: module.projectPath,
+                    bytes: module.sourceBytes,
+                    digest: module.sourceDigest,
+                    imports: Object.freeze(
+                      module.imports.map((edge) => Object.freeze({ ...edge })),
+                    ),
+                  }),
+                ),
+              ),
+            }),
+            profile,
+            outputDigest: digestBytes(outputBytes),
+            value: normalized,
+            enforcement: Object.freeze({
+              owner:
+                'cgroup' in component
+                  ? Object.freeze({ kind: 'linux-cgroup' as const, ...component.cgroup })
+                  : Object.freeze({ kind: 'macos-process' as const, ...component.process }),
+              terminal: Object.freeze({
+                reason: terminationReason,
+                exitCode: exit.exitCode,
+                signal: exit.signal,
+                fenced: exit.fenced,
+              }) as EvaluatedAuthorDeclaration['enforcement']['terminal'],
+              evidence:
+                'cpuStat' in evidence
+                  ? Object.freeze({
+                      ...prefixNumbers('cpu', evidence.cpuStat),
+                      ...prefixNumbers('memory', evidence.memoryEvents),
+                      ...prefixNumbers('pids', evidence.pidsEvents),
+                    })
+                  : Object.freeze({ ...evidence }),
+            }),
+          })
+        }),
+      )
     } catch (error) {
-      if (error instanceof Json1Error) {
-        unavailable('PROJECT_EVALUATOR_PROTOCOL', error.message, entryProjectPath)
+      await component.terminate().catch(() => undefined)
+      const settled = await Promise.allSettled([
+        stdout,
+        stderr,
+        component.completion,
+        component.evidence,
+      ])
+      const cleanup = settled[2]
+      if (cleanup.status === 'rejected') {
+        throw new AggregateError(
+          [error, cleanup.reason],
+          'evaluator failed and cleanup was not confirmed',
+        )
+      }
+      if (!cleanup.value.fenced || cleanup.value.cleanupError !== undefined) {
+        throw new AggregateError([error, cleanup.value], 'evaluator failed without a clean fence')
       }
       throw error
     }
-    const value = checkedResponse(response, entryProjectPath)
-    contextualAuthorSchema(schemaBytes, expected, entryProjectPath).validate(
-      value,
-      'PROJECT_AUTHORING_SCHEMA_INVALID',
-    )
-    let normalized: JigDefinition | BindingDefinition
-    try {
-      normalized =
-        expected === 'project'
-          ? normalizeJigDefinition(value)
-          : normalizePackageBindingDefinition(value)
-    } catch (error) {
-      invalid('PROJECT_DECLARATION_INVALID', errorText(error), entryProjectPath)
-    }
-    const outputBytes = canonicalJson(normalized as unknown as JsonValue)
-    return Object.freeze({
-      expected,
-      source: Object.freeze({
-        entryProjectPath,
-        bytes: captured.sourceBytes,
-        digest: captured.closureDigest,
-        modules: Object.freeze(
-          captured.modules.map((module) =>
-            Object.freeze({
-              projectPath: module.projectPath,
-              bytes: module.sourceBytes,
-              digest: module.sourceDigest,
-              imports: Object.freeze(module.imports.map((edge) => Object.freeze({ ...edge }))),
-            }),
-          ),
-        ),
-      }),
-      profile,
-      outputDigest: digestBytes(outputBytes),
-      value: normalized,
-      enforcement: Object.freeze({
-        owner:
-          'cgroup' in component
-            ? Object.freeze({ kind: 'linux-cgroup' as const, ...component.cgroup })
-            : Object.freeze({ kind: 'macos-process' as const, ...component.process }),
-        terminal: Object.freeze({
-          reason: terminationReason,
-          exitCode: exit.exitCode,
-          signal: exit.signal,
-          fenced: exit.fenced,
-        }) as EvaluatedAuthorDeclaration['enforcement']['terminal'],
-        evidence:
-          'cpuStat' in evidence
-            ? Object.freeze({
-                ...prefixNumbers('cpu', evidence.cpuStat),
-                ...prefixNumbers('memory', evidence.memoryEvents),
-                ...prefixNumbers('pids', evidence.pidsEvents),
-              })
-            : Object.freeze({ ...evidence }),
-      }),
-    })
   } catch (error) {
-    await component.terminate().catch(() => undefined)
-    const settled = await Promise.allSettled([
-      stdout,
-      stderr,
-      component.completion,
-      component.evidence,
-    ])
-    const cleanup = settled[2]
-    if (cleanup.status === 'rejected') {
+    operationFailure = error
+    throw error
+  } finally {
+    const failures: unknown[] = []
+    for (const { input } of inputs) {
+      try {
+        input.close()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) {
+      // biome-ignore lint/correctness/noUnsafeFinally: All work is already settled; descriptor cleanup must also succeed.
       throw new AggregateError(
-        [error, cleanup.reason],
-        'evaluator failed and cleanup was not confirmed',
+        operationFailure === undefined ? failures : [operationFailure, ...failures],
+        'evaluator input cleanup failed',
       )
     }
-    if (!cleanup.value.fenced || cleanup.value.cleanupError !== undefined) {
-      throw new AggregateError([error, cleanup.value], 'evaluator failed without a clean fence')
-    }
-    throw error
   }
 }
 
-function checkedResponse(response: JsonValue, projectPath: string): JsonValue {
+function checkedResponse(
+  response: JsonValue,
+  entries: readonly { readonly entryProjectPath: string }[],
+): readonly JsonValue[] {
+  const projectPath = entries[0]!.entryProjectPath
   if (
     !isRecord(response) ||
     response.protocol !== PROTOCOL ||
@@ -466,9 +589,16 @@ function checkedResponse(response: JsonValue, projectPath: string): JsonValue {
   }
   if (response.status === 'error') {
     if (
-      !exactKeys(response, ['code', 'message', 'protocol', 'status']) ||
+      !exactKeys(response, ['code', 'entryIndex', 'message', 'protocol', 'status']) ||
       typeof response.code !== 'string' ||
-      typeof response.message !== 'string'
+      typeof response.message !== 'string' ||
+      !(
+        response.entryIndex === null ||
+        (typeof response.entryIndex === 'number' &&
+          Number.isInteger(response.entryIndex) &&
+          response.entryIndex >= 0 &&
+          response.entryIndex < entries.length)
+      )
     ) {
       unavailable('PROJECT_EVALUATOR_PROTOCOL', 'evaluator error has an invalid shape', projectPath)
     }
@@ -480,16 +610,24 @@ function checkedResponse(response: JsonValue, projectPath: string): JsonValue {
       )
     }
     const code = response.code
+    const location =
+      response.entryIndex === null
+        ? projectPath
+        : entries[response.entryIndex as number]!.entryProjectPath
     if (code === 'PROJECT_EVALUATOR_PROTOCOL') {
-      unavailable(code, response.message, projectPath)
+      unavailable(code, response.message, location)
     }
     const message = response.message
-    invalid(code, message, projectPath)
+    invalid(code, message, location)
   }
-  if (!exactKeys(response, ['protocol', 'status', 'value'])) {
+  if (
+    !exactKeys(response, ['protocol', 'status', 'values']) ||
+    !Array.isArray(response.values) ||
+    response.values.length !== entries.length
+  ) {
     unavailable('PROJECT_EVALUATOR_PROTOCOL', 'evaluator success has an invalid shape', projectPath)
   }
-  return response.value!
+  return response.values
 }
 
 function contextualAuthorSchema(
@@ -517,7 +655,7 @@ function contextualAuthorSchema(
   const definition = expected === 'project' ? 'project' : 'bindingDefinition'
   try {
     return compileEmbeddedSchema(Object.freeze({ $ref: `#/$defs/${definition}` }), {
-      path: 'project-authoring-1.schema.json',
+      path: projectPath,
       rootDefs: document.$defs as JsonObject,
     })
   } catch (error) {
@@ -533,37 +671,30 @@ function evaluatorLaunchPlan(
   support: PrivateInstalledBunSupport,
   runId: string,
   limits: ReturnType<typeof evaluatorLimits>,
+  inputs: NonNullable<PrivateExecutionIntent['capturedInputs']>,
 ): PrivateExecutionIntent {
   return {
     runId,
     limits,
-    projections: [
-      ...privateExecutionFileProjections(support.runtimeMounts),
-      { source: support.evaluatorSupportPath, destination: '/jig-evaluator', kind: 'tree' },
-    ],
+    projections: [...privateExecutionFileProjections(support.runtimeMounts)],
     command: [
       privateExecutionPath(support.sandboxExecutablePath),
-      privateExecutionPath('/jig-evaluator/project-evaluator-worker.js'),
+      privateExecutionPath(PRIVATE_AUTHOR_EVALUATOR_WORKER),
     ],
-    readOnlyCwd: '/jig-evaluator',
-    relocatedEnvironment: { JIG_EVALUATOR_SDK: '/jig-evaluator/project-evaluator-sdk.bundle.js' },
+    capturedInputs: inputs,
+    inputDirectories: [PRIVATE_AUTHOR_EVALUATOR_DIRECTORY],
+    readOnlyCwd: PRIVATE_AUTHOR_EVALUATOR_DIRECTORY,
+    relocatedEnvironment: {
+      JIG_EVALUATOR_SDK: `${PRIVATE_AUTHOR_EVALUATOR_DIRECTORY}/project-evaluator-sdk.bundle.js`,
+    },
     maxOutputBytes: MAX_STDOUT_BYTES + MAX_STDERR_BYTES,
-    storageBytes: 0,
+    storageBytes: 16 * 1024 * 1024,
   }
 }
 
 function exactKeys(value: object, expected: readonly string[]): boolean {
   const keys = Object.keys(value).sort()
   return keys.length === expected.length && keys.every((key, index) => key === expected[index])
-}
-
-function evaluatorLimitPolicy(backend: PrivateExecutionBackend): EvaluatorLimitPolicy {
-  return privateExecutionBackendKind(backend) === 'macos'
-    ? Object.freeze({
-        ...EVALUATOR_LIMIT_POLICY,
-        wallClockCeilingMs: MACOS_EVALUATOR_WALL_CLOCK_CEILING_MS,
-      })
-    : EVALUATOR_LIMIT_POLICY
 }
 
 function evaluatorLimits(policy: EvaluatorLimitPolicy) {

@@ -140,10 +140,10 @@ export async function qualifyIncidentBrief(): Promise<void> {
       },
     }
     mark('review-started')
-    expect(
-      await main(['review', '--yes', '--allow-authority-changes'], options),
-      stdout + stderr,
-    ).toBe(0)
+    const reviewCode = await main(['review', '--yes', '--allow-authority-changes'], options)
+    await writeFile(join(root, 'review.stdout.txt'), stdout)
+    await writeFile(join(root, 'review.stderr.txt'), stderr)
+    expect(reviewCode, stdout + stderr).toBe(0)
     mark('review-completed')
     stdout = ''
     stderr = ''

@@ -237,6 +237,10 @@ envelope validation, cleanup, interruption and protocol response. Human guidance
 explains the known phase and next safe action; it MUST NOT expose launcher
 exceptions or infer a particular host or timeout cause from generic launch
 failure. These planning diagnostics establish that no Flow was started.
+Enforced evaluator memory, process and wall-clock limits have distinct closed
+diagnostic codes. A wall-clock refusal does not identify which phase consumed
+the budget. Generic capture or execution limits retain that uncertainty instead
+of attributing the failure to host load.
 
 Run reports retain optional `runDiagnostics`: `entries` contain the host-assigned
 `operations` call path (empty for the root), `stderr`, `stderrBytes` and

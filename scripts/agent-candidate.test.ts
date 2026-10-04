@@ -227,6 +227,7 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
     'Prove delegated HTTP authority and coordinator-loss cleanup',
     'Prove contained native preparation',
     'Prove retained progress and coordinator-loss delivery',
+    'Prove packed source edits reuse dependencies without reusing authority',
     'Prove ordinary ACP Agent progress and cancellation',
     'Prove installed Markdown and exact typed calls',
     'Prove installed workspace dependency admission and execution',
@@ -234,6 +235,18 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
     'Run Operational Baseline/1 against the packed archive',
     'Attack the packed CLI inside the proved envelope',
   ])
+  const dependencyReuse = suites.steps.find(
+    (step: any) =>
+      step.name === 'Prove packed source edits reuse dependencies without reusing authority',
+  )
+  expect(dependencyReuse.if).toBe("matrix.suite == 'installed-evidence'")
+  expect(dependencyReuse.run).toContain('"JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"')
+  expect(dependencyReuse.run).toContain("-t 'packed project dependencies'")
+  const preparation = suites.steps.find(
+    (step: any) => step.name === 'Prove contained native preparation',
+  )
+  expect(preparation.if).toBe("matrix.suite == 'installed-evidence'")
+  expect(preparation.run).toContain('packages/jig/test/project-author-evaluator.test.ts')
   expect(
     suites.steps.find((step: any) => step.name === 'Verify the tested archives are unchanged').if,
   ).toBe('always()')

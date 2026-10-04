@@ -126,6 +126,21 @@ randomness may affect ordinary language code. Safety comes from capture: Jig
 retains the exact evaluated output and source closure, and apply never
 reevaluates either.
 
+Review may share finite evaluator setup across the complete project declaration
+and its Bindings. Each declaration still receives a fresh guest realm, module
+graph and authoring SDK, with a three-second wall ceiling on Linux and a
+ten-second ceiling on Mac. In a batch, each declaration child receives only
+the captured modules reachable from its entry.
+A trusted contained manager enforces each declaration ceiling independently of
+authored code. The independent supervisor bounds a multi-declaration batch by
+the sum of those ceilings, plus two seconds and 500 ms per declaration for
+setup and settlement. A single declaration retains its host's total ceiling.
+The batch shares the existing 256 MiB memory, 64-task and half-core CPU limits,
+never a separate resource allowance per declaration. Bootstrap discovery and
+the complete-closure consistency evaluation remain distinct. No evaluated
+result is cached by source identity. A failed batch supplies no admissible
+declarations; fencing and cleanup precede successful collection.
+
 If source changes during capture, Jig retries a bounded number of times and
 then reports the project busy or unavailable. It never combines an evaluated
 declaration with a different package tree.
@@ -271,13 +286,18 @@ the retained execution artifact and are verified unchanged after preparation.
 Workspace members use the root lock; member locks and member-level patch
 declarations, overrides, catalogs, and alternate sources are unsupported.
 A new review recaptures the workspace. It may reuse this Jig project's approved
-preparation only when the complete captured input digest matches the preparation
-evidence bound to that artifact and the current request reproduces its approved
-recipe and observation. Inputs include root manifest, lock and patch bytes,
-member manifests and selected local source bytes. Flow identity alone is
-insufficient. Reuse never crosses Jig project boundaries, even within one
-ancestor workspace, and performs no resolution or installation. Missing
-preparation evidence or changed inputs require preparation.
+dependencies only when fresh installer inputs and current preparation support
+match retained evidence. Inputs include exact root manifest, authored lock and
+patch bytes, all member manifests, target and selected membership, and the
+installed preparation runtime and containment support. Selected local source
+is captured afresh but is not an installer input. Reuse revalidates the admitted
+execution and separate installed-byte artifact, then assembles a new immutable
+execution image from fresh source and those bytes. Added and deleted source
+files are reflected exactly; no live overlay is used. A fresh execution recipe
+and ordinary review still cover source, settings and authority changes. Flow
+identity alone is insufficient. Reuse never crosses Jig project boundaries,
+even within one ancestor workspace, and performs no resolution or installation.
+Missing preparation evidence or changed installer inputs require preparation.
 Prepared bytes and normalized layout participate in
 target-change review, exact admission, launch and durable materialization identity.
 The host creates only recorded aliases after copying regular bytes, verifies both
@@ -300,17 +320,19 @@ on different machines may resolve different dependency versions. A Run
 performs no install or fetch and has no network, lifecycle scripts, or ambient
 runtime lookup. A package without runtime dependencies needs no preparation.
 
-For standalone registry preparation, planning may reuse the execution Package
-from the active admission only when the current request reproduces its exact
-recipe and observation digests under the current runtime and containment
-mechanism. Exact reuse performs no
-resolution and requires no new resolution permission. Any source change, including a
-code-only edit, or changed execution support can invalidate reuse and require
-the flag again for unlocked source. Declined preparations do not grant reuse.
-Final publication reacquires
-the retained bytes and compare-and-sets the captured policy heads. Missing or
-corrupt retained execution bytes fail closed; they are not silently fetched
-again under an otherwise unchanged admission.
+Standalone registry preparations use the same project-local separation:
+exact manifest and authored lock bytes plus preparation support identify the
+installer inputs. Code-only and settings/grant changes do not themselves
+reinstall dependencies. The current source is recaptured and assembled with
+verified installed bytes; the new request and recipe still require ordinary
+admission. For unchanged unlocked inputs, reuse preserves the admitted generated
+lock and resolved bytes, without resolution or a new network permission. It
+does not refresh the selection. Changed installer inputs or preparation support
+require fresh preparation and the flag again when no authored lock exists.
+Declined preparations do not grant reuse. Final publication reacquires both
+execution and dependency artifacts and compare-and-sets the captured policy
+heads. Missing or corrupt admitted bytes fail closed; they are not silently
+fetched again under an otherwise reusable admission.
 
 After bounded project capture, the alpha's dependency-planning phase permits
 16 distinct actual preparations, 256 MiB of aggregate prepared content, and

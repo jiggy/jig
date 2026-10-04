@@ -25,6 +25,12 @@ supervises its resource use; samples and termination are not hard kernel quotas
 and can overshoot. Both paths fence owned descendants and confirm cleanup
 before reporting completion.
 
+The independent supervisor observes kernel core-dump state within its owned
+cgroup and fences a detected crash without waiting for the Run deadline.
+It preserves the actual termination signal rather than inferring the original
+fault from stderr. This does not disable the host's core collector or promise
+that no core data reaches it. Unconfirmed fencing or cleanup remains a failure.
+
 Project evaluation, the fixed dependency installer, HTTP request worker, and Agent
 provider worker use the same containment mechanism in separate scopes. The
 preparation worker inherits networking only during `jig review`; supplied

@@ -70,6 +70,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
     if (Date.now() >= run.deadlineUnixMs) throw new Error('Application deadline elapsed.')
     if (requestedTurns >= snapshot.turnBudget) throw new Error('Application turn budget exhausted.')
     requestedTurns++
+    console.log(`${input.role}: requesting turn ${requestedTurns}/${snapshot.turnBudget}.`)
   }
   try {
     const requiredTurns = input.role === 'draft' ? (feed ? 3 : 1) : updates ? 2 : 1
@@ -104,6 +105,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
           },
           async (conversation) => {
             const initial = await conversation.initial
+            console.log('independent: preliminary analysis received.')
             received.push(initial)
             const analysis = answer(initial)
             const deliveryFailures: string[] = []
@@ -146,6 +148,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
                     ],
                   }),
             })
+            console.log('independent: review questions received; settling conversation.')
             received.push(questions)
             return { analysis, questions: answer(questions) }
           },
@@ -168,6 +171,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
         },
         async (conversation) => {
           const initial = conversation.initial.then((turn) => {
+            console.log(`draft: initial turn ${turn.type}; awaiting context decision.`)
             received.push(turn)
             return turn
           })
@@ -202,6 +206,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
           console.log('Context update received; preparing one drafting handoff.')
           interruption = await conversation.interrupt()
           const settledTurn = await initial
+          console.log('draft: interrupted turn settled; preparing summary.')
           if (settledTurn.type !== 'cancelled') answer(settledTurn)
           feed.check()
           charge()
@@ -210,6 +215,9 @@ export async function work(run: RunContext, converse = withAgentConversation): P
               'Summarize the work so far for a fresh drafting worker. Preserve uncertainty and partial work. Do not advance the task or invent instructions. Keep it under 150 words.',
           })
           received.push(summary)
+          console.log(
+            'draft: summary received; awaiting revision closure and predecessor settlement.',
+          )
           const text = answer(summary)
           await feed.complete()
           return { kind: 'handoff' as const, text }
@@ -301,6 +309,15 @@ export async function work(run: RunContext, converse = withAgentConversation): P
             failures: failures.map((error) =>
               error instanceof OperationError ? error.code : 'INCOMPLETE_WORK',
             ),
+            failureDetails: failures.map((error) => ({
+              code: error instanceof OperationError ? error.code : 'INCOMPLETE_WORK',
+              // Public SDK error text is data. Never copy arbitrary exception
+              // messages, causes, stack traces or native implementation details.
+              message:
+                error instanceof OperationError
+                  ? [...error.message].slice(0, 1024).join('')
+                  : 'Application work did not complete; no further cause was retained.',
+            })),
           }
         : {}),
     } as unknown as JsonValue,

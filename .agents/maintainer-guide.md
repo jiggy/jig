@@ -618,3 +618,7 @@ ownership is understood. Never reset or clean them to reconstruct the past.
 Stage exact paths and inspect `git diff --cached --name-only` before each
 commit. Read the specifications relevant to the selected work; introductory
 reading should not require the entire archive or optional field notes.
+
+Rebase feature branches onto `main` when updating their base, keeping feature
+history linear. Push rewritten published history with an explicit
+`--force-with-lease` bound to the observed remote revision.

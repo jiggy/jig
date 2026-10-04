@@ -1941,6 +1941,24 @@ describe('finite Jig project commands', () => {
     }
   })
 
+  test('run does not misidentify an operation result failure as a Flow contract mismatch', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'INVALID_RESULT',
+      message:
+        'Agent chat-completions endpoint returned HTTP 404. Check the reviewed endpoint URL and selected model availability.',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []))
+    expect(await main(['run', 'binding:agent'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain(
+      'A Flow or one of its operations rejected a returned result.',
+    )
+    expect(invocation.error).toContain('Agent chat-completions endpoint returned HTTP 404.')
+    expect(invocation.error).not.toContain('does not match its declared contract')
+    expect(JSON.parse(invocation.output)).toEqual(terminal)
+  })
+
   test('run rejects invalid target and JSON/0 before acquiring a project', async () => {
     const target = commandInvocation(unusedHost())
     expect(await main(['run', 'work'], target.options)).toBe(1)
@@ -2334,7 +2352,7 @@ describe('finite Jig project commands', () => {
     },
   )
 
-  test('evaluation limits explain bounded authoring and host pressure without relaxing execution', async () => {
+  test('unclassified evaluation limits do not guess a resource or host-pressure cause', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError(
       'INVALID_CANDIDATE',
@@ -2348,8 +2366,9 @@ describe('finite Jig project commands', () => {
       fakeHost(fakeSession(events, { planFailure: failure }), events),
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
-    expect(invocation.error).toContain('exceeded its resource or time limit')
-    expect(invocation.error).toContain('check host load before retrying review')
+    expect(invocation.error).toContain('exceeded a capture or execution limit')
+    expect(invocation.error).toContain('specific limiting resource was not retained')
+    expect(invocation.error).not.toContain('check host load')
     expect(invocation.error).toContain('No Flow was started')
     expect(invocation.error).not.toContain('private evaluator detail')
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
