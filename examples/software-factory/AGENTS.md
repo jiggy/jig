@@ -54,6 +54,10 @@ patch authority and every merge decision stays with a person.
   never claim that separately passing patches pass as a combined change.
 - Checkpoints retain only settled evidence and patches. Pending or failed work
   never receives an invented verdict or deliverable.
+- Failed jobs retain the observed routing, repair, or validation stage and public
+  cause. Final and checkpoint summaries quote and bound reported text, identify
+  available evidence, and give a safe next action without replaying work. Only
+  independently accepted jobs advertise a review patch.
 - The optional `progress` broadcast channel reports routing and the repair
   specialist's observed baseline, proposal, check, and finish phases. A `settled`
   update follows the durable checkpoint. Progress never establishes acceptance;

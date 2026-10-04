@@ -9,6 +9,7 @@ import {
   inspect,
   readRepairInput,
   repairDeliverables,
+  reportedText,
   writeRepairDeliverables,
 } from './files.ts'
 import { candidates, methods } from './methods.ts'
@@ -227,6 +228,7 @@ async function repairBatchWithProgress(
             ? undefined
             : setTimeout(() => selected.abort(), job.cancelAfterMs)
         let result: RunResult
+        let stage = job.method === undefined ? 'routing' : 'repair'
         try {
           run.signal.throwIfAborted()
           let candidateId = job.method
@@ -258,6 +260,7 @@ async function repairBatchWithProgress(
           if (selected.signal.aborted)
             throw new OperationError('CANCELLED', 'The routing and repair interval expired.')
           await publishPhase(job.id, 'invoking', 0, { method: method.id })
+          stage = 'repair'
           result = await invokeRepair(job.id, method, input, selected.signal)
         } catch (error) {
           run.signal.throwIfAborted()
@@ -266,6 +269,7 @@ async function repairBatchWithProgress(
           return {
             ...captured,
             status: 'failed',
+            stage,
             code: value.code ?? 'EXECUTION_FAILED',
             message: value.message ?? 'Routing or repair failed.',
             ...(value.details === undefined ? {} : { details: value.details }),
@@ -281,6 +285,7 @@ async function repairBatchWithProgress(
           return {
             ...captured,
             status: 'failed',
+            stage: 'validation',
             code: 'INVALID_RESULT',
             message: error instanceof Error ? error.message : 'Invalid worker evidence.',
             rejectedResult: result,
@@ -378,9 +383,15 @@ async function repairBatchWithProgress(
 function summary(value: JsonValue): string {
   const job = value as unknown as {
     id: string
+    status: 'failed' | 'unrouted' | 'settled'
+    stage: string
     ready?: boolean
     code?: string
+    message?: string
+    details?: JsonValue
+    result?: RunResult
     routing: {
+      mode: 'explicit' | 'automatic'
       slot?: string
       result?: { outcome: string; output: { candidateId?: string | null; reason: string } }
     }
@@ -389,5 +400,39 @@ function summary(value: JsonValue): string {
   const selection =
     job.routing.slot ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
   const mode = job.routing.mode === 'explicit' ? 'explicit' : 'automatic'
-  return `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing (${mode}): ${selection}${job.code ? `; ${job.code}` : ''}${route ? `; ${route.output.reason.replace(/[\r\n]+/g, ' ')}` : ''}`
+  const lines = [
+    `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing (${mode}): ${selection}`,
+  ]
+  if (route) lines.push(`  Reported routing reason: ${reportedText(route.output.reason)}`)
+  if (job.status === 'failed') {
+    lines.push(
+      `  Failed stage: ${job.stage}; code: ${reportedText(job.code ?? 'EXECUTION_FAILED')}`,
+      `  Reported cause: ${reportedText(job.message ?? 'No public cause was supplied.')}`,
+      `  Evidence: result.json${job.details === undefined ? '' : ' (includes retained failure details)'}; no verified patch for this job.`,
+      `  Next step: ${
+        job.code === 'UNCERTAIN'
+          ? 'Inspect retained evidence and confirm settlement before choosing a new Run.'
+          : job.stage === 'validation'
+            ? 'Inspect the rejected worker result; correct the worker or Binding and review before a new Run.'
+            : 'Inspect the reported cause and selected Agent setup. Review configuration changes before choosing a new Run.'
+      }`,
+    )
+  } else if (job.status === 'unrouted') {
+    lines.push(
+      '  Evidence: result.json contains the routing decision; no repair was dispatched.',
+      '  Next step: inspect that decision; clarify the issue or select a reviewed method explicitly for a new Run.',
+    )
+  } else {
+    const evidence = job.result!.output as { reason: string; attempts: { proposal?: unknown }[] }
+    const proposals = evidence.attempts.flatMap((attempt, index) =>
+      attempt.proposal === undefined ? [] : [`${job.id}/proposal-${index + 1}.patch`],
+    )
+    lines.push(
+      `  Acceptance: ${job.result!.outcome}`,
+      `  Reported reason: ${reportedText(evidence.reason)}`,
+      `  Evidence: result.json; ${proposals.join(', ') || 'no validated proposals'}${job.ready ? `; ${job.id}/review.patch` : ''}.`,
+      `  Next step: ${job.ready ? 'Review the patch and command evidence before applying it.' : 'Inspect the checks and proposal evidence; do not apply an unaccepted proposal.'}`,
+    )
+  }
+  return lines.join('\n')
 }

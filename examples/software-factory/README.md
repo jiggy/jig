@@ -39,6 +39,16 @@ the issue and its candidate passed both the fixed repository command and every
 independent case. An unsuccessful peer remains explicit and does not erase a
 healthy packet. Checkpoint evidence retains settled work if the root Run is
 interrupted after a worker finishes.
+For a failed job, the summary names the observed routing, repair, or evidence
+validation stage, quotes the public cause, and points to retained details in
+`result.json`. A native ACP cause may name the failed protocol request; that
+identifies the phase, not an authentication, model, or service diagnosis. Check
+the selected Agent's ordinary setup when investigating it. No verified patch is
+claimed for that job and no work is retried automatically. Confirm settlement
+before choosing another Run, and review any changed configuration first.
+For a settled unsuccessful proposal, inspect its command evidence and proposal
+patches; these are not accepted patches to apply. A healthy job's `review.patch`
+remains available even when the batch outcome is `blocked`.
 Use `--receive progress --json` to observe method selection and the repair
 specialist's baseline, proposal, check, and finish phases. The broadcast channel
 does not wait for a reader to accept each message. A `settled` notice follows
