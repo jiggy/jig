@@ -1649,9 +1649,7 @@ describe('finite Jig project commands', () => {
       const alias = join(root, 'alias')
       await symlink(root, alias)
       const args = ['run', 'flow:flows/work', '--input', `@${join(alias, 'issue.json')}`]
-      expect(privateCliCommandLifetimeMs(args)).toBe(
-        330_000,
-      )
+      expect(privateCliCommandLifetimeMs(args)).toBe(330_000)
       await writeFile(file, '{"captured":true}')
       let request: StartRootRunRequest | undefined
       const events: string[] = []
@@ -1881,9 +1879,7 @@ describe('finite Jig project commands', () => {
   })
 
   test('installed command lifetime encloses Run cleanup without extending invalid commands', () => {
-    expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'])).toBe(
-      330_000,
-    )
+    expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'])).toBe(330_000)
     expect(
       privateCliCommandLifetimeMs(['run', 'flow:flows/work', '--input', '{}', '--timeout', '24h']),
     ).toBe(86_700_000)
@@ -2305,6 +2301,24 @@ describe('finite Jig project commands', () => {
       'Review could not finish\n\n  Location: "flows/worker/FLOW.contract.json"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/0\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
     )
     expect(invocation.error).not.toContain('private parser detail')
+  })
+
+  test('checkpoint attachment failures explain the required root output authority', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private detail', {
+      code: 'PROJECT_CHECKPOINT_ATTACHMENT',
+      path: 'flows/diagnostic',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('Location: "flows/diagnostic"')
+    expect(invocation.error).toContain(
+      'declare a read-write attachment in FLOW.contract.json for the root Flow that uses Run Checkpoint',
+    )
+    expect(invocation.error).toContain('Diagnostic code: PROJECT_CHECKPOINT_ATTACHMENT')
+    expect(invocation.error).not.toContain('private detail')
   })
 
   test('author evaluation guidance includes the allowed project fields without echoing an exception', async () => {

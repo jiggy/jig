@@ -289,9 +289,7 @@ function closedTestErrorCauses(error: unknown): readonly string[] {
       typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)
         ? code
         : closedNativeTestCause(value)
-    result.push(
-      closedCode === undefined ? name : `${name}:${closedCode}`,
-    )
+    result.push(closedCode === undefined ? name : `${name}:${closedCode}`)
     if (value instanceof AggregateError) {
       for (const nested of value.errors.slice(0, 4)) visit(nested, depth + 1)
     }
@@ -1084,6 +1082,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PACKAGE_SYMLINK',
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
+      'PROJECT_CHECKPOINT_ATTACHMENT',
     ].includes(code)
   )
 }
