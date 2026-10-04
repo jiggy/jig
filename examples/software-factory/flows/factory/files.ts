@@ -192,7 +192,8 @@ export function inspect(input: Input, result: RunResult) {
       !tests.stderr.truncated
     const accepted = repositoryTestsPassed && acceptance.every((c) => c.passed)
     if (
-      !isDeepStrictEqual(acceptance, evaluation.acceptance) ||
+      !Array.isArray(evaluation.acceptance) ||
+      identity(acceptance) !== identity(evaluation.acceptance) ||
       evaluation.repositoryTestsPassed !== repositoryTestsPassed ||
       evaluation.accepted !== accepted
     )
