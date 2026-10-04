@@ -54,13 +54,19 @@ export function privateMacosExecutionPlan(
     return value
   }
   const embedded = (value: string): string => {
-    let result = value
-    for (const [destination, source] of mappings) result = result.split(destination).join(source)
-    return result
-      .split('/jig-output')
-      .join(join(data, 'output'))
-      .split('/tmp/')
-      .join(`${join(data, 'tmp')}/`)
+    try {
+      let changed = false
+      const parsed = JSON.parse(value, (_name, entry: unknown) => {
+        if (typeof entry !== 'string') return entry
+        const relocated = path(entry)
+        if (relocated !== entry) changed = true
+        return relocated
+      })
+      // Rewrite complete JSON string values, preserving escaping and keys.
+      return changed ? JSON.stringify(parsed) : value
+    } catch {
+      return path(value)
+    }
   }
   const environment = Object.fromEntries(
     Object.entries(intent.environment ?? {}).map(([name, value]) => [

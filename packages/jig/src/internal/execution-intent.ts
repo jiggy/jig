@@ -19,7 +19,7 @@ export interface PrivateExecutionIntent {
     readonly kind: 'file' | 'tree'
   }[]
   readonly environment?: Readonly<Record<string, string>>
-  /** Trusted environment values containing projected paths (including encoded argv). */
+  /** Relocate absolute scalar paths and JSON string values in trusted environment selections. */
   readonly relocateEnvironment?: boolean
   /** Bindings required when the host uses physical rather than virtual paths. */
   readonly relocatedEnvironment?: Readonly<Record<string, string>>
