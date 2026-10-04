@@ -207,6 +207,33 @@ describe('private native Codex Agent provider', () => {
     ).rejects.toThrow(PrivateCodexSandboxUnavailableError)
   })
 
+  linuxTest.each(['path', 'bundled'])(
+    '%s helper inspection failure retains the sandbox cause',
+    async (selection) => {
+      const fixture = await files('/var/tmp')
+      const tools = join(fixture.root, 'tools')
+      await mkdir(tools)
+      const helper = selection === 'path' ? join(tools, 'bwrap') : fixture.nativeBubblewrapPath
+      // An executable file can pass discovery while failing non-executing ELF inspection.
+      await writeFile(helper, 'private-helper-canary invalid ELF', { mode: 0o700 })
+      const host = await openPrivateInstalledBunHost(installedBunLocation, {
+        CODEX_PATH: fixture.executablePath,
+        PATH: selection === 'path' ? tools : '',
+        OPENAI_API_KEY: 'private-key-canary',
+        OPENAI_MODEL: 'test-model',
+      })
+      try {
+        await selectCodex(host)
+        throw new Error('Malformed helper unexpectedly qualified')
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'PROJECT_ACP_CODEX_SANDBOX' })
+        expect(String(error)).not.toContain(helper)
+        expect(String(error)).not.toContain('private-helper-canary')
+        expect(String(error)).not.toContain('private-key-canary')
+      }
+    },
+  )
+
   linuxTest('selects the Codex subscription by default and an explicit Responses API', async () => {
     const fixture = await files()
     const codexHome = join(fixture.root, 'canonical-home')

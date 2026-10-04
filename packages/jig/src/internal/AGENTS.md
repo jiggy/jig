@@ -376,7 +376,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
   corrective hints. Preserve known failures through planning and CLI rendering;
   raw exceptions, private paths and credentials never become recovery text.
-  Keep cause separate from guidance. Planning locates the selected client at
+  Keep cause separate from guidance. Installation and sandbox-helper advice
+  follows the installed Linux or qualified macOS host; rendering does not probe
+  clients, choose another installation, or change containment authority.
+  Codex helper discovery and runtime inspection preserve the sandbox stage,
+  distinct from inspection of the selected client's installation.
+  Planning locates the selected client at
   the captured Binding declaration and resource slot, when known; executable
   discovery failures do not imply a particular missing path or accept shell aliases.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP

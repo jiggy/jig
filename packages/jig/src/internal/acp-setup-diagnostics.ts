@@ -39,8 +39,12 @@ const clients = {
   codex: {
     name: 'Codex',
     path: 'CODEX_PATH',
-    installation:
-      'Use a supported Linux x86-64 Codex installation with its required libraries and sandbox helper.',
+    installation: {
+      linux:
+        'Use a supported Linux x86-64 Codex installation with its required libraries and sandbox helper.',
+      darwin:
+        "Use a supported native macOS Codex installation for this Mac's architecture, with its required libraries.",
+    },
     login:
       'Run codex login and use its operator-owned file-backed authentication; an expired credential needs a fresh login.',
     api: 'Configure OPENAI_API_KEY and a model in the ACP grant or OPENAI_MODEL for Responses; OPENAI_API, if set, must be responses. Check OPENAI_BASE_URL if overridden.',
@@ -50,8 +54,12 @@ const clients = {
   claude: {
     name: 'Claude Code',
     path: 'CLAUDE_PATH',
-    installation:
-      'Use a supported Linux x86-64 native Claude Code installation with its required libraries.',
+    installation: {
+      linux:
+        'Use a supported Linux x86-64 native Claude Code installation with its required libraries.',
+      darwin:
+        "Use a supported native macOS Claude Code installation for this Mac's architecture, with its required libraries.",
+    },
     login: 'Configure CLAUDE_CODE_OAUTH_TOKEN with a valid Claude setup token.',
     api: 'Set exactly one of ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN and a model in the ACP grant or ANTHROPIC_MODEL. Check ANTHROPIC_BASE_URL if overridden.',
     model:
@@ -60,8 +68,12 @@ const clients = {
   pi: {
     name: 'Pi',
     path: 'PI_PATH',
-    installation:
-      'Use the supported standalone Linux x86-64 Pi 0.84.4 distribution with its package.json and theme directory; a Node/npm launcher is not supported.',
+    installation: {
+      linux:
+        'Use the supported standalone Linux x86-64 Pi 0.84.4 distribution with its package.json and theme directory; a Node/npm launcher is not supported.',
+      darwin:
+        "Use the supported standalone macOS Pi 0.84.4 distribution for this Mac's architecture, with its package.json and theme directory; a Node/npm launcher is not supported.",
+    },
     login:
       'Use valid Pi subscription authentication for PI_PROVIDER in the operator auth.json; check PI_CODING_AGENT_DIR if overridden.',
     api: 'Configure PI_PROVIDER, a model in the ACP grant or PI_MODEL, and a valid PI_API_KEY for the selected Pi API provider.',
@@ -96,24 +108,31 @@ export const ACP_SETUP_CAUSES: Readonly<Record<string, string>> = Object.freeze(
   ),
 )
 
-export const ACP_SETUP_HINTS: Readonly<Record<string, string>> = Object.freeze(
-  Object.fromEntries(
-    Object.entries(clients).flatMap(([client, profile]) => {
-      const hints = {
-        executable: `Select an executable ${profile.name} installation using ${profile.path} or operator PATH. Shell aliases and functions are not executable installations. An explicit ${profile.path} must be an absolute executable file and never falls back to PATH.`,
-        installation: profile.installation,
-        location: `Select a ${profile.name} installation whose executable and runtime files are outside reserved sandbox paths (/dev, /jig, /proc, /run, /sys, /tmp and /work). Use an operator-owned installation directory and update ${profile.path}.`,
-        wrapper: `The selected ${profile.name} launcher is an unsupported wrapper. Select the underlying supported native executable with ${profile.path}; Jig does not execute shell or npm wrappers to discover their dependencies.`,
-        sandbox:
-          'Install an unprivileged Bubblewrap helper supported by the selected Codex installation; do not bypass containment.',
-        login: profile.login,
-        api: profile.api,
-        model: profile.model,
-      }
-      return Object.entries(hints).map(([stage, hint]) => [
-        acpSetupCode(client as Client, stage as AcpSetupStage),
-        `${hint} Then retry jig review. No Flow was started by this review.`,
-      ])
-    }),
-  ),
-)
+/** Presentation follows the installed host; it does not choose or probe a client. */
+export function acpSetupHints(platform: 'linux' | 'darwin'): Readonly<Record<string, string>> {
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(clients).flatMap(([client, profile]) => {
+        const hints = {
+          executable: `Select an executable ${profile.name} installation using ${profile.path} or operator PATH. Shell aliases and functions are not executable installations. An explicit ${profile.path} must be an absolute executable file and never falls back to PATH.`,
+          installation: profile.installation[platform],
+          location: `Select a ${profile.name} installation whose executable and runtime files are outside reserved sandbox paths (/dev, /jig, /proc, /run, /sys, /tmp and /work). Use an operator-owned installation directory and update ${profile.path}.`,
+          wrapper: `The selected ${profile.name} launcher is an unsupported wrapper. Select the underlying supported native executable with ${profile.path}; Jig does not execute shell or npm wrappers to discover their dependencies.`,
+          sandbox:
+            platform === 'darwin'
+              ? 'Use a qualified Jig macOS host with its system /usr/bin/sandbox-exec helper intact; do not replace system helpers or bypass containment. See https://jig.md/guide/agents for supported native installations.'
+              : 'Install an unprivileged Bubblewrap helper supported by the selected Codex installation; do not bypass containment.',
+          login: profile.login,
+          api: profile.api,
+          model: profile.model,
+        }
+        return Object.entries(hints).map(([stage, hint]) => [
+          acpSetupCode(client as Client, stage as AcpSetupStage),
+          `${hint} Then retry jig review. No Flow was started by this review.`,
+        ])
+      }),
+    ),
+  )
+}
+
+export const ACP_SETUP_HINTS = acpSetupHints(process.platform === 'darwin' ? 'darwin' : 'linux')
