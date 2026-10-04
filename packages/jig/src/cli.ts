@@ -30,13 +30,13 @@ import {
 } from './internal/activation-admission-store.js'
 import { importContract } from './internal/contract-import.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
-import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import {
   PrivateFileInputError,
   privateCaptureAttachments,
   privateReadOperatorFile,
   sha256,
 } from './internal/file-input.js'
+import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { privateProfileSpan } from './internal/private-profile.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
@@ -1492,6 +1492,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'select only attachment names declared read-only in the Flow contract',
       PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED:
         'the selected Binding files could not be retained consistently; review stable source directories again',
+      PROJECT_CHECKPOINT_ATTACHMENT:
+        'declare a read-write attachment in FLOW.contract.json for the root Flow that uses Run Checkpoint',
       PROJECT_BINDING_PACKAGE_MISSING:
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
       PROJECT_ENTRYPOINT_INVALID:

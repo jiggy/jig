@@ -22,6 +22,24 @@ const missingPlan = `sha256:${'0'.repeat(64)}`
 setDefaultTimeout(30_000)
 
 describe('private finite project session', () => {
+  test('checkpoint attachment mistakes remain actionable candidate failures', () => {
+    const failure = projectError(
+      new CheckError(
+        'invalid',
+        'PROJECT_CHECKPOINT_ATTACHMENT',
+        'private checkpoint detail',
+        'flows/diagnostic',
+      ),
+      'plan',
+    )
+    expect(failure.code).toBe('INVALID_CANDIDATE')
+    expect(failure.diagnostic).toEqual({
+      code: 'PROJECT_CHECKPOINT_ATTACHMENT',
+      path: 'flows/diagnostic',
+    })
+    expect(JSON.stringify(failure)).not.toContain('private checkpoint detail')
+  })
+
   test('manifest diagnostics distinguish already-scoped workspace paths from standalone packages', () => {
     const standalone = new PrivateBunManifestError('SOURCE', '/dependencies/x')
     expect(scopePrivatePackagePlanningError(standalone, 'flows/demo')).toMatchObject({

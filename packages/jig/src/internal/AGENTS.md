@@ -617,6 +617,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
   which require it.
+  Missing root writable authority for Run Checkpoint retains
+  `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate and directs the
+  caller to its invocation attachment declaration; do not hide it as `INTERNAL`.
   Recognized Volta dispatchers are unsupported wrappers, not native clients;
   refuse them during selection with the existing wrapper diagnostic. Preserve
   that cause through Codex opening, without executing the dispatcher or choosing
