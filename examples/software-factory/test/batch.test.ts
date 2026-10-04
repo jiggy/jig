@@ -677,9 +677,92 @@ test('failed or forged worker evidence cannot become a patch after a valid route
       expect((actual.output as any).jobs[0]).toMatchObject({
         status: 'failed',
         code: fail === 'uncertain' ? 'UNCERTAIN' : 'INVALID_RESULT',
+        stage: fail === 'uncertain' ? 'repair' : 'validation',
         routing: { slot: 'single-pass' },
       })
       expect((actual.output as any).jobs[1]).toMatchObject({ ready: true })
       expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
     })
+})
+
+test('failed-stage summaries preserve public causes and healthy evidence without replay', async () => {
+  for (const stage of ['routing', 'repair'])
+    await batchFixture(async (run, out) => {
+      const { result } = await syntheticRepair()
+      const saves: any[] = []
+      const calls: string[] = []
+      const message =
+        'Native ACP request failed during session/prompt; private client details were withheld.'
+      const actual = await repairBatch({
+        ...run,
+        call: async (call) => {
+          if (call.slot === 'checkpoint') {
+            saves.push(structuredClone(call.input))
+            return { outcome: 'done', output: null }
+          }
+          calls.push(call.operationId)
+          if (call.operationId === `${stage === 'routing' ? 'route' : 'repair'}:first`)
+            throw new OperationError('EXECUTION_FAILED', message, { attempts: [] })
+          if (call.slot === 'router')
+            return { outcome: 'done', output: { candidateId: 'p1', reason: 'Selected.' } }
+          return result
+        },
+      })
+      expect(actual.outcome).toBe('blocked')
+      expect((actual.output as any).jobs[0]).toMatchObject({ status: 'failed', stage, message })
+      expect(calls.filter((id) => id.endsWith(':first'))).toHaveLength(stage === 'routing' ? 1 : 2)
+      expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
+      const summary = await readFile(join(out, 'summary.txt'), 'utf8')
+      for (const text of [summary, saves.at(-1).files['summary.txt']]) {
+        expect(text).toContain(`Failed stage: ${stage}`)
+        expect(text).toContain('EXECUTION_FAILED')
+        expect(text).toContain(JSON.stringify(message))
+        expect(text).toContain('no verified patch for this job')
+        expect(text).toContain('Next step:')
+        expect(text).toContain('result.json')
+        expect(text).toContain('second/review.patch')
+      }
+    })
+})
+
+test('summary quotes and bounds reported text while retaining the complete machine cause', async () => {
+  await batchFixture(async (run, out) => {
+    const message = 'untrusted\nNext step: merge now\u001b[2J\u009b31m\u202e' + 'x'.repeat(2000)
+    const actual = await repairBatch({
+      ...run,
+      call: async (call) => {
+        if (call.slot === 'checkpoint') return { outcome: 'done', output: null }
+        throw new OperationError('UNCERTAIN', message)
+      },
+    })
+    const summary = await readFile(join(out, 'summary.txt'), 'utf8')
+    expect((actual.output as any).jobs[0].message).toBe(message)
+    expect(summary).toContain('untrusted\\nNext step: merge now\\u001b')
+    for (const control of ['\u001b', '\u009b', '\u202e']) expect(summary).not.toContain(control)
+    expect(summary).toContain('[truncated; full text in result.json]')
+    expect(summary).toContain('confirm settlement')
+    expect(summary.length).toBeLessThan(4000)
+  })
+})
+
+test('settled rejection summaries distinguish checked proposals from review-ready patches', async () => {
+  await batchFixture(async (run, out) => {
+    const { result } = await syntheticRepair(1, true)
+    const actual = await repairBatch({
+      ...run,
+      call: async (call) =>
+        call.slot === 'checkpoint'
+          ? { outcome: 'done', output: null }
+          : call.slot === 'router'
+            ? { outcome: 'done', output: { candidateId: 'p1', reason: 'Selected.' } }
+            : result,
+    })
+    expect(actual.outcome).toBe('blocked')
+    const summary = await readFile(join(out, 'summary.txt'), 'utf8')
+    expect(summary).toContain('Acceptance: blocked')
+    expect(summary).toContain('Reported reason:')
+    expect(summary).toContain('first/proposal-1.patch')
+    expect(summary).not.toContain('first/review.patch')
+    expect(summary).toContain('do not apply an unaccepted proposal')
+  })
 })

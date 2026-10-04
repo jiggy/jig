@@ -125,6 +125,16 @@ export function unifiedPatch(path: string, before: string, after: string): strin
 }
 
 type Input = Awaited<ReturnType<typeof readRepairInput>>
+
+/** Report collaborator text as bounded data; complete evidence stays in result.json. */
+export function reportedText(value: string): string {
+  const text = JSON.stringify(value.slice(0, 1024)).replace(
+    /[\u007f-\u009f\u2028-\u202e\u2066-\u2069]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  )
+  return text + (value.length > 1024 ? ' [truncated; full text in result.json]' : '')
+}
+
 export function inspect(input: Input, result: RunResult) {
   const evidence = result.output as any
   if (
@@ -234,7 +244,7 @@ export function inspect(input: Input, result: RunResult) {
 export function repairDeliverables(input: Input, result: RunResult): Record<string, string> {
   const summary = inspect(input, result)
   const files: Record<string, string> = {
-    'summary.txt': `${summary.ready ? 'review-ready' : 'unsuccessful'}\n${summary.reason}\n${summary.proposals.length} validated proposal(s). See result.json for command output, termination, and individual assertions.\n`,
+    'summary.txt': `${summary.ready ? 'review-ready' : 'unsuccessful'}\nReported reason: ${reportedText(summary.reason)}\n${summary.proposals.length} validated proposal(s). See result.json for command output, termination, and individual assertions.\n`,
   }
   for (const proposal of summary.proposals)
     files[`proposal-${proposal.number}.patch`] = proposal.patch
