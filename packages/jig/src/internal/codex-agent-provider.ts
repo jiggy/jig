@@ -134,7 +134,7 @@ export async function openPrivateCodexAgentProvider(
     )
     if (bubblewrapRuntime.pathPrefix) throw new Error('wrapped Bubblewrap is unsupported')
   } catch (error) {
-    throw new PrivateCodexRuntimeUnavailableError('the Codex sandbox runtime is unavailable', {
+    throw new PrivateCodexSandboxUnavailableError('the Codex sandbox runtime is unavailable', {
       cause: error,
     })
   }

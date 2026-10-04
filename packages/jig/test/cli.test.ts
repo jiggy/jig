@@ -2455,7 +2455,26 @@ describe('finite Jig project commands', () => {
     ['PROJECT_ACP_CODEX_EXECUTABLE', 'CODEX_PATH'],
     ['PROJECT_ACP_CLAUDE_LOGIN', 'CLAUDE_CODE_OAUTH_TOKEN'],
     ['PROJECT_ACP_PI_MODEL', 'model in the ACP grant or PI_MODEL'],
-    ['PROJECT_ACP_PI_INSTALLATION', 'standalone Linux x86-64 Pi 0.84.4'],
+    [
+      'PROJECT_ACP_CODEX_INSTALLATION',
+      process.platform === 'darwin' ? 'native macOS Codex' : 'Linux x86-64 Codex',
+    ],
+    [
+      'PROJECT_ACP_CLAUDE_INSTALLATION',
+      process.platform === 'darwin'
+        ? 'native macOS Claude Code'
+        : 'Linux x86-64 native Claude Code',
+    ],
+    [
+      'PROJECT_ACP_PI_INSTALLATION',
+      process.platform === 'darwin'
+        ? 'standalone macOS Pi 0.84.4'
+        : 'standalone Linux x86-64 Pi 0.84.4',
+    ],
+    [
+      'PROJECT_ACP_CODEX_SANDBOX',
+      process.platform === 'darwin' ? '/usr/bin/sandbox-exec' : 'unprivileged Bubblewrap',
+    ],
     ['PROJECT_ACP_CODEX_API', 'OPENAI_API_KEY and a model in the ACP grant'],
   ])(
     'ACP setup code %s identifies a specific correction without private errors',
@@ -2484,6 +2503,10 @@ describe('finite Jig project commands', () => {
       }
       expect(invocation.error).not.toContain('secret-token')
       expect(invocation.error).not.toContain('/private/runtime')
+      if (process.platform === 'darwin') {
+        expect(invocation.error).not.toContain('Linux')
+        expect(invocation.error).not.toContain('Bubblewrap')
+      }
       expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     },
   )
