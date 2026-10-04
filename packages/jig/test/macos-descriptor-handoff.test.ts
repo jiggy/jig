@@ -183,8 +183,17 @@ native(
         await expect(pending).rejects.toThrow()
         await expect(receiver.receive(owner, 20)).rejects.toThrow('timed out')
         const waiting = receiver.receive(owner, 2000)
+        // Closing can reject receive while asynchronous descriptor cleanup is pending.
+        const settling = Promise.allSettled([waiting])
         await receiver.close()
-        await expect(waiting).rejects.toThrow('closed')
+        // Exercise rejection before its later inspection, including slow cleanup.
+        await Bun.sleep(20)
+        expect(await settling).toEqual([
+          {
+            status: 'rejected',
+            reason: expect.objectContaining({ message: expect.stringContaining('closed') }),
+          },
+        ])
       } finally {
         await receiver.close()
       }

@@ -20,6 +20,68 @@ const proofDescribe =
 const entryWallClockCeilingMs = process.platform === 'darwin' ? 10_000 : 3_000
 
 proofDescribe('finite isolated author declaration batches', () => {
+  test.each([false, true])(
+    'blocking guest execution is fenced at the entry deadline (batch: %s)',
+    async (batch) => {
+      await fixture(
+        {
+          'jig.ts':
+            "import { defineJig } from '@jigging/jig'; export default defineJig({ flows: [] });",
+          'bindings/blocked.ts': 'while (true) {} export default {};',
+        },
+        async (_root, captured, options) => {
+          const blocked = batch
+            ? evaluateAuthorClosureBatch(options, captured, [
+                { entryProjectPath: 'jig.ts', expected: 'project' },
+                { entryProjectPath: 'bindings/blocked.ts', expected: 'binding' },
+              ])
+            : evaluateAuthorClosure(options, captured, 'bindings/blocked.ts', 'binding')
+          await expect(blocked).rejects.toMatchObject({
+            code: 'PROJECT_EVALUATOR_DEADLINE',
+            path: 'bindings/blocked.ts',
+          })
+          // A blocked guest cannot prevent its owner being reaped or later work.
+          expect(
+            (await evaluateAuthorClosure(options, captured, 'jig.ts', 'project')).value,
+          ).toMatchObject({ flows: { kind: 'members', paths: [] } })
+        },
+      )
+    },
+    30_000,
+  )
+
+  test('finite declarations use the enforced entry ceiling without a shorter VM timer', async () => {
+    await fixture(
+      {
+        'jig.ts':
+          "import { defineJig } from '@jigging/jig'; export default defineJig({ flows: [] });",
+        'bindings/finite.ts': `
+          import { defineBinding } from '@jigging/jig';
+          const until = Date.now() + 1200;
+          while (Date.now() < until) {}
+          export default defineBinding({ package: 'flows/work' });
+        `,
+      },
+      async (_root, captured, options) => {
+        const batch = await evaluateAuthorClosureBatch(options, captured, [
+          { entryProjectPath: 'jig.ts', expected: 'project' },
+          { entryProjectPath: 'bindings/finite.ts', expected: 'binding' },
+        ])
+        expect(batch[1]!.value).toMatchObject({ package: 'flows/work' })
+        expect(batch[1]!.profile.evaluation.entryWallClockCeilingMs).toBe(entryWallClockCeilingMs)
+        expect(batch[1]!.enforcement.terminal.fenced).toBeTrue()
+        const single = await evaluateAuthorClosure(
+          options,
+          captured,
+          'bindings/finite.ts',
+          'binding',
+        )
+        expect(single.value).toMatchObject({ package: 'flows/work' })
+        expect(single.enforcement.terminal.fenced).toBeTrue()
+      },
+    )
+  }, 30_000)
+
   test('shares envelope setup but not guest globals, module state, SDK instances or source bytes', async () => {
     await fixture(
       {
@@ -137,11 +199,9 @@ proofDescribe('finite isolated author declaration batches', () => {
           failure = error
         }
         expect(failure).toBeDefined()
-        expect([
-          'PROJECT_EVALUATOR_DEADLINE',
-          'PROJECT_EVALUATION_LIMIT',
-          'PROJECT_EVALUATOR_INTERRUPTED',
-        ]).toContain((failure as { code: string }).code)
+        expect(['PROJECT_EVALUATOR_DEADLINE', 'PROJECT_EVALUATOR_INTERRUPTED']).toContain(
+          (failure as { code: string }).code,
+        )
         // Bun may crash on this cross-realm getter rather than reach a timer.
         // A crash is not deadline evidence; the collector must fence either.
         expect(
