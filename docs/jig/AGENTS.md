@@ -20,7 +20,9 @@ use-case and orchestration hypotheses.
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
 - `guide/agents.md` owns ordinary Agent Flow selection, explicit operator
-  resource configuration, and current adapter limitations.
+  resource configuration, host-specific installation/helper recovery, and
+  current adapter limitations. Setup guidance distinguishes review-only
+  prerequisite checks from uncertain native Run failures.
   `guide/conversations.md` owns bounded same-session follow-up and interruption,
   including the distinction between control replies and final settlement, and
   explicit native retention and restoration under a separately reviewed grant.
