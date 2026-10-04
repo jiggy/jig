@@ -32,6 +32,13 @@ const RESPONSES = './contracts/finite-acp/responses.json'
 const MAX_TEXT_BYTES = 8_388_608
 
 type Settlement = { result: RunResult } | { error: unknown }
+type NativeRequestMethod =
+  | 'initialize'
+  | 'session/new'
+  | 'session/resume'
+  | 'session/set_config_option'
+  | 'session/set_mode'
+  | 'session/prompt'
 
 /** One replaceable method; process, credentials and reviewed policy stay outside. */
 export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
@@ -261,7 +268,7 @@ class FinitePeer {
     private readonly updates: OptionalUpdates,
   ) {}
 
-  async request(method: string, params: JsonObject): Promise<JsonObject> {
+  async request(method: NativeRequestMethod, params: JsonObject): Promise<JsonObject> {
     const id = ++this.operation
     await this.write({ jsonrpc: '2.0', id, method, params })
     for (;;) {
@@ -275,7 +282,10 @@ class FinitePeer {
       if (frame.id !== id || Object.hasOwn(frame, 'result') === Object.hasOwn(frame, 'error'))
         failure('Native ACP response does not match its request')
       if (frame.error !== undefined)
-        throw new OperationError('EXECUTION_FAILED', 'Native ACP request failed')
+        throw new OperationError(
+          'EXECUTION_FAILED',
+          `Native ACP request failed during ${method}; private client details were withheld.`,
+        )
       return object(frame.result)
     }
   }

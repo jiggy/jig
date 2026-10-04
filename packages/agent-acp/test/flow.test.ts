@@ -248,6 +248,54 @@ function fixture(options: Options = {}) {
   }
 }
 
+describe('native request failure diagnostics', () => {
+  test.each([
+    'initialize',
+    'session/new',
+    'session/resume',
+    'session/set_config_option',
+    'session/set_mode',
+    'session/prompt',
+  ])(
+    'identifies %s without exposing native error text or sending further requests',
+    async (method) => {
+      const restoring = method === 'session/resume'
+      const f = fixture({
+        ...(restoring
+          ? {
+              input: {
+                instructions: 'Continue.',
+                session: { restore: '013579ab-cdef-4567-89ab-0123456789ab' },
+              },
+              ready: { ...ready, restoreSessionId: 'owned-session' },
+            }
+          : {}),
+        async emit(frame, send) {
+          if (frame.method !== method) return false
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            error: {
+              code: -32603,
+              message: '/private/native-state secret-token rejected private-model',
+              data: { credential: 'secret-token', cause: 'untrusted native detail' },
+            },
+          })
+          return true
+        },
+      })
+      const failure = await agentAcpFlow(f.run).catch((error) => error)
+      expect(failure).toBeInstanceOf(OperationError)
+      expect(failure).toMatchObject({
+        code: 'EXECUTION_FAILED',
+        message: `Native ACP request failed during ${method}; private client details were withheld.`,
+      })
+      expect(f.frames.at(-1)?.method).toBe(method)
+      expect(f.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
+    },
+  )
+})
+
 describe('ordinary session retention and restoration', () => {
   test.each(['active', 'settled'])(
     'notice display during %s does not enter answers or selected public events',

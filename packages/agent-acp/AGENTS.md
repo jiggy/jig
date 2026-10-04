@@ -47,6 +47,9 @@ retains credential, process, and dispatch authority.
   closes the writer with `error: 'LAGGED'`; no clean EOF hides incomplete output.
   Closed native warning notices go to console diagnostics, not answer text or
   public events; the host strips raw metadata and rejects authoritative errors.
+- A native request rejection reports its known finite ACP method with
+  `EXECUTION_FAILED`, never the client's error text or data. That phase does not
+  establish the private cause, remote dispatch or permission to retry.
 - Optional conversational mode owns bounded direct commands/replies and per-turn
   results in `src/conversation.ts`. Native maxTurns, serial dispatch and interruption
   settlement remain host-enforced. One-shot calls retain their simple interface.
