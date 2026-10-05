@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 
 import { defineBinding, defineJig, discover } from '../src/index.js'
+import { PrivateFiniteAcpPolicy } from '../src/internal/finite-acp-policy.js'
+import { normalizeGrant } from '../src/project/grants.js'
 import { compileSchemaFile, SchemaDiagnostic } from '../src/schema/index.js'
 
 const schema = compileSchemaFile(
@@ -12,7 +14,7 @@ const schema = compileSchemaFile(
 )
 
 const project = defineJig({
-  entrypoint: "binding:review --input @job.json --timeout 8m",
+  entrypoint: 'binding:review --input @job.json --timeout 8m',
   flows: discover('./flows'),
   bindings: ['./bindings/review.ts'],
   defaultProviders: { 'https://example.org/contracts/review': 'binding:review' },
@@ -31,6 +33,27 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 }
 
 describe('Project Authoring SDK/1 shape schema', () => {
+  test('native turn bounds agree across authoring, the published schema and host policy', () => {
+    for (const maxTurns of [1, 8, 0, 9, -1, 1.5, '2', null]) {
+      const value = changed(binding, (item) => {
+        item.slots.native = { kind: 'acp', client: 'codex', maxTurns }
+      })
+      const validateSchema = () => schema.validate(value, 'INVALID_PROJECT_AUTHORING')
+      const author = () => normalizeGrant({ kind: 'acp', client: 'codex', maxTurns })
+      const host = () => new PrivateFiniteAcpPolicy({ maxTurns: maxTurns as number })
+      if (maxTurns === 1 || maxTurns === 8) {
+        expect(validateSchema).not.toThrow()
+        expect(author).not.toThrow()
+        expect(host).not.toThrow()
+      } else {
+        expect(validateSchema).toThrow()
+        expect(author).toThrow()
+        // Null is not an omitted grant. The host must reject the same explicit
+        // invalid configuration as authoring, even on a private direct call.
+        expect(host).toThrow()
+      }
+    }
+  })
   test('retention policy is explicit and confined to the qualified native client', () => {
     const value = changed(binding, (item) => {
       item.slots.native = { kind: 'acp', client: 'codex', retainSessions: true }

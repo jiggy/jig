@@ -30,6 +30,7 @@ import {
   PrivateFiniteAcpPolicy,
   PrivateFiniteAcpPolicyError,
 } from './finite-acp-policy.js'
+import { PRIVATE_NATIVE_TURN_POLICY } from './native-agent-turn-policy.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', { fatal: true })
@@ -81,7 +82,7 @@ export async function runPrivateFiniteAcpResource(
   runtime: PrivateAcpAgentRuntime,
   endpoints: PrivateFiniteAcpEndpoints,
   signal: AbortSignal,
-  maxTurns = 1,
+  maxTurns: number = PRIVATE_NATIVE_TURN_POLICY.default,
   session?: {
     readonly bootstrap: Uint8Array
     readonly restoreSessionId?: string

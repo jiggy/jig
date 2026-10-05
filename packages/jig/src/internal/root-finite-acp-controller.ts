@@ -89,6 +89,7 @@ import {
   requireParentFlowOwner,
   requireParentTarget,
 } from './invocation-context.js'
+import { PRIVATE_NATIVE_TURN_POLICY } from './native-agent-turn-policy.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 import { privateProfileSpan } from './private-profile.js'
 import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
@@ -204,7 +205,7 @@ export async function executePrivateRootFiniteAcp(
   let participant: ChannelParticipant | undefined
   try {
     const terminal = await executeOwnedProvider(input, provider, recipe, {
-      maxTurns: route.grant.maxTurns ?? 1,
+      maxTurns: route.grant.maxTurns ?? PRIVATE_NATIVE_TURN_POLICY.default,
       ...(session === undefined ? {} : { session }),
       digest: privateDomainDigest('JIG-Private-Finite-ACP-Request/1', {
         providerDigest: provider.digest,

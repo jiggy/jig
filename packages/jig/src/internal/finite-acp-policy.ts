@@ -1,4 +1,8 @@
-import { decodeJson1, type JsonObject, type JsonValue, JSON_1_LIMITS } from '../json.js'
+import { decodeJson1, JSON_1_LIMITS, type JsonObject, type JsonValue } from '../json.js'
+import {
+  isPrivateNativeTurnAllowance,
+  PRIVATE_NATIVE_TURN_POLICY,
+} from './native-agent-turn-policy.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const PRIVATE_FINITE_ACP_LIMITS = Object.freeze({
@@ -93,14 +97,10 @@ export class PrivateFiniteAcpPolicy {
     keys(policy, [], ['configuration', 'modeId', 'maxTurns', 'restoreSessionId'])
     if (Object.hasOwn(policy, 'restoreSessionId'))
       this.restoreSessionId = identifier(policy.restoreSessionId)
-    const maxTurns = policy.maxTurns ?? 1
-    if (
-      typeof maxTurns !== 'number' ||
-      !Number.isSafeInteger(maxTurns) ||
-      maxTurns < 1 ||
-      maxTurns > 8
-    )
-      fail('Invalid ACP turn allowance')
+    const maxTurns = Object.hasOwn(policy, 'maxTurns')
+      ? policy.maxTurns
+      : PRIVATE_NATIVE_TURN_POLICY.default
+    if (!isPrivateNativeTurnAllowance(maxTurns)) fail('Invalid ACP turn allowance')
     this.maxTurns = maxTurns
     const options = Object.hasOwn(policy, 'configuration') ? policy.configuration : []
     if (!Array.isArray(options) || options.length > 16) fail('Invalid finite ACP configuration')
