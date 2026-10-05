@@ -163,7 +163,10 @@ native(
           bun: process.execPath,
           supervisor,
         }),
-      ).rejects.toThrow('storage recovery is unconfirmed')
+      ).rejects.toMatchObject({
+        message: 'macOS storage recovery is unconfirmed',
+        cause: { code: 'MACOS_GUARDIAN_STORAGE_RECOVERY_OTHER' },
+      })
       expect(await exists(join(storage, 'volume.json'))).toBe(true)
       expect(await exists(join(owner, 'recovery/owner.json'))).toBe(true)
       expect(await exists(mount)).toBe(false)

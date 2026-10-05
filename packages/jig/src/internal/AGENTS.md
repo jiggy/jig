@@ -1031,7 +1031,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   report cleanup. Lifecycle repeat-success checks assert
   the Agent result as well as the outer Flow terminal.
   Project-session host-test causes distinguish fixed Mac cleanup refusals behind
-  an unconfirmed fence. Their exported classifier remains a private test seam;
+  an unconfirmed fence. Storage recovery retains its guardian's closed failure
+  step and cause behind the unconfirmed-cleanup error. The exported classifier
+  remains a private test seam;
   raw messages and unreadable message getters cannot become evidence. These
   codes change neither the public terminal nor recovery authority.
 - Mac repair application qualification uses the public guide’s five-minute Run

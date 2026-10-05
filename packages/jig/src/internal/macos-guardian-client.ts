@@ -189,10 +189,12 @@ async function recoverStorageWithGuardian(
   })
   recovery.stdout.resume()
   recovery.stderr.resume()
-  void recovery.admit().catch(() => undefined) // Recovery has no payload readiness gate.
+  // Recovery has no payload readiness gate. Retain its closed preparation
+  // failure so an unconfirmed cleanup does not erase the diagnostic cause.
+  const admission = recovery.admit().catch((error: unknown) => error)
   const result = await recovery.completion
   if (result.recovered || result.outputLost || result.result !== null)
-    throw new Error('macOS storage recovery is unconfirmed')
+    throw new Error('macOS storage recovery is unconfirmed', { cause: await admission })
 }
 export interface PrivateMacosGuardianResult {
   readonly result: PrivateMacosScopeResult | null
