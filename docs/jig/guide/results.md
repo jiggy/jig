@@ -140,8 +140,11 @@ destination for another Run.
 Review names the selected Agent, explains the known setup failure, and points to
 the Binding declaration and resource slot that selected it. For example, a
 Codex executable error points to the grant selecting `client: 'codex'`.
-Supply an actual executable through `CODEX_PATH` or operator `PATH`; shell
-aliases and functions are not executables. An explicit override must be an
+Select an installed client through `CODEX_PATH` or operator `PATH`; Codex's
+supported npm and Volta layouts resolve to their native executable without
+running the launcher. Shell aliases and functions are not executables.
+An unsupported wrapper requires selecting the underlying native file.
+An explicit override must be an
 absolute executable file and does not fall back to `PATH`. Change the resource
 grant if you intended to use another client, then review again.
 

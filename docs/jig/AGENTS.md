@@ -23,6 +23,10 @@ use-case and orchestration hypotheses.
   resource configuration, host-specific installation/helper recovery, and
   current adapter limitations. Setup guidance distinguishes review-only
   prerequisite checks from uncertain native Run failures.
+  Codex installation guidance covers static npm/Volta native selection and
+  defers its exact metadata bounds and exclusions to `spec/finite-acp.md`.
+  Keep installed-client session qualification limits distinct from successful
+  launcher discovery and review; neither proves model execution.
   `guide/conversations.md` owns bounded same-session follow-up and interruption,
   including the distinction between control replies and final settlement, and
   explicit native retention and restoration under a separately reviewed grant.

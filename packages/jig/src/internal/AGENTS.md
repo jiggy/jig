@@ -395,6 +395,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   bounded process ownership. Ordinary Agent packages own method preparation,
   response interpretation and optional updates; no Agent method runs inside
   the coordinator.
+  `codex-installation.ts` resolves the current official npm Codex launcher and
+  Volta's recorded Npm installation to the declared native platform package.
+  Read only bounded regular metadata, at most 64 KiB per record and 32 package
+  ancestors; never execute a dispatcher, JavaScript launcher or package manager.
+  Metadata and inferred native paths stay outside project routes even with an
+  explicit wrapper override. An existing invalid nearest package cannot fall
+  back to another installation. Only native executable/support bytes enter the
+  provider identity and execution projection; launch never rediscovers metadata.
 - `private-acp-resources.ts` captures operator configuration before project
   loading and resolves only each target's exact granted clients. Selected
   runtime identities enter the recipe and review; launch revalidates their
@@ -677,10 +685,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Missing root writable authority for Run Checkpoint retains
   `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate and directs the
   caller to its invocation attachment declaration; do not hide it as `INTERNAL`.
-  Recognized Volta dispatchers are unsupported wrappers, not native clients;
-  refuse them during selection with the existing wrapper diagnostic. Preserve
-  that cause through Codex opening, without executing the dispatcher or choosing
-  a different installation. The operator may select the actual native binary.
+  Unsupported Volta selections retain the existing wrapper diagnostic, including
+  Claude/Pi and Codex installations outside the supported static npm profile.
+  Preserve that cause through Codex opening without executing the dispatcher
+  or choosing another installation. The operator may select the actual native binary.
   The private project-session acquisition and operation callbacks permit
   selected host tests to observe only a fixed phase or operation and bounded
   error class/code chain; never include raw messages, paths, or rejected values

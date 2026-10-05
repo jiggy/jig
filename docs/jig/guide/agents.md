@@ -145,13 +145,20 @@ Discovery skips relative PATH entries, the project tree, and ancestor
 `node_modules` directories, including symlink routes through them. Shell aliases
 are not visible to Jig. The adapters require supported native installations;
 a shell wrapper or npm JavaScript launcher is not itself the native executable.
+For Codex's current official npm layout, Jig finds the matching native package
+without running the launcher. This also works with Volta's recorded global npm
+installation. Review shows the native binary that will run; no extra path
+setting is needed for these layouts. Unsupported launchers still require an
+explicit native executable. See the [selection rules](../spec/finite-acp.md#native-client-profiles)
+for the supported metadata and project exclusions.
 
 ### Codex
 
 Install Codex and sign in as the OS user running Jig, using
 [Codex's login instructions](https://developers.openai.com/codex/auth/).
 Jig supports standalone Linux x86-64 Codex binaries, native packages using
-Nix's binary PATH wrapper, and native Mach-O clients on qualified Macs. It
+Nix's binary PATH wrapper, the current official npm layout (including Volta),
+and native Mach-O clients on qualified Macs. It
 retains the executable and required non-system shared libraries as individual
 reviewed files.
 
@@ -165,6 +172,14 @@ On qualified Macs, Codex uses the system `/usr/bin/sandbox-exec` helper.
 Select a native installation for your Mac's architecture; no separate
 Bubblewrap installation is needed. A missing or unverifiable system helper
 requires repairing the supported host, not replacing it with another helper.
+
+Review checks the installation without opening a native session. Codex 0.159.0
+currently fails the separate offline session check on Mac with
+`Failed to synchronize managed preferences`: the client requires a macOS
+preference refresh that Jig's current containment does not support. Resolving
+its npm or Volta launcher does not resolve that startup failure. This client
+needs a correction that preserves the execution boundary before Mac Runs can
+be qualified.
 
 The current adapter reads a file-backed login from `$CODEX_HOME/auth.json`,
 defaulting to `~/.codex/auth.json`. Configure Codex with

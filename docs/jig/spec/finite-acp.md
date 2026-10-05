@@ -354,8 +354,29 @@ Jig searches the operator's `PATH` in order for `codex`, `claude`, or `pi`.
 Empty and relative entries are ignored. Implicit discovery excludes the project
 tree and ancestor `node_modules` directories, including symlink routes through
 those locations. Operator-managed symlinks are supported. Shell aliases are not
-executables, and discovery does not make shell wrappers or JavaScript launchers
-supported native clients.
+executables. For Codex, the current official npm `bin/codex.js` layout resolves
+statically to its declared `@openai/codex-<os>-<cpu>` native dependency. The
+launcher manifest must name `@openai/codex`, declare that bin, and pin the
+matching platform alias; the native package must match its version, OS and CPU.
+The nearest installed platform package wins; an invalid package cannot fall
+back to another copy. Lookup is bounded to 32 ancestors of the selected launcher.
+
+Codex also recognizes a Volta dispatcher in its `bin` directory. It reads the
+operator's absolute `VOLTA_HOME`, when set, or the dispatcher's installation
+root. The bounded `tools/user/bins/codex.json` record must select the matching
+`@openai/codex` version with the Npm manager, and its recorded image's bin must
+resolve to the supported npm layout. This selects Volta's global installation;
+project-local tool dependencies remain excluded. Invalid explicit `VOLTA_HOME`
+does not fall back to the dispatcher root. These installation records are
+regular UTF-8 JSON files of at most 64 KiB each, and all inferred metadata and
+native paths must remain outside project routes, including with an explicit
+launcher override.
+
+Jig never executes these dispatchers or npm launchers, interprets their program
+contents or extra flags/environment, or retains their Node runtime. It resolves
+the native file before ordinary runtime inspection and review. Unsupported
+layouts retain the wrapper refusal; a direct native executable remains an
+explicit selection option. This does not add npm or Volta support for Claude/Pi.
 
 The selected regular executable and client-specific support files receive the
 same validation and identity checks with either selection method. Invalid client
@@ -369,7 +390,8 @@ On Linux, all three native adapters inspect x86-64 ELF executables. Codex and
 Claude Code also accept the declarative `makeBinaryWrapper` form which preserves
 arguments and prefixes PATH; Pi requires its unwrapped standalone executable.
 Arbitrary shell/JavaScript wrappers, wrapper flags or environment changes, and nested
-wrappers are unsupported. Jig reads installation metadata without executing the
+wrappers are unsupported. The static Codex npm selection above does not execute
+a wrapper. Jig reads installation metadata without executing the
 client during review. It retains the wrapped executable, ELF interpreter, and
 transitive shared libraries as individual regular files at their installation
 paths. Library resolution uses ELF RUNPATH/RPATH, `$ORIGIN`, the selected

@@ -53,6 +53,9 @@ descriptors.
   and cleanup, including separately authorized bounded native retention,
   single-use restoration and clean-exit receipts. Ordinary packages own Agent
   dialogue and answer interpretation.
+  Its native selection profile includes bounded static resolution of official
+  Codex npm/Volta installations without executing their launchers, importing
+  Node or using project-selected dependencies.
 - `channels.md` owns Jig's direct/broadcast channel support, local limits and
   installed NDJSON output. `contracts/acp-public-updates.json`
   defines the exact optional Agent update meaning, not raw ACP access.
