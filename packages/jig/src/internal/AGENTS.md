@@ -402,7 +402,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   the captured Binding declaration and resource slot, when known; executable
   discovery failures do not imply a particular missing path or accept shell aliases.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
-  conversation. `finite-acp-resource.ts` owns bounded framing, private startup
+  conversation. `native-agent-turn-policy.ts` owns Jig's default and allowed
+  turn range for grant validation, controller dispatch and finite ACP enforcement.
+  Only omission uses the default; explicit invalid values remain refusals.
+  Independent Agent transport contracts retain their own wire validation.
+  `finite-acp-resource.ts` owns bounded framing, private startup
   and authentication, and essential channel delivery. Ordinary Agent Flows own
   protocol dialogue and answer interpretation. The resource reports actual
   termination only; `root-finite-acp-controller.ts` owns its durable lifetime,
