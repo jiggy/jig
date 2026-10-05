@@ -365,6 +365,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   arbitrary error codes across this channel. Project Command qualification logs these
   events. Portable tests cover redaction and scope isolation; the native
   guardian-loss test verifies reporting and recovery with a throwing observer.
+  Agent lifecycle fault qualification scopes the same closed recovery observer
+  to each case and names the fixed scenario before dispatch. Failed cases retain
+  their project and installed fixture; recursive fixture removal requires the
+  completed result and residue assertions, never swallowed settlement failure.
   Native injected storage and scope-preparation failures verify the returned
   diagnostic after actual fencing and storage cleanup.
   Ordinary tests compile the same injected guardian constructions so source
@@ -1010,6 +1014,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and receipt cancellation report settlement; output descriptor-close failures
   report cleanup. Lifecycle repeat-success checks assert
   the Agent result as well as the outer Flow terminal.
+  Project-session host-test causes distinguish fixed Mac cleanup refusals behind
+  an unconfirmed fence. Their exported classifier remains a private test seam;
+  raw messages and unreadable message getters cannot become evidence. These
+  codes change neither the public terminal nor recovery authority.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing
   two/three-minute fixture budgets; production defaults remain unchanged.

@@ -10,6 +10,7 @@ import { RootAdministrationError } from '../src/administration/root.js'
 import { CheckError } from '../src/diagnostics.js'
 import { PrivateBunManifestError } from '../src/internal/bun-native-lock-policy.js'
 import {
+  closedTestErrorCauses,
   openPrivateProjectSession,
   type PrivateProjectSessionHost,
   projectError,
@@ -22,6 +23,38 @@ const missingPlan = `sha256:${'0'.repeat(64)}`
 setDefaultTimeout(30_000)
 
 describe('private finite project session', () => {
+  test('retains a closed cleanup cause behind an unconfirmed native fence', () => {
+    for (const [message, code] of [
+      ['macOS storage recovery is unconfirmed', 'MACOS_STORAGE_RECOVERY_UNCONFIRMED'],
+      ['macOS guardian job is still present', 'MACOS_GUARDIAN_JOB_PRESENT'],
+      ['macOS storage recovery guardian job is still present', 'MACOS_RECOVERY_JOB_PRESENT'],
+      ['macOS volume backing identity changed', 'MACOS_VOLUME_BACKING_CHANGED'],
+      ['macOS volume info failed', 'MACOS_VOLUME_INFO'],
+      ['macOS volume detach failed', 'MACOS_VOLUME_DETACH'],
+      ['macOS guardian contains unexpected state', 'MACOS_GUARDIAN_UNEXPECTED_STATE'],
+      ['macOS recovery slot contains unexpected state', 'MACOS_RECOVERY_UNEXPECTED_STATE'],
+    ] as const) {
+      const failure = Object.assign(new Error('private owner path'), {
+        name: 'PrivateMacosFenceUnconfirmedError',
+        cause: new Error(message, { cause: new Error('synthetic bearer secret') }),
+      })
+      expect(closedTestErrorCauses(failure)).toEqual([
+        'PrivateMacosFenceUnconfirmedError',
+        `Error:${code}`,
+        'Error',
+      ])
+    }
+    const unreadable = Object.defineProperty(new Error(), 'message', {
+      get() {
+        throw new Error('private message getter')
+      },
+    })
+    expect(closedTestErrorCauses(unreadable)).toEqual(['Error'])
+    expect(closedTestErrorCauses(new Error('macOS volume info failed private token'))).toEqual([
+      'Error',
+    ])
+  })
+
   test('checkpoint attachment mistakes remain actionable candidate failures', () => {
     const failure = projectError(
       new CheckError(
