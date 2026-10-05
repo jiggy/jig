@@ -24,16 +24,16 @@ not implement continuing conversations and rejects them before dispatch.
 With Jig installed and a [native client configured](agents.md#local-clients),
 create an ordinary project and caller:
 
-The compact `new --use` authoring path below is a source candidate, not part of
-the currently published Jig alpha. It writes ordinary editable contract files
-and slot declarations; the conversation interface itself is unchanged.
+The published Jig alpha supplies `new --use`. It copies the selected Agent
+contract and writes an ordinary editable slot declaration; you supply the
+caller's code and the operator chooses its powers.
 
 ```sh
 jig init conversation-demo --agent codex
 cd conversation-demo
 bun install
 jig new worker --use agent=npm:@jigging/agent-acp
-bun add --cwd flows/worker @jigging/agent-method@0.1.0-alpha.6
+bun add --cwd flows/worker @jigging/agent-method@alpha
 ```
 
 The Bun command installs an authoring dependency and records it in the worker's
@@ -136,6 +136,17 @@ turns, and `completed.settlement` is the final invocation result. The helper
 closes the conversation and waits for that actual result before returning.
 It does not grant authority or determine whether an answer is correct.
 
+After two successful turns, expect `output.turn.type: 'result'`,
+`output.turn.turn: 1`, and `output.turn.result.outcome: 'done'`. The answer is in
+`output.turn.result.output.text`; its wording depends on the selected Agent.
+`output.settlement` separately reports `{ outcome: 'done', output: { turns: 2 } }`.
+Observation is `complete` only when the public update stream closed cleanly.
+
+Try changing the correction while keeping the cause uncertain. Review the source
+again if you change the caller. If the initial turn is `blocked` or `limit`, this
+caller returns that turn without requesting a revision; a clean settlement does
+not turn that outcome into an answer.
+
 To interrupt an active turn, call `conversation.prompt(...)`, then await
 `conversation.interrupt()` and that same prompt's promise. It is safe to request
 interruption immediately: the helper waits for the prompt acknowledgement before
@@ -145,9 +156,8 @@ turn was cancelled; natural completion can win, in which case the control may be
 unfinished at callback return fails rather than detaching it.
 `AgentConversationError` retains received `turns`, any known `settlement`, and
 both primary and cleanup `errors`; ordinary `try/catch` remains sufficient.
-The source candidate includes the first exposed error's bounded message in the
-failure summary; this diagnostic improvement is not yet published. Inspect the
-retained `errors` when deliberately recovering.
+Its failure summary includes the first exposed error's bounded message. Inspect
+the retained `errors` when deliberately recovering.
 Optional `onEvent` filters or displays public updates synchronously without
 manual channel setup. Inspect `completed.observation?.status`: `incomplete`
 preserves observation errors without replacing the actual execution result.
@@ -295,10 +305,10 @@ not that summary handoff improves model answers.
 ## Restore after a clean close
 
 A later Run can request the earlier native conversation through an opaque
-reference. This is the synchronized source candidate: use matching Agent and
-Jig artifacts, and qualify the installed client's save-and-restore path before
-relying on it. The initial retention profile is Codex 0.154.0; successful live
-follow-up alone does not qualify restoration.
+reference. The published Agent and Jig alphas include this interface. Qualify
+the installed client's save-and-restore path before relying on it. The initial
+retention profile is Codex 0.154.0; successful live follow-up alone does not
+qualify restoration.
 
 In the Agent Binding, separately grant retention and review the changed
 authority:

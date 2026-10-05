@@ -6,8 +6,9 @@ ordinary FLOW package. The complete archive contains runnable output, source,
 types, contracts, selected method guidance and licenses, with no runtime npm
 dependencies or installation hooks.
 
-This is a source candidate. Build an archive from the revision you reviewed;
-this README does not assert registry publication.
+Install the published alpha with `bun add @jigging/agent-method@alpha`, or build
+a complete archive from reviewed source. Both supply the pure library and the
+ordinary Flow entrypoint; execution still requires your host's authority.
 
 ## Choose how to use it
 
