@@ -366,43 +366,7 @@ export async function openPrivateMacosBackendState(
       )
         throw new Error('native execution allocation changed')
     }
-    const readFile = async (name: string): Promise<Buffer | undefined> => {
-      let file: FileHandle
-      try {
-        file = await openPrivateChild(control!, name, constants.O_RDONLY)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-        throw error
-      }
-      try {
-        const before = await file.stat({ bigint: true })
-        if (
-          !before.isFile() ||
-          before.uid !== BigInt(process.getuid!()) ||
-          before.nlink !== 1n ||
-          (before.mode & 0o7777n) !== 0o600n ||
-          before.size > BigInt(MAX_RECORD_BYTES)
-        )
-          throw new Error('native execution record is unsafe')
-        const bytes = Buffer.alloc(Number(before.size))
-        for (let offset = 0; offset < bytes.length; ) {
-          const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset)
-          if (!bytesRead) throw new Error('native execution record ended early')
-          offset += bytesRead
-        }
-        const after = await file.stat({ bigint: true })
-        if (
-          before.size !== after.size ||
-          before.mtimeNs !== after.mtimeNs ||
-          before.ctimeNs !== after.ctimeNs ||
-          after.nlink !== 1n
-        )
-          throw new Error('native execution record changed')
-        return bytes
-      } finally {
-        await file.close()
-      }
-    }
+    const readFile = (name: string) => readFileFrom(control!, name)
     const read = async (): Promise<PrivateMacosBackendState | undefined> => {
       await verify()
       const bytes = await readFile('state.json')
@@ -565,7 +529,9 @@ export async function openPrivateMacosBackendState(
 async function readFileFrom(parent: FileHandle, name: string): Promise<Buffer | undefined> {
   let file: FileHandle
   try {
-    file = await openPrivateChild(parent, name, constants.O_RDONLY)
+    // The native open is synchronous. Refuse non-files without first blocking
+    // on a substituted pipe; metadata and byte checks remain authoritative.
+    file = await openPrivateChild(parent, name, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw error

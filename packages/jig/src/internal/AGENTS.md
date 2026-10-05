@@ -245,7 +245,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   PID-version journal before descendants exist. Its per-allocation token stays
   in protected coordinator state, never arguments, payloads or the journal.
   Recovery accepts only a capability minted from the bounded private journal;
-  reject aliases, tampering and a still-live guardian. Same-boot coalition recovery
+  open owner/socket records nonblocking before regular-file validation. Reject
+  aliases, tampering and a still-live guardian. Same-boot coalition recovery
   rejects wrong boots. Authenticated prior-boot guardian recovery never observes
   or signals stale PIDs or coalitions: kernel reboot establishes task death;
   exact job/socket retirement and fresh storage cleanup remain required. A fresh
@@ -270,9 +271,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   name while still holding the lock. First publish its complete, synced release
   marker by exclusive rename; partial staging cannot authorize retirement.
   Under the same lock and authenticated proof, discard only the fixed regular,
-  private, single-link bounded staging leaf. Authenticate the release marker and
-  remove
-  only the closed known entry set. Preserve unexpected or partially cleaned state;
+  private, single-link bounded staging leaf. State and release records share one
+  bounded nonblocking reader; reject substituted pipes before they can stall
+  the coordinator. Authenticate the release marker and remove only the closed
+  known entry set. Preserve unexpected or partially cleaned state;
   block reuse of its owner name until exact release completes. The backend must validate
   sealed identities and cleanup receipts independently; ledger JSON alone is
   neither execution nor fencing authority.
@@ -944,10 +946,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   fresh-process recovery of committed state, cancelled admission, exact final
   receipt retention, interrupted writes, atomic release recovery and authentication
   failures, including coordinator death during release-marker publication and
-  unsafe or proofless release staging. Its interrupted-release fixture also
-  compiles in ordinary tests. Synthetic ledger receipts do not qualify backend
-  cleanup or installed
-  execution. `macos-native-backend.test.ts` qualifies sealing, immutable-path
+  unsafe or proofless release staging. Independent subprocesses verify prompt
+  refusal of unread named pipes in final/pending state and release records,
+  guardian owner journals and authenticated socket journals.
+  Both subprocess fixtures compile in ordinary tests. Synthetic ledger receipts
+  do not qualify backend cleanup or installed execution.
+  `macos-native-backend.test.ts` qualifies sealing, immutable-path
   binding, prepared and active admission, bounded output after storage removal,
   durable final receipts, unused-owner recovery, prepared/active coordinator-loss
   recovery and exact owner release. It is backend integration evidence, not
