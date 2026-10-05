@@ -527,8 +527,10 @@ only for changed inputs or unresolved failures. Waiting for CI or review does
 not by itself pause other authorized work. A push, PR creation, or missing
 delivery credential pauses only dependent delivery. Prepare the next useful
 approved batch while those actions are pending; a completed local PR handoff
-is not a stopping point while other work can advance. Keep a running PR's
-tested head stable when independent work can proceed on a separate branch.
+is not a stopping point while other work can advance. Continue related stable
+work on the existing open PR branch. CI results qualify their exact revision;
+they do not freeze the branch. Use a separate branch for distinct or unstable
+work, not merely to preserve a running CI head.
 
 For a blocker requiring owner help, first record it in
 `.tmp/current-blockers.md`, including the missing prerequisite or decision,
