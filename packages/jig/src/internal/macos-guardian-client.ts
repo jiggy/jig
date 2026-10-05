@@ -460,6 +460,7 @@ async function prepareGuardian(input: {
     }
     const completion = (async (): Promise<PrivateMacosGuardianResult> => {
       let step: PrivateMacosGuardianRecoveryStep = 'receive'
+      let terminalResult: PrivateMacosScopeResult | undefined
       try {
         for (;;) {
           step = 'receive'
@@ -538,6 +539,7 @@ async function prepareGuardian(input: {
             phase = 'terminal'
             const normalizedResult =
               message.result === null ? null : normalizePrivateMacosScopeResult(message.result)
+            terminalResult = normalizedResult ?? undefined
             const readinessError = new Error(
               `macOS guardian ended before readiness (${normalizedResult?.reason ?? 'recovery'})`,
             )
@@ -566,7 +568,13 @@ async function prepareGuardian(input: {
         phase = 'terminal'
         rejectReady(new Error('macOS guardian connection lost'))
         try {
-          const result = await recover()
+          const recovered = await recover()
+          // Confirmed recovery settles cleanup; it does not erase an earlier
+          // authenticated terminal. Lost control without that evidence stays unknown.
+          const result =
+            terminalResult === undefined
+              ? recovered
+              : Object.freeze({ ...recovered, result: terminalResult })
           resolveFenced(result)
           return result
         } catch (error) {

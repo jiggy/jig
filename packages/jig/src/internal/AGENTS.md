@@ -353,6 +353,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   job and socket allocation only after kernel fencing. `macos-control-channel.ts`
   bounds private frames and queued messages; none of these modules is a public
   backend extension point or an installed-support claim.
+  Preserve a validated authenticated terminal if job retirement needs recovery,
+  but expose it only after recovery confirms fencing and storage cleanup. Lost
+  streams remain lost; a missing terminal remains unknown. Native receipts retain
+  the known stop reason and record cleanup recovery independently. Persistent
+  job-removal uncertainty still rejects completion and retains owner journals.
 - `macos-guardian-diagnostics.ts` supplies opt-in, asynchronous-scope host-test
   evidence when the guardian client enters recovery. Record its phase, failing
   step and a closed cause before discarding the original error. Never emit raw
