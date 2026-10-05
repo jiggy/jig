@@ -192,7 +192,10 @@ export async function planPrivateMacosOwnerStateAllocation(location: {
         const reopened = await openPrivateChild(parent, location.name, DIRECTORY)
         try {
           const reopenedInfo = await reopened.stat({ bigint: true })
-          if (reopenedInfo.dev !== expectedIdentity.dev || reopenedInfo.ino !== expectedIdentity.ino)
+          if (
+            reopenedInfo.dev !== expectedIdentity.dev ||
+            reopenedInfo.ino !== expectedIdentity.ino
+          )
             return
           const entries = []
           for await (const entry of privateDirectoryEntries(reopened)) entries.push(entry.name)
@@ -457,11 +460,17 @@ export async function openPrivateMacosBackendState(
         receipt,
         mac: releaseSignature(allocation.ownerToken, receipt).toString('hex'),
       })
-      let existing = await readFileFrom(root!, 'release.json')
+      const existing = await readFileFrom(root!, 'release.json')
+      if (existing !== undefined && !existing.equals(marker))
+        throw new Error('native execution release marker conflicts')
+      // Only the authenticated final/cancellation proof and held allocation lock
+      // authorize retirement. Incomplete staging grants no release authority.
+      if ((await readFileFrom(root!, 'release.pending')) !== undefined)
+        await unlinkPrivateFile(privateChildLocation(root!, 'release.pending'))
       if (existing === undefined) {
         const file = await openPrivateChild(
           root!,
-          'release.json',
+          'release.pending',
           constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
         )
         try {
@@ -470,10 +479,11 @@ export async function openPrivateMacosBackendState(
         } finally {
           await file.close()
         }
+        await verify()
         await root!.sync()
-        existing = marker
+        privateMacosRenameAt(root!.fd, 'release.pending', root!.fd, 'release.json', true)
+        await root!.sync()
       }
-      if (!existing.equals(marker)) throw new Error('native execution release marker conflicts')
       privateMacosRenameAt(parent.fd, allocation.name, parent.fd, releaseName(allocation), true)
       await parent.sync()
     }
