@@ -1,9 +1,12 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
+import { PrivateLinuxCgroupBackend } from '../src/internal/linux-rootless-backend.js'
+import { PrivateMacosBackend } from '../src/internal/macos-native-backend.js'
+import { closedTestErrorCauses } from '../src/internal/project-session-controller.js'
 import {
   type EvaluatedAuthorDeclaration,
   evaluateAuthorClosure,
@@ -20,6 +23,40 @@ const proofDescribe =
 const entryWallClockCeilingMs = process.platform === 'darwin' ? 10_000 : 3_000
 
 proofDescribe('finite isolated author declaration batches', () => {
+  test('preserves launch attribution without exposing private exception text', async () => {
+    await fixture(
+      { 'jig.ts': 'export default { flows: [] };' },
+      async (_root, captured, options) => {
+        const cause = Object.assign(new Error('private-canary /private/owner/path'), {
+          code: 'MACOS_GUARDIAN_STORAGE_VOLUME_CREATE',
+        })
+        const prototype =
+          process.platform === 'darwin'
+            ? PrivateMacosBackend.prototype
+            : PrivateLinuxCgroupBackend.prototype
+        const launch = spyOn(prototype, 'launch').mockRejectedValue(cause)
+        try {
+          const failure = await evaluateAuthorClosure(options, captured, 'jig.ts', 'project').catch(
+            (error: unknown) => error,
+          )
+          expect(failure).toMatchObject({ code: 'PROJECT_EVALUATOR_LAUNCH', path: 'jig.ts', cause })
+          expect((failure as Error).message).not.toContain('private-canary')
+          expect((failure as Error).message).not.toContain('/private/owner/path')
+          expect(closedTestErrorCauses(failure)).toEqual([
+            'CheckError:PROJECT_EVALUATOR_LAUNCH',
+            'Error:MACOS_GUARDIAN_STORAGE_VOLUME_CREATE',
+          ])
+          expect(JSON.stringify(closedTestErrorCauses(failure))).not.toContain('private-canary')
+          expect(JSON.stringify(closedTestErrorCauses(failure))).not.toContain(
+            '/private/owner/path',
+          )
+        } finally {
+          launch.mockRestore()
+        }
+      },
+    )
+  }, 30_000)
+
   test.each([false, true])(
     'blocking guest execution is fenced at the entry deadline (batch: %s)',
     async (batch) => {

@@ -1671,6 +1671,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           return runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested)
         }
         const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 3 : 2)
+        const onOperationFailure = (evidence: { operation: string; causes: readonly string[] }) =>
+          console.error('agent-operation-failure', JSON.stringify(evidence))
         const onRootExecutionFailure = (evidence: { phase: string; causes: readonly string[] }) =>
           console.error('agent-root-execution-failure', JSON.stringify(evidence))
         const openHost = (location: PrivateInstalledBunLocation) =>
@@ -1699,6 +1701,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onOperationFailure,
             onRootExecutionFailure,
           })
           const plan = await session.plan({ lockMode: 'update' })
@@ -1800,6 +1803,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
+            onOperationFailure,
             onRootExecutionFailure,
           })
           expect(
@@ -1818,6 +1822,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onOperationFailure,
             onRootExecutionFailure,
           })
           const cancellation = await session.rootAdministration.startRun(
@@ -1828,6 +1833,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onOperationFailure,
             onRootExecutionFailure,
           })
           expect(
@@ -1887,6 +1893,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = await openPrivateProjectSession({
             directory: root,
             host: fixtureHost(await openHost(location)),
+            onOperationFailure,
             onRootExecutionFailure,
           })
           expect(

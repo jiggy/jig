@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { invalid, unavailable } from '../diagnostics.js'
+import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import {
   launchPrivateExecution,
   type PrivateExecutionBackend,
@@ -326,11 +326,16 @@ export async function evaluateAuthorClosureBatch(
         signal,
       ),
     ).catch((error) => {
-      return unavailable(
+      const failure = new CheckError(
+        'unavailable',
         'PROJECT_EVALUATOR_LAUNCH',
-        `cannot launch evaluator envelope: ${errorText(error)}`,
+        'cannot launch evaluator envelope',
         entryProjectPath,
       )
+      // The host-test observer projects only closed class/code values. Public
+      // administration errors retain the evaluator code and source location.
+      failure.cause = error
+      throw failure
     })
     const validEnvelope =
       component.envelope.kind === 'linux-rootless-cgroup-v2-bubblewrap/1'
