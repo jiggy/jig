@@ -24,7 +24,9 @@ host qualification. Host preparation never becomes a consumer requirement.
   never membership. Each file runs in a fresh Bun process, sequentially within
   its shard, to isolate test state. Hosted shards retain per-test JUnit timing
   artifacts and per-file command wall times. Balance includes native prerequisites
-  and installed-consumer work; run expensive lifecycle groups before portable
+  and installed-consumer work. Reconcile slow-file and out-of-file estimates
+  against retained command wall times; runner queue order is not guaranteed.
+  Run expensive lifecycle groups before portable
   checks to expose failures earlier without reducing membership.
   Bun exits each test process on its first failure so a failed case does not
   wait for the remaining expensive scenarios before the matrix can stop.
@@ -63,7 +65,8 @@ host qualification. Host preparation never becomes a consumer requirement.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
-  Mac file assignment, disjoint root lifecycle name groups, and that every
+  Mac file assignment, disjoint root lifecycle name groups, balanced scheduling
+  of a representative observed workload including out-of-file costs, and that every
   Linux hostile test file enters provisioned host conformance.
 - `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
   and identical versions, immutable collisions, registry errors and changed

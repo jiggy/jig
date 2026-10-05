@@ -27,15 +27,20 @@ export const ROOT_PATTERNS = [
 // Advisory Intel timings from the complete hosted qualification. They affect
 // scheduling only; every discovered test file is assigned even without a hint.
 const WEIGHTS = new Map([
-  ['run-checkpoint-lifecycle.test.ts', 237],
-  ['http-request-lifecycle.test.ts', 204],
-  ['project-command-lifecycle.test.ts', 190],
-  ['package-provider-host.test.ts', 172],
-  ['finite-acp-lifecycle.test.ts', 123],
-  ['bun-native-preparation.test.ts', 64],
-  ['macos-guardian-storage.test.ts', 56],
-  ['contract-generation.test.ts', 26],
-  ['markdown-worker.test.ts', 35],
+  ['run-checkpoint-lifecycle.test.ts', 236],
+  ['http-request-lifecycle.test.ts', 189],
+  ['project-command-lifecycle.test.ts', 195],
+  ['package-provider-host.test.ts', 272],
+  ['finite-acp-lifecycle.test.ts', 136],
+  ['bun-native-preparation.test.ts', 156],
+  ['project-author-evaluator.test.ts', 80],
+  ['activation-admission-store.test.ts', 55],
+  ['macos-guardian-storage.test.ts', 51],
+  ['contract-generation.test.ts', 35],
+  ['markdown-worker.test.ts', 33],
+  ['activation-plan2.test.ts', 12],
+  ['project-evaluator-child.test.ts', 10],
+  ['file-delivery.test.ts', 10],
   ['codex-acp-dispatch.test.ts', 9],
   ['finite-acp-resource.test.ts', 9],
 ])
@@ -72,7 +77,7 @@ export function planMacHostTests(files) {
     rootPattern: ROOT_PATTERNS[index] ?? null,
     // Include native prerequisites in shard zero and the installed smoke tail
     // in shard four. These costs must participate in balancing, too.
-    estimatedSeconds: [430, 472, 394, 0, 240][index],
+    estimatedSeconds: [432, 397, 433, 0, 361][index],
   }))
   const ordinary = files
     .filter((file) => file !== ROOT_TEST && !NATIVE_PREREQUISITE_TESTS.includes(file))
