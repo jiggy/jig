@@ -10,6 +10,7 @@ import {
   readFile,
   rename,
   rm,
+  symlink,
   unlink,
   writeFile,
 } from 'node:fs/promises'
@@ -23,6 +24,7 @@ import {
 import { privateMacosFilesystem } from '../src/internal/macos-descriptor-files.js'
 import { preparePrivateMacosGuardian } from '../src/internal/macos-guardian-client.js'
 import {
+  allocatePrivateMacosVolume,
   createPrivateMacosVolume,
   recoverPrivateMacosVolume,
   releasePrivateMacosVolume,
@@ -40,6 +42,38 @@ async function allocation() {
   await mkdir(mount, { mode: 0o700 })
   return { root, control, mount, token: randomBytes(32).toString('hex') }
 }
+
+native(
+  'backing staging retirement rejects aliases, public modes and oversized files',
+  async () => {
+    for (const kind of ['symlink', 'hardlink', 'public', 'oversized']) {
+      const { root, control, mount, token } = await allocation()
+      const pending = join(control, 'volume-image.pending'),
+        canary = join(root, 'canary')
+      try {
+        await allocatePrivateMacosVolume(control, token, mount, 16 * 1024 * 1024)
+        await recoverPrivateMacosVolume(control, token)
+        await writeFile(canary, 'keep', { mode: 0o600, flag: 'wx' })
+        if (kind === 'symlink') await symlink(canary, pending)
+        else if (kind === 'hardlink') await link(canary, pending)
+        else
+          await writeFile(pending, kind === 'oversized' ? 'x'.repeat(4097) : '', {
+            mode: kind === 'public' ? 0o644 : 0o600,
+            flag: 'wx',
+          })
+        await expect(releasePrivateMacosVolume(control, token)).rejects.toThrow('staging is unsafe')
+        expect(await readFile(canary, 'utf8')).toBe('keep')
+        await unlink(pending)
+        await writeFile(pending, '', { mode: 0o600, flag: 'wx' })
+        await releasePrivateMacosVolume(control, token)
+        await expect(access(control)).rejects.toMatchObject({ code: 'ENOENT' })
+      } finally {
+        await rm(root, { recursive: true })
+      }
+    }
+  },
+  45_000,
+)
 
 native(
   'retirement resumes after its authenticated volume journal was removed',
@@ -222,7 +256,9 @@ native(
       await releasePrivateMacosVolume(control, token)
       await releasePrivateMacosVolume(control, token)
       await expect(access(control)).rejects.toMatchObject({ code: 'ENOENT' })
-      await expect(access(join(root, 'storage.release.pending'))).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(access(join(root, 'storage.release.pending'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      })
       await rm(root, { recursive: true })
     }
   },

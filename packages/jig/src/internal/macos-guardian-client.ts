@@ -12,6 +12,7 @@ import {
   sendPrivateMacosDescriptors,
 } from './macos-descriptor-handoff.js'
 import {
+  normalizePrivateMacosGuardianFailure,
   type PrivateMacosGuardianPhase,
   type PrivateMacosGuardianRecoveryStep,
   reportPrivateMacosGuardianRecovery,
@@ -525,20 +526,26 @@ async function prepareGuardian(input: {
             )
           } else if (
             message?.type === 'terminal' &&
-            Object.keys(message).sort().join() === 'outputLost,result,type' &&
+            Object.keys(message).sort().join() === 'failure,outputLost,result,type' &&
             typeof message.outputLost === 'boolean' &&
             (message.result === null ||
               (typeof message.result === 'object' &&
                 (message.result as { fenced?: unknown }).fenced === true))
           ) {
+            const failure = normalizePrivateMacosGuardianFailure(message.failure)
+            if (failure !== null && !message.outputLost)
+              throw new Error('invalid macOS guardian response')
             phase = 'terminal'
             const normalizedResult =
               message.result === null ? null : normalizePrivateMacosScopeResult(message.result)
-            rejectReady(
-              new Error(
-                `macOS guardian ended before readiness (${normalizedResult?.reason ?? 'recovery'})`,
-              ),
+            const readinessError = new Error(
+              `macOS guardian ended before readiness (${normalizedResult?.reason ?? 'recovery'})`,
             )
+            if (failure !== null)
+              Object.assign(readinessError, {
+                code: `MACOS_GUARDIAN_${failure.step.replaceAll('-', '_').toUpperCase()}_${failure.cause}`,
+              })
+            rejectReady(readinessError)
             step = 'terminal-cleanup'
             closeCollector()
             await cleanup()

@@ -9,6 +9,10 @@ import {
   sendPrivateMacosDescriptors,
 } from './macos-descriptor-handoff.js'
 import {
+  type PrivateMacosGuardianFailureStep,
+  privateMacosGuardianFailure,
+} from './macos-guardian-diagnostics.js'
+import {
   type PrivateMacosGuardianStorage,
   preparePrivateMacosGuardianStorage,
   recoverPrivateMacosGuardianStorage,
@@ -224,6 +228,7 @@ async function supervise(
     if (phase !== 'terminal') stop('coordinator_lost')
   })
   let timer: ReturnType<typeof setTimeout> | undefined
+  let failureStep: PrivateMacosGuardianFailureStep = 'configuration'
   try {
     configuration = startMessage(await privateMacosBefore(channel.receive(), 10_000))
     if (stopped !== undefined) throw new Error('macOS guardian coordinator lost during setup')
@@ -239,9 +244,10 @@ async function supervise(
     // No child exists before the authenticated journal and explicit admission.
     phase = 'prepared'
     channel.send({ type: 'prepared', identity: owner.identity })
-    const operationDeadline = configuration.type === 'start'
-      ? configuration.limits.deadlineUnixMs
-      : configuration.deadlineUnixMs
+    const operationDeadline =
+      configuration.type === 'start'
+        ? configuration.limits.deadlineUnixMs
+        : configuration.deadlineUnixMs
     timer = setTimeout(
       () => stop('cancelled'),
       Math.max(0, Math.min(10_000, operationDeadline - Date.now())),
@@ -255,10 +261,7 @@ async function supervise(
           // The short timer bounds waiting for authority, not admitted work.
           // Storage preparation remains inside the original operation deadline.
           clearTimeout(timer)
-          timer = setTimeout(
-            () => stop('cancelled'),
-            Math.max(0, operationDeadline - Date.now()),
-          )
+          timer = setTimeout(() => stop('cancelled'), Math.max(0, operationDeadline - Date.now()))
           phase = 'preparing'
           resolveAdmission()
         } else if (
@@ -272,9 +275,11 @@ async function supervise(
       }
     })()
     void commands.catch(() => stop('coordinator_lost'))
+    failureStep = 'admission'
     await admission
     if (stopped !== undefined) throw new Error('macOS guardian stopped before preparation')
     if (configuration.type === 'recover-storage') {
+      failureStep = 'storage-recovery'
       await recoverPrivateMacosGuardianStorage(
         configuration.targetDirectory,
         configuration.targetToken,
@@ -285,8 +290,7 @@ async function supervise(
       const fencedBy = performance.now() + 5000
       while (!owner.empty()) {
         owner.signalMembers('kill')
-        if (performance.now() >= fencedBy)
-          throw new Error('macOS recovery tools are not fenced')
+        if (performance.now() >= fencedBy) throw new Error('macOS recovery tools are not fenced')
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
       cancellation.signal.throwIfAborted()
@@ -294,11 +298,12 @@ async function supervise(
       stdin.destroy()
       stdout.end()
       stderr.end()
-      channel.send({ type: 'terminal', result: null, outputLost: false })
+      channel.send({ type: 'terminal', result: null, outputLost: false, failure: null })
       await privateMacosBefore(new Promise<void>((resolve) => control.end(resolve)), 1000)
       return
     }
     if (inputReceiver !== undefined) {
+      failureStep = 'input-transfer'
       inputBundle = await inputReceiver.receive(
         { pid: coordinatorPid, version: coordinatorVersion },
         5000,
@@ -307,6 +312,7 @@ async function supervise(
       await inputReceiver.close()
     }
     if (configuration.storage !== undefined) {
+      failureStep = 'storage'
       const storage = await preparePrivateMacosGuardianStorage(
         configuration.ownerDirectory,
         configuration.ownerToken,
@@ -317,6 +323,7 @@ async function supervise(
       storageRoot = storage.directory
     }
     if ((configuration.inputDirectories?.length ?? 0) > 0) {
+      failureStep = 'input-projection'
       await projectPrivateMacosInputs(
         storageRoot!,
         configuration.inputs!,
@@ -330,6 +337,7 @@ async function supervise(
     await storageRoot?.close()
     storageRoot = undefined
     cancellation.signal.throwIfAborted()
+    failureStep = 'scope-preparation'
     execution = await preparePrivateMacosScope({
       ...configuration,
       owner,
@@ -379,6 +387,7 @@ async function supervise(
     stdin.pipe(execution.stdin)
     phase = 'ready'
     channel.send({ type: 'ready', pid: execution.pid, version: execution.version })
+    failureStep = 'execution'
     const result = await execution.completion
     stdin.destroy()
     for (const destination of [stdout, stderr]) {
@@ -403,6 +412,7 @@ async function supervise(
     execution.stdout.destroy()
     execution.stderr.destroy()
     if (configuration.storage !== undefined) {
+      failureStep = 'collection'
       phase = 'collecting'
       const collect =
         collector !== undefined &&
@@ -425,6 +435,7 @@ async function supervise(
       }
       await collector?.close()
       collector = undefined
+      failureStep = 'storage-recovery'
       await recoverPrivateMacosGuardianStorage(
         configuration.ownerDirectory,
         configuration.ownerToken,
@@ -433,9 +444,10 @@ async function supervise(
       if (stopped !== undefined) outputLost = true
     }
     phase = 'terminal'
-    channel.send({ type: 'terminal', result, outputLost })
+    channel.send({ type: 'terminal', result, outputLost, failure: null })
     await privateMacosBefore(new Promise<void>((resolve) => control.end(resolve)), 1000)
   } catch (error) {
+    const failure = privateMacosGuardianFailure(failureStep, error)
     cancellation.abort()
     execution?.stop('coordinator_lost')
     let result: PrivateMacosScopeResult | undefined
@@ -462,7 +474,7 @@ async function supervise(
       )
     phase = 'terminal'
     try {
-      channel.send({ type: 'terminal', result: result ?? null, outputLost: true })
+      channel.send({ type: 'terminal', result: result ?? null, outputLost: true, failure })
       await privateMacosBefore(new Promise<void>((resolve) => control.end(resolve)), 1000)
     } catch {
       /* Recovery authenticates the retained journal when the coordinator is lost. */
