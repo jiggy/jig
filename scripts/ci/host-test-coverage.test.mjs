@@ -90,6 +90,34 @@ test('expensive host cases run before portable checks without dropping work', as
   }
 })
 
+test('Mac scheduling balances observed slow files and work outside the file runner', async () => {
+  const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
+  // Representative command wall times, independent of the planner's estimates.
+  // The fixed costs include root lifecycle groups, native prerequisites, and
+  // genuine startup/installed-consumer checks outside the per-file runner.
+  const fixedSeconds = [432, 397, 433, 0, 361]
+  const measuredSeconds = new Map([
+    ['package-provider-host.test.ts', 272],
+    ['run-checkpoint-lifecycle.test.ts', 236],
+    ['project-command-lifecycle.test.ts', 195],
+    ['http-request-lifecycle.test.ts', 189],
+    ['bun-native-preparation.test.ts', 156],
+    ['finite-acp-lifecycle.test.ts', 136],
+    ['project-author-evaluator.test.ts', 80],
+    ['activation-admission-store.test.ts', 55],
+    ['macos-guardian-storage.test.ts', 51],
+    ['contract-generation.test.ts', 35],
+    ['markdown-worker.test.ts', 33],
+  ])
+  for (const shard of planMacHostTests(files)) {
+    const seconds = shard.files.reduce(
+      (total, file) => total + (measuredSeconds.get(file.split('/').at(-1)) ?? 0),
+      fixedSeconds[shard.index],
+    )
+    assert.ok(seconds <= 700, `shard ${shard.index} concentrates ${seconds}s of observed work`)
+  }
+})
+
 test('Mac qualification rejects cancelled, incomplete and wrong-revision shards', async () => {
   const workflow = await readFile(
     resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),

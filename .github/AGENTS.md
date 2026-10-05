@@ -138,8 +138,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   optional manual dispatch profiles installed startup on both architectures
   with the same fixed conversation used by Linux. The profile is non-gating,
   bounded, and leaves archive identity and zero-residue checks mandatory.
-  Schedule slower Intel shards before Apple Silicon, with the installed-consumer
-  shard first. Fail fast after a shard fails; cancelled shards cannot qualify.
+  Declare slower Intel shards before Apple Silicon, with the installed-consumer
+  shard first; runner availability still determines actual start order. Fail fast
+  after a shard fails; cancelled shards cannot qualify.
   Run automatically for PRs changing host/build/test inputs and every main push;
   public-guide-only PRs do not allocate the Mac matrix. Manual dispatch remains available
   for diagnostics. Cancel superseded PR/feature runs, but retain main-push

@@ -45,8 +45,8 @@ jobs:
       fail-fast: true
       max-parallel: 10
       matrix:
-        # Intel jobs take roughly twice as long. Start them first, with the
-        # installed-consumer tail first, instead of queueing it behind short jobs.
+        # Prefer slower Intel jobs and the installed-consumer tail in declaration
+        # order. Runner availability still determines actual start order.
         arch: [x64, arm64]
         shard: [4, 0, 1, 2, 3]
     steps:
