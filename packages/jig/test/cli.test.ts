@@ -2467,6 +2467,11 @@ describe('finite Jig project commands', () => {
 
   test.each([
     [
+      'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
+      'bun.lock',
+      'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.3 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
+    ],
+    [
       'PACKAGE_BUN_NODE_MODULES',
       'flows/drafter/node_modules',
       'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies',

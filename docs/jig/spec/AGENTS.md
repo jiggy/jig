@@ -78,6 +78,9 @@ descriptors.
   Workspace capture prioritizes a qualifying root above the Jig application
   over standalone member declarations. Require direct membership of the selected
   package; an application's own patterns cannot expand an outer root's members.
+  Dependency lock formats follow the current pinned preparer's readers:
+  version 1 on Linux and versions 1/2 on Mac, without conversion or source-policy
+  relaxation. Keep format refusal distinct from unsupported dependency sources.
 - Native restoration specifications remain distinct from installed-client
   qualification and registry support. Retention requires actual clean native
   exit, validated collection, complete fencing and cleanup, and atomic commit;

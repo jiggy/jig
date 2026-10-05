@@ -556,8 +556,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   generated graph before frozen installation; retain its exact bytes privately.
   The worker derives scratch paths from its trusted launch working directory,
   never rewritten worker or consumer source. Select the native lock version for
-  the pinned runtime (Linux Bun 1.3.3 or qualified Mac Bun 1.4.2), retaining exact
-  source/provenance checks without translating locks. Missing-lock resolution
+  the pinned runtime (Linux Bun 1.3.3 or qualified Mac Bun 1.4.2). Linux reads
+  text lock version 1; Mac reads versions 1 and 2 and emits version 2. Keep the
+  same source/provenance checks and exact supplied bytes without translating
+  locks; unsupported formats retain a distinct closed diagnostic. Missing-lock resolution
   uses `--omit=dev` so production-only installation does not suppress publication
   of the new lock; the subsequent install stays frozen and script-disabled.
 - Workspace capture supports root applications and declared ancestor members,
@@ -923,7 +925,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and private-file denial, and complete cleanup. Project workspace preparation
   tests use the worker's real working-directory interface without source rewriting.
   `bun-native-preparation.test.ts` runs transitive locked/unlocked preparation
-  and non-registry lock rejection on both hosts; its cgroup-observed coordinator
+  and non-registry lock rejection on both hosts. Mac checks frozen version-1
+  and version-2 locks without changing authored bytes; unsupported formats retain
+  their own diagnostic. Its cgroup-observed coordinator
   loss cases remain Linux-specific.
   `macos-agent-runtime.test.ts` checks malformed and universal Mach-O metadata,
   project-excluded transitive lookup, cache membership and changed support bytes.

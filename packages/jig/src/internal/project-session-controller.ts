@@ -1046,6 +1046,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
       'AUTHORING_STATE',
     ].includes(code) ||
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
+    code === 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' ||
     code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
     code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||

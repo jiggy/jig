@@ -602,6 +602,23 @@ describe('private finite project session', () => {
       code: 'PACKAGE_BUN_LOCK_STALE',
       path: 'flows/dependent/bun.lock',
     })
+    const unsupportedFormat = projectError(
+      scopePrivatePackagePlanningError(
+        new CheckError(
+          'unavailable',
+          'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
+          'private detail',
+          'bun.lock',
+        ),
+        'flows/dependent',
+      ),
+      'plan',
+    )
+    expect(unsupportedFormat.code).toBe('UNAVAILABLE')
+    expect(unsupportedFormat.diagnostic).toEqual({
+      code: 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
+      path: 'flows/dependent/bun.lock',
+    })
     const privateFailure = new CheckError('unavailable', 'PACKAGE_BUN_PROTOCOL', 'private detail')
     expect(scopePrivatePackagePlanningError(privateFailure, 'flows/dependent')).toBe(privateFailure)
     expect(

@@ -52,6 +52,12 @@ You can optionally generate one with Bun 1.3.3:
 bun install --lockfile-only
 ```
 
+Its version-1 text lock works on both supported Linux and Mac hosts. Mac also
+accepts version-2 text locks produced by Bun 1.4.2. Jig installs supported
+locks frozen without conversion. An unsupported format has the diagnostic
+`PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED`; changing dependency sources cannot
+correct a format mismatch.
+
 This authoring command may use the network and Bun's cache; it writes `bun.lock`
 without creating a local `node_modules` tree. The FLOW package contains the
 manifest and lock, not an installed dependency tree.

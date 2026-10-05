@@ -31,7 +31,7 @@ use-case and orchestration hypotheses.
   summary handoff example.
   `guide/dependencies.md` owns package dependency preparation guidance.
   Keep its workspace examples aligned with `spec/project-policy.md`'s root
-  selection and direct membership rules.
+  selection, direct membership and supported lock-format rules.
 - `guide/configuration.md` owns the settings reference, including terminal
   appearance, operator configuration, and links to authored project settings.
   Its startup verification section teaches operator-selected cached,

@@ -194,6 +194,11 @@ integrity-pinned sources accepted. Unlike a Run, the trusted preparation scope
 has network access. Unsupported dependency sources fail closed before an
 applicable Plan is published. A supplied lock is always validated and installed
 frozen; missing, stale, and invalid are distinct states, not repair modes.
+The Linux preparer accepts Bun text lock version 1. The Mac preparer accepts
+versions 1 and 2, both read by its pinned Bun runtime. Validation applies the
+same source and integrity policy to either format. Supplied bytes remain
+unchanged; Jig never converts a lock. Other formats are unavailable with
+`PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED`.
 
 For a package with runtime dependencies but no authored lock, the operator may
 pass `jig review --allow-resolution-network`. Without it, planning returns
