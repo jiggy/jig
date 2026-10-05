@@ -1,4 +1,5 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
+import * as childProcess from 'node:child_process'
 import { spawnSync } from 'node:child_process'
 import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -20,6 +21,122 @@ import {
 
 const native = test.skipIf(
   process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1',
+)
+
+native(
+  'backend retains known exit and recovered cleanup in its authenticated final receipt',
+  async () => {
+    const root = await mkdtemp('/private/tmp/jig-native-terminal-')
+    const owners = join(root, 'owners')
+    const work = join(root, 'work')
+    await mkdir(owners, { mode: 0o700 })
+    await mkdir(work, { mode: 0o700 })
+    const allocation = await planPrivateMacosOwnerStateAllocation({
+      parent: owners,
+      name: 'terminal',
+    })
+    const backend = new PrivateMacosBackend({
+      bunPath: process.execPath,
+      supervisorPath: fileURLToPath(
+        new URL('../src/internal/macos-native-supervisor.ts', import.meta.url),
+      ),
+      launcherPath: fileURLToPath(new URL('../support/macos-exec-universal', import.meta.url)),
+    })
+    let safeToRemove = false
+    let component: Awaited<ReturnType<typeof backend.launch>> | undefined
+    let bootedOut: string | undefined
+    let injected = false
+    const original = childProcess.spawnSync
+    const interception = spyOn(childProcess, 'spawnSync').mockImplementation(((
+      ...args: unknown[]
+    ) => {
+      const result = Reflect.apply(original, childProcess, args)
+      const commandArgs = args[1] as readonly string[] | undefined
+      if (args[0] === '/bin/launchctl' && commandArgs?.[0] === 'bootout') bootedOut = commandArgs[1]
+      if (
+        !injected &&
+        args[0] === '/bin/launchctl' &&
+        commandArgs?.[0] === 'print' &&
+        commandArgs[1] === bootedOut
+      ) {
+        injected = true
+        return { ...result, status: 0 }
+      }
+      return result
+    }) as typeof childProcess.spawnSync)
+    try {
+      const sealed = await backend.seal(
+        {
+          runId: 'terminal',
+          limits: {
+            memoryBytes: 256 * 1024 * 1024,
+            pids: 4,
+            cpuQuotaMicros: 50_000,
+            cpuPeriodMicros: 100_000,
+            deadlineUnixMs: Date.now() + 30_000,
+            cleanupTimeoutMs: 5000,
+          },
+          command: [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            '-e',
+            'await Bun.stdin.text(); process.exit(17)',
+          ],
+          cwd: work,
+          environment: {},
+          files: {
+            readOnlyFiles: [process.execPath],
+            readOnlyTrees: [work],
+            writableTrees: [],
+            protectedRoots: [owners],
+            network: 'isolated',
+          },
+          maxOutputBytes: 4096,
+        },
+        allocation,
+      )
+      component = await sealed.admit()
+      component.stdout[Symbol.asyncIterator]()
+      component.stderr[Symbol.asyncIterator]()
+      await component.closeInput()
+      const [exit, receipt] = await Promise.all([component.completion, component.enforcement])
+      expect(injected).toBe(true)
+      expect(exit).toMatchObject({
+        exitCode: 17,
+        signal: null,
+        stopReason: 'payload_exit',
+        fenced: true,
+      })
+      expect(receipt).toMatchObject({
+        exitCode: 17,
+        signal: null,
+        stopReason: 'payload_exit',
+        recovered: true,
+        outputLost: true,
+      })
+      const state = await openPrivateMacosBackendState(allocation)
+      try {
+        expect((await state.read()).final).toEqual(receipt)
+      } finally {
+        await state.close()
+      }
+      await releasePrivateMacosOwnerState(allocation, receipt as never)
+      expect(await readdir(owners)).toEqual([])
+      safeToRemove = true
+    } finally {
+      interception.mockRestore()
+      if (!safeToRemove && component !== undefined) {
+        await component.terminate().catch(() => undefined)
+        const receipt = await backend.recoverFence(component.owner)
+        await releasePrivateMacosOwnerState(allocation, receipt as never)
+        safeToRemove = true
+      }
+      if (safeToRemove) await rm(root, { recursive: true })
+    }
+  },
+  60_000,
 )
 
 native(
@@ -156,22 +273,34 @@ native(
       }
       const unusedIdentityPath = join(root, 'unused-identity.json')
       const unusedFixturePath = join(root, 'unused-fixture.json')
-      await writeFile(unusedFixturePath, JSON.stringify({
-        mode: 'sealed',
-        identityPath: unusedIdentityPath,
-        options: {
-          bunPath: process.execPath,
-          supervisorPath: fileURLToPath(new URL('../src/internal/macos-native-supervisor.ts', import.meta.url)),
-          launcherPath: launcher,
-        },
-        allocation: unused,
-        plan: unusedPlan,
-      }), { mode: 0o600, flag: 'wx' })
-      const unusedChild = spawnSync(process.execPath, [
-        '--no-env-file', '--no-install', '--config=/dev/null',
-        fileURLToPath(new URL('./fixtures/macos-native-backend-loss.ts', import.meta.url)),
+      await writeFile(
         unusedFixturePath,
-      ], { env: {}, encoding: 'utf8', timeout: 20_000 })
+        JSON.stringify({
+          mode: 'sealed',
+          identityPath: unusedIdentityPath,
+          options: {
+            bunPath: process.execPath,
+            supervisorPath: fileURLToPath(
+              new URL('../src/internal/macos-native-supervisor.ts', import.meta.url),
+            ),
+            launcherPath: launcher,
+          },
+          allocation: unused,
+          plan: unusedPlan,
+        }),
+        { mode: 0o600, flag: 'wx' },
+      )
+      const unusedChild = spawnSync(
+        process.execPath,
+        [
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          fileURLToPath(new URL('./fixtures/macos-native-backend-loss.ts', import.meta.url)),
+          unusedFixturePath,
+        ],
+        { env: {}, encoding: 'utf8', timeout: 20_000 },
+      )
       expect(unusedChild.status).toBe(75)
       const unusedIdentity = JSON.parse(await readFile(unusedIdentityPath, 'utf8'))
       const recovered = await backend.recoverFence(unusedIdentity)

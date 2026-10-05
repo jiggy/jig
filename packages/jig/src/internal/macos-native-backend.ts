@@ -131,6 +131,7 @@ export interface PrivateMacosConfirmedEnforcementReceipt {
   readonly signal: number | null
   readonly fenced: true
   readonly outputLost: boolean
+  /** Cleanup recovery does not erase an already authenticated native outcome. */
   readonly recovered: boolean
   readonly evidence: PrivateMacosScopeResult['evidence']
 }
@@ -188,7 +189,10 @@ export class PrivateMacosFenceUnconfirmedError extends Error {
 /** One qualified private Mac implementation; this is not a public Backend SPI. */
 export class PrivateMacosBackend {
   readonly #options: NormalizedOptions
-  readonly #pending = new Map<string, { take(): Awaited<ReturnType<typeof openPrivateMacosBackendState>> }>()
+  readonly #pending = new Map<
+    string,
+    { take(): Awaited<ReturnType<typeof openPrivateMacosBackendState>> }
+  >()
   constructor(options: PrivateMacosBackendOptions) {
     this.#options = Object.freeze({
       bunPath: absolute(options.bunPath, 'Bun'),
@@ -345,8 +349,9 @@ export class PrivateMacosBackend {
     const owner = isPrepared(value)
       ? normalizePrivateMacosPreparedOwnerIdentity(value).owner
       : normalizePrivateMacosSealedOwnerIdentity(value)
-    const state = this.#pending.get(owner.digest)?.take() ??
-      await openPrivateMacosBackendState(owner.allocation)
+    const state =
+      this.#pending.get(owner.digest)?.take() ??
+      (await openPrivateMacosBackendState(owner.allocation))
     try {
       const current = await state.read()
       if (!sameJson(current.sealed, owner))
@@ -627,7 +632,7 @@ export function normalizePrivateMacosConfirmedEnforcementReceipt(
     record.fenced !== true ||
     typeof record.outputLost !== 'boolean' ||
     typeof record.recovered !== 'boolean' ||
-    record.recovered !== (record.stopReason === 'recovered')
+    (record.stopReason === 'recovered' && !record.recovered)
   )
     throw new TypeError('invalid native macOS enforcement receipt')
   const scope = normalizePrivateMacosScopeResult({
@@ -751,7 +756,7 @@ async function sealPlan(
     storage === undefined ? undefined : posix.join(storage.mountPath, 'inputs')
   const hasInputGrant =
     projectedInputs !== undefined && files.readOnlyTrees.includes(projectedInputs)
-  if (hasInputGrant !== (inputDirectories.length > 0))
+  if (hasInputGrant !== inputDirectories.length > 0)
     throw new TypeError('native macOS input directories require an immutable bounded projection')
   const immutablePaths: SealedImmutablePath[] = []
   for (const [path, type] of [
@@ -859,7 +864,7 @@ function receiptFor(
     signal: result.signal,
     fenced: true,
     outputLost: terminal.outputLost,
-    recovered: false,
+    recovered: terminal.recovered,
     evidence: result.evidence,
   })
 }

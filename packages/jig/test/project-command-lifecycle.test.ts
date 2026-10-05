@@ -39,15 +39,20 @@ proof('contained Project Command effect', () => {
       const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-proof-')))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       let primaryError: unknown
+      let verified = false
       try {
         await fixture(root)
         const host = fixtureHost(await openPrivateInstalledBunHost(installedBunLocation, {}))
-        session = await openPrivateProjectSession({
-          directory: root,
-          host,
-          onRootExecutionFailure: (evidence) =>
-            console.error('command-root-execution-failure', JSON.stringify(evidence)),
-        })
+        const openSession = (selectedHost = host) =>
+          openPrivateProjectSession({
+            directory: root,
+            host: selectedHost,
+            onOperationFailure: (evidence) =>
+              console.error('command-operation-failure', JSON.stringify(evidence)),
+            onRootExecutionFailure: (evidence) =>
+              console.error('command-root-execution-failure', JSON.stringify(evidence)),
+          })
+        session = await openSession()
         const plan = await session.plan({ lockMode: 'update' })
         expect(plan.state).toBe('applicable')
         if (plan.state !== 'applicable') throw new Error('command fixture is not reviewable')
@@ -58,6 +63,7 @@ proof('contained Project Command effect', () => {
           options: Record<string, JsonValue> = {},
           parent = false,
         ) => {
+          console.error('command-scenario', id)
           const receipt = await session!.rootAdministration.startRun({
             submissionId: id,
             target: { kind: 'binding', id: parent ? 'parent' : 'command' },
@@ -180,10 +186,7 @@ proof('contained Project Command effect', () => {
         // Deadline enforcement has its own budget; composition must not depend
         // on the product default or spend the full composition budget idle.
         await session.close()
-        session = await openPrivateProjectSession({
-          directory: root,
-          host: { ...host, runTimeoutMs: 30_000 },
-        })
+        session = await openSession({ ...host, runTimeoutMs: 30_000 })
         const deadline = await run('command-deadline', {
           'src/cli.ts': `Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', 'await Bun.sleep(60000)'], {stdin:'ignore', stdout:'ignore', stderr:'ignore'}); console.log('started'); await Bun.sleep(60000)`,
         })
@@ -192,7 +195,7 @@ proof('contained Project Command effect', () => {
         })
         await noOwners(root)
         await session.close()
-        session = await openPrivateProjectSession({ directory: root, host })
+        session = await openSession()
         const stopped = await session.rootAdministration.startRun({
           submissionId: 'command-cancel',
           target: { kind: 'binding', id: 'pair' },
@@ -201,11 +204,12 @@ proof('contained Project Command effect', () => {
         await waitForCommand(root, 2)
         await checkAggregateEnvelopes()
         await session.close()
-        session = await openPrivateProjectSession({ directory: root, host })
+        session = await openSession()
         expect(await terminal(session.rootAdministration, stopped)).toMatchObject({
           terminal: { status: 'failed', code: 'CANCELLED' },
         })
         await noOwners(root)
+        verified = true
       } catch (error) {
         primaryError = error
       }
@@ -214,7 +218,8 @@ proof('contained Project Command effect', () => {
       } catch (cleanupError) {
         throw new AggregateError([primaryError, cleanupError], 'command test and cleanup failed')
       }
-      await rm(root, { recursive: true, force: true })
+      if (verified) await rm(root, { recursive: true, force: true })
+      else console.error('Command lifecycle evidence retained at', root)
       if (primaryError !== undefined) throw primaryError
     }),
     timeout,
