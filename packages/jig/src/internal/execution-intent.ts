@@ -32,6 +32,7 @@ export interface PrivateExecutionIntent {
   readonly inputDirectories?: readonly string[]
   readonly output?: boolean
   readonly storageBytes: number
+  /** Aggregate live stdout/stderr forwarding, separate from delivered file bytes. */
   readonly maxOutputBytes: number
   /** No payload write grants; captured inputs may still require bounded storage. */
   readonly readOnlyCwd?: string
@@ -50,4 +51,5 @@ export function privateExecutionPath(path: string): PrivateExecutionArgument {
 }
 
 export const PRIVATE_OUTPUT_PATH = '/jig-output'
+/** Root live stdout/stderr allowance, independent of the attachment capture policy. */
 export const PRIVATE_OUTPUT_BYTES = 16 * 1024 * 1024

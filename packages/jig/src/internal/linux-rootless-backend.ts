@@ -1,4 +1,3 @@
-import { PRIVATE_OUTPUT_BYTES, PRIVATE_OUTPUT_PATH } from './execution-intent.js'
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync } from 'node:fs'
@@ -14,7 +13,6 @@ import {
   realpath,
   rm,
   rmdir,
-  stat,
   statfs,
   unlink,
 } from 'node:fs/promises'
@@ -25,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { types as utilTypes } from 'node:util'
 
 import type { JsonValue } from '../json.js'
+import { PRIVATE_OUTPUT_PATH } from './execution-intent.js'
 import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
 import { PRIVATE_FILE_LIMITS } from './file-input-policy.js'
 import { privateDomainDigest } from './identity.js'
