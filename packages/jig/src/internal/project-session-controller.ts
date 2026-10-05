@@ -279,7 +279,7 @@ export async function openPrivateProjectSession(input: {
 }
 
 /** Bounded host-test evidence. Never retain messages, paths, or rejected values. */
-function closedTestErrorCauses(error: unknown): readonly string[] {
+export function closedTestErrorCauses(error: unknown): readonly string[] {
   const result: string[] = []
   const visit = (value: unknown, depth: number): void => {
     if (depth > 3 || result.length >= 8 || !(value instanceof Error)) return
@@ -300,7 +300,13 @@ function closedTestErrorCauses(error: unknown): readonly string[] {
 }
 
 function closedNativeTestCause(error: Error): string | undefined {
-  switch (error.message) {
+  let message: string
+  try {
+    message = error.message
+  } catch {
+    return undefined
+  }
+  switch (message) {
     case 'macOS control deadline expired':
       return 'MACOS_CONTROL_DEADLINE'
     case 'macOS guardian bootstrap failed':
@@ -309,13 +315,28 @@ function closedNativeTestCause(error: Error): string | undefined {
       return 'MACOS_GUARDIAN_CONNECTION_LOST'
     case 'macOS guardian job removal is unconfirmed':
       return 'MACOS_GUARDIAN_REMOVAL_UNCONFIRMED'
+    case 'macOS guardian job is still present':
+      return 'MACOS_GUARDIAN_JOB_PRESENT'
+    case 'macOS storage recovery guardian job is still present':
+      return 'MACOS_RECOVERY_JOB_PRESENT'
+    case 'macOS storage recovery is unconfirmed':
+      return 'MACOS_STORAGE_RECOVERY_UNCONFIRMED'
+    case 'macOS volume backing identity changed':
+      return 'MACOS_VOLUME_BACKING_CHANGED'
+    case 'macOS volume info failed':
+      return 'MACOS_VOLUME_INFO'
+    case 'macOS volume detach failed':
+      return 'MACOS_VOLUME_DETACH'
+    case 'macOS guardian contains unexpected state':
+      return 'MACOS_GUARDIAN_UNEXPECTED_STATE'
+    case 'macOS recovery slot contains unexpected state':
+      return 'MACOS_RECOVERY_UNEXPECTED_STATE'
     case 'macOS prepared ownership does not match':
       return 'MACOS_PREPARED_OWNER_MISMATCH'
     case 'native macOS Run was cancelled before admission':
       return 'MACOS_STARTUP_CANCELLED'
     default:
-      return error.message.startsWith('macOS guardian ended before readiness (') &&
-        error.message.endsWith(')')
+      return message.startsWith('macOS guardian ended before readiness (') && message.endsWith(')')
         ? 'MACOS_GUARDIAN_BEFORE_READINESS'
         : undefined
   }
