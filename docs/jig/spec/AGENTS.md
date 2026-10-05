@@ -75,6 +75,9 @@ descriptors.
   installer inputs and current preparation support; fresh source and authority
   always receive independent execution planning. Sibling Jig projects never
   supply reusable preparations. Keep dependency guidance aligned with that scope.
+  Workspace capture prioritizes a qualifying root above the Jig application
+  over standalone member declarations. Require direct membership of the selected
+  package; an application's own patterns cannot expand an outer root's members.
 - Native restoration specifications remain distinct from installed-client
   qualification and registry support. Retention requires actual clean native
   exit, validated collection, complete fencing and cleanup, and atomic commit;
