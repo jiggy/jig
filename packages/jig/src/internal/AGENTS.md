@@ -192,6 +192,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   detach, then remove only its original empty mount directory and backing file.
   Retain authenticated journals until the enclosing owner is released. Storage
   ownership alone does not establish process fencing or installed Mac support.
+  Publish the backing-image journal by exclusive rename of complete, synced
+  authenticated staging bytes before attachment. Guardian loss during staging
+  must leave fenced recovery usable; retire only its fixed regular, private,
+  single-link bounded staging leaf after exact image and mount cleanup.
+  Backing staging never grants attachment or recovery authority.
 - `macos-guardian-storage.ts` records bounded volume intent before job creation
   and attaches only after admission inside the guardian. Work, temporary and
   output roots share that fixed capacity; their parent stays host-owned.
@@ -344,9 +349,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   step and a closed cause before discarding the original error. Never emit raw
   errors, paths, tokens, payloads or received frames. Observer failures cannot
   affect settlement; the evidence grants no authority and changes no public
-  terminal, receipt or recovery rule. Project Command qualification logs these
+  terminal, receipt or recovery rule. Guardian terminal frames also carry a
+  closed failure step and cause, or null on ordinary completion. Validate both
+  against fixed names before reporting a pre-readiness error code through the
+  existing root host-test observer. Never forward native exception messages or
+  arbitrary error codes across this channel. Project Command qualification logs these
   events. Portable tests cover redaction and scope isolation; the native
   guardian-loss test verifies reporting and recovery with a throwing observer.
+  Native injected storage and scope-preparation failures verify the returned
+  diagnostic after actual fencing and storage cleanup.
+  Ordinary tests compile the same injected guardian constructions so source
+  matching and import errors fail before native qualification.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
   under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
   projections cannot overlap these runtime roots. Host control remains excluded.

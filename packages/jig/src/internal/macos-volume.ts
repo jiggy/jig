@@ -20,6 +20,7 @@ const MIB = 1024 * 1024
 const IMAGE = 'volume.dmg'
 const INTENT = 'volume.json'
 const IMAGE_RECORD = 'volume-image.json'
+const IMAGE_PENDING = 'volume-image.pending'
 const RETIRE_RECORD = 'storage.release.json'
 const RETIRE_PENDING = 'storage.release.pending'
 
@@ -184,7 +185,11 @@ async function readRecord(
   }
 }
 
-async function writeRetirement(parent: FileHandle, token: string, allocation: Allocation): Promise<void> {
+async function writeRetirement(
+  parent: FileHandle,
+  token: string,
+  allocation: Allocation,
+): Promise<void> {
   // A crash during a direct journal write could leave a truncated but named
   // marker. Stage it under one fixed private name and rename only complete,
   // synced authenticated bytes into the durable retirement name.
@@ -196,7 +201,8 @@ async function writeRetirement(parent: FileHandle, token: string, allocation: Al
       pending.nlink !== 1n ||
       (pending.mode & 0o777n) !== 0o600n ||
       pending.size > 4096n
-    ) throw new Error('macOS volume retirement staging is unsafe')
+    )
+      throw new Error('macOS volume retirement staging is unsafe')
     privateMacosUnlinkAt(parent.fd, RETIRE_PENDING)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
@@ -481,7 +487,12 @@ export async function attachPrivateMacosVolume(
       const stat = await image.stat({ bigint: true })
       if (stat.size !== BigInt(bytes)) throw new Error('macOS volume capacity changed')
       recordedImage = { ...identity(stat), allocationMac }
-      await writeRecord(parent, IMAGE_RECORD, token, recordedImage)
+      // Only complete authenticated bytes may become the backing journal.
+      // Guardian loss while writing leaves a private staging leaf, not a
+      // malformed final journal that prevents fenced storage recovery.
+      await writeRecord(parent, IMAGE_PENDING, token, recordedImage, IMAGE_RECORD)
+      privateMacosRenameAt(parent.fd, IMAGE_PENDING, parent.fd, IMAGE_RECORD, true)
+      await parent.sync()
     } finally {
       await image.close()
     }
@@ -673,8 +684,10 @@ export async function releasePrivateMacosVolume(
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
       const allocation = intent === undefined ? retired : validateAllocation(intent.value)
-      if (allocation === undefined ||
-        (retired !== undefined && JSON.stringify(allocation) !== JSON.stringify(retired)))
+      if (
+        allocation === undefined ||
+        (retired !== undefined && JSON.stringify(allocation) !== JSON.stringify(retired))
+      )
         throw new Error('macOS volume retirement identity is unavailable')
       if (!matches(await control.stat({ bigint: true }), allocation.control))
         throw new Error('macOS volume control directory changed')
@@ -701,8 +714,19 @@ export async function releasePrivateMacosVolume(
       } finally {
         entries.closeSync()
       }
-      if (!names.every((name) => [INTENT, IMAGE_RECORD].includes(name)))
+      if (!names.every((name) => [INTENT, IMAGE_RECORD, IMAGE_PENDING].includes(name)))
         throw new Error('macOS volume control contains unexpected state')
+      if (names.includes(IMAGE_PENDING)) {
+        const pending = privateMacosStatAt(control.fd, IMAGE_PENDING)
+        if (
+          !pending.isFile() ||
+          pending.uid !== BigInt(process.getuid!()) ||
+          pending.nlink !== 1n ||
+          (pending.mode & 0o777n) !== 0o600n ||
+          pending.size > 4096n
+        )
+          throw new Error('macOS volume backing staging is unsafe')
+      }
       if (retired === undefined) await writeRetirement(parent, token, allocation)
       if (names.includes(IMAGE_RECORD)) {
         const record = await readRecord(control, IMAGE_RECORD, token)
@@ -715,6 +739,7 @@ export async function releasePrivateMacosVolume(
           throw new Error('macOS volume backing journal is invalid')
         privateMacosUnlinkAt(control.fd, IMAGE_RECORD)
       }
+      if (names.includes(IMAGE_PENDING)) privateMacosUnlinkAt(control.fd, IMAGE_PENDING)
       if (intent !== undefined) privateMacosUnlinkAt(control.fd, INTENT)
       await control.sync()
       const name = posix.basename(controlPath)
