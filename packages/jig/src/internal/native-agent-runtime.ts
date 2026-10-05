@@ -1,3 +1,4 @@
+import { constants } from 'node:fs'
 import { lstat, open, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 
@@ -60,7 +61,7 @@ export async function inspectPrivateNativeAgentRuntime(
     if (inspected.has(source)) return
     inspected.add(source)
     digests.set(source, await privateInstallationFileDigest(source))
-    const elf = await readElf(source)
+    const elf = await readPrivateNativeAgentElfMetadata(source)
     if (elf === undefined) {
       throw new Error('native Agent runtime is not a qualified executable')
     }
@@ -132,10 +133,12 @@ export async function inspectPrivateNativeAgentRuntime(
   })
 }
 
-async function readElf(path: string): Promise<Elf | undefined> {
-  const file = await open(path, 'r')
+export async function readPrivateNativeAgentElfMetadata(path: string): Promise<Elf | undefined> {
+  const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK)
   try {
-    const size = (await file.stat()).size
+    const information = await file.stat()
+    if (!information.isFile()) throw new Error('native Agent runtime is not a regular file')
+    const size = information.size
     async function read(offset: number, length: number): Promise<Buffer> {
       if (
         !Number.isSafeInteger(offset) ||
