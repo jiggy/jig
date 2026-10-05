@@ -21,6 +21,7 @@ import {
   type PrivateExecutionBackendMechanismSupport,
   requirePrivateExecutionBackend,
 } from './execution-backend.js'
+import { PRIVATE_CAPTURE_LIMITS, PRIVATE_FILE_LIMITS } from './file-input-policy.js'
 import { type HttpGrant, type PrivateHttpGrants, selectHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import {
@@ -301,9 +302,9 @@ function logicalLaunchDigest(
     bunPolicy: BUN_POLICY,
     runtimePredicates: RUNTIME_PREDICATES,
     fileProfile: {
-      inputBytes: 8 * 1024 * 1024,
-      inputFiles: 64,
-      outputBytes: 16 * 1024 * 1024,
+      inputBytes: PRIVATE_CAPTURE_LIMITS.input,
+      inputFiles: PRIVATE_FILE_LIMITS.files,
+      outputBytes: PRIVATE_CAPTURE_LIMITS.output,
       rootOnly: true,
     },
     slots: request.slots,

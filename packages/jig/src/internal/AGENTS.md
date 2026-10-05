@@ -102,6 +102,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Directory ancestry may use only the closed `.`/`..` operation; observed
   filesystem paths never authorize reopening. These adapters do not by themselves
   qualify native execution or output delivery.
+  The logical Bun launch identity derives its file profile from this policy.
+  Live stdout/stderr forwarding and physical filesystem capacity retain their
+  separate budgets; matching byte values do not make them file-capture authority.
 - `captured-bytes.ts` binds anonymous byte capabilities to a closed input or
   output purpose and its separate byte limit. `input-capture.ts` owns the
   invocation-only interface; output handles cannot substitute for input authority.
