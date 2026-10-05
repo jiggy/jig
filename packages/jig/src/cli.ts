@@ -57,7 +57,7 @@ import {
   ProjectInitError,
 } from './project-init.js'
 import { parseRun, parseTarget, parseVerification } from './run-arguments.js'
-import { schemaTypeMismatchText } from './schema/types.js'
+import { SCHEMA_1_URI, schemaTypeMismatchText } from './schema/types.js'
 
 const VERIFICATION_HELP = `Startup verification:
   --verification MODE  Select cached, strict, or fast for this command
@@ -1465,6 +1465,18 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_METADATA_OWNER:
         'keep Markdown frontmatter in FLOW.md; use FLOW.meta.json only with a code entrypoint',
       PACKAGE_SCHEMA_OWNER: 'place invocation input and result schemas in FLOW.contract.json',
+      SCHEMA_INVALID:
+        error.diagnostic?.pointer === '/$schema'
+          ? `Set the root "$schema" to "${SCHEMA_1_URI}" in the indicated file, then run jig review again.`
+          : 'Correct the indicated schema declaration using FLOW Schema/0; see https://flow.jig.md/spec/schema-files.',
+      SCHEMA_INVALID_JSON:
+        'Use valid UTF-8 JSON/0 without duplicate keys and within its value limits; see https://flow.jig.md/spec/json-values.',
+      SCHEMA_KEYWORD_UNSUPPORTED:
+        'Use only the supported FLOW Schema/0 keywords; see https://flow.jig.md/spec/schema-files.',
+      SCHEMA_REFERENCE_INVALID:
+        'Use an acyclic same-document reference spelled #/$defs/<name> to an existing root definition; see https://flow.jig.md/spec/schema-files.',
+      SCHEMA_LIMIT_EXCEEDED:
+        'Reduce schema size or validation work to the FLOW Schema/0 limits; see https://flow.jig.md/spec/schema-files.',
       PACKAGE_PROFILE_UNSUPPORTED:
         'use a runtime and single-invocation contract supported by this host',
       PACKAGE_METADATA_UNSUPPORTED:

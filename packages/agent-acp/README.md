@@ -65,10 +65,10 @@ through ordinary error handling; the final answer remains separate.
 
 ## Retain or restore native state
 
-The restoration path is a source candidate requiring matching Agent/Jig
-artifacts and separate qualification through an installed native client. Its
-initial collection profile is Codex 0.154.0; this README does not establish
-registry availability or successful live restoration.
+Native restoration requires matching Agent/Jig artifacts and separate
+qualification through an installed native client. The published alphas include
+the interface; its initial collection profile is Codex 0.154.0. Interface
+availability does not establish successful live restoration.
 
 In the native grant, review `retainSessions: true` separately from the client,
 model and turn allowance. Initial Agent input can then include either
@@ -152,8 +152,8 @@ package code. The copied contract belongs to the caller: an installation update
 does not replace it or grant new authority. An existing destination is refused;
 choose a new directory to inspect a changed contract before updating the caller.
 See the [conversation walkthrough](https://jig.md/guide/conversations) for a
-complete two-turn caller and the separate native turn grant. These authoring
-commands require the matching Jig source candidate until its alpha is published.
+complete two-turn caller and the separate native turn grant. The published
+Jig alpha supplies these authoring commands.
 
 ```sh
 jig review

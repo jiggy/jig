@@ -10,6 +10,8 @@ descriptors.
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
   It also owns final failure ordering, concise human packet summaries, Agent
   setup cause/selection locations, and one dependency-network notice per review.
+  Schema authoring recovery identifies the required dialect and supported
+  vocabulary without exposing rejected values or private compiler diagnostics.
   Interrupted delivery retains confirmed terminal/checkpoint evidence, not
   unfinished final files; cleanup uncertainty and forced termination stay explicit.
 

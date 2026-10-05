@@ -60,6 +60,14 @@ identity, optional feature catalogs, channel agreements, and explicit Agent proj
 feature or arbitrary FLOW contract field. Settings and attachments remain
 separate declarations; use native JSON where the profile does not fit.
 
+Standalone schema files such as `settings.schema.json` need the exact root
+identifier `"$schema": "https://flow.jig.md/schemas/schema-0.json"`. Embedded
+schemas in `FLOW.contract.json` do not repeat it. FLOW Schema/0 is a bounded
+JSON Schema dialect; an arbitrary JSON Schema keyword or external `$ref` is not
+accepted. Review identifies the affected file and field and gives a correction.
+See [FLOW schema files](https://flow.jig.md/spec/schema-files) for the supported
+keywords, local references and limits.
+
 ## Named methods with progress
 
 Declare identity and ports explicitly; the compiler does not infer semantics:

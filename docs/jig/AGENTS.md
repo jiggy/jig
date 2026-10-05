@@ -26,8 +26,8 @@ use-case and orchestration hypotheses.
   `guide/conversations.md` owns bounded same-session follow-up and interruption,
   including the distinction between control replies and final settlement, and
   explicit native retention and restoration under a separately reviewed grant.
-  It distinguishes final retention receipts from turn answers and installed
-  qualification from the source candidate, and routes to the application-owned
+  It distinguishes final retention receipts from turn answers and published
+  interface availability from installed-client qualification, and routes to the application-owned
   summary handoff example.
   `guide/dependencies.md` owns package dependency preparation guidance.
 - `guide/configuration.md` owns the settings reference, including terminal

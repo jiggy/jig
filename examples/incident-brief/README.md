@@ -37,8 +37,8 @@ This copies the complete offline bundle for the caller's
 `conversation` for the handoff method; the native Binding separately grants two
 turns per invocation. The importer resolves project-root or worker-local installs,
 executes no package code, and refuses an existing destination. Installed dependency
-updates do not silently replace this project-owned contract. The compact importer
-requires the matching Jig source candidate until its alpha is published.
+updates do not silently replace this project-owned contract. The published
+Jig alpha supplies this importer.
 
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.

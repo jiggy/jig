@@ -33,7 +33,7 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 
 // Pair the generated source with its tested SDK, not a moving registry tag.
 const GREETING_SDK_VERSION = '0.1.0-alpha.13'
-const AGENT_ACP_VERSION = '0.1.0-alpha.7'
+const AGENT_ACP_VERSION = '0.1.0-alpha.8'
 export type ProjectInitAgent = 'codex' | 'claude' | 'pi'
 
 export type ProjectInitErrorCode =
@@ -187,7 +187,8 @@ export async function createFlow(
       )
       try {
         const flowsDirectory = await openPrivateChild(
-          projectDirectory, 'flows',
+          projectDirectory,
+          'flows',
           constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
         )
         try {

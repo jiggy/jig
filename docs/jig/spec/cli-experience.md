@@ -88,6 +88,10 @@ completed publication is not undone. Process loss may leave an unpublished
    Preserve value-free expected/received JSON type facts for schema type errors
    across planning and execution boundaries. Never echo rejected values or
    arbitrary worker messages to manufacture a more detailed cause.
+   Schema authoring failures identify the required FLOW Schema/0 root identifier
+   when `$schema` is missing or wrong. Invalid JSON, unsupported keywords,
+   references and exceeded limits give bounded corrections and the relevant
+   FLOW specification, without echoing rejected values or compiler exceptions.
    Missing or invalid files in the installed Jig runtime have a closed
    installation-repair explanation; raw paths and filesystem exceptions remain
    private, and a later revalidation failure must not imply that no work started.

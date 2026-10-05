@@ -2242,6 +2242,59 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('\u202e')
   })
 
+  test.each([
+    [
+      'SCHEMA_INVALID',
+      '/$schema',
+      'Set the root "$schema" to "https://flow.jig.md/schemas/schema-0.json"',
+    ],
+    [
+      'SCHEMA_INVALID',
+      '/properties/count/type',
+      'Correct the indicated schema declaration using FLOW Schema/0',
+    ],
+    [
+      'SCHEMA_INVALID_JSON',
+      '',
+      'Use valid UTF-8 JSON/0 without duplicate keys and within its value limits',
+    ],
+    ['SCHEMA_KEYWORD_UNSUPPORTED', '/format', 'Use only the supported FLOW Schema/0 keywords'],
+    [
+      'SCHEMA_REFERENCE_INVALID',
+      '/$ref',
+      'Use an acyclic same-document reference spelled #/$defs/<name>',
+    ],
+    [
+      'SCHEMA_LIMIT_EXCEEDED',
+      '',
+      'Reduce schema size or validation work to the FLOW Schema/0 limits',
+    ],
+  ])(
+    'schema authoring failure %s at %s gives a concrete repair',
+    async (code, pointer, guidance) => {
+      const events: string[] = []
+      const failure = new ProjectAdministrationError(
+        'INVALID_CANDIDATE',
+        'private-token /private/schema',
+        {
+          code,
+          path: 'flows/worker/settings.schema.json',
+          pointer,
+        },
+      )
+      const invocation = commandInvocation(
+        fakeHost(fakeSession(events, { planFailure: failure }), events),
+      )
+      expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+      expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
+      expect(invocation.error).toContain('Location: "flows/worker/settings.schema.json"')
+      expect(invocation.error).toContain(guidance)
+      expect(invocation.error).toContain(`Diagnostic code: ${code}`)
+      expect(invocation.error).not.toMatch(/private-token|\/private\/schema/)
+      if (pointer) expect(invocation.error).toContain(`Value: "${pointer}"`)
+    },
+  )
+
   test('workspace manifest failures identify the real ancestor and field without echoing rejected values', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError(

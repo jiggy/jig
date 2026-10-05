@@ -292,6 +292,9 @@ admitted FLOW packages.
   hiding the structured result's message must never discard its cause. Quote and
   escape reported text as data, and do not infer missing evidence from empty
   stderr when the terminal already carries a specific explanation.
+  Schema authoring failures identify the required root dialect when known and
+  route unsupported keywords, references and limits to FLOW Schema/0; never
+  display rejected schema values or compiler exception text.
   Render host-only REVIEW_REQUIRED with `jig review` as the next action.
   Flow-supplied error details cannot establish that execution never started.
   Emphasize host failure/uncertainty in summary status lines and end failed Runs
