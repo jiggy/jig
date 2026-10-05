@@ -562,6 +562,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   of the new lock; the subsequent install stays frozen and script-disabled.
 - Workspace capture supports root applications and declared ancestor members,
   reading root metadata and selected dependency source, never installed links.
+  Resolve a selected package's declared workspace above the Jig application
+  before using workspace declarations inside it. The nearest qualifying outer
+  root must directly declare the selected package; owning only the application
+  does not add undeclared Flows. Without a qualifying outer root, use the nearest
+  declared enclosing workspace within the application, or the selected package's
+  own workspace. Keep the same bounded ancestor discovery; stop at directory
+  aliases without invalidating a declared workspace below one.
   Preserve members' own `workspaces` declarations as inert metadata during an
   ancestor-root install. Only that root's patterns define captured membership;
   member declarations neither expand it nor invalidate unrelated consumers.

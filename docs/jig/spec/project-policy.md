@@ -245,6 +245,12 @@ A member may also declare `workspaces` for use as a standalone project. During
 an ancestor-root installation, Bun uses only that root's membership patterns.
 Jig retains member declarations unchanged; they do not add nested packages to
 the captured workspace or invalidate unrelated members.
+When a selected package belongs to a workspace above the Jig application,
+Jig uses the nearest such root before workspace declarations inside the
+application. The selected package must itself match that root's patterns;
+application membership alone does not declare its Flows. If no outer root
+declares the selected package, its nearest enclosing application workspace
+or its own workspace supplies the standalone context.
 
 Library `files` paths and glob patterns select source when present, including
 `package.json`, README and license files. Otherwise ordinary package files are

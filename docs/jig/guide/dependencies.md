@@ -104,6 +104,10 @@ The Jig application itself may live at the workspace root or in a declared
 member. Declare `npm:` Flow targets in that application's `dependencies`;
 root applications need not move into a member directory. Root dependency
 selection captures metadata and selected packages, not the whole repository.
+An application can keep its own `workspaces` declaration for standalone use.
+When the outer workspace declares the selected application or Flow, review
+uses that outer root and its local packages. Include nested Flows explicitly
+in the outer workspace list; the application's declaration does not expand it.
 
 If a supplied lock is stale, review identifies the manifest and mismatched
 field. Update the authored lock with Bun and review again; Jig never repairs

@@ -216,6 +216,133 @@ test('member workspace declarations preserve bytes without expanding ancestor me
   }
 })
 
+test.each(['application', 'flow'] as const)(
+  'nested %s uses the declared workspace above the Jig application',
+  async (selection) => {
+    const value = await fixture(false, false, 'workspace:*', '0.1.0')
+    let source: Awaited<ReturnType<typeof captureOpenedPackageDirectory>> | undefined
+    let project: Awaited<ReturnType<typeof openPrivateProjectRoot>> | undefined
+    try {
+      await value.put('package.json', {
+        private: true,
+        workspaces: ['apps/*', 'apps/*/flows/*', 'libs/*'],
+      })
+      const manifest = {
+        name: 'nested-app',
+        private: true,
+        workspaces: ['flows/*'],
+        dependencies: { helper: '0.1.0' },
+      }
+      await value.put('apps/demo/package.json', manifest)
+      project = await openPrivateProjectRoot(join(value.root, 'apps/demo'))
+      source =
+        selection === 'application'
+          ? await captureOpenedPackageDirectory('application metadata', project.handle, {
+              includes: (path) => path === 'package.json',
+              maximumFiles: 1,
+              maximumBytes: 1024 * 1024,
+            })
+          : await capturePackageDirectory(join(value.root, target))
+      const captured = await capturePrivateBunWorkspace({
+        projectRoot: project,
+        packagePath: selection === 'application' ? '' : 'flows/work',
+        captured: source,
+        signal: new AbortController().signal,
+      })
+      if (captured === undefined) throw new Error('declared workspace was not captured')
+      try {
+        expect(captured).toBeDefined()
+        expect(captured.target).toBe(selection === 'application' ? 'apps/demo' : target)
+        expect(captured.selected).toEqual([
+          selection === 'application' ? 'apps/demo' : target,
+          'libs/helper',
+          'libs/leaf',
+        ])
+        expect(captured.captured.files.map(({ path }) => path)).toContain(
+          'libs/helper/dist/index.js',
+        )
+        expect(
+          JSON.parse(
+            Buffer.from(await captured.captured.read('apps/demo/package.json')).toString(),
+          ),
+        ).toEqual(manifest)
+        expect(captured.captured.files.map(({ path }) => path)).not.toContain(
+          'libs/unrelated/secret',
+        )
+      } finally {
+        await captured?.captured.dispose()
+      }
+    } finally {
+      await source?.dispose()
+      await project?.dispose()
+      await value.dispose()
+    }
+  },
+)
+
+test.each(['directory', 'ancestor-alias'] as const)(
+  'an unrelated outer workspace leaves the application workspace usable: %s',
+  async (mode) => {
+    const value = await fixture(false, false, 'workspace:*', '0.1.0')
+    let project: Awaited<ReturnType<typeof openPrivateProjectRoot>> | undefined
+    try {
+      await value.put('package.json', { private: true, workspaces: ['libs/*'] })
+      await value.put('apps/demo/package.json', {
+        name: 'standalone-app',
+        private: true,
+        workspaces: ['flows/*', 'libs/*'],
+      })
+      await value.put('apps/demo/libs/helper/package.json', {
+        name: 'helper',
+        version: '0.1.0',
+        exports: './index.js',
+      })
+      await value.put('apps/demo/libs/helper/index.js', 'export const message = "inner workspace"')
+      if (mode === 'ancestor-alias') {
+        await symlink(join(value.root, 'apps'), join(value.root, 'alias'))
+        project = await openPrivateProjectRoot(join(value.root, 'alias/demo'))
+      }
+      const captured =
+        project === undefined
+          ? await value.capture()
+          : await capturePrivateBunWorkspace({
+              projectRoot: project,
+              packagePath: 'flows/work',
+              captured: value.source,
+              signal: new AbortController().signal,
+            })
+      if (captured === undefined) throw new Error('application workspace was not captured')
+      try {
+        expect(captured.target).toBe('flows/work')
+        expect(captured.selected).toEqual(['flows/work', 'libs/helper'])
+        expect(
+          Buffer.from(await captured.captured.read('libs/helper/index.js')).toString(),
+        ).toContain('inner workspace')
+      } finally {
+        await captured.captured.dispose()
+      }
+    } finally {
+      await project?.dispose()
+      await value.dispose()
+    }
+  },
+)
+
+test('an ancestor owning only the application cannot supply undeclared Flow members', async () => {
+  const value = await fixture()
+  try {
+    await value.put('package.json', { private: true, workspaces: ['apps/*', 'libs/*'] })
+    await value.put('apps/demo/package.json', {
+      name: 'nested-app',
+      private: true,
+      workspaces: ['flows/*'],
+    })
+    await expect(value.capture()).rejects.toMatchObject({ code: 'PACKAGE_BUN_WORKSPACE_MISSING' })
+  } finally {
+    await value.dispose()
+  }
+})
+
 test('exact matching versions select local members in a declared ancestor workspace', async () => {
   const value = await fixture(false, false, 'workspace:*', '0.1.0')
   try {
