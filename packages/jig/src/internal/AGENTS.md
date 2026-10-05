@@ -267,7 +267,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   recreate a missing allocation, because removal permanently revokes every stale
   copy of its capability. Cancellation and final receipts authorize release only
   for the same allocation. Rename a releasable allocation out of its executable
-  name while still holding the lock, authenticate its release marker, and remove
+  name while still holding the lock. First publish its complete, synced release
+  marker by exclusive rename; partial staging cannot authorize retirement.
+  Under the same lock and authenticated proof, discard only the fixed regular,
+  private, single-link bounded staging leaf. Authenticate the release marker and
+  remove
   only the closed known entry set. Preserve unexpected or partially cleaned state;
   block reuse of its owner name until exact release completes. The backend must validate
   sealed identities and cleanup receipts independently; ledger JSON alone is
@@ -935,7 +939,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   coordinator death and lock replacement. `macos-backend-state.test.ts` checks
   fresh-process recovery of committed state, cancelled admission, exact final
   receipt retention, interrupted writes, atomic release recovery and authentication
-  failures. Synthetic ledger receipts do not qualify backend cleanup or installed
+  failures, including coordinator death during release-marker publication and
+  unsafe or proofless release staging. Its interrupted-release fixture also
+  compiles in ordinary tests. Synthetic ledger receipts do not qualify backend
+  cleanup or installed
   execution. `macos-native-backend.test.ts` qualifies sealing, immutable-path
   binding, prepared and active admission, bounded output after storage removal,
   durable final receipts, unused-owner recovery, prepared/active coordinator-loss

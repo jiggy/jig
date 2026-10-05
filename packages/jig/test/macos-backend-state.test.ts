@@ -1,13 +1,30 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  link,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   cancelPrivateMacosOwnerStateAllocation,
   normalizePrivateMacosOwnerStateAllocationIdentity,
   openPrivateMacosBackendState,
+  type PrivateMacosOwnerStateCancellation,
   planPrivateMacosOwnerStateAllocation,
   releasePrivateMacosOwnerState,
 } from '../src/internal/macos-backend-state.js'
+import type { JsonObject } from '../src/json.js'
 
 const native = test.skipIf(
   process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1',
@@ -20,6 +37,147 @@ async function fixture(work: (root: string) => Promise<void>) {
     await rm(root, { recursive: true })
   }
 }
+
+async function interruptedReleaseFixture(root: string): Promise<string> {
+  const sourceUrl = new URL('../src/internal/macos-backend-state.ts', import.meta.url)
+  const directory = fileURLToPath(new URL('.', sourceUrl))
+  const source = await readFile(sourceUrl, 'utf8')
+  const write = '          await file.writeFile(marker)'
+  expect(source.split(write)).toHaveLength(2)
+  const module = join(root, 'interrupted-release.ts')
+  await writeFile(
+    module,
+    source
+      .replace(
+        write,
+        `          process.stdout.write('release-write\\n')\n          await new Promise<void>(() => {})\n${write}`,
+      )
+      .replaceAll("from './", `from '${directory}`)
+      .replaceAll("from '../", `from '${fileURLToPath(new URL('..', sourceUrl))}`),
+  )
+  const runner = join(root, 'release-runner.ts')
+  await writeFile(
+    runner,
+    `import { readFile } from 'node:fs/promises'
+import { releasePrivateMacosOwnerState } from ${JSON.stringify(module)}
+const { allocation, proof } = JSON.parse(await readFile(process.argv[2], 'utf8'))
+await releasePrivateMacosOwnerState(allocation, proof)
+`,
+  )
+  return runner
+}
+
+test('constructs the interrupted-release coordinator without native execution', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-release-fixture-')))
+  try {
+    const runner = await interruptedReleaseFixture(root)
+    const built = await Bun.build({ entrypoints: [runner], target: 'bun' })
+    expect(built.success, String(built.logs)).toBe(true)
+  } finally {
+    await rm(root, { recursive: true })
+  }
+})
+
+native(
+  'native release resumes after coordinator loss during marker publication',
+  async () => {
+    await fixture(async (root) => {
+      const runner = await interruptedReleaseFixture(root)
+      for (const phase of ['cancelled', 'finished'] as const) {
+        const allocation = await planPrivateMacosOwnerStateAllocation({ parent: root, name: phase })
+        let proof: PrivateMacosOwnerStateCancellation | JsonObject
+        if (phase === 'cancelled') {
+          proof = await cancelPrivateMacosOwnerStateAllocation(allocation)
+        } else {
+          const state = await openPrivateMacosBackendState(allocation)
+          proof = { fenced: true, fixture: 'separate backend proof required' }
+          try {
+            await state.seal({ digest: 'fixture-owner' })
+            await state.admit()
+            await state.finish(proof)
+          } finally {
+            await state.close()
+          }
+        }
+        const path = join(root, `${phase}.json`)
+        await writeFile(path, JSON.stringify({ allocation, proof }), { mode: 0o600 })
+        const child = Bun.spawn(
+          [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', runner, path],
+          { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+        )
+        try {
+          const reader = child.stdout.getReader()
+          const ready = await reader.read()
+          reader.releaseLock()
+          expect(Buffer.from(ready.value!).toString()).toBe('release-write\n')
+          await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow('still held')
+          child.kill('SIGKILL')
+          await child.exited
+          expect(child.signalCode).toBe('SIGKILL')
+          const names = await readdir(allocation.directory)
+          const staged = names.includes('release.pending') ? 'release.pending' : 'release.json'
+          expect(await readFile(join(allocation.directory, staged))).toHaveLength(0)
+          const reopened = await openPrivateMacosBackendState(allocation)
+          try {
+            expect((await reopened.read()).phase).toBe(phase)
+            await expect(reopened.admit()).rejects.toThrow('not permitted')
+          } finally {
+            await reopened.close()
+          }
+          const receipt = await releasePrivateMacosOwnerState(allocation, proof)
+          expect((await releasePrivateMacosOwnerState(allocation, proof)).digest).toBe(
+            receipt.digest,
+          )
+          expect(await readdir(root)).not.toContain(phase)
+          expect(await readdir(root)).not.toContain(`.${phase}.release`)
+        } finally {
+          child.kill('SIGKILL')
+          await child.exited
+        }
+      }
+    })
+  },
+  10_000,
+)
+
+native(
+  'native release staging cannot bypass proof or unsafe-record rejection',
+  async () => {
+    await fixture(async (root) => {
+      for (const kind of ['proof', 'symlink', 'hardlink', 'public', 'oversized', 'forged']) {
+        const allocation = await planPrivateMacosOwnerStateAllocation({ parent: root, name: kind })
+        const proof = await cancelPrivateMacosOwnerStateAllocation(allocation)
+        const pending = join(allocation.directory, 'release.pending')
+        const canary = join(root, `${kind}.canary`)
+        await writeFile(canary, 'preserve', { mode: 0o600, flag: 'wx' })
+        if (kind === 'symlink') await symlink(canary, pending)
+        else if (kind === 'hardlink') await link(canary, pending)
+        else
+          await writeFile(pending, kind === 'oversized' ? Buffer.alloc(65_537) : 'partial', {
+            mode: kind === 'public' ? 0o644 : 0o600,
+            flag: 'wx',
+          })
+        if (kind === 'public') await chmod(pending, 0o644)
+        if (kind === 'forged')
+          await writeFile(join(allocation.directory, 'release.json'), 'forged', {
+            mode: 0o600,
+            flag: 'wx',
+          })
+        await expect(
+          releasePrivateMacosOwnerState(allocation, kind === 'proof' ? {} : proof),
+        ).rejects.toThrow()
+        expect(await readdir(allocation.directory)).toContain('release.pending')
+        expect(await readdir(root)).toContain(kind)
+        expect(await readFile(canary, 'utf8')).toBe('preserve')
+        await unlink(pending)
+        if (kind === 'forged') await unlink(join(allocation.directory, 'release.json'))
+        await releasePrivateMacosOwnerState(allocation, proof)
+        expect(await readFile(canary, 'utf8')).toBe('preserve')
+      }
+    })
+  },
+  10_000,
+)
 
 native(
   'native owner state commits exact admission once and excludes late starts after cancellation',
