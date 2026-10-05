@@ -1,3 +1,4 @@
+import { constants } from 'node:fs'
 import { lstat, open, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, normalize } from 'node:path'
@@ -165,9 +166,11 @@ export async function readPrivateMacosAgentMetadata(path: string): Promise<MachO
   const acceptedSubtype = (value: number) =>
     nativeSubtype(value) || (systemSandbox && value === 0x80000002)
 
-  const file = await open(path, 'r')
+  const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK)
   try {
-    const size = (await file.stat()).size
+    const information = await file.stat()
+    if (!information.isFile()) throw new Error('native Agent runtime is not a regular file')
+    const size = information.size
     async function read(offset: number, length: number): Promise<Buffer> {
       if (
         !Number.isSafeInteger(offset) ||

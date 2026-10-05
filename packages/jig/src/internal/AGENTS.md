@@ -621,8 +621,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   retain individual executable, loader, and
   library files at installation paths, identify them under the selected
   verification policy, and revalidate before launch. Identify each native file
-  before reading its metadata; inspection remains provisional until provider
-  construction checks that interval under the same policy.
+  before reading its metadata, open nonblocking and verify the opened file is
+  regular before parsing. Pathname substitution must not wait for a pipe writer.
+  Inspection remains provisional until provider construction checks that
+  interval under the same policy. The exported ELF reader is a private static
+  inspection seam, not a provider, runtime validation or public API.
   Every native factory must verify the complete inspection against its authentic
   provider before returning it. Do not add an intermediate full-file hash pass
   or claim metadata reuse establishes fresh byte evidence. This comparison never
@@ -634,8 +637,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   inspector: bounded baseline x86-64 or ARM64 Mach-O and universal slices, including the
   SDK's LIB64 library-width flag. The exact SIP-protected `/usr/bin/sandbox-exec`
   additionally admits Apple's native arm64e slice on qualified Apple Silicon;
-  operator-selected Agent binaries still require baseline slices. Inspect exact third-party
-  libraries, loader/executable-relative paths and inherited run paths. Consult
+  operator-selected Agent binaries still require baseline slices. Metadata opens
+  nonblocking and verifies the opened file is regular before parsing. Inspect exact
+  third-party libraries, loader/executable-relative paths and inherited run paths. Consult
   the active OS dyld cache for system libraries; never fabricate file identities
   for cache-only images or load selected libraries into the coordinator. Reject
   embedded loader variables, ambiguous identities, unsupported commands and
@@ -900,6 +904,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   loss cases remain Linux-specific.
   `macos-agent-runtime.test.ts` checks malformed and universal Mach-O metadata,
   project-excluded transitive lookup, cache membership and changed support bytes.
+  `native-agent-metadata.test.ts` uses bounded fresh-process named-pipe
+  regressions for both ELF and Mach-O readers, verifying prompt refusal without
+  executing the selected files or removing them before inspection settles.
   Deployment targets must not exceed the already qualified host kernel’s
   `kern.osproductversion`; SDK defaults cannot inherit another candidate’s ceiling.
   Its opted-in SDK-linked fixture proves that inspection does not invoke library
