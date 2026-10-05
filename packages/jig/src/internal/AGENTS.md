@@ -679,6 +679,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Configuration evaluator failures preserve closed support, launch, envelope,
   settlement or protocol codes and the captured declaration location. Never
   project raw launcher exceptions or infer a timeout cause from unavailability.
+  Evaluator launch errors retain their original cause privately so the existing
+  operation observer can project the closed class/code chain. Lifecycle host
+  tests observe plan/apply failures as well as execution failures; public errors
+  keep the evaluator code and declaration location without the private chain.
   Manifest policy errors retain closed causes and JSON pointers, never rejected
   source values or invalid names. Workspace manifest locations are relative to
   the project (including bounded ancestor paths), not the selected Flow; do not
