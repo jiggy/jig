@@ -67,16 +67,119 @@ await releasePrivateMacosOwnerState(allocation, proof)
   return runner
 }
 
-test('constructs the interrupted-release coordinator without native execution', async () => {
+async function unsafeRecordFixture(root: string): Promise<string> {
+  const module = fileURLToPath(new URL('../src/internal/macos-backend-state.ts', import.meta.url))
+  const ownerModule = fileURLToPath(
+    new URL('../src/internal/macos-owner-state.ts', import.meta.url),
+  )
+  const runner = join(root, 'unsafe-record-runner.ts')
+  await writeFile(
+    runner,
+    `import { readFile } from 'node:fs/promises'
+import { openPrivateMacosBackendState, releasePrivateMacosOwnerState } from ${JSON.stringify(module)}
+import { readPrivateMacosOwner, removePrivateMacosSockets } from ${JSON.stringify(ownerModule)}
+const { allocation, proof, operation } = JSON.parse(await readFile(process.argv[2], 'utf8'))
+try {
+  if (operation === 'open') {
+    const state = await openPrivateMacosBackendState(allocation)
+    await state.close()
+  } else if (operation === 'owner') {
+    readPrivateMacosOwner(allocation.directory, allocation.ownerToken)
+  } else if (operation === 'sockets') {
+    removePrivateMacosSockets(allocation.directory, allocation.ownerToken)
+  } else {
+    await releasePrivateMacosOwnerState(allocation, proof)
+  }
+  throw new Error('unsafe record was accepted')
+} catch (error) {
+  if (!(error instanceof Error) || !['native execution record is unsafe', 'macOS ownership journal is unsafe'].includes(error.message)) throw error
+  process.stdout.write('unsafe-record-refused\\n')
+}
+`,
+  )
+  return runner
+}
+
+test('constructs the owner-state subprocess fixtures without native execution', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-release-fixture-')))
   try {
-    const runner = await interruptedReleaseFixture(root)
-    const built = await Bun.build({ entrypoints: [runner], target: 'bun' })
+    const runners = [await interruptedReleaseFixture(root), await unsafeRecordFixture(root)]
+    const built = await Bun.build({ entrypoints: runners, target: 'bun' })
     expect(built.success, String(built.logs)).toBe(true)
   } finally {
     await rm(root, { recursive: true })
   }
 })
+
+for (const [record, operation] of [
+  ['state.json', 'open'],
+  ['state.pending', 'open'],
+  ['release.json', 'release'],
+  ['release.pending', 'release'],
+  ['owner.json', 'owner'],
+  ['sockets.json', 'sockets'],
+] as const) {
+  native(
+    `native owner record ${record} rejects an unread named pipe without blocking`,
+    async () => {
+      await fixture(async (root) => {
+        const allocation = await planPrivateMacosOwnerStateAllocation({
+          parent: root,
+          name: 'pipe',
+        })
+        const proof = await cancelPrivateMacosOwnerStateAllocation(allocation)
+        const parent = record.startsWith('state.')
+          ? join(allocation.directory, 'control')
+          : allocation.directory
+        const path = join(parent, record)
+        const original = record === 'state.json' ? await readFile(path) : undefined
+        if (original !== undefined) await unlink(path)
+        const fifo = Bun.spawnSync(['/usr/bin/mkfifo', '-m', '600', path])
+        expect(fifo.exitCode, Buffer.from(fifo.stderr).toString()).toBe(0)
+        const request = join(root, 'request.json')
+        await writeFile(request, JSON.stringify({ allocation, proof, operation }), { mode: 0o600 })
+        const runner = await unsafeRecordFixture(root)
+        const child = Bun.spawn(
+          [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            runner,
+            request,
+          ],
+          { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+        )
+        const output = new Response(child.stdout).text()
+        const errors = new Response(child.stderr).text()
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          const status = await Promise.race([
+            child.exited,
+            new Promise<'blocked'>((resolve) => {
+              timer = setTimeout(() => resolve('blocked'), 5_000)
+            }),
+          ])
+          expect(status, `owner record ${record} blocked before its regular-file check`).not.toBe(
+            'blocked',
+          )
+          expect(status, await errors).toBe(0)
+          expect(await output).toBe('unsafe-record-refused\n')
+          expect(await readdir(parent)).toContain(record)
+        } finally {
+          clearTimeout(timer)
+          child.kill('SIGKILL')
+          await child.exited
+          await Promise.all([output, errors])
+          await unlink(path)
+          if (original !== undefined) await writeFile(path, original, { mode: 0o600, flag: 'wx' })
+          await releasePrivateMacosOwnerState(allocation, proof)
+        }
+      })
+    },
+    10_000,
+  )
+}
 
 native(
   'native release resumes after coordinator loss during marker publication',

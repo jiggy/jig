@@ -135,7 +135,10 @@ function readRecord(
   const parent = privateDirectory(directory)
   let fd: number | undefined
   try {
-    fd = openSync(join(directory, name), constants.O_RDONLY | O_NOFOLLOW_ANY | O_CLOEXEC)
+    fd = openSync(
+      join(directory, name),
+      constants.O_RDONLY | constants.O_NONBLOCK | O_NOFOLLOW_ANY | O_CLOEXEC,
+    )
     const before = fstatSync(fd, { bigint: true })
     if (
       !before.isFile() ||
