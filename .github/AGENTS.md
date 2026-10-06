@@ -85,10 +85,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   archive hashes, performs zero-residue verification, and contributes to the
   aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
   prevent that aggregate from succeeding.
-- Linux installed-evidence also runs the public workspace-dependency consumer
-  and complete packed CLI composition under the proof host, in addition to
-  operational and hostile baselines. Pass the runner's absolute Node executable
-  to the packed compiler smoke test because the acquisition host uses a fixed
+- Linux package-lifecycle runs preparation, retained progress, finite ACP,
+  Markdown and public workspace-dependency proof. Its packed dependency-reuse
+  case runs once in its dedicated step; the remaining provider cases use the
+  complementary name pattern. Installed-evidence runs complete packed CLI
+  composition, operational and hostile baselines on a separate proof host.
+  Pass the runner's absolute Node executable to the packed compiler smoke test
+  because the acquisition host uses a fixed
   path that excludes runner tool-cache binaries.
 - Native Agent API Qualification consumes the exact host archives from the
   successful `Linux host conformance` run, then tests one native client per
@@ -127,9 +130,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   isolated shards per architecture checks the exact kernel/build, native Bun,
   process prerequisites, ordinary build, frozen archive identity and ownership
   residue. The deterministic test plan covers every discovered Jig test file;
-  it partitions the long root Agent lifecycle by disjoint name groups, with
-  tests in fresh, sequential per-file Bun processes inside each host. One shard per architecture additionally
-  checks genuine pinned clients offline, ordinary npm installation and packed
+  it partitions the long root Agent lifecycle and package-provider files by
+  disjoint, exhaustive name groups and balances them with all other files.
+  Tests run in fresh, sequential per-group Bun processes inside each host.
+  One shard per architecture additionally checks genuine pinned clients offline,
+  ordinary npm installation and packed
   consumer execution. Native containment/recovery and descriptor-handoff probes
   run once in a dedicated step on shard zero. Per-architecture aggregate checks
   require exact-revision success markers from all five shards; prerequisite

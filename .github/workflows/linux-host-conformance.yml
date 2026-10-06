@@ -102,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [agent-lifecycle, delegated-authority, installed-evidence]
+        suite: [agent-lifecycle, delegated-authority, package-lifecycle, installed-evidence]
     steps:
       - name: Check out the exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -223,7 +223,7 @@ jobs:
           --timeout 240000
 
       - name: Prove contained native preparation
-        if: matrix.suite == 'installed-evidence'
+        if: matrix.suite == 'package-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -232,7 +232,7 @@ jobs:
           --timeout 120000
 
       - name: Prove retained progress and coordinator-loss delivery
-        if: matrix.suite == 'installed-evidence'
+        if: matrix.suite == 'package-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -240,16 +240,16 @@ jobs:
           --timeout 90000
 
       - name: Prove packed source edits reuse dependencies without reusing authority
-        if: matrix.suite == 'installed-evidence'
+        if: matrix.suite == 'package-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
           env JIG_LINUX_ROOTLESS_HOSTILE=1
           "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
-          -t 'packed project dependencies' --timeout 600000
+          -t '^packed project dependencies ' --timeout 600000
 
       - name: Prove ordinary ACP Agent progress and cancellation
-        if: matrix.suite == 'installed-evidence'
+        if: matrix.suite == 'package-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -258,7 +258,7 @@ jobs:
           --timeout 180000
 
       - name: Prove installed Markdown and exact typed calls
-        if: matrix.suite == 'installed-evidence'
+        if: matrix.suite == 'package-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
           env JIG_LINUX_ROOTLESS_HOSTILE=1
@@ -268,12 +268,13 @@ jobs:
           --timeout 120000
 
       - name: Prove installed workspace dependency admission and execution
-        if: matrix.suite == 'installed-evidence'
+        if: matrix.suite == 'package-lifecycle'
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
           env JIG_LINUX_ROOTLESS_HOSTILE=1
           "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
+          -t '^(?!packed project dependencies )'
           --timeout 180000
 
       - name: Prove complete packed CLI composition

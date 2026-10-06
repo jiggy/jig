@@ -7,40 +7,45 @@ import { test } from 'node:test'
 import {
   commandsForShard,
   discoverJigTests,
+  NAMED_TEST_GROUPS,
   NATIVE_PREREQUISITE_TESTS,
+  PACKAGE_TEST,
   planMacHostTests,
-  ROOT_PATTERNS,
   ROOT_TEST,
   SHARD_COUNT,
 } from './macos-host-test-shards.mjs'
 
-test('every current Jig test file belongs to exactly one Mac host shard', async () => {
+test('every current Jig file and named partition enters Mac qualification exactly once', async () => {
   const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
   const shards = planMacHostTests(files)
   assert.equal(shards.length, SHARD_COUNT)
-  assert.deepEqual(
-    shards.flatMap((shard) => shard.files).sort(),
-    files.filter((file) => file !== ROOT_TEST && !NATIVE_PREREQUISITE_TESTS.includes(file)),
-  )
+  const groups = shards.flatMap((shard) => shard.groups)
+  for (const file of files) {
+    const selected = groups.filter((group) => group.file === file)
+    if (NATIVE_PREREQUISITE_TESTS.includes(file)) assert.equal(selected.length, 0)
+    else
+      assert.deepEqual(
+        selected.map((group) => group.pattern).sort(),
+        (NAMED_TEST_GROUPS.get(file)?.map((group) => group.pattern) ?? [null]).sort(),
+        file,
+      )
+  }
   for (const shard of shards) {
-    assert.ok(shard.files.length > 0)
-    for (const file of shard.files) assert.ok(file.startsWith('packages/jig/test/'))
-    assert.equal(
-      commandsForShard(shard).length,
-      shard.files.length + Number(Boolean(shard.rootPattern)),
-    )
-    for (const command of commandsForShard(shard)) {
+    assert.ok(shard.groups.length > 0)
+    const commands = commandsForShard(shard)
+    assert.equal(commands.length, shard.groups.length)
+    for (const [index, command] of commands.entries()) {
       assert.equal(command[1], 'test')
       assert.ok(command.includes('--bail=1'))
       assert.ok(command.includes('--timeout'))
       assert.equal(command.filter((part) => part.startsWith('./packages/jig/test/')).length, 1)
+      assert.equal(command[2], `./${shard.groups[index].file}`)
+      const pattern = shard.groups[index].pattern
+      assert.equal(command.includes('--test-name-pattern'), pattern !== null)
+      if (pattern) assert.equal(command[command.indexOf('--test-name-pattern') + 1], pattern)
     }
   }
-  assert.ok(
-    shards
-      .flatMap((shard) => shard.files)
-      .includes('packages/jig/test/package-provider-host.test.ts'),
-  )
+  assert.ok(groups.some((group) => group.file === PACKAGE_TEST))
   const workflow = await readFile(
     resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
     'utf8',
@@ -49,28 +54,59 @@ test('every current Jig test file belongs to exactly one Mac host shard', async 
     assert.ok(workflow.includes(file), `${file} is absent from the native prerequisite step`)
   }
   assert.ok(
-    shards
-      .flatMap((shard) => shard.files)
-      .includes('packages/jig/test/macos-guardian-storage.test.ts'),
+    groups.some((group) => group.file === 'packages/jig/test/macos-guardian-storage.test.ts'),
   )
+  const future = 'packages/jig/test/future-host-proof.test.ts'
+  assert.equal(
+    planMacHostTests([...files, future])
+      .flatMap((shard) => shard.groups)
+      .filter((group) => group.file === future).length,
+    1,
+  )
+  assert.throws(() => planMacHostTests([...files, ROOT_TEST]))
+  for (const file of [ROOT_TEST, PACKAGE_TEST, ...NATIVE_PREREQUISITE_TESTS]) {
+    assert.throws(() => planMacHostTests(files.filter((current) => current !== file)))
+  }
 })
 
-test('root Agent name patterns partition fixture, repair, lifecycle and fence tests', () => {
+test('named patterns partition current and future lifecycle, repair and package cases', () => {
   const names = [
     'contact-import variants are valid current FLOW packages',
     'constructs the Agent fixture with the complete current SDK',
     'contained repair file application exports successful repair evidence',
     'contained repair file application exports mixed-batch repair evidence',
+    'contained repair file application exports unsuccessful repair evidence',
+    'contained repair file application adds a future repair case',
     'private contained Agent Run lifecycle runs unchanged packed HTTP Agent siblings',
     'private contained Agent Run lifecycle fences root Agent Run success',
     'private contained Agent Run lifecycle fences specialist Agent Run success',
+    'private contained Agent Run lifecycle fences root Agent ACP success',
+    'private contained Agent Run lifecycle fences future collaborator loss',
     'private contained Agent Run lifecycle executes an added future case',
   ]
   for (const name of names) {
-    assert.equal(ROOT_PATTERNS.filter((pattern) => new RegExp(pattern).test(name)).length, 1, name)
+    assert.equal(
+      NAMED_TEST_GROUPS.get(ROOT_TEST).filter(({ pattern }) => new RegExp(pattern).test(name))
+        .length,
+      1,
+      name,
+    )
   }
-  assert.equal(ROOT_PATTERNS.length, 3)
-  assert.throws(() => planMacHostTests([ROOT_TEST, ROOT_TEST]))
+  for (const name of [
+    'installed CLI reviews and runs a workspace dependency (application: member)',
+    'installed CLI reviews a future layout',
+    'packed read attachments preserve empty roots and maximum relative paths',
+    'packed project entrypoint uses fresh reviewed data and immutable execution',
+    'packed project dependencies uses fresh reviewed data and immutable execution',
+    'a future installed package case',
+  ]) {
+    assert.equal(
+      NAMED_TEST_GROUPS.get(PACKAGE_TEST).filter(({ pattern }) => new RegExp(pattern).test(name))
+        .length,
+      1,
+      name,
+    )
+  }
 })
 
 test('expensive host cases run before portable checks without dropping work', async () => {
@@ -79,13 +115,12 @@ test('expensive host cases run before portable checks without dropping work', as
   assert.deepEqual(planMacHostTests([...files].reverse()), shards)
   for (const shard of shards) {
     const commands = commandsForShard(shard)
-    if (shard.rootPattern) assert.equal(commands[0][2], `./${ROOT_TEST}`)
     const commandIndex = commands.findIndex((command) =>
       command[2].endsWith('/project-command-lifecycle.test.ts'),
     )
     if (commandIndex !== -1) {
       // The previous alphabetical schedule buried this failure after 21 files.
-      assert.ok(commandIndex <= 1, `command lifecycle was scheduled at ${commandIndex}`)
+      assert.ok(commandIndex <= 2, `command lifecycle was scheduled at ${commandIndex}`)
     }
   }
 })
@@ -93,28 +128,145 @@ test('expensive host cases run before portable checks without dropping work', as
 test('Mac scheduling balances observed slow files and work outside the file runner', async () => {
   const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
   // Representative command wall times, independent of the planner's estimates.
-  // The fixed costs include root lifecycle groups, native prerequisites, and
-  // genuine startup/installed-consumer checks outside the per-file runner.
-  const fixedSeconds = [432, 397, 433, 0, 361]
+  // Fixed costs include native prerequisites and genuine startup/installed
+  // checks; partitioned lifecycle work is counted by its retained case names.
+  const fixedSeconds = [60, 0, 0, 0, 384]
   const measuredSeconds = new Map([
-    ['package-provider-host.test.ts', 272],
-    ['run-checkpoint-lifecycle.test.ts', 236],
-    ['project-command-lifecycle.test.ts', 195],
-    ['http-request-lifecycle.test.ts', 189],
-    ['bun-native-preparation.test.ts', 156],
-    ['finite-acp-lifecycle.test.ts', 136],
-    ['project-author-evaluator.test.ts', 80],
-    ['activation-admission-store.test.ts', 55],
+    ['run-checkpoint-lifecycle.test.ts', 241],
+    ['project-command-lifecycle.test.ts', 192],
+    ['http-request-lifecycle.test.ts', 190],
+    ['bun-native-preparation.test.ts', 174],
+    ['finite-acp-lifecycle.test.ts', 166],
+    ['project-author-evaluator.test.ts', 85],
+    ['activation-admission-store.test.ts', 57],
     ['macos-guardian-storage.test.ts', 51],
-    ['contract-generation.test.ts', 35],
-    ['markdown-worker.test.ts', 33],
+    ['contract-generation.test.ts', 32],
+    ['markdown-worker.test.ts', 47],
+  ])
+  // Individual retained cases, rather than planner weights: a partition change
+  // must route the work once and still balance its complete observed cost.
+  const namedCases = new Map([
+    [
+      ROOT_TEST,
+      [
+        [
+          'private contained Agent Run lifecycle runs two unchanged packed HTTP Agents through simultaneous deep specialist branches',
+          129,
+        ],
+        [
+          'private contained Agent Run lifecycle executes and cleans a five-level branch within the unchanged aggregate envelope',
+          97,
+        ],
+        [
+          'private contained Agent Run lifecycle runs unchanged packed HTTP Agent siblings without a native Agent provider',
+          57,
+        ],
+        [
+          'private contained Agent Run lifecycle delivers complete selected Skill bytes from a workspace child Binding',
+          37,
+        ],
+        [
+          'private contained Agent Run lifecycle delivers complete selected Skill bytes from a workspace root Flow',
+          31,
+        ],
+        [
+          'private contained Agent Run lifecycle runs a Bun subprocess and asynchronous I/O from root and child Flow recipes',
+          30,
+        ],
+        [
+          'contained repair file application exports unsuccessful repair evidence through a JSON leaf and real contained commands',
+          123,
+        ],
+        [
+          'contained repair file application exports batch repair evidence through a JSON leaf and real contained commands',
+          119,
+        ],
+        [
+          'contained repair file application exports mixed-batch repair evidence through a JSON leaf and real contained commands',
+          116,
+        ],
+        [
+          'contained repair file application exports successful repair evidence through a JSON leaf and real contained commands',
+          83,
+        ],
+        [
+          'private contained Agent Run lifecycle fences specialist Agent Run success, invalid output, cancellation, deadline, and loss',
+          235,
+        ],
+        [
+          'private contained Agent Run lifecycle fences root Agent Run success, invalid output, cancellation, deadline, and loss',
+          142,
+        ],
+        [
+          'private contained Agent Run lifecycle fences root Agent ACP success, invalid output, cancellation, deadline, and loss',
+          130,
+        ],
+      ],
+    ],
+    [
+      PACKAGE_TEST,
+      [
+        ['installed CLI reviews and runs a workspace dependency (application: member)', 83],
+        ['installed CLI reviews and runs a workspace dependency (application: root)', 73],
+        ['installed CLI reviews and runs a workspace dependency (application: nested)', 94],
+        ['packed read attachments preserve empty roots and maximum relative paths', 24],
+        ['packed project entrypoint uses fresh reviewed data and immutable execution', 53],
+        ['packed project dependencies uses fresh reviewed data and immutable execution', 101],
+      ],
+    ],
   ])
   for (const shard of planMacHostTests(files)) {
-    const seconds = shard.files.reduce(
-      (total, file) => total + (measuredSeconds.get(file.split('/').at(-1)) ?? 0),
+    const seconds = shard.groups.reduce(
+      (total, { file, pattern }) =>
+        total +
+        (pattern
+          ? namedCases
+              .get(file)
+              .filter(([name]) => new RegExp(pattern).test(name))
+              .reduce((sum, [, seconds]) => sum + seconds, 0)
+          : (measuredSeconds.get(file.split('/').at(-1)) ?? 0)),
       fixedSeconds[shard.index],
     )
-    assert.ok(seconds <= 700, `shard ${shard.index} concentrates ${seconds}s of observed work`)
+    assert.ok(seconds <= 720, `shard ${shard.index} concentrates ${seconds}s of observed work`)
+  }
+})
+
+test('the Mac group runner preserves the first child failure and starts no later group', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'jig-mac-group-failure-'))
+  try {
+    const calls = resolve(root, 'calls.jsonl')
+    const bun = resolve(root, 'failing-bun')
+    await writeFile(
+      bun,
+      `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(process.env.CALLS, JSON.stringify(process.argv.slice(2))+'\\n'); process.exit(42);\n`,
+      { mode: 0o700 },
+    )
+    const child = spawnSync(
+      process.execPath,
+      ['scripts/ci/macos-host-test-shards.mjs', 'run', '0'],
+      {
+        cwd: resolve(import.meta.dirname, '../..'),
+        env: { ...process.env, JIG_CI_BUN: bun, CALLS: calls },
+        encoding: 'utf8',
+      },
+    )
+    assert.equal(child.status, 42, child.stderr)
+    const lines = (await readFile(calls, 'utf8')).trim().split('\n')
+    assert.equal(lines.length, 1)
+    const first = commandsForShard(
+      planMacHostTests(await discoverJigTests(resolve(import.meta.dirname, '../..')))[0],
+      bun,
+    )[0]
+    assert.deepEqual(JSON.parse(lines[0]), first.slice(1))
+    const timing = child.stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .at(-1)
+    assert.equal(timing.status, 42)
+    assert.equal(timing.pattern, first[first.indexOf('--test-name-pattern') + 1])
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
 

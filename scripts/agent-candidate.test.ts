@@ -208,6 +208,7 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   expect(suites.strategy.matrix.suite).toEqual([
     'agent-lifecycle',
     'delegated-authority',
+    'package-lifecycle',
     'installed-evidence',
   ])
   const proofSteps = suites.steps
@@ -239,14 +240,58 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
     (step: any) =>
       step.name === 'Prove packed source edits reuse dependencies without reusing authority',
   )
-  expect(dependencyReuse.if).toBe("matrix.suite == 'installed-evidence'")
+  expect(dependencyReuse.if).toBe("matrix.suite == 'package-lifecycle'")
   expect(dependencyReuse.run).toContain('"JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"')
-  expect(dependencyReuse.run).toContain("-t 'packed project dependencies'")
+  expect(dependencyReuse.run).toContain("-t '^packed project dependencies '")
   const preparation = suites.steps.find(
     (step: any) => step.name === 'Prove contained native preparation',
   )
-  expect(preparation.if).toBe("matrix.suite == 'installed-evidence'")
+  expect(preparation.if).toBe("matrix.suite == 'package-lifecycle'")
   expect(preparation.run).toContain('packages/jig/test/project-author-evaluator.test.ts')
+  const packageProofs = [
+    'Prove contained native preparation',
+    'Prove retained progress and coordinator-loss delivery',
+    'Prove packed source edits reuse dependencies without reusing authority',
+    'Prove ordinary ACP Agent progress and cancellation',
+    'Prove installed Markdown and exact typed calls',
+    'Prove installed workspace dependency admission and execution',
+  ]
+  for (const name of packageProofs) {
+    expect(suites.steps.find((step: any) => step.name === name).if).toBe(
+      "matrix.suite == 'package-lifecycle'",
+    )
+  }
+  for (const name of [
+    'Prove complete packed CLI composition',
+    'Run Operational Baseline/1 against the packed archive',
+    'Attack the packed CLI inside the proved envelope',
+  ]) {
+    expect(suites.steps.find((step: any) => step.name === name).if).toBe(
+      "matrix.suite == 'installed-evidence'",
+    )
+  }
+  const workspace = suites.steps.find(
+    (step: any) => step.name === 'Prove installed workspace dependency admission and execution',
+  )
+  const patterns = [dependencyReuse, workspace].map(
+    (step) => new RegExp(step.run.match(/-t '([^']+)'/)[1]),
+  )
+  for (const name of [
+    'packed project dependencies uses fresh reviewed data and immutable execution',
+    'packed project entrypoint uses fresh reviewed data and immutable execution',
+    'packed read attachments preserve empty roots and maximum relative paths',
+    ...['member', 'root', 'nested'].map(
+      (location) =>
+        `installed CLI reviews and runs a workspace dependency (application: ${location})`,
+    ),
+    'a future package provider case',
+    'a future case mentioning packed project dependencies in its title',
+  ]) {
+    expect(
+      patterns.filter((pattern) => pattern.test(name)),
+      name,
+    ).toHaveLength(1)
+  }
   expect(
     suites.steps.find((step: any) => step.name === 'Verify the tested archives are unchanged').if,
   ).toBe('always()')
@@ -258,6 +303,14 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   expect(aggregate.needs).toEqual(['host-artifacts', 'host-suite'])
   expect(workflowTriggers(workflow).workflow_dispatch?.inputs?.qualify_codex_api).toBeUndefined()
   expect(aggregate.steps[0].run).toContain('!= success')
+  for (const key of ['ARTIFACT_RESULT', 'SUITE_RESULT']) {
+    for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
+      const child = spawnSync('/bin/sh', ['-c', aggregate.steps[0].run], {
+        env: { ARTIFACT_RESULT: 'success', SUITE_RESULT: 'success', [key]: result },
+      })
+      expect(child.status).toBe(result === 'success' ? 0 : 1)
+    }
+  }
   expect(
     artifacts.steps.some((step: any) => step.name === 'Retain exact Linux host artifacts'),
   ).toBeTrue()
