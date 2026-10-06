@@ -402,6 +402,8 @@ admitted FLOW packages.
   Test-owned command transcripts are bounded and retained beside the consumer;
   the existing bounded command helper interrupts, escalates and awaits exit
   on failure. Its settlement budget outlasts the fixture's explicit Run limit.
+  The credential-free command environment retains `XDG_RUNTIME_DIR` and
+  `DBUS_SESSION_BUS_ADDRESS` for the existing Linux user-service host.
 - Agent lifecycle suites accept `FLOW_SDK_PACKAGE_ARCHIVE`,
   `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
