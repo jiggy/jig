@@ -1,9 +1,14 @@
 import { spawnSync } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
+import { readdir, writeFile } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export const SHARD_COUNT = 5
+export const MAC_HOST_SHARDS = Object.freeze({ x64: 3, arm64: 2 })
+export function macHostShardCount(architecture) {
+  if (!Object.hasOwn(MAC_HOST_SHARDS, architecture))
+    throw new Error('Mac qualification requires x64 or arm64')
+  return MAC_HOST_SHARDS[architecture]
+}
 export const ROOT_TEST = 'packages/jig/test/root-agent-run-lifecycle.test.ts'
 export const PACKAGE_TEST = 'packages/jig/test/package-provider-host.test.ts'
 export const NATIVE_PREREQUISITE_TESTS = [
@@ -105,7 +110,8 @@ export async function discoverJigTests(root) {
   return found.sort()
 }
 
-export function planMacHostTests(files) {
+export function planMacHostTests(files, architecture) {
+  const count = macHostShardCount(architecture)
   const unique = new Set(files)
   if (unique.size !== files.length) {
     throw new Error('Mac host test inventory repeats a file')
@@ -116,12 +122,13 @@ export function planMacHostTests(files) {
   for (const file of NATIVE_PREREQUISITE_TESTS) {
     if (!unique.has(file)) throw new Error(`Mac native prerequisite test is missing: ${file}`)
   }
-  const shards = Array.from({ length: SHARD_COUNT }, (_, index) => ({
+  const shards = Array.from({ length: count }, (_, index) => ({
     index,
+    architecture,
     groups: [],
     // Include native prerequisites in shard zero and the installed smoke tail
-    // in shard four. These costs must participate in balancing, too.
-    estimatedSeconds: [60, 0, 0, 0, 384][index],
+    // in the last shard. These costs must participate in balancing, too.
+    estimatedSeconds: (index === 0 ? 60 : 0) + (index === count - 1 ? 384 : 0),
   }))
   const ordinary = files
     .filter((file) => !NATIVE_PREREQUISITE_TESTS.includes(file))
@@ -169,21 +176,43 @@ export function commandsForShard(shard, bun = 'bun') {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const mode = process.argv[2]
-  const index = Number(process.argv[3])
+  const architecture = process.argv[3]
+  const count = Object.hasOwn(MAC_HOST_SHARDS, architecture) ? macHostShardCount(architecture) : 0
+  const index = Number(process.argv[4])
+  if (mode === 'count' && count && process.argv.length === 4) {
+    console.log(count)
+    process.exit(0)
+  }
   if (
+    process.argv.length !== 5 ||
     !['plan', 'run'].includes(mode) ||
     !Number.isInteger(index) ||
     index < 0 ||
-    index >= SHARD_COUNT
+    index >= count
   ) {
-    console.error(`usage: node scripts/ci/macos-host-test-shards.mjs plan|run 0-${SHARD_COUNT - 1}`)
+    console.error(
+      'usage: node scripts/ci/macos-host-test-shards.mjs count x64|arm64 or plan|run x64|arm64 shard',
+    )
     process.exit(2)
   }
-  const shards = planMacHostTests(await discoverJigTests(process.cwd()))
+  const shards = planMacHostTests(await discoverJigTests(process.cwd()), architecture)
   const shard = shards[index]
   const commands = commandsForShard(shard, process.env.JIG_CI_BUN || 'bun')
-  console.log(JSON.stringify({ shard: index, groups: shard.groups }))
+  const plan = {
+    architecture,
+    shard: index,
+    shardCount: count,
+    installed: index === count - 1,
+    groups: shard.groups,
+    nativeFiles: index === 0 ? NATIVE_PREREQUISITE_TESTS : [],
+  }
+  console.log(JSON.stringify(plan))
   if (mode === 'run') {
+    if (process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY)
+      await writeFile(
+        join(process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY, 'test-plan.json'),
+        `${JSON.stringify(plan)}\n`,
+      )
     for (const [commandIndex, [command, ...args]] of commands.entries()) {
       const timingDirectory = process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY
       const reporter = timingDirectory
@@ -199,6 +228,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       })
       console.log(
         JSON.stringify({
+          architecture,
           shard: index,
           group: commandIndex,
           file: args.find((argument) => argument.startsWith('./packages/jig/test/')),

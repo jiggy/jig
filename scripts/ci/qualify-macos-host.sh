@@ -12,8 +12,8 @@ case "$#" in
     fi
     ;;
   2)
-    if [[ "$1" == --shard && "$2" =~ ^[0-4]$ ]]; then mode=shard; shard=$2
-    else echo 'Expected --shard followed by 0 through 4' >&2; exit 2
+    if [[ "$1" == --shard && "$2" =~ ^[0-2]$ ]]; then mode=shard; shard=$2
+    else echo 'Expected --shard followed by a selected architecture shard' >&2; exit 2
     fi
     ;;
   *) echo 'Unexpected qualification arguments' >&2; exit 2 ;;
@@ -36,7 +36,14 @@ fi
 JIG_AUTHORING_NODE_PATH=$(/usr/bin/env -i "$node_path" -p 'if (Number(process.versions.node.split(".")[0]) < 22) throw Error("Node 22+ required"); process.execPath')
 export JIG_AUTHORING_NODE_PATH
 export FLOW_NODE="$JIG_AUTHORING_NODE_PATH"
-if [[ "$mode" != shard || "$shard" == 4 ]]; then
+architecture=$(bun -e 'console.log(process.arch)')
+shard_count=$(node scripts/ci/macos-host-test-shards.mjs count "$architecture")
+installed_shard=$((shard_count - 1))
+if [[ "$mode" == shard && "$shard" -ge "$shard_count" ]]; then
+  echo 'Shard is outside the selected architecture plan.' >&2
+  exit 2
+fi
+if [[ "$mode" != shard || "$shard" == "$installed_shard" ]]; then
   for name in JIG_CODEX_STARTUP_PATH JIG_CLAUDE_STARTUP_PATH JIG_PI_STARTUP_PATH; do
     value="${!name:-}"
     if [[ "$value" != /* || ! -x "$value" ]]; then
@@ -97,7 +104,7 @@ for package in flow-sdk agent-method agent-acp jig; do
 done
 shasum -a 256 "$scratch"/*/*.tgz > "$scratch/SHA256SUMS"
 cat "$scratch/SHA256SUMS"
-if [[ "$mode" == full || "$shard" == 4 ]]; then
+if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   # npm must accept the frozen package on this native architecture and install
   # its matching optional Bun runtime through an ordinary consumer manifest.
   mkdir "$scratch/npm-consumer"
@@ -109,16 +116,20 @@ export JIG_MACOS_PROCESS_TEST=1
 # hosted matrix distributes every file and all root lifecycle cases across
 # independent machines; the self-hosted qualification still runs them all.
 if [[ "$mode" == shard ]]; then
-  node scripts/ci/macos-host-test-shards.mjs run "$shard"
+  node scripts/ci/macos-host-test-shards.mjs run "$architecture" "$shard"
 else
   bun test packages/jig/test --timeout 420000
 fi
-if [[ "$mode" == full || "$shard" == 4 ]]; then
-  JIG_NATIVE_AGENT_STARTUP=1 bun test packages/jig/test/native-agent-startup.test.ts --timeout 120000
+if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
+  startup_options=(--timeout 120000)
+  if [[ -n "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" ]]; then
+    startup_options+=(--reporter=junit "--reporter-outfile=$JIG_MACOS_TEST_TIMINGS_DIRECTORY/installed-startup.xml")
+  fi
+  JIG_NATIVE_AGENT_STARTUP=1 bun test packages/jig/test/native-agent-startup.test.ts "${startup_options[@]}"
   # Pack and install the result in a separate ordinary consumer, then use its CLI.
   bun packages/jig/test/package-smoke.ts
 fi
-if [[ -n "${JIG_STARTUP_PROFILE_DIRECTORY:-}" && "$shard" == 4 ]]; then
+if [[ -n "${JIG_STARTUP_PROFILE_DIRECTORY:-}" && "$shard" == "$installed_shard" ]]; then
   JIG_CI_BUN=$(bun -e 'console.log(process.execPath)') \
     bun scripts/profile-installed-startup.ts ||
     echo 'Optional installed startup profile failed; retained records may explain the failure.' >&2

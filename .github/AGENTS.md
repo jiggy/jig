@@ -126,8 +126,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   variables. This candidate workflow does not replace Linux publication gates
   or claim live model/API qualification.
 - `workflows/macos-hosted-candidates.yml` qualifies disposable GitHub-hosted
-  Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Each of five
-  isolated shards per architecture checks the exact kernel/build, native Bun,
+  Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Three Intel
+  and two Apple Silicon shards fit the observed five-slot capacity, with
+  `max-parallel: 5`; actual runner availability still determines start times.
+  Each isolated shard checks the exact kernel/build, native Bun,
   process prerequisites, ordinary build, frozen archive identity and ownership
   residue. The deterministic test plan covers every discovered Jig test file;
   it partitions the long root Agent lifecycle and package-provider files by
@@ -137,14 +139,20 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   ordinary npm installation and packed
   consumer execution. Native containment/recovery and descriptor-handoff probes
   run once in a dedicated step on shard zero. Per-architecture aggregate checks
-  require exact-revision success markers from all five shards; prerequisite
-  success alone is insufficient. Hosted setup installs no privileged helper
+  require exact-revision success markers, matching retained test plans and
+  complete successful JUnit reports from every selected shard; prerequisite
+  success alone is insufficient. Their retained summaries separate executed
+  cases from filtered/platform/opt-in skips, and runner wait from job execution.
+  Only these read-only aggregate jobs receive `actions: read` to retrieve timing
+  for the current run attempt; unavailable timing cannot qualify or reject proof.
+  Hosted setup installs no privileged helper
   and uses no model credentials. Each shard retains per-test timing evidence;
   optional manual dispatch profiles installed startup on both architectures
   with the same fixed conversation used by Linux. The profile is non-gating,
   bounded, and leaves archive identity and zero-residue checks mandatory.
-  Declare slower Intel shards before Apple Silicon, with the installed-consumer
-  shard first; runner availability still determines actual start order. Fail fast
+  The final shard on each architecture owns installed-consumer checks and their
+  startup reports. Declare Intel shards first, with installed-consumer work
+  first; declaration order is not runner priority. Fail fast
   after a shard fails; cancelled shards cannot qualify.
   Run automatically for PRs changing host/build/test inputs and every main push;
   public-guide-only PRs do not allocate the Mac matrix. Manual dispatch remains available

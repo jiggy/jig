@@ -40,15 +40,19 @@ jobs:
   prerequisites:
     name: Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}
     runs-on: ${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}
-    timeout-minutes: ${{ matrix.shard == 4 && inputs.include_startup_profile && 65 || 35 }}
+    timeout-minutes: ${{ matrix.installed && inputs.include_startup_profile && 65 || 35 }}
     strategy:
       fail-fast: true
-      max-parallel: 10
+      max-parallel: 5
       matrix:
-        # Prefer slower Intel jobs and the installed-consumer tail in declaration
-        # order. Runner availability still determines actual start order.
-        arch: [x64, arm64]
-        shard: [4, 0, 1, 2, 3]
+        # Fit one complete run within the observed five-slot Mac capacity.
+        # Keep more slots for slower Intel; declaration order is not priority.
+        include:
+          - { arch: x64, shard: 2, installed: true }
+          - { arch: x64, shard: 0, installed: false }
+          - { arch: x64, shard: 1, installed: false }
+          - { arch: arm64, shard: 1, installed: true }
+          - { arch: arm64, shard: 0, installed: false }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -101,12 +105,12 @@ jobs:
           diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
           exit "$status"
       - name: Prepare genuine pinned clients for offline startup
-        if: matrix.shard == 4
+        if: matrix.installed
         run: bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
       - name: Qualify the complete rootless host and installed consumer
         env:
           JIG_MACOS_TEST_TIMINGS_DIRECTORY: ${{ runner.temp }}/mac-evidence
-          JIG_STARTUP_PROFILE_DIRECTORY: ${{ matrix.shard == 4 && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}
+          JIG_STARTUP_PROFILE_DIRECTORY: ${{ matrix.installed && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}
         run: |
           set -o pipefail
           scripts/ci/qualify-macos-host.sh --shard "${{ matrix.shard }}" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
@@ -124,7 +128,7 @@ jobs:
             ${{ runner.temp }}/mac-evidence/*.complete
           retention-days: 7
       - name: Retain optional installed startup profile
-        if: ${{ always() && matrix.shard == 4 && inputs.include_startup_profile }}
+        if: ${{ always() && matrix.installed && inputs.include_startup_profile }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: macos-startup-profile-${{ matrix.arch }}-${{ github.sha }}
@@ -137,25 +141,49 @@ jobs:
     if: always()
     needs: [prerequisites]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64, arm64]
+        include:
+          - { arch: x64, count: 3 }
+          - { arch: arm64, count: 2 }
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Download this architecture's shard evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: macos-prerequisites-${{ matrix.arch }}-*-${{ github.sha }}
           path: ${{ runner.temp }}/macos-evidence
-      - name: Require all five exact-revision shards
+      - name: Read this attempt's job timing evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api 'repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=100' --jq '.jobs' > "$RUNNER_TEMP/mac-job-timings.json" || {
+            rm -f "$RUNNER_TEMP/mac-job-timings.json"
+            echo 'Job timing API unavailable; qualification still requires complete test evidence.'
+          }
+      - name: Require complete exact-revision proof and summarize coverage
+        if: always()
         env:
           EXPECTED_ARCH: ${{ matrix.arch }}
           EXPECTED_SHA: ${{ github.sha }}
+          SHARD_COUNT: ${{ matrix.count }}
         run: |
           set -eu
-          for shard in 0 1 2 3 4; do
-            marker="$RUNNER_TEMP/macos-evidence/macos-prerequisites-$EXPECTED_ARCH-$shard-$EXPECTED_SHA/shard-$shard.complete"
-            test -f "$marker"
-            test "$(cat "$marker")" = "$EXPECTED_SHA $EXPECTED_ARCH $shard"
-          done
+          python3 scripts/ci/macos-host-summary.py "$EXPECTED_ARCH" "$EXPECTED_SHA" "$SHARD_COUNT" \
+            "$RUNNER_TEMP/macos-evidence" "$RUNNER_TEMP/mac-job-timings.json" \
+            "$RUNNER_TEMP/mac-summary.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain coverage and timing summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-summary-${{ matrix.arch }}-${{ github.sha }}
+          path: ${{ runner.temp }}/mac-summary.json
+          if-no-files-found: ignore
+          retention-days: 7
