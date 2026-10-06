@@ -1,8 +1,16 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { discoverJigTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
-import { nativeTestFiles, requireMacHost, runNativeTests, testEnvironment } from './preflight'
+import {
+  compilerEnvironment,
+  nativeTestFiles,
+  requireMacHost,
+  runNativeTests,
+  testEnvironment,
+} from './preflight'
 
 const host = {
   arch: 'x64',
@@ -68,6 +76,100 @@ test('preflight preserves tool configuration without inheriting live model opt-i
     JIG_AUTHORING_NODE_PATH: '/tools/node',
     TMPDIR: '/tmp',
   })
+})
+
+test('preflight resolves real compiler paths once and preserves separate operator selections', () => {
+  const calls: string[] = []
+  const source = { PATH: '/tools', FLOW_NODE: '/shim/node', OPENAI_API_KEY: 'private' }
+  const environment = compilerEnvironment(source, (selected, env) => {
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+    calls.push(selected)
+    return {
+      status: 0,
+      stdout: JSON.stringify({
+        name: 'node',
+        major: 22,
+        bun: false,
+        executable: `/real${selected}`,
+      }),
+    }
+  })
+  expect(calls).toEqual(['/shim/node'])
+  expect(environment).toEqual({
+    PATH: '/tools',
+    FLOW_NODE: '/real/shim/node',
+    JIG_AUTHORING_NODE_PATH: '/real/shim/node',
+  })
+  expect(source.FLOW_NODE).toBe('/shim/node')
+  expect(
+    compilerEnvironment({ ...source, JIG_AUTHORING_NODE_PATH: '/other/node' }, (selected) => ({
+      status: 0,
+      stdout: JSON.stringify({
+        name: 'node',
+        major: 24,
+        bun: false,
+        executable: `/real${selected}`,
+      }),
+    })),
+  ).toMatchObject({ FLOW_NODE: '/real/shim/node', JIG_AUTHORING_NODE_PATH: '/real/other/node' })
+})
+
+test('preflight resolves PATH-selected Node without an operator compiler override', () => {
+  const node = Bun.which('node')
+  expect(node).toBeString()
+  const environment = compilerEnvironment({
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    FLOW_NODE: '',
+    JIG_AUTHORING_NODE_PATH: '',
+  })
+  expect(environment.FLOW_NODE?.startsWith('/')).toBeTrue()
+  expect(environment.JIG_AUTHORING_NODE_PATH).toBe(environment.FLOW_NODE)
+  const child = spawnSync(environment.FLOW_NODE!, ['-p', 'process.release.name'], {
+    env: environment,
+    encoding: 'utf8',
+  })
+  expect(child.status).toBe(0)
+  expect(child.stdout.trim()).toBe('node')
+})
+
+test('preflight refuses missing, old, Bun or malformed compiler identity before work', () => {
+  const identity = { name: 'node', major: 22, bun: false, executable: '/real/node' }
+  for (const result of [
+    { status: 1, stdout: JSON.stringify(identity) },
+    { status: null, stdout: '' },
+    { status: 0, stdout: 'not JSON' },
+    ...[
+      { major: 21 },
+      { bun: true },
+      { name: 'bun' },
+      { executable: 'relative/node' },
+      { major: '24' },
+    ].map((change) => ({ status: 0, stdout: JSON.stringify({ ...identity, ...change }) })),
+  ]) {
+    expect(() => compilerEnvironment({ PATH: '/tools' }, () => result)).toThrow('real Node 22+')
+  }
+})
+
+test('the full command refuses an invalid selected compiler before starting a build', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'jig-preflight-node-'))
+  try {
+    const selected = resolve(directory, 'old-node')
+    await writeFile(
+      selected,
+      '#!/bin/sh\nprintf \'{"name":"node","major":20,"bun":false,"executable":"/old/node"}\\n\'\n',
+      { mode: 0o700 },
+    )
+    const result = spawnSync(process.execPath, [resolve(import.meta.dir, 'preflight.ts')], {
+      env: { ...testEnvironment(process.env), FLOW_NODE: selected },
+      encoding: 'utf8',
+    })
+    expect(result.status).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('real Node 22+')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 test('a real child failure stops native preflight and still checks residue', () => {
