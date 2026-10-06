@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
+import { checkInstalledConversation } from './installed-conversation-adoption.js'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
@@ -668,6 +669,12 @@ void binding;
     const methodArtifacts = join(temporary, 'method-artifacts')
     await mkdir(methodArtifacts)
     const methodArchive = await selectArchive(methodArtifacts, 'agent-method')
+    await checkInstalledConversation({
+      directory: join(consumer, 'conversation-adoption'),
+      cli: command,
+      sdkArchive,
+      methodArchive,
+    })
     await run(
       [
         'tar',
