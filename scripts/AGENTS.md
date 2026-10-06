@@ -19,6 +19,15 @@ operational baselines, and public-site assembly.
   TypeScript candidate and site scripts invoke the relevant justfile, not
   package scripts. Python Just tasks expose the packaging orchestrator, which
   calls the standard Python build frontend directly.
+- `preflight.ts` owns local pre-push regression checks. `just preflight` builds
+  Jig and its dependencies, runs quick tooling and portable source checks, then
+  runs every discovered `macos-*.test.ts` file sequentially on an exact supported
+  unprivileged Mac with qualified Bun. It uses the hosted prerequisite order,
+  excludes ambient credentials and live-client opt-ins, checks ownership residue,
+  and stops at the first failure. Other hosts report portable-only coverage;
+  unsupported Macs refuse before building. This is not full host qualification.
+  The full local command checks Just, Node and jq availability before building.
+  Package-local `jig::check` uses the same native pass after its build and tests.
 - `test-release.sh` includes the authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
   It also checks the shared Agent method and ordinary ACP package.
@@ -154,6 +163,9 @@ operational baselines, and public-site assembly.
   registry tests; the publisher uses Node hashing so these checks also run on Mac.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
+- `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive
+  native inventory, environment isolation and failure-preserving residue checks.
+  Execute `just preflight` on a qualified native Mac after changing its runner.
 
 ## Child DOX Index
 

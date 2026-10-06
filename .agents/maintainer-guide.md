@@ -521,7 +521,11 @@ branch only when worth keeping.
 
 Batch related outcomes into a useful review milestone. Keep distinct stable
 commits where they help review, but do not make every commit a separate PR or
-owner checkpoint. Run quick local checks before pushing; start full CI at the
+owner checkpoint. Use `just preflight` before pushing: it builds, runs quick
+tooling and portable source checks, and automatically includes Mac-specific
+regression files on an exact supported native Mac. Other hosts report the
+coverage left to CI; unsupported Macs refuse. This local regression pass is
+not complete host qualification. Start full CI at the
 milestone and continue independent work while it runs. Re-run completed checks
 only for changed inputs or unresolved failures. Waiting for CI or review does
 not by itself pause other authorized work. A push, PR creation, or missing

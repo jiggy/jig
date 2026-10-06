@@ -328,6 +328,14 @@ admitted FLOW packages.
 
 ## Verification
 
+- `just jig::check` builds and runs package tests, then automatically runs all
+  discovered Mac-specific regression files on an exact supported native Mac.
+  Root `just preflight` also includes quick tooling and the other portable
+  packages. The native pass needs ordinary local launchd/disk-image access;
+  an enclosing execution sandbox may refuse it. It requires no native Agent
+  clients or model calls and does not replace complete hosted qualification.
+  Other hosts report the native coverage they leave to CI.
+
 - Package/project path NFC uses pinned Unicode 15.1 canonical decomposition,
   combining classes and composition data, independently of host ICU. Keep
   case folding and normalization at the same contract version. The official
@@ -340,8 +348,9 @@ admitted FLOW packages.
 - `just jig::check`
 - Changes to Mac guardian admission, readiness, cancellation, resource accounting
   or diagnostic transport require the complete `macos-guardian*.test.ts` group with
-  `JIG_MACOS_PROCESS_TEST=1` on a qualified Mac. The ordinary package check skips
-  native cases. Run existing consumers alongside new injected cases; verify
+  `JIG_MACOS_PROCESS_TEST=1` on a qualified Mac. Direct ordinary `bun test` skips
+  native cases; `jig::check` adds the native regression pass. Run existing
+  consumers alongside new injected cases; verify
   typed preparation causes together with fenced completion and cleanup.
   Resource-accounting changes also require `macos-execution.test.ts` and
   `macos-process-controls.test.ts` to preserve native enforcement and ownership.
