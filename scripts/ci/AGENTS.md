@@ -19,11 +19,13 @@ host qualification. Host preparation never becomes a consumer requirement.
   isolated portion of the same complete suite.
 - `macos-host-test-shards.mjs` discovers every Jig test file. Eight native
   prerequisite files run once in the dedicated containment step on shard zero;
-  every other file enters exactly one hosted shard. The root Agent lifecycle
-  file is partitioned by exhaustive name patterns; timing hints affect balance,
-  never membership. Each file runs in a fresh Bun process, sequentially within
-  its shard, to isolate test state. Hosted shards retain per-test JUnit timing
-  artifacts and per-file command wall times. Balance includes native prerequisites
+  every other file enters hosted qualification. The root Agent lifecycle and
+  package-provider host files use disjoint, exhaustive name partitions with
+  catch-all coverage for future cases. All remaining files enter once. Schedule
+  these groups together using advisory command timings; timing hints affect
+  balance, never membership. Each group runs in a fresh Bun process, sequentially
+  within its shard, to isolate test state. Hosted shards retain per-test JUnit
+  timing artifacts and per-group command wall times. Balance includes native prerequisites
   and installed-consumer work. Reconcile slow-file and out-of-file estimates
   against retained command wall times; runner queue order is not guaranteed.
   Run expensive lifecycle groups before portable
@@ -65,7 +67,7 @@ host qualification. Host preparation never becomes a consumer requirement.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
-  Mac file assignment, disjoint root lifecycle name groups, balanced scheduling
+  Mac file assignment, disjoint lifecycle and package name groups, balanced scheduling
   of a representative observed workload including out-of-file costs, and that every
   Linux hostile test file enters provisioned host conformance.
 - `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
