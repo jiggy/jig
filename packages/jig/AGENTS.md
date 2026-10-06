@@ -391,6 +391,17 @@ admitted FLOW packages.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
+- The same installed smoke runs `test/installed-conversation-adoption.ts` in
+  a fresh ordinary project using the frozen Jig/SDK/method archives, public
+  `new --use` and `import-contract`, and the unchanged public conversation
+  caller. An ordinary deterministic Flow peer checks two-turn settlement,
+  malformed input, blocked initial outcome, lost observation and acknowledged
+  interruption followed by actual turn and invocation settlement. No private
+  imports, native clients or model calls; this is adoption regression evidence,
+  not independent usability or native Agent qualification.
+  Test-owned command transcripts are bounded and retained beside the consumer;
+  the existing bounded command helper interrupts, escalates and awaits exit
+  on failure. Its settlement budget outlasts the fixture's explicit Run limit.
 - Agent lifecycle suites accept `FLOW_SDK_PACKAGE_ARCHIVE`,
   `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
