@@ -174,12 +174,17 @@ proofDescribe('private contained Bun dependency preparation', () => {
     }
   }, 180_000)
 
-  hostTest.each([false, true])(
-    'prepares a transitive graph without scripts or authored config (resolve=%s)',
-    async (resolve) => {
+  hostTest.each([
+    { resolve: false, lockVersion: 1 },
+    ...(MACOS ? [{ resolve: false, lockVersion: 2 as const }] : []),
+    { resolve: true, lockVersion: MACOS ? 2 : 1 },
+  ] as const)(
+    'prepares a transitive graph without scripts or authored config (%j)',
+    async ({ resolve, lockVersion }) => {
       const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
       const initialCgroups = new Set(await rootlessCgroups())
-      const root = await fixture()
+      const root = await fixture(lockVersion)
+      const authoredLock = await readFile(join(root, 'bun.lock'))
       try {
         if (resolve) {
           await rm(join(root, 'bun.lock'))
@@ -237,6 +242,9 @@ proofDescribe('private contained Bun dependency preparation', () => {
                 expect(
                   new TextDecoder().decode(await first.captured.read('package-lock.json')),
                 ).toBe('not a lock; must remain inert')
+              } else {
+                expect(Buffer.from(await first.captured.read('bun.lock'))).toEqual(authoredLock)
+                expect(await readFile(join(root, 'bun.lock'))).toEqual(authoredLock)
               }
 
               const second = await preparePrivateBunPackage({
@@ -273,49 +281,56 @@ proofDescribe('private contained Bun dependency preparation', () => {
     120_000,
   )
 
-  hostTest('rejects non-registry lock sources before installer fetch', async () => {
-    const root = await fixture()
-    try {
-      await writeFile(
-        join(root, 'bun.lock'),
-        `${JSON.stringify(
-          {
-            lockfileVersion: MACOS ? 2 : 1,
-            workspaces: { '': { dependencies: { local: 'file:../local' } } },
-            packages: { local: ['local@file:../local', {}] },
-          },
-          null,
-          2,
-        )}\n`,
-      )
-      const captured = await capturePackageDirectory(root)
+  hostTest.each(['source', 'format'] as const)(
+    'rejects an unsupported lock %s before installer fetch',
+    async (kind) => {
+      const root = await fixture()
       try {
-        await initializePrivateActivationState({ projectRoot: root })
-        const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
+        await writeFile(
+          join(root, 'bun.lock'),
+          `${JSON.stringify(
+            {
+              lockfileVersion: kind === 'format' ? 3 : MACOS ? 2 : 1,
+              workspaces: { '': { dependencies: { local: 'file:../local' } } },
+              packages: { local: ['local@file:../local', {}] },
+            },
+            null,
+            2,
+          )}\n`,
+        )
+        const captured = await capturePackageDirectory(root)
         try {
-          const host = await openPrivateInstalledBunHost(installedBunLocation)
-          await expect(
-            preparePrivateBunPackage({
-              captured,
-              installedSupport: host.installedBunSupport,
-              backend: host.backend,
-              projectRoot: root,
-              coordinator,
-            }),
-          ).rejects.toMatchObject({
-            code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
-            path: 'bun.lock',
-          })
+          await initializePrivateActivationState({ projectRoot: root })
+          const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
+          try {
+            const host = await openPrivateInstalledBunHost(installedBunLocation)
+            await expect(
+              preparePrivateBunPackage({
+                captured,
+                installedSupport: host.installedBunSupport,
+                backend: host.backend,
+                projectRoot: root,
+                coordinator,
+              }),
+            ).rejects.toMatchObject({
+              code:
+                kind === 'format'
+                  ? 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED'
+                  : 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+              path: 'bun.lock',
+            })
+          } finally {
+            await coordinator.dispose()
+          }
         } finally {
-          await coordinator.dispose()
+          await captured.dispose()
         }
       } finally {
-        await captured.dispose()
+        await rm(root, { recursive: true, force: true })
       }
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 30_000)
+    },
+    30_000,
+  )
 
   linuxTest.each([false, true])(
     'recovers preparation after coordinator loss (resolve=%s)',
@@ -399,7 +414,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
   )
 })
 
-async function fixture(): Promise<string> {
+async function fixture(lockVersion: 1 | 2 = MACOS ? 2 : 1): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-'))
   await writeFile(
     join(root, 'FLOW.meta.json'),
@@ -437,7 +452,7 @@ async function fixture(): Promise<string> {
   await writeFile(
     join(root, 'bun.lock'),
     `{
-  "lockfileVersion": ${MACOS ? 2 : 1},
+  "lockfileVersion": ${lockVersion},
   "configVersion": 1,
   "workspaces": {
     "": {

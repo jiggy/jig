@@ -184,7 +184,9 @@ admitted FLOW packages.
   preparation/reuse and review retention, with stage-local timing. Prepared
   workspace artifact reuse stays within the approving Jig project.
   Configuration-evaluator memory, process and wall-clock refusals retain their
-  distinct verified codes; generic limits do not imply host pressure.
+  distinct verified codes, including a host-observed deadline during envelope
+  preparation. Generic limits do not imply host pressure; arbitrary launch codes
+  cannot establish a deadline.
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required
   and unverifiable comparisons as unchecked. It does not evaluate source,
@@ -336,6 +338,13 @@ admitted FLOW packages.
 
 - `bun test packages/jig`
 - `just jig::check`
+- Changes to Mac guardian admission, readiness, cancellation, resource accounting
+  or diagnostic transport require the complete `macos-guardian*.test.ts` group with
+  `JIG_MACOS_PROCESS_TEST=1` on a qualified Mac. The ordinary package check skips
+  native cases. Run existing consumers alongside new injected cases; verify
+  typed preparation causes together with fenced completion and cleanup.
+  Resource-accounting changes also require `macos-execution.test.ts` and
+  `macos-process-controls.test.ts` to preserve native enforcement and ownership.
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - `just jig::test-package` checks the installed inventory, exact copied licensing
   and pricing files, and the published Bread 1.0 text's fixed digest. The check

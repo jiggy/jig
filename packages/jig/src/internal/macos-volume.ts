@@ -296,7 +296,8 @@ async function attachedDeviceFromResult(
   return entity['dev-entry']
 }
 
-/** No saved disk number grants detach authority: derive it from the live exact image. */
+/** Derive detach authority from the live exact image, never a saved disk number
+ * or mount location. Interrupted attachment can finish at an automatic mount. */
 async function attached(
   controlPath: string,
   allocation: Allocation,
@@ -323,8 +324,7 @@ async function attached(
     entity === null ||
     typeof entity !== 'object' ||
     typeof entity['dev-entry'] !== 'string' ||
-    !/^\/dev\/disk[1-9][0-9]{0,5}$/.test(entity['dev-entry']) ||
-    (entity['mount-point'] !== undefined && entity['mount-point'] !== allocation.mount.path)
+    !/^\/dev\/disk[1-9][0-9]{0,5}$/.test(entity['dev-entry'])
   )
     throw new Error('macOS volume device does not match its allocation')
   return entity['dev-entry']

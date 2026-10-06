@@ -83,7 +83,13 @@ export function requirePrivateBunPatches(value: unknown): Readonly<Record<string
   return Object.freeze({ ...patches }) as Readonly<Record<string, string>>
 }
 
-/** The two selected host runtimes emit different native lock versions. No conversion. */
+export class PrivateBunLockVersionError extends TypeError {
+  constructor() {
+    super('bun.lock uses a format unsupported by the pinned Bun runtime')
+  }
+}
+
+/** Current Bun accepts version 1; the Mac runtime also reads and emits version 2. */
 export function requirePrivateBunLockPolicy(
   value: unknown,
   members?: ReadonlySet<string>,
@@ -93,9 +99,11 @@ export function requirePrivateBunLockPolicy(
   const workspaces = ordinaryRecord(lock?.workspaces)
   const rootWorkspace = ordinaryRecord(workspaces?.[''])
   const packages = ordinaryRecord(lock?.packages)
+  if (lock !== undefined && lock.lockfileVersion !== 1 && lock.lockfileVersion !== version)
+    throw new PrivateBunLockVersionError()
   if (
     (version !== 1 && version !== 2) ||
-    lock?.lockfileVersion !== version ||
+    lock === undefined ||
     workspaces === undefined ||
     rootWorkspace === undefined ||
     packages === undefined ||

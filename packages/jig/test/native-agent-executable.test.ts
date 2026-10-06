@@ -47,7 +47,7 @@ describe('operator native Agent executable discovery', () => {
   )
 
   for (const client of ['codex', 'claude', 'pi'] as const) {
-    test(`${client}: a Volta dispatcher is refused before launch without selecting another installation`, async () => {
+    test(`${client}: an unsupported Volta installation is refused without selecting another installation`, async () => {
       const { root, project, first, second } = await fixture()
       const shim = join(root, 'volta-shim')
       await writeFile(shim, 'operator tool dispatcher', { mode: 0o700 })

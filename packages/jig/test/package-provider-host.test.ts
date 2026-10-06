@@ -47,9 +47,11 @@ for await (const line of lines) {
 }
 `
 
-hostTest.each([false, true])(
-  'installed CLI reviews and runs a workspace dependency (root application: %s)',
-  async (rootApplication) => {
+hostTest.each(['member', 'root', 'nested'] as const)(
+  'installed CLI reviews and runs a workspace dependency (application: %s)',
+  async (location) => {
+    const rootApplication = location === 'root'
+    const nested = location === 'nested'
     const directory = await mkdtemp(join(tmpdir(), 'jig-npm-consumer-'))
     const put = async (path: string, value: unknown) => {
       await mkdir(dirname(join(directory, path)), { recursive: true })
@@ -100,7 +102,7 @@ hostTest.each([false, true])(
     try {
       await put('package.json', {
         private: true,
-        workspaces: ['apps/*', 'packages/*'],
+        workspaces: ['apps/*', 'packages/*', ...(nested ? ['apps/*/flows/*'] : [])],
         patchedDependencies: { 'is-number@6.0.0': 'patches/is-number.patch' },
         ...(rootApplication
           ? { name: 'consumer', type: 'module', dependencies: { 'echo-method': 'workspace:*' } }
@@ -122,13 +124,33 @@ hostTest.each([false, true])(
         await putApp('package.json', {
           name: 'consumer',
           type: 'module',
-          dependencies: { 'echo-method': 'workspace:*' },
+          dependencies: { 'echo-method': nested ? '1.0.0' : 'workspace:*' },
+          ...(nested ? { workspaces: ['flows/*'] } : {}),
         })
       await putApp(
         'jig.ts',
         `import {defineJig,discover} from '@jigging/jig'; export default defineJig({ flows:discover('flows'),bindings:discover('bindings'), defaultProviders: { 'https://example.org/contracts/echo': 'npm:echo-method' } });`,
       )
-      await putApp('flows/caller/FLOW.ts', caller)
+      await putApp(
+        'flows/caller/FLOW.ts',
+        nested
+          ? `import {marker} from 'workspace-context'; if(marker !== 'outer workspace') throw new Error('wrong workspace source');\n${caller}`
+          : caller,
+      )
+      if (nested) {
+        await putApp('flows/caller/package.json', {
+          name: 'echo-caller',
+          type: 'module',
+          dependencies: { 'workspace-context': '0.0.0-alpha.999999' },
+        })
+        await put('packages/context/package.json', {
+          name: 'workspace-context',
+          version: '0.0.0-alpha.999999',
+          type: 'module',
+          exports: './index.js',
+        })
+        await put('packages/context/index.js', 'export const marker = "outer workspace"')
+      }
       await putApp('flows/caller/FLOW.meta.json', {
         uses: { worker: { contract: './echo.json' } },
       })

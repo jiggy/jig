@@ -53,6 +53,9 @@ descriptors.
   and cleanup, including separately authorized bounded native retention,
   single-use restoration and clean-exit receipts. Ordinary packages own Agent
   dialogue and answer interpretation.
+  Its native selection profile includes bounded static resolution of official
+  Codex npm/Volta installations without executing their launchers, importing
+  Node or using project-selected dependencies.
 - `channels.md` owns Jig's direct/broadcast channel support, local limits and
   installed NDJSON output. `contracts/acp-public-updates.json`
   defines the exact optional Agent update meaning, not raw ACP access.
@@ -75,6 +78,12 @@ descriptors.
   installer inputs and current preparation support; fresh source and authority
   always receive independent execution planning. Sibling Jig projects never
   supply reusable preparations. Keep dependency guidance aligned with that scope.
+  Workspace capture prioritizes a qualifying root above the Jig application
+  over standalone member declarations. Require direct membership of the selected
+  package; an application's own patterns cannot expand an outer root's members.
+  Dependency lock formats follow the current pinned preparer's readers:
+  version 1 on Linux and versions 1/2 on Mac, without conversion or source-policy
+  relaxation. Keep format refusal distinct from unsupported dependency sources.
 - Native restoration specifications remain distinct from installed-client
   qualification and registry support. Retention requires actual clean native
   exit, validated collection, complete fencing and cleanup, and atomic commit;

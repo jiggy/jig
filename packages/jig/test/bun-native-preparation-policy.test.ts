@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../src/internal/bun-execution-layout.js'
 import {
+  PrivateBunLockVersionError,
   PrivateBunManifestError,
   requirePrivateBunLockPolicy,
   requirePrivateBunPatches,
@@ -20,6 +21,16 @@ const INTEGRITY =
   'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
 
 describe('private Bun preparation policy', () => {
+  test('the current Mac runtime accepts a frozen version-1 registry lock', () => {
+    expect(() =>
+      requirePrivateBunLockPolicy(
+        lock({ value: ['value@1.0.0', '', {}, INTEGRITY] }),
+        undefined,
+        2,
+      ),
+    ).not.toThrow()
+  })
+
   test.each([1, 2] as const)(
     'binds native lock version %s without admitting other source kinds',
     (version) => {
@@ -28,7 +39,10 @@ describe('private Bun preparation policy', () => {
         lockfileVersion: version,
       }
       expect(() => requirePrivateBunLockPolicy(value, undefined, version)).not.toThrow()
-      expect(() => requirePrivateBunLockPolicy(value, undefined, version === 1 ? 2 : 1)).toThrow()
+      if (version === 2)
+        expect(() => requirePrivateBunLockPolicy(value, undefined, 1)).toThrow(
+          PrivateBunLockVersionError,
+        )
       for (const resolution of [
         ['value@file:../outside', '', {}, INTEGRITY],
         ['value@1.0.0', 'https://example.invalid', {}, INTEGRITY],
@@ -42,6 +56,15 @@ describe('private Bun preparation policy', () => {
             version,
           ),
         ).toThrow()
+    },
+  )
+  test.each([0, 3, '1', null, undefined])(
+    'unsupported lock format %j has a distinct value-free refusal',
+    (lockfileVersion) => {
+      for (const nativeVersion of [1, 2] as const)
+        expect(() =>
+          requirePrivateBunLockPolicy({ ...lock({}), lockfileVersion }, undefined, nativeVersion),
+        ).toThrow(PrivateBunLockVersionError)
     },
   )
   test.each([

@@ -38,11 +38,14 @@ const causes = new Map([
   ['macOS collector has no successful fenced owner', 'INVALID_COLLECTOR'],
   ['macOS collector descriptor count changed', 'DESCRIPTOR_COUNT'],
   ['macOS guardian job removal is unconfirmed', 'JOB_REMOVAL_UNCONFIRMED'],
+  ['macOS guardian operation deadline expired', 'OPERATION_DEADLINE'],
   ['macOS volume create failed', 'VOLUME_CREATE'],
   ['macOS volume attach failed', 'VOLUME_ATTACH'],
   ['macOS volume info failed', 'VOLUME_INFO'],
   ['macOS volume detach failed', 'VOLUME_DETACH'],
   ['macOS volume plist conversion failed', 'VOLUME_PLIST'],
+  ['macOS image attachment does not match its allocation', 'VOLUME_IMAGE'],
+  ['macOS volume device does not match its allocation', 'VOLUME_DEVICE'],
 ] as const)
 
 export interface PrivateMacosGuardianFailure {

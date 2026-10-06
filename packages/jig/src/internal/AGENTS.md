@@ -171,6 +171,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   accounting, and signal matching PID versions. Sampled footprint and process
   discovery are not hard quotas; incomplete samples cannot prove a limit or
   cleanup. Only the kernel's remaining guardian count establishes emptiness.
+  A CPU ledger regression across a kernel read marks the sample incomplete;
+  exec transitions can temporarily omit a task's ledger. Do not clamp or invent
+  a monotonic reading.
   Unix control peer UID, PID and PID version come from `LOCAL_PEERTOKEN`, never
   claimed message fields; unavailable native socket identity fails closed.
 - `macos-descriptor-handoff.ts` passes at most 64 read-only file/directory
@@ -191,8 +194,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   images, fixed system tools and finite command/output bounds. Mount evidence
   comes from the held directory's qualified `fstatfs` ABI. After complete tool
   and payload fencing and collector closure, derive detach authority from the
-  live exact image mapping, never a saved disk number. Recheck the allocation,
-  detach, then remove only its original empty mount directory and backing file.
+  live exact image mapping, never a saved disk number or observed mount location.
+  Interrupted attachment may finish at an automatic mount; recovery still
+  authenticates the exact backing inode and allocation before detaching it.
+  Launch requires the requested mount. Recheck the allocation, detach, then
+  remove only its original empty mount directory and backing file; an observed
+  alternate mount path never grants deletion authority.
   Retain authenticated journals until the enclosing owner is released. Storage
   ownership alone does not establish process fencing or installed Mac support.
   Publish the backing-image journal by exclusive rename of complete, synced
@@ -312,7 +319,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   those callers, and physical paths, resolver mounts and volume layout with
   host translation. Preserve platform-specific receipt evidence.
   `execution-process.ts` owns protocol-independent process streams, exit and
-  fencing evidence. Run/0 consumes that interface; backends never depend on
+  fencing evidence and typed host-observed preparation expiry. Classify evaluator
+  preparation deadlines from this trusted type, never a matching arbitrary code
+  or elapsed cleanup time. Run/0 consumes that interface; backends never depend on
   the Run session implementation. Agent launcher location bindings use private
   `JIG_AGENT_HOME` and `JIG_AGENT_WORK`; their fallback locations remain unchanged.
 - `execution-backend.ts` is the closed private Linux/macOS selection boundary.
@@ -338,6 +347,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   task limits and CPU throttling can overshoot; record sampling evidence and
   fail closed on sustained accounting uncertainty. Native exit status and
   kernel emptiness are independent requirements, including after crashes.
+  Incomplete samples and CPU regressions share the existing 500 ms uncertainty
+  bound. Preserve the CPU high-water/time baseline across regressions; the next
+  nonregressing reading charges accumulated CPU and elapsed refill. Continue
+  charging observable CPU during incomplete membership samples. Final settlement
+  requires complete accounting at or above that baseline; recovery may confirm
+  cleanup without establishing a payload result.
   After admission, a payload's unread stdin may close with EPIPE without
   invalidating its native exit evidence. Other stream errors still fail closed;
   neither EPIPE nor pipe closure substitutes for the status frame or fencing.
@@ -376,6 +391,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   completed result and residue assertions, never swallowed settlement failure.
   Native injected storage and scope-preparation failures verify the returned
   diagnostic after actual fencing and storage cleanup.
+  Before payload readiness, the guardian's own operation timer records expiry
+  only when it was the first stop cause. Transport that closed cause after
+  fenced cleanup; cancellation, lost control and tool failure do not become
+  deadlines. Unconfirmed cleanup still overrides the preparation diagnostic.
   Ordinary tests compile the same injected guardian constructions so source
   matching and import errors fail before native qualification.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
@@ -395,6 +414,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   bounded process ownership. Ordinary Agent packages own method preparation,
   response interpretation and optional updates; no Agent method runs inside
   the coordinator.
+  `codex-installation.ts` resolves the current official npm Codex launcher and
+  Volta's recorded Npm installation to the declared native platform package.
+  Read only bounded regular metadata, at most 64 KiB per record and 32 package
+  ancestors; never execute a dispatcher, JavaScript launcher or package manager.
+  Metadata and inferred native paths stay outside project routes even with an
+  explicit wrapper override. An existing invalid nearest package cannot fall
+  back to another installation. Only native executable/support bytes enter the
+  provider identity and execution projection; launch never rediscovers metadata.
 - `private-acp-resources.ts` captures operator configuration before project
   loading and resolves only each target's exact granted clients. Selected
   runtime identities enter the recipe and review; launch revalidates their
@@ -556,12 +583,21 @@ child calls, project commands, delegated HTTP, and Agent providers.
   generated graph before frozen installation; retain its exact bytes privately.
   The worker derives scratch paths from its trusted launch working directory,
   never rewritten worker or consumer source. Select the native lock version for
-  the pinned runtime (Linux Bun 1.3.3 or qualified Mac Bun 1.4.2), retaining exact
-  source/provenance checks without translating locks. Missing-lock resolution
+  the pinned runtime (Linux Bun 1.3.3 or qualified Mac Bun 1.4.2). Linux reads
+  text lock version 1; Mac reads versions 1 and 2 and emits version 2. Keep the
+  same source/provenance checks and exact supplied bytes without translating
+  locks; unsupported formats retain a distinct closed diagnostic. Missing-lock resolution
   uses `--omit=dev` so production-only installation does not suppress publication
   of the new lock; the subsequent install stays frozen and script-disabled.
 - Workspace capture supports root applications and declared ancestor members,
   reading root metadata and selected dependency source, never installed links.
+  Resolve a selected package's declared workspace above the Jig application
+  before using workspace declarations inside it. The nearest qualifying outer
+  root must directly declare the selected package; owning only the application
+  does not add undeclared Flows. Without a qualifying outer root, use the nearest
+  declared enclosing workspace within the application, or the selected package's
+  own workspace. Keep the same bounded ancestor discovery; stop at directory
+  aliases without invalidating a declared workspace below one.
   Preserve members' own `workspaces` declarations as inert metadata during an
   ancestor-root install. Only that root's patterns define captured membership;
   member declarations neither expand it nor invalidate unrelated consumers.
@@ -668,10 +704,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Missing root writable authority for Run Checkpoint retains
   `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate and directs the
   caller to its invocation attachment declaration; do not hide it as `INTERNAL`.
-  Recognized Volta dispatchers are unsupported wrappers, not native clients;
-  refuse them during selection with the existing wrapper diagnostic. Preserve
-  that cause through Codex opening, without executing the dispatcher or choosing
-  a different installation. The operator may select the actual native binary.
+  Unsupported Volta selections retain the existing wrapper diagnostic, including
+  Claude/Pi and Codex installations outside the supported static npm profile.
+  Preserve that cause through Codex opening without executing the dispatcher
+  or choosing another installation. The operator may select the actual native binary.
   The private project-session acquisition and operation callbacks permit
   selected host tests to observe only a fixed phase or operation and bounded
   error class/code chain; never include raw messages, paths, or rejected values
@@ -894,7 +930,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `macos-captured-bytes.test.ts` covers anonymous read-only capture on macOS.
   `macos-guardian.test.ts` qualifies the complete private guardian connection,
   gated native streams, cancellation, blocked output, and both coordinator and
-  guardian loss. Portable framing cases live in `macos-control-channel.test.ts`.
+  guardian loss. Controlled CPU faults check recovery from transient within-read
+  and between-sample regressions, sustained uncertainty refusal and strict final
+  accounting while retaining real kernel ownership and authenticated cleanup.
+  Portable framing cases live in `macos-control-channel.test.ts`.
   Buffered unread stdin must preserve the payload's actual nonzero exit and
   output after confirmed fencing.
   These checks are primitive evidence, not installed-host conformance.
@@ -908,7 +947,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   reacquisition, interrupted cleanup and the Darwin chmod-before-rename window.
   `macos-volume.test.ts` covers bounded shared capacity with sandboxed native
   writers, backing-file denial, journal and inode forgery refusal, case-sensitive
-  names, fresh-process recovery, and repeated exact cleanup without administrator
+  names, relocated image recovery without deleting the alternate host directory,
+  fresh-process recovery, and repeated exact cleanup without administrator
   access. It preserves failed allocations when recovery cannot be confirmed.
   `macos-preparation.test.ts` runs the unchanged preparer and a retained ordinary
   TypeScript dependency consumer in native guardians with bounded storage. It
@@ -916,7 +956,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   and private-file denial, and complete cleanup. Project workspace preparation
   tests use the worker's real working-directory interface without source rewriting.
   `bun-native-preparation.test.ts` runs transitive locked/unlocked preparation
-  and non-registry lock rejection on both hosts; its cgroup-observed coordinator
+  and non-registry lock rejection on both hosts. Mac checks frozen version-1
+  and version-2 locks without changing authored bytes; unsupported formats retain
+  their own diagnostic. Its cgroup-observed coordinator
   loss cases remain Linux-specific.
   `macos-agent-runtime.test.ts` checks malformed and universal Mach-O metadata,
   project-excluded transitive lookup, cache membership and changed support bytes.
@@ -1024,7 +1066,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   report cleanup. Lifecycle repeat-success checks assert
   the Agent result as well as the outer Flow terminal.
   Project-session host-test causes distinguish fixed Mac cleanup refusals behind
-  an unconfirmed fence. Their exported classifier remains a private test seam;
+  an unconfirmed fence. Storage recovery retains its guardian's closed failure
+  step and cause behind the unconfirmed-cleanup error. The exported classifier
+  remains a private test seam;
   raw messages and unreadable message getters cannot become evidence. These
   codes change neither the public terminal nor recovery authority.
 - Mac repair application qualification uses the public guide’s five-minute Run

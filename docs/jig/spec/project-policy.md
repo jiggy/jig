@@ -194,6 +194,11 @@ integrity-pinned sources accepted. Unlike a Run, the trusted preparation scope
 has network access. Unsupported dependency sources fail closed before an
 applicable Plan is published. A supplied lock is always validated and installed
 frozen; missing, stale, and invalid are distinct states, not repair modes.
+The Linux preparer accepts Bun text lock version 1. The Mac preparer accepts
+versions 1 and 2, both read by its pinned Bun runtime. Validation applies the
+same source and integrity policy to either format. Supplied bytes remain
+unchanged; Jig never converts a lock. Other formats are unavailable with
+`PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED`.
 
 For a package with runtime dependencies but no authored lock, the operator may
 pass `jig review --allow-resolution-network`. Without it, planning returns
@@ -245,6 +250,12 @@ A member may also declare `workspaces` for use as a standalone project. During
 an ancestor-root installation, Bun uses only that root's membership patterns.
 Jig retains member declarations unchanged; they do not add nested packages to
 the captured workspace or invalidate unrelated members.
+When a selected package belongs to a workspace above the Jig application,
+Jig uses the nearest such root before workspace declarations inside the
+application. The selected package must itself match that root's patterns;
+application membership alone does not declare its Flows. If no outer root
+declares the selected package, its nearest enclosing application workspace
+or its own workspace supplies the standalone context.
 
 Library `files` paths and glob patterns select source when present, including
 `package.json`, README and license files. Otherwise ordinary package files are

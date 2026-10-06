@@ -2,11 +2,13 @@ import { expect, spyOn, test } from 'bun:test'
 import * as childProcess from 'node:child_process'
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { access, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import { PrivateExecutionPreparationDeadlineError } from '../src/internal/execution-process.js'
 import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
@@ -19,6 +21,196 @@ import type { PrivateMacosGuardianStart } from '../src/internal/macos-native-sup
 
 const native = test.skipIf(
   process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1',
+)
+
+const accountingFaults = [
+  'transient',
+  'between-samples',
+  'sustained',
+  'final',
+  'final-between-samples',
+] as const
+async function accountingSupervisor(root: string, fault: (typeof accountingFaults)[number]) {
+  const source = new URL('../src/internal/', import.meta.url)
+  const directory = fileURLToPath(source)
+  const controls = join(root, `${fault}-controls.ts`)
+  const state = join(root, `${fault}-state.ts`)
+  const scope = join(root, `${fault}-scope.ts`)
+  const supervisor = join(root, `${fault}-supervisor.ts`)
+  const controlsSource = await readFile(new URL('macos-process-controls.ts', source), 'utf8')
+  const marker = '      const after = usage(owner.coalition)\n'
+  expect(controlsSource.split(marker)).toHaveLength(2)
+  const declaration = '  const control: PrivateMacosCoalitionControl'
+  expect(controlsSource.split(declaration)).toHaveLength(2)
+  const replaceLocal = (text: string, name: string, path: string) => {
+    const from = `from './${name}.js'`
+    expect(text.split(from)).toHaveLength(2)
+    return text.replace(from, `from '${path}'`)
+  }
+  const final = fault.startsWith('final')
+  const between = fault.endsWith('between-samples')
+  // Copy the trusted control/state pair together to preserve its private brand.
+  // Only CPU observations are falsified; kernel membership, identity and fencing
+  // remain real. These faults do not claim to reproduce a particular host log.
+  await writeFile(
+    controls,
+    replaceLocal(
+      controlsSource
+        .replace(
+          declaration,
+          '  let observedPayload = false, injected = false\n  const control: PrivateMacosCoalitionControl',
+        )
+        .replace(
+          marker,
+          `${marker}
+      if (after.active > 1n) observedPayload = true
+      if (${final ? 'observedPayload && after.active === 1n' : between ? 'after.active > 1n && !injected && complete && before.active === after.active && after.active === BigInt(observedMembers + 1)' : `after.active > 1n${fault === 'transient' ? ' && !injected' : ''}`}) {
+        injected = true
+        ${between ? 'before.cpuNanoseconds = 0n; after.cpuNanoseconds = 1n' : 'after.cpuNanoseconds = 0n'}
+      }
+`,
+        ),
+      'macos-owner-state',
+      state,
+    ).replaceAll("from './", `from '${directory}`),
+  )
+  await writeFile(
+    state,
+    replaceLocal(
+      await readFile(new URL('macos-owner-state.ts', source), 'utf8'),
+      'macos-process-controls',
+      controls,
+    ).replaceAll("from './", `from '${directory}`),
+  )
+  await writeFile(
+    scope,
+    replaceLocal(
+      await readFile(new URL('macos-scope-execution.ts', source), 'utf8'),
+      'macos-process-controls',
+      controls,
+    ).replaceAll("from './", `from '${directory}`),
+  )
+  await writeFile(
+    supervisor,
+    replaceLocal(
+      replaceLocal(
+        replaceLocal(
+          await readFile(new URL('macos-native-supervisor.ts', source), 'utf8'),
+          'macos-process-controls',
+          controls,
+        ),
+        'macos-scope-execution',
+        scope,
+      ),
+      'macos-owner-state',
+      state,
+    ).replaceAll("from './", `from '${directory}`),
+  )
+  return supervisor
+}
+
+test('constructs accounting fault guardians without native execution', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-accounting-build-'))
+  try {
+    for (const fault of accountingFaults) {
+      const supervisor = await accountingSupervisor(root, fault)
+      const compiled = await Bun.build({ entrypoints: [supervisor], target: 'bun' })
+      expect({ success: compiled.success, logs: compiled.logs }).toEqual({
+        success: true,
+        logs: [],
+      })
+    }
+  } finally {
+    await rm(root, { recursive: true })
+  }
+})
+
+native(
+  'transient CPU snapshots preserve exit while sustained and final uncertainty refuse success',
+  async () => {
+    const root = await realpath(await mkdtemp('/private/tmp/jig-accounting-guardian-'))
+    let cleaned = true
+    try {
+      for (const fault of accountingFaults) {
+        const ownerDirectory = join(root, `${fault}-owner`)
+        const scratch = join(root, `${fault}-data`)
+        await mkdir(ownerDirectory, { mode: 0o700 })
+        await mkdir(scratch)
+        const token = randomBytes(32).toString('hex')
+        const supervisor = await accountingSupervisor(root, fault)
+        const owner = await preparePrivateMacosGuardian({
+          bun: process.execPath,
+          supervisor,
+          configuration: {
+            type: 'start',
+            ownerDirectory,
+            ownerToken: token,
+            launcher: fileURLToPath(new URL('../support/macos-exec-universal', import.meta.url)),
+            cwd: scratch,
+            command: [
+              process.execPath,
+              '--no-env-file',
+              '--no-install',
+              '--config=/dev/null',
+              '-e',
+              `await Bun.stdin.text(); await Bun.sleep(${fault === 'sustained' ? 2000 : 150}); process.exit(17)`,
+            ],
+            environment: {},
+            files: {
+              readOnlyFiles: [process.execPath],
+              readOnlyTrees: [],
+              writableTrees: [scratch],
+              protectedRoots: [ownerDirectory],
+              network: 'isolated',
+            },
+            limits: {
+              memoryBytes: 256 * 1024 * 1024,
+              pids: 4,
+              cpuQuotaMicros: 50_000,
+              cpuPeriodMicros: 100_000,
+              deadlineUnixMs: Date.now() + 30_000,
+              cleanupTimeoutMs: 5000,
+            },
+            maxOutputBytes: 4096,
+          },
+        })
+        owner.stdout.resume()
+        owner.stderr.resume()
+        cleaned = false
+        try {
+          await owner.admit()
+          owner.continue()
+          owner.stdin.end()
+          if (fault.startsWith('final')) {
+            expect(await owner.completion).toEqual({
+              result: null,
+              outputLost: true,
+              recovered: true,
+              fenced: true,
+            })
+          } else {
+            const result = await owner.completion
+            expect(result.fenced).toBe(true)
+            expect(result.result?.reason).toBe(
+              fault === 'sustained' ? 'accounting_failed' : 'payload_exit',
+            )
+            expect(result.result?.evidence.incompleteSamples).toBeGreaterThan(0)
+            expect(BigInt(result.result?.evidence.cpuNanoseconds ?? '0')).toBeGreaterThan(0n)
+            if (fault !== 'sustained') expect(result.result?.exitCode).toBe(17)
+          }
+        } finally {
+          owner.cancel()
+          await owner.completion.catch(() => undefined)
+          await recoverPrivateMacosGuardian(ownerDirectory, token, 5000)
+          cleaned = true
+        }
+      }
+    } finally {
+      if (cleaned) await rm(root, { recursive: true })
+      else console.error(`Unconfirmed accounting fixture retained at ${root}`)
+    }
+  },
+  60_000,
 )
 
 native(
@@ -324,7 +516,12 @@ native(
         try {
           if (expires) {
             const started = performance.now()
-            await expect(owner.admit()).rejects.toThrow('before readiness')
+            const failure = await owner.admit().catch((error: unknown) => error)
+            expect(failure).toBeInstanceOf(PrivateExecutionPreparationDeadlineError)
+            expect(failure).toMatchObject({
+              code: 'EXECUTION_PREPARATION_DEADLINE',
+              cause: { code: 'MACOS_GUARDIAN_ADMISSION_OPERATION_DEADLINE' },
+            })
             expect(performance.now() - started).toBeLessThan(8000)
           } else {
             await owner.admit()

@@ -69,6 +69,7 @@ const BUN_POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/de
 const WORKER_FAILURE_CODES = new Set([
   'PACKAGE_BUN_INPUT_LIMIT',
   'PACKAGE_BUN_LOCK_INVALID',
+  'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
   'PACKAGE_BUN_LOCK_STALE',
   'PACKAGE_BUN_OUTPUT_LIMIT',
   'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
@@ -277,6 +278,7 @@ async function interact(
         }
         terminal = new CheckError(
           message.code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
+            message.code === 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED' ||
             message.code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
             message.code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
             message.code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||

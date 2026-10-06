@@ -201,6 +201,7 @@ async function supervise(
     releaseCollection = resolve
   })
   let stopped: 'cancelled' | 'coordinator_lost' | undefined
+  let preparationDeadlineExpired = false
   let resolveAdmission: () => void = () => {}
   let rejectAdmission: (error: Error) => void = () => {}
   const admission = new Promise<void>((resolve, reject) => {
@@ -217,8 +218,11 @@ async function supervise(
     | 'collecting'
     | 'terminal' = 'starting'
   const currentPhase = (): string => phase
-  const stop = (reason: 'cancelled' | 'coordinator_lost') => {
-    stopped ??= reason
+  const stop = (reason: 'cancelled' | 'coordinator_lost', deadlineExpired = false) => {
+    if (stopped === undefined) {
+      stopped = reason
+      preparationDeadlineExpired = deadlineExpired
+    }
     cancellation.abort()
     releaseCollection()
     rejectAdmission(new Error('macOS guardian admission stopped'))
@@ -249,7 +253,7 @@ async function supervise(
         ? configuration.limits.deadlineUnixMs
         : configuration.deadlineUnixMs
     timer = setTimeout(
-      () => stop('cancelled'),
+      () => stop('cancelled', Date.now() >= operationDeadline),
       Math.max(0, Math.min(10_000, operationDeadline - Date.now())),
     )
     const commands = (async () => {
@@ -261,7 +265,10 @@ async function supervise(
           // The short timer bounds waiting for authority, not admitted work.
           // Storage preparation remains inside the original operation deadline.
           clearTimeout(timer)
-          timer = setTimeout(() => stop('cancelled'), Math.max(0, operationDeadline - Date.now()))
+          timer = setTimeout(
+            () => stop('cancelled', true),
+            Math.max(0, operationDeadline - Date.now()),
+          )
           phase = 'preparing'
           resolveAdmission()
         } else if (
@@ -447,7 +454,12 @@ async function supervise(
     channel.send({ type: 'terminal', result, outputLost, failure: null })
     await privateMacosBefore(new Promise<void>((resolve) => control.end(resolve)), 1000)
   } catch (error) {
-    const failure = privateMacosGuardianFailure(failureStep, error)
+    const failure = privateMacosGuardianFailure(
+      failureStep,
+      configuration?.type === 'start' && execution === undefined && preparationDeadlineExpired
+        ? new Error('macOS guardian operation deadline expired', { cause: error })
+        : error,
+    )
     cancellation.abort()
     execution?.stop('coordinator_lost')
     let result: PrivateMacosScopeResult | undefined

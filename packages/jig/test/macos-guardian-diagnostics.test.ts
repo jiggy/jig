@@ -36,6 +36,16 @@ test('guardian failure transport keeps only closed steps and causes', () => {
   expect(Object.isFrozen(failure)).toBe(true)
   expect(normalizePrivateMacosGuardianFailure(null)).toBeNull()
   expect(JSON.stringify(failure)).not.toContain('private-token')
+  for (const [message, cause] of [
+    ['macOS image attachment does not match its allocation', 'VOLUME_IMAGE'],
+    ['macOS volume device does not match its allocation', 'VOLUME_DEVICE'],
+  ]) {
+    const evidence = privateMacosGuardianFailure('storage-recovery', new Error(message))
+    expect(normalizePrivateMacosGuardianFailure(JSON.parse(JSON.stringify(evidence)))).toEqual({
+      step: 'storage-recovery',
+      cause,
+    })
+  }
   for (const value of [
     undefined,
     'private-token',

@@ -2,7 +2,11 @@ import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { privateBunNativeInputs } from './bun-native-inputs.js'
-import { requirePrivateBunLockPolicy, requirePrivateBunPatches } from './bun-native-lock-policy.js'
+import {
+  PrivateBunLockVersionError,
+  requirePrivateBunLockPolicy,
+  requirePrivateBunPatches,
+} from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
   PRIVATE_BUN_PREPARATION_LIMITS,
@@ -159,13 +163,15 @@ async function requireSupportedLock(
       workspace === undefined ? undefined : new Set(workspace.members),
       process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
     )
-  } catch {
+  } catch (error) {
     if (resolved) {
       throw new WorkerFailure(
         'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
         'resolved dependencies are unsupported; resolution requests may already have occurred',
       )
     }
+    if (error instanceof PrivateBunLockVersionError)
+      throw new WorkerFailure('PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED', error.message)
     unsupportedSource()
   }
   if (workspace !== undefined) {

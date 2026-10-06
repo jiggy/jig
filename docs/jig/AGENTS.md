@@ -23,6 +23,10 @@ use-case and orchestration hypotheses.
   resource configuration, host-specific installation/helper recovery, and
   current adapter limitations. Setup guidance distinguishes review-only
   prerequisite checks from uncertain native Run failures.
+  Codex installation guidance covers static npm/Volta native selection and
+  defers its exact metadata bounds and exclusions to `spec/finite-acp.md`.
+  Keep installed-client session qualification limits distinct from successful
+  launcher discovery and review; neither proves model execution.
   `guide/conversations.md` owns bounded same-session follow-up and interruption,
   including the distinction between control replies and final settlement, and
   explicit native retention and restoration under a separately reviewed grant.
@@ -30,6 +34,8 @@ use-case and orchestration hypotheses.
   interface availability from installed-client qualification, and routes to the application-owned
   summary handoff example.
   `guide/dependencies.md` owns package dependency preparation guidance.
+  Keep its workspace examples aligned with `spec/project-policy.md`'s root
+  selection, direct membership and supported lock-format rules.
 - `guide/configuration.md` owns the settings reference, including terminal
   appearance, operator configuration, and links to authored project settings.
   Its startup verification section teaches operator-selected cached,
