@@ -29,7 +29,8 @@ host qualification. Host preparation never becomes a consumer requirement.
   within its shard, to isolate test state. Hosted shards retain their exact
   architecture/count/group plan, per-test JUnit artifacts (including installed
   client startup) and per-group command wall times. Balance includes native prerequisites
-  and installed-consumer work. Reconcile slow-file and out-of-file estimates
+  and installed-consumer work, with architecture-specific installed-work hints.
+  Reconcile slow-file and out-of-file estimates
   against retained command wall times; runner queue order is not guaranteed.
   Run expensive lifecycle groups before portable
   checks to expose failures earlier without reducing membership.

@@ -133,21 +133,25 @@ test('expensive host cases run before portable checks without dropping work', as
 
 test('Mac scheduling balances observed slow files and work outside the file runner', async () => {
   const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
-  // Representative command wall times, independent of the planner's estimates.
+  // Retained Intel command/case timings from hosted run 37522229440,
+  // independent of the planner's estimates.
   // Fixed costs include native prerequisites and genuine startup/installed
   // checks; partitioned lifecycle work is counted by its retained case names.
-  const fixedSeconds = [60, 0, 384]
+  const fixedWorkloads = [
+    [60, 0, 384],
+    [60, 0, 500],
+  ]
   const measuredSeconds = new Map([
-    ['run-checkpoint-lifecycle.test.ts', 241],
-    ['project-command-lifecycle.test.ts', 192],
-    ['http-request-lifecycle.test.ts', 190],
-    ['bun-native-preparation.test.ts', 174],
-    ['finite-acp-lifecycle.test.ts', 166],
-    ['project-author-evaluator.test.ts', 85],
-    ['activation-admission-store.test.ts', 57],
-    ['macos-guardian-storage.test.ts', 51],
-    ['contract-generation.test.ts', 32],
-    ['markdown-worker.test.ts', 47],
+    ['run-checkpoint-lifecycle.test.ts', 203],
+    ['project-command-lifecycle.test.ts', 122],
+    ['http-request-lifecycle.test.ts', 185],
+    ['bun-native-preparation.test.ts', 103],
+    ['finite-acp-lifecycle.test.ts', 140],
+    ['project-author-evaluator.test.ts', 76],
+    ['activation-admission-store.test.ts', 51],
+    ['macos-guardian-storage.test.ts', 54],
+    ['contract-generation.test.ts', 19],
+    ['markdown-worker.test.ts', 31],
   ])
   // Individual retained cases, rather than planner weights: a partition change
   // must route the work once and still balance its complete observed cost.
@@ -157,84 +161,85 @@ test('Mac scheduling balances observed slow files and work outside the file runn
       [
         [
           'private contained Agent Run lifecycle runs two unchanged packed HTTP Agents through simultaneous deep specialist branches',
-          129,
+          180,
         ],
         [
           'private contained Agent Run lifecycle executes and cleans a five-level branch within the unchanged aggregate envelope',
-          97,
+          72,
         ],
         [
           'private contained Agent Run lifecycle runs unchanged packed HTTP Agent siblings without a native Agent provider',
-          57,
+          51,
         ],
         [
           'private contained Agent Run lifecycle delivers complete selected Skill bytes from a workspace child Binding',
-          37,
-        ],
-        [
-          'private contained Agent Run lifecycle delivers complete selected Skill bytes from a workspace root Flow',
           31,
         ],
         [
+          'private contained Agent Run lifecycle delivers complete selected Skill bytes from a workspace root Flow',
+          22,
+        ],
+        [
           'private contained Agent Run lifecycle runs a Bun subprocess and asynchronous I/O from root and child Flow recipes',
-          30,
+          19,
         ],
         [
           'contained repair file application exports unsuccessful repair evidence through a JSON leaf and real contained commands',
-          123,
+          79,
         ],
         [
           'contained repair file application exports batch repair evidence through a JSON leaf and real contained commands',
-          119,
+          95,
         ],
         [
           'contained repair file application exports mixed-batch repair evidence through a JSON leaf and real contained commands',
-          116,
+          82,
         ],
         [
           'contained repair file application exports successful repair evidence through a JSON leaf and real contained commands',
-          83,
+          59,
         ],
         [
           'private contained Agent Run lifecycle fences specialist Agent Run success, invalid output, cancellation, deadline, and loss',
-          235,
+          242,
         ],
         [
           'private contained Agent Run lifecycle fences root Agent Run success, invalid output, cancellation, deadline, and loss',
-          142,
+          100,
         ],
         [
           'private contained Agent Run lifecycle fences root Agent ACP success, invalid output, cancellation, deadline, and loss',
-          130,
+          148,
         ],
       ],
     ],
     [
       PACKAGE_TEST,
       [
-        ['installed CLI reviews and runs a workspace dependency (application: member)', 83],
-        ['installed CLI reviews and runs a workspace dependency (application: root)', 73],
-        ['installed CLI reviews and runs a workspace dependency (application: nested)', 94],
-        ['packed read attachments preserve empty roots and maximum relative paths', 24],
-        ['packed project entrypoint uses fresh reviewed data and immutable execution', 53],
-        ['packed project dependencies uses fresh reviewed data and immutable execution', 101],
+        ['installed CLI reviews and runs a workspace dependency (application: member)', 62],
+        ['installed CLI reviews and runs a workspace dependency (application: root)', 55],
+        ['installed CLI reviews and runs a workspace dependency (application: nested)', 57],
+        ['packed read attachments preserve empty roots and maximum relative paths', 15],
+        ['packed project entrypoint uses fresh reviewed data and immutable execution', 39],
+        ['packed project dependencies uses fresh reviewed data and immutable execution', 73],
       ],
     ],
   ])
-  for (const shard of planMacHostTests(files, 'x64')) {
-    const seconds = shard.groups.reduce(
-      (total, { file, pattern }) =>
-        total +
-        (pattern
-          ? namedCases
-              .get(file)
-              .filter(([name]) => new RegExp(pattern).test(name))
-              .reduce((sum, [, seconds]) => sum + seconds, 0)
-          : (measuredSeconds.get(file.split('/').at(-1)) ?? 0)),
-      fixedSeconds[shard.index],
-    )
-    assert.ok(seconds <= 1250, `shard ${shard.index} concentrates ${seconds}s of observed work`)
-  }
+  for (const fixedSeconds of fixedWorkloads)
+    for (const shard of planMacHostTests(files, 'x64')) {
+      const seconds = shard.groups.reduce(
+        (total, { file, pattern }) =>
+          total +
+          (pattern
+            ? namedCases
+                .get(file)
+                .filter(([name]) => new RegExp(pattern).test(name))
+                .reduce((sum, [, seconds]) => sum + seconds, 0)
+            : (measuredSeconds.get(file.split('/').at(-1)) ?? 0)),
+        fixedSeconds[shard.index],
+      )
+      assert.ok(seconds <= 1250, `shard ${shard.index} concentrates ${seconds}s of observed work`)
+    }
 })
 
 test('the Mac group runner preserves the first child failure and starts no later group', async () => {
