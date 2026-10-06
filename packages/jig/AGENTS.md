@@ -338,6 +338,11 @@ admitted FLOW packages.
 
 - `bun test packages/jig`
 - `just jig::check`
+- Changes to Mac guardian admission, readiness, cancellation or diagnostic
+  transport require the complete `macos-guardian*.test.ts` group with
+  `JIG_MACOS_PROCESS_TEST=1` on a qualified Mac. The ordinary package check skips
+  native cases. Run existing consumers alongside new injected cases; verify
+  typed preparation causes together with fenced completion and cleanup.
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - `just jig::test-package` checks the installed inventory, exact copied licensing
   and pricing files, and the published Bread 1.0 text's fixed digest. The check

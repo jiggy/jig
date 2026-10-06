@@ -7,6 +7,7 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import { PrivateExecutionPreparationDeadlineError } from '../src/internal/execution-process.js'
 import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
@@ -324,7 +325,12 @@ native(
         try {
           if (expires) {
             const started = performance.now()
-            await expect(owner.admit()).rejects.toThrow('before readiness')
+            const failure = await owner.admit().catch((error: unknown) => error)
+            expect(failure).toBeInstanceOf(PrivateExecutionPreparationDeadlineError)
+            expect(failure).toMatchObject({
+              code: 'EXECUTION_PREPARATION_DEADLINE',
+              cause: { code: 'MACOS_GUARDIAN_ADMISSION_OPERATION_DEADLINE' },
+            })
             expect(performance.now() - started).toBeLessThan(8000)
           } else {
             await owner.admit()
