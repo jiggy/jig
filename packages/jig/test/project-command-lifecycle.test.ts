@@ -8,7 +8,10 @@ import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.
 import { withPrivateMacosGuardianDiagnostics } from '../src/internal/macos-guardian-diagnostics.js'
 import { PrivateMacosBackend } from '../src/internal/macos-native-backend.js'
 import { projectCommandCandidateDigest } from '../src/internal/private-project-command.js'
-import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
+import {
+  closedTestErrorCauses,
+  openPrivateProjectSession,
+} from '../src/internal/project-session-controller.js'
 import { PRIVATE_ROOT_RESOURCE_POLICY } from '../src/internal/root-operation-limits.js'
 import type { JsonValue } from '../src/json.js'
 import {
@@ -227,7 +230,7 @@ proof('contained Project Command effect', () => {
 
   test(
     'coordinator loss fences two leaf commands and recovers both branches without replay',
-    async () => {
+    observeGuardianRecovery(async () => {
       const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-command-loss-')))
       const compositionHost = fixtureHost(
         await openPrivateInstalledBunHost(installedBunLocation, {}),
@@ -238,7 +241,7 @@ proof('contained Project Command effect', () => {
         ...compositionHost,
         runTimeoutMs: Math.max(compositionHost.runTimeoutMs, 60_000),
       }
-      const fenceFailures: string[] = []
+      const fenceFailures: (readonly string[])[] = []
       const originalRecoverFence = PrivateMacosBackend.prototype.recoverFence
       const fenceSpy =
         process.platform === 'darwin'
@@ -249,7 +252,7 @@ proof('contained Project Command effect', () => {
               try {
                 return await originalRecoverFence.call(this, owner)
               } catch (error) {
-                if (fenceFailures.length < 8) fenceFailures.push(macosFenceFailureKind(error))
+                if (fenceFailures.length < 8) fenceFailures.push(closedTestErrorCauses(error))
                 throw error
               }
             })
@@ -340,58 +343,10 @@ proof('contained Project Command effect', () => {
       }
       fenceSpy?.mockRestore()
       if (primaryError !== undefined) throw primaryError
-    },
+    }),
     timeout,
   )
 })
-
-function macosFenceFailureKind(error: unknown): string {
-  let cause = error
-  let kind = 'unknown'
-  const allowed = new Set([
-    'macOS recovery guardian is still alive',
-    'macOS recovery fencing is unconfirmed',
-    'macOS guardian job removal is unconfirmed',
-    'macOS guardian job is still present',
-    'macOS storage recovery guardian job is still present',
-    'macOS storage recovery is unconfirmed',
-    'macOS coalition accounting is unavailable',
-    'macOS coalition accounting is invalid',
-    'macOS process enumeration is incomplete',
-    'macOS owned process signaling failed',
-    'macOS recovery boot does not match',
-    'macOS guardian storage allocation changed',
-    'macOS guardian identity changed',
-    'native macOS sealed owner state changed',
-    'native macOS recovery mechanism changed',
-    'native macOS owner has no recoverable execution',
-    'macOS recovery must run outside its former owner',
-  ])
-  const errno = new Set([
-    'EACCES',
-    'EBUSY',
-    'ECONNREFUSED',
-    'ECONNRESET',
-    'EIO',
-    'EMFILE',
-    'ENOENT',
-    'ENOSPC',
-    'EPERM',
-    'ETIMEDOUT',
-  ])
-  for (let depth = 0; depth < 12 && cause instanceof Error; depth++) {
-    const code = (cause as NodeJS.ErrnoException).code
-    kind = allowed.has(cause.message)
-      ? cause.message
-      : typeof code === 'string' && errno.has(code)
-        ? `errno:${code}`
-        : kind === 'unknown'
-          ? cause.name
-          : kind
-    cause = cause.cause
-  }
-  return kind
-}
 
 async function fixture(root: string) {
   await mkdir(join(root, 'bindings'), { recursive: true })
