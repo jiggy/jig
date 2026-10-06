@@ -166,6 +166,13 @@ export async function createFlow(
         join(authoredAt, 'contracts', slot),
         signal,
       )
+      if (imported.kind !== 'invocation')
+        throw new CheckError(
+          'invalid',
+          'JIG_NEW_CONTRACT',
+          'A used slot requires an invocation contract; declare channel agreements under channels instead.',
+          source,
+        )
       declarations[slot] = { contract: `./contracts/${slot}/${basename(imported.descriptor)}` }
     }
     const files: Record<string, string> = {

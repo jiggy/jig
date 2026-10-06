@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jiggy-user-updates"
+version = "0.1.0a1"
+description = "Portable user updates and a scoped Python FLOW publisher"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["jiggy-flow==0.1.0a7"]
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["jiggy.user_updates*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"jiggy.user_updates" = ["py.typed", "user-updates.json"]

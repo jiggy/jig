@@ -49,10 +49,12 @@ before choosing another Run, and review any changed configuration first.
 For a settled unsuccessful proposal, inspect its command evidence and proposal
 patches; these are not accepted patches to apply. A healthy job's `review.patch`
 remains available even when the batch outcome is `blocked`.
-Use `--receive progress --json` to observe method selection and the repair
-specialist's baseline, proposal, check, and finish phases. The broadcast channel
-does not wait for a reader to accept each message. A `settled` notice follows
-the durable checkpoint. Progress is activity, not evidence that a patch passed;
+The canonical user-updates port shows current job activity on terminal stderr.
+Use `--receive progress --json` for explicit machine records, or `--updates off`
+to turn automatic observation off. The scoped publisher bounds observation work;
+rapid phases can replace one another, and slow or lost observation can end early.
+A checkpoint notice follows durable storage; counts measure retained jobs.
+Progress is activity, not evidence that a patch passed;
 the separate `checkpoint` slot retains settled evidence across interruption.
 
 Patches are checked separately. Overlap is reported, conflicting overlap blocks

@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
+import { parseChannelContract } from '../src/channel-contract.js'
 import { main, privateCliRequiresHost } from '../src/cli.js'
 import { importContract } from '../src/internal/contract-import.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
@@ -11,6 +13,56 @@ import { createFlow, createProject } from '../src/project-init.js'
 const roots: string[] = []
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+})
+
+test('standalone channel imports preserve exact bytes without dummy invocations', async () => {
+  const root = await fixture()
+  const result = await importContract(
+    join(root, 'source/contracts/events.json'),
+    join(root, 'standalone'),
+  )
+  expect(result).toMatchObject({
+    kind: 'channel',
+    files: 1,
+    digest: parseChannelContract(Buffer.from(agreement)).digest,
+  })
+  expect(await readFile(join(root, 'standalone/events.json'), 'utf8')).toBe(agreement)
+})
+
+test('builtin import is offline, exact and licensed; collision never replaces files', async () => {
+  const root = await fixture()
+  let output = ''
+  expect(
+    await main(['import-contract', 'builtin:user-updates', 'updates'], {
+      currentDirectory: root,
+      writeOutput(text) {
+        output += text
+      },
+      host: {
+        async acquire() {
+          throw new Error('must not acquire host')
+        },
+      },
+    }),
+  ).toBe(0)
+  const bytes = await readFile(join(root, 'updates/user-updates.json'))
+  expect(parseChannelContract(bytes).digest).toBe(USER_UPDATES_CONTRACT.digest)
+  expect(
+    bytes.equals(
+      await readFile(new URL('../../user-updates/src/user-updates.json', import.meta.url)),
+    ),
+  ).toBe(true)
+  expect(await readFile(join(root, 'updates/LICENSE'), 'utf8')).toContain(
+    'Mozilla Public License Version 2.0',
+  )
+  expect(output).toContain('optional channel declaration')
+  await expect(importContract('builtin:user-updates', join(root, 'updates'))).rejects.toMatchObject(
+    { code: 'CONTRACT_IMPORT_EXISTS' },
+  )
+  expect((await readdir(join(root, 'updates'))).sort()).toEqual(['LICENSE', 'user-updates.json'])
+  await expect(importContract('builtin:unknown', join(root, 'unknown'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_SOURCE',
+  })
 })
 const agreement = JSON.stringify({
   $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',

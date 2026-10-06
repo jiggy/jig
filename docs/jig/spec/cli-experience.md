@@ -10,8 +10,8 @@ makes usable control an observable requirement;
 
 ## Required experience
 
-`jig import-contract <descriptor.json|npm:package> <new-directory>` is explicit offline
-authoring. It captures and validates one invocation descriptor and its exact
+`jig import-contract <descriptor.json|npm:package|builtin:user-updates> <new-directory>` is explicit offline
+authoring. It captures and validates one standalone channel descriptor, or an invocation descriptor and its exact
 channel closure (at most 64 agreements, 256 KiB per file, 1 MiB captured bytes),
 preserves bytes and relative paths, and publishes only to an absent destination
 whose parent already exists. An exact `npm:` selector resolves an installed
@@ -24,6 +24,21 @@ It does not evaluate package code, fetch dependencies, acquire execution
 authority or approve a Run. Cancellation before publication leaves no destination;
 completed publication is not undone. Process loss may leave an unpublished
 `.jig-contract-*` staging directory, not a successfully imported bundle.
+The bundled user-updates selector copies `user-updates.json` and its MPL-2.0
+license from the installed artifact without network access or package execution.
+
+The optional [user-updates profile](user-updates.md) shares stderr presentation
+with host progress and diagnostics. Resolve entrypoint/operator arguments first:
+effective `--receive` retains ordinary stdout channel behavior, `--json` disables
+automatic Flow observation, and operator-only `--updates off` disables automatic
+selection/hints without cancelling explicit reception. Otherwise terminal stderr
+can observe one exact optional canonical port. Stdout keeps its existing envelope.
+Application notices retain attribution and bypass trusted heading/success styling.
+Activities are transient owned state, cleared on every end; counts and EOF never
+establish success. Accepted notice jobs survive ordinary source retirement while
+obsolete repaints are superseded. Host stopping/terminal presentation fences late
+Flow updates. Exact bounds, separate allocation policy and output failure remain
+governed by that profile and [channels](channels.md).
 
 1. **Task first.** Identify the requested task and relevant project or target.
    Name stages in ordinary language. Internal lifecycle and implementation

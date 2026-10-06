@@ -83,13 +83,13 @@ finish() {
 }
 trap finish EXIT
 # Freeze all package inputs once; each consumer must use these same bytes.
-for package in flow-sdk agent-method agent-acp; do
+for package in flow-sdk user-updates agent-method agent-acp; do
   mkdir "$scratch/$package"
   bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
 done
 mkdir "$scratch/jig"
 (cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
-for package in flow-sdk agent-method agent-acp jig; do
+for package in flow-sdk user-updates agent-method agent-acp jig; do
   archives=("$scratch/$package/"*.tgz)
   if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
     echo "Expected one frozen $package archive" >&2
@@ -97,6 +97,7 @@ for package in flow-sdk agent-method agent-acp jig; do
   fi
   case "$package" in
     flow-sdk) export FLOW_SDK_PACKAGE_ARCHIVE="${archives[0]}" ;;
+    user-updates) export USER_UPDATES_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-method) export AGENT_METHOD_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-acp) export AGENT_ACP_PACKAGE_ARCHIVE="${archives[0]}" ;;
     jig) export JIG_PACKAGE_ARCHIVE="${archives[0]}" ;;

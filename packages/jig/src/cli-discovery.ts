@@ -106,7 +106,7 @@ export function invocationGuide(snapshot: JsonValue): string {
 export function completionScript(shell: string): string | undefined {
   const commands = 'init new review run inspect completion import-contract'
   const runOptions =
-    '--help --input --attach --select --out --receive --timeout --verification --json'
+    '--help --input --attach --select --out --receive --updates --timeout --verification --json'
   if (shell === 'bash')
     return `_jig() {
   local cur="\${COMP_WORDS[COMP_CWORD]}" command="\${COMP_WORDS[1]}" prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -121,6 +121,8 @@ export function completionScript(shell: string): string | undefined {
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
   elif [[ "$prev" == --verification ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
+  elif [[ "$prev" == --updates && "$command" == run ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'off' -- "$cur")
   elif [[ "$cur" == -* ]]; then
     local opts='--help'
     case "$command" in
@@ -148,6 +150,8 @@ _jig() {
     choices=(${commands} --help --version)
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
     choices=(cached strict fast)
+  elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
+    choices=(off)
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
@@ -172,6 +176,7 @@ complete -c jig -l version -n '__fish_use_subcommand'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -a '(jig completion targets (commandline -ct) 2>/dev/null)'
 complete -c jig -n '__fish_seen_subcommand_from run review inspect' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
+complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}

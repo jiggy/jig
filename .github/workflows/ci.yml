@@ -135,10 +135,20 @@ jobs:
         with:
           just-version: '1.43.1'
       - run: PYTHON=$(command -v python) just python::candidate "${{ runner.temp }}/python-dist"
+      - name: Build experimental Python user-updates artifacts
+        run: |
+          python -m build --outdir "${{ runner.temp }}/python-updates-dist" packages/jiggy-user-updates
+          python -m twine check --strict "${{ runner.temp }}"/python-updates-dist/*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: python-candidate-${{ github.sha }}
           path: ${{ runner.temp }}/python-dist
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: python-user-updates-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/python-updates-dist
           retention-days: 7
           if-no-files-found: error
 
@@ -169,9 +179,16 @@ jobs:
           name: python-candidate-${{ github.sha }}
           path: python-dist
       - run: python -m pip install mypy==1.18.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: python-user-updates-candidate-${{ github.sha }}
+          path: python-updates-dist
       - name: Test installed wheel and sdist
         shell: bash
         run: python packages/jiggy-flow/tests/package_smoke.py python-dist/*.whl python-dist/*.tar.gz
+      - name: Test installed user-updates wheel and sdist
+        shell: bash
+        run: python packages/jiggy-user-updates/tests/package_smoke.py python-updates-dist/*.whl python-updates-dist/*.tar.gz python-dist/*.whl
 
   npm-candidate:
     name: Build ${{ matrix.package }} release candidate

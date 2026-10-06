@@ -1,5 +1,5 @@
 import { realpath } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -142,6 +142,7 @@ async function runWithEnvironment(
   if (!privateCliRequiresHost(arguments_)) {
     return exit(
       await main(arguments_, {
+        builtinContractDirectory: join(releaseRoot, 'libexec/contracts'),
         ...(signal === undefined ? {} : { signal }),
         ...(arguments_[0] !== 'inspect'
           ? {}
@@ -257,6 +258,7 @@ async function runWithEnvironment(
             writeError: (text) => {
               void stderr.write(text).catch(() => undefined)
             },
+            writeStderr: (text) => stderr.write(text),
             signal: AbortSignal.any([
               outputStop.signal,
               ...(signal === undefined ? [] : [signal]),

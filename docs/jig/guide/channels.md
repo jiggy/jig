@@ -1,59 +1,114 @@
 # Add progress to a Flow
 
-When a method takes time, its caller may need to show what stage it has reached.
-A Flow can publish selected progress through an optional output channel while
-its final result remains the source of the execution outcome.
+A method can tell its caller what it is doing before its result arrives. Use
+complete notices for messages and replaceable activities for current work. The
+application still checks its result; a count or closed update stream never
+establishes success.
 
-Add this declaration to that Flow's `FLOW.contract.json`:
+## Import one agreement
+
+Declare `@jigging/user-updates` alongside `@jigging/flow` in the Flow package's
+dependencies. From that package, create a `contracts` directory and import:
+
+```sh
+mkdir -p contracts
+jig import-contract builtin:user-updates contracts/user-updates
+```
+
+The importer copies exact local descriptor bytes and its license, refuses an
+existing destination, and runs no package code or network request. Other hosts
+can copy the same agreement from the library or its
+[download](https://jig.md/contracts/user-updates.json), with the accompanying
+[MPL-2.0 license](https://jig.md/contracts/user-updates/LICENSE).
+
+Add this optional port to `FLOW.meta.json` (or an existing invocation descriptor):
 
 ```json
-{
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
-  "channels": {
-    "progress": {
-      "direction": "send",
-      "required": false,
-      "delivery": "direct",
-      "schema": { "type": "string", "maxLength": 256 }
-    }
-  }
-}
+{"channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}
 ```
 
-Inside the existing handler, publish a short application-owned message at the
-appropriate stage:
+The name `updates` is local. No named invocation contract for the whole Flow is
+required. Direct delivery is the default; broadcast remains an ordinary choice.
+Managed TypeSpec source borrows this exact descriptor; generation preserves its
+bytes instead of rebuilding a similar model.
+
+## Publish within the handler
+
+Keep the method's work and checks inside one scope:
 
 ```ts
-const progress = run.channels.progress
-if (progress?.direction === 'send')
-  await progress.send('Checking the proposed result')
+import { withUserUpdates } from '@jigging/user-updates'
+
+return withUserUpdates(run, 'updates', async updates => {
+  updates.activity('check', 'Checking the proposed result')
+  const result = await checkProposal()
+  updates.notice('The proposal checks have ended.')
+  updates.clear('check')
+  return result
+})
 ```
 
-The optional endpoint is absent when the caller has not connected it. This is
-an integration excerpt, not a complete Flow: retain your method's work, result
-checks, and failure handling. A message describes activity; it does not establish
-that a result passed its checks.
+Here `checkProposal()` is the application's existing procedure returning its
+Run result. The scope validates offers, bounds queues, paces publication, and
+settles its operations before returning. It owns that writer exclusively; do
+not independently send, close, transfer, or wrap it again. Running without an
+observer is allowed.
+Invalid offers still throw when unwired, and offers after scope exit are errors.
 
-## Connect a software caller
+Python uses its independently packaged `jiggy-user-updates` helper with the
+same descriptor and meanings:
 
-For a Flow declaring that output, add `--receive progress --json` to its ordinary
-`jig run` command. Review the changed declaration and source before running.
+```python
+from jiggy.user_updates import user_updates
 
-Read `begin`, ordered `data`, `end`, then `terminal` records from stdout. Parse
-each complete line as JSON and keep stderr separate. Only `terminal.result`
-reports the Run outcome. A disconnected stream or missing terminal means the
-caller lacks a complete result. The [subprocess output contract](../spec/channels.md#installed-subprocess-output)
-defines exact fields and bounds.
+async with user_updates(run, "updates") as updates:
+    updates.activity("check", "Checking the proposed result")
+    result = await check_proposal()
+    updates.notice("The proposal checks have ended.")
+    updates.clear("check")
+    return result
+```
 
-Decide whether observation failure should fail your application. The simple
-`await send()` above propagates delivery errors. An application that treats
-progress as optional can handle known delivery failures and stop publishing,
-while continuing to await its work. Cancellation and uncertain owned work must
-still propagate; do not catch every error and report success.
+`notice(text)` is one complete message; multiline content is allowed.
+`activity(id, label, progress?)` replaces the complete slot. Progress has required
+`completed`, optional `total`, and optional `unit`, for example
+`{completed: 3, total: 8, unit: 'files'}` in TypeScript. Counts may decrease or
+change units; omitted progress removes the old count. `clear(id)` is idempotent.
+Every source ending removes all its transient activities without decorating them
+as successful. Keep essential warnings and outcome evidence in results/artifacts.
 
-Closing an observer stops observation, not the underlying work. Channels have
-no retention or replay guarantee. [Run Checkpoint](../spec/run-checkpoint.md)
-is a separate capability for retaining completed artifacts across interruption.
+Local publication limits or 500 ms wait/drain expiry stop optional observation;
+original send and close operations still settle, so cleanup can take longer.
+Known observer loss may degrade. Unexpected publisher errors and root cancellation
+remain failures. A body error stays primary with a bounded secondary diagnostic.
+See [exact bounds and lifecycle](../spec/user-updates.md).
+
+## Observe the work
+
+After reviewing the changed source, ordinary `jig run` automatically displays
+exactly one optional canonical output when stderr is a terminal. Activities share
+one line with host progress; complete notices retain Flow attribution on every
+line. Plain terminals show meaningful label changes without repeating every count.
+Stdout remains the ordinary final result. `--updates off` disables automatic
+observation; `--json` also disables it, while host diagnostics remain available.
+
+Explicit `--receive updates` exposes the existing selected-channel stdout
+presentation or JSON/NDJSON. It takes precedence even when supplied by the approved
+project entrypoint; `--updates off` does not cancel that explicit choice. Multiple
+canonical ports get one hint instead of a guess. Unsupported contracts remain
+ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
+
+For software consumers, use `--receive updates --json`, parse complete stdout
+lines as JSON, and keep stderr separate. Read `begin`, ordered `data`, `end`, then
+`terminal`. Only `terminal.result` reports the Run outcome. A disconnected stream
+or missing terminal is incomplete delivery. There is no retention or replay.
+[Run Checkpoint](../spec/run-checkpoint.md) separately retains settled artifacts.
+
+A simpler string channel with explicit reception remains useful when messages
+alone suffice. Raw authors must own validation, optional error handling and
+cleanup themselves. The profile's shared replacement/count meaning is useful when
+callers need current activity state across implementations; it is not required
+for every log or output.
 
 ## Connect methods while they work
 

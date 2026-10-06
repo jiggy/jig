@@ -5,7 +5,7 @@ import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
-import { CHANNEL_LIMITS } from '../run/channels.js'
+import { CHANNEL_LIMITS, PRESENTATION_CHANNEL_LIMITS } from '../run/channels.js'
 import type { PrivateAcpAgentProvider } from './acp-agent-provider.js'
 import {
   createPrivateActivationRecipeObservation,
@@ -294,6 +294,7 @@ function logicalLaunchDigest(
     wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
     rootResourcePolicy: PRIVATE_ROOT_RESOURCE_POLICY,
     channelLimits: CHANNEL_LIMITS,
+    presentationChannelLimits: PRESENTATION_CHANNEL_LIMITS,
     http,
     acp: Object.fromEntries(Object.entries(acp).map(([slot, provider]) => [slot, provider.digest])),
     environment: Object.freeze({

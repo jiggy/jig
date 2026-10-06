@@ -77,7 +77,7 @@ Usage:
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
   jig completion <shell>     Print shell completion for bash, zsh, or fish
-  jig import-contract <file|npm:package> <directory>  Copy an offline contract bundle
+  jig import-contract <file|npm:package|builtin:user-updates> <directory>  Copy an offline contract bundle
   jig --version             Print the installed version
 
 Start here:
@@ -117,7 +117,7 @@ Fish: jig completion fish | source
 
 The scripts use jig completion targets [prefix] to read approved selectors.
 Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
-  'import-contract': `Usage: jig import-contract <descriptor.json|npm:package> <new-directory>
+  'import-contract': `Usage: jig import-contract <descriptor.json|npm:package|builtin:user-updates> <new-directory>
 
 Copy a local descriptor or an explicitly selected installed package's invocation
 contract and referenced channel agreements into a new directory. An npm:package
@@ -199,6 +199,7 @@ Selection never approves changed source.
   --select NAME=FILE  Select a relative file within an attachment; repeat as needed
   --out DIR          Save a result packet to a new directory outside input roots
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
+  --updates off      Disable automatic Flow updates on terminal stderr
   --timeout DURATION Set the execution deadline (default: 30s; maximum: 24h)
                      Units: ms, s, m, h. Cleanup still runs after the deadline.
 
@@ -243,6 +244,7 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
+  readonly builtinContractDirectory?: string
   readonly expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly host?: PrivateCliCommandHost
@@ -250,6 +252,8 @@ export interface PrivateCliOptions {
   readonly signal?: AbortSignal
   readonly interactive?: boolean
   readonly terminalOutput?: boolean
+  readonly terminalError?: boolean
+  readonly writeStderr?: (text: string) => Promise<void>
   readonly confirm?: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly answer?: (prompt: string, signal?: AbortSignal) => Promise<string>
   readonly writeOutput?: (text: string) => void
@@ -259,11 +263,13 @@ export interface PrivateCliOptions {
 }
 
 interface CliRuntime {
+  readonly builtinContractDirectory?: string
   expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly humanOutput: boolean
   readonly outputColor: boolean
   readonly outputColumns: number
+  readonly terminalError: boolean
   readonly progress: PrivateCliProgress
   readonly host: PrivateCliCommandHost
   readonly currentDirectory: string
@@ -284,6 +290,25 @@ export async function main(
   options: PrivateCliOptions = {},
 ): Promise<number> {
   const runtime = cliRuntime(options)
+  let code: number
+  try {
+    code = await executeCommand(arguments_, options, runtime)
+  } finally {
+    runtime.progress.close()
+  }
+  try {
+    await runtime.progress.flush()
+  } catch {
+    return 2
+  }
+  return code
+}
+
+async function executeCommand(
+  arguments_: readonly string[],
+  options: PrivateCliOptions,
+  runtime: CliRuntime,
+): Promise<number> {
   if (arguments_.length === 1 && arguments_[0] === '--version') {
     runtime.writeOutput(`${manifest.version}\n`)
     return 0
@@ -331,8 +356,6 @@ export async function main(
       return 2
     }
     return renderFailure(error, runtime)
-  } finally {
-    runtime.progress.close()
   }
 }
 
@@ -539,14 +562,15 @@ async function executeImportContract(
     )
   try {
     const result = await importContract(
-      arguments_[1]!.startsWith('npm:')
+      /^(npm:|builtin:)/.test(arguments_[1]!)
         ? arguments_[1]!
         : resolve(runtime.currentDirectory, arguments_[1]!),
       resolve(runtime.currentDirectory, arguments_[2]!),
       runtime.signal,
+      runtime.builtinContractDirectory,
     )
     runtime.writeOutput(
-      `Imported ${result.files} contract files into ${asciiJsonString(arguments_[2]!)}.\nUse ${asciiJsonString(basename(result.descriptor))} in the caller's slot declaration, then review the project.\n`,
+      `Imported ${result.files} contract files into ${asciiJsonString(arguments_[2]!)}.\nUse ${asciiJsonString(basename(result.descriptor))} in ${result.kind === 'channel' ? 'an optional channel declaration' : "the caller's slot declaration"}, then review the project.\n`,
     )
     return 0
   } catch (error) {
@@ -817,6 +841,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   runtime.progress.stage('Reading selected inputs')
   const outputStop = new AbortController()
+  runtime.progress.onOutputFailure((error) => outputStop.abort(error))
   runtime = {
     ...runtime,
     signal: AbortSignal.any([
@@ -847,8 +872,25 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
+    ...(parsed.receive.length === 0 &&
+    !parsed.json &&
+    parsed.updates !== 'off' &&
+    runtime.terminalError
+      ? {
+          updates: {
+            open: (port: string) => runtime.progress.observe(port),
+            ambiguous: (ports: readonly string[]) =>
+              runtime.progress.notice(
+                `Multiple optional user-update outputs: ${ports.join(', ')}. Use --receive NAME for existing stdout channel records.\n`,
+              ),
+          },
+        }
+      : {}),
     terminal(status) {
-      if (status.submissionId === submissionId) settledRoot = status
+      if (status.submissionId === submissionId) {
+        settledRoot = status
+        runtime.progress.stopUpdates()
+      }
     },
     async record(value) {
       try {
@@ -1020,6 +1062,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       status = settledRoot
     }
     let record = publicTerminal(status.terminal)
+    runtime.progress.stopUpdates()
     const runDiagnostics = diagnostics.snapshot()
     if (runDiagnostics.entries.length !== 0 || runDiagnostics.truncated)
       record = { ...(record as Record<string, JsonValue>), runDiagnostics }
@@ -1227,6 +1270,7 @@ async function withProjectSession<T>(
   let closeFailed = false
   let closeFailure: unknown
   try {
+    runtime.progress.stopUpdates()
     runtime.progress.stage('Stopping remaining work and cleaning up')
     await privateProfileSpan('project-session-close', close)
     runtime.progress.complete()
@@ -1308,26 +1352,31 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     ((text: string) => {
       process.stdout.write(text)
     })
-  const terminal = options.terminalOutput ?? process.stderr.isTTY === true
+  const terminal = options.terminalError ?? options.terminalOutput ?? process.stderr.isTTY === true
   const errorColor = privateCliStyleEnabled(terminal)
   const outputColor = privateCliStyleEnabled(
     options.terminalOutput ?? process.stdout.isTTY === true,
   )
   const progress = new PrivateCliProgress(
     terminal,
-    (text) =>
-      writeError(
-        privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
-      ),
+    options.writeStderr ?? writeError,
     options.signal,
+    privateCliStyleEnabled(terminal),
+    () => process.stderr.columns || 80,
+    (text) =>
+      privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
   )
   return {
     ...(options.expectedAdmissionDigest === undefined
       ? {}
       : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
+    ...(options.builtinContractDirectory === undefined
+      ? {}
+      : { builtinContractDirectory: options.builtinContractDirectory }),
     humanOutput: options.terminalOutput ?? process.stdout.isTTY === true,
     outputColor,
     outputColumns: process.stdout.columns || 80,
+    terminalError: terminal,
     progress,
     host: options.host ?? unavailableHost,
     ...(options.inspectEnvironment === undefined
@@ -1341,6 +1390,7 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     answer: options.answer ?? terminalAnswer,
     writeRecord: async (text) => {
       progress.pause()
+      await progress.flush()
       if (options.writeRecord) await options.writeRecord(text)
       else writeOutput(text)
     },
@@ -1358,14 +1408,11 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     },
     writeError: (text) => {
       progress.pause()
-      writeError(
-        privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
-      )
+      progress.notice(text)
     },
     writeNotice: (text) => progress.notice(text),
     writeDiagnostic: (text) => {
-      progress.pause()
-      writeError(text)
+      progress.diagnostic(text)
     },
     createSubmissionId:
       options.createSubmissionId ?? (() => `jig-cli-${randomBytes(16).toString('hex')}`),

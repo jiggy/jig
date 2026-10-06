@@ -9,7 +9,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
 ## Ownership
 
 - `contract-import.ts` owns explicit, inert contract-bundle copying: capture
-  the descriptor and exact offline channel closure, validate before writing,
+  an invocation descriptor and exact offline channel closure, or a standalone
+  channel descriptor. `builtin:user-updates` captures the installed exact profile
+  and its reuse license. Validate before writing,
   and publish a new directory without replacement. Source package code,
   unrelated files, network access and Run approval stay outside this operation.
   Native publication uses exclusive directory rename from a newly owned staging

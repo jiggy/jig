@@ -9,6 +9,7 @@ on:
       - 'packages/agent-acp/**'
       - 'packages/flow-authoring/**'
       - 'packages/flow-sdk/**'
+      - 'packages/user-updates/**'
       - 'docs/jig/spec/**'
       - 'docs/flow/spec/**'
       - 'examples/**'

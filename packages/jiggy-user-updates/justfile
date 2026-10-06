@@ -1,0 +1,17 @@
+python := env('PYTHON', 'python3')
+
+@default:
+    just --list
+
+@test:
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:../jiggy-flow/src "{{python}}" -m unittest discover -s tests -v
+
+[positional-arguments]
+@build output:
+    "{{python}}" -m build --outdir "$1"
+
+check: test
+
+[positional-arguments]
+@test-package wheel sdist sdk:
+    "{{python}}" tests/package_smoke.py "$1" "$2" "$3"

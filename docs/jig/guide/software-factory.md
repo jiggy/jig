@@ -44,10 +44,11 @@ jig run --input @batch.json --out factory-result-2
 Existing results are never overwritten. Explicitly naming a target bypasses
 entrypoint defaults; supply that invocation's arguments in full.
 
-Add `--receive progress --json` to observe each job's method selection and the
-repair specialist's baseline, proposal, check, and finish phases. The broadcast
-channel does not wait for a reader to accept each message. A `settled` notice
-follows the job's durable checkpoint. These messages show activity only; the
+The optional canonical user-updates port shows current job activity on terminal
+stderr. Add `--receive progress --json` for explicit machine records, or
+`--updates off` to disable automatic observation. Rapid phase replacements and
+slow observers may omit intermediate activity. A checkpoint notice follows
+durable storage; counts measure retained jobs. These messages show activity only; the
 final result and retained evidence determine whether a patch is review-ready.
 The factory's `checkpoint` slot separately retains settled job evidence across
 interruption.

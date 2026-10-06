@@ -1408,6 +1408,57 @@ describe('finite Jig project commands', () => {
     },
   )
 
+  test('automatic updates select terminal stderr independently and preserve the machine result bytes', async () => {
+    let baseline: string | undefined
+    for (const [terminalError, args, enabled] of [
+      [false, [], false],
+      [true, [], true],
+      [true, ['--json'], false],
+      [true, ['--updates', 'off'], false],
+      [true, ['--receive', 'updates'], false],
+    ] as const) {
+      const host: PrivateCliCommandHost = {
+        async acquire(_path, options) {
+          expect(options!.channelOutput!.updates !== undefined).toBe(enabled)
+          const observer = options!.channelOutput!.updates?.open('updates')
+          observer?.accept({
+            kind: 'activity',
+            id: 'read',
+            label: 'Read all invoices; verification pending',
+            progress: { completed: 2, total: 2 },
+          })
+          observer?.accept({
+            kind: 'notice',
+            text: 'Application says complete\nverification pending',
+          })
+          return fakeSession([], {
+            terminal: {
+              status: 'failed',
+              code: 'INVALID_RESULT',
+              message: 'Verification failed.',
+              diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+            },
+          })
+        },
+      }
+      const invocation = commandInvocation(host, { terminalOutput: false, terminalError })
+      expect(await main(['run', 'binding:work', ...args], invocation.options)).toBe(1)
+      expect(invocation.error.includes('Flow update [updates]: Application says complete')).toBe(
+        enabled,
+      )
+      if (args.some((value) => value === '--receive')) {
+        expect(JSON.parse(invocation.output)).toMatchObject({
+          type: 'terminal',
+          result: { status: 'failed' },
+        })
+      } else {
+        baseline ??= invocation.output
+        expect(invocation.output).toBe(baseline)
+        expect(JSON.parse(invocation.output)).toMatchObject({ status: 'failed' })
+      }
+    }
+  })
+
   test('terminal channel output joins fragments; --json retains the exact NDJSON records', async () => {
     const records = [
       { type: 'begin', channel: 'progress', startSequence: 1 },

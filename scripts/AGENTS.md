@@ -102,6 +102,10 @@ operational baselines, and public-site assembly.
   invocation resolution.
   Agent Run publication includes its complete referenced events, commands and
   replies channel bundle, even when a consumer uses only one-shot calls.
+  User updates publication copies the portable library's exact descriptor and
+  MPL-2.0 license. The release gate freezes its archive beside the SDK, installs
+  both through ordinary dependencies, and qualifies TypeScript/Node and both
+  Python distributions separately.
 
 ## Local Contracts
 

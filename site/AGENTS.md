@@ -40,6 +40,8 @@ Jig public sites.
   downloads.
 - `scripts/build-site.sh` owns fresh staging, exact artifact copying,
   inventory enforcement, and cross-site exclusion.
+  Jig's user-updates landing page, descriptor download and license are copied
+  from the portable profile owner; never regenerate an equivalent descriptor.
 - Rspress generates `.md` companions, `llms.txt`, and `llms-full.txt` from the
   public pages. Do not maintain separate copies of agent-facing prose.
 - Reconcile navigation, generated indexes, workflow path filters, and build mappings

@@ -13,6 +13,8 @@ const justfiles = [
   'packages/agent-acp/justfile',
   'packages/flow-authoring/justfile',
   'packages/jiggy-flow/justfile',
+  'packages/user-updates/justfile',
+  'packages/jiggy-user-updates/justfile',
   'packages/jig/justfile',
   'site/justfile',
 ]

@@ -71,13 +71,18 @@ trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 # Test authored applications against the exact local package candidates, including
 # before their versions reach the registry. Only disposable copies' declared
 # dependencies change; Flow source and repository manifests do not.
-mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/jig"
+mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/user-updates" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/jig"
 bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts/flow-sdk"
 set -- "$release_tmp"/artifacts/flow-sdk/*.tgz
 test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
 FLOW_SDK_PACKAGE_ARCHIVE=$sdk_archive
 export FLOW_SDK_PACKAGE_ARCHIVE
+bun pm pack --cwd packages/user-updates --ignore-scripts --destination "$release_tmp/artifacts/user-updates"
+set -- "$release_tmp"/artifacts/user-updates/*.tgz
+test "$#" -eq 1 && test -f "$1"
+USER_UPDATES_PACKAGE_ARCHIVE=$1
+export USER_UPDATES_PACKAGE_ARCHIVE
 bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$release_tmp/artifacts/agent-method"
 set -- "$release_tmp"/artifacts/agent-method/*.tgz
 test "$#" -eq 1 && test -f "$1"
@@ -92,7 +97,7 @@ set -- "$release_tmp"/artifacts/jig/*.tgz
 test "$#" -eq 1 && test -f "$1"
 JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
-archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
 for application in tested-patch software-factory request-triage support-case contact-import incident-brief; do
   application_copy="$release_tmp/$application"
@@ -122,6 +127,7 @@ for application in tested-patch software-factory request-triage support-case con
       "@jigging/flow": Bun.argv[2],
       "@jigging/agent-method": Bun.argv[3],
       "@jigging/agent-acp": Bun.argv[4],
+      "@jigging/user-updates": Bun.argv[5],
     };
     const manifests = [path];
     for (const directory of ["flows", "methods"]) {
@@ -155,12 +161,13 @@ for application in tested-patch software-factory request-triage support-case con
       }
       await Bun.write(current, JSON.stringify(manifest));
     }
-  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE"
+  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE"
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
-bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-0 "$@"
+bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/user-updates packages/jig conformance/run-0 "$@"
 bun packages/flow-sdk/test/package-smoke.ts
+bun packages/user-updates/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 
 PYTHONDONTWRITEBYTECODE=1 \
@@ -174,9 +181,17 @@ PYTHONDONTWRITEBYTECODE=1 \
 
 # Both installed Python distributions run the SDK suite and typed consumer.
 "$python_bin" scripts/build-python-sdk.py "$release_tmp/python-dist"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-user-updates/src \
+  "$python_bin" -m unittest discover -s packages/jiggy-user-updates/tests -p 'test_*.py' -v
+PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-user-updates/src \
+  "$python_bin" -m mypy --strict packages/jiggy-user-updates/src/jiggy/user_updates
+"$python_bin" -m build --outdir "$release_tmp/python-updates-dist" packages/jiggy-user-updates
+"$python_bin" -m twine check --strict "$release_tmp"/python-updates-dist/*
+"$python_bin" packages/jiggy-user-updates/tests/package_smoke.py \
+  "$release_tmp"/python-updates-dist/*.whl "$release_tmp"/python-updates-dist/*.tar.gz "$release_tmp"/python-dist/*.whl
 "$python_bin" -m unittest discover -s scripts -p 'test_pypi_release.py' -v
 
-archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"
 cmp "$release_tmp/archive-digests" "$release_tmp/verified-digests" || {
   echo "release tests changed the frozen package archives" >&2
   exit 1

@@ -109,6 +109,15 @@ permits bounded fragmented protocol exchanges without increasing message size,
 receiver buffers, or pending-send capacity. These bounds participate in the
 reviewed launch identity; changed policy requires renewed admission.
 
+Automatic [user updates](user-updates.md) use a separate CLI-only lifetime
+pool for the unique exact optional port: one source/receiver, 32 KiB per item,
+4 MiB source traffic, receiver buffer 16 items/256 KiB, and one pending send/32 KiB.
+These limits participate in the same reviewed launch identity. Disposal does not
+replenish either pool. Flows get an ordinary writer with no creator subscription
+authority; generic creation and explicit `--receive` keep the application bounds
+above. Wire schemas and descriptor-cache limits are unchanged. Publication still
+uses finite requests, CPU and deadline; this is not zero-overhead observation.
+
 Existing Run/0 wire limits remain 64 live and 65,536 lifetime requests, with
 settlement capacity reserved inside those bounds. They are not new per-local-
 attempt quotas. Contract compilation retains Schema/0 limits.

@@ -256,7 +256,11 @@ admitted FLOW packages.
 - Before any public CLI output change, read and apply
   [the CLI experience contract](../../docs/jig/spec/cli-experience.md).
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
-  presentation; launcher failures follow the same structure. Never introduce
+  presentation; `src/cli-user-updates.ts` owns scoped Flow activity state and
+  untrusted attributed notices within that presenter. Stopping and terminal host
+  states fence repaint callbacks; accepted complete notices retain order. The
+  automatic profile uses one separate command-only broker allocation, preserving
+  ordinary application channel quotas. Launcher failures follow the same structure. Never introduce
   a separate raw diagnostic style or route machine output through styling.
   Shell completion must work with macOS's system Bash 3.2 without installing
   another shell; collect replies with portable array/read operations.

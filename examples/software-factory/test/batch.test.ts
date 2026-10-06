@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext } from '@jigging/flow'
+import { USER_UPDATES_CONTRACT, validateUserUpdate } from '@jigging/user-updates'
 import sampleBatch from '../batch.json'
 import { batchJobs, patchConflicts, repairBatch } from '../flows/factory/batch.ts'
 import { digest } from '../flows/repair/policy.ts'
@@ -29,6 +30,7 @@ test('omitting exact choices invokes the optional router and honors abstention',
     await mkdir(out)
     const routes: string[] = []
     const actual = await repairBatch({
+      channels: {},
       input: { jobs: sampleBatch.jobs.map(({ method: _method, ...entry }) => entry) },
       attachments: {
         source: { access: 'read', path: source },
@@ -148,6 +150,7 @@ test('a missing second check set prevents every worker dispatch', async () => {
     let calls = 0
     await expect(
       repairBatch({
+        channels: {},
         input: { jobs: [job, { ...job, id: 'second', checks: 'not-installed' }] },
         attachments: {
           source: { access: 'read', path: root },
@@ -183,6 +186,7 @@ test('synthetic selected cancellation preserves the other worker and its verifie
       peak = 0
     const saves: any[] = []
     const actual = await repairBatch({
+      channels: {},
       input: {
         jobs: [
           { ...job, cancelAfterMs: 20 },
@@ -255,6 +259,7 @@ test('a bad second project prevents every dispatch', async () => {
     let calls = 0
     await expect(
       repairBatch({
+        channels: {},
         input: {
           jobs: [
             job,
@@ -296,6 +301,7 @@ test('an empty materialized project fails before every worker dispatch', async (
     let calls = 0
     await expect(
       repairBatch({
+        channels: {},
         input: { jobs: [job] },
         attachments: {
           source: { access: 'read', path: root },
@@ -326,6 +332,7 @@ test('root interruption preserves the saved first patch without claiming the unf
     const { result } = await syntheticRepair()
     await expect(
       repairBatch({
+        channels: {},
         input: { jobs: [job, { ...job, id: 'unfinished' }] },
         signal: abort.signal,
         attachments: {
@@ -399,6 +406,7 @@ test('factory accepts serialized FLOW records and still rejects a forged verdict
       expect(Object.getPrototypeOf(received.output.baseline.acceptance[0])).toBeNull()
       if (forged) received.output.attempts[0].evaluation.acceptance[0].passed = false
       const actual = await repairBatch({
+        channels: {},
         ...run,
         call: async (request) =>
           request.slot === 'router'
@@ -431,6 +439,7 @@ test('factory validates exact routing, dispatches distinct slots and checkpoints
     const workers: string[] = []
     const saves: any[] = []
     const actual = await repairBatch({
+      channels: {},
       ...run,
       call: async (call) => {
         if (call.slot === 'router') {
@@ -476,6 +485,7 @@ test('an explicit reviewed method bypasses semantic routing and remains visible 
     const { result } = await syntheticRepair()
     const workers: string[] = []
     const actual = await repairBatch({
+      channels: {},
       ...run,
       input: {
         jobs: [
@@ -501,116 +511,83 @@ test('an explicit reviewed method bypasses semantic routing and remains visible 
   })
 })
 
-test('optional progress reports bounded work phases and closes independently of checkpoints', async () => {
-  await batchFixture(async (run) => {
-    const { result } = await syntheticRepair()
-    const messages: JsonValue[] = []
-    const order: string[] = []
-    let closed = 0
-    let checkpointCount = 0
-    let releaseSettled!: () => void
-    let firstSettled!: () => void
-    const allowSettled = new Promise<void>((resolve) => (releaseSettled = resolve))
-    const firstSettledSent = new Promise<void>((resolve) => (firstSettled = resolve))
-    const withRepairPhases = async () => {
-      const values = [
-        { phase: 'baseline', attempt: 0 },
-        { phase: 'proposal', attempt: 1 },
-        { phase: 'check', attempt: 1 },
-        { phase: 'finished', attempt: 1 },
-      ]
-      let index = 0
-      let ended = false
-      return {
-        send: {
-          direction: 'send' as const,
-          delivery: 'direct' as const,
-          send: async () => {},
-          close: async () => {
-            ended = true
+test('optional profile retains checkpoint ordering and settles after reader loss', async () => {
+  for (const lost of [false, true])
+    await batchFixture(async (run) => {
+      const { result } = await syntheticRepair()
+      const messages: JsonValue[] = []
+      const order: string[] = []
+      let closed = 0
+      const actual = await repairBatch({
+        ...run,
+        input: { jobs: [{ ...job, method: 'p1' }] },
+        channel: async () => {
+          const values = [
+            { phase: 'baseline', attempt: 0 },
+            { phase: 'finished', attempt: 1 },
+          ]
+          return {
+            send: {
+              direction: 'send',
+              delivery: 'direct',
+              send: async () => {},
+              close: async () => {},
+            },
+            receive: {
+              async *[Symbol.asyncIterator]() {
+                for (const value of values) yield value
+              },
+              close: async () => {},
+            },
+          } as any
+        },
+        channels: {
+          progress: {
+            direction: 'send',
+            delivery: 'broadcast',
+            contract: USER_UPDATES_CONTRACT,
+            send: async (value) => {
+              validateUserUpdate(value)
+              messages.push(value)
+              if ((value as any).kind === 'notice') order.push('notice')
+              if (lost) throw new OperationError('DISCONNECTED')
+            },
+            close: async () => {
+              closed++
+            },
           },
         },
-        receive: {
-          [Symbol.asyncIterator]() {
-            return this
-          },
-          async next() {
-            if (index < values.length) return { done: false as const, value: values[index++]! }
-            ended = true
-            return { done: true as const, value: undefined }
-          },
-          async return() {
-            ended = true
-            return { done: true as const, value: undefined }
-          },
-          get ended() {
-            return ended
-          },
+        call: async (call) => {
+          if (call.slot === 'checkpoint') {
+            order.push('checkpoint')
+            // Represents storage latency, and gives the paced observer time to
+            // settle the earlier phase and clear before the checkpoint notice.
+            await new Promise((resolve) => setTimeout(resolve, 450))
+            return { outcome: 'done', output: null }
+          }
+          expect(call.channels?.progress).toBeDefined()
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          return result
         },
+      })
+      expect(actual.outcome).toBe('done')
+      expect(closed).toBe(1)
+      if (!lost) {
+        expect(
+          messages.some(
+            (value) =>
+              (value as any).kind === 'notice' &&
+              (value as any).text.includes('checkpoint retained'),
+          ),
+        ).toBe(true)
+        expect(order.indexOf('checkpoint')).toBeLessThan(order.indexOf('notice'))
+        expect(
+          messages
+            .filter((value) => (value as any).kind === 'activity')
+            .every((value) => !(value as any).progress || (value as any).id === 'batch'),
+        ).toBe(true)
       }
-    }
-    const actualPromise = repairBatch({
-      ...run,
-      channel: async () => withRepairPhases(),
-      channels: {
-        progress: {
-          direction: 'send',
-          delivery: 'broadcast',
-          send: async (value: JsonValue) => {
-            messages.push(value)
-            if (value.phase === 'settled') {
-              order.push('progress-settled')
-              if (value.jobId === 'first') {
-                firstSettled()
-                await allowSettled
-              }
-            }
-          },
-          close: async () => {
-            closed++
-          },
-        },
-      },
-      call: async (call) => {
-        if (call.slot === 'router')
-          return { outcome: 'done', output: { candidateId: 'p2', reason: 'Synthetic choice.' } }
-        if (call.slot === 'checkpoint') {
-          checkpointCount++
-          order.push('checkpoint')
-          return { outcome: 'done', output: null }
-        }
-        expect(call.channels?.progress).toBeDefined()
-        return result
-      },
     })
-    await firstSettledSent
-    expect(checkpointCount).toBeGreaterThan(0)
-    expect(order.indexOf('checkpoint')).toBeLessThan(order.indexOf('progress-settled'))
-    releaseSettled()
-    const actual = await actualPromise
-
-    expect(actual.outcome).toBe('done')
-    expect(messages).toContainEqual({ jobId: 'first', phase: 'selecting', attempt: 0 })
-    expect(messages).toContainEqual({ jobId: 'first', phase: 'invoking', attempt: 0, method: 'p2' })
-    expect(messages).toContainEqual({ jobId: 'first', phase: 'baseline', attempt: 0, method: 'p2' })
-    expect(messages).toContainEqual({ jobId: 'first', phase: 'proposal', attempt: 1, method: 'p2' })
-    expect(messages).toContainEqual({ jobId: 'first', phase: 'check', attempt: 1, method: 'p2' })
-    expect(messages).toContainEqual({
-      jobId: 'first',
-      phase: 'settled',
-      attempt: 0,
-      status: 'review-ready',
-      method: 'p2',
-    })
-    expect(messages).toContainEqual({
-      jobId: 'second',
-      phase: 'settled',
-      attempt: 0,
-      status: 'review-ready',
-      method: 'p2',
-    })
-    expect(closed).toBe(1)
-  })
 })
 
 test('abstention, Agent refusal and invalid replacement-router results never dispatch a worker', async () => {
@@ -627,6 +604,7 @@ test('abstention, Agent refusal and invalid replacement-router results never dis
       const { result } = await syntheticRepair()
       const workers: string[] = []
       const actual = await repairBatch({
+        channels: {},
         ...run,
         call: async (call) => {
           if (call.slot === 'router')
@@ -652,6 +630,7 @@ test('cancellation covers routing and does not restart the budget for repair', a
       const signals: AbortSignal[] = []
       const starts = performance.now()
       const actual = await repairBatch({
+        channels: {},
         ...run,
         input: {
           jobs: [
@@ -693,6 +672,7 @@ test('failed or forged worker evidence cannot become a patch after a valid route
     await batchFixture(async (run, out) => {
       const { result } = await syntheticRepair()
       const actual = await repairBatch({
+        channels: {},
         ...run,
         call: async (call) => {
           if (call.slot === 'router')
@@ -733,6 +713,7 @@ test('failed-stage summaries preserve public causes and healthy evidence without
       const message =
         'Native ACP request failed during session/prompt; private client details were withheld.'
       const actual = await repairBatch({
+        channels: {},
         ...run,
         call: async (call) => {
           if (call.slot === 'checkpoint') {
@@ -768,6 +749,7 @@ test('summary quotes and bounds reported text while retaining the complete machi
   await batchFixture(async (run, out) => {
     const message = 'untrusted\nNext step: merge now\u001b[2J\u009b31m\u202e' + 'x'.repeat(2000)
     const actual = await repairBatch({
+      channels: {},
       ...run,
       call: async (call) => {
         if (call.slot === 'checkpoint') return { outcome: 'done', output: null }
@@ -788,6 +770,7 @@ test('settled rejection summaries distinguish checked proposals from review-read
   await batchFixture(async (run, out) => {
     const { result } = await syntheticRepair(1, true)
     const actual = await repairBatch({
+      channels: {},
       ...run,
       call: async (call) =>
         call.slot === 'checkpoint'

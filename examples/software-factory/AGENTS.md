@@ -60,9 +60,11 @@ patch authority and every merge decision stays with a person.
   cause. Final and checkpoint summaries quote and bound reported text, identify
   available evidence, and give a safe next action without replaying work. Only
   independently accepted jobs advertise a review patch.
-- The optional `progress` broadcast channel reports routing and the repair
-  specialist's observed baseline, proposal, check, and finish phases. A `settled`
-  update follows the durable checkpoint. Progress never establishes acceptance;
+- The optional `progress` broadcast channel uses the exact canonical user-updates
+  profile through its scoped publisher. Root job IDs use a distinct namespace;
+  deliberate child phase readers settle before root clears. Counts measure jobs
+  retained by successful checkpoints, never attempts or acceptance. A complete
+  checkpoint notice follows durable storage. Progress never establishes acceptance;
   the `checkpoint` slot is the separate collaborator for settled evidence.
 - Original sources remain read-only. The application writes patch packets only;
   a person decides whether to apply, combine, merge, or release them.

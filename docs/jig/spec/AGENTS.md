@@ -17,6 +17,10 @@ descriptors.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.
+- `user-updates.md` owns Jig's exact optional-port selection, separate CLI pool,
+  bounded shared stderr presentation and qualification policy. The portable
+  descriptor and scoped libraries belong to `packages/user-updates/` and
+  `packages/jiggy-user-updates/`, without new FLOW wire operations.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
 - `agent-run.md` owns the explicit-context Agent method interface. Ordinary
