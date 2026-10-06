@@ -104,7 +104,12 @@ test('retained successes, failures and conflicts remain separate from batch acce
 })
 
 test('two maximum-length job labels and escaped causes still fit the terminal brief view', () => {
-  for (const message of ['\u001b'.repeat(120), '\\"'.repeat(120), '😀'.repeat(160)]) {
+  for (const message of [
+    '\u001b'.repeat(2000),
+    '\\"'.repeat(2000),
+    '\u202e'.repeat(2000),
+    '😀'.repeat(2000),
+  ]) {
     const jobs = batchJobs({
       jobs: [
         { ...job, label: '"'.repeat(80) },
@@ -112,11 +117,23 @@ test('two maximum-length job labels and escaped causes still fit the terminal br
       ],
     }).map((entry) => ({ ...entry, status: 'failed', code: 'UNCERTAIN', message }))
     const original = JSON.stringify(jobs)
-    const summary = factoryReport(jobs, true)
-    expect(JSON.stringify({ summary }).length).toBeLessThanOrEqual(2048)
-    expect(summary.match(/No verified patch is available\./g)).toHaveLength(2)
-    expect(summary).toContain('0 of 2 jobs produced a checked patch')
-    expect(summary).toContain('full cause in result.json')
+    for (const filesConfirmed of [false, true]) {
+      for (const conflicting of [false, true]) {
+        const summary = factoryReport(jobs, conflicting, filesConfirmed)
+        expect(JSON.stringify({ summary }).length).toBeLessThanOrEqual(2048)
+        expect(summary.match(/No verified patch is available\./g)).toHaveLength(2)
+        expect(summary).toContain('0 of 2 jobs produced a checked patch')
+        expect(summary).toContain('full cause in retained job evidence')
+        for (const entry of jobs) {
+          const notice = jobReport(entry, filesConfirmed)
+          expect([...notice].length).toBeLessThanOrEqual(4096)
+          expect(notice).not.toContain('\u001b')
+          expect(notice).not.toContain('\u202e')
+          expect(new TextDecoder().decode(new TextEncoder().encode(notice))).toBe(notice)
+          expect(notice).not.toContain('full cause in result.json')
+        }
+      }
+    }
     expect(JSON.stringify(jobs)).toBe(original)
   }
 })

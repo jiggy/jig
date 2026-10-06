@@ -62,6 +62,12 @@ patch authority and every merge decision stays with a person.
   cause. Final and checkpoint summaries quote and bound reported text, identify
   available evidence, and give a safe next action without replaying work. Only
   independently accepted jobs advertise a review patch.
+  Preserve complete short actionable causes in live notices and final summaries.
+  The shared quoted prefix permits 512 scalars within 400 double-escaped JSON
+  characters; the truncation marker is additional. Two jobs still fit the
+  host's 2048-character brief budget.
+  Oversized-cause markers refer to retained job evidence without claiming files
+  were delivered before checkpoint acknowledgement. Retained causes stay unchanged.
 - The optional `progress` broadcast channel uses the exact canonical user-updates
   profile through its scoped publisher. Root job IDs use a distinct namespace;
   deliberate child phase readers settle before root clears. Notices count jobs

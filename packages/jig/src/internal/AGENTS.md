@@ -463,6 +463,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   dispatch without exposing exception text or weakening uncertainty and cleanup.
   Failed finite ACP operations identify the last host execution phase using
   fixed text; starting a client does not establish remote dispatch.
+  Native error text/data remain private. The authentic runtime retains its
+  host-selected client identity; only Codex's demonstrated `session/new` managed
+  preference error shape maps to the closed reason specified in `finite-acp.md`.
+  Build a fresh constant projection and discard raw fields/private guidance.
+  The reason is an attributed native report, never permission to retry or a
+  diagnosis of sandbox policy, credentials, effects, or cleanup.
 - Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or finite ACP resource endpoints. Unused incoming
   rights may move onward; each child and effect retains its own participant identity.

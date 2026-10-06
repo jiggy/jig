@@ -298,10 +298,31 @@ class FinitePeer {
           'session/set_mode': 'select the AI session mode',
           'session/prompt': 'get an AI response',
         }[method]
+        const reason =
+          method === 'session/new' &&
+          error.code === -32603 &&
+          error.data !== null &&
+          typeof error.data === 'object' &&
+          !Array.isArray(error.data) &&
+          Object.keys(error.data).length === 1 &&
+          Object.hasOwn(error.data, 'reason') &&
+          (error.data as JsonObject).reason === 'managed-preferences-unavailable'
+            ? 'managed-preferences-unavailable'
+            : undefined
+        const explanation =
+          reason === undefined
+            ? 'Detailed client cause is unavailable.'
+            : 'The native client reported a configuration failure: macOS managed preferences could not be synchronized. Have the operator responsible for this Codex installation check its managed-preference configuration and availability.'
         throw new OperationError(
           'EXECUTION_FAILED',
-          `Could not ${operation} (native code ${error.code}; ${method}). Detailed client cause is unavailable.`,
-          { nativeRequest: { method, code: error.code } },
+          `Could not ${operation} (native code ${error.code}; ${method}). ${explanation}`,
+          {
+            nativeRequest: {
+              method,
+              code: error.code,
+              ...(reason === undefined ? {} : { reason }),
+            },
+          },
         )
       }
       return object(frame.result)

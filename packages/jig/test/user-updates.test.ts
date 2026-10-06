@@ -204,7 +204,7 @@ test('plain output bounds count-only updates and attributes every escaped notice
   expect(text).toContain(
     'Flow update [updates]: Execution completed\n  Flow update [updates]: \\u001b[32mspoof\\u202e\n',
   )
-  expect(text).toContain('Activity ended')
+  expect(text).not.toContain('Activity ended')
   expect(text).toContain('contract violation')
   expect(text).not.toContain('\u001b')
   presenter.close()
@@ -234,36 +234,99 @@ test('wide Unicode is bounded by terminal cells and notices never acquire truste
   presenter.close()
 })
 
-test('queued plain activity uses its current appearance and host stopping fences repaint', async () => {
-  const blocked = deferred()
-  let text = ''
-  const presenter = new PrivateCliProgress(
-    true,
-    (chunk) => {
-      text += chunk
-      return chunk === 'hold\n' ? blocked.promise : undefined
-    },
-    undefined,
-    false,
-  )
-  presenter.stage('Waiting')
-  presenter.diagnostic('hold\n')
-  const source = presenter.observe('updates')
-  source.accept({ kind: 'activity', id: 'a', label: 'Same' })
-  source.accept({ kind: 'clear', id: 'a' })
-  source.accept({ kind: 'activity', id: 'a', label: 'Same', progress: { completed: 2 } })
-  source.accept({ kind: 'notice', text: 'complete emission' })
-  blocked.resolve()
-  await presenter.flush()
-  expect(text.match(/Flow updates: Same/g)).toHaveLength(1)
-  expect(text).toContain('Same (2)')
-  presenter.stopUpdates()
-  presenter.stage('Stopping remaining work and cleaning up')
-  expect(source.accept({ kind: 'activity', id: 'a', label: 'late' })).toBe(false)
-  presenter.close()
-  await presenter.flush()
-  expect(text).not.toContain('late')
-})
+test.each([false, true])(
+  'queued activity clear/reuse keeps only current appearances and sibling state (animated=%s)',
+  async (animated) => {
+    const blocked = deferred()
+    let text = ''
+    const presenter = new PrivateCliProgress(
+      true,
+      (chunk) => {
+        text += chunk
+        return chunk.includes('hold\n') ? blocked.promise : undefined
+      },
+      undefined,
+      animated,
+    )
+    presenter.stage('Waiting')
+    presenter.diagnostic('hold\n')
+    const source = presenter.observe('updates')
+    const sibling = presenter.observe('sibling')
+    sibling.accept({ kind: 'activity', id: 'a', label: 'Sibling' })
+    source.accept({ kind: 'activity', id: 'a', label: 'Same' })
+    source.accept({ kind: 'clear', id: 'a' })
+    source.accept({ kind: 'activity', id: 'a', label: 'Same', progress: { completed: 2 } })
+    source.accept({ kind: 'notice', text: 'complete emission' })
+    blocked.resolve()
+    await presenter.flush()
+    const visible = screen(text)
+    expect(visible.match(/Flow updates: Same/g)).toHaveLength(1)
+    expect(visible).toContain('Same (2)')
+    expect(visible).toContain('Flow sibling: Sibling')
+    expect(visible).not.toContain('Activity ended')
+    presenter.stopUpdates()
+    presenter.stage('Stopping remaining work and cleaning up')
+    expect(source.accept({ kind: 'activity', id: 'a', label: 'late' })).toBe(false)
+    presenter.close()
+    await presenter.flush()
+    expect(text).not.toContain('late')
+  },
+)
+
+test.each([false, true])(
+  'two cleared jobs retain phase history and show blocking notices without anonymous endings (animated=%s)',
+  async (animated) => {
+    let text = ''
+    const presenter = new PrivateCliProgress(
+      true,
+      (chunk) => {
+        text += chunk
+      },
+      undefined,
+      animated,
+    )
+    presenter.stage('Waiting for the result')
+    const source = presenter.observe('progress', true)
+    source.accept({
+      kind: 'activity',
+      id: 'logs',
+      label: 'HTTP log report: Asking for a proposed fix',
+    })
+    source.accept({
+      kind: 'activity',
+      id: 'timesheet',
+      label: 'Timesheet totals: Asking for a proposed fix',
+    })
+    await presenter.flush()
+    source.accept({ kind: 'clear', id: 'logs' })
+    source.accept({ kind: 'clear', id: 'timesheet' })
+    source.accept({
+      kind: 'notice',
+      severity: 'error',
+      text: 'HTTP log report: Session creation failed.',
+    })
+    source.accept({
+      kind: 'notice',
+      severity: 'error',
+      text: 'Timesheet totals: Session creation failed.',
+    })
+    source.retire()
+    await sleep(220)
+    await presenter.flush()
+    const visible = screen(text)
+    expect(visible).toContain('HTTP log report: Asking for a proposed fix')
+    expect(visible).toContain('Timesheet totals: Asking for a proposed fix')
+    expect(visible).toContain(
+      'Flow-reported error:\n  Flow: HTTP log report: Session creation failed.',
+    )
+    expect(visible).toContain(
+      'Flow-reported error:\n  Flow: Timesheet totals: Session creation failed.',
+    )
+    expect(visible).not.toContain('Activity ended')
+    expect(visible.split('\n').at(-1)).not.toContain('Flow:')
+    presenter.close()
+  },
+)
 
 test('slow presentation retires optional observation once without cancelling work or discarding notices', async () => {
   const blocked = deferred()

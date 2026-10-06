@@ -670,6 +670,78 @@ describe('finite ACP authority policy', () => {
     )
   })
 
+  test('only the known Codex session-creation report receives a closed managed-preferences reason', () => {
+    const prefix = 'failed to load configuration: Failed to synchronize managed preferences'
+    const data = `${prefix}\n\nCheck /private/secret-token and private model settings.`
+    const cases = [
+      { client: 'openai-codex', code: -32603, data, known: true },
+      { client: 'other-client', code: -32603, data, known: false },
+      { client: undefined, code: -32603, data, known: false },
+      { client: 'openai-codex', code: -32602, data, known: false },
+      { client: 'openai-codex', code: -32603, data: `embedded ${data}`, known: false },
+      {
+        client: 'openai-codex',
+        code: -32603,
+        data: `${prefix}XYZ\n\nCheck secret-token`,
+        known: false,
+      },
+      { client: 'openai-codex', code: -32603, data: prefix, known: false },
+      {
+        client: 'openai-codex',
+        code: -32603,
+        data: { reason: 'managed-preferences-unavailable' },
+        known: false,
+      },
+      { client: 'openai-codex', code: -32603, data: null, known: false },
+      {
+        client: 'openai-codex',
+        code: -32603,
+        data,
+        message: 'different secret-token',
+        known: false,
+      },
+      { client: 'openai-codex', code: -32603, data, method: 'session/prompt', known: false },
+    ]
+    for (const value of cases) {
+      const policy = new PrivateFiniteAcpPolicy({}, value.client)
+      initialize(policy)
+      policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
+      const id = value.method ? 10 : 2
+      if (value.method) {
+        policy.fromClient(reply(2, { sessionId: 'owned-session' }))
+        prompt(policy)
+      }
+      const projected = policy.fromClient(
+        bytes({
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: value.code,
+            message: value.message ?? 'Internal error',
+            data: value.data,
+          },
+        }),
+      )
+      expect(projected).toEqual({
+        toAdapter: {
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: value.code,
+            message: 'Native ACP request failed',
+            ...(value.known ? { data: { reason: 'managed-preferences-unavailable' } } : {}),
+          },
+        },
+      })
+      expect(JSON.stringify(projected)).not.toContain('secret-token')
+      expect(JSON.stringify(projected)).not.toContain('/private')
+      policy.assertSettled()
+      deniesAndCloses(policy, () =>
+        policy.fromAdapter(request(99, 'session/new', { cwd: '/work', mcpServers: [] })),
+      )
+    }
+  })
+
   test('unknown and duplicate native replies cannot change the pending request', () => {
     const policy = session()
     prompt(policy)

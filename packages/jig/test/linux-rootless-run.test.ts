@@ -145,6 +145,7 @@ delegatedDescribe('private rootless Linux Run', () => {
         })
         mark('contained-peer-started')
         const runtime: PrivateAcpAgentRuntime = {
+          client: 'fixture',
           adapterPath: join(fixture, 'FLOW.ts'),
           sandboxAdapterPath: '/package/FLOW.ts',
           adapterExecutable: false,

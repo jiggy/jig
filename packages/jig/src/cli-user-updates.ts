@@ -120,14 +120,7 @@ export class PrivateCliUserUpdates {
           if (slot !== undefined) {
             this.#slots.delete(slot)
             source.slots.delete(value.id)
-            const cleared = `  ${attribution}: Activity ended.\n`
-            if (
-              !this.changed(cleared, () =>
-                source.active && !this.#stopped && !source.slots.has(value.id)
-                  ? cleared
-                  : undefined,
-              )
-            ) {
+            if (!this.changed()) {
               retire('Updates incomplete: presentation limit reached.')
               return false
             }

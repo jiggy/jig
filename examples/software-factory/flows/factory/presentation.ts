@@ -47,12 +47,15 @@ function object(value: JsonValue | undefined): Record<string, JsonValue> {
 function cause(value: string): string {
   const scalars = [...value]
   let prefix = ''
-  for (const scalar of scalars.slice(0, 120)) {
+  for (const scalar of scalars.slice(0, 512)) {
     const candidate = prefix + scalar
-    if (JSON.stringify(reportedText(candidate)).length > 256) break
+    if (JSON.stringify(reportedText(candidate)).length > 400) break
     prefix = candidate
   }
-  return reportedText(prefix) + (prefix !== value ? ' [truncated; full cause in result.json]' : '')
+  return (
+    reportedText(prefix) +
+    (prefix !== value ? ' [truncated; full cause in retained job evidence]' : '')
+  )
 }
 
 export function jobReport(value: JsonValue, filesConfirmed = true): string {

@@ -140,8 +140,12 @@ percentage or bar is inferred. Retired activities never emit new projections. Es
 of transient text; preserve complete notice content with Flow attribution on every
 logical line. Application payload bypasses trusted heading/status recognition and
 success colors. Explicit warning/error notices have a prominent attributed
-Flow-reported warning/error label; payload text is still escaped data. IDs are map keys. Plain mode emits activation, meaningful label/unit
-changes and clears; count-only updates change retained state without flooding.
+Flow-reported warning/error label; payload text is still escaped data. IDs are map
+keys. Plain mode emits activation and meaningful label/unit changes; count-only
+updates change retained state without flooding. In both modes, clears silently
+remove live slots and suppress obsolete queued appearances. Printed phase lines
+remain history; application notices and final results own job outcomes. Clean
+source EOF with remaining slots still reports that live activity observation ended.
 The unique automatic source uses concise `Flow:` attribution rather than its
 technical port name. Observation loss explains incomplete delivery and points
 to the final result; a machine code cannot replace that explanation.

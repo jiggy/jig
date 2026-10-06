@@ -806,6 +806,8 @@ test('concurrent blocking failures are reported before checkpoint settlement and
         release = resolve
       })
       const storageFailure = new OperationError('EXECUTION_FAILED', 'Checkpoint storage failed.')
+      const reportedCause =
+        'Could not start an AI session (native code -32603; session/new). The native client reported a configuration failure: macOS managed preferences could not be synchronized. Have the operator responsible for this Codex installation check its managed-preference configuration and availability.'
       const invocation = repairBatch({
         ...run,
         input: { jobs: (run.input as any).jobs.map((entry: any) => ({ ...entry, method: 'p1' })) },
@@ -837,11 +839,9 @@ test('concurrent blocking failures are reported before checkpoint settlement and
             if (rejected) throw storageFailure
             return { outcome: 'done', output: null }
           }
-          throw new OperationError(
-            'EXECUTION_FAILED',
-            `Could not start AI session for ${call.operationId} (native code -32603).`,
-            { failure: { stage: 'proposal', proposal: 1 } },
-          )
+          throw new OperationError('EXECUTION_FAILED', `${call.operationId}: ${reportedCause}`, {
+            failure: { stage: 'proposal', proposal: 1 },
+          })
         },
       } as unknown as RunContext)
       const settled = invocation.catch((error) => error)
@@ -851,6 +851,11 @@ test('concurrent blocking failures are reported before checkpoint settlement and
         expect(checkpointFinished).toBe(false)
         const errors = messages.filter((value) => (value as any).severity === 'error') as any[]
         expect(errors).toHaveLength(2)
+        for (const notice of errors) {
+          expect(notice.text).toContain(reportedCause)
+          expect([...notice.text].length).toBeLessThanOrEqual(4096)
+          expect(() => validateUserUpdate(notice)).not.toThrow()
+        }
         expect(errors.map((value) => value.text).join('\n')).toContain('repair:first')
         expect(errors.map((value) => value.text).join('\n')).toContain('repair:second')
         expect(messages.some((value) => (value as any).text?.includes('have been saved'))).toBe(
@@ -865,12 +870,43 @@ test('concurrent blocking failures are reported before checkpoint settlement and
         expect(result.details.summary).toContain('repair:first')
         expect(result.details.summary).toContain('repair:second')
         expect(result.details.jobs).toHaveLength(2)
+        expect(result.details.summary.split(reportedCause)).toHaveLength(3)
+        expect(JSON.stringify({ summary: result.details.summary }).length).toBeLessThanOrEqual(2048)
       } else {
         expect(result.outcome).toBe('blocked')
         expect(result.output.summary).toContain('repair:first')
         expect(result.output.summary).toContain('repair:second')
+        expect(result.output.summary.split(reportedCause)).toHaveLength(3)
+        expect(JSON.stringify({ summary: result.output.summary }).length).toBeLessThanOrEqual(2048)
       }
     })
+})
+
+test('complete blocking causes and operator steps survive with progress disabled', async () => {
+  await batchFixture(async (run) => {
+    const reportedCause =
+      'Could not start an AI session (native code -32603; session/new). The native client reported a configuration failure: macOS managed preferences could not be synchronized. Have the operator responsible for this Codex installation check its managed-preference configuration and availability.'
+    const result = await repairBatch({
+      ...run,
+      input: { jobs: (run.input as any).jobs.map((entry: any) => ({ ...entry, method: 'p1' })) },
+      channels: {},
+      call: async (call) => {
+        if (call.slot === 'checkpoint') return { outcome: 'done', output: null }
+        throw new OperationError('EXECUTION_FAILED', reportedCause, {
+          failure: { stage: 'proposal', proposal: 1 },
+        })
+      },
+    })
+    expect(result.outcome).toBe('blocked')
+    expect((result.output as any).summary.split(reportedCause)).toHaveLength(3)
+    expect(JSON.stringify({ summary: (result.output as any).summary }).length).toBeLessThanOrEqual(
+      2048,
+    )
+    expect((result.output as any).jobs.map((entry: any) => entry.message)).toEqual([
+      reportedCause,
+      reportedCause,
+    ])
+  })
 })
 
 test('checkpoint failure retains healthy and failed jobs without claiming packet files exist', async () => {

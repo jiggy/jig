@@ -64,6 +64,7 @@ export interface PrivateAcpReadOnlyMount extends PrivateLinuxReadOnlyMount {
 }
 
 export interface PrivateAcpAgentRuntime {
+  readonly client: string
   readonly adapterPath: string
   readonly sandboxAdapterPath: string
   readonly adapterExecutable: boolean
@@ -185,6 +186,7 @@ export async function createPrivateAcpAgentProvider(
   authenticProviders.set(
     provider,
     Object.freeze({
+      client: value.client,
       adapterPath,
       sandboxAdapterPath: value.sandboxAdapterPath,
       adapterExecutable,

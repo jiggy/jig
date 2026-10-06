@@ -98,14 +98,17 @@ export async function runPrivateFiniteAcpResource(
     (receipt): PrivateExecutionConfirmedEnforcementReceipt => receipt,
   )
   const stopped = (): void => local.abort(signal.reason)
-  const policy = new PrivateFiniteAcpPolicy({
-    maxTurns,
-    configuration: runtime.configuration,
-    ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
-    ...(session?.restoreSessionId === undefined
-      ? {}
-      : { restoreSessionId: session.restoreSessionId }),
-  })
+  const policy = new PrivateFiniteAcpPolicy(
+    {
+      maxTurns,
+      configuration: runtime.configuration,
+      ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
+      ...(session?.restoreSessionId === undefined
+        ? {}
+        : { restoreSessionId: session.restoreSessionId }),
+    },
+    runtime.client,
+  )
   const ready = readFiniteAcpReady({
     kind: 'ready',
     protocolVersion: 1,

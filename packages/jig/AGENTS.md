@@ -273,7 +273,9 @@ admitted FLOW packages.
   code delimiters and commands never wrap. Application data bypasses recognition.
   Readiness status words carry green/amber emphasis without claiming execution.
   Activity phase changes append separate attributed indented lines; only host
-  waiting owns a transient line. Explicit notice severity is Flow-reported
+  waiting owns a transient line. Clear events silently retire their slots;
+  printed phases remain history, and application notices own job outcomes.
+  Explicit notice severity is Flow-reported
   importance, never host outcome or guaranteed delivery.
   A heading must never have less emphasis than its subordinate details. Expanded
   unavailable-client labels use bold amber above normal-contrast setup instructions;

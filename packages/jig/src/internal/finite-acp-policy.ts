@@ -92,7 +92,11 @@ export class PrivateFiniteAcpPolicy {
   private updates = 0
   private textBytes = 0
 
-  constructor(configuration: PrivateFiniteAcpConfiguration = {}) {
+  constructor(
+    configuration: PrivateFiniteAcpConfiguration = {},
+    private readonly nativeClient?: string,
+  ) {
+    if (nativeClient !== undefined) identifier(nativeClient)
     const policy = object(snapshotPrivateOrdinaryJson(configuration, 'finite ACP policy', invalid))
     keys(policy, [], ['configuration', 'modeId', 'maxTurns', 'restoreSessionId'])
     if (Object.hasOwn(policy, 'restoreSessionId'))
@@ -270,12 +274,29 @@ export class PrivateFiniteAcpPolicy {
         const error = object(frame.error)
         if (!Number.isSafeInteger(error.code) || typeof error.message !== 'string')
           fail('Invalid ACP error response')
+        // Recognize the installed Codex report without forwarding its private
+        // guidance suffix. This reports a client claim, not its underlying cause.
+        const managedPreferencesUnavailable =
+          this.nativeClient === 'openai-codex' &&
+          pending.method === NEW &&
+          error.code === -32603 &&
+          error.message === 'Internal error' &&
+          typeof error.data === 'string' &&
+          error.data.startsWith(
+            'failed to load configuration: Failed to synchronize managed preferences\n\nCheck ',
+          )
         this.pending = undefined
         this.peerFailed = true
         return freeze({
           toAdapter: response(
             id,
-            { code: error.code!, message: 'Native ACP request failed' },
+            {
+              code: error.code!,
+              message: 'Native ACP request failed',
+              ...(managedPreferencesUnavailable
+                ? { data: { reason: 'managed-preferences-unavailable' } }
+                : {}),
+            },
             true,
           ),
         })

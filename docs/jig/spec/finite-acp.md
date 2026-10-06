@@ -166,11 +166,27 @@ made by the editable adapter.
 
 Native text and plan updates outside an active prompt fail rather than contaminating
 a subsequent answer. Aggregate frame, byte, update and text ceilings never reset
-between turns. Only correlated results, a constant sanitized request error, public assistant
+between turns. Only correlated results, sanitized request errors, public assistant
 text, public plan updates and closed warning notices reach the adapter. Unneeded native fields are
 withheld. One conversation permits at most 4,096 updates, 8 MiB of assistant
 text and 256 permission requests; raw native protocol ingress remains bounded
 at 32 MiB before projection. The host accounts for ignored frames too.
+
+Request errors retain a safe integer native code and the fixed message
+`Native ACP request failed`; raw native text and data are withheld. For the
+host-selected Codex client only, a `session/new` error with code `-32603`, message
+`Internal error`, and string data beginning exactly
+`failed to load configuration: Failed to synchronize managed preferences\n\nCheck `
+projects the additional closed data
+`{"reason":"managed-preferences-unavailable"}`. The private guidance suffix is
+discarded. Other clients, operations and error shapes receive no reason. This
+is a native client report, not a diagnosis of sandbox policy, authentication,
+remote effects, cleanup, or permission to repeat the call. The ordinary Agent
+independently recognizes only that exact one-field reason object in the matching
+operation/code context and uses fixed explanatory text; unknown causes remain
+explicitly unavailable. The recognized explanation asks the installation's
+operator to check managed-preference configuration and availability, without
+prescribing a repair or authorizing another call.
 
 The host negotiates the supported typed native diagnostic extension independently
 of Flow input. Warnings are projected as `session/update` with
