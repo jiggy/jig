@@ -1,12 +1,13 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
-import { closeSync } from 'node:fs'
+import { closeSync, constants } from 'node:fs'
 import {
   access,
   link,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   rename,
   rm,
@@ -42,6 +43,75 @@ async function allocation() {
   await mkdir(mount, { mode: 0o700 })
   return { root, control, mount, token: randomBytes(32).toString('hex') }
 }
+
+native(
+  'recovery detaches only its authenticated image after macOS mounts it elsewhere',
+  async () => {
+    const { root, control, mount, token } = await allocation()
+    const alternate = join(root, 'alternate')
+    await mkdir(alternate, { mode: 0o700 })
+    await writeFile(join(alternate, 'canary'), 'keep', { mode: 0o600, flag: 'wx' })
+    await writeFile(join(root, 'fixture.json'), JSON.stringify({ control, mount, token }), {
+      mode: 0o600,
+      flag: 'wx',
+    })
+    const tool = (args: string[]) => {
+      const result = spawnSync('/usr/bin/hdiutil', args, {
+        encoding: 'utf8',
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      })
+      expect({ status: result.status, signal: result.signal }).toEqual({ status: 0, signal: null })
+    }
+    let cleaned = false
+    try {
+      const volume = await createPrivateMacosVolume(control, token, mount, 16 * 1024 * 1024)
+      const device = privateMacosFilesystem(volume.directory.fd).device
+      await volume.directory.close()
+      tool(['detach', device])
+      // Reproduce the observed interrupted-attach state deterministically, with
+      // the same image inode and authenticated journal but a different mount.
+      tool([
+        'attach',
+        '-kernel',
+        '-nobrowse',
+        '-noautoopen',
+        '-noautofsck',
+        '-owners',
+        'on',
+        '-mountpoint',
+        alternate,
+        '-mount',
+        'required',
+        join(control, 'volume.dmg'),
+      ])
+      await recoverPrivateMacosVolume(control, token)
+      await releasePrivateMacosVolume(control, token)
+      cleaned = true
+      await expect(access(control)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(access(mount)).rejects.toMatchObject({ code: 'ENOENT' })
+      // The observed mount path never becomes authority to delete a host tree.
+      expect(await readFile(join(alternate, 'canary'), 'utf8')).toBe('keep')
+    } finally {
+      if (!cleaned) {
+        const directory = await open(alternate, constants.O_RDONLY | constants.O_DIRECTORY)
+        let device: string | undefined
+        try {
+          const filesystem = privateMacosFilesystem(directory.fd)
+          if (filesystem.type === 'hfs' && filesystem.mountpoint === alternate)
+            device = filesystem.device
+        } finally {
+          await directory.close()
+        }
+        if (device !== undefined) tool(['detach', device])
+        await recoverPrivateMacosVolume(control, token)
+        await releasePrivateMacosVolume(control, token)
+      }
+      await rm(root, { recursive: true })
+    }
+  },
+  100_000,
+)
 
 native(
   'backing staging retirement rejects aliases, public modes and oversized files',

@@ -191,8 +191,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   images, fixed system tools and finite command/output bounds. Mount evidence
   comes from the held directory's qualified `fstatfs` ABI. After complete tool
   and payload fencing and collector closure, derive detach authority from the
-  live exact image mapping, never a saved disk number. Recheck the allocation,
-  detach, then remove only its original empty mount directory and backing file.
+  live exact image mapping, never a saved disk number or observed mount location.
+  Interrupted attachment may finish at an automatic mount; recovery still
+  authenticates the exact backing inode and allocation before detaching it.
+  Launch requires the requested mount. Recheck the allocation, detach, then
+  remove only its original empty mount directory and backing file; an observed
+  alternate mount path never grants deletion authority.
   Retain authenticated journals until the enclosing owner is released. Storage
   ownership alone does not establish process fencing or installed Mac support.
   Publish the backing-image journal by exclusive rename of complete, synced
@@ -925,7 +929,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   reacquisition, interrupted cleanup and the Darwin chmod-before-rename window.
   `macos-volume.test.ts` covers bounded shared capacity with sandboxed native
   writers, backing-file denial, journal and inode forgery refusal, case-sensitive
-  names, fresh-process recovery, and repeated exact cleanup without administrator
+  names, relocated image recovery without deleting the alternate host directory,
+  fresh-process recovery, and repeated exact cleanup without administrator
   access. It preserves failed allocations when recovery cannot be confirmed.
   `macos-preparation.test.ts` runs the unchanged preparer and a retained ordinary
   TypeScript dependency consumer in native guardians with bounded storage. It

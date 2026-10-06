@@ -43,6 +43,8 @@ const causes = new Map([
   ['macOS volume info failed', 'VOLUME_INFO'],
   ['macOS volume detach failed', 'VOLUME_DETACH'],
   ['macOS volume plist conversion failed', 'VOLUME_PLIST'],
+  ['macOS image attachment does not match its allocation', 'VOLUME_IMAGE'],
+  ['macOS volume device does not match its allocation', 'VOLUME_DEVICE'],
 ] as const)
 
 export interface PrivateMacosGuardianFailure {
