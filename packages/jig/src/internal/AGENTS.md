@@ -171,6 +171,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   accounting, and signal matching PID versions. Sampled footprint and process
   discovery are not hard quotas; incomplete samples cannot prove a limit or
   cleanup. Only the kernel's remaining guardian count establishes emptiness.
+  A CPU ledger regression across a kernel read marks the sample incomplete;
+  exec transitions can temporarily omit a task's ledger. Do not clamp or invent
+  a monotonic reading.
   Unix control peer UID, PID and PID version come from `LOCAL_PEERTOKEN`, never
   claimed message fields; unavailable native socket identity fails closed.
 - `macos-descriptor-handoff.ts` passes at most 64 read-only file/directory
@@ -344,6 +347,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   task limits and CPU throttling can overshoot; record sampling evidence and
   fail closed on sustained accounting uncertainty. Native exit status and
   kernel emptiness are independent requirements, including after crashes.
+  Incomplete samples and CPU regressions share the existing 500 ms uncertainty
+  bound. Preserve the CPU high-water/time baseline across regressions; the next
+  nonregressing reading charges accumulated CPU and elapsed refill. Continue
+  charging observable CPU during incomplete membership samples. Final settlement
+  requires complete accounting at or above that baseline; recovery may confirm
+  cleanup without establishing a payload result.
   After admission, a payload's unread stdin may close with EPIPE without
   invalidating its native exit evidence. Other stream errors still fail closed;
   neither EPIPE nor pipe closure substitutes for the status frame or fencing.
@@ -921,7 +930,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `macos-captured-bytes.test.ts` covers anonymous read-only capture on macOS.
   `macos-guardian.test.ts` qualifies the complete private guardian connection,
   gated native streams, cancellation, blocked output, and both coordinator and
-  guardian loss. Portable framing cases live in `macos-control-channel.test.ts`.
+  guardian loss. Controlled CPU faults check recovery from transient within-read
+  and between-sample regressions, sustained uncertainty refusal and strict final
+  accounting while retaining real kernel ownership and authenticated cleanup.
+  Portable framing cases live in `macos-control-channel.test.ts`.
   Buffered unread stdin must preserve the payload's actual nonzero exit and
   output after confirmed fencing.
   These checks are primitive evidence, not installed-host conformance.

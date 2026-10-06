@@ -349,14 +349,13 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
         observedMembers++
       }
       const after = usage(owner.coalition)
-      if (after.cpuNanoseconds < before.cpuNanoseconds)
-        throw new Error('macOS CPU accounting moved backwards')
       return Object.freeze({
         ...after,
         footprintBytes,
         observedMembers,
         complete:
           complete &&
+          after.cpuNanoseconds >= before.cpuNanoseconds &&
           before.active === after.active &&
           after.active === BigInt(observedMembers + 1),
         sampleMilliseconds: performance.now() - start,

@@ -303,17 +303,21 @@ export async function preparePrivateMacosScope(input: {
           stop('process_limit')
           break
         }
-        if (!sample.complete) {
+        // Exec transitions can temporarily omit a task's CPU ledger. Keep the
+        // CPU high-water baseline; the next nonregressing sample charges all
+        // CPU and elapsed refill since then. Uncertainty has the existing bound.
+        const cpuRegressed = sample.cpuNanoseconds < previousCpu
+        if (!sample.complete || cpuRegressed) {
           incompleteSamples++
           incompleteSince ??= now
+          if (now - incompleteSince > 500) {
+            stop('accounting_failed')
+            break
+          }
         } else incompleteSince = undefined
-        if (incompleteSince !== undefined && now - incompleteSince > 500) {
-          stop('accounting_failed')
-          break
-        }
-        if (sample.cpuNanoseconds < previousCpu) {
-          stop('accounting_failed')
-          break
+        if (cpuRegressed) {
+          await new Promise((resolve) => setTimeout(resolve, 20))
+          continue
         }
         credit +=
           (BigInt(Math.max(0, Math.floor((now - previousTime) * 1e6))) *
