@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
 import descriptor from './user-updates.json' with { type: 'json' }
 
+export type NoticeSeverity = 'info' | 'warning' | 'error'
 export type Progress = Readonly<{ completed: number; total?: number; unit?: string }>
 export type UserUpdate =
-  | Readonly<{ kind: 'notice'; text: string }>
+  | Readonly<{ kind: 'notice'; text: string; severity?: NoticeSeverity }>
   | Readonly<{ kind: 'activity'; id: string; label: string; progress?: Progress }>
   | Readonly<{ kind: 'clear'; id: string }>
 
@@ -82,12 +83,21 @@ function count(value: unknown): number {
 
 /** Validate unknown input and return a private immutable snapshot. */
 export function validateUserUpdate(value: unknown): UserUpdate {
-  const root = record(value, ['kind', 'text', 'id', 'label', 'progress'])
+  const root = record(value, ['kind', 'text', 'severity', 'id', 'label', 'progress'])
   let result: UserUpdate
   switch (root.kind) {
     case 'notice': {
-      record(value, ['kind', 'text'])
-      result = Object.freeze({ kind: 'notice', text: text(root.text, 4096) })
+      record(value, ['kind', 'text', 'severity'])
+      if (
+        Object.hasOwn(root, 'severity') &&
+        !['info', 'warning', 'error'].includes(root.severity as string)
+      )
+        throw new TypeError('Unknown notice severity')
+      result = Object.freeze({
+        kind: 'notice',
+        text: text(root.text, 4096),
+        ...(Object.hasOwn(root, 'severity') ? { severity: root.severity as NoticeSeverity } : {}),
+      })
       break
     }
     case 'clear': {

@@ -45,3 +45,7 @@ Parents explicitly validate/summarize child observations and own their receivers
 Give each child occurrence fresh IDs and fence relays before ordered clears.
 Shared budgets can stop healthy siblings. ACP fragments and plans have a
 separate contract; this helper does not convert them.
+
+`updates.notice(text, severity="error")` reports an important application error.
+Severity is info (default), warning or error. It changes prominence, not ordering,
+limits, delivery or cancellation. Keep essential failure reasons in results too.

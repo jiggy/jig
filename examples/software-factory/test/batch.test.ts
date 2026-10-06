@@ -518,6 +518,7 @@ test('optional profile retains checkpoint ordering and settles after reader loss
       const { result } = await syntheticRepair()
       const messages: JsonValue[] = []
       const order: string[] = []
+      let checkpointAcknowledged = false
       let closed = 0
       const actual = await repairBatch({
         ...run,
@@ -550,7 +551,11 @@ test('optional profile retains checkpoint ordering and settles after reader loss
             send: async (value) => {
               validateUserUpdate(value)
               messages.push(value)
-              if ((value as any).kind === 'notice') order.push('notice')
+              if (
+                (value as any).kind === 'notice' &&
+                (value as any).text.includes('have been saved')
+              )
+                order.push('notice')
               if (lost) throw new OperationError('DISCONNECTED')
             },
             close: async () => {
@@ -564,6 +569,7 @@ test('optional profile retains checkpoint ordering and settles after reader loss
             // Represents storage latency, and gives the paced observer time to
             // settle the earlier phase and clear before the checkpoint notice.
             await new Promise((resolve) => setTimeout(resolve, 450))
+            checkpointAcknowledged = true
             return { outcome: 'done', output: null }
           }
           expect(call.channels?.progress).toBeDefined()
@@ -787,5 +793,111 @@ test('settled rejection summaries distinguish checked proposals from review-read
     expect(summary).toContain('first/proposal-1.patch')
     expect(summary).not.toContain('first/review.patch')
     expect(summary).toContain('do not apply an unaccepted proposal')
+  })
+})
+
+test('concurrent blocking failures are reported before checkpoint settlement and survive in results', async () => {
+  for (const rejected of [false, true])
+    await batchFixture(async (run) => {
+      const messages: JsonValue[] = []
+      let checkpointFinished = false
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const storageFailure = new OperationError('EXECUTION_FAILED', 'Checkpoint storage failed.')
+      const invocation = repairBatch({
+        ...run,
+        input: { jobs: (run.input as any).jobs.map((entry: any) => ({ ...entry, method: 'p1' })) },
+        channels: {
+          progress: {
+            direction: 'send',
+            delivery: 'broadcast',
+            contract: USER_UPDATES_CONTRACT,
+            send: async (value) => {
+              messages.push(value)
+            },
+            close: async () => {},
+          },
+        },
+        channel: async () =>
+          ({
+            send: {
+              direction: 'send',
+              delivery: 'direct',
+              send: async () => {},
+              close: async () => {},
+            },
+            receive: { async *[Symbol.asyncIterator]() {}, close: async () => {} },
+          }) as any,
+        call: async (call) => {
+          if (call.slot === 'checkpoint') {
+            await held
+            checkpointFinished = true
+            if (rejected) throw storageFailure
+            return { outcome: 'done', output: null }
+          }
+          throw new OperationError(
+            'EXECUTION_FAILED',
+            `Could not start AI session for ${call.operationId} (native code -32603).`,
+            { failure: { stage: 'proposal', proposal: 1 } },
+          )
+        },
+      } as unknown as RunContext)
+      const settled = invocation.catch((error) => error)
+      try {
+        // The paced optional path remains live while storage is pending.
+        await new Promise((resolve) => setTimeout(resolve, 1600))
+        expect(checkpointFinished).toBe(false)
+        const errors = messages.filter((value) => (value as any).severity === 'error') as any[]
+        expect(errors).toHaveLength(2)
+        expect(errors.map((value) => value.text).join('\n')).toContain('repair:first')
+        expect(errors.map((value) => value.text).join('\n')).toContain('repair:second')
+        expect(messages.some((value) => (value as any).text?.includes('have been saved'))).toBe(
+          false,
+        )
+      } finally {
+        release()
+      }
+      const result = await settled
+      if (rejected) {
+        expect(result).toMatchObject({ code: storageFailure.code, message: storageFailure.message })
+        expect(result.details.summary).toContain('repair:first')
+        expect(result.details.summary).toContain('repair:second')
+        expect(result.details.jobs).toHaveLength(2)
+      } else {
+        expect(result.outcome).toBe('blocked')
+        expect(result.output.summary).toContain('repair:first')
+        expect(result.output.summary).toContain('repair:second')
+      }
+    })
+})
+
+test('checkpoint failure retains healthy and failed jobs without claiming packet files exist', async () => {
+  await batchFixture(async (run) => {
+    const { result: checked } = await syntheticRepair()
+    const failure = await repairBatch({
+      ...run,
+      input: { jobs: (run.input as any).jobs.map((entry: any) => ({ ...entry, method: 'p1' })) },
+      call: async (call) => {
+        if (call.slot === 'checkpoint')
+          throw new OperationError('EXECUTION_FAILED', 'Storage refused the checkpoint.', {
+            storage: 'unavailable',
+          })
+        if (call.operationId === 'repair:first') return checked
+        throw new OperationError('EXECUTION_FAILED', 'AI client could not start session.')
+      },
+    } as unknown as RunContext).catch((error) => error)
+    expect(failure).toMatchObject({
+      code: 'EXECUTION_FAILED',
+      message: 'Storage refused the checkpoint.',
+      details: { operationDetails: { storage: 'unavailable' } },
+    })
+    expect(failure.details.jobs).toHaveLength(2)
+    expect(failure.details.summary).toContain('A patch passed the checks')
+    expect(failure.details.summary).toContain('AI client could not start session')
+    expect(failure.details.summary).toContain('Checkpoint and file delivery were not confirmed')
+    expect(failure.details.summary).not.toContain('files/first/review.patch')
+    expect(failure.details.summary).not.toContain('Saved job summaries')
   })
 })

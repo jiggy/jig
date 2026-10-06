@@ -2,6 +2,7 @@ import { type ChannelSender, type JsonValue, OperationError, type RunContext } f
 import {
   canonicalUserUpdate,
   USER_UPDATES_LIMITS as limits,
+  type NoticeSeverity,
   type Progress,
   USER_UPDATES_CONTRACT,
   type UserUpdate,
@@ -9,7 +10,7 @@ import {
 } from './message.js'
 
 export interface UserUpdates {
-  notice(text: string): void
+  notice(text: string, severity?: NoticeSeverity): void
   activity(id: string, label: string, progress?: Progress): void
   clear(id: string): void
 }
@@ -50,8 +51,8 @@ class Publisher implements UserUpdates {
     signal.addEventListener('abort', this.#abort, { once: true })
   }
 
-  notice(text: string): void {
-    this.#offer({ kind: 'notice', text })
+  notice(text: string, severity?: NoticeSeverity): void {
+    this.#offer({ kind: 'notice', text, ...(severity === undefined ? {} : { severity }) })
   }
   activity(id: string, label: string, progress?: Progress): void {
     this.#offer({ kind: 'activity', id, label, ...(progress === undefined ? {} : { progress }) })

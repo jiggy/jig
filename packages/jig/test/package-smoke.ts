@@ -249,14 +249,17 @@ try {
     await writeFile(manifestPath, manifestBytes)
   }
   assert.equal(help.stderr, '')
-  assert.match(help.stdout, /^ {2}jig init <directory> +Create/m)
-  assert.match(help.stdout, /^ {2}jig review \[project\] +Review/m)
-  assert.match(help.stdout, /^ {2}jig --version +Print/m)
-  assert.match(help.stdout, /^ {2}jig run \[target\] +Choose or run/m)
+  assert.match(help.stdout, /^ {2}`jig init <directory>` +Create/m)
+  assert.match(help.stdout, /^ {2}`jig review \[project\]` +Review/m)
+  assert.match(help.stdout, /^ {2}`jig --version` +Print/m)
+  assert.match(help.stdout, /^ {2}`jig run \[target\]` +Choose or run/m)
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/)
   const runHelp = await run([command, 'run', '--help'], consumer)
   assert.equal(runHelp.stderr, '')
-  assert.match(runHelp.stdout, /^Usage: jig run \[flow:path\|npm:package\|binding:id\] \[options\]/)
+  assert.match(
+    runHelp.stdout,
+    /^Usage: `jig run` \[flow:path\|npm:package\|binding:id\] \[options\]/,
+  )
   assert.match(runHelp.stdout, /--input JSON\|@FILE/)
   assert.match(runHelp.stdout, /--receive CHANNEL/)
   assert.match(runHelp.stdout, /Ctrl-C cancels/)
@@ -457,7 +460,7 @@ using FLOW;
   const initialized = await run([command, 'init', '--bare', bareProject], consumer)
   assert.equal(
     initialized.stdout,
-    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`,
+    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`,
   )
   assert.equal(initialized.stderr, '')
   assert.deepEqual((await readdir(bareProject)).sort(), [
@@ -653,7 +656,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
         '  for (let n = 0; n < count; n++) { const pair = await run.channel(); await pair.send.close(); await pair.receive.close(); }',
         '  updates.activity("invoices", "Read all invoices; verification pending", { completed: count, total: count, unit: "invoices" });',
         '  await new Promise(resolve => setTimeout(resolve, 700));',
-        '  if (run.input.fail) throw new OperationError("INVALID_RESULT", "Invoice verification failed.");',
+        '  if (run.input.fail) { updates.notice("Invoice verification failed.\\nNo invoice was accepted.", "error"); await new Promise(resolve => setTimeout(resolve, 250)); throw new OperationError("INVALID_RESULT", "Invoice verification failed."); }',
         '  return { outcome: "needs-review", output: { allocations: count } };',
         '}));',
       ].join('\n'),
@@ -716,6 +719,11 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     ])
     assert.equal(failed.code, 1)
     assert.equal(JSON.parse(failed.stdout).status, 'failed')
+    assert.match(failed.stderr, /Flow-reported error:/)
+    assert.match(
+      failed.stderr,
+      /Flow: Invoice verification failed\.\n {2}Flow: No invoice was accepted\./,
+    )
     assert.match(failed.stderr, /Invoice verification failed/)
   }
 

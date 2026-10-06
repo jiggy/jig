@@ -120,3 +120,11 @@ test('two maximum-length job labels and escaped causes still fit the terminal br
     expect(JSON.stringify(jobs)).toBe(original)
   }
 })
+
+test('partial failure summaries keep the original batch size and do not claim file delivery', () => {
+  const summary = factoryReport([{ id: 'first', status: 'settled', ready: true }], false, false, 2)
+  expect(summary).toContain('1 of 2 jobs produced a checked patch')
+  expect(summary).toContain('Observed outcomes are available for 1 of 2 jobs')
+  expect(summary).not.toContain('files/first/review.patch')
+  expect(summary).not.toContain('Saved job summaries')
+})

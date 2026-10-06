@@ -72,6 +72,22 @@ function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
   )
 }
 
+/** Host-authored command references; escaped values and block scalars never enter here. */
+function commandText(line: string): string {
+  const catalog = /^( +)(jig .+?)( {2,}[A-Z][a-z].*)$/.exec(line)
+  if (catalog) return `${catalog[1]}\`${catalog[2]}\`${catalog[3]}`
+  if (/^\s*(?:\$ )?(?:jig |cd )/.test(line))
+    return line.replace(/^(\s*)(?!\$ )(jig |cd )/, '$1$ $2')
+  if (line.includes('"') || /^\s*(?:[+-] |[{}[\]])/.test(line)) return line
+  // Inline references retain code delimiters in plain output. Arguments are
+  // limited to explicit flags, placeholders, selectors and shell-quoted words;
+  // prose after the command is never turned into a command argument.
+  return line.replace(
+    /`[^`]*`|(?<![\w./:])jig (?:init|new|review|run|inspect|completion|import-contract|<command>)(?: (?:--[a-z][a-z-]*|<[^>\n]+>|'(?:[^']|'"'"')*'|(?:binding|flow|npm):[^\s,;().]+))*/g,
+    (command) => (command.startsWith('`') ? command : `\`${command}\``),
+  )
+}
+
 /** Style only trusted human text; machine records and live diagnostics bypass this. */
 export function privateCliHumanText(
   text: string,
@@ -98,6 +114,7 @@ export function privateCliHumanText(
           indent: /^ +\|/.test(body) ? indent - 1 : /^ +- "/.test(body) ? indent + 2 : indent,
           prefix,
         }
+      line = commandText(line)
       const section =
         /^(Run output:|Approval environment matches|Approval validity not checked|No approved revision|ACP runtimes selected|Project entrypoint|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
@@ -114,7 +131,12 @@ export function privateCliHumanText(
             color,
           )
       } else if (color) {
-        if (
+        if (/^\s*\$ /.test(line)) rendered = `\u001b[1;36m${line}\u001b[0m`
+        else if (/^ {2}"(?:[^"\\]|\\.)*" - (?:ready|unavailable)$/.test(line))
+          rendered = line.replace(/(ready|unavailable)$/, (status) =>
+            privateCliHeading(status, status === 'ready' ? 'success' : 'warning', true),
+          )
+        else if (
           /^ {2}(?:Execution: failed\.|Cleanup: not confirmed\.|Packet delivery: "failed"\.)/.test(
             line,
           )
@@ -165,6 +187,11 @@ export function privateCliHumanText(
           }`
         } else rendered = highlightPolicy(wrapped, env)
       }
+      if (color && !/^\s*\$ /.test(line) && !line.includes('"'))
+        rendered = rendered.replace(
+          /`jig [^`\n]+`/g,
+          (command) => `\u001b[1;36m${command}\u001b[0m`,
+        )
       // Width is supplied only for a terminal. Plain terminal mode keeps the same
       // spatial hierarchy; redirected text retains its compact, complete transcript.
       if (section && columns !== undefined) {
@@ -184,7 +211,8 @@ function wrapHumanLine(line: string, columns?: number): string {
     line.includes('"') ||
     line.includes('\u001b') ||
     line.includes('\r') ||
-    /^\s*(?:jig |cd |[{}])/.test(line)
+    line.includes('`jig ') ||
+    /^\s*(?:\$ |jig |cd |[{}])/.test(line)
   )
     return line
   const indent = /^ */.exec(line)?.[0] ?? ''

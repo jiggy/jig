@@ -428,3 +428,37 @@ describe('CLI experience contract', () => {
     expect(error).not.toContain('\u001b')
   })
 })
+
+test('command actions remain distinct and unwrapped, while scalar data is preserved', () => {
+  const input =
+    'Next step: Inspect the schema:\n  $ jig inspect \'binding:factory\'\nThen run jig review --details.\n  "output": |-\n    $ jig run\n    jig review\n'
+  const plain = privateCliHumanText(input, false, 24)
+  const color = privateCliHumanText(input, true, 24)
+  expect(strip(color)).toBe(plain)
+  expect(plain).toContain("  $ jig inspect 'binding:factory'\n")
+  expect(plain).toContain('`jig review --details`')
+  expect(plain).toContain('    $ jig run\n    jig review\n')
+  expect(color).toContain("\u001b[1;36m  $ jig inspect 'binding:factory'\u001b[0m")
+  const ready = privateCliHumanText(
+    '  "binding:agent" - ready\n  "binding:other" - unavailable\n',
+    true,
+  )
+  expect(ready).toContain('\u001b[1;32mready')
+  expect(ready).toContain('\u001b[1;33munavailable')
+})
+
+test('command catalog templates stay separate from executable examples', () => {
+  const plain = privateCliHumanText(
+    '  jig init <directory>       Create a project\nExample:\n  $ jig new worker --use agent=jig:agent-run\n',
+    false,
+  )
+  expect(plain).toContain('  `jig init <directory>`       Create a project')
+  expect(plain).not.toContain('$ jig init')
+  expect(plain).toContain('  $ jig new worker --use agent=jig:agent-run')
+})
+
+test('project state paths and prose do not become command references', () => {
+  const text = 'Preserve .jig and jig.lock. The .jig state is damaged.'
+  expect(privateCliHumanText(text, false)).toBe(text)
+  expect(privateCliHumanText(text, true)).toBe(text)
+})

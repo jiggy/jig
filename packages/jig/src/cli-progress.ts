@@ -40,6 +40,7 @@ export class PrivateCliProgress {
     (text) => {
       this.#flowNotice(text, false)
     },
+    () => this.animated,
   )
   readonly #abort = () => {
     this.pause()
@@ -173,21 +174,24 @@ export class PrivateCliProgress {
 
   #flowChanged(plain?: string, project: () => string | undefined = () => plain): boolean {
     if (!this.enabled) return true
-    if (!this.animated) {
-      if (plain !== undefined && !this.#cancelled)
-        return this.#enqueue(
-          {
-            bytes: 4096,
-            transient: false,
-            dispatch: () => {
-              const latest = project()
-              if (latest !== undefined && !this.#cancelled) return this.write(latest)
-            },
+    if (plain !== undefined && !this.#cancelled) {
+      return this.#enqueue(
+        {
+          bytes: 4096,
+          transient: false,
+          dispatch: () => {
+            const latest = project()
+            if (latest !== undefined && !this.#cancelled) {
+              const erase = this.#visible ? '\r\u001b[2K' : ''
+              this.#visible = false
+              return this.write(erase + latest)
+            }
           },
-          true,
-        )
-      return true
+        },
+        true,
+      )
     }
+    if (!this.animated) return true
     if (this.#refresh !== undefined) return true
     const delay = Math.max(0, this.#lastRefresh + 200 - performance.now())
     if (delay === 0) this.#write()
@@ -299,48 +303,16 @@ export class PrivateCliProgress {
   #paint(): void | Promise<void> {
     this.#lastRefresh = performance.now()
     if (!this.#stage) return
+    const columns = Math.max(1, Math.min(4096, this.columns()))
     const elapsed = ` ${((performance.now() - this.#started) / 1000).toFixed(0)}s`
-    const width = Math.max(1, this.columns() - elapsed.length - 5)
-    const label =
-      this.#stage.length > width
-        ? width < 4
-          ? '.'.repeat(width)
-          : `${this.#stage.slice(0, width - 3)}...`
-        : this.#stage
-    const labels = this.#cancelled ? [] : this.#updates.labels
-    let projection = label + elapsed
-    if (labels.length) {
-      const columns = Math.max(1, Math.min(4096, this.columns()))
-      if (columns <= 5) {
-        this.#visible = true
-        return this.write(`\r\u001b[2K${privateTruncateUpdate(`+${labels.length}`, columns)}`)
-      }
-      const available = columns - 5
-      if (available < privateTerminalWidth(` | +${labels.length} more`) + 1) {
-        this.#visible = true
-        return this.write(`\r\u001b[2K  … ${privateTruncateUpdate(`+${labels.length}`, available)}`)
-      }
-      projection = privateTruncateUpdate(this.#stage, Math.min(24, Math.floor(available / 3)))
-      let shown = 0
-      for (const _activity of labels) {
-        const suffix = labels.length > shown + 1 ? ` | +${labels.length - shown - 1} more` : ''
-        let room = available - privateTerminalWidth(projection + ' | ' + suffix)
-        if (room < 8) break
-        // Share a sufficiently wide line so the first job does not consume
-        // all space while another readable activity could also be shown.
-        const remaining = labels.length - shown
-        if (remaining > 1 && room >= remaining * 32)
-          room = Math.floor((room - (remaining - 1) * 3) / remaining)
-        const activity = this.#updates.project(shown, room)
-        if (activity === undefined) break
-        projection += ` | ${activity}`
-        shown++
-      }
-      if (shown < labels.length) projection += ` | +${labels.length - shown} more`
-      projection = privateTruncateUpdate(projection, available)
-    }
+    const prefix = columns > 5 ? '  … ' : ''
+    const available = Math.max(0, columns - 1 - privateTerminalWidth(prefix))
+    const projection =
+      available > elapsed.length + 3
+        ? privateTruncateUpdate(this.#stage, available - elapsed.length) +
+          privateCliSecondary(elapsed, true)
+        : privateTruncateUpdate(this.#stage + elapsed, available)
     this.#visible = true
-    const text = `\r\u001b[2K  … ${labels.length ? projection : label + privateCliSecondary(elapsed, true)}`
-    return this.write(labels.length ? text : this.hostFormat(text))
+    return this.write(`\r\u001b[2K${prefix}${projection}`)
   }
 }

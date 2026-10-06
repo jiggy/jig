@@ -63,9 +63,28 @@ export function renderPrivateProjectPlanReview(
         '\nNew or changed grants require explicit authority approval. Removed grants affect new Runs after admission.\n\n',
       )
     }
-    if (Object.keys(acp).length !== 0) {
+    const visibleAcp = includeUnchanged
+      ? acp
+      : Object.fromEntries(
+          Object.entries(acp).filter(([key]) => {
+            const before = review.baseCandidate?.candidate.targets.find(
+              (target) => targetKey(target.request.target) === key,
+            )
+            const after = plan.proposed.targets.find(
+              (target) => targetKey(target.request.target) === key,
+            )
+            return !(
+              before?.disposition.state === 'ready' &&
+              after?.disposition.state === 'ready' &&
+              before.request.digest === after.request.digest &&
+              before.disposition.recipeDigest === after.disposition.recipeDigest &&
+              before.disposition.observationDigest === after.disposition.observationDigest
+            )
+          }),
+        )
+    if (Object.keys(visibleAcp).length !== 0) {
       summary.write('ACP runtimes selected for resource slots:\n')
-      writePolicy(summary, acp, 1)
+      writePolicy(summary, visibleAcp, 1)
       summary.write(
         '\nData supplied to these slots goes to the selected clients. Credentials remain private.\n\n',
       )

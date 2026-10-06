@@ -244,3 +244,38 @@ test('root abort remains authoritative and reused writer cannot be wrapped', asy
     ),
   ).toBeInstanceOf(TypeError)
 })
+
+test('severity is a closed optional snapshot, including unwired validation', async () => {
+  for (const severity of [null, undefined, 'fatal', 1, { toString: () => 'error' }])
+    expect(() => validateUserUpdate({ kind: 'notice', text: 'problem', severity })).toThrow(
+      TypeError,
+    )
+  for (const severity of ['info', 'warning', 'error'])
+    expect(validateUserUpdate({ kind: 'notice', text: 'problem', severity })).toEqual({
+      kind: 'notice',
+      text: 'problem',
+      severity,
+    })
+  await withUserUpdates(
+    { channels: {}, signal: new AbortController().signal },
+    'updates',
+    (updates) => {
+      expect(() => updates.notice('problem', 'fatal' as any)).toThrow(TypeError)
+    },
+  )
+  const m = mock()
+  await withUserUpdates(m.run, 'updates', (updates) => updates.notice('problem', 'error'))
+  expect(m.values).toEqual([{ kind: 'notice', text: 'problem', severity: 'error' }])
+})
+
+test('error importance does not bypass queue ordering or aggregate drain loss', async () => {
+  const m = mock()
+  const result = await withUserUpdates(m.run, 'updates', (updates) => {
+    for (let n = 0; n < 8; n++) updates.notice(`Earlier ${n}`)
+    updates.notice('Blocking failure retained in result', 'error')
+    return { outcome: 'blocked', output: { reason: 'Blocking failure retained in result' } }
+  })
+  expect(result.output.reason).toBe('Blocking failure retained in result')
+  expect(m.values).toEqual(m.values.map((_, n) => ({ kind: 'notice', text: `Earlier ${n}` })))
+  expect(m.closes).toEqual([{ error: 'LAGGED' }])
+})

@@ -44,6 +44,23 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             absent.clear("a")
 
+    async def test_severity_validation_snapshot_and_unwired_offers(self):
+        for severity in (None, 1, "fatal", {}):
+            with self.assertRaises(TypeError):
+                validate_user_update({"kind": "notice", "text": "problem", "severity": severity})
+        for severity in ("info", "warning", "error"):
+            source = {"kind": "notice", "text": "problem", "severity": severity}
+            snapshot = validate_user_update(source)
+            source["severity"] = "fatal"
+            self.assertEqual(snapshot["severity"], severity)
+        async with user_updates(SimpleNamespace(channels={}), "updates") as updates:
+            with self.assertRaises(TypeError):
+                updates.notice("problem", "fatal")
+        sender = Sender()
+        async with user_updates(SimpleNamespace(channels={"updates": sender}), "updates") as updates:
+            updates.notice("problem", "error")
+        self.assertEqual(sender.values, [{"kind": "notice", "text": "problem", "severity": "error"}])
+
     async def test_close_ack_before_delayed_unexpected_send_response(self):
         send = asyncio.get_running_loop().create_future()
         closed = asyncio.Event()

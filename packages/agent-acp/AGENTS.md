@@ -71,6 +71,12 @@ retains credential, process, and dispatch authority.
 - `./transport` is bounded framing, not an alternative host authority filter.
   A frame receipt does not prove dispatch, completion, or cleanup.
 
+
+Native request rejection reports the known operation and independently validated
+safe numeric client code. Retain these in structured details, never native error
+text/data. State that the detailed client cause is unavailable, without guessing
+authentication or suggesting saved evidence contains discarded diagnostics.
+
 ## Work Guidance
 
 - Keep ordinary behavior in the package and independently enforceable policy

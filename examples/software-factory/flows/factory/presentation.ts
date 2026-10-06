@@ -55,11 +55,13 @@ function cause(value: string): string {
   return reportedText(prefix) + (prefix !== value ? ' [truncated; full cause in result.json]' : '')
 }
 
-export function jobReport(value: JsonValue): string {
+export function jobReport(value: JsonValue, filesConfirmed = true): string {
   const job = value as unknown as JobEvidence
   let explanation: string
   if (job.ready)
-    explanation = `A patch passed the checks. Review files/${job.id}/review.patch before applying it.`
+    explanation = filesConfirmed
+      ? `A patch passed the checks. Review files/${job.id}/review.patch before applying it.`
+      : 'A patch passed the checks. File delivery was not confirmed; inspect retained job evidence before applying changes.'
   else if (job.status === 'unrouted')
     explanation = 'No repair started because no approach was selected.'
   else if (job.status === 'failed') {
@@ -89,18 +91,30 @@ export function jobReport(value: JsonValue): string {
   return `${jobLabel(job)}: ${explanation}${typeof reason === 'string' ? `\n  Reported reason: ${cause(reason)}` : ''}`
 }
 
-export function factoryReport(jobs: readonly JsonValue[], conflicting: boolean): string {
+export function factoryReport(
+  jobs: readonly JsonValue[],
+  conflicting: boolean,
+  filesConfirmed = true,
+  expectedJobs = jobs.length,
+): string {
   const ready = jobs.filter((job) => object(job).ready === true).length
   const lines = [
-    `${ready} of ${jobs.length} jobs produced a checked patch for review.`,
-    ...jobs.map(jobReport),
+    `${ready} of ${expectedJobs} jobs produced a checked patch for review.`,
+    ...(jobs.length < expectedJobs
+      ? [
+          `Observed outcomes are available for ${jobs.length} of ${expectedJobs} jobs; other jobs did not return verified evidence.`,
+        ]
+      : []),
+    ...jobs.map((job) => jobReport(job, filesConfirmed)),
   ]
   if (conflicting)
     lines.push('The proposed patches conflict. Resolve the overlap before applying either change.')
   if (jobs.some((job) => object(job).status === 'failed'))
     lines.push('Review the reported causes and selected repair setup before trying again.')
   lines.push(
-    'Full evidence: result.json. Saved job summaries: files/summary.txt. Changes have not been applied.',
+    filesConfirmed
+      ? 'Full evidence: result.json. Saved job summaries: files/summary.txt. Changes have not been applied.'
+      : 'Checkpoint and file delivery were not confirmed. Known job evidence is included in this failure result. Changes have not been applied.',
   )
   return lines.join('\n')
 }

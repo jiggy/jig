@@ -28,7 +28,7 @@ test('usage mistakes show one correction, not the entire manual', async () => {
       }),
     ).toBe(2)
     expect(text).toContain(expected)
-    expect(text).toContain('Help: jig')
+    expect(text).toMatch(/Help:\s+\$ jig/)
     expect(text).not.toContain('Startup verification:')
     expect(text.split('\n').length).toBeLessThan(13)
     expect(privateCliRequiresHost(args)).toBe(false)

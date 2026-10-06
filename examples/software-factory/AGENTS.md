@@ -71,6 +71,12 @@ patch authority and every merge decision stays with a person.
 - Original sources remain read-only. The application writes patch packets only;
   a person decides whether to apply, combine, merge, or release them.
 
+
+Offer each blocking job outcome as an error notice before checkpoint storage;
+retain the same cause in the ordinary result. Saved-evidence notices follow
+checkpoint acknowledgement. Severity never controls execution or guarantees
+optional observation delivery.
+
 ## Work Guidance
 
 - Keep source capture, acceptance policy, evidence validation and patch export

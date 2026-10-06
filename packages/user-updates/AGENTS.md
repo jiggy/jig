@@ -21,6 +21,11 @@ operation. Python's independently packaged counterpart lives in `../jiggy-user-u
 - All original material here is MPL-2.0, including the descriptor. Keep its license
   with bundled or imported copies. Do not change Jig's own license.
 
+
+Notice severity is optional info/warning/error (absent means info). Preserve its
+exact snapshot and ordinary ordering/limits in both language packages. It is
+author-reported importance, not host status or a reliable diagnostic transport.
+
 ## Verification
 
 `just build`, `bun test`, packed Node consumer, and the matching Python publisher

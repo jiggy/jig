@@ -269,6 +269,12 @@ admitted FLOW packages.
   another shell; collect replies with portable array/read operations.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
+  Suggested actions use standalone `$ jig ...` commands; inline references retain
+  code delimiters and commands never wrap. Application data bypasses recognition.
+  Readiness status words carry green/amber emphasis without claiming execution.
+  Activity phase changes append separate attributed indented lines; only host
+  waiting owns a transient line. Explicit notice severity is Flow-reported
+  importance, never host outcome or guaranteed delivery.
   A heading must never have less emphasis than its subordinate details. Expanded
   unavailable-client labels use bold amber above normal-contrast setup instructions;
   the compact names-only unavailable summary remains secondary.

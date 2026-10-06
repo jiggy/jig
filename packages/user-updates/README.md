@@ -40,7 +40,10 @@ records. Explicit reception retains existing stdout JSON/NDJSON and human
 channel behavior. Automatic terminal observation is separately qualified by Jig;
 it is not a power granted by this library.
 
-`notice(text)` appends one complete message (multiline allowed). `activity(id,
+`notice(text, severity?)` appends one complete message (multiline allowed).
+Severity is `info` (default), `warning` or `error`; it reports the author's importance
+classification, without changing ordering, limits or delivery guarantees. Report
+blocking problems immediately and retain them in the final result as well. `activity(id,
 label, progress?)` replaces a transient slot's entire state; omitted progress
 removes the old count. `clear(id)` removes the slot, with unknown IDs harmless.
 Progress counts may decrease or change units; 100%, clearing and EOF never mean

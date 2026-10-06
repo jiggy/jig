@@ -30,3 +30,7 @@ Jig can display one exact optional port on terminal stderr. Explicit `--receive`
 retains normal stdout channel records; `--json` and `--updates off` disable
 automatic display. See [user-updates policy](../spec/user-updates.md) for exact
 selection, bounds, rendering and lifetime rules.
+
+A notice may declare `severity`: `info`, `warning` or `error` (default info).
+This is Flow-reported importance, without changing optional delivery or execution
+authority. Report blocking problems promptly and retain their reasons in results.

@@ -126,7 +126,8 @@ test('pending accepted notice survives EOF behind a host diagnostic without rest
   await presenter.flush()
   const visible = screen(chunks.join(''))
   expect(visible).toContain('host diagnostic\n  Flow update [updates]: Accepted before EOF\n')
-  expect(visible).not.toContain('Old activity')
+  expect(visible).toContain('Old activity\n')
+  expect(visible.slice(visible.indexOf('host diagnostic'))).not.toContain('Old activity')
   expect(visible).not.toContain('late callback')
   expect(visible).toContain('Waiting for the Flow result')
   presenter.close()
@@ -167,7 +168,7 @@ test('retiring one source preserves sibling replacements, relative order and fre
   blocked.resolve()
   await sleep(220)
   await presenter.flush()
-  const visible = screen(text).split('\n').at(-1)!
+  const visible = screen(text).slice(screen(text).indexOf('pause here'))
   expect(visible).toContain('Right current (0/0 files)')
   expect(visible).not.toContain('Left')
   expect(visible.indexOf('Right current')).toBeLessThan(visible.indexOf('Second'))
@@ -329,7 +330,7 @@ test('operator off is independent of effective receive defaults, and prohibited 
     expect(() => parseRun(['run', 'flow:flows/work', ...args])).toThrow()
 })
 
-test('refresh and resize stay bounded, with omitted counts on narrow terminals', async () => {
+test('host refresh and resize stay bounded while concurrent phases have separate lines', async () => {
   let text = '',
     width = 80
   const paints: number[] = []
@@ -337,7 +338,7 @@ test('refresh and resize stay bounded, with omitted counts on narrow terminals',
     true,
     (chunk) => {
       text += chunk
-      if (chunk.includes('Flow updates:') || /\+\d/.test(chunk)) paints.push(performance.now())
+      if (chunk.startsWith('\r\u001b[2K') && !chunk.endsWith('\n')) paints.push(performance.now())
     },
     undefined,
     true,
@@ -352,6 +353,7 @@ test('refresh and resize stay bounded, with omitted counts on narrow terminals',
       label: `Activity ${n}`,
       progress: { completed: 0 },
     })
+  expect(screen(text)).toContain('  Flow updates: Activity 0 (0)\n  Flow updates: Activity 1 (0)\n')
   for (let n = 0; n < 30; n++) {
     source.accept({ kind: 'activity', id: '0', label: 'Activity 0', progress: { completed: n } })
     process.stderr.emit('resize')
@@ -366,7 +368,7 @@ test('refresh and resize stay bounded, with omitted counts on narrow terminals',
     await sleep(220)
     const visible = screen(text).split('\n').at(-1)!
     expect(privateTerminalWidth(visible)).toBeLessThanOrEqual(columns)
-    if (columns >= 4 && columns <= 10) expect(visible).toContain('+6')
+    expect(visible).not.toContain('Flow')
   }
   presenter.close()
 })
@@ -461,4 +463,39 @@ test('implicit recognized port is distinct from explicit records and permits six
   await context.settle()
   expect(offers).toEqual([{ kind: 'notice', text: 'hello' }])
   expect(records).toEqual([])
+})
+
+test('reported errors retain attribution and ordering through blocked output and retirement', async () => {
+  for (const animated of [false, true]) {
+    const blocked = deferred()
+    let text = ''
+    const presenter = new PrivateCliProgress(
+      true,
+      (chunk) => {
+        text += chunk
+        return chunk.includes('hold output') ? blocked.promise : undefined
+      },
+      undefined,
+      animated,
+    )
+    presenter.stage('Waiting')
+    presenter.diagnostic('hold output\n')
+    const source = presenter.observe('updates', true)
+    source.accept({ kind: 'notice', text: 'First' })
+    source.accept({
+      kind: 'notice',
+      severity: 'error',
+      text: 'Execution completed\n\u001b[32m$ jig run',
+    })
+    source.retire()
+    blocked.resolve()
+    await presenter.flush()
+    const visible = screen(text)
+    expect(visible).toContain('Flow-reported error:')
+    expect(visible).toContain('  Flow: Execution completed\n  Flow: \\u001b[32m$ jig run\n')
+    expect(visible.indexOf('Flow: First')).toBeLessThan(visible.indexOf('Flow-reported error:'))
+    expect(text).not.toContain('\u001b[32m')
+    expect(text.includes('\u001b[1;31m')).toBe(animated)
+    presenter.close()
+  }
 })

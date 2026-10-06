@@ -3,6 +3,7 @@ import {
   type UserUpdate,
   validateUserUpdate,
 } from '@jigging/user-updates'
+import { privateCliHeading } from './cli-presentation.js'
 import { canonicalJson, type JsonValue } from './json.js'
 
 export function privateUpdateText(text: string): string {
@@ -56,6 +57,7 @@ export class PrivateCliUserUpdates {
     readonly notice: (text: string) => boolean,
     readonly changed: (plainText?: string, project?: () => string | undefined) => boolean,
     readonly unavailable: (text: string) => void,
+    readonly color: () => boolean = () => false,
   ) {}
 
   open(port: string, compact = false): PrivateUserUpdateSource {
@@ -94,11 +96,17 @@ export class PrivateCliUserUpdates {
         if (value.kind === 'notice') {
           this.#notices++
           this.#noticeBytes += canonicalJson(value as JsonValue).byteLength
+          const importance =
+            value.severity === 'error' || value.severity === 'warning'
+              ? `  ${privateCliHeading(`${attribution}-reported ${value.severity}:`, value.severity, this.color())}\n`
+              : ''
           const text =
+            importance +
             privateUpdateText(value.text)
               .split('\n')
               .map((line) => `  ${attribution}: ${line}`)
-              .join('\n') + '\n'
+              .join('\n') +
+            '\n'
           if (
             this.#notices > limits.notices ||
             this.#noticeBytes > limits.noticeBytes ||
@@ -175,17 +183,6 @@ export class PrivateCliUserUpdates {
 
   get labels(): readonly string[] {
     return [...this.#slots.values()].map((slot) => this.#label(slot))
-  }
-
-  project(index: number, columns: number): string | undefined {
-    const slot = [...this.#slots.values()][index]
-    if (slot === undefined) return undefined
-    const prefix = `${slot.attribution}: `,
-      count = this.#count(slot)
-    const room = columns - privateTerminalWidth(prefix + count)
-    return room < 3
-      ? undefined
-      : prefix + privateTruncateUpdate(privateUpdateText(slot.value.label), room) + count
   }
 
   #label(slot: Slot): string {

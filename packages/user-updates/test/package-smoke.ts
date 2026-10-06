@@ -65,15 +65,16 @@ for (const connected of [true, false]) {
   const result = await withUserUpdates({ channels: connected ? { updates: sender } : {}, signal: new AbortController().signal }, 'updates', updates => {
     updates.activity('batch', 'Checking invoices', { completed: 2, total: 3, unit: 'invoices' });
     updates.activity('batch', 'Checking invoices', { completed: 3 });
-    updates.notice('Duplicate needs review.');
+    updates.notice('Duplicate needs review.', 'error');
     return { outcome: 'needs-review', output: { invoices: 3 } };
   });
   assert.equal(result.outcome, 'needs-review');
   assert.equal(values.length, connected ? 2 : 0);
-  if (connected) assert.deepEqual(values[0].progress, { completed: 3 });
+  if (connected) { assert.deepEqual(values[0].progress, { completed: 3 }); assert.equal(values[1].severity, 'error'); }
   assert.equal(closes.length, Number(connected));
 }
 assert.throws(() => validateUserUpdate({kind:'notice',text:'x',extra:1}));
+assert.throws(() => validateUserUpdate({kind:'notice',text:'x',severity:'fatal'}));
 for (const code of ['DISCONNECTED', 'RESOURCE_EXHAUSTED']) {
   const sender = {direction:'send',delivery:'direct',contract:USER_UPDATES_CONTRACT,async send(){throw new OperationError(code)},async close(){}};
   const work = withUserUpdates({channels:{updates:sender},signal:new AbortController().signal},'updates',u=>{u.notice('one');return 'same-result'});
@@ -85,10 +86,12 @@ for (const code of ['DISCONNECTED', 'RESOURCE_EXHAUSTED']) {
   for (const runtime of [process.execPath, node]) await run([runtime, 'consumer.mjs'])
   await writeFile(
     join(directory, 'consumer.ts'),
-    `import { withUserUpdates, type Progress } from '@jigging/user-updates';
+    `import { withUserUpdates, type Progress, type NoticeSeverity } from '@jigging/user-updates';
 import type { RunContext, RunResult } from '@jigging/flow';
 export const invoices = (run: RunContext): Promise<RunResult> => withUserUpdates(run, 'updates', updates => {
   const count: Progress = { completed: 2, total: 3, unit: 'invoices' };
+  const severity: NoticeSeverity = 'warning';
+  updates.notice('Duplicate needs review.', severity);
   updates.activity('batch', 'Checking invoices', count); updates.clear('batch');
   return { outcome: 'needs-review', output: null };
 });`,

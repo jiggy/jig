@@ -18,9 +18,15 @@ or UTF-16 units. Publishers and consumers enforce semantic rules beyond schema.
 
 | Kind | Fields | Meaning |
 | --- | --- | --- |
-| `notice` | `text`: 1–4096 scalars, multiline allowed | Append one complete attributed message; never a fragment. |
+| `notice` | `text`: 1–4096 scalars, multiline allowed; optional `severity`: `info`, `warning`, `error` | Append one complete attributed message; never a fragment. |
 | `activity` | `id`: 1–64 scalars; `label`: 1–256; optional `progress` | Fully replace transient state for this connected source instance and opaque ID. |
 | `clear` | `id`: 1–64 scalars | Remove the slot idempotently. Unknown IDs do nothing. |
+
+Notice severity defaults to info. It classifies author-reported importance, never
+host-attested blocking state, execution failure, retry or cancellation authority.
+Severity changes emphasis, not ordering, quotas, pacing or optional delivery.
+Authors report known blocking failures promptly and retain their reasons in final
+results or artifacts even when live observation is unavailable.
 
 Labels and units contain no CR, LF, U+2028 or U+2029. Progress is a closed object
 with required `completed` and optional `total`, both safe nonnegative integers
@@ -125,11 +131,16 @@ Stdout remains the ordinary human final result or single terminal JSON value.
 
 One stderr presenter owns host progress, diagnostics, activities and notices.
 It retains at most 16 slots in first-appearance order. Animated mode uses one
-transient physical line, refreshed at most 5/s, with as many attributed labels/counts
-as fit and an omitted count. Escape controls/bidi before terminal-cell truncation
+transient physical line for the host wait, refreshed at most 5/s. Activity activation
+and meaningful label/unit changes append complete attributed indented lines, with
+reported counts. These are state projections, not exhaustive activity history;
+obsolete queued projections may disappear, while printed phase lines remain.
+Count-only changes retain state without flooding either terminal mode. No phase
+percentage or bar is inferred. Retired activities never emit new projections. Escape controls/bidi before terminal-cell truncation
 of transient text; preserve complete notice content with Flow attribution on every
 logical line. Application payload bypasses trusted heading/status recognition and
-success colors. IDs are map keys. Plain mode emits activation, meaningful label/unit
+success colors. Explicit warning/error notices have a prominent attributed
+Flow-reported warning/error label; payload text is still escaped data. IDs are map keys. Plain mode emits activation, meaningful label/unit
 changes and clears; count-only updates change retained state without flooding.
 The unique automatic source uses concise `Flow:` attribution rather than its
 technical port name. Observation loss explains incomplete delivery and points
@@ -163,7 +174,7 @@ allocation capacity without promising zero overhead or outcome invariance.
 Installed stdout/stderr blockage or disconnection continues to request root
 cancellation. Stderr flush failure can prevent final stdout. No notices or final
 records are guaranteed after output loss. Independent host fencing owns cleanup.
-Prompts, approvals, severity, links, plans, durable logs and replay are outside this
+Prompts, approvals, links, plans, durable logs and replay are outside this
 profile. Markdown's sequential interpreter can reference the agreement but lacks
 the code helpers' safe optional concurrent publishing; no parity is claimed.
 

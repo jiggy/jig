@@ -69,7 +69,13 @@ async with user_updates(run, "updates") as updates:
     return result
 ```
 
-`notice(text)` is one complete message; multiline content is allowed.
+`notice(text, severity?)` is one complete message; multiline content is allowed.
+Use `info` (default), `warning` or `error` to report importance. For example,
+`updates.notice("Could not start the AI session.", "error")` in TypeScript or
+`updates.notice("Could not start the AI session.", severity="error")` in Python.
+Jig prominently labels attributed Flow-reported errors. Severity does not change
+ordering, quotas, optional delivery or execution authority. Offer blocking failures
+promptly and retain their reasons in final results independently of observation.
 `activity(id, label, progress?)` replaces the complete slot. Progress has required
 `completed`, optional `total`, and optional `unit`, for example
 `{completed: 3, total: 8, unit: 'files'}` in TypeScript. Counts may decrease or

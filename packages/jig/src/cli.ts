@@ -100,8 +100,11 @@ digits and hyphens. Existing files are never replaced. The Flow uses the SDK
 dependency declared by the project's package.json, or Jig's tested SDK version.
 No installation, network, approval, source evaluation or execution occurs.
 
-Example: jig new summarize
-With a collaborator: jig new worker --use agent=jig:agent-run
+Example:
+  $ jig new summarize
+
+With a collaborator:
+  $ jig new worker --use agent=jig:agent-run
 --use copies the selected complete contract bundle into contracts/<slot> and
 declares uses.<slot>. Repeat for up to 16 distinct slots. Descriptor paths are
 relative to this project; jig: names select the installed standard library.
@@ -113,11 +116,14 @@ Review project membership in jig.ts if you use explicit arrays rather than disco
 Print a completion script; Jig does not modify your shell configuration.
 Load the script in your shell, or save it in that shell's completion directory.
 
-Bash: source <(jig completion bash)
-Zsh:  source <(jig completion zsh)  # after compinit
-Fish: jig completion fish | source
+Bash:
+  $ source <(jig completion bash)
+Zsh (after compinit):
+  $ source <(jig completion zsh)
+Fish:
+  $ jig completion fish | source
 
-The scripts use jig completion targets [prefix] to read approved selectors.
+The scripts use \`jig completion targets [prefix]\` to read approved selectors.
 Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
   'import-contract': `Usage: jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
        jig import-contract --list
@@ -159,8 +165,11 @@ requests, approval, or execution happens during initialization.
 
   --bare     Create only jig.ts and empty flows/ and bindings/ directories
 
-Example: jig init hello-jig
-With an ordinary Agent: jig init my-app --agent codex
+Example:
+  $ jig init hello-jig
+
+With an ordinary Agent:
+  $ jig init my-app --agent codex
 Use --agent without a client for an interactive choice. It writes a visible
 dependency, Binding and default selection; client installation and authority
 approval remain separate. Without --agent the greeting needs no Agent.
@@ -345,7 +354,7 @@ async function executeCommand(
     runtime.writeError(
       renderDiagnostic(
         'JIG_UNKNOWN_COMMAND',
-        `Unknown command ${asciiJsonString(arguments_[0]!.slice(0, 128))}.${spellingHint(arguments_[0]!, Object.keys(COMMAND_HELP))}\n\nHelp: jig --help`,
+        `Unknown command ${asciiJsonString(arguments_[0]!.slice(0, 128))}.${spellingHint(arguments_[0]!, Object.keys(COMMAND_HELP))}\n\nHelp:\n  $ jig --help`,
         'Error: Unknown command',
       ),
     )
@@ -394,7 +403,7 @@ export async function privateCliPrepareArguments(
     } catch {
       throw new CliDiagnostic(
         'JIG_INSPECTION_UNAVAILABLE',
-        'The approved Run selection could not be read safely. No Flow was started. If a review is in progress, wait and retry; otherwise use jig review to diagnose the project state.',
+        'The approved Run selection could not be read safely. No Flow was started. If a review is in progress, wait and retry; otherwise diagnose the project state:\n\n  $ jig review',
         2,
       )
     }
@@ -411,13 +420,13 @@ export async function privateCliPrepareArguments(
     if (targets.length === 0)
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',
-        'No approved targets. Run jig review to review your project first. No Flow was started.',
+        'No approved targets. Review your project first. No Flow was started.\n\n  $ jig review',
         1,
       )
     if (!runtime.interactive)
       usage(
         'run',
-        'An exact target is required without a project entrypoint or interactive terminal. List approved targets with jig inspect.',
+        'An exact target is required without a project entrypoint or interactive terminal. List approved targets:\n\n  $ jig inspect',
       )
     runtime.writeError(
       `Choose a reviewed target\n\n${targets
@@ -568,7 +577,7 @@ async function executeImportContract(
 ): Promise<number> {
   if (arguments_.length === 2 && arguments_[1] === '--list') {
     runtime.writeOutput(
-      `Jig standard contracts\n\n${JIG_STANDARD_CONTRACTS.map((entry) => `  jig:${entry.name} (${entry.kind})\n    ${entry.description}`).join('\n')}\n\nImport one into a new directory: jig import-contract jig:NAME contracts/NAME\nThe parent directory must exist. Importing an agreement does not select an implementation or grant permissions.\n`,
+      `Jig standard contracts\n\n${JIG_STANDARD_CONTRACTS.map((entry) => `  jig:${entry.name} (${entry.kind})\n    ${entry.description}`).join('\n')}\n\nImport template (replace NAME with a name above):\n\n  $ jig import-contract jig:NAME contracts/NAME\n\nThe parent directory must exist. Importing an agreement does not select an implementation or grant permissions.\n`,
     )
     return 0
   }
@@ -644,12 +653,12 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',
-        'That target is not in the approved revision. Use jig inspect to list approved targets, or jig review to review source changes.',
+        'That target is not in the approved revision. List approved targets:\n\n  $ jig inspect\n\nTo review source changes:\n  $ jig review',
         1,
       )
     throw new CliDiagnostic(
       'JIG_INSPECTION_UNAVAILABLE',
-      'The approved snapshot could not be read safely. No state was changed. If a review is in progress, wait and retry; otherwise use jig review to diagnose the project state.',
+      'The approved snapshot could not be read safely. No state was changed. If a review is in progress, wait and retry; otherwise diagnose the project state:\n\n  $ jig review',
       2,
     )
   }
@@ -661,13 +670,13 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         : 'unchecked'
     const explanation =
       state === 'review-required'
-        ? 'Review required\n\n  The execution environment has changed since approval.\n  Run jig review, inspect the changes, and approve before running again.'
+        ? 'Review required\n\n  The execution environment has changed since approval.\n  Inspect the changes and approve before running again:\n\n  $ jig review'
         : state === 'environment-matches'
           ? 'Approval environment matches\n\n  Current local execution identities match this approval.\n  Run still revalidates launch authority; remote provider availability is not checked.'
-          : 'Approval validity not checked\n\n  The current execution environment could not be verified.\n  Use jig review to diagnose missing support or configuration before running.'
+          : 'Approval validity not checked\n\n  The current execution environment could not be verified.\n  Diagnose missing support or configuration before running:\n\n  $ jig review'
     runtime.writeOutput(
       state === 'unreviewed'
-        ? 'No approved revision\n\n  Run jig review to review and approve this project. Nothing was changed.\n'
+        ? 'No approved revision\n\n  Review and approve this project. Nothing was changed.\n\n  $ jig review\n'
         : `${explanation}\n\n  The interfaces below belong to the last approved revision. Visible source changes are not checked.\n\n${invocationGuide(snapshot)}${selector === undefined ? '' : privateCliValueFields(snapshot)}\n`,
     )
   } else await runtime.writeRecord(`${textDecoder.decode(canonicalJson(snapshot))}\n`)
@@ -717,9 +726,9 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     await createProject(resolve(runtime.currentDirectory, destination), undefined, bare, agent)
     runtime.writeOutput(
       agent !== undefined
-        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then run jig review --allow-resolution-network.\n\nNo client installed, credentials copied or execution approved.\n`
+        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
         : bare
-          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`
+          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`
           : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
     )
     return 0
@@ -827,7 +836,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
   runtime.signal?.throwIfAborted()
   if (result === 0)
     runtime.writeOutput(
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run (or jig run <target>; see jig run --help).\n',
+      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next, choose or run an approved target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
     )
   return result
 }
@@ -1759,11 +1768,11 @@ function projectError(code: ProjectAdministrationError['code']): {
     INVALID_CANDIDATE:
       'The project definition is invalid. Check jig.ts and the selected Flow declarations; see https://jig.md/guide/.',
     LOCK_MISMATCH:
-      'The project lock does not match the reviewed state. Run jig review to inspect and approve the current revision.',
+      'The project lock does not match the reviewed state. Inspect and approve the current revision:\n\n  $ jig review',
     PLAN_NOT_FOUND:
-      'The reviewed project changes are no longer available. Run jig review again to inspect a fresh proposal.',
+      'The reviewed project changes are no longer available. Inspect a fresh proposal:\n\n  $ jig review',
     STALE_PLAN:
-      'The project changed before approval could be recorded. Let source edits settle, then run jig review again.',
+      'The project changed before approval could be recorded. Let source edits settle, then:\n\n  $ jig review',
     PROJECT_BUSY:
       'the project is already in use; wait for its current command to finish or cancel that command; do not delete .jig to bypass ownership',
     PROJECT_CLOSED:
@@ -1821,7 +1830,7 @@ function renderRunFailure(
   if (terminal.code === 'REVIEW_REQUIRED')
     return renderDiagnostic(
       'REVIEW_REQUIRED',
-      'The current execution environment no longer matches your approval. Jig, its runtime, the selected Agent configuration, or sandbox support has changed.\nNo Flow was started for this Run.\n\nNext step: Run jig review, inspect the changes, and approve the revision before running this target again.',
+      'The current execution environment no longer matches your approval. Jig, its runtime, the selected Agent configuration, or sandbox support has changed.\nNo Flow was started for this Run.\n\nNext step: Inspect the changes and approve the revision before running this target again:\n\n  $ jig review',
       'Review required',
     )
   if (details?.code === 'RUN_TARGET_NOT_FOUND') {
@@ -1832,13 +1841,13 @@ function renderRunFailure(
       : []
     return renderDiagnostic(
       'JIG_RUN_TARGET_NOT_FOUND',
-      `That target is not in the reviewed revision. No Flow was started.\n\nReviewed targets:\n${targets.length === 0 ? '  None. Add a Flow under flows/ first.' : targets.map((target) => `  ${asciiJsonString(target.slice(0, 512))}`).join('\n')}\n\nNext step: Choose an exact target above, or run jig review after changing jig.ts. No target is selected automatically.`,
+      `That target is not in the reviewed revision. No Flow was started.\n\nReviewed targets:\n${targets.length === 0 ? '  None. Add a Flow under flows/ first.' : targets.map((target) => `  ${asciiJsonString(target.slice(0, 512))}`).join('\n')}\n\nNext step: Choose an exact target above. No target is selected automatically. After changing jig.ts, review it:\n\n  $ jig review`,
     )
   }
   if (terminal.code === 'INVALID_INPUT')
     return renderDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      `Input does not match the approved target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${details?.keyword === 'enum' ? '\nThis field must be one of the choices declared in that schema.' : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\n\nNext step: Run jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)} to see the approved schema and correct --input.\nJig runs the last approved revision. If you edited the Flow or its schema, run jig review to approve those edits first.`,
+      `Input does not match the approved target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${details?.keyword === 'enum' ? '\nThis field must be one of the choices declared in that schema.' : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\n\nNext step: Inspect the approved schema and correct --input:\n\n  $ jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)}\n\nJig runs the last approved revision. If you edited the Flow or its schema, approve those edits first:\n\n  $ jig review`,
     )
   if (terminal.status === 'lost')
     return renderDiagnostic(

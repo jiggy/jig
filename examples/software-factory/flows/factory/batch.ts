@@ -124,6 +124,7 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
       ),
     })
   const changes: { job: string; path: string; content: string }[] = []
+  const observed: Record<string, JsonValue> = Object.create(null)
   const retained: Record<string, JsonValue> = Object.create(null)
   const retainedFiles: Record<string, string> = Object.create(null)
   let sequence = 0
@@ -348,6 +349,15 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
     })
     .map((worker) =>
       worker.then(async (result) => {
+        run.signal.throwIfAborted()
+        observed[result.id] = result as unknown as JsonValue
+        clearJob(result.id)
+        updates.notice(
+          'ready' in result && result.ready
+            ? `${jobLabel(result)}: A patch passed the checks; saving evidence for review.`
+            : jobReport(result as unknown as JsonValue, false),
+          'ready' in result && result.ready ? 'info' : 'error',
+        )
         // Serialize complete aggregates; Jig does not choose application ordering.
         const saving = saves.then(async () => {
           run.signal.throwIfAborted()
@@ -378,9 +388,8 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
               files,
             },
           })
-          clearJob(result.id)
           updates.notice(
-            `${jobReport(result as unknown as JsonValue)}\n  Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).`,
+            `${'ready' in result && result.ready ? jobReport(result as unknown as JsonValue) + '\n  ' : jobLabel(result) + ': '}Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).`,
           )
         })
         saves = saving
@@ -392,13 +401,35 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
   // when one checkpoint fails while another job is still running.
   const settledWorkers = await Promise.allSettled(workers)
   const failure = settledWorkers.find((result) => result.status === 'rejected')
-  if (failure?.status === 'rejected') throw failure.reason
+  if (failure?.status === 'rejected') {
+    run.signal.throwIfAborted()
+    const error = failure.reason
+    if (!(error instanceof OperationError) || Object.keys(observed).length === 0) throw error
+    const known = jobs
+      .filter((job) => Object.hasOwn(observed, job.id))
+      .map((job) => observed[job.id]!)
+    throw new OperationError(error.code, error.message, {
+      summary: factoryReport(
+        known,
+        patchConflicts(changes).some((overlap) => overlap.conflicting),
+        false,
+        jobs.length,
+      ),
+      jobs: known,
+      ...(error.details === undefined ? {} : { operationDetails: error.details }),
+    })
+  }
   const results = settledWorkers.map((result) => {
     if (result.status !== 'fulfilled') throw new Error('Unsettled factory worker')
     return result.value
   })
   run.signal.throwIfAborted()
   const overlaps = patchConflicts(changes)
+  if (overlaps.some((overlap) => overlap.conflicting))
+    updates.notice(
+      'The proposed patches conflict. Resolve the overlap before applying either change.',
+      'error',
+    )
   const ready =
     results.every((r) => 'ready' in r && r.ready) && !overlaps.some((o) => o.conflicting)
   await writeFile(

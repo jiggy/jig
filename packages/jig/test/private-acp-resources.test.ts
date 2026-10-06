@@ -433,6 +433,37 @@ describe('target-selected private ACP resources', () => {
       expect(text).not.toContain('recipeDigest')
     }
     expect(rendered.text).toContain('ACP runtimes selected for resource slots:')
+    const retained = {
+      ...review,
+      baseCandidate: { lock, candidate: { targets: review.plan.proposed.targets } },
+    } as unknown as PrivateActivationReviewPlan
+    const unchanged = renderPrivateProjectPlanReview(retained, undefined, recipes)
+    expect(unchanged.text).not.toContain('ACP runtimes selected for resource slots:')
+    expect(unchanged.details).toContain('review-codex')
+    expect(unchanged.details).toContain('review-claude')
+    expect(() => renderPrivateProjectPlanReview(retained)).toThrow('exact proposed recipe')
+    const mixed = {
+      ...retained,
+      baseCandidate: {
+        lock,
+        candidate: {
+          targets: review.plan.proposed.targets.map((target, n) =>
+            n === 0
+              ? target
+              : {
+                  ...target,
+                  disposition: {
+                    ...target.disposition,
+                    observationDigest: 'sha256:' + '9'.repeat(64),
+                  },
+                },
+          ),
+        },
+      },
+    } as unknown as PrivateActivationReviewPlan
+    const mixedText = renderPrivateProjectPlanReview(mixed, undefined, recipes).text
+    expect(mixedText).toContain('review-claude')
+    expect(mixedText).not.toContain('review-codex')
     expect(() => renderPrivateProjectPlanReview(review)).toThrow('exact proposed recipe')
     expect(() => renderPrivateProjectPlanReview(review, undefined, [recipes[0]!])).toThrow(
       'exact proposed recipe',

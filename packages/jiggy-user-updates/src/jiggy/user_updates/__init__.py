@@ -8,7 +8,7 @@ import sys
 import weakref
 from importlib.resources import files
 from types import MappingProxyType
-from typing import Any, Mapping, Required, TypedDict
+from typing import Any, Literal, Mapping, Required, TypedDict
 
 from jiggy.flow import ChannelSender, OperationError, RunContext
 
@@ -57,14 +57,19 @@ def _count(value: Any) -> int:
 
 def validate_user_update(value: Any) -> dict[str, Any]:
     """Validate unknown input and return a private JSON snapshot."""
-    root = _record(value, {"kind", "text", "id", "label", "progress"})
+    root = _record(value, {"kind", "text", "severity", "id", "label", "progress"})
     kind = root.get("kind")
     if type(kind) is not str:
         raise TypeError("Unknown user update kind")
     result: dict[str, Any]
     if kind == "notice":
-        _record(root, {"kind", "text"})
+        _record(root, {"kind", "text", "severity"})
         result = {"kind": kind, "text": _text(root.get("text"), 4096)}
+        if "severity" in root:
+            severity = root["severity"]
+            if type(severity) is not str or severity not in ("info", "warning", "error"):
+                raise TypeError("Unknown notice severity")
+            result["severity"] = severity
     elif kind == "clear":
         _record(root, {"kind", "id"})
         result = {"kind": kind, "id": _text(root.get("id"), 64)}
@@ -105,8 +110,8 @@ class UserUpdates:
         self._next_send = 0.0
         self._stopped = asyncio.Event()
 
-    def notice(self, text: str) -> None:
-        self._offer({"kind": "notice", "text": text})
+    def notice(self, text: str, severity: Literal["info", "warning", "error"] | None = None) -> None:
+        self._offer({"kind": "notice", "text": text, **({} if severity is None else {"severity": severity})})
 
     def activity(self, id: str, label: str, progress: Progress | None = None) -> None:
         value: dict[str, Any] = {"kind": "activity", "id": id, "label": label}

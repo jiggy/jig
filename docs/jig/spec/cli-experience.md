@@ -68,6 +68,13 @@ governed by that profile and [channels](channels.md).
    outcomes, green completion, amber warnings, and red failures. Text must
    carry every meaning independently of color or symbols. Use foreground colors
    without background fills; provide syntax palettes for light and dark terminals.
+   Actual action commands and examples use standalone `  $ jig ...` (or `cd`)
+   lines with bold accent color when enabled; the prompt prefix remains in plain
+   output. Inline command references use visible code delimiters. Commands never
+   wrap, shell quoting remains exact, and examples with placeholders are labelled
+   templates. Recognize commands only in host prose, never application data.
+   Target readiness retains explicit words, green for ready and amber for unavailable;
+   readiness is not execution.
    Narrow terminals must retain complete consent and recovery information;
    only the transient progress label may shorten to fit. Separate major terminal
    sections with a blank line, a restrained horizontal rule, and a bold heading;
@@ -77,7 +84,11 @@ governed by that profile and [channels](channels.md).
    categories, change counts, completed-stage text, elapsed time, and optional
    detail notes, executable paths, and unchanged context. Changed-record labels,
    including their identifiers, use bold amber to draw attention to changed work.
-   Omit review categories with no changes from the ordinary summary.
+   Omit review categories with no changes from the ordinary summary. ACP selections
+   are omitted only when the matching retained and proposed ready targets have
+   identical request, recipe and observation identities. New, changed or unknown
+   execution identity keeps current selections visible; `--details` always shows
+   them. A combined mismatch cannot identify which environment component changed.
    Keep permission consequences, changed policy values, failures,
    and next actions at normal or emphasized contrast. Gray never hides content
    or substitutes for labels, spacing, or explicit status words.

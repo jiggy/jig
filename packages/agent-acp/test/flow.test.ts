@@ -288,8 +288,13 @@ describe('native request failure diagnostics', () => {
       expect(failure).toBeInstanceOf(OperationError)
       expect(failure).toMatchObject({
         code: 'EXECUTION_FAILED',
-        message: `Native ACP request failed during ${method}; private client details were withheld.`,
+        details: { nativeRequest: { method, code: -32603 } },
       })
+      expect(failure.message).toContain(`native code -32603; ${method}`)
+      expect(failure.message).toContain('Detailed client cause is unavailable')
+      expect(JSON.stringify({ message: failure.message, details: failure.details })).not.toContain(
+        'secret-token',
+      )
       expect(f.frames.at(-1)?.method).toBe(method)
       expect(f.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
     },
@@ -1027,4 +1032,26 @@ describe('ordinary finite ACP Agent Flow', () => {
       diagnostic.mockRestore()
     }
   })
+})
+
+test.each([
+  null,
+  { code: 'secret', message: 'private' },
+  { code: 0.5, message: 'private' },
+  { code: 1 },
+  { code: 1, message: 42 },
+  { code: 1, message: 'private', extra: true },
+])('independently rejects malformed native errors %j', async (error) => {
+  const f = fixture({
+    async emit(frame, send) {
+      if (frame.method !== 'session/new') return false
+      await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, error } as any)
+      return true
+    },
+  })
+  const failure = await agentAcpFlow(f.run).catch((error) => error)
+  expect(failure).toBeInstanceOf(OperationError)
+  expect(failure.code).toBe('INVALID_RESULT')
+  expect(failure.message).not.toContain('private')
+  expect(f.frames.at(-1)?.method).toBe('session/new')
 })
