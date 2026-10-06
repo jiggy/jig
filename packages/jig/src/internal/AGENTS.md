@@ -316,7 +316,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   those callers, and physical paths, resolver mounts and volume layout with
   host translation. Preserve platform-specific receipt evidence.
   `execution-process.ts` owns protocol-independent process streams, exit and
-  fencing evidence. Run/0 consumes that interface; backends never depend on
+  fencing evidence and typed host-observed preparation expiry. Classify evaluator
+  preparation deadlines from this trusted type, never a matching arbitrary code
+  or elapsed cleanup time. Run/0 consumes that interface; backends never depend on
   the Run session implementation. Agent launcher location bindings use private
   `JIG_AGENT_HOME` and `JIG_AGENT_WORK`; their fallback locations remain unchanged.
 - `execution-backend.ts` is the closed private Linux/macOS selection boundary.
@@ -380,6 +382,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   completed result and residue assertions, never swallowed settlement failure.
   Native injected storage and scope-preparation failures verify the returned
   diagnostic after actual fencing and storage cleanup.
+  Before payload readiness, the guardian's own operation timer records expiry
+  only when it was the first stop cause. Transport that closed cause after
+  fenced cleanup; cancellation, lost control and tool failure do not become
+  deadlines. Unconfirmed cleanup still overrides the preparation diagnostic.
   Ordinary tests compile the same injected guardian constructions so source
   matching and import errors fail before native qualification.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data

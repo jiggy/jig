@@ -4,6 +4,7 @@ import { lstat, mkdir, mkdtemp, rmdir, writeFile } from 'node:fs/promises'
 import { createServer, type Server, type Socket } from 'node:net'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PrivateExecutionPreparationDeadlineError } from './execution-process.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateMacosBefore, privateMacosControlChannel } from './macos-control-channel.js'
 import {
@@ -549,7 +550,11 @@ async function prepareGuardian(input: {
               Object.assign(readinessError, {
                 code: `MACOS_GUARDIAN_${failure.step.replaceAll('-', '_').toUpperCase()}_${failure.cause}`,
               })
-            rejectReady(readinessError)
+            rejectReady(
+              failure?.cause === 'OPERATION_DEADLINE'
+                ? new PrivateExecutionPreparationDeadlineError(readinessError)
+                : readinessError,
+            )
             step = 'terminal-cleanup'
             closeCollector()
             await cleanup()

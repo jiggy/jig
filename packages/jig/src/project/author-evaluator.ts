@@ -13,6 +13,7 @@ import {
   privateExecutionFileProjections,
   privateExecutionPath,
 } from '../internal/execution-intent.js'
+import { PrivateExecutionPreparationDeadlineError } from '../internal/execution-process.js'
 import { privateDomainDigest } from '../internal/identity.js'
 import { capturePrivateInput } from '../internal/input-capture.js'
 import {
@@ -326,10 +327,13 @@ export async function evaluateAuthorClosureBatch(
         signal,
       ),
     ).catch((error) => {
+      const deadline = error instanceof PrivateExecutionPreparationDeadlineError
       const failure = new CheckError(
-        'unavailable',
-        'PROJECT_EVALUATOR_LAUNCH',
-        'cannot launch evaluator envelope',
+        deadline ? 'invalid' : 'unavailable',
+        deadline ? 'PROJECT_EVALUATOR_DEADLINE' : 'PROJECT_EVALUATOR_LAUNCH',
+        deadline
+          ? 'evaluator preparation reached its hard wall deadline'
+          : 'cannot launch evaluator envelope',
         entryProjectPath,
       )
       // The host-test observer projects only closed class/code values. Public

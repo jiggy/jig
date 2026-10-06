@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-
+import { PrivateExecutionPreparationDeadlineError } from '../src/internal/execution-process.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { PrivateLinuxCgroupBackend } from '../src/internal/linux-rootless-backend.js'
 import { PrivateMacosBackend } from '../src/internal/macos-native-backend.js'
@@ -23,6 +23,42 @@ const proofDescribe =
 const entryWallClockCeilingMs = process.platform === 'darwin' ? 10_000 : 3_000
 
 proofDescribe('finite isolated author declaration batches', () => {
+  test('reports an observed preparation deadline without guessing from launch codes', async () => {
+    for (const observed of [false, true]) {
+      await fixture(
+        { 'jig.ts': 'export default { flows: [] };' },
+        async (_root, captured, options) => {
+          const raw = Object.assign(new Error('private-canary /private/owner/path'), {
+            code: 'EXECUTION_PREPARATION_DEADLINE',
+          })
+          const cause = observed ? new PrivateExecutionPreparationDeadlineError(raw) : raw
+          const prototype =
+            process.platform === 'darwin'
+              ? PrivateMacosBackend.prototype
+              : PrivateLinuxCgroupBackend.prototype
+          const launch = spyOn(prototype, 'launch').mockRejectedValue(cause)
+          try {
+            const failure = await evaluateAuthorClosure(
+              options,
+              captured,
+              'jig.ts',
+              'project',
+            ).catch((error: unknown) => error)
+            expect(failure).toMatchObject({
+              code: observed ? 'PROJECT_EVALUATOR_DEADLINE' : 'PROJECT_EVALUATOR_LAUNCH',
+              path: 'jig.ts',
+              cause,
+            })
+            expect((failure as Error).message).not.toContain('private-canary')
+            expect((failure as Error).message).not.toContain('/private/owner/path')
+          } finally {
+            launch.mockRestore()
+          }
+        },
+      )
+    }
+  }, 30_000)
+
   test('preserves launch attribution without exposing private exception text', async () => {
     await fixture(
       { 'jig.ts': 'export default { flows: [] };' },

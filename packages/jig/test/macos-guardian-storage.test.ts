@@ -50,12 +50,28 @@ const preparationFailures = [
     '      const storage = await preparePrivateMacosGuardianStorage(',
     "new Error('macOS volume create failed', { cause: new Error('private-canary') })",
     'MACOS_GUARDIAN_STORAGE_VOLUME_CREATE',
+    30_000,
   ],
   [
     'scope',
     '    execution = await preparePrivateMacosScope({',
     "new Error('private-canary /private/owner/path')",
     'MACOS_GUARDIAN_SCOPE_PREPARATION_OTHER',
+    30_000,
+  ],
+  [
+    'storage-deadline',
+    '      const storage = await preparePrivateMacosGuardianStorage(',
+    "(await new Promise<void>((resolve) => { if (cancellation.signal.aborted) resolve(); else cancellation.signal.addEventListener('abort', () => resolve(), { once: true }) }), new Error('macOS volume create failed', { cause: new Error('private-canary') }))",
+    'EXECUTION_PREPARATION_DEADLINE',
+    1500,
+  ],
+  [
+    'storage-cancelled',
+    '      const storage = await preparePrivateMacosGuardianStorage(',
+    "(await new Promise<void>((resolve) => { if (cancellation.signal.aborted) resolve(); else cancellation.signal.addEventListener('abort', () => resolve(), { once: true }) }), new Error('macOS volume create failed', { cause: new Error('private-canary') }))",
+    'MACOS_GUARDIAN_STORAGE_VOLUME_CREATE',
+    30_000,
   ],
 ] as const
 
@@ -103,10 +119,13 @@ async function preparationFailureSupervisor(
   const source = await readFile(sourceUrl, 'utf8')
   expect(source.split(marker)).toHaveLength(2)
   const supervisor = join(root, `failure-${step}.ts`)
+  const paused = step.startsWith('storage-')
+    ? `await (await import('node:fs/promises')).writeFile(${JSON.stringify(join(root, `${step}.paused`))}, 'paused', { mode: 0o600, flag: 'wx' });\n`
+    : ''
   await writeFile(
     supervisor,
     source
-      .replace(marker, `throw ${failure}\n${marker}`)
+      .replace(marker, `${paused}throw ${failure}\n${marker}`)
       .replaceAll("from './", `from '${fileURLToPath(new URL('.', sourceUrl))}`),
   )
   return supervisor
@@ -199,7 +218,7 @@ native(
     )
     expect({ status: compiled.status, stderr: compiled.stderr }).toEqual({ status: 0, stderr: '' })
     for (const fixture of preparationFailures) {
-      const [, , , code] = fixture
+      const [step, , , code, deadlineMs] = fixture
       const root = await mkdtemp('/private/tmp/jig-preparation-owner-')
       const ownerDirectory = join(root, 'owner'),
         mountPath = join(root, 'data')
@@ -235,7 +254,7 @@ native(
             pids: 4,
             cpuQuotaMicros: 50_000,
             cpuPeriodMicros: 100_000,
-            deadlineUnixMs: Date.now() + 30_000,
+            deadlineUnixMs: Date.now() + deadlineMs,
             cleanupTimeoutMs: 5000,
           },
           maxOutputBytes: 4096,
@@ -245,7 +264,15 @@ native(
       guardian.stdout.resume()
       guardian.stderr.resume()
       try {
-        const failure = await guardian.admit().catch((error) => error)
+        const admission = guardian.admit().catch((error) => error)
+        if (step === 'storage-cancelled') {
+          const pause = join(build, `${step}.paused`)
+          const waitUntil = Date.now() + 5000
+          while (!(await exists(pause)) && Date.now() < waitUntil) await Bun.sleep(10)
+          expect(await exists(pause)).toBe(true)
+          guardian.cancel()
+        }
+        const failure = await admission
         expect(failure).toMatchObject({ code })
         expect(failure.message).not.toContain('private-canary')
         expect(await guardian.completion).toMatchObject({

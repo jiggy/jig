@@ -184,7 +184,9 @@ admitted FLOW packages.
   preparation/reuse and review retention, with stage-local timing. Prepared
   workspace artifact reuse stays within the approving Jig project.
   Configuration-evaluator memory, process and wall-clock refusals retain their
-  distinct verified codes; generic limits do not imply host pressure.
+  distinct verified codes, including a host-observed deadline during envelope
+  preparation. Generic limits do not imply host pressure; arbitrary launch codes
+  cannot establish a deadline.
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required
   and unverifiable comparisons as unchecked. It does not evaluate source,
