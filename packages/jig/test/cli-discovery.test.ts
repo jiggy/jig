@@ -123,7 +123,11 @@ COMP_WORDS=(jig run flow : flows/h)
 COMP_CWORD=4
 COMP_WORDBREAKS=:
 _jig
-[[ "\${COMPREPLY[*]}" == flows/hello ]]
+[[ "\${COMPREPLY[*]}" == flows/hello ]] || exit 1
+COMP_WORDS=(jig import-contract jig : user)
+COMP_CWORD=4
+_jig
+[[ "\${COMPREPLY[*]}" == user-updates ]]
 `,
     ]),
     stderr: 'pipe',

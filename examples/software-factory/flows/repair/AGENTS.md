@@ -27,7 +27,9 @@ operator's fixed commands and application-owned acceptance cases.
 - Agent judgment and command output remain evidence, not authority to change
   grants or declare success without independent checks.
 - Operational errors retain method evidence plus supplied collaborator details
-  under `operationDetails`, without flattening or inventing command verdicts.
+  under `operationDetails`, plus the observed baseline/proposal/check stage and
+  current proposal number. This evidence comes from execution, independently of
+  optional progress delivery; never flatten or invent command verdicts.
 
 ## Work Guidance
 

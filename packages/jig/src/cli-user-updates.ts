@@ -36,8 +36,8 @@ export function privateTruncateUpdate(text: string, columns: number): string {
 }
 
 type Activity = Extract<UserUpdate, { kind: 'activity' }>
-type Slot = { readonly port: string; value: Activity }
-type Source = { readonly port: string; active: boolean; readonly slots: Map<string, Slot> }
+type Slot = { readonly attribution: string; value: Activity }
+type Source = { active: boolean; readonly slots: Map<string, Slot> }
 export interface PrivateUserUpdateSource {
   accept(value: JsonValue): boolean
   retire(reason?: string): void
@@ -58,8 +58,9 @@ export class PrivateCliUserUpdates {
     readonly unavailable: (text: string) => void,
   ) {}
 
-  open(port: string): PrivateUserUpdateSource {
-    const source: Source = { port, active: !this.#stopped, slots: new Map() }
+  open(port: string, compact = false): PrivateUserUpdateSource {
+    const attribution = compact ? 'Flow' : `Flow update [${port}]`
+    const source: Source = { active: !this.#stopped, slots: new Map() }
     if (source.active) this.#sources.add(source)
     const retire = (reason?: string) => {
       if (!source.active) return
@@ -68,9 +69,9 @@ export class PrivateCliUserUpdates {
       const hadSlots = source.slots.size > 0
       for (const slot of source.slots.values()) this.#slots.delete(slot)
       source.slots.clear()
-      if (!this.#stopped && reason) this.unavailable(`  Flow update [${port}]: ${reason}\n`)
+      if (!this.#stopped && reason) this.unavailable(`  ${attribution}: ${reason}\n`)
       const ended =
-        hadSlots && !reason ? `  Flow update [${port}]: Activity observation ended.\n` : undefined
+        hadSlots && !reason ? `  ${attribution}: Live activity updates ended.\n` : undefined
       this.changed(ended, () => (this.#stopped ? undefined : ended))
     }
     return {
@@ -96,7 +97,7 @@ export class PrivateCliUserUpdates {
           const text =
             privateUpdateText(value.text)
               .split('\n')
-              .map((line) => `  Flow update [${port}]: ${line}`)
+              .map((line) => `  ${attribution}: ${line}`)
               .join('\n') + '\n'
           if (
             this.#notices > limits.notices ||
@@ -111,7 +112,7 @@ export class PrivateCliUserUpdates {
           if (slot !== undefined) {
             this.#slots.delete(slot)
             source.slots.delete(value.id)
-            const cleared = `  Flow update [${port}]: Activity cleared.\n`
+            const cleared = `  ${attribution}: Activity ended.\n`
             if (
               !this.changed(cleared, () =>
                 source.active && !this.#stopped && !source.slots.has(value.id)
@@ -131,7 +132,7 @@ export class PrivateCliUserUpdates {
               retire('Updates incomplete: activity limit reached.')
               return false
             }
-            slot = { port, value }
+            slot = { attribution: compact ? 'Flow' : `Flow ${port}`, value }
             source.slots.set(value.id, slot)
             this.#slots.set(slot, slot)
           } else slot.value = value
@@ -179,7 +180,7 @@ export class PrivateCliUserUpdates {
   project(index: number, columns: number): string | undefined {
     const slot = [...this.#slots.values()][index]
     if (slot === undefined) return undefined
-    const prefix = `Flow ${slot.port}: `,
+    const prefix = `${slot.attribution}: `,
       count = this.#count(slot)
     const room = columns - privateTerminalWidth(prefix + count)
     return room < 3
@@ -188,7 +189,7 @@ export class PrivateCliUserUpdates {
   }
 
   #label(slot: Slot): string {
-    return `Flow ${slot.port}: ${privateUpdateText(slot.value.label)}${this.#count(slot)}`
+    return `${slot.attribution}: ${privateUpdateText(slot.value.label)}${this.#count(slot)}`
   }
 
   #count(slot: Slot): string {

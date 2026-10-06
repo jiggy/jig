@@ -60,6 +60,8 @@ async function repairWithProgress(
   const maxProposals = settings.maxProposals ?? 2
   const attempts: Attempt[] = []
   let baseline: Evaluation | undefined
+  let stage: 'baseline' | 'proposal' | 'check' = 'baseline'
+  let proposal = 0
   const evidence = () => ({
     baseDigest: digest(input.files),
     acceptanceDigest: digest(input.cases),
@@ -114,6 +116,8 @@ async function repairWithProgress(
       )
     for (let index = 0; index < maxProposals; index++) {
       run.signal.throwIfAborted()
+      stage = 'proposal'
+      proposal = index + 1
       await publish('proposal', index + 1)
       const response = await run.call({
         operationId: `patch-${index + 1}`,
@@ -169,6 +173,7 @@ async function repairWithProgress(
       }
       const files = candidate(input, attempt.proposal)
       attempt.candidateDigest = digest(files)
+      stage = 'check'
       await publish('check', index + 1)
       attempt.evaluation = await observe(files, `attempt-${index + 1}`)
       if (attempt.evaluation.accepted)
@@ -185,6 +190,7 @@ async function repairWithProgress(
     if (error instanceof OperationError)
       throw new OperationError(error.code, error.message, {
         ...evidence(),
+        failure: { stage, proposal },
         ...(error.details === undefined ? {} : { operationDetails: error.details }),
       } as unknown as JsonValue)
     throw error

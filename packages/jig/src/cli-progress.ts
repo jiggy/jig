@@ -59,8 +59,8 @@ export class PrivateCliProgress {
     readonly hostFormat: (text: string) => string = (text) => text,
   ) {}
 
-  observe(port: string): PrivateUserUpdateSource {
-    return this.#updates.open(port)
+  observe(port: string, compact = false): PrivateUserUpdateSource {
+    return this.#updates.open(port, compact)
   }
   onOutputFailure(handler: (error: unknown) => void): void {
     this.#failedOutput = handler
@@ -324,8 +324,13 @@ export class PrivateCliProgress {
       let shown = 0
       for (const _activity of labels) {
         const suffix = labels.length > shown + 1 ? ` | +${labels.length - shown - 1} more` : ''
-        const room = available - privateTerminalWidth(projection + ' | ' + suffix)
+        let room = available - privateTerminalWidth(projection + ' | ' + suffix)
         if (room < 8) break
+        // Share a sufficiently wide line so the first job does not consume
+        // all space while another readable activity could also be shown.
+        const remaining = labels.length - shown
+        if (remaining > 1 && room >= remaining * 32)
+          room = Math.floor((room - (remaining - 1) * 3) / remaining)
         const activity = this.#updates.project(shown, room)
         if (activity === undefined) break
         projection += ` | ${activity}`

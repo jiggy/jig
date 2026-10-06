@@ -13,7 +13,7 @@ distributed under [MPL-2.0](https://jig.md/contracts/user-updates/LICENSE).
 Copy its license with the agreement. This does not change Jig's software license.
 
 Create the `contracts` parent directory, then run
-`jig import-contract builtin:user-updates contracts/user-updates` from a
+`jig import-contract jig:user-updates contracts/user-updates` from a
 Flow package whose `contracts` directory already exists. Add an optional send
 port referencing `./contracts/user-updates/user-updates.json`. The local port
 name is your choice; a named invocation contract for the entire Flow is unnecessary.

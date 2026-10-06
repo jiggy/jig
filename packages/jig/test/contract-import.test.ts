@@ -6,6 +6,7 @@ import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
 import { parseChannelContract } from '../src/channel-contract.js'
 import { main, privateCliRequiresHost } from '../src/cli.js'
 import { importContract } from '../src/internal/contract-import.js'
+import { JIG_STANDARD_CONTRACTS } from '../src/internal/standard-contracts.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
 import { checkPackageDirectory } from '../src/package/inspect.js'
 import { createFlow, createProject } from '../src/project-init.js'
@@ -29,11 +30,11 @@ test('standalone channel imports preserve exact bytes without dummy invocations'
   expect(await readFile(join(root, 'standalone/events.json'), 'utf8')).toBe(agreement)
 })
 
-test('builtin import is offline, exact and licensed; collision never replaces files', async () => {
+test('Jig standard import is offline, exact and licensed; collision never replaces files', async () => {
   const root = await fixture()
   let output = ''
   expect(
-    await main(['import-contract', 'builtin:user-updates', 'updates'], {
+    await main(['import-contract', 'jig:user-updates', 'updates'], {
       currentDirectory: root,
       writeOutput(text) {
         output += text
@@ -56,13 +57,72 @@ test('builtin import is offline, exact and licensed; collision never replaces fi
     'Mozilla Public License Version 2.0',
   )
   expect(output).toContain('optional channel declaration')
-  await expect(importContract('builtin:user-updates', join(root, 'updates'))).rejects.toMatchObject(
-    { code: 'CONTRACT_IMPORT_EXISTS' },
-  )
+  await expect(importContract('jig:user-updates', join(root, 'updates'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_EXISTS',
+  })
   expect((await readdir(join(root, 'updates'))).sort()).toEqual(['LICENSE', 'user-updates.json'])
-  await expect(importContract('builtin:unknown', join(root, 'unknown'))).rejects.toMatchObject({
+  await expect(importContract('jig:unknown', join(root, 'unknown'))).rejects.toMatchObject({
     code: 'CONTRACT_IMPORT_SOURCE',
   })
+})
+
+test('one offline catalog covers Jig invocation and channel agreements with exact closures', async () => {
+  const root = await fixture()
+  let catalog = ''
+  expect(privateCliRequiresHost(['import-contract', '--list'])).toBe(false)
+  expect(
+    await main(['import-contract', '--list'], {
+      currentDirectory: root,
+      writeOutput: (text) => {
+        catalog += text
+      },
+      host: {
+        async acquire() {
+          throw new Error('Catalog must not acquire a host')
+        },
+      },
+    }),
+  ).toBe(0)
+  for (const entry of JIG_STANDARD_CONTRACTS) {
+    expect(catalog).toContain(`jig:${entry.name} (${entry.kind})`)
+    const imported = await importContract(`jig:${entry.name}`, join(root, entry.name))
+    expect(imported.digest).toBe(entry.digest)
+    expect(imported.kind).toBe(entry.kind)
+    expect(await readFile(join(root, entry.name, 'LICENSE'), 'utf8')).not.toBe('')
+    const source =
+      entry.name === 'user-updates'
+        ? new URL('../../user-updates/src/user-updates.json', import.meta.url)
+        : entry.name === 'acp-public-updates'
+          ? new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url)
+          : new URL(`../../../docs/jig/spec/contracts/${entry.name}/contract.json`, import.meta.url)
+    expect(await readFile(imported.descriptor)).toEqual(await readFile(source))
+    if (entry.name === 'agent-run') {
+      expect(imported.files).toBe(5)
+      expect(await readFile(join(root, entry.name, 'contracts/agent-commands.json'))).toEqual(
+        await readFile(
+          new URL(
+            '../../../docs/jig/spec/contracts/agent-run/contracts/agent-commands.json',
+            import.meta.url,
+          ),
+        ),
+      )
+    }
+  }
+})
+
+test('an altered installed agreement is rejected before writing a destination', async () => {
+  const root = await fixture()
+  await mkdir(join(root, 'standard/user-updates'), { recursive: true })
+  const profile = JSON.parse(
+    await readFile(new URL('../../user-updates/src/user-updates.json', import.meta.url), 'utf8'),
+  )
+  profile.semantics += ' altered'
+  await writeFile(join(root, 'standard/user-updates/user-updates.json'), JSON.stringify(profile))
+  await writeFile(join(root, 'standard/user-updates/LICENSE'), 'retained license')
+  await expect(
+    importContract('jig:user-updates', join(root, 'copied'), undefined, join(root, 'standard')),
+  ).rejects.toMatchObject({ code: 'CONTRACT_IMPORT_SOURCE' })
+  expect(await readdir(root)).toEqual(['source', 'standard'])
 })
 const agreement = JSON.stringify({
   $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',

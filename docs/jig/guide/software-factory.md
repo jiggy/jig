@@ -44,11 +44,17 @@ jig run --input @batch.json --out factory-result-2
 Existing results are never overwritten. Explicitly naming a target bypasses
 entrypoint defaults; supply that invocation's arguments in full.
 
-The optional canonical user-updates port shows current job activity on terminal
-stderr. Add `--receive progress --json` for explicit machine records, or
+The standard [user-updates contract](../contracts/user-updates.md) shows current
+job activity on terminal stderr, using each job's readable `label` or its `id`.
+Messages describe the work and reviewed proposal limit: reproducing the defect,
+asking the AI assistant for a fix (such as “1 of 2”), and checking the proposed fix.
+The final application output gives a brief report of each job and public failure
+causes, while full evidence remains in `result.json`.
+Add `--receive progress --json` for explicit machine records, or
 `--updates off` to disable automatic observation. Rapid phase replacements and
 slow observers may omit intermediate activity. A checkpoint notice follows
-durable storage; counts measure retained jobs. These messages show activity only; the
+durable storage; counts measure saved jobs, including failures. If live updates
+stop early, check the final report and saved evidence. These messages show activity only; the
 final result and retained evidence determine whether a patch is review-ready.
 The factory's `checkpoint` slot separately retains settled job evidence across
 interruption.

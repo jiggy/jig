@@ -160,7 +160,7 @@ export class PrivateRunChannels {
             reader.updates.retire(
               error instanceof ChannelOperationError && error.code === 'INVALID_INPUT'
                 ? 'Updates unavailable: contract violation.'
-                : `Updates incomplete (${error instanceof ChannelOperationError ? error.code : 'DISCONNECTED'}).`,
+                : `Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (${error instanceof ChannelOperationError ? error.code : 'DISCONNECTED'})`,
             )
             return
           }

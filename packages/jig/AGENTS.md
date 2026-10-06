@@ -149,7 +149,10 @@ admitted FLOW packages.
 
 - `import-contract` copies a validated local invocation/channel bundle into a
   new directory, preserving bytes and relative paths. A direct descriptor path
-  or exact `npm:` package name selects the source; package lookup starts at the
+  or exact `npm:` package name selects the source; `jig:` names select the installed
+  standard library, listed by `--list`, with exact closures, digests and licenses.
+  These names are authoring selectors, never runtime resolution or authority.
+  Package lookup starts at the
   destination parent and uses the nearest installed `node_modules`. Closure
   descendants must be regular captured files. It neither acquires an execution
   host nor fetches, imports package code, replaces an existing destination, or
@@ -307,7 +310,9 @@ admitted FLOW packages.
   with the cause and next action after evidence. Omit packet provenance manifests
   from human results; retain full machine and packet records. A confirmed written
   packet permits compact success output: show small application answers, but
-  point to `result.json` for large output and checkpoint evidence, and show the
+  retain at most eight complete top-level scalar fields within 2048 JSON characters
+  alongside large nested evidence, without assigning meaning to field names.
+  Identify that brief view and point to `result.json` for full output and checkpoint evidence, and show the
   nonzero delivered file count. Omit null checkpoints from human results.
   Uncertain delivery keeps evidence visible. Input errors name
   the approved schema without guessing source freshness. Emit the dependency

@@ -65,10 +65,11 @@ const sidebar = [
     ],
   },
   {
-    text: 'Invocation identities',
+    text: 'Standard library',
     collapsible: true,
     collapsed: true,
     items: [
+      { text: 'Overview', link: '/contracts/' },
       { text: 'Agent Run', link: '/contracts/agent-run' },
       { text: 'ACP public updates', link: '/contracts/acp-public-updates' },
       { text: 'User updates', link: '/contracts/user-updates' },

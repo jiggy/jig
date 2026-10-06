@@ -17,7 +17,7 @@ async def run(context):
 handle(run)
 ```
 
-Create the `contracts` parent directory, import the agreement with `jig import-contract builtin:user-updates
+Create the `contracts` parent directory, import the agreement with `jig import-contract jig:user-updates
 contracts/user-updates`, then declare an optional send channel in `FLOW.meta.json`:
 `{"channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}`.
 Use `--receive updates` for explicit observation. The exact same provisional

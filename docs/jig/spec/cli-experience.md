@@ -10,7 +10,7 @@ makes usable control an observable requirement;
 
 ## Required experience
 
-`jig import-contract <descriptor.json|npm:package|builtin:user-updates> <new-directory>` is explicit offline
+`jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>` is explicit offline
 authoring. It captures and validates one standalone channel descriptor, or an invocation descriptor and its exact
 channel closure (at most 64 agreements, 256 KiB per file, 1 MiB captured bytes),
 preserves bytes and relative paths, and publishes only to an absent destination
@@ -24,8 +24,14 @@ It does not evaluate package code, fetch dependencies, acquire execution
 authority or approve a Run. Cancellation before publication leaves no destination;
 completed publication is not undone. Process loss may leave an unpublished
 `.jig-contract-*` staging directory, not a successfully imported bundle.
-The bundled user-updates selector copies `user-updates.json` and its MPL-2.0
-license from the installed artifact without network access or package execution.
+`jig import-contract --list` lists the installed standard agreements and their
+purposes without project loading or host acquisition. Exact `jig:` selectors
+cover Agent Run, Project Command, HTTP Request, Run Checkpoint, Finite ACP,
+ACP public updates and user-updates. They copy the bundled canonical descriptor,
+referenced agreements and license; unsupported names fail without a fallback.
+The installed catalog checks each exact supported digest. A copied standard
+agreement is a project-owned snapshot, never a runtime resolver, implementation
+selection or authority grant. User-updates retains its MPL-2.0 license.
 
 The optional [user-updates profile](user-updates.md) shares stderr presentation
 with host progress and diagnostics. Resolve entrypoint/operator arguments first:
@@ -157,6 +163,12 @@ governed by that profile and [channels](channels.md).
    may summarize large application output and checkpoint evidence by pointing
    to `result.json` instead of repeating them. An uncertain or failed packet
    delivery must not cause the terminal to hide result evidence.
+   For a large object with a written packet, retain a bounded view of up to eight
+   top-level scalar fields totaling at most 2048 JSON characters. State that this
+   is a brief view and the full result is stored. Do not interpret field names or
+   text as trusted status, truncate individual values to make them fit, or change
+   machine output. This lets an application provide a concise report alongside
+   large nested evidence without a special summary field or domain adapter.
    Emphasize failed execution and unconfirmed cleanup in red, uncertain execution
    or delivery in amber, and completed execution or written delivery in green.
    Keep the same explicit status words when color is disabled. Application
@@ -237,7 +249,7 @@ explicit package manifest declaration when present, otherwise the tested SDK.
 Explicit membership arrays must be edited by the author before review.
 
 Optional `--use` declarations select at most 16 distinct contract slots. Each
-source is a project-relative descriptor path or an exact installed `npm:` package
+source is a `jig:` standard invocation agreement, a project-relative descriptor path or an exact installed `npm:` package
 name; npm lookup starts in the project and searches its ancestors, nearest first.
 Each complete validated bundle is copied unchanged to `contracts/<slot>`, and
 `FLOW.meta.json` references its descriptor under `uses.<slot>`. The generated

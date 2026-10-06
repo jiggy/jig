@@ -12,6 +12,8 @@ patch authority and every merge decision stays with a person.
 - `flows/factory/` owns bounded batch validation, candidate-to-slot policy,
   source capture, independent evidence and routing-result validation, parallel
   job dispatch, checkpoint aggregation, conflict detection, and final summaries.
+  `presentation.ts` translates observed phases, reviewed proposal budgets and
+  failure evidence into ordinary language; optional input labels name jobs for people.
 - `flows/router/` owns the portable decision Flow, separately governed below.
 - `flows/repair/` owns the factory's independently editable repair specialist.
 - `bindings/` composes one-proposal and checked-correction configurations of
@@ -62,7 +64,7 @@ patch authority and every merge decision stays with a person.
   independently accepted jobs advertise a review patch.
 - The optional `progress` broadcast channel uses the exact canonical user-updates
   profile through its scoped publisher. Root job IDs use a distinct namespace;
-  deliberate child phase readers settle before root clears. Counts measure jobs
+  deliberate child phase readers settle before root clears. Notices count jobs
   retained by successful checkpoints, never attempts or acceptance. A complete
   checkpoint notice follows durable storage. Progress never establishes acceptance;
   the `checkpoint` slot is the separate collaborator for settled evidence.

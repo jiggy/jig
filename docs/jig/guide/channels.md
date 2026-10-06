@@ -12,7 +12,7 @@ dependencies. From that package, create a `contracts` directory and import:
 
 ```sh
 mkdir -p contracts
-jig import-contract builtin:user-updates contracts/user-updates
+jig import-contract jig:user-updates contracts/user-updates
 ```
 
 The importer copies exact local descriptor bytes and its license, refuses an

@@ -46,7 +46,7 @@ const proposal = {
   ],
 }
 
-function recorded(
+export function recorded(
   command: string,
   files: Record<string, string>,
   args: string[],

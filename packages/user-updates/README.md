@@ -15,7 +15,7 @@ Import the agreement once, declare an optional output, and use one scope:
 
 ```sh
 mkdir -p contracts
-jig import-contract builtin:user-updates contracts/user-updates
+jig import-contract jig:user-updates contracts/user-updates
 ```
 
 ```json

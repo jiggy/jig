@@ -49,11 +49,20 @@ before choosing another Run, and review any changed configuration first.
 For a settled unsuccessful proposal, inspect its command evidence and proposal
 patches; these are not accepted patches to apply. A healthy job's `review.patch`
 remains available even when the batch outcome is `blocked`.
-The canonical user-updates port shows current job activity on terminal stderr.
+The factory reports each job by its optional `label` (or its `id`) and describes
+the current work: reproducing the defect, asking the AI assistant for a fix, or
+checking that fix. Proposal numbers include the reviewed limit, such as “1 of 2”.
+The terminal's final application output gives a brief job report, including a
+public failure cause and whether a checked patch exists. Full evidence remains
+in `result.json`; `files/summary.txt` starts with the same plain-language report.
+The standard [user-updates contract](../../docs/jig/contracts/user-updates.md)
+shows current job activity on terminal stderr.
 Use `--receive progress --json` for explicit machine records, or `--updates off`
 to turn automatic observation off. The scoped publisher bounds observation work;
 rapid phases can replace one another, and slow or lost observation can end early.
-A checkpoint notice follows durable storage; counts measure retained jobs.
+A saved-results notice follows durable storage; its count measures saved jobs,
+including failed jobs, rather than successful repairs. If live observation ends
+early, use the final report and saved evidence to determine the work's outcome.
 Progress is activity, not evidence that a patch passed;
 the separate `checkpoint` slot retains settled evidence across interruption.
 
@@ -66,8 +75,10 @@ selected patches yourself.
 Keep the common paths selected by `bindings/single-pass.ts`, `bindings/checked-correction.ts`, then add each small
 project below the source attachment. Add a named `*-cases.json` beside the
 factory Flow and list its name, issue, directory, and existing `src/*.ts` or
-`src/*.js` edit paths in `batch.json`. The batch accepts one or two jobs. Review
-again after Flow, entrypoint, command, case, Agent, or grant changes. New job input
+`src/*.js` edit paths in `batch.json`. The batch accepts one or two jobs.
+Use an optional single-line `label` of up to 80 characters to give each job a
+readable name while preserving its `id` in paths and evidence.
+Review again after Flow, entrypoint, command, case, Agent, or grant changes. New job input
 and source files are captured for each Run without another review.
 
 The reviewed configurations permit one or two Agent proposals and share the same

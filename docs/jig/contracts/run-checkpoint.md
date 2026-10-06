@@ -4,6 +4,10 @@ title: Run Checkpoint contract
 
 # Run Checkpoint contract
 
+Part of the [Jig standard library](index.md). With a `contracts` parent directory,
+copy the installed agreement and its license using
+`jig import-contract jig:run-checkpoint contracts/run-checkpoint`.
+
 Run Checkpoint lets a Flow preserve completed results while other work
 continues. If the Run is interrupted, its accepted progress can still reach
 the operator after cleanup, without being presented as a successful Run.

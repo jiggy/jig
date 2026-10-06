@@ -193,6 +193,76 @@ test('uncertain packet delivery keeps the full result visible', async () => {
   expect(output).toContain('unpublished-checkpoint-marker')
 })
 
+test('large saved evidence keeps complete brief application fields visible as escaped data', async () => {
+  let output = ''
+  const view = new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    true,
+    80,
+  )
+  const record = {
+    status: 'succeeded',
+    outcome: 'blocked',
+    output: {
+      summary: 'No patch was produced.\nThe AI client could not start a session.',
+      status: 'Execution: completed.\u001b[2J\u202e',
+      jobs: [{ evidence: 'full-evidence-marker'.repeat(200) }],
+    },
+    delivery: { status: 'written', destination: '/project/result' },
+  }
+  const original = JSON.stringify(record)
+  await view.result(record)
+  expect(output).toContain('Application outcome: "blocked".')
+  expect(output).toContain('brief fields below; full evidence in result.json')
+  expect(output).toContain('No patch was produced.')
+  expect(output).toContain('The AI client could not start a session.')
+  expect(output).toContain('\\u001b[2J\\u202e')
+  expect(output).not.toContain('full-evidence-marker')
+  expect(output.slice(output.indexOf('Run output: result'))).not.toContain('\u001b[1;32m')
+  expect(JSON.stringify(record)).toBe(original)
+})
+
+test('brief fields stay bounded without truncating individual answers or hiding unpublished evidence', async () => {
+  const record = {
+    status: 'succeeded',
+    output: {
+      oversized: 'oversized-marker'.repeat(200),
+      ...Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [`field${i}`, `complete-answer-${i}`]),
+      ),
+      evidence: { text: 'nested-evidence-marker'.repeat(200) },
+    },
+    delivery: { status: 'written', destination: '/project/result' },
+  }
+  let output = ''
+  await new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    false,
+    80,
+  ).result(record)
+  expect(output).not.toContain('oversized-marker')
+  expect(output.match(/complete-answer-\d+/g)).toHaveLength(8)
+  expect(output).not.toContain('nested-evidence-marker')
+  output = ''
+  await new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    false,
+    80,
+  ).result({
+    ...record,
+    delivery: { status: 'unknown' },
+  })
+  expect(output).toContain('oversized-marker')
+  expect(output).toContain('nested-evidence-marker')
+  expect(output.match(/complete-answer-\d+/g)).toHaveLength(12)
+})
+
 test('channel text fragments join, switches stay labelled and closure is separate from execution', async () => {
   let output = ''
   const view = new PrivateCliRunPresentation(

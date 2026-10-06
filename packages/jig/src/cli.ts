@@ -45,6 +45,7 @@ import {
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
+import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
@@ -77,7 +78,7 @@ Usage:
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
   jig completion <shell>     Print shell completion for bash, zsh, or fish
-  jig import-contract <file|npm:package|builtin:user-updates> <directory>  Copy an offline contract bundle
+  jig import-contract <jig:name|file|npm:package> <directory>  Copy an offline contract bundle
   jig --version             Print the installed version
 
 Start here:
@@ -92,7 +93,7 @@ Use jig <command> --help for options and examples.
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
-  new: `Usage: jig new <name> [--use <slot=descriptor.json|slot=npm:package>]...
+  new: `Usage: jig new <name> [--use <slot=jig:name|slot=descriptor.json|slot=npm:package>]...
 
 Create flows/<name> in the current Jig project. Names use lowercase letters,
 digits and hyphens. Existing files are never replaced. The Flow uses the SDK
@@ -100,10 +101,11 @@ dependency declared by the project's package.json, or Jig's tested SDK version.
 No installation, network, approval, source evaluation or execution occurs.
 
 Example: jig new summarize
-With a collaborator: jig new worker --use agent=npm:@jigging/agent-method
+With a collaborator: jig new worker --use agent=jig:agent-run
 --use copies the selected complete contract bundle into contracts/<slot> and
 declares uses.<slot>. Repeat for up to 16 distinct slots. Descriptor paths are
-relative to this project; npm sources must already be installed in its tree
+relative to this project; jig: names select the installed standard library.
+Browse it with jig import-contract --list. npm sources must already be installed in its tree
 or an ancestor. Edit FLOW.ts to call the slots; providers and grants stay separate.
 Review project membership in jig.ts if you use explicit arrays rather than discover().`,
   completion: `Usage: jig completion <bash|zsh|fish>
@@ -117,18 +119,21 @@ Fish: jig completion fish | source
 
 The scripts use jig completion targets [prefix] to read approved selectors.
 Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
-  'import-contract': `Usage: jig import-contract <descriptor.json|npm:package|builtin:user-updates> <new-directory>
+  'import-contract': `Usage: jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
+       jig import-contract --list
 
 Copy a local descriptor or an explicitly selected installed package's invocation
 contract and referenced channel agreements into a new directory. An npm:package
 selector resolves from the destination's parent toward its ancestors, so member-
 local and project-root installations use the same command. Bytes and relative
 paths are preserved.
+Use jig:name for Jig's standard library of agreements, included in this installation.
+List the available names with --list. Each imported bundle includes its license.
 The source is validated without importing code, fetching, or approving work.
 The destination parent must exist; existing destinations are never replaced.
 
 Example:
-  jig import-contract npm:@jigging/agent-method flows/worker/contracts/agent-run`,
+  jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -244,7 +249,7 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
-  readonly builtinContractDirectory?: string
+  readonly standardContractDirectory?: string
   readonly expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly host?: PrivateCliCommandHost
@@ -263,7 +268,7 @@ export interface PrivateCliOptions {
 }
 
 interface CliRuntime {
-  readonly builtinContractDirectory?: string
+  readonly standardContractDirectory?: string
   expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly humanOutput: boolean
@@ -486,7 +491,13 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
     uses.push({ slot: declaration.slice(0, separator), source: declaration.slice(separator + 1) })
   }
   try {
-    const path = await createFlow(runtime.currentDirectory, name, uses, runtime.signal)
+    const path = await createFlow(
+      runtime.currentDirectory,
+      name,
+      uses,
+      runtime.signal,
+      runtime.standardContractDirectory,
+    )
     runtime.writeOutput(
       `Created Flow ${asciiJsonString(path)}.\n\nNext:\n  Edit ${path}/FLOW.ts.\n  If jig.ts uses explicit membership, add ${asciiJsonString(path)}.\n  jig review --allow-resolution-network\n  jig run ${shellWord(`flow:${path}`)}\n\nNo dependencies installed or execution approved.\n`,
     )
@@ -555,19 +566,25 @@ async function executeImportContract(
   arguments_: readonly string[],
   runtime: CliRuntime,
 ): Promise<number> {
+  if (arguments_.length === 2 && arguments_[1] === '--list') {
+    runtime.writeOutput(
+      `Jig standard contracts\n\n${JIG_STANDARD_CONTRACTS.map((entry) => `  jig:${entry.name} (${entry.kind})\n    ${entry.description}`).join('\n')}\n\nImport one into a new directory: jig import-contract jig:NAME contracts/NAME\nThe parent directory must exist. Importing an agreement does not select an implementation or grant permissions.\n`,
+    )
+    return 0
+  }
   if (arguments_.length !== 3 || arguments_.slice(1).some((value) => value.startsWith('-')))
     usage(
       'import-contract',
-      'Specify one descriptor file or npm:package and one new destination directory.',
+      'Specify jig:name, a descriptor file or npm:package and one new directory; use --list to browse Jig contracts.',
     )
   try {
     const result = await importContract(
-      /^(npm:|builtin:)/.test(arguments_[1]!)
+      /^(npm:|jig:)/.test(arguments_[1]!)
         ? arguments_[1]!
         : resolve(runtime.currentDirectory, arguments_[1]!),
       resolve(runtime.currentDirectory, arguments_[2]!),
       runtime.signal,
-      runtime.builtinContractDirectory,
+      runtime.standardContractDirectory,
     )
     runtime.writeOutput(
       `Imported ${result.files} contract files into ${asciiJsonString(arguments_[2]!)}.\nUse ${asciiJsonString(basename(result.descriptor))} in ${result.kind === 'channel' ? 'an optional channel declaration' : "the caller's slot declaration"}, then review the project.\n`,
@@ -878,7 +895,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     runtime.terminalError
       ? {
           updates: {
-            open: (port: string) => runtime.progress.observe(port),
+            open: (port: string) => runtime.progress.observe(port, true),
             ambiguous: (ports: readonly string[]) =>
               runtime.progress.notice(
                 `Multiple optional user-update outputs: ${ports.join(', ')}. Use --receive NAME for existing stdout channel records.\n`,
@@ -1032,7 +1049,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
             input,
           })
           runtime.progress.complete()
-          runtime.progress.stage('Waiting for the Flow result (Ctrl-C to cancel)')
+          runtime.progress.stage('Waiting for the result (Ctrl-C to cancel)')
           try {
             return await waitForTerminal(
               session.rootAdministration,
@@ -1370,9 +1387,9 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     ...(options.expectedAdmissionDigest === undefined
       ? {}
       : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
-    ...(options.builtinContractDirectory === undefined
+    ...(options.standardContractDirectory === undefined
       ? {}
-      : { builtinContractDirectory: options.builtinContractDirectory }),
+      : { standardContractDirectory: options.standardContractDirectory }),
     humanOutput: options.terminalOutput ?? process.stdout.isTTY === true,
     outputColor,
     outputColumns: process.stdout.columns || 80,

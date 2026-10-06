@@ -131,6 +131,7 @@ test('factory repair keeps collaborator failure details distinct from its retain
       expect(failure.message).toBe('Command stopped.')
       expect(failure.details).toMatchObject({
         baseDigest: digest(repairInput.files),
+        failure: { stage: 'check', proposal: 1 },
         operationDetails: details,
       })
       const evidence = failure.details as { attempts: { evaluation?: unknown }[] }
@@ -577,7 +578,7 @@ test('optional profile retains checkpoint ordering and settles after reader loss
           messages.some(
             (value) =>
               (value as any).kind === 'notice' &&
-              (value as any).text.includes('checkpoint retained'),
+              (value as any).text.includes('Results and diagnostic evidence have been saved'),
           ),
         ).toBe(true)
         expect(order.indexOf('checkpoint')).toBeLessThan(order.indexOf('notice'))

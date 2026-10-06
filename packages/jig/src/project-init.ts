@@ -62,6 +62,7 @@ export async function createFlow(
   name: string,
   uses: readonly { slot: string; source: string }[] = [],
   signal?: AbortSignal,
+  standardContractDirectory?: string,
 ): Promise<string> {
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\s\S])/.test(name) || name.length > 64)
     throw new ProjectInitError(
@@ -84,7 +85,7 @@ export async function createFlow(
     throw new ProjectInitError(
       'invalid',
       'JIG_NEW_INVALID',
-      'Supply at most 16 distinct --use slot=source declarations. Slots use up to 64 lowercase letters, digits and single hyphens; sources select local descriptors or installed npm packages.',
+      'Supply at most 16 distinct --use slot=source declarations. Slots use up to 64 lowercase letters, digits and single hyphens; sources select Jig standard agreements, local descriptors or installed npm packages.',
     )
   signal?.throwIfAborted()
   let sdk = GREETING_SDK_VERSION
@@ -162,9 +163,10 @@ export async function createFlow(
     if (uses.length > 0) await mkdir(join(authoredAt, 'contracts'))
     for (const { slot, source } of uses) {
       const imported = await importContract(
-        source.startsWith('npm:') ? source : resolve(project, source),
+        /^(npm:|jig:)/.test(source) ? source : resolve(project, source),
         join(authoredAt, 'contracts', slot),
         signal,
+        standardContractDirectory,
       )
       if (imported.kind !== 'invocation')
         throw new CheckError(

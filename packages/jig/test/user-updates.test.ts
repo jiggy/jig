@@ -203,7 +203,7 @@ test('plain output bounds count-only updates and attributes every escaped notice
   expect(text).toContain(
     'Flow update [updates]: Execution completed\n  Flow update [updates]: \\u001b[32mspoof\\u202e\n',
   )
-  expect(text).toContain('Activity cleared')
+  expect(text).toContain('Activity ended')
   expect(text).toContain('contract violation')
   expect(text).not.toContain('\u001b')
   presenter.close()

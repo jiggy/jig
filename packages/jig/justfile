@@ -13,9 +13,12 @@
     just --justfile ../agent-acp/justfile build
     just --justfile ../flow-authoring/justfile build
     mkdir -p bin libexec/agent libexec/evaluator libexec/preparation libexec/authoring
-    mkdir -p libexec/contracts
-    cp ../user-updates/src/user-updates.json libexec/contracts/user-updates.json
-    cp ../user-updates/LICENSE libexec/contracts/LICENSE
+    mkdir -p libexec/contracts/user-updates libexec/contracts/acp-public-updates
+    cp ../user-updates/src/user-updates.json libexec/contracts/user-updates/user-updates.json
+    cp ../user-updates/LICENSE libexec/contracts/user-updates/LICENSE
+    cp ../../docs/jig/spec/contracts/acp-public-updates.json libexec/contracts/acp-public-updates/acp-public-updates.json
+    cp ../../LICENSE.md libexec/contracts/acp-public-updates/LICENSE
+    for name in agent-run project-command http-request run-checkpoint finite-acp; do cp -R ../../docs/jig/spec/contracts/$name libexec/contracts/$name; cp ../../LICENSE.md libexec/contracts/$name/LICENSE; done
     cp scripts/installed-jig.sh bin/jig
     chmod 755 bin/jig
     bun node_modules/typescript/bin/tsc -p tsconfig.json

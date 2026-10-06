@@ -1443,9 +1443,7 @@ describe('finite Jig project commands', () => {
       }
       const invocation = commandInvocation(host, { terminalOutput: false, terminalError })
       expect(await main(['run', 'binding:work', ...args], invocation.options)).toBe(1)
-      expect(invocation.error.includes('Flow update [updates]: Application says complete')).toBe(
-        enabled,
-      )
+      expect(invocation.error.includes('Flow: Application says complete')).toBe(enabled)
       if (args.some((value) => value === '--receive')) {
         expect(JSON.parse(invocation.output)).toMatchObject({
           type: 'terminal',

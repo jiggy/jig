@@ -5,6 +5,10 @@ description: What the Agent Run contract ID means, how Flows use it, and where t
 
 # Agent Run contract
 
+Part of the [Jig standard library](index.md). With a `contracts` parent directory,
+copy the installed agreement and its license using
+`jig import-contract jig:agent-run contracts/agent-run`.
+
 Agent Run lets a Flow ask an operator-selected Agent for a bounded response.
 The Flow supplies instructions, any selected package-local Skills, and an
 optional structured-result schema. The operator chooses the Agent, model,

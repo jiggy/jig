@@ -131,6 +131,9 @@ of transient text; preserve complete notice content with Flow attribution on eve
 logical line. Application payload bypasses trusted heading/status recognition and
 success colors. IDs are map keys. Plain mode emits activation, meaningful label/unit
 changes and clears; count-only updates change retained state without flooding.
+The unique automatic source uses concise `Flow:` attribution rather than its
+technical port name. Observation loss explains incomplete delivery and points
+to the final result; a machine code cannot replace that explanation.
 Resize, notice completion, update and retirement redraw current retained state.
 Obsolete queued transient projections are superseded before dispatch; output already
 dispatched follows normal settlement and is followed by current state when usable.

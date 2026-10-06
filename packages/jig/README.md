@@ -44,11 +44,12 @@ Project commands:
 
 ```text
 jig init [--bare] <directory> [--agent [codex|claude|pi]]
-jig new <name>
+jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig import-contract <descriptor.json|npm:package> <destination>
+jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
+jig import-contract --list
 jig completion <bash|zsh|fish>
 ```
 
@@ -56,7 +57,13 @@ jig completion <bash|zsh|fish>
 permission. `--bare` creates only an empty project skeleton.
 
 `new` adds ordinary editable source under `flows/<name>` without installation or
-approval. Interactive `jig run` can offer an explicit choice of approved targets;
+approval. Jig's [standard library](https://jig.md/contracts/) uses one `jig:`
+namespace. `import-contract --list` lists its invocation and channel agreements
+offline. For example, `jig new worker --use agent=jig:agent-run` copies the complete
+Agent agreement and declares the collaborator slot. Importing preserves exact
+descriptors and licenses as local snapshots; implementations and grants remain
+separately selected and reviewed. Channel agreements belong under `channels`.
+Interactive `jig run` can offer an explicit choice of approved targets;
 scripts must name a target. Shell completion also reads only approved targets.
 A Binding can pin a declared read attachment with
 `attachments: { reference: './resources/reference' }`. Review captures and

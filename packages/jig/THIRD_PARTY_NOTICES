@@ -19,8 +19,8 @@ BUNDLED USER UPDATES PROFILE
 ---------------------------
 
 Jig includes @jigging/user-updates (MPL-2.0) validation code and the exact
-portable descriptor in libexec/contracts/user-updates.json. The complete license
-is retained as libexec/contracts/LICENSE and accompanies offline imported copies.
+portable descriptor in libexec/contracts/user-updates/user-updates.json. The complete license
+is retained as libexec/contracts/user-updates/LICENSE and accompanies offline imported copies.
 Source is available in packages/user-updates at https://github.com/jiggy/jig.
 
 EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED

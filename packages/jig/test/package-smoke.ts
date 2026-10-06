@@ -59,8 +59,18 @@ const expectedInstalledFiles = [
   'libexec/markdown-runtime.js',
   'libexec/http-request-worker.js',
   'libexec/flow.LICENSE',
-  'libexec/contracts/user-updates.json',
-  'libexec/contracts/LICENSE',
+  'libexec/contracts/user-updates/user-updates.json',
+  'libexec/contracts/user-updates/LICENSE',
+  ...['agent-run', 'project-command', 'http-request', 'run-checkpoint', 'finite-acp'].flatMap(
+    (name) => [`libexec/contracts/${name}/contract.json`, `libexec/contracts/${name}/LICENSE`],
+  ),
+  'libexec/contracts/agent-run/contracts/acp-public-updates.json',
+  'libexec/contracts/agent-run/contracts/agent-commands.json',
+  'libexec/contracts/agent-run/contracts/agent-replies.json',
+  'libexec/contracts/finite-acp/requests.json',
+  'libexec/contracts/finite-acp/responses.json',
+  'libexec/contracts/acp-public-updates/acp-public-updates.json',
+  'libexec/contracts/acp-public-updates/LICENSE',
   'libexec/agent/codex-acp.LICENSE',
   'libexec/agent/codex-acp.js',
   'libexec/agent/codex-agent-launcher.js',
@@ -273,17 +283,54 @@ try {
   assert.equal(targets.stdout, '')
   assert.equal(targets.stderr, '')
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
-  await run([command, 'import-contract', 'builtin:user-updates', 'imported-updates'], consumer)
+  await run([command, 'import-contract', 'jig:user-updates', 'imported-updates'], consumer)
   assert.deepEqual(
     await readFile(join(consumer, 'imported-updates/user-updates.json')),
-    await readFile(join(installed, 'libexec/contracts/user-updates.json')),
+    await readFile(join(installed, 'libexec/contracts/user-updates/user-updates.json')),
   )
   assert.deepEqual(
     await readFile(join(consumer, 'imported-updates/LICENSE')),
-    await readFile(join(installed, 'libexec/contracts/LICENSE')),
+    await readFile(join(installed, 'libexec/contracts/user-updates/LICENSE')),
   )
   await assert.rejects(
-    run([command, 'import-contract', 'builtin:user-updates', 'imported-updates'], consumer),
+    run([command, 'import-contract', 'jig:user-updates', 'imported-updates'], consumer),
+  )
+  const catalog = await run([command, 'import-contract', '--list'], consumer)
+  assert(catalog.stdout.includes('jig:user-updates'))
+  for (const name of [
+    'agent-run',
+    'project-command',
+    'http-request',
+    'run-checkpoint',
+    'finite-acp',
+    'acp-public-updates',
+  ]) {
+    assert(catalog.stdout.includes(`jig:${name}`))
+    const destination = `imported-${name}`
+    await run([command, 'import-contract', `jig:${name}`, destination], consumer)
+    const compare = async (relative: string) =>
+      assert.deepEqual(
+        await readFile(join(consumer, destination, relative)),
+        await readFile(join(installed, 'libexec/contracts', name, relative)),
+      )
+    await compare(name === 'acp-public-updates' ? 'acp-public-updates.json' : 'contract.json')
+    await compare('LICENSE')
+    if (name === 'agent-run')
+      for (const file of ['acp-public-updates.json', 'agent-commands.json', 'agent-replies.json'])
+        await compare(`contracts/${file}`)
+    if (name === 'finite-acp')
+      for (const file of ['requests.json', 'responses.json']) await compare(file)
+  }
+  await run([command, 'new', 'standard-agent', '--use', 'agent=jig:agent-run'], greeting)
+  assert.deepEqual(
+    JSON.parse(await readFile(join(greeting, 'flows/standard-agent/FLOW.meta.json'), 'utf8')).uses,
+    { agent: { contract: './contracts/agent/contract.json' } },
+  )
+  assert.deepEqual(
+    await readFile(
+      join(greeting, 'flows/standard-agent/contracts/agent/contracts/agent-commands.json'),
+    ),
+    await readFile(join(installed, 'libexec/contracts/agent-run/contracts/agent-commands.json')),
   )
 
   // Ordinary installed authoring must work without acquiring the execution host
@@ -578,7 +625,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
       }),
     )
     await run(
-      [command, 'import-contract', 'builtin:user-updates', 'flows/hello/contracts/user-updates'],
+      [command, 'import-contract', 'jig:user-updates', 'flows/hello/contracts/user-updates'],
       project,
     )
     await writeFile(
@@ -632,13 +679,13 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     assert.deepEqual(JSON.parse(automatic.stdout).output, { allocations: 16 })
     assert.match(
       automatic.stderr,
-      /Flow update \[updates\]: Checking invoices\n {2}Flow update \[updates\]: Verification remains pending\./,
+      /Flow: Checking invoices\n {2}Flow: Verification remains pending\./,
     )
     for (const options of [['--updates', 'off'], ['--json']]) {
       const quiet = await terminal([...common, ...options])
       assert.equal(quiet.code, 0)
       assert.equal(quiet.stdout, ordinary.stdout)
-      assert.doesNotMatch(quiet.stderr, /Flow update \[updates\]/)
+      assert.doesNotMatch(quiet.stderr, /Flow:/)
     }
     const explicit = await terminal([
       'run',
@@ -660,7 +707,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     assert.equal(records.at(-1).type, 'terminal')
     assert.equal(records.filter((record) => record.type === 'terminal').length, 1)
     assert(records.some((record) => record.type === 'data' && record.value.kind === 'notice'))
-    assert.doesNotMatch(explicit.stderr, /Flow update \[updates\]/)
+    assert.doesNotMatch(explicit.stderr, /Flow:/)
     const failed = await terminal([
       'run',
       'flow:flows/hello',

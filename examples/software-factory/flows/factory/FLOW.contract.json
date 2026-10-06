@@ -19,6 +19,12 @@
               "maxLength": 32,
               "description": "Distinct lowercase job ID; the Flow validates the allowed characters."
             },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "description": "Optional human-readable job name. The Flow checks that it is a single line without control or formatting characters."
+            },
             "directory": {
               "type": "string",
               "maxLength": 256,

@@ -142,7 +142,7 @@ async function runWithEnvironment(
   if (!privateCliRequiresHost(arguments_)) {
     return exit(
       await main(arguments_, {
-        builtinContractDirectory: join(releaseRoot, 'libexec/contracts'),
+        standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
         ...(signal === undefined ? {} : { signal }),
         ...(arguments_[0] !== 'inspect'
           ? {}

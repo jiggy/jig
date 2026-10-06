@@ -22,6 +22,18 @@ function isObject(value: JsonValue | undefined): value is { readonly [key: strin
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** Show bounded scalar answers alongside a packet's large nested evidence. */
+function briefOutput(value: JsonValue): JsonValue | undefined {
+  if (!isObject(value)) return undefined
+  const brief: Record<string, JsonValue> = Object.create(null)
+  for (const [key, field] of Object.entries(value)) {
+    if (field !== null && typeof field === 'object') continue
+    if (Object.keys(brief).length === 8) break
+    if (JSON.stringify({ ...brief, [key]: field }).length <= 2_048) brief[key] = field
+  }
+  return Object.keys(brief).length ? brief : undefined
+}
+
 /** Only interactive stdout uses this view; machine records bypass it completely. */
 export class PrivateCliRunPresentation {
   #channel: string | undefined
@@ -99,6 +111,8 @@ export class PrivateCliRunPresentation {
       packetWritten &&
       record.output !== undefined &&
       JSON.stringify(record.output).length > 2_048
+    const brief =
+      applicationOutputStored && isObject(record) ? briefOutput(record.output!) : undefined
     // These are host envelope facts only. Application text and field names
     // cannot establish execution, acceptance, delivery or cleanup success.
     if (isObject(record)) {
@@ -120,7 +134,12 @@ export class PrivateCliRunPresentation {
             summary.push(`  Delivered files: ${record.delivery.files.length}.`)
         }
       }
-      if (applicationOutputStored) summary.push('  Application output: see result.json.')
+      if (applicationOutputStored)
+        summary.push(
+          brief === undefined
+            ? '  Application output: see result.json.'
+            : '  Application output: brief fields below; full evidence in result.json.',
+        )
       if (isObject(record.cleanup) && record.cleanup.status === 'failed')
         summary.push('  Cleanup: not confirmed. Do not start replacement work yet.')
       if (isObject(record.checkpoint))
@@ -151,7 +170,10 @@ export class PrivateCliRunPresentation {
       if (record.status === 'succeeded' && packetWritten) {
         delete details.checkpoint
         delete details.files
-        if (applicationOutputStored) delete details.output
+        if (applicationOutputStored) {
+          if (brief === undefined) delete details.output
+          else details.output = brief
+        }
       }
       const remaining = (
         value: JsonValue,

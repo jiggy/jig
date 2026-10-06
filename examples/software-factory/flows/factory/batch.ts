@@ -14,6 +14,7 @@ import {
   writeRepairDeliverables,
 } from './files.ts'
 import { candidates, methods } from './methods.ts'
+import { factoryReport, jobLabel, jobReport, repairActivity } from './presentation.ts'
 
 const repairProgressSchema = {
   type: 'object',
@@ -27,6 +28,7 @@ const repairProgressSchema = {
 
 interface Job {
   id: string
+  label?: string
   directory: string
   checks: string
   issue: string
@@ -49,12 +51,24 @@ export function batchJobs(value: unknown): Job[] {
       !job ||
       Object.keys(job).some(
         (k) =>
-          !['id', 'directory', 'checks', 'issue', 'editPaths', 'method', 'cancelAfterMs'].includes(
-            k,
-          ),
+          ![
+            'id',
+            'label',
+            'directory',
+            'checks',
+            'issue',
+            'editPaths',
+            'method',
+            'cancelAfterMs',
+          ].includes(k),
       ) ||
       typeof job.id !== 'string' ||
       !/^[a-z][a-z0-9-]{0,31}$/.test(job.id) ||
+      (job.label !== undefined &&
+        (typeof job.label !== 'string' ||
+          !job.label.trim() ||
+          [...job.label].length > 80 ||
+          /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(job.label))) ||
       typeof job.directory !== 'string' ||
       job.directory.length > 256 ||
       !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(job.directory) ||
@@ -114,6 +128,10 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
   const retainedFiles: Record<string, string> = Object.create(null)
   let sequence = 0
   let saves = Promise.resolve()
+  const active = new Set<string>()
+  const clearJob = (jobId: string) => {
+    if (active.delete(jobId)) updates.clear(`job:${jobId}`)
+  }
   // Job IDs are unique for this Run. Child callbacks are joined before the
   // parent clears their slots; attempts are labels, never completed-work counts.
   const publishPhase = (
@@ -123,9 +141,11 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
     extra: { method?: 'p1' | 'p2' } = {},
   ) => {
     run.signal.throwIfAborted()
+    const job = jobs.find((job) => job.id === jobId)!
+    active.add(jobId)
     updates.activity(
       `job:${jobId}`,
-      `${jobId}: ${phase}${attempt ? ` attempt ${attempt}` : ''}${extra.method ? ` (${extra.method})` : ''}`,
+      repairActivity(job, phase, attempt, extra.method === 'p1' ? 1 : 2),
     )
   }
   const invokeRepair = async (
@@ -158,7 +178,9 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
             value.attempt > 2 ||
             Object.keys(value).some((key) => key !== 'phase' && key !== 'attempt')
           ) {
-            updates.notice(`${jobId}: child activity unavailable (contract violation).`)
+            updates.notice(
+              `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Live repair updates were invalid. The repair result will still be checked.`,
+            )
             break
           }
           publishPhase(
@@ -177,10 +199,12 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
           !['LAGGED', 'DISCONNECTED', 'OWNER_CLOSED', 'INVALID_INPUT'].includes(error.code)
         )
           throw error
-        updates.notice(`${jobId}: child activity observation ended (${error.code}).`)
+        updates.notice(
+          `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Live repair updates stopped (${error.code}). The repair result will still be checked.`,
+        )
       } finally {
         observing = false
-        updates.clear(`job:${jobId}`)
+        clearJob(jobId)
       }
     })()
     // The child may still be working when its observation fails. Keep the
@@ -226,6 +250,7 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         : { mode: 'automatic', input: routingInput }
       const captured = {
         id: job.id,
+        ...(job.label === undefined ? {} : { label: job.label }),
         directory: job.directory,
         baseDigest: identity(input.files),
         acceptanceDigest: identity(input.cases),
@@ -353,15 +378,10 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
               files,
             },
           })
-          updates.clear(`job:${result.id}`)
+          clearJob(result.id)
           updates.notice(
-            `${result.id}: checkpoint retained; ${'ready' in result && result.ready ? 'review-ready' : result.status === 'unrouted' ? 'unrouted' : 'unsuccessful'}.`,
+            `${jobReport(result as unknown as JsonValue)}\n  Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).`,
           )
-          updates.activity('batch', 'Retaining settled job evidence', {
-            completed: settled.length,
-            total: jobs.length,
-            unit: 'jobs',
-          })
         })
         saves = saving
         await saving
@@ -378,7 +398,6 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
     return result.value
   })
   run.signal.throwIfAborted()
-  updates.clear('batch')
   const overlaps = patchConflicts(changes)
   const ready =
     results.every((r) => 'ready' in r && r.ready) && !overlaps.some((o) => o.conflicting)
@@ -391,7 +410,17 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         .join('\n'),
     { flag: 'wx' },
   )
-  return { outcome: ready ? 'done' : 'blocked', output: { jobs: results, overlaps } as JsonValue }
+  return {
+    outcome: ready ? 'done' : 'blocked',
+    output: {
+      summary: factoryReport(
+        results as unknown as JsonValue[],
+        overlaps.some((overlap) => overlap.conflicting),
+      ),
+      jobs: results,
+      overlaps,
+    } as JsonValue,
+  }
 }
 
 function summary(value: JsonValue): string {
@@ -415,6 +444,7 @@ function summary(value: JsonValue): string {
     job.routing.slot ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
   const mode = job.routing.mode === 'explicit' ? 'explicit' : 'automatic'
   const lines = [
+    jobReport(value),
     `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing (${mode}): ${selection}`,
   ]
   if (route) lines.push(`  Reported routing reason: ${reportedText(route.output.reason)}`)

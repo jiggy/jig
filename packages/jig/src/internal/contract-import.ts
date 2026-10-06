@@ -3,7 +3,6 @@ import { constants } from 'node:fs'
 import { type FileHandle, lstat, open, realpath } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
 import { CHANNEL_CONTRACT_SCHEMA, parseChannelContract } from '../channel-contract.js'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
@@ -21,6 +20,7 @@ import {
   unlinkPrivateFile,
 } from './descriptor-files.js'
 import { privateFilePath } from './file-input.js'
+import { standardContract } from './standard-contracts.js'
 
 async function installedDescriptor(selector: string, destination: string): Promise<string> {
   let name: string
@@ -58,7 +58,7 @@ export async function importContract(
   source: string,
   destination: string,
   signal?: AbortSignal,
-  builtinDirectory?: string,
+  standardDirectory?: string,
 ): Promise<{ descriptor: string; files: number; digest: string; kind: 'channel' | 'invocation' }> {
   let root: FileHandle | undefined
   let parent: FileHandle | undefined
@@ -67,18 +67,18 @@ export async function importContract(
   let phase: 'source' | 'destination' = 'source'
   try {
     signal?.throwIfAborted()
-    const builtin = source.startsWith('builtin:')
-    if (builtin && source !== 'builtin:user-updates')
+    const standard = source.startsWith('jig:') ? standardContract(source) : undefined
+    if (source.startsWith('jig:') && standard === undefined)
       invalid(
         'CONTRACT_IMPORT_SOURCE',
-        'Select builtin:user-updates or a local descriptor.',
+        'Choose a Jig standard contract from jig import-contract --list.',
         source,
       )
-    const selected = builtin
+    const selected = standard
       ? resolve(
-          builtinDirectory ??
-            dirname(fileURLToPath(import.meta.resolve('@jigging/user-updates/user-updates.json'))),
-          'user-updates.json',
+          standardDirectory ?? fileURLToPath(new URL('../../libexec/contracts/', import.meta.url)),
+          standard.name,
+          standard.file,
         )
       : source.startsWith('npm:')
         ? await installedDescriptor(source, destination)
@@ -104,7 +104,7 @@ export async function importContract(
       !Array.isArray(decoded) &&
       (decoded as JsonObject).$schema === CHANNEL_CONTRACT_SCHEMA
     const references = standalone ? [] : invocationContractChannelPaths(descriptor, name)
-    const paths = [name, ...references, ...(builtin ? ['LICENSE'] : [])]
+    const paths = [name, ...references, ...(standard ? ['LICENSE'] : [])]
     if (new Set(paths).size !== paths.length)
       invalid('CONTRACT_IMPORT_INVALID', 'The descriptor cannot also be a channel agreement.')
     await captured.dispose()
@@ -119,13 +119,13 @@ export async function importContract(
     const contract = standalone
       ? parseChannelContract(descriptor, name)
       : parseInvocationContract(descriptor, name, documents)
-    if (builtin && contract.digest !== USER_UPDATES_CONTRACT.digest)
+    if (standard && contract.digest !== standard.digest)
       invalid(
         'CONTRACT_IMPORT_SOURCE',
-        'The installed user-updates agreement differs from the supported contract. Reinstall Jig.',
+        'The installed standard agreement differs from this Jig version. Reinstall Jig.',
         source,
       )
-    if (builtin) documents.set('LICENSE', await captured.read('LICENSE', 262_144))
+    if (standard) documents.set('LICENSE', await captured.read('LICENSE', 262_144))
     signal?.throwIfAborted()
 
     phase = 'destination'
