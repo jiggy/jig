@@ -27,6 +27,9 @@ operational baselines, and public-site assembly.
   and stops at the first failure. Other hosts report portable-only coverage;
   unsupported Macs refuse before building. This is not full host qualification.
   The full local command checks Just, Node and jq availability before building.
+  Before local tests, resolve and verify the selected real Node 22+ executable,
+  supplying compiler paths even when PATH uses a version-manager shim.
+  Preserve distinct operator compiler overrides and exclude ambient credentials.
   Package-local `jig::check` uses the same native pass after its build and tests.
 - `test-release.sh` includes the authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
@@ -164,7 +167,8 @@ operational baselines, and public-site assembly.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
 - `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive
-  native inventory, environment isolation and failure-preserving residue checks.
+  native inventory, real compiler selection and early refusal, environment
+  isolation and failure-preserving residue checks.
   Execute `just preflight` on a qualified native Mac after changing its runner.
 
 ## Child DOX Index

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { arch, platform, release } from 'node:os'
-import { basename, resolve } from 'node:path'
+import { basename, isAbsolute, resolve } from 'node:path'
 import { discoverJigTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
 
 const repository = resolve(import.meta.dir, '..')
@@ -62,6 +62,59 @@ export function testEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     'TERM',
   ]) {
     if (source[key] !== undefined) environment[key] = source[key]
+  }
+  return environment
+}
+
+type NodeProbe = (
+  selected: string,
+  environment: NodeJS.ProcessEnv,
+) => {
+  status: number | null
+  stdout: string
+}
+
+export function compilerEnvironment(
+  source: NodeJS.ProcessEnv,
+  probe: NodeProbe = (selected, environment) =>
+    spawnSync(
+      selected,
+      [
+        '-p',
+        'JSON.stringify({name:process.release.name,major:Number(process.versions.node.split(".")[0]),bun:!!process.versions.bun,executable:process.execPath})',
+      ],
+      { env: environment, encoding: 'utf8', timeout: 5000, maxBuffer: 4096 },
+    ),
+): NodeJS.ProcessEnv {
+  const environment = testEnvironment(source)
+  const resolved = new Map<string, string>()
+  for (const key of ['FLOW_NODE', 'JIG_AUTHORING_NODE_PATH']) {
+    const selected = source[key] || source.FLOW_NODE || 'node'
+    let executable = resolved.get(selected)
+    if (!executable) {
+      const result = probe(selected, environment)
+      let identity: { name?: unknown; major?: unknown; bun?: unknown; executable?: unknown } = {}
+      try {
+        identity = JSON.parse(result.stdout) ?? {}
+      } catch {}
+      if (
+        result.status !== 0 ||
+        identity.name !== 'node' ||
+        typeof identity.major !== 'number' ||
+        !Number.isInteger(identity.major) ||
+        identity.major < 22 ||
+        identity.bun !== false ||
+        typeof identity.executable !== 'string' ||
+        !isAbsolute(identity.executable)
+      ) {
+        throw Error(
+          `Local preflight requires real Node 22+; cannot resolve ${key} from ${selected}.`,
+        )
+      }
+      executable = identity.executable
+      resolved.set(selected, executable)
+    }
+    environment[key] = executable
   }
   return environment
 }
@@ -163,7 +216,6 @@ async function main() {
     })
   }
   const files = mac ? nativeTestFiles(await discoverJigTests(repository)) : []
-  const environment = testEnvironment(process.env)
   if (mode === 'all') {
     for (const tool of ['just', 'node', 'jq']) {
       if (!Bun.which(tool))
@@ -171,6 +223,10 @@ async function main() {
           `Local preflight requires ${tool} on PATH before building; install the repository development prerequisites.`,
         )
     }
+  }
+  const environment =
+    mac || mode === 'all' ? compilerEnvironment(process.env) : testEnvironment(process.env)
+  if (mode === 'all') {
     for (const recipe of ['jig::build', 'test-tooling', 'test']) {
       console.log(`Preflight: ${recipe}`)
       const status = execute(
