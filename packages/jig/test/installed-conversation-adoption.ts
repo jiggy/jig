@@ -13,7 +13,15 @@ export async function checkInstalledConversation(options: {
   methodArchive: string
 }) {
   const environment: NodeJS.ProcessEnv = {}
-  for (const key of ['PATH', 'HOME', 'TMPDIR', 'FLOW_NODE', 'JIG_AUTHORING_NODE_PATH']) {
+  for (const key of [
+    'PATH',
+    'HOME',
+    'TMPDIR',
+    'XDG_RUNTIME_DIR',
+    'DBUS_SESSION_BUS_ADDRESS',
+    'FLOW_NODE',
+    'JIG_AUTHORING_NODE_PATH',
+  ]) {
     if (process.env[key] !== undefined) environment[key] = process.env[key]
   }
   const evidence = `${options.directory}.commands`
