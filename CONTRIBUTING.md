@@ -25,7 +25,7 @@ applicable path's terms. Include third-party provenance and required notices.
 
 ### macOS
 
-Use **Bun 1.4.2**, Node 22 or newer, and Just 1.43.1. The Mac candidate's
+Use **Bun 1.4.2**, Node 22 or newer, Just 1.43.1, and jq. The Mac candidate's
 build checks the exact Bun version; the Linux Nix shell below pins a different
 qualified runtime and is not the Mac setup path.
 
@@ -171,7 +171,9 @@ just build                    # Both TypeScript packages
 just jig::build               # Jig only
 just flow::test                # SDK tests
 just jig::test                 # Jig tests
+just jig::check                # Build, package tests, and local native Mac regressions
 just test-tooling              # Shell and recipe wiring
+just preflight                 # Build, tooling, portable tests, and native Mac regressions
 just test-release              # Full unprivileged gate; needs FLOW_NODE and Python
 just jig::pack --destination /tmp/jig-artifacts
 ```
@@ -180,6 +182,16 @@ Each package also has a local justfile: `just build` in `packages/jig`
 builds Jig. Packing is explicit: `just jig::pack` or `just flow::pack`
 builds first and then packs. There is no automatic `prepack` hook.
 The release publisher still consumes already tested archives without rebuilding.
+
+Before pushing a review milestone, run `just preflight`. On an exact supported
+Mac it also runs every Mac-specific regression file in fresh sequential test
+processes and checks that host ownership residue is unchanged. Native tests
+need ordinary launchd and disk-image access, so an enclosing execution sandbox
+may refuse them. They require no installed Agent clients or model calls.
+Unsupported Macs refuse before building; other hosts report portable-only
+coverage. Complete Linux and Intel/Apple Silicon qualification remains in CI.
+Run this pass while other Jig work on the same host is idle so the residue
+comparison describes this test run.
 
 ## Biome
 

@@ -65,6 +65,20 @@ test('root and package justfiles parse on the supported task runner', async () =
   }
 })
 
+test('preflight is available from the root and package check includes native regression coverage', async () => {
+  const root = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'preflight'])
+  expect(root.code).toBe(0)
+  expect(root.stderr).toContain('bun scripts/preflight.ts')
+  const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::check'])
+  expect(jig.code).toBe(0)
+  expect(jig.stderr.indexOf('--outfile=libexec/installed-cli.js')).toBeLessThan(
+    jig.stderr.indexOf('bun test'),
+  )
+  expect(jig.stderr.indexOf('bun test')).toBeLessThan(
+    jig.stderr.indexOf('bun ../../scripts/preflight.ts native'),
+  )
+})
+
 test('module and root tasks preserve arguments and select their own working directory', async () => {
   await withFixture(async (directory, environment) => {
     const args = ['a path with spaces', '$(touch SHOULD_NOT_EXIST)', '; echo unsafe', '']
@@ -184,8 +198,12 @@ test('packing explicitly builds first and preserves the destination argument', a
   ])
   expect(result.code).toBe(0)
   expect(result.stderr).not.toContain('--compile')
-  expect(result.stderr.indexOf('Bun.version')).toBeLessThan(result.stderr.indexOf('bun scripts/native-support.mjs check'))
-  expect(result.stderr.indexOf('bun scripts/native-support.mjs check')).toBeLessThan(result.stderr.indexOf('await rm'))
+  expect(result.stderr.indexOf('Bun.version')).toBeLessThan(
+    result.stderr.indexOf('bun scripts/native-support.mjs check'),
+  )
+  expect(result.stderr.indexOf('bun scripts/native-support.mjs check')).toBeLessThan(
+    result.stderr.indexOf('await rm'),
+  )
   expect(result.stderr.indexOf('--outfile=libexec/installed-cli.js')).toBeLessThan(
     result.stderr.indexOf('bun scripts/pack.ts'),
   )

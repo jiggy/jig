@@ -82,7 +82,8 @@ verify-build-bun:
 @test *args:
     bun test "$@"
 
-check: build test
+@check: build test
+    bun ../../scripts/preflight.ts native
 
 # Build and test the installed package in a clean external consumer
 @test-package: build
