@@ -53,6 +53,22 @@ describe('private finite project session', () => {
     expect(closedTestErrorCauses(new Error('macOS volume info failed private token'))).toEqual([
       'Error',
     ])
+    const nativeFailure = Object.assign(new Error('private owner path'), {
+      name: 'PrivateMacosFenceUnconfirmedError',
+      cause: new AggregateError(
+        [
+          new Error('macOS guardian job is still present'),
+          Object.assign(new Error('synthetic bearer secret'), { code: 'EPERM' }),
+        ],
+        'private recovery directory',
+      ),
+    })
+    expect(closedTestErrorCauses(nativeFailure)).toEqual([
+      'PrivateMacosFenceUnconfirmedError',
+      'AggregateError',
+      'Error:MACOS_GUARDIAN_JOB_PRESENT',
+      'Error:EPERM',
+    ])
   })
 
   test('checkpoint attachment mistakes remain actionable candidate failures', () => {
