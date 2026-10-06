@@ -91,6 +91,9 @@ const WEIGHTS = new Map([
   ['codex-acp-dispatch.test.ts', 7],
   ['finite-acp-resource.test.ts', 9],
 ])
+// Intel's installed-consumer tail costs about 500s in retained qualification.
+// ARM's existing hint balances its faster source and installed work already.
+const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 500, arm64: 384 })
 const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
 
 export async function discoverJigTests(root) {
@@ -128,7 +131,8 @@ export function planMacHostTests(files, architecture) {
     groups: [],
     // Include native prerequisites in shard zero and the installed smoke tail
     // in the last shard. These costs must participate in balancing, too.
-    estimatedSeconds: (index === 0 ? 60 : 0) + (index === count - 1 ? 384 : 0),
+    estimatedSeconds:
+      (index === 0 ? 60 : 0) + (index === count - 1 ? INSTALLED_CONSUMER_WEIGHTS[architecture] : 0),
   }))
   const ordinary = files
     .filter((file) => !NATIVE_PREREQUISITE_TESTS.includes(file))
