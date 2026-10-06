@@ -15,8 +15,10 @@ host qualification. Host preparation never becomes a consumer requirement.
   digest rechecks, an ordinary npm install on the native architecture,
   sequential native tests, installed-consumer checks, and
   comparison of owned host residue before and after qualification. Its full
-  mode remains the self-hosted entrypoint; hosted `--shard 0..4` runs one
-  isolated portion of the same complete suite.
+  mode remains the self-hosted entrypoint; hosted `--shard` runs one isolated
+  portion of the same complete suite: three Intel or two Apple Silicon shards.
+  Shard zero runs native prerequisites and the final shard runs installed
+  consumer and genuine-client checks on each architecture.
 - `macos-host-test-shards.mjs` discovers every Jig test file. Eight native
   prerequisite files run once in the dedicated containment step on shard zero;
   every other file enters hosted qualification. The root Agent lifecycle and
@@ -24,14 +26,23 @@ host qualification. Host preparation never becomes a consumer requirement.
   catch-all coverage for future cases. All remaining files enter once. Schedule
   these groups together using advisory command timings; timing hints affect
   balance, never membership. Each group runs in a fresh Bun process, sequentially
-  within its shard, to isolate test state. Hosted shards retain per-test JUnit
-  timing artifacts and per-group command wall times. Balance includes native prerequisites
+  within its shard, to isolate test state. Hosted shards retain their exact
+  architecture/count/group plan, per-test JUnit artifacts (including installed
+  client startup) and per-group command wall times. Balance includes native prerequisites
   and installed-consumer work. Reconcile slow-file and out-of-file estimates
   against retained command wall times; runner queue order is not guaranteed.
   Run expensive lifecycle groups before portable
   checks to expose failures earlier without reducing membership.
   Bun exits each test process on its first failure so a failed case does not
   wait for the remaining expensive scenarios before the matrix can stop.
+- `macos-host-summary.py` consumes only retained JSON/JUnit evidence. It
+  requires all exact-revision shard markers, matching plans, complete successful
+  reports and disjoint executed name groups. Nested JUnit cases determine
+  executed coverage; filtered and platform/opt-in skips are reported separately.
+  Packed CLI probes, archive identity and zero-residue proof remain required
+  through the shard completion markers. Optional GitHub job timestamps separate
+  runner wait from job execution; missing timing cannot establish or remove
+  qualification. Summaries and per-shard evidence remain architecture-specific.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `npm-candidate-preflight.mjs` checks a frozen candidate's source revision,
   digest and manifest, then compares any existing exact public npm version's
@@ -70,6 +81,9 @@ host qualification. Host preparation never becomes a consumer requirement.
   Mac file assignment, disjoint lifecycle and package name groups, balanced scheduling
   of a representative observed workload including out-of-file costs, and that every
   Linux hostile test file enters provisioned host conformance.
+- `node --test scripts/ci/macos-host-summary.test.mjs` exercises both architecture
+  aggregates, nested reports, installed-client evidence, duplicate execution,
+  missing/cancelled/stale proof and optional timing failures.
 - `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
   and identical versions, immutable collisions, registry errors and changed
   candidate evidence without credentials or registry mutations.

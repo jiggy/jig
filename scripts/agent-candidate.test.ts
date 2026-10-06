@@ -86,7 +86,36 @@ test('PRs start complete hosted Mac qualification and quick checks finish indepe
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
-  expect(mac.jobs.prerequisites.strategy.matrix.arch).toEqual(['x64', 'arm64'])
+  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(5)
+  const { MAC_HOST_SHARDS } = await import('./ci/macos-host-test-shards.mjs')
+  const entries = mac.jobs.prerequisites.strategy.matrix.include
+  expect(entries).toHaveLength(5)
+  for (const [arch, count] of Object.entries(MAC_HOST_SHARDS)) {
+    const selected = entries.filter((e: any) => e.arch === arch)
+    expect(selected.map((e: any) => e.shard).sort()).toEqual(
+      Array.from({ length: count }, (_, i) => i),
+    )
+    expect(selected.filter((e: any) => e.installed).map((e: any) => e.shard)).toEqual([count - 1])
+  }
+  expect(mac.jobs['qualified-architecture'].strategy.matrix.include).toEqual([
+    { arch: 'x64', count: MAC_HOST_SHARDS.x64 },
+    { arch: 'arm64', count: MAC_HOST_SHARDS.arm64 },
+  ])
+  expect(mac.jobs['qualified-architecture'].permissions).toEqual({
+    contents: 'read',
+    actions: 'read',
+  })
+  const summary = mac.jobs['qualified-architecture'].steps.find((s: any) =>
+    s.run?.includes('macos-host-summary.py'),
+  )
+  expect(summary.if).toBe('always()')
+  expect(summary.env.SHARD_COUNT).toBe('${{ matrix.count }}')
+  expect(summary.run).toContain('>> "$GITHUB_STEP_SUMMARY"')
+  expect(
+    mac.jobs.prerequisites.steps.find(
+      (s: any) => s.name === 'Prepare genuine pinned clients for offline startup',
+    ).if,
+  ).toBe('matrix.installed')
   expect(mac.concurrency['cancel-in-progress']).toContain("github.ref != 'refs/heads/main'")
   for (const job of ['quick-checks', 'sites', 'source-tests', 'npm-candidate']) {
     expect(ci.jobs[job].needs).toBeUndefined()
