@@ -12,6 +12,10 @@ descriptors.
   setup cause/selection locations, and one dependency-network notice per review.
   Schema authoring recovery identifies the required dialect and supported
   vocabulary without exposing rejected values or private compiler diagnostics.
+  Command syntax accents omit Markdown delimiters; prompts wait for queued
+  progress. Compact reviews preserve changed facts and uncertainty while
+  unchanged reassurance belongs to details. Repeated ACP selections require
+  unchanged environment proof under identical recipient routes.
   Interrupted delivery retains confirmed terminal/checkpoint evidence, not
   unfinished final files; cleanup uncertainty and forced termination stay explicit.
 

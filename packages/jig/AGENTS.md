@@ -269,19 +269,29 @@ admitted FLOW packages.
   another shell; collect replies with portable array/read operations.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
-  Suggested actions use standalone `$ jig ...` commands; inline references retain
-  code delimiters and commands never wrap. Application data bypasses recognition.
+  Suggested actions use standalone `$ jig ...` commands. Help and host command
+  references omit Markdown backticks; command names, flags, placeholders and
+  argument literals use distinct syntax accents. Preserve quoting and never wrap
+  commands. Application data bypasses recognition.
+  Before any confirmation or answer prompt, pause progress and await its queued
+  output, then check cancellation. The question and answer share one line without
+  intervening stages or notices.
   Readiness status words carry green/amber emphasis without claiming execution.
   Activity phase changes append separate attributed indented lines; only host
   waiting owns a transient line. Clear events silently retire their slots;
   printed phases remain history, and application notices own job outcomes.
+  Complete notices have one Flow-attributed first line and indented continuation
+  lines; escape every payload line without recognizing it as host prose.
   Explicit notice severity is Flow-reported
   importance, never host outcome or guaranteed delivery.
   A heading must never have less emphasis than its subordinate details. Expanded
   unavailable-client labels use bold amber above normal-contrast setup instructions;
   the compact names-only unavailable summary remains secondary.
-  Separate unchanged prepared-file and dependency-layout explanations onto a
-  secondary gray line beneath the prominent explanation of what changed.
+  Unchanged source, prepared-file and dependency-layout reassurance belongs only
+  in `--details`. Keep the changed fact, environment uncertainty and approval
+  consequence visible in compact reviews. Omit repeated ACP selections only
+  after proving unchanged runtime identity under identical recipient routes;
+  unknown comparisons remain visible, and details always show selections.
   Dim executable paths and unchanged context; omit review categories with no
   changes from the ordinary summary. Changed-record labels and their identifiers
   use bold amber: they identify work requiring attention, not secondary metadata.

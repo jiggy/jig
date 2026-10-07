@@ -74,18 +74,47 @@ function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
 
 /** Host-authored command references; escaped values and block scalars never enter here. */
 function commandText(line: string): string {
+  if (/^Usage: jig /.test(line)) return line.replace(/^Usage: (.*)$/, 'Usage: `$1`')
   const catalog = /^( +)(jig .+?)( {2,}[A-Z][a-z].*)$/.exec(line)
   if (catalog) return `${catalog[1]}\`${catalog[2]}\`${catalog[3]}`
   if (/^\s*(?:\$ )?(?:jig |cd )/.test(line))
     return line.replace(/^(\s*)(?!\$ )(jig |cd )/, '$1$ $2')
   if (line.includes('"') || /^\s*(?:[+-] |[{}[\]])/.test(line)) return line
-  // Inline references retain code delimiters in plain output. Arguments are
+  // Temporary command spans identify syntax; delimiters are removed at rendering. Arguments are
   // limited to explicit flags, placeholders, selectors and shell-quoted words;
   // prose after the command is never turned into a command argument.
   return line.replace(
     /`[^`]*`|(?<![\w./:])jig (?:init|new|review|run|inspect|completion|import-contract|<command>)(?: (?:--[a-z][a-z-]*|<[^>\n]+>|'(?:[^']|'"'"')*'|(?:binding|flow|npm):[^\s,;().]+))*/g,
     (command) => (command.startsWith('`') ? command : `\`${command}\``),
   )
+}
+
+/** Shell quoting is retained; only trusted command syntax receives accents. */
+function commandSyntax(text: string, color: boolean, env: NodeJS.ProcessEnv): string {
+  if (!color) return text
+  let word = 0
+  let optional = 0
+  let program: string | undefined
+  return text.replace(/'[^']*'|"(?:\\.|[^"\\])*"|<[^>]+>|\[|\]|[^\s[\]]+/g, (token) => {
+    if (token === '[') optional++
+    if (token === ']') optional--
+    if (token === '$' || token === '[' || token === ']') return privateCliSecondary(token, true)
+    const index = word++
+    if (index === 0) program = token
+    const role: SyntaxRole = token.startsWith('--')
+      ? 'literal'
+      : token.startsWith('<') ||
+          /^[A-Z][A-Z0-9|@=:_-]+$/.test(token) ||
+          (optional > 0 && !token.startsWith("'") && !token.startsWith('"'))
+        ? 'number'
+        : (index === 0 || (index === 1 && program === 'jig')) &&
+            !token.startsWith("'") &&
+            !token.startsWith('"')
+          ? 'key'
+          : 'string'
+    const emphasis = index <= 1 && role === 'key' ? '1;' : ''
+    return `\u001b[${emphasis}${syntaxColor(role, env)}m${token}\u001b[0m`
+  })
 }
 
 /** Style only trusted human text; machine records and live diagnostics bypass this. */
@@ -131,7 +160,13 @@ export function privateCliHumanText(
             color,
           )
       } else if (color) {
-        if (/^\s*\$ /.test(line)) rendered = `\u001b[1;36m${line}\u001b[0m`
+        if (/^\s*\$ /.test(line)) rendered = commandSyntax(line, true, env)
+        else if (/^\s+--[a-z]/.test(line))
+          rendered = wrapped.replace(
+            /^(\s*)(--[a-z-]+)(?: (JSON\|@FILE|NAME=DIR|NAME=FILE|[A-Z][A-Z0-9|@=:_-]+|off))?/,
+            (_match, indent: string, flag: string, value?: string) =>
+              `${indent}\u001b[${syntaxColor('literal', env)}m${flag}\u001b[0m${value === undefined ? '' : ` \u001b[${syntaxColor(value === 'off' ? 'string' : 'number', env)}m${value}\u001b[0m`}`,
+          )
         else if (/^ {2}"(?:[^"\\]|\\.)*" - (?:ready|unavailable)$/.test(line))
           rendered = line.replace(/(ready|unavailable)$/, (status) =>
             privateCliHeading(status, status === 'ready' ? 'success' : 'warning', true),
@@ -187,10 +222,9 @@ export function privateCliHumanText(
           }`
         } else rendered = highlightPolicy(wrapped, env)
       }
-      if (color && !/^\s*\$ /.test(line) && !line.includes('"'))
-        rendered = rendered.replace(
-          /`jig [^`\n]+`/g,
-          (command) => `\u001b[1;36m${command}\u001b[0m`,
+      if (!/^\s*\$ /.test(line) && !line.includes('"'))
+        rendered = rendered.replace(/`((?:jig|cd) [^`\n]+)`/g, (_span, command: string) =>
+          commandSyntax(command, color, env),
         )
       // Width is supplied only for a terminal. Plain terminal mode keeps the same
       // spatial hierarchy; redirected text retains its compact, complete transcript.

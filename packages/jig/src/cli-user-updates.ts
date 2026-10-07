@@ -100,13 +100,7 @@ export class PrivateCliUserUpdates {
             value.severity === 'error' || value.severity === 'warning'
               ? `  ${privateCliHeading(`${attribution}-reported ${value.severity}:`, value.severity, this.color())}\n`
               : ''
-          const text =
-            importance +
-            privateUpdateText(value.text)
-              .split('\n')
-              .map((line) => `  ${attribution}: ${line}`)
-              .join('\n') +
-            '\n'
+          const text = importance + this.#message(attribution, privateUpdateText(value.text))
           if (
             this.#notices > limits.notices ||
             this.#noticeBytes > limits.noticeBytes ||
@@ -179,7 +173,20 @@ export class PrivateCliUserUpdates {
   }
 
   #label(slot: Slot): string {
-    return `${slot.attribution}: ${privateUpdateText(slot.value.label)}${this.#count(slot)}`
+    return `${privateCliHeading(`${slot.attribution}:`, 'info', this.color())} ${privateUpdateText(slot.value.label)}${this.#count(slot)}`
+  }
+
+  #message(attribution: string, text: string): string {
+    return (
+      text
+        .split('\n')
+        .map((line, index) =>
+          index === 0
+            ? `  ${privateCliHeading(`${attribution}:`, 'info', this.color())} ${line}`
+            : `    ${line}`,
+        )
+        .join('\n') + '\n'
+    )
   }
 
   #count(slot: Slot): string {

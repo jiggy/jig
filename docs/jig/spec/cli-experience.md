@@ -63,14 +63,18 @@ governed by that profile and [channels](channels.md).
    departed stage complete. Update waiting time in place, not by appending
    unchanged messages. Report the known wait reason; never invent percentages,
    estimated completion times, or internal Flow stages. Finish or suspend the
-   active line before prompts, notices, streamed diagnostics, or results.
+   active line before prompts, notices, streamed diagnostics, or results. Await
+   queued progress output before reading any answer so the answer remains beside
+   its question without intervening status output.
 3. **Consistent visual hierarchy.** Use bold task/section headings and final
    outcomes, green completion, amber warnings, and red failures. Text must
    carry every meaning independently of color or symbols. Use foreground colors
    without background fills; provide syntax palettes for light and dark terminals.
    Actual action commands and examples use standalone `  $ jig ...` (or `cd`)
-   lines with bold accent color when enabled; the prompt prefix remains in plain
-   output. Inline command references use visible code delimiters. Commands never
+   lines when enabled; the prompt prefix remains in plain output. Command names
+   use bold syntax accents, flags, placeholders and argument literals have distinct
+   accents, and punctuation is secondary. Help and host command references omit
+   Markdown backticks. Commands never
    wrap, shell quoting remains exact, and examples with placeholders are labelled
    templates. Recognize commands only in host prose, never application data.
    Target readiness retains explicit words, green for ready and amber for unavailable;
@@ -85,10 +89,14 @@ governed by that profile and [channels](channels.md).
    detail notes, executable paths, and unchanged context. Changed-record labels,
    including their identifiers, use bold amber to draw attention to changed work.
    Omit review categories with no changes from the ordinary summary. ACP selections
-   are omitted only when the matching retained and proposed ready targets have
-   identical request, recipe and observation identities. New, changed or unknown
-   execution identity keeps current selections visible; `--details` always shows
-   them. A combined mismatch cannot identify which environment component changed.
+   are omitted only when matching ready targets prove unchanged runtime identity
+   under identical recipient routes. Identical request, recipe and observation
+   identities provide that proof directly; changed source requires both retained
+   identities to match recomputation under the current authenticated environment.
+   New, changed or unknown environments keep current selections visible;
+   `--details` always shows them. This presentation comparison neither approves
+   nor authorizes execution. A combined mismatch cannot identify which environment
+   component changed.
    Keep permission consequences, changed policy values, failures,
    and next actions at normal or emphasized contrast. Gray never hides content
    or substitutes for labels, spacing, or explicit status words.
@@ -148,8 +156,8 @@ governed by that profile and [channels](channels.md).
    context to reconstruct both complete public values from its diff.
    When retained execution or a selected child changes but public target fields
    do not, identify the changed execution environment, prepared files, or child
-   selection and explain what approval authorizes. State when source, dependencies,
-   settings and permissions are unchanged. A combined environment fingerprint does
+   selection and explain what approval authorizes. Unchanged source, dependencies,
+   settings and permission reassurance appears only in `--details`. A combined environment fingerprint does
    not identify individual old components; disclose this limitation rather than
    inventing a component diff. Never substitute an opaque "retained identity"
    label or identical before/after blocks for an explanation.

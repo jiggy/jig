@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test'
 import { type JsonValue, OperationError } from '@jigging/flow'
 import { batchJobs } from '../flows/factory/batch.ts'
-import { factoryReport, jobReport, repairActivity } from '../flows/factory/presentation.ts'
+import { factoryReport, jobPlan, jobReport, repairActivity } from '../flows/factory/presentation.ts'
+import { observedChecks, readRepairProgress } from '../flows/repair/progress.ts'
 import { repair } from '../flows/repair/repair.ts'
-import { input, recorded } from './fixture.ts'
+import { input, recorded, syntheticRepair } from './fixture.ts'
 
 const job = {
   id: 'logs',
@@ -144,4 +145,99 @@ test('partial failure summaries keep the original batch size and do not claim fi
   expect(summary).toContain('Observed outcomes are available for 1 of 2 jobs')
   expect(summary).not.toContain('files/first/review.patch')
   expect(summary).not.toContain('Saved job summaries')
+})
+
+test('job goals and independently verified checks remain understandable without live updates', () => {
+  const plan = jobPlan({ ...job, method: 'p2' }, input)
+  expect(plan).toContain('Requested goal: "Reject fractional')
+  expect(plan).toContain('with one correction if needed')
+  expect(plan).toContain('4 independent CLI cases')
+  const report = factoryReport(
+    [
+      {
+        ...job,
+        status: 'settled',
+        ready: true,
+        verification: {
+          proposal: 1,
+          changedPaths: ['src/parse.ts'],
+          acceptanceCases: input.cases.map((c) => c.id),
+        },
+      },
+    ],
+    false,
+  )
+  expect(report).toContain('Requested goal: "Repair defects."')
+  expect(report).toContain('4/4 independent acceptance cases passed (proposal 1)')
+  expect(report).toContain('Changed files: "src/parse.ts"')
+  expect(report).toContain('Review files/logs/review.patch')
+  expect(report).not.toContain('goal achieved')
+})
+
+test('reported commands and expected rejection cases are facts, not shell instructions or generic failures', () => {
+  const evaluation = {
+    candidateDigest: 'synthetic',
+    accepted: true,
+    repositoryTestsPassed: true,
+    acceptance: [{ id: 'reject-bad-minute', passed: true }],
+    commands: [
+      { invocation: ['bun', 'test', 'test/project.test.ts'] },
+      { invocation: ['bun', 'src/cli.ts'], exitCode: 2 },
+    ],
+  }
+  const text = observedChecks(evaluation as any, 1, 2)
+  expect(text).toContain('1/1 passed')
+  expect(text).toContain('Passing cases: "reject-bad-minute"')
+  expect(text).toContain('independent factory verification')
+  expect(text).not.toContain('command error')
+  for (const malformed of [
+    { phase: 'command', attempt: 0 },
+    { phase: 'observed', attempt: 0, detail: 'x'.repeat(2049) },
+    { phase: 'command', attempt: 0, detail: 'ok', authority: true },
+  ])
+    expect(() => readRepairProgress(malformed)).toThrow()
+  expect(
+    readRepairProgress({ phase: 'command', attempt: 0, detail: 'logical tests slot' }).phase,
+  ).toBe('command')
+})
+
+test('blocking proposal causes remain visible when live updates are disabled', async () => {
+  const rejected = await repair({
+    input,
+    settings: { maxProposals: 1 },
+    signal: new AbortController().signal,
+    channels: {},
+    call: async (call) => {
+      if (call.slot === 'agent')
+        return {
+          outcome: 'done',
+          output: {
+            text: 'A proposed change.',
+            structured: {
+              summary: 'A proposed change.',
+              replacements: [{ path: 'README.md', content: 'Unapproved change.' }],
+            },
+          },
+        }
+      const request = call.input as { files: Record<string, string>; args: string[]; stdin: string }
+      return {
+        outcome: 'done',
+        output: recorded(call.slot, request.files, request.args, request.stdin, false),
+      }
+    },
+  })
+  const checked = (await syntheticRepair(1, true)).result
+  for (const [result, cause] of [
+    [rejected, 'The proposal changes an unapproved file.'],
+    [checked, 'mismatched acceptance cases:'],
+  ] as const) {
+    expect(result.outcome).toBe('blocked')
+    const report = factoryReport(
+      [{ ...job, status: 'settled', ready: false, result } as JsonValue],
+      false,
+    )
+    expect(report).toContain(cause)
+    expect(report).not.toContain('Review files/logs/review.patch')
+    expect(JSON.stringify({ summary: report }).length).toBeLessThanOrEqual(2048)
+  }
 })

@@ -4,6 +4,7 @@ import { type JsonValue, OperationError, type RunContext, type RunResult } from 
 import { type UserUpdates, withUserUpdates } from '@jigging/user-updates'
 import { checkRoutingResult } from 'semantic-router-flow/decision'
 import type { RepairInput } from '../repair/policy.ts'
+import { type RepairPhase, readRepairProgress, repairProgressSchema } from '../repair/progress.ts'
 import { checkName, loadChecks } from './checks.ts'
 import {
   identity,
@@ -14,17 +15,7 @@ import {
   writeRepairDeliverables,
 } from './files.ts'
 import { candidates, methods } from './methods.ts'
-import { factoryReport, jobLabel, jobReport, repairActivity } from './presentation.ts'
-
-const repairProgressSchema = {
-  type: 'object',
-  properties: {
-    phase: { type: 'string', enum: ['baseline', 'proposal', 'check', 'finished'] },
-    attempt: { type: 'integer', minimum: 0, maximum: 2 },
-  },
-  required: ['phase', 'attempt'],
-  additionalProperties: false,
-} as const
+import { factoryReport, jobLabel, jobPlan, jobReport, repairActivity } from './presentation.ts'
 
 interface Job {
   id: string
@@ -123,6 +114,12 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         await loadChecks(job.checks, import.meta.dir),
       ),
     })
+  updates.notice(
+    [
+      `Software factory: ${jobs.length} requested ${jobs.length === 1 ? 'repair' : 'repairs'}. Each patch is checked separately and saved for human review.`,
+      ...prepared.map(({ job, input }) => jobPlan(job, input)),
+    ].join('\n\n'),
+  )
   const changes: { job: string; path: string; content: string }[] = []
   const observed: Record<string, JsonValue> = Object.create(null)
   const retained: Record<string, JsonValue> = Object.create(null)
@@ -137,16 +134,17 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
   // parent clears their slots; attempts are labels, never completed-work counts.
   const publishPhase = (
     jobId: string,
-    phase: 'selecting' | 'invoking' | 'baseline' | 'proposal' | 'check' | 'finished',
+    phase: 'selecting' | 'invoking' | RepairPhase,
     attempt: number,
     extra: { method?: 'p1' | 'p2' } = {},
+    detail?: string,
   ) => {
     run.signal.throwIfAborted()
     const job = jobs.find((job) => job.id === jobId)!
     active.add(jobId)
     updates.activity(
       `job:${jobId}`,
-      repairActivity(job, phase, attempt, extra.method === 'p1' ? 1 : 2),
+      repairActivity(job, phase, attempt, extra.method === 'p1' ? 1 : 2, detail),
     )
   }
   const invokeRepair = async (
@@ -165,33 +163,32 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
     let observing = true
     const forwarding = (async () => {
       try {
-        for await (const value of pair.receive) {
+        for await (const raw of pair.receive) {
           if (!observing) break
-          if (
-            value === null ||
-            typeof value !== 'object' ||
-            Array.isArray(value) ||
-            typeof value.phase !== 'string' ||
-            !['baseline', 'proposal', 'check', 'finished'].includes(value.phase) ||
-            typeof value.attempt !== 'number' ||
-            !Number.isSafeInteger(value.attempt) ||
-            value.attempt < 0 ||
-            value.attempt > 2 ||
-            Object.keys(value).some((key) => key !== 'phase' && key !== 'attempt')
-          ) {
+          let value: ReturnType<typeof readRepairProgress>
+          try {
+            value = readRepairProgress(raw)
+          } catch {
             updates.notice(
               `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Live repair updates were invalid. The repair result will still be checked.`,
             )
             break
           }
-          publishPhase(
-            jobId,
-            value.phase as 'baseline' | 'proposal' | 'check' | 'finished',
-            value.attempt,
-            {
-              method: method.id,
-            },
-          )
+          if (value.phase === 'observed' || value.phase === 'rejected')
+            updates.notice(
+              `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Worker report\n${value.detail}`,
+              value.phase === 'rejected' ? 'warning' : 'info',
+            )
+          else
+            publishPhase(
+              jobId,
+              value.phase,
+              value.attempt,
+              {
+                method: method.id,
+              },
+              value.detail,
+            )
         }
       } catch (error) {
         run.signal.throwIfAborted()
@@ -253,6 +250,8 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         id: job.id,
         ...(job.label === undefined ? {} : { label: job.label }),
         directory: job.directory,
+        issue: input.issue,
+        editPaths: input.editPaths,
         baseDigest: identity(input.files),
         acceptanceDigest: identity(input.cases),
         routing,
@@ -344,6 +343,23 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         ...captured,
         status: 'settled',
         ready: checked.ready,
+        ...(checked.ready
+          ? {
+              verification: {
+                proposal: (result.output as any).attempts.length,
+                changedPaths: (result.output as any).attempts
+                  .at(-1)
+                  .proposal.replacements.filter(
+                    (file: { path: string; content: string }) =>
+                      input.files[file.path] !== file.content,
+                  )
+                  .map((file: { path: string }) => file.path),
+                acceptanceCases: (result.output as any).attempts
+                  .at(-1)
+                  .evaluation.acceptance.map((entry: { id: string }) => entry.id),
+              },
+            }
+          : {}),
         result,
       }
     })
@@ -354,7 +370,11 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         clearJob(result.id)
         updates.notice(
           'ready' in result && result.ready
-            ? `${jobLabel(result)}: A patch passed the checks; saving evidence for review.`
+            ? jobReport(result as unknown as JsonValue, false, {
+                goal: 200,
+                paths: 160,
+                deliveryPending: true,
+              })
             : jobReport(result as unknown as JsonValue, false),
           'ready' in result && result.ready ? 'info' : 'error',
         )
@@ -389,7 +409,7 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
             },
           })
           updates.notice(
-            `${'ready' in result && result.ready ? jobReport(result as unknown as JsonValue) + '\n  ' : jobLabel(result) + ': '}Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).`,
+            `${jobLabel(result)}: Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).${'ready' in result && result.ready ? `\n  Review files/${result.id}/review.patch before applying it.` : ''}`,
           )
         })
         saves = saving
@@ -475,7 +495,7 @@ function summary(value: JsonValue): string {
     job.routing.slot ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
   const mode = job.routing.mode === 'explicit' ? 'explicit' : 'automatic'
   const lines = [
-    jobReport(value),
+    jobReport(value, true, { goal: 200, paths: 160, includeReason: false }),
     `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing (${mode}): ${selection}`,
   ]
   if (route) lines.push(`  Reported routing reason: ${reportedText(route.output.reason)}`)

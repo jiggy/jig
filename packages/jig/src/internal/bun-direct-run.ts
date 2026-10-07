@@ -170,65 +170,20 @@ async function describePrivateBunDirectRun(
       `${request.packagePath}/${request.entrypoint.path}`,
     )
   }
-  const adapterDigest = privateDomainDigest('JIG-Private-Bun-Direct-Adapter/1', {
-    revision: ADAPTER_REVISION,
-    installedSupportDigest: installedSupport.digest,
-  })
   const support = await observeSupport()
-  const adapter = Object.freeze({ artifactDigest: adapterDigest, revision: ADAPTER_REVISION })
-  const backendIdentity = Object.freeze({
-    artifactDigest: support.trustedSupervisorDigest,
-    revision: support.kind,
-  })
-  const inspectionDigest = privateDomainDigest('JIG-Private-Bun-Inspection/1', {
-    package: request.package,
-    execution,
-    entrypoint: request.entrypoint,
-    selector,
-  } as unknown as JsonValue)
-  const authorityDigest = privateDomainDigest('JIG-Private-Bun-Authority/1', {
-    attachments: request.attachments,
-    ...(request.boundAttachments === undefined
-      ? {}
-      : { boundAttachments: request.boundAttachments }),
-    slots: request.slots,
-    http,
-  } as unknown as JsonValue)
-  const launchEnvelopeDigest = logicalLaunchDigest(
+  const { digest, observation } = directIdentity(
     request,
     execution,
     installedSupport,
-    support,
+    { artifactDigest: support.trustedSupervisorDigest, revision: support.kind },
+    support.digest,
     http,
     acp,
+    selector,
   )
-  const observation = createPrivateActivationRecipeObservation({
-    requestDigest: request.digest,
-    adapter,
-    toolchainDigest: installedSupport.digest,
-    inspectionDigest,
-    launchPlanner: adapter,
-    backend: backendIdentity,
-    launchEnvelopeDigest,
-    installedSupportDigest: installedSupport.digest,
-    runtimePredicates: [],
-    requestedAuthorityDigest: authorityDigest,
-    wouldGrantAuthorityDigest: authorityDigest,
-    plannedAuthorityDigest: authorityDigest,
-  })
-  const identity = Object.freeze({
-    kind: 'private-bun-direct-recipe/1' as const,
-    requestDigest: request.digest,
-    installedSupportDigest: installedSupport.digest,
-    mechanismDigest: support.digest,
-    observationDigest: observation.digest,
-  })
   const recipe = Object.freeze({
-    kind: identity.kind,
-    digest: privateDomainDigest(
-      'JIG-Private-Bun-Direct-Recipe/1',
-      identity as unknown as JsonValue,
-    ),
+    kind: 'private-bun-direct-recipe/1' as const,
+    digest,
     request,
     execution,
     http,
@@ -272,11 +227,103 @@ export function requirePrivateBunDirectRecipe(value: unknown): PrivateBunDirectR
   return value as PrivateBunDirectRecipe
 }
 
+/** Recompute historical identity under a current authentic environment for display only.
+ * Never creates an executable recipe, changes approval, or rediscovers a client.
+ * Callers must first establish identical recipient routes.
+ */
+export function inspectPrivateBunDirectIdentityWithCurrentEnvironment(
+  value: PrivateBunDirectRecipe,
+  retainedRequest: PrivateActivationRequest,
+  retainedExecution: PrivateBunExecutionArtifact,
+): { readonly digest: string; readonly observationDigest: string } {
+  const current = requirePrivateBunDirectRecipe(value)
+  const request = requirePrivateActivationRequest(retainedRequest)
+  const execution = normalizePrivateBunExecutionArtifact(retainedExecution)
+  const identity = directIdentity(
+    request,
+    execution,
+    current.installedSupport,
+    current.observation.backend,
+    current.mechanismDigest,
+    current.http,
+    current.acp,
+    request.entrypoint.selector ?? DEFAULT_SELECTOR,
+  )
+  return { digest: identity.digest, observationDigest: identity.observation.digest }
+}
+
+function directIdentity(
+  request: PrivateActivationRequest,
+  execution: PrivateBunExecutionArtifact,
+  installedSupport: PrivateInstalledBunSupport,
+  backendIdentity: PrivateActivationRecipeObservation['backend'],
+  mechanismDigest: string,
+  http: Readonly<Record<string, HttpGrant>>,
+  acp: Readonly<Record<string, PrivateAcpAgentProvider>>,
+  selector: string,
+): { readonly digest: string; readonly observation: PrivateActivationRecipeObservation } {
+  const adapterDigest = privateDomainDigest('JIG-Private-Bun-Direct-Adapter/1', {
+    revision: ADAPTER_REVISION,
+    installedSupportDigest: installedSupport.digest,
+  })
+  const adapter = Object.freeze({ artifactDigest: adapterDigest, revision: ADAPTER_REVISION })
+  const inspectionDigest = privateDomainDigest('JIG-Private-Bun-Inspection/1', {
+    package: request.package,
+    execution,
+    entrypoint: request.entrypoint,
+    selector,
+  } as unknown as JsonValue)
+  const authorityDigest = privateDomainDigest('JIG-Private-Bun-Authority/1', {
+    attachments: request.attachments,
+    ...(request.boundAttachments === undefined
+      ? {}
+      : { boundAttachments: request.boundAttachments }),
+    slots: request.slots,
+    http,
+  } as unknown as JsonValue)
+  const launchEnvelopeDigest = logicalLaunchDigest(
+    request,
+    execution,
+    installedSupport,
+    { digest: mechanismDigest },
+    http,
+    acp,
+  )
+  const observation = createPrivateActivationRecipeObservation({
+    requestDigest: request.digest,
+    adapter,
+    toolchainDigest: installedSupport.digest,
+    inspectionDigest,
+    launchPlanner: adapter,
+    backend: backendIdentity,
+    launchEnvelopeDigest,
+    installedSupportDigest: installedSupport.digest,
+    runtimePredicates: [],
+    requestedAuthorityDigest: authorityDigest,
+    wouldGrantAuthorityDigest: authorityDigest,
+    plannedAuthorityDigest: authorityDigest,
+  })
+  const identity = Object.freeze({
+    kind: 'private-bun-direct-recipe/1' as const,
+    requestDigest: request.digest,
+    installedSupportDigest: installedSupport.digest,
+    mechanismDigest,
+    observationDigest: observation.digest,
+  })
+  return {
+    digest: privateDomainDigest(
+      'JIG-Private-Bun-Direct-Recipe/1',
+      identity as unknown as JsonValue,
+    ),
+    observation,
+  }
+}
+
 function logicalLaunchDigest(
   request: PrivateActivationRequest,
   execution: PrivateBunExecutionArtifact,
   installedSupport: PrivateInstalledBunSupport,
-  mechanism: PrivateExecutionBackendMechanismSupport,
+  mechanism: Pick<PrivateExecutionBackendMechanismSupport, 'digest'>,
   http: Readonly<Record<string, HttpGrant>>,
   acp: Readonly<Record<string, PrivateAcpAgentProvider>>,
 ): string {

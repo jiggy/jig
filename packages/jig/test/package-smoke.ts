@@ -250,17 +250,14 @@ try {
     await writeFile(manifestPath, manifestBytes)
   }
   assert.equal(help.stderr, '')
-  assert.match(help.stdout, /^ {2}`jig init <directory>` +Create/m)
-  assert.match(help.stdout, /^ {2}`jig review \[project\]` +Review/m)
-  assert.match(help.stdout, /^ {2}`jig --version` +Print/m)
-  assert.match(help.stdout, /^ {2}`jig run \[target\]` +Choose or run/m)
+  assert.match(help.stdout, /^ {2}jig init <directory> +Create/m)
+  assert.match(help.stdout, /^ {2}jig review \[project\] +Review/m)
+  assert.match(help.stdout, /^ {2}jig --version +Print/m)
+  assert.match(help.stdout, /^ {2}jig run \[target\] +Choose or run/m)
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/)
   const runHelp = await run([command, 'run', '--help'], consumer)
   assert.equal(runHelp.stderr, '')
-  assert.match(
-    runHelp.stdout,
-    /^Usage: `jig run` \[flow:path\|npm:package\|binding:id\] \[options\]/,
-  )
+  assert.match(runHelp.stdout, /^Usage: jig run \[flow:path\|npm:package\|binding:id\] \[options\]/)
   assert.match(runHelp.stdout, /--input JSON\|@FILE/)
   assert.match(runHelp.stdout, /--receive CHANNEL/)
   assert.match(runHelp.stdout, /Ctrl-C cancels/)

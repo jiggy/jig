@@ -180,7 +180,7 @@ test('retiring one source preserves sibling replacements, relative order and fre
   presenter.close()
 })
 
-test('plain output bounds count-only updates and attributes every escaped notice line', async () => {
+test('plain output bounds count-only updates and attributes complete notice blocks with indented escaped continuation lines', async () => {
   let text = ''
   const presenter = new PrivateCliProgress(
     true,
@@ -202,7 +202,7 @@ test('plain output bounds count-only updates and attributes every escaped notice
   await presenter.flush()
   expect(text.split('Counting')).toHaveLength(2)
   expect(text).toContain(
-    'Flow update [updates]: Execution completed\n  Flow update [updates]: \\u001b[32mspoof\\u202e\n',
+    'Flow update [updates]: Execution completed\n    \\u001b[32mspoof\\u202e\n',
   )
   expect(text).not.toContain('Activity ended')
   expect(text).toContain('contract violation')
@@ -555,7 +555,7 @@ test('reported errors retain attribution and ordering through blocked output and
     await presenter.flush()
     const visible = screen(text)
     expect(visible).toContain('Flow-reported error:')
-    expect(visible).toContain('  Flow: Execution completed\n  Flow: \\u001b[32m$ jig run\n')
+    expect(visible).toContain('  Flow: Execution completed\n    \\u001b[32m$ jig run\n')
     expect(visible.indexOf('Flow: First')).toBeLessThan(visible.indexOf('Flow-reported error:'))
     expect(text).not.toContain('\u001b[32m')
     expect(text.includes('\u001b[1;31m')).toBe(animated)

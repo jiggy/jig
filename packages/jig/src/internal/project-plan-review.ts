@@ -4,6 +4,7 @@ import type { RunTargetIdentity } from '../project/package-project.js'
 import { flowSelector } from '../project/package-selector.js'
 import { privateAcpAgentRuntime, requirePrivateAcpAgentProvider } from './acp-agent-provider.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
+import { inspectPrivateBunDirectIdentityWithCurrentEnvironment } from './bun-direct-run.js'
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { grantChanges, requiresAuthorityApproval } from './grant-review.js'
 
@@ -73,13 +74,39 @@ export function renderPrivateProjectPlanReview(
             const after = plan.proposed.targets.find(
               (target) => targetKey(target.request.target) === key,
             )
-            return !(
+            if (
               before?.disposition.state === 'ready' &&
               after?.disposition.state === 'ready' &&
               before.request.digest === after.request.digest &&
               before.disposition.recipeDigest === after.disposition.recipeDigest &&
               before.disposition.observationDigest === after.disposition.observationDigest
             )
+              return false
+            const recipe = recipes.find((value) => targetKey(value.request.target) === key)
+            if (
+              before?.disposition.state === 'ready' &&
+              after?.disposition.state === 'ready' &&
+              before.disposition.execution !== undefined &&
+              recipe !== undefined &&
+              before.request.packagePath === after.request.packagePath &&
+              samePolicy(before.request.slots, after.request.slots)
+            ) {
+              try {
+                const historical = inspectPrivateBunDirectIdentityWithCurrentEnvironment(
+                  recipe,
+                  before.request,
+                  before.disposition.execution,
+                )
+                if (
+                  historical.digest === before.disposition.recipeDigest &&
+                  historical.observationDigest === before.disposition.observationDigest
+                )
+                  return false
+              } catch {
+                // Unknown historical selection stays visible; this proof changes no authority.
+              }
+            }
+            return true
           }),
         )
     if (Object.keys(visibleAcp).length !== 0) {
@@ -139,6 +166,7 @@ export function renderPrivateProjectPlanReview(
             (target) => targetKey(target.request.target) === key,
           ),
           plan.proposed.targets.find((target) => targetKey(target.request.target) === key),
+          includeUnchanged,
         ),
     )
     summary.write('Targets after approval:\n')
@@ -223,6 +251,7 @@ function projectAcpSelections(
 function executionChangeExplanation(
   before: ReviewedTarget | undefined,
   after: ReviewedTarget | undefined,
+  details: boolean,
 ): string {
   if (samePolicy(before, after))
     return 'A selected child target changed. Approval authorizes this parent to use the changed child revision described in this review.'
@@ -244,21 +273,18 @@ function executionChangeExplanation(
       )
     )
       reasons.push(
-        before.disposition.execution?.preparation === undefined
+        details && before.disposition.execution?.preparation === undefined
           ? 'This review records dependency inputs and installed bytes for future preparation reuse.\n  Prepared files and dependency layout are unchanged.'
-          : 'Dependency preparation evidence changed.\n  Prepared files and dependency layout are unchanged.',
+          : `Dependency preparation evidence changed.${details ? '\n  Prepared files and dependency layout are unchanged.' : ''}`,
       )
     if (reasons.length === 0) {
       reasons.push(
-        'Execution environment changed: Jig installation, Agent configuration, or sandbox support.',
+        'Execution environment changed: Jig installation, Agent configuration, or sandbox support. The retained fingerprint cannot identify which component changed.',
       )
-      reasons.push('Flow source, prepared dependencies, settings and permissions are unchanged.')
-      reasons.push(
-        'The previous approval retains a combined environment fingerprint; it cannot identify which individual component changed.',
-      )
-      reasons.push(
-        'Approval authorizes this target to run with the currently selected execution environment.',
-      )
+      reasons.push('Approval authorizes this target to run with the current execution environment.')
+      if (details) {
+        reasons.push('Flow source, prepared dependencies, settings and permissions are unchanged.')
+      }
     }
     return reasons.join('\n  ')
   }

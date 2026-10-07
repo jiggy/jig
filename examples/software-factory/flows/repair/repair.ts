@@ -2,6 +2,7 @@ import { checkAgentResult } from '@jigging/agent-method'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 import { type Evaluation, evaluate } from './evidence.ts'
 import { candidate, digest, object, type Proposal, parseInput, parseProposal } from './policy.ts'
+import { observedChecks, quoted, type RepairPhase } from './progress.ts'
 
 interface Attempt {
   proposal?: Proposal
@@ -17,14 +18,21 @@ export async function repair(
   if (progress && progress.direction !== 'send')
     throw new TypeError('progress must be a send channel.')
   let progressAvailable = progress !== undefined
-  const publish = async (
-    phase: 'baseline' | 'proposal' | 'check' | 'finished',
-    attempt: number,
-  ) => {
+  const publish = async (phase: RepairPhase, attempt: number, detail?: string) => {
     run.signal.throwIfAborted()
     if (!progress || !progressAvailable) return
     try {
-      await progress.send({ phase, attempt })
+      await progress.send({
+        phase,
+        attempt,
+        ...(detail === undefined
+          ? {}
+          : {
+              detail:
+                [...detail].slice(0, 2000).join('') +
+                ([...detail].length > 2000 ? '\n[More detail in returned check evidence.]' : ''),
+            }),
+      })
     } catch {
       run.signal.throwIfAborted()
       progressAvailable = false
@@ -45,10 +53,7 @@ export async function repair(
 
 async function repairWithProgress(
   run: Pick<RunContext, 'input' | 'signal' | 'call'> & Partial<Pick<RunContext, 'settings'>>,
-  publish: (
-    phase: 'baseline' | 'proposal' | 'check' | 'finished',
-    attempt: number,
-  ) => Promise<void>,
+  publish: (phase: RepairPhase, attempt: number, detail?: string) => Promise<void>,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
   const settings = object(run.settings ?? {})
@@ -87,6 +92,13 @@ async function repairWithProgress(
     ]
     for (const [index, request] of requests.entries()) {
       run.signal.throwIfAborted()
+      await publish(
+        'command',
+        proposal,
+        index === 0
+          ? 'repository test command (tests)'
+          : `acceptance case ${quoted(input.cases[index - 1]!.id, 48)} (cli)`,
+      )
       const observation = await run.call({
         operationId: `${id}-${index}`,
         slot: request.command,
@@ -109,6 +121,7 @@ async function repairWithProgress(
   try {
     await publish('baseline', 0)
     baseline = await observe(input.files, 'baseline')
+    await publish('observed', 0, observedChecks(baseline, 0, maxProposals as number))
     if (baseline.acceptance.every((c) => c.passed))
       return await finish(
         'blocked',
@@ -169,6 +182,11 @@ async function repairWithProgress(
       } catch (error) {
         if (!(error instanceof TypeError)) throw error
         attempt.invalidProposal = error.message
+        await publish(
+          'rejected',
+          index + 1,
+          `The proposed replacement was rejected: ${quoted(error.message)}. ${index + 1 < maxProposals ? 'Requesting a correction within the remaining proposal budget.' : 'No proposals remain; returning the rejection evidence.'}`,
+        )
         continue
       }
       const files = candidate(input, attempt.proposal)
@@ -176,15 +194,28 @@ async function repairWithProgress(
       stage = 'check'
       await publish('check', index + 1)
       attempt.evaluation = await observe(files, `attempt-${index + 1}`)
+      await publish(
+        'observed',
+        index + 1,
+        observedChecks(attempt.evaluation, index + 1, maxProposals as number),
+      )
       if (attempt.evaluation.accepted)
         return await finish(
           'done',
           'The multi-file patch passes the repository command and independent acceptance cases.',
         )
     }
+    const last = attempts.at(-1)!
     return await finish(
       'blocked',
-      'The permitted proposals did not pass the fixed acceptance cases and repository command.',
+      last.invalidProposal
+        ? `Proposed fix ${attempts.length} was rejected: ${last.invalidProposal}`
+        : `Proposed fix ${attempts.length} failed checks: repository test command ${last.evaluation!.repositoryTestsPassed ? 'passed' : 'failed'}; mismatched acceptance cases: ${
+            last
+              .evaluation!.acceptance.filter((entry) => !entry.passed)
+              .map((entry) => entry.id)
+              .join(', ') || 'none'
+          }. No proposals remain.`,
     )
   } catch (error) {
     if (error instanceof OperationError)

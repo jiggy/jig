@@ -11,14 +11,19 @@ operator's fixed commands and application-owned acceptance cases.
 - `repair.ts` owns baseline reproduction, at most two proposals, command calls,
   and outcome evidence.
 - `evidence.ts` evaluates collected command output against unchanged cases.
+- `progress.ts` owns the closed application-local progress shape and bounded
+  worker reports of check facts and procedural next steps.
 - `FLOW.*`, `settings.schema.json`, and `contracts/` declare the portable method
   and its Agent and command boundaries.
 
 ## Local Contracts
 
-- The optional `progress` channel reports only observed repair phases and
-  proposal numbers. It cannot establish acceptance or alter command evidence;
-  close it on every terminal path.
+- The optional `progress` channel reports observed phases, proposal numbers,
+  logical command/case starts, check aggregates and structural rejection causes.
+  Actual invocation text follows collected command evidence; no raw logs, stdin
+  or model reasoning are projected. It cannot establish acceptance or alter
+  command evidence; close it on every terminal path. Final blocked reasons retain
+  the last structural rejection or failed-check facts even without observation.
 - The factory's two Bindings select `maxProposals: 1` or `2`; both use the same
   reviewed commands and acceptance policy. A second proposal is allowed only
   after observed failure and within the same bounded repair call.

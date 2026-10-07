@@ -704,7 +704,10 @@ proofDescribe('private rootless project session', () => {
       const next = await session.plan({ lockMode: 'update' })
       if (next.state !== 'applicable') throw new Error('expected renewed review')
       expect(next.review.text).toContain('Execution environment changed:')
-      expect(next.review.text).toContain(
+      expect(next.review.text).not.toContain(
+        'Flow source, prepared dependencies, settings and permissions are unchanged.',
+      )
+      expect(next.review.details).toContain(
         'Flow source, prepared dependencies, settings and permissions are unchanged.',
       )
       await session.apply({ planDigest: next.planDigest })

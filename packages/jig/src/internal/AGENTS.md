@@ -553,6 +553,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   current support without cgroup acquisition or namespace execution; Run retains
   full launch revalidation. Include selected child identities, isolate unrelated
   targets, and report failed comparisons as unchecked without private causes.
+  Compact reviews may suppress repeated ACP selections across source edits only
+  under identical package paths and resolved slots, by recomputing both retained
+  recipe and observation digests with an authentic current environment. The shared
+  identity calculation returns inert hashes, never an executable recipe; unknown
+  or changed environments retain the selection. This display proof changes no
+  approval, persistence or launch revalidation.
 - One resolved slot table pins exact Flow targets or qualified native invocations.
   `project-feature-qualification.ts` qualifies the selected graph from captured
   support/requirement metadata, without preparing execution or choosing alternatives.

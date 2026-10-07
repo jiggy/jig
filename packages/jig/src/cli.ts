@@ -89,7 +89,8 @@ Start here:
 
 ${VERIFICATION_HELP}
 
-Use jig <command> --help for options and examples.
+Command options and examples:
+  jig <command> --help
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
@@ -1412,8 +1413,18 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     interactive:
       options.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true),
-    confirm: options.confirm ?? terminalConfirmation,
-    answer: options.answer ?? terminalAnswer,
+    confirm: async (prompt, signal) => {
+      progress.pause()
+      await progress.flush()
+      signal?.throwIfAborted()
+      return (options.confirm ?? terminalConfirmation)(prompt, signal)
+    },
+    answer: async (prompt, signal) => {
+      progress.pause()
+      await progress.flush()
+      signal?.throwIfAborted()
+      return (options.answer ?? terminalAnswer)(prompt, signal)
+    },
     writeRecord: async (text) => {
       progress.pause()
       await progress.flush()

@@ -109,12 +109,23 @@ test('factory-owned repair reports observed baseline, proposal, check, and finis
     },
   })
   expect(result.outcome).toBe('done')
-  expect(messages).toEqual([
+  expect(
+    messages.filter((value) =>
+      ['baseline', 'proposal', 'check', 'finished'].includes((value as any).phase),
+    ),
+  ).toEqual([
     { phase: 'baseline', attempt: 0 },
     { phase: 'proposal', attempt: 1 },
     { phase: 'check', attempt: 1 },
     { phase: 'finished', attempt: 1 },
   ])
+  const observed = messages.filter((value) => (value as any).phase === 'observed') as any[]
+  expect(observed).toHaveLength(2)
+  expect(observed[0].detail).toContain('Repository test command failed')
+  expect(observed[0].detail).toContain('Mismatched cases:')
+  expect(observed[1].detail).toContain('4/4 passed')
+  expect(observed[1].detail).toContain('Observed commands: "bun" "test" "test/project.test.ts"')
+  expect(messages.filter((value) => (value as any).phase === 'command')).toHaveLength(10)
   expect(closed).toBe(1)
 })
 
@@ -578,8 +589,18 @@ test('optional profile retains checkpoint ordering and settles after reader loss
         },
       })
       expect(actual.outcome).toBe('done')
+      expect((actual.output as any).jobs[0]).toMatchObject({
+        issue: job.issue,
+        verification: { proposal: 1, acceptanceCases: repairInput.cases.map((c) => c.id) },
+      })
       expect(closed).toBe(1)
       if (!lost) {
+        const notices = messages.filter((value) => (value as any).kind === 'notice') as any[]
+        expect(
+          notices.some(
+            (value) => value.text.includes('Requested goal:') && value.text.includes(job.issue),
+          ),
+        ).toBe(true)
         expect(
           messages.some(
             (value) =>

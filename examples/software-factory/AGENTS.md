@@ -14,6 +14,8 @@ patch authority and every merge decision stays with a person.
   job dispatch, checkpoint aggregation, conflict detection, and final summaries.
   `presentation.ts` translates observed phases, reviewed proposal budgets and
   failure evidence into ordinary language; optional input labels name jobs for people.
+  It introduces requested goals, source scope, reviewed approach and checks before
+  work, and repeats goals with verified outcomes in the final report.
 - `flows/router/` owns the portable decision Flow, separately governed below.
 - `flows/repair/` owns the factory's independently editable repair specialist.
 - `bindings/` composes one-proposal and checked-correction configurations of
@@ -68,6 +70,17 @@ patch authority and every merge decision stays with a person.
   host's 2048-character brief budget.
   Oversized-cause markers refer to retained job evidence without claiming files
   were delivered before checkpoint acknowledgement. Retained causes stay unchanged.
+- Final job evidence retains the full issue and editable paths. Accepted-job
+  verification names the independently checked proposal and acceptance cases;
+  changed paths compare accepted replacement bytes with captured originals.
+  Shorten goal/path context before blocking causes to fit the host brief budget.
+  Group introductory context into one bounded notice so it does not unnecessarily
+  delay blocking outcomes in the paced publisher.
+- Live worker check reports remain provisional. Show repository-command status,
+  named acceptance mismatches, collected invocations and the next procedural step;
+  expected nonzero rejection exits may pass exact application assertions. Do not
+  print raw stdin, command logs or model reasoning. Final acceptance belongs to
+  factory evidence validation, never progress or Agent judgment.
 - The optional `progress` broadcast channel uses the exact canonical user-updates
   profile through its scoped publisher. Root job IDs use a distinct namespace;
   deliberate child phase readers settle before root clears. Notices count jobs

@@ -137,8 +137,9 @@ reported counts. These are state projections, not exhaustive activity history;
 obsolete queued projections may disappear, while printed phase lines remain.
 Count-only changes retain state without flooding either terminal mode. No phase
 percentage or bar is inferred. Retired activities never emit new projections. Escape controls/bidi before terminal-cell truncation
-of transient text; preserve complete notice content with Flow attribution on every
-logical line. Application payload bypasses trusted heading/status recognition and
+of transient text; preserve complete notice content as a contiguous block with
+Flow attribution on its first line and indented continuations. Escape every
+payload line. Application payload bypasses trusted heading/status recognition and
 success colors. Explicit warning/error notices have a prominent attributed
 Flow-reported warning/error label; payload text is still escaped data. IDs are map
 keys. Plain mode emits activation and meaningful label/unit changes; count-only

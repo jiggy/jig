@@ -96,8 +96,10 @@ test('paths and unchanged context recede while changes and approval consequences
     expect(privateCliHumanText(line, false)).toBe(line)
   }
   const setup = '  Unavailable: Pi, API endpoint. Setup: jig review --details.'
-  expect(privateCliHumanText(setup, true)).toContain('\u001b[1;36m`jig review --details`')
-  expect(privateCliHumanText(setup, false)).toContain('`jig review --details`')
+  expect(privateCliHumanText(setup, true)).toContain('\u001b[1;36mjig\u001b[0m')
+  expect(privateCliHumanText(setup, true)).toContain('\u001b[35m--details\u001b[0m')
+  expect(privateCliHumanText(setup, false)).not.toContain('`')
+  expect(privateCliHumanText(setup, false)).toContain('jig review --details')
   const changed = 'Changed: "flow:flows/chat"'
   expect(privateCliHumanText(changed, true)).toBe(`\u001b[1;33m${changed}\u001b[0m`)
   expect(privateCliHumanText(changed, false)).toBe(changed)

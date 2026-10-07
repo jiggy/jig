@@ -207,7 +207,7 @@ test('jig init --bare closes unavailable filesystem diagnostics', async () => {
     expect(await new Response(initialized.stdout).text()).toBe('')
     const diagnostic = await new Response(initialized.stderr).text()
     expect(diagnostic).toBe(
-      'Error: Project could not be created\n\n  the destination cannot be initialized.\n  Next step: Check the destination parent directory and its write permissions; see `jig init --help`.\n\n  Diagnostic code: JIG_INIT_UNAVAILABLE\n',
+      'Error: Project could not be created\n\n  the destination cannot be initialized.\n  Next step: Check the destination parent directory and its write permissions; see jig init --help.\n\n  Diagnostic code: JIG_INIT_UNAVAILABLE\n',
     )
     expect(diagnostic).not.toContain(destination)
     expect(diagnostic).not.toContain('ENOENT')
@@ -1145,7 +1145,7 @@ describe('finite Jig project commands', () => {
     expect(nonInteractiveEvents).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(nonInteractive.output).toBe('review\n')
     expect(nonInteractive.error).toBe(
-      'Approval required\n\n  Review the displayed changes. To approve this exact revision without a prompt, rerun `jig review --yes` (with the same project and resolution options).\n\n  Diagnostic code: JIG_APPROVAL_REQUIRED\n',
+      'Approval required\n\n  Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).\n\n  Diagnostic code: JIG_APPROVAL_REQUIRED\n',
     )
 
     const declinedEvents: string[] = []
@@ -1167,6 +1167,81 @@ describe('finite Jig project commands', () => {
       'Review declined\n\n  The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.\n\n  Diagnostic code: JIG_CHANGES_DECLINED\n',
     )
   })
+
+  test.each(['confirm', 'answer'] as const)(
+    'the %s prompt waits for asynchronous progress output',
+    async (kind) => {
+      const events: string[] = []
+      const plan: ProjectPlanResult = {
+        state: 'applicable',
+        operation: 'lock-repair',
+        planDigest: digest,
+        review: {
+          authorityChanges: false,
+          mediaType: 'text/plain; charset=utf-8',
+          text: 'review\n',
+          details: 'details\n',
+        },
+      }
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let transcript = ''
+      let asked = false
+      const session = fakeSession(events, { plan })
+      const invocation = commandInvocation(
+        {
+          async acquire(_project, options) {
+            return {
+              ...session,
+              async plan(request) {
+                options?.onStage?.('Checking execution recipes and retaining the review')
+                return session.plan(request)
+              },
+            }
+          },
+        },
+        {
+          interactive: true,
+          terminalOutput: true,
+          terminalError: true,
+          writeStderr: async (text) => {
+            await gate
+            transcript += text
+          },
+          confirm: async (prompt) => {
+            asked = true
+            transcript += prompt + 'n\n'
+            return false
+          },
+          answer: async (prompt) => {
+            asked = true
+            transcript += prompt + '\n'
+            return ''
+          },
+        },
+      )
+      const execution = main(
+        kind === 'confirm' ? ['review'] : ['init', '/unused-new-project', '--agent'],
+        invocation.options,
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(asked).toBe(false)
+      release()
+      expect(await execution).toBe(kind === 'confirm' ? 1 : 0)
+      expect(asked).toBe(true)
+      if (kind === 'confirm') {
+        expect(transcript.indexOf('Checking execution recipes')).toBeLessThan(
+          transcript.indexOf('Approve this exact revision'),
+        )
+        expect(transcript).toContain('Approve this exact revision for execution? [y/N] n\n')
+        expect(transcript.indexOf('Waiting for your approval')).toBeLessThan(
+          transcript.indexOf('Approve this exact revision'),
+        )
+      }
+    },
+  )
 
   test.each([false, true])(
     'resolution permission is separate from execution approval (yes=%s)',
@@ -1827,7 +1902,7 @@ describe('finite Jig project commands', () => {
       expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(2)
       expect(invocation.output).toBe('')
       expect(invocation.error).toBe(
-        `Error: Command could not finish\n\n  the project has no usable reviewed revision; complete \`jig review\` before running\n\n  Diagnostic code: ${code}\n`,
+        `Error: Command could not finish\n\n  the project has no usable reviewed revision; complete jig review before running\n\n  Diagnostic code: ${code}\n`,
       )
     },
   )
@@ -2008,7 +2083,7 @@ describe('finite Jig project commands', () => {
     const target = commandInvocation(unusedHost())
     expect(await main(['run', 'work'], target.options)).toBe(1)
     expect(target.error).toBe(
-      'Error: Run target is invalid\n\n  use flow:<path>, npm:<package> or binding:<id>, for example flow:flows/hello. Run `jig review` after adding a target.\n\n  Diagnostic code: JIG_RUN_TARGET_INVALID\n',
+      'Error: Run target is invalid\n\n  use flow:<path>, npm:<package> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.\n\n  Diagnostic code: JIG_RUN_TARGET_INVALID\n',
     )
 
     const input = commandInvocation(unusedHost())
@@ -2236,7 +2311,7 @@ describe('finite Jig project commands', () => {
       expect(await main(args, invocation.options)).toBe(1)
       expect(invocation.output).toBe('')
       expect(invocation.error).toBe(
-        'Error: Command could not finish\n\n  the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run `jig review` again\n\n  Diagnostic code: PROJECT_STATE_INVALID\n',
+        'Error: Command could not finish\n\n  the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run jig review again\n\n  Diagnostic code: PROJECT_STATE_INVALID\n',
       )
       expect(invocation.error).not.toContain('private stored candidate')
     },
@@ -2523,7 +2598,7 @@ describe('finite Jig project commands', () => {
     [
       'PACKAGE_BUN_NODE_MODULES',
       'flows/drafter/node_modules',
-      'move generated node_modules outside the Flow package; `jig review` prepares its locked production dependencies',
+      'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies',
     ],
     [
       'PACKAGE_BUN_PREPARATION_FAILED',
@@ -2598,7 +2673,7 @@ describe('finite Jig project commands', () => {
       expect(await main(['review'], invocation.options)).toBe(2)
       expect(invocation.error).toContain(hint)
       expect(invocation.error).toContain(code)
-      expect(invocation.error).toContain('retry `jig review`')
+      expect(invocation.error).toContain('retry jig review')
       expect(invocation.error).toContain('Cause:')
       expect(invocation.error).toContain('is selected, but')
       expect(invocation.error).toContain('bindings/agent.ts')
@@ -2630,7 +2705,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review'], invocation.options)).toBe(2)
     expect(invocation.error).toContain('native client named in the affected ACP grant')
     expect(invocation.error).toContain('operator executable, model and authentication')
-    expect(invocation.error).toContain('retry `jig review`')
+    expect(invocation.error).toContain('retry jig review')
     expect(invocation.error).toContain('PROJECT_ACP_UNAVAILABLE')
     expect(invocation.error).not.toContain('secret-token')
     expect(invocation.error).not.toContain('/private/runtime')

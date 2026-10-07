@@ -472,6 +472,84 @@ describe('target-selected private ACP resources', () => {
     const mixedText = renderPrivateProjectPlanReview(mixed, undefined, recipes).text
     expect(mixedText).toContain('review-claude')
     expect(mixedText).not.toContain('review-codex')
+    // A changed Flow package must not repeat a proven unchanged client identity.
+    const editedRecipes = await Promise.all(
+      clients.map((client) =>
+        planPrivateBunDirectRun({
+          request: activationRequest(
+            slots({ session: client }),
+            `flows/${client}`,
+            { kind: 'binding', id: client },
+            'edited-package',
+          ),
+          backend,
+          installedSupport: f.support,
+          acpResources,
+        }),
+      ),
+    )
+    const edited = {
+      ...retained,
+      plan: {
+        proposed: {
+          lock,
+          targets: editedRecipes.map((recipe) => ({
+            request: recipe.request,
+            disposition: {
+              state: 'ready',
+              recipeDigest: recipe.digest,
+              observationDigest: recipe.observation.digest,
+              execution: recipe.execution,
+            },
+          })),
+        },
+      },
+    } as unknown as PrivateActivationReviewPlan
+    const editedReview = renderPrivateProjectPlanReview(edited, undefined, editedRecipes)
+    expect(editedReview.text).not.toContain('ACP runtimes selected')
+    expect(editedReview.details).toContain('review-codex')
+    // A changed operator model is visible even when recipient routes are equal.
+    const changedResources = openPrivateAcpResources(
+      f.support,
+      { MODEL: 'changed-model' },
+      f.project,
+      f.open,
+    )
+    const changedRecipes = await Promise.all(
+      clients.map((client) =>
+        planPrivateBunDirectRun({
+          request: activationRequest(
+            slots({ session: client }),
+            `flows/${client}`,
+            { kind: 'binding', id: client },
+            'edited-package',
+          ),
+          backend,
+          installedSupport: f.support,
+          acpResources: changedResources,
+        }),
+      ),
+    )
+    const changedEnvironment = {
+      ...edited,
+      plan: {
+        proposed: {
+          lock,
+          targets: changedRecipes.map((recipe) => ({
+            request: recipe.request,
+            disposition: {
+              state: 'ready',
+              recipeDigest: recipe.digest,
+              observationDigest: recipe.observation.digest,
+              execution: recipe.execution,
+            },
+          })),
+        },
+      },
+    } as unknown as PrivateActivationReviewPlan
+    expect(
+      renderPrivateProjectPlanReview(changedEnvironment, undefined, changedRecipes).text,
+    ).toContain('changed-model')
     expect(() => renderPrivateProjectPlanReview(review)).toThrow('exact proposed recipe')
     expect(() => renderPrivateProjectPlanReview(review, undefined, [recipes[0]!])).toThrow(
       'exact proposed recipe',
@@ -554,13 +632,14 @@ function activationRequest(
   slots: InvocationSlots,
   path = 'flows/example',
   target: RunTargetIdentity = { kind: 'flow', path },
+  packageIdentity = 'package',
 ) {
   const fields = {
     kind: 'activation-request/4',
     target,
     mode: 'run',
     packagePath: path,
-    package: { kind: 'flow-package/0', digest: digest('package') },
+    package: { kind: 'flow-package/0', digest: digest(packageIdentity) },
     entrypoint: { path: 'FLOW.ts', suffix: 'ts', selector: 'bun' },
     settings: {},
     slots,

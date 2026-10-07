@@ -631,10 +631,11 @@ describe('private project Plan review', () => {
     )
     expect(changed.text).not.toContain('"attachments"')
     expect(changed.text).not.toContain('private-after')
-    expect(changed.text).toContain(
+    expect(changed.text).not.toContain(
       'Flow source, prepared dependencies, settings and permissions are unchanged.',
     )
-    expect(changed.text).toContain('cannot identify which individual component changed')
+    expect(changed.text).toContain('cannot identify which component changed')
+    expect(changed.text).toContain('Approval authorizes this target to run')
     expect(changed.details).toContain('Execution environment changed:')
     const evidence = render({
       ...target,
@@ -649,11 +650,11 @@ describe('private project Plan review', () => {
         },
       },
     })
-    expect(evidence.text).toContain(
+    expect(evidence.details).toContain(
       'records dependency inputs and installed bytes for future preparation reuse',
     )
-    expect(evidence.text).toContain('Prepared files and dependency layout are unchanged.')
-    expect(evidence.text).not.toContain('Dependency preparation evidence changed')
+    expect(evidence.text).not.toContain('Prepared files and dependency layout are unchanged.')
+    expect(evidence.text).toContain('Dependency preparation evidence changed')
     const reordered = render({
       disposition: target.disposition,
       request: Object.fromEntries(Object.entries(target.request).reverse()),
