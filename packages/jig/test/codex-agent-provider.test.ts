@@ -526,6 +526,7 @@ describe('private native Codex Agent provider', () => {
     expect(runtime.modeId).toBe('read-only')
     expect(runtime.authentication).toBeUndefined()
     expect(runtime.environment).toEqual({
+      HOME: '/tmp',
       CODEX_CONFIG: JSON.stringify({
         analytics: { enabled: false },
         check_for_update_on_startup: false,

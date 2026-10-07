@@ -7,6 +7,7 @@ export interface PrivateMacosSandboxFiles {
   /** Host control roots must be outside every payload data grant. */
   readonly protectedRoots: readonly string[]
   readonly network: 'isolated' | 'inherited'
+  readonly codexPreferenceNotifications?: true
 }
 
 // JavaScriptCore loads its system Unicode tables lazily for Intl operations.
@@ -52,7 +53,7 @@ function paths(values: readonly string[]): string[] {
  */
 export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Readonly<{
   text: string
-  bootstrap: 'closed' | 'dns'
+  bootstrap: 'closed' | 'services'
 }> {
   const readOnlyFiles = paths(input.readOnlyFiles)
   const readOnlyTrees = paths(input.readOnlyTrees)
@@ -60,6 +61,11 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
   const protectedRoots = paths(input.protectedRoots)
   if (protectedRoots.length === 0 || !['isolated', 'inherited'].includes(input.network))
     throw new TypeError('macOS sandbox requires explicit control roots and network policy')
+  if (
+    input.codexPreferenceNotifications !== undefined &&
+    input.codexPreferenceNotifications !== true
+  )
+    throw new TypeError('invalid Codex preference notification policy')
   const grants = [...SYSTEM_TREES, ...readOnlyFiles, ...readOnlyTrees, ...writableTrees]
   if (input.network === 'inherited') grants.push(...RESOLVER_FILES)
   if (grants.some((grant) => protectedRoots.some((root) => intersects(grant, root))))
@@ -103,6 +109,15 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
     // Optional global Codex configuration must appear absent, never be exposed.
     '(deny file-read* file-test-existence (with errno ENOENT) (subpath "/etc/codex") (subpath "/private/etc/codex"))',
   ]
+  if (input.codexPreferenceNotifications) {
+    const uid = process.getuid?.()
+    if (!Number.isSafeInteger(uid) || uid === undefined || uid <= 0)
+      throw new TypeError('Codex preference notifications require an unprivileged UID')
+    rules.push(
+      '(allow mach-lookup (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.cfprefsd.daemon") (local-name "com.apple.cfprefsd.agent"))',
+      `(allow ipc-posix-shm-read* (ipc-posix-name "apple.cfprefs.daemonv1") (ipc-posix-name "apple.cfprefs.${uid}v1"))`,
+    )
+  }
   if (input.network === 'inherited')
     rules.push(
       '(allow network-outbound (remote ip "*:*"))',
@@ -113,5 +128,9 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
   const text = `${rules.join('\n')}\n`
   if (Buffer.byteLength(text) > 32768)
     throw new TypeError('macOS sandbox profile exceeds its bound')
-  return Object.freeze({ text, bootstrap: input.network === 'inherited' ? 'dns' : 'closed' })
+  return Object.freeze({
+    text,
+    bootstrap:
+      input.network === 'inherited' || input.codexPreferenceNotifications ? 'services' : 'closed',
+  })
 }

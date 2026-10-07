@@ -105,7 +105,7 @@ jobs:
           snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
           diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
           exit "$status"
-      - name: Prepare genuine pinned clients for offline startup
+      - name: Prepare genuine pinned clients for offline startup and refusal checks
         if: matrix.installed
         run: bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
       - name: Qualify the complete rootless host and installed consumer

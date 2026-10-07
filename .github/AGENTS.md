@@ -140,6 +140,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   disjoint, exhaustive name groups and balances them with all other files.
   Tests run in fresh, sequential per-group Bun processes inside each host.
   One shard per architecture additionally checks genuine pinned clients offline,
+  requiring Codex preference-profile refusal on 24G830 while Claude and Pi start,
   ordinary npm installation and packed
   consumer execution. Native containment/recovery and descriptor-handoff probes
   run once in a dedicated step on shard zero. Per-architecture aggregate checks

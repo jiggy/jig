@@ -1,15 +1,14 @@
-# Codex managed-preference startup on macOS
+# Codex managed-policy support and additional Mac qualification
 
-Codex 0.159.0 fails the existing network-disabled, dummy-credential native
-startup check at `session/new`: configuration loading reports that managed
-preferences could not be synchronized. The current native containment does
-not support that preference refresh. Installation discovery and review do
-not qualify session startup; the limitation is documented in the
+The contained Codex profile supports notification-only preference refresh on
+Intel macOS 14.4.1 build 23E224, while refusing configured managed policy.
+Other Mac OS profiles and actual managed-policy consumption remain unqualified.
+Installation discovery and review do not qualify session startup; limits are documented in the
 [Agent guide](../../../docs/jig/guide/agents.md#codex).
 
-Investigate a correction that preserves the execution boundary and operator
-policy ownership. A transparent closed diagnostic identifies this report;
-it does not repair startup or establish why preference synchronization failed.
+Further support must preserve the execution boundary and operator policy
+ownership. Forced policy or unavailable observation must stay visibly refused;
+never skip policy or recommend removing operator settings to obtain startup.
 
 Acceptance should include genuine native startup without network/model calls,
 ordinary installed Agent consumption, managed-policy behavior, and existing

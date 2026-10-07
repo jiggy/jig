@@ -404,6 +404,20 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
   under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
   projections cannot overlap these runtime roots. Host control remains excluded.
+  Only the verified Codex profile may select exact preference-service lookup
+  and read-only daemon/current-UID notification-counter pages. This grants no
+  preference reads, writes, other IPC or networking; preserve the flag through
+  intent lowering, sealing and guardian message validation. On Intel build
+  23E224 the pages are qualified as 16 KiB invalidation counters, including
+  cross-domain change activity. Other OS profiles need independent qualification.
+  `macos-codex-preferences.ts` runs the authenticated installed observer in a
+  fresh bounded process during provider selection and each launch/restoration,
+  outside resource/installation caches. Forced policy or unavailable observation
+  refuses execution with a closed actionable cause. This is an observation
+  boundary, not continuous MDM enforcement. Codex HOME relocates to private tmp.
+  Reject Rosetta and arm64 in the universal observer, and retain its native
+  self-deadline after coordinator loss. Inherited sandbox uncertainty also
+  refuses observation. Missing observer support is an installation failure.
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
   rights and descriptors, apply the selected profile, report private readiness,
   and wait for admission before execution. Close all child control handoffs

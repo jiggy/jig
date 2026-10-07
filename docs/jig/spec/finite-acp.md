@@ -150,6 +150,22 @@ The host accepts one serial sequence, with unique bounded request IDs:
    must settle before another dispatch. NUL and leading slash commands are excluded.
 5. Optional `session/close` if the initialized client advertised it.
 
+For example, after `session/new` returns `sessionId:"owned-session"`, the ready
+record above requires these requests in order, each with a fresh request ID and
+each awaiting its correlated result:
+
+```json
+{"jsonrpc":"2.0","id":3,"method":"session/set_config_option","params":{"sessionId":"owned-session","configId":"model","value":"reviewed-model"}}
+{"jsonrpc":"2.0","id":4,"method":"session/set_mode","params":{"sessionId":"owned-session","modeId":"read-only"}}
+```
+
+These are separate JSON/0 frames, each sent through the bounded fragments above.
+Use the actual owned session ID and ready values. A Boolean configuration entry
+also requires `type:"boolean"` in its request parameters. The configuration
+result must confirm the selected value in `configOptions`; the mode result is
+`{}`. Neither step is optional merely because the native client already reports
+the same setting. Only then may a prompt be sent.
+
 After each prompt is dispatched, at most one `session/cancel` notification may
 name that owned session. It cannot settle pending work by itself. A cancellation
 that races completed settlement is consumed without forwarding to the idle
@@ -208,7 +224,14 @@ authentication needs separately implemented host mediation before it qualifies.
 
 ## Settlement and failure
 
-Clean request EOF is eligible only after the finite protocol has settled.
+Clean request EOF is eligible only after the finite protocol has settled: no
+request is pending, and either a prompt has returned its correlated terminal
+result or a correlated native request error has ended the conversation. A
+successful `initialize` and `session/new`, even followed by all configuration
+and mode transitions, do not establish settlement. This interface has no
+successful zero-prompt startup-only invocation; closing there is a protocol
+failure. Optional `session/close` has the same settlement prerequisite and must
+receive its correlated result before EOF.
 The host ends native input and waits for owned process cleanup, using bounded
 controlled termination if needed. Successful resource output contains actual
 process evidence:
@@ -471,12 +494,35 @@ network access. Each native client starts in an empty work directory. The finite
 peer advertises no filesystem, terminal, or MCP client capability, supplies no
 MCP servers, and denies permission requests. Claude and Pi additionally disable
 native tools and ambient extensions/skills through their fixed profiles. Codex
-retains its constrained native tool environment: its read-only ACP mode selects
-a no-network workspace policy, managed requirements forbid full-access mode,
-and the projected subscription credential file is denied to its tools. The
+retains its constrained native tool environment: its pinned read-only ACP mode
+selects a no-network workspace policy and Jig refuses permission requests.
+Linux additionally supplies managed requirements forbidding full-access mode;
+rootless Mac execution does not mount that file at `/etc/codex`. Subscription
+authentication uses a one-use in-memory login and ephemeral credential storage,
+so no subscription credential file is exposed to native tools. The
 editable Flow cannot change those profiles or request additional authority. Selected
 FLOW skills are rendered into the call instructions as bounded read-only text;
 they are not exposed as a client filesystem or native skill installation.
+
+On Intel macOS 14.4.1 (Darwin 23.4.0 build 23E224), the verified Codex profile
+also receives exact preference-service lookup and read-only access to the
+daemon/current-UID invalidation-counter pages required for configuration
+synchronization. It receives no permission to read or write host preference
+values. The pages contain counters, including change activity across domains;
+they do not contain preference dictionaries. Other scopes receive none of this
+access, and offline execution gains no network authority.
+
+A fresh trusted observation synchronizes `com.openai.codex` before selection
+and each native launch, including restoration. It checks the native
+`config_toml_base64` and `requirements_toml_base64` forced inputs plus forced
+keys in the public suite search list. Configured managed policy or unavailable
+observation refuses the contained profile with a value-free diagnostic.
+Ordinary nonforced preferences may exist and remain unreadable. This qualifies
+the observed absence of managed policy, not continuous enforcement of policy
+introduced after the check. Managed-policy consumption, other Mac OS profiles,
+and changed native preference interfaces require separate qualification.
+Rosetta and Apple Silicon are refused for this Codex path. The observer also
+refuses an inherited sandbox and has its own deadline even if the host exits.
 
 Native workers have ordinary inherited network access rather than
 endpoint-filtered egress; their exact trusted bytes and configuration, not a
@@ -485,12 +531,18 @@ uses the exact [HTTP Request](http-request.md) resource. Its API requests ask
 for `store: false`; this is not a promise about an endpoint's retention or
 training policy.
 
+The native Codex Responses base URL must use HTTPS without URL credentials,
+a query or a fragment. Endpoint selection does not disable TLS certificate
+verification.
+
 If the selected client, executable support, credential, or model is missing or
 invalid, reviewing a native-grant target reports it unavailable. A known setup
 failure uses `PROJECT_ACP_<CLIENT>_<STAGE>`, with client `CODEX`,
 `CLAUDE` or `PI`. Stages distinguish `EXECUTABLE` discovery, `INSTALLATION`
 support, Codex `SANDBOX` support, `LOGIN` subscription authentication, `API`
-configuration and missing `MODEL` selection. The CLI gives client-specific
+configuration and missing `MODEL` selection. Mac Codex also distinguishes
+unavailable `PREFERENCES` observation from unsupported `MANAGED_POLICY`.
+The CLI gives client-specific
 corrections without publishing raw exceptions or secret values. Unclassified
 failures remain `PROJECT_ACP_UNAVAILABLE`; the host does not guess their cause.
 A target without native requirements in an already admitted generation remains runnable

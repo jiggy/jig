@@ -4,9 +4,11 @@ import { access, lstat, realpath } from 'node:fs/promises'
 import type * as acp from '@agentclientprotocol/sdk'
 
 import type { JsonObject, JsonValue } from '../json.js'
+import { checkAcpSetup } from './acp-setup-diagnostics.js'
 import { privateDomainDigest } from './identity.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
 import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
+import { observePrivateMacosCodexPreferences } from './macos-codex-preferences.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$/
@@ -45,6 +47,8 @@ export interface PrivateAcpAgentProviderConfiguration {
   readonly sessionMeta?: Readonly<Record<string, unknown>>
   /** The native client starts its own unprivileged Linux sandbox. */
   readonly nestedUserNamespaces?: boolean
+  /** Only the Codex factory selects this authenticated installed host observer. */
+  readonly macosCodexPreferencesObserverPath?: string
   /** Secret or ephemeral client bootstrap bytes, never part of provider identity. */
   readonly startupInput?: Uint8Array
   /** Recheck ephemeral startup authority immediately before each launch. */
@@ -75,6 +79,7 @@ export interface PrivateAcpAgentRuntime {
   readonly modeId?: string
   readonly sessionMeta?: Readonly<Record<string, unknown>>
   readonly nestedUserNamespaces: boolean
+  readonly macosCodexPreferenceNotifications?: true
   readonly authentication?: PrivateAcpAgentProviderConfiguration['authentication']
   readonly readOnlyMounts: readonly PrivateLinuxReadOnlyMount[]
   /** Return a fresh copy of bounded bootstrap bytes for one process. */
@@ -88,6 +93,10 @@ interface ExactMount extends PrivateLinuxReadOnlyMount {
 
 interface StoredRuntime extends PrivateAcpAgentRuntime {
   readonly exactMounts: readonly ExactMount[]
+  readonly macosCodexPreferences?: {
+    readonly observerPath: string
+    readonly observerDigest: string
+  }
 }
 
 /**
@@ -136,6 +145,22 @@ export async function createPrivateAcpAgentProvider(
   if (typeof nestedUserNamespaces !== 'boolean') {
     throw new Error('ACP Agent nested-user-namespace policy is invalid')
   }
+  let macosCodexPreferences: StoredRuntime['macosCodexPreferences']
+  const selectedObserverPath = value.macosCodexPreferencesObserverPath
+  if (selectedObserverPath !== undefined) {
+    if (value.client !== 'openai-codex' || process.platform !== 'darwin')
+      throw new Error('Codex preference notifications require the native macOS Codex profile')
+    macosCodexPreferences = await checkAcpSetup('installation', async () => {
+      const observerPath = await exactFile(selectedObserverPath, true, 'Codex preference observer')
+      if (observerPath !== selectedObserverPath)
+        throw new Error('Codex preference observer must be canonical')
+      return Object.freeze({
+        observerPath,
+        observerDigest: await privateInstallationFileDigest(observerPath),
+      })
+    })
+    await observePrivateMacosCodexPreferences(macosCodexPreferences.observerPath)
+  }
   const exactMounts = Object.freeze(
     await Promise.all((value.readOnlyMounts ?? []).map(normalizeMount)),
   )
@@ -163,6 +188,7 @@ export async function createPrivateAcpAgentProvider(
     authentication: authentication?.identity ?? null,
     hasStartupInput: startupInput !== undefined,
     nestedUserNamespaces,
+    macosCodexPreferences: macosCodexPreferences?.observerDigest ?? null,
     mounts: exactMounts.map(({ destination, role, digest }) =>
       Object.freeze({
         destination,
@@ -206,6 +232,9 @@ export async function createPrivateAcpAgentProvider(
             },
           }),
       nestedUserNamespaces,
+      ...(macosCodexPreferences === undefined
+        ? {}
+        : { macosCodexPreferences, macosCodexPreferenceNotifications: true as const }),
       readOnlyMounts,
       exactMounts,
     }) as StoredRuntime,
@@ -268,6 +297,16 @@ export function verifyPrivateAcpAgentFileDigests(
 export async function revalidatePrivateAcpAgentProvider(value: unknown): Promise<void> {
   const provider = requirePrivateAcpAgentProvider(value)
   const runtime = privateAcpAgentRuntime(provider)
+  const macosCodexPreferences = (runtime as StoredRuntime).macosCodexPreferences
+  if (macosCodexPreferences !== undefined) {
+    const { observerPath, observerDigest } = macosCodexPreferences
+    if (
+      (await exactFile(observerPath, true, 'Codex preference observer')) !== observerPath ||
+      (await privateInstallationFileDigest(observerPath)) !== observerDigest
+    )
+      throw new Error('Codex preference observer changed after selection')
+    await observePrivateMacosCodexPreferences(observerPath)
+  }
   const [adapterPath, executablePath] = await Promise.all([
     exactFile(runtime.adapterPath, runtime.adapterExecutable, 'ACP adapter'),
     exactFile(runtime.executablePath, true, 'native Agent client'),

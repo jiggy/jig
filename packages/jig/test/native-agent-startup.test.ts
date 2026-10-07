@@ -7,6 +7,7 @@ import {
   privateAcpAgentRuntime,
   revalidatePrivateAcpAgentProvider,
 } from '../src/internal/acp-agent-provider.js'
+import { PrivateAcpSetupError } from '../src/internal/acp-setup-diagnostics.js'
 import { openPrivateClaudeAgentProvider } from '../src/internal/claude-agent-provider.js'
 import { openPrivateCodexAgentProvider } from '../src/internal/codex-agent-provider.js'
 import {
@@ -20,40 +21,69 @@ import {
   resolvePrivateLinuxHostPath,
 } from '../src/internal/linux-host-paths.js'
 import { PrivateMacosBackend } from '../src/internal/macos-native-backend.js'
+import { privateMacosKernelPlatform } from '../src/internal/macos-process-controls.js'
 import { openPrivatePiAgentProvider } from '../src/internal/pi-agent-provider.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 // Genuine operator installations only. No downloads, credentials, model calls,
-// or fixture executables. This proves startup, not the hostile-host contract.
+// or fixture executables. Unqualified Mac Codex profiles must explicitly refuse
+// the genuine selection. This proves startup/refusal, not the hostile-host contract.
 const nativeTest = process.env.JIG_NATIVE_AGENT_STARTUP === '1' ? test : test.skip
 for (const client of ['codex', 'claude', 'pi'] as const) {
   nativeTest(
-    `${client}: native ACP startup without network`,
+    client === 'codex'
+      ? 'codex: native ACP startup or explicit unsupported Mac refusal without network'
+      : `${client}: native ACP startup without network`,
     async () => {
       const selected = process.env[`JIG_${client.toUpperCase()}_STARTUP_PATH`]
       if (!selected) throw new Error(`JIG_${client.toUpperCase()}_STARTUP_PATH is required`)
       const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-native-startup-')))
       try {
-        const provider = await (client === 'codex'
-          ? openPrivateCodexAgentProvider
-          : client === 'claude'
-            ? openPrivateClaudeAgentProvider
-            : openPrivatePiAgentProvider)(
-          installedBunLocation.releaseRoot,
-          {
-            [`${client.toUpperCase()}_PATH`]: selected,
-            ...(client === 'codex'
-              ? { OPENAI_API_KEY: 'offline-placeholder', OPENAI_MODEL: 'gpt-5.3-codex' }
-              : client === 'claude'
-                ? { ANTHROPIC_API_KEY: 'offline-placeholder', ANTHROPIC_MODEL: 'claude-haiku-4-5' }
-                : {
-                    PI_API_KEY: 'offline-placeholder',
-                    PI_PROVIDER: 'mistral',
-                    PI_MODEL: 'ministral-8b-2512',
-                  }),
-          },
-          root,
-        )
+        const factory =
+          client === 'codex'
+            ? openPrivateCodexAgentProvider
+            : client === 'claude'
+              ? openPrivateClaudeAgentProvider
+              : openPrivatePiAgentProvider
+        const open = () =>
+          factory(
+            installedBunLocation.releaseRoot,
+            {
+              [`${client.toUpperCase()}_PATH`]: selected,
+              ...(client === 'codex'
+                ? { OPENAI_API_KEY: 'offline-placeholder', OPENAI_MODEL: 'gpt-5.3-codex' }
+                : client === 'claude'
+                  ? {
+                      ANTHROPIC_API_KEY: 'offline-placeholder',
+                      ANTHROPIC_MODEL: 'claude-haiku-4-5',
+                    }
+                  : {
+                      PI_API_KEY: 'offline-placeholder',
+                      PI_PROVIDER: 'mistral',
+                      PI_MODEL: 'ministral-8b-2512',
+                    }),
+            },
+            root,
+          )
+        if (client === 'codex' && process.platform === 'darwin') {
+          const expected =
+            privateMacosKernelPlatform() === 'darwin-x64-23.4.0-23E224' ? 'startup' : 'unsupported'
+          const configured = process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION
+          if (configured !== undefined && configured !== expected)
+            throw new Error('Codex startup expectation differs from the actual Mac profile')
+          if (expected === 'unsupported') {
+            const failure = await open().catch((error) => error)
+            expect(failure).toBeInstanceOf(PrivateAcpSetupError)
+            expect(failure).toMatchObject({ stage: 'preferences' })
+            console.info(
+              'codex native startup: explicit unsupported Mac preference-profile refusal',
+            )
+            return
+          }
+        }
+        const provider = await open()
+        if (client === 'codex')
+          console.info(`codex selected native executable identity: ${provider.executableDigest}`)
         await revalidatePrivateAcpAgentProvider(provider)
         const runtime = privateAcpAgentRuntime(provider)
         const support = await openPrivateInstalledBunSupport(installedBunLocation)
@@ -306,6 +336,9 @@ async function qualifyMacosStartup(
           JIG_AGENT_WORK: '/work',
         },
         network: 'isolated',
+        ...(runtime.macosCodexPreferenceNotifications
+          ? { macosCodexPreferenceNotifications: true as const }
+          : {}),
         maxOutputBytes: 1024 * 1024,
         storageBytes: 512 * 1024 * 1024,
       },

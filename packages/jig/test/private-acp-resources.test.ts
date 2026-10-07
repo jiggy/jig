@@ -118,6 +118,8 @@ describe('target-selected private ACP resources', () => {
         'login',
         'api',
         'model',
+        'preferences',
+        'managed-policy',
       ] as const satisfies readonly AcpSetupStage[]) {
         const cause = new PrivateAcpSetupError(stage)
         cause.message = 'private-token /private/installation'
@@ -135,6 +137,12 @@ describe('target-selected private ACP resources', () => {
         expect(error.message).not.toContain('private-token')
         expect(error.message).not.toContain('/private/')
         expect(ACP_SETUP_HINTS[error.code]).toContain('jig review')
+        if (client === 'codex' && stage === 'preferences')
+          expect(error.code).toBe('PROJECT_ACP_CODEX_PREFERENCES')
+        if (client === 'codex' && stage === 'managed-policy') {
+          expect(error.code).toBe('PROJECT_ACP_CODEX_MANAGED_POLICY')
+          expect(ACP_SETUP_HINTS[error.code]).toContain('Keep operator-managed settings intact')
+        }
       }
     }
     const owner = openPrivateAcpResources(f.support, {}, f.project, async () => {

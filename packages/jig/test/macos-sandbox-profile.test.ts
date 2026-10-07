@@ -50,7 +50,27 @@ test('malformed paths and policy expansion beyond the bounded native handoff are
   ).toThrow('bound')
 })
 
-test('offline execution closes bootstrap and only explicit network authority retains DNS bootstrap', () => {
+test('ordinary offline execution closes bootstrap and explicit network authority retains service lookup', () => {
   expect(privateMacosSandboxProfile(files).bootstrap).toBe('closed')
-  expect(privateMacosSandboxProfile({ ...files, network: 'inherited' }).bootstrap).toBe('dns')
+  expect(privateMacosSandboxProfile({ ...files, network: 'inherited' }).bootstrap).toBe('services')
+})
+
+test('Codex receives notification counters without any preference values or writes', () => {
+  if (process.platform !== 'darwin') return
+  const profile = privateMacosSandboxProfile({ ...files, codexPreferenceNotifications: true })
+  expect(profile.bootstrap).toBe('services')
+  expect(profile.text).toContain(`(ipc-posix-name "apple.cfprefs.${process.getuid!()}v1")`)
+  expect(profile.text).toContain('(ipc-posix-name "apple.cfprefs.daemonv1")')
+  expect(profile.text).not.toContain('user-preference-read')
+  expect(profile.text).not.toContain('managed-preference-read')
+  expect(profile.text).not.toContain('ipc-posix-shm-write')
+  expect(profile.text).not.toContain('network-outbound')
+  expect(profile.text).not.toContain('ipc-posix-name-prefix')
+  expect(privateMacosSandboxProfile(files).text).not.toContain('cfpref')
+  expect(() =>
+    privateMacosSandboxProfile({
+      ...files,
+      codexPreferenceNotifications: false,
+    } as unknown as PrivateMacosSandboxFiles),
+  ).toThrow('notification policy')
 })

@@ -15,6 +15,7 @@ import {
   requirePrivateAcpAgentProvider,
   revalidatePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
+import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import {
   allocatePrivateRootChildOwner,
   claimPrivateNativeSession,
@@ -490,6 +491,22 @@ async function executeOwnedProvider(
     }
     if (error instanceof NativeSessionUnavailable)
       return failed('UNAVAILABLE', 'the retained session is unavailable for this admitted caller')
+    if (
+      !attemptedDispatch &&
+      runtime.client === 'openai-codex' &&
+      error instanceof PrivateAcpSetupError
+    ) {
+      if (error.stage === 'managed-policy')
+        return failed(
+          'EXECUTION_FAILED',
+          'Codex cannot start: configured macOS managed policy is unsupported by this contained profile. Keep operator-managed settings intact and select a supported Agent integration. No native dispatch was attempted.',
+        )
+      if (error.stage === 'preferences')
+        return failed(
+          'EXECUTION_FAILED',
+          'Codex cannot start: macOS preferences could not be synchronized and verified. Check preference-service availability and the installed Jig runtime. No native dispatch was attempted.',
+        )
+    }
     const explanation =
       error instanceof PrivateFiniteAcpPolicyError
         ? error.reason === 'native-session'
@@ -776,6 +793,9 @@ function agentExecutionIntent(
     },
     ...(retainSession ? { output: true } : {}),
     network: 'inherited',
+    ...(acp.macosCodexPreferenceNotifications
+      ? { macosCodexPreferenceNotifications: true as const }
+      : {}),
     ...(acp.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
     maxOutputBytes: 64 * 1024 * 1024,
     storageBytes: 512 * 1024 * 1024,

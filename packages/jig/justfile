@@ -28,8 +28,10 @@
     bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js
     bun build src/internal/macos-native-supervisor.ts --target=bun --format=esm --outfile=libexec/macos-native-supervisor.js
     cp support/macos-exec-universal libexec/macos-exec
+    cp support/macos-codex-preferences-universal libexec/macos-codex-preferences
     cp support/macos-descriptor-bridge.dylib libexec/macos-descriptor-bridge.dylib
     chmod 755 libexec/macos-exec
+    chmod 755 libexec/macos-codex-preferences
     bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js
     bun build src/internal/http-request-worker.ts --target=bun --format=esm --outfile=libexec/http-request-worker.js
     bun build src/internal/markdown-runtime-worker.ts --target=bun --format=esm --outfile=libexec/markdown-runtime.js

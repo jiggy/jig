@@ -61,8 +61,15 @@ host qualification. Host preparation never becomes a consumer requirement.
 
 - Mac qualification runs unprivileged without host provisioning. Require all
   three genuine native client paths for full qualification and the installed
-  consumer shard; missing prerequisites fail explicitly. No model credentials
-  or online model calls are part of this host check.
+  consumer shard; missing prerequisites fail explicitly. Claude and Pi must
+  complete offline startup. Codex must complete offline startup on Intel
+  23E224 and return the explicit unsupported-preferences refusal on hosted
+  24G830 profiles; the selected path remains genuine and the case never skips.
+  Qualification passes that expected outcome through
+  `JIG_CODEX_MACOS_STARTUP_EXPECTATION`; the test independently checks the
+  actual kernel profile before accepting it. Include the trusted preference
+  observer in host residue comparisons. No model credentials or online model
+  calls are part of this host check.
 - Use `sudo` only while provisioning the disposable runner. Jig and package
   code run unprivileged.
 - Keep fetched host tools version- and digest-pinned.
@@ -80,7 +87,8 @@ host qualification. Host preparation never becomes a consumer requirement.
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
   Mac file assignment, disjoint lifecycle and package name groups, balanced scheduling
-  of a representative observed workload including out-of-file costs, and that every
+  of a representative observed workload including out-of-file costs, exact
+  Codex startup/refusal host selection without running native clients, and that every
   Linux hostile test file enters provisioned host conformance.
 - `node --test scripts/ci/macos-host-summary.test.mjs` exercises both architecture
   aggregates, nested reports, installed-client evidence, duplicate execution,

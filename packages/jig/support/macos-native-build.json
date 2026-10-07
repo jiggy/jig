@@ -11,10 +11,12 @@
     "arm64"
   ],
   "sha256": {
-    "scripts/native-support.mjs": "8f183c2937f32a36a2b516116f9f0f0163d6603642fc1768859b92578baa5c49",
-    "support/macos-exec.c": "d1f55ec43c1eb2deeffa2e2ec56b2f5a0059dfe6af670b0b9ac2566b7d79fd8b",
-    "support/macos-exec-universal": "80dac3d3188457c4fcba74c22f7f66088ad104474a2dbdfba07f9c20d716cad3",
+    "scripts/native-support.mjs": "2c7b743c3f3351b26dfad71b434b65c7f3755408787104c871088a16041674be",
+    "support/macos-exec.c": "8ae6ca1481a073c24c94176dc4ed7a0cf7db2fefa9bc72b7023654fea03993a2",
+    "support/macos-exec-universal": "f352edf1384bbfe6c9276fde288905b7b37ac9e6e3cf4137cf4b7bf90a0133d6",
     "support/macos-descriptor-bridge.c": "405091f7b18f259cd95466a0360524c776c7975131611d65bf88a62f89cca8b0",
-    "support/macos-descriptor-bridge.dylib": "c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e"
+    "support/macos-descriptor-bridge.dylib": "c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e",
+    "support/macos-codex-preferences.m": "55062bbdf90f6e702087173eab9e45589bcb97437cdca513e0049f7c1883c334",
+    "support/macos-codex-preferences-universal": "59b5c80023e66f054266637cfcd1f366e40d4ffbf5c236b8330c43d7ef6b6806"
   }
 }

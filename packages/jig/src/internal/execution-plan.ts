@@ -32,6 +32,11 @@ export function privateMacosExecutionPlan(
   intent: PrivateExecutionIntent,
   allocation: PrivateMacosOwnerStateAllocationIdentity,
 ): PrivateMacosLaunchPlan {
+  if (
+    intent.macosCodexPreferenceNotifications !== undefined &&
+    intent.macosCodexPreferenceNotifications !== true
+  )
+    throw new TypeError('invalid Codex preference notification intent')
   const data = join(allocation.directory, 'data')
   const mappings = intent.projections.map(
     ({ source, destination }) => [destination, source] as const,
@@ -106,6 +111,9 @@ export function privateMacosExecutionPlan(
           : [],
       protectedRoots: [join(allocation.directory, 'control')],
       network: intent.network ?? 'isolated',
+      ...(intent.macosCodexPreferenceNotifications
+        ? { codexPreferenceNotifications: true as const }
+        : {}),
     },
     maxOutputBytes: intent.maxOutputBytes,
     ...(intent.readOnlyCwd === undefined || (intent.inputDirectories?.length ?? 0) > 0

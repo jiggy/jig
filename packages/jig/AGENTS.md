@@ -376,6 +376,15 @@ admitted FLOW packages.
   and pricing files, and the published Bread 1.0 text's fixed digest. The check
   uses retained local text, without a Bread checkout or network lookup.
 - Trust-boundary changes require the provisioned host-conformance workflow.
+- Mac Codex preference qualification uses `macos-preferences-observer.test.ts`
+  and `macos-preferences-boundary.test.ts` with `JIG_MACOS_PROCESS_TEST=1`.
+  The actual-observer positive and injected-policy cases require native Intel
+  23E224 without configured Codex MDM. They prove closed decisions, inherited
+  sandbox refusal and parent-loss expiry, not installed MDM consumption. The
+  raw boundary test checks populated synthetic preferences, read-only counters,
+  inherited rights and cleanup. Genuine startup is qualified separately by
+  `native-agent-startup.test.ts`; other Mac profiles must explicitly refuse
+  Codex selection while retaining their independent client checks.
 - CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-value-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,
   plain/redirected output, narrow widths, and light/dark terminal palettes.
