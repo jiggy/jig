@@ -1205,6 +1205,16 @@ function operationDispatcher(
   }
   return Object.freeze({
     channels: channels.root,
+    onCall: (call, state, cause) =>
+      input.channelOutput?.call?.({
+        publisher: channels.root.id,
+        operationId: call.operationId,
+        slot: call.slot,
+        ...(call.intent === undefined ? {} : { intent: call.intent }),
+        state,
+        time: Date.now(),
+        ...(cause === undefined ? {} : { cause }),
+      }),
     onCancellation: (code) => channels.broker.abort(code),
     validateResult: (result) => {
       const admitted = admitPrivatePackageResult(inspected, {
@@ -1237,6 +1247,7 @@ function operationDispatcher(
                 broker: channels.broker,
                 contracts: channels.contracts,
               },
+              onCall: input.channelOutput?.call,
               ...(input.channelOutput === undefined
                 ? {}
                 : {

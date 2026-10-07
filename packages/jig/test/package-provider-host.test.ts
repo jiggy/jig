@@ -50,7 +50,7 @@ for await (const line of lines) {
 `
 
 hostTest(
-  'installed software factory retains declared repair progress in its reviewed package',
+  'installed software factory delivers complete blocked and checked dashboard views',
   async () => {
     const directory = await mkdtemp(join(tmpdir(), 'jig-factory-consumer-'))
     const project = join(directory, 'project')
@@ -200,6 +200,21 @@ hostTest(
       const updates = records
         .filter((record) => record.type === 'data')
         .map((record) => record.value)
+      for (const id of ['jobs', 'checks', 'patches'])
+        expect(updates.some((update) => update.kind === 'view' && update.id === id)).toBe(true)
+      const finalJobs = updates
+        .filter((update) => update.kind === 'view' && update.id === 'jobs')
+        .at(-1)
+      expect(finalJobs.summary).toContain('2 of 2 repairs settled')
+      const finalChecks = updates
+        .filter((update) => update.kind === 'view' && update.id === 'checks')
+        .at(-1)
+      expect(JSON.stringify(finalChecks)).not.toContain('Pending independent verification')
+      expect(JSON.stringify(finalChecks)).toContain('Settled; no checked patch')
+      const finalPatches = updates
+        .filter((update) => update.kind === 'view' && update.id === 'patches')
+        .at(-1)
+      expect(finalPatches.summary).toContain('0 checked patches')
       expect(
         updates.some(
           (update) => update.kind === 'notice' && update.text.includes('Requested goal:'),
@@ -208,7 +223,9 @@ hostTest(
       expect(
         updates.some(
           (update) =>
-            update.kind === 'activity' && update.label.includes('repository test command'),
+            update.kind === 'view' &&
+            update.id === 'jobs' &&
+            JSON.stringify(update.sections).includes('repository test command'),
         ),
       ).toBe(true)
       expect(
@@ -221,6 +238,109 @@ hostTest(
       expect(await readFile(join(project, 'factory-result/files/summary.txt'), 'utf8')).toContain(
         cause,
       )
+      // A second reviewed ordinary peer returns deterministic fixture repairs.
+      // The factory source, test commands and independent assertions stay unchanged.
+      await cp(join(example, 'flows/repair'), join(project, 'flows/repair'), {
+        recursive: true,
+        filter: (source) => basename(source) !== 'node_modules',
+      })
+      await writeFile(
+        join(peer, 'FLOW.ts'),
+        `import {handle} from '@jigging/flow';
+await handle(async run => {
+ const instructions=run.input.instructions;
+ const input=JSON.parse(instructions.slice(instructions.indexOf('\\n')+1));
+ const replacements=input.editPaths.map(path=>{
+   let content=input.files[path];
+   if(path==='src/parse.ts'&&content.includes('parseTime')) content=content.replace('if (hour > 23)','if (hour > 23 || minute > 59)');
+   else if(path==='src/parse.ts') content=content.replace("typeof value.status !== 'number'", "typeof value.status !== 'number' || !Number.isInteger(value.status) || value.status < 100 || value.status > 599");
+   if(path==='src/report.ts') content=content.replace('r.status >= 400).length','r.status >= 500 && r.status < 600).length');
+   if(path==='src/total.ts') content=content.replace('Math.max(0, shift.end - shift.start)','(shift.end - shift.start + 1440) % 1440');
+   return {path,content};
+ });
+ return {outcome:'done',output:{text:'Deterministic fixture correction',structured:{summary:'Deterministic fixture correction',replacements}}};
+});`,
+      )
+      await command(
+        [installed, 'review', '--yes', '--allow-resolution-network', '--allow-authority-changes'],
+        project,
+      )
+      const checked = (
+        await command(
+          [
+            installed,
+            'run',
+            '--out',
+            'factory-checked',
+            '--receive',
+            'progress',
+            '--json',
+            '--timeout',
+            `${MACOS_FIXTURE_RUN_MS}ms`,
+          ],
+          project,
+        )
+      )
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      const checkedTerminal = checked.find((record) => record.type === 'terminal').result
+      expect(checkedTerminal).toMatchObject({
+        status: 'succeeded',
+        outcome: 'done',
+        delivery: { status: 'written' },
+      })
+      expect(checkedTerminal.output.jobs.every((job) => job.ready === true)).toBe(true)
+      const checkedUpdates = checked
+        .filter((record) => record.type === 'data')
+        .map((record) => record.value)
+      expect(
+        checkedUpdates.filter((update) => update.kind === 'view' && update.id === 'jobs').at(-1)
+          .summary,
+      ).toContain('2 independently checked patches')
+      expect(
+        JSON.stringify(
+          checkedUpdates
+            .filter((update) => update.kind === 'view' && update.id === 'checks')
+            .at(-1),
+        ),
+      ).toContain('Passed; independently verified')
+      const patches = checkedUpdates
+        .filter((update) => update.kind === 'view' && update.id === 'patches')
+        .at(-1)
+      expect(patches.summary).toContain('2 checked patches')
+      expect(patches.sections[0].blocks[0].rows.map((row) => row.cells.patch)).toEqual([
+        { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
+        { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
+      ])
+      expect(checked.some((record) => record.type === 'end' && record.error !== undefined)).toBe(
+        false,
+      )
+      const plain = JSON.parse(
+        await command(
+          [
+            installed,
+            'run',
+            '--out',
+            'factory-auto',
+            '--display',
+            'plain',
+            '--timeout',
+            `${MACOS_FIXTURE_RUN_MS}ms`,
+          ],
+          project,
+        ),
+      )
+      expect(plain).toMatchObject({
+        status: 'succeeded',
+        outcome: 'done',
+        delivery: { status: 'written' },
+      })
+      const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
+      for (const title of ['Software factory · Jobs', 'Checks', 'Patches'])
+        expect(transcript).toContain(title)
+      expect(transcript).toContain('Observation ended')
+      expect(transcript).not.toContain('\u001b')
       passed = true
     } finally {
       if (passed) await rm(directory, { recursive: true, force: true })

@@ -16,6 +16,12 @@ patch authority and every merge decision stays with a person.
   failure evidence into ordinary language; optional input labels name jobs for people.
   It introduces requested goals, source scope, reviewed approach and checks before
   work, and repeats goals with verified outcomes in the final report.
+  `dashboard.ts` composes the portable Jobs, Checks and Patches documents using
+  public user-updates types. Jobs is the root landing view; call references name
+  actual own operation IDs, and patch references name only accepted files in
+  deliverables. Checks distinguish provisional reports from independent final
+  verification, including settled jobs with no checked patch. No host-domain
+  adapter, terminal callback, invented graph edge or execution control belongs here.
 - `flows/router/` owns the portable decision Flow, separately governed below.
 - `flows/repair/` owns the factory's independently editable repair specialist.
 - The factory declares `factory-repair-flow` as a workspace dependency and
@@ -91,6 +97,10 @@ patch authority and every merge decision stays with a person.
   retained by successful checkpoints, never attempts or acceptance. A complete
   checkpoint notice follows durable storage. Progress never establishes acceptance;
   the `checkpoint` slot is the separate collaborator for settled evidence.
+  Final snapshots remain optional observations. Test all three completed views
+  through the installed host, including fast blocked and accepted outcomes;
+  preserve final result/evidence independently. Publish blocking notices before
+  observational snapshots and checkpoint work.
 - Original sources remain read-only. The application writes patch packets only;
   a person decides whether to apply, combine, merge, or release them.
 
@@ -118,7 +128,9 @@ optional observation delivery.
 - Jig's `package-provider-host.test.ts` also runs this application through the
   installed CLI with a deterministic Flow Agent peer. It verifies reviewed
   repair-dependency imports, live worker reports and checkpoint delivery after
-  the editable repair source is removed; it makes no live Agent claim.
+  the editable repair source is removed, all three final views for blocked and
+  independently checked repairs, delivered patch references and automatic plain
+  summaries; it makes no live Agent claim.
 - The release gate repeats deterministic application tests against packed SDK
   candidates. Jig's private repair-batch host fixture exercises the same
   contained command and checkpoint boundaries, but does not qualify this

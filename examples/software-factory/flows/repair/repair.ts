@@ -102,6 +102,10 @@ async function repairWithProgress(
       const observation = await run.call({
         operationId: `${id}-${index}`,
         slot: request.command,
+        intent:
+          index === 0
+            ? 'Run repository tests'
+            : `Check acceptance case ${input.cases[index - 1]!.id}`,
         input: { args: request.args, stdin: request.stdin, files },
       })
       if (observation.outcome !== 'done')
@@ -135,6 +139,8 @@ async function repairWithProgress(
       const response = await run.call({
         operationId: `patch-${index + 1}`,
         slot: 'agent',
+        intent:
+          index === 0 ? 'Request a proposed repair' : 'Request a correction using failed checks',
         input: {
           instructions:
             'Repair this small Bun project. Return complete replacement text for only the permitted editPaths and a short summary. ' +

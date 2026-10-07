@@ -1486,7 +1486,7 @@ describe('finite Jig project commands', () => {
   test('automatic updates select terminal stderr independently and preserve the machine result bytes', async () => {
     let baseline: string | undefined
     for (const [terminalError, args, enabled] of [
-      [false, [], false],
+      [false, [], true],
       [true, [], true],
       [true, ['--json'], false],
       [true, ['--updates', 'off'], false],

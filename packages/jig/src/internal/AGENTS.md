@@ -499,6 +499,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   named contract. ACP ingress is separately bounded and never
   blocks its protocol reader; failed progress does not manufacture failed work.
   The installed writer bounds live stdout/stderr and cancels on delivery loss.
+  Read-only dashboard provenance is broker-captured accepted-send identity,
+  retained on pending sends; it never enters public channel envelopes. Host call
+  observations carry only actual own operation identity, parent, slot, bounded
+  intent, state/time and safe cause. Optional observation exceptions cannot
+  change dispatch or settlement. Explicit result inspection owns one bounded
+  immutable copy of verified delivery bytes; it never reopens destination files,
+  retains an execution owner or extends a Flow's deadline. Release preview
+  buffers and private presentation connections on every exit.
   Command reports retain aggregate-bounded diagnostics with host-assigned call
   paths, independently of root-process stderr. Settled root notifications let
   interrupted commands report known terminals without reopening closed authority.

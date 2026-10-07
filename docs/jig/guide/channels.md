@@ -1,7 +1,8 @@
 # Add progress to a Flow
 
 A method can tell its caller what it is doing before its result arrives. Use
-complete notices for messages and replaceable activities for current work. The
+complete notices for messages, replaceable activities for current work, and
+read-only views for a domain workspace. The
 application still checks its result; a count or closed update stream never
 establishes success.
 
@@ -21,10 +22,11 @@ can copy the same agreement from the library or its
 [download](https://jig.md/contracts/user-updates.json), with the accompanying
 [MPL-2.0 license](https://jig.md/contracts/user-updates/LICENSE).
 
-Add this optional port to `FLOW.meta.json` (or an existing invocation descriptor):
+Add this optional port to `FLOW.contract.json`. If the Flow has no invocation
+descriptor yet, create one with the following contents:
 
 ```json
-{"channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}
+{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}
 ```
 
 The name `updates` is local. No named invocation contract for the whole Flow is
@@ -76,14 +78,18 @@ Use `info` (default), `warning` or `error` to report importance. For example,
 Jig prominently labels attributed Flow-reported errors. Severity does not change
 ordering, quotas, optional delivery or execution authority. Offer blocking failures
 promptly and retain their reasons in final results independently of observation.
-`activity(id, label, progress?)` replaces the complete slot. Progress has required
+`activity(id, label, progress?, {detail?, operationId?})` replaces the complete slot.
+The optional detail explains the current procedure; an own-call operation ID
+links to host-observed execution without inventing a call or changing its status.
+Progress has required
 `completed`, optional `total`, and optional `unit`, for example
 `{completed: 3, total: 8, unit: 'files'}` in TypeScript. Counts may decrease or
 change units; omitted progress removes the old count. `clear(id)` is idempotent.
 Every source ending removes all its transient activities without decorating them
 as successful. Keep essential warnings and outcome evidence in results/artifacts.
 
-Local publication limits or 500 ms wait/drain expiry stop optional observation;
+Local publication limits, 500 ms send wait or 4000 ms final drain expiry stop
+optional observation;
 original send and close operations still settle, so cleanup can take longer.
 Known observer loss may degrade. Unexpected publisher errors and root cancellation
 remain failures. A body error stays primary with a bounded secondary diagnostic.
@@ -92,9 +98,10 @@ See [exact bounds and lifecycle](../spec/user-updates.md).
 ## Observe the work
 
 After reviewing the changed source, ordinary `jig run` automatically displays
-exactly one optional canonical output when stderr is a terminal. Activities share
-one line with host progress; complete notices retain Flow attribution on every
-line. Plain terminals show meaningful label changes without repeating every count.
+exactly one optional canonical output on stderr. Suitable terminals show a bounded
+inline dashboard with the actual invocation tree and application views. Complete
+notices remain in the transcript with Flow attribution. Plain or redirected
+stderr shows meaningful label, title and summary changes without repeating counts.
 Stdout remains the ordinary final result. `--updates off` disables automatic
 observation; `--json` also disables it, while host diagnostics remain available.
 
@@ -103,6 +110,53 @@ presentation or JSON/NDJSON. It takes precedence even when supplied by the appro
 project entrypoint; `--updates off` does not cancel that explicit choice. Multiple
 canonical ports get one hint instead of a guess. Unsupported contracts remain
 ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
+
+Use `jig run --display dashboard` for keyboard navigation. Tab changes views;
+j/k selects records, c changes collections, / filters, s sorts, r selects a
+reference, Enter opens it, and [/] scrolls. q or Escape leaves inspection while
+live work continues. Ctrl-C during work requests cancellation and cleanup. After
+execution, cleanup and delivery settle, the inspector can stay open to inspect
+results; Ctrl-C then closes inspection without changing the admitted result.
+`--display plain` selects nonanimated presentation. `--json` or effective
+`--receive` keeps exact existing output and takes precedence over the dashboard.
+
+## Give a Flow its own workspace
+
+One declaration and one full snapshot are enough:
+
+```ts
+const matters = updates.view('matters', {title: 'Document review', landing: true})
+matters.update({
+  summary: 'Review the supplied documents and retain findings for a person to check.',
+  sections: [{blocks: [{
+    kind: 'collection', id: 'matters', title: 'Supplied matters',
+    columns: [{key: 'name', label: 'Matter', type: 'text'}],
+    rows: [{id: 'one', cells: {name: 'Lease review'}, details: [{
+      kind: 'report', text: 'Check the supplied lease against the requested questions.',
+    }]}],
+  }]}],
+})
+```
+
+Use `report`, `facts`, explicit count `progress`, and typed `collection` blocks.
+Compose your domain helper from these ordinary records; no terminal code or host
+adapter is needed. Python exposes the same `updates.view(id, options)` handle
+with `update(snapshot)` and `retire()`.
+
+Every update replaces the whole view atomically. Stable collection/row IDs preserve
+selection. Keep essential conclusions in the result and files: optional updates
+can stop, and frozen views show when their observation ended. A handle owns its
+ID for the scope; retired IDs cannot be reused. At most eight views per publisher
+are retained. Only one view may offer a landing hint; the root hint selects the
+initial surface until the operator chooses.
+
+Typed references address a current same-publisher record, an actual own call, or
+a declared output file. For example, `{kind: 'call', operationId: 'check-lease'}`
+or `{kind: 'artifact', attachment: 'deliverables', path: 'draft.txt'}`. Missing
+targets remain visibly unavailable. Artifact references resolve only after Jig
+verifies delivery; a preview reads the immutable admitted capture, even if the
+destination later changes. Text/diff previews are limited to 64 KiB. References
+never execute work, apply a patch, open an external program, or grant authority.
 
 For software consumers, use `--receive updates --json`, parse complete stdout
 lines as JSON, and keep stderr separate. Read `begin`, ordered `data`, `end`, then

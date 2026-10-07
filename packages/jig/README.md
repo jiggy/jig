@@ -53,6 +53,16 @@ jig import-contract --list
 jig completion <bash|zsh|fish>
 ```
 
+Runs show an inline invocation tree and optional application views on terminal
+stderr. `jig run --display dashboard` opens a read-only keyboard inspector with
+tabs, record details, filtering and verified text/patch previews. q or Escape
+leaves inspection; Ctrl-C during work cancels and waits for cleanup. After work
+and delivery settle, Ctrl-C simply closes result inspection. Use `--display plain`
+for nonanimated summaries. `--json` and effective `--receive` preserve exact
+machine/channel output. Flow authors compose views through the portable
+[user-updates agreement](https://jig.md/guide/channels), without terminal code or
+host-specific domain adapters.
+
 `review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
 

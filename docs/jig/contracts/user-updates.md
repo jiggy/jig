@@ -1,11 +1,12 @@
 # User updates contract
 
-A Flow can report complete notices and replace transient activity while it
+A Flow can report complete notices, replace transient activity and publish
+read-only domain views while it
 works. This optional agreement lets different callers understand those messages
 without adopting the Flow's application policy or Jig's terminal implementation.
 
 The [canonical descriptor](https://jig.md/contracts/user-updates.json) defines
-three closed messages: `notice`, `activity`, and `clear`. Its provisional
+five closed messages: `notice`, `activity`, `clear`, `view` and `retire-view`. Its provisional
 identity is `https://jig.md/contracts/user-updates`, version `0.1.0`. Identity,
 version and digest are checked offline; this page is never fetched at Run time.
 The descriptor is owned by the portable `@jigging/user-updates` library and is
@@ -26,7 +27,15 @@ remove its transient state. Accepted complete notices retain presenter ownership
 through ordinary retirement; output loss still prevents delivery guarantees.
 Neither counts, 100%, clear nor EOF establish execution success.
 
-Jig can display one exact optional port on terminal stderr. Explicit `--receive`
+Views compose literal reports, facts, measured progress and typed collections.
+Stable record IDs preserve navigation. Scoped references address current records,
+actual own calls or verified delivered files; previews use immutable capture.
+Whole snapshots replace atomically. EOF freezes views with ended context, and
+retired IDs cannot revive. Applications keep essential evidence in results/files.
+
+Jig can display one exact optional port on stderr, using plain text when redirected.
+`jig run --display dashboard` supplies tabs, record details, filtering and previews;
+`--display plain` selects nonanimated summaries. Explicit `--receive`
 retains normal stdout channel records; `--json` and `--updates off` disable
 automatic display. See [user-updates policy](../spec/user-updates.md) for exact
 selection, bounds, rendering and lifetime rules.

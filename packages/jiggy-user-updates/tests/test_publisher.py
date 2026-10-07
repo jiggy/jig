@@ -24,6 +24,45 @@ class Sender:
 
 
 class PublisherTests(unittest.IsolatedAsyncioTestCase):
+    async def test_full_prompt_backlog_preserves_final_distinct_views(self):
+        sender = Sender()
+        async with user_updates(SimpleNamespace(channels={"updates": sender}), "updates") as updates:
+            for n in range(12):
+                updates.notice(f"Earlier {n}")
+            updates.notice("Blocking cause retained independently", "error")
+            for id in ("jobs", "checks", "patches"):
+                updates.view(id, {"title": id}).update({"summary": f"{id} final evidence", "sections": []})
+        self.assertEqual(len(sender.values), 16)
+        self.assertEqual([value["text"] for value in sender.values[:12]], [f"Earlier {n}" for n in range(12)])
+        self.assertEqual(sender.values[12]["severity"], "error")
+        self.assertEqual([value["id"] for value in sender.values[13:]], ["jobs", "checks", "patches"])
+        self.assertEqual(sender.closes, [None])
+
+    async def test_cancellation_during_final_drain_keeps_original_send_owned(self):
+        started, closed = asyncio.Event(), asyncio.Event()
+        original = asyncio.get_running_loop().create_future()
+        class Delayed(Sender):
+            async def send(self, value):
+                started.set()
+                await original
+            async def close(self, *, error=None):
+                self.closes.append(error)
+                closed.set()
+        sender = Delayed()
+        async def scope():
+            async with user_updates(SimpleNamespace(channels={"updates": sender}), "updates") as updates:
+                updates.notice("Final evidence")
+        task = asyncio.create_task(scope())
+        await started.wait()
+        task.cancel()
+        await closed.wait()
+        self.assertFalse(task.done())
+        self.assertFalse(original.cancelled())
+        original.set_exception(OperationError("LAGGED"))
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(sender.closes, ["LAGGED"])
+
     async def test_snapshot_barriers_and_unwired_validation(self):
         sender = Sender()
         progress = {"completed": 0, "total": 1}

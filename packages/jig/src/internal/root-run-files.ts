@@ -132,6 +132,7 @@ export class PrivateRootRunFiles {
   #runId: string | undefined
   #output: PrivateExecutionOutput | undefined
   #checkpointBound = false
+  #outputAttachments: readonly string[] = []
   #method:
     | {
         readonly package: PrivateActivationRequest['package']
@@ -214,6 +215,9 @@ export class PrivateRootRunFiles {
     }
   }
   identify(request: PrivateActivationRequest): void {
+    this.#outputAttachments = Object.entries(request.attachments)
+      .filter(([, access]) => access === 'read-write')
+      .map(([name]) => name)
     this.#method = Object.freeze({
       package: request.package,
       configurationDigest: privateDomainDigest(
@@ -240,6 +244,9 @@ export class PrivateRootRunFiles {
   }
   get method() {
     return this.#method
+  }
+  get outputAttachments(): readonly string[] {
+    return this.#outputAttachments
   }
   async bindCheckpoint(
     runId: string,

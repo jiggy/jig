@@ -112,12 +112,14 @@ interface Item {
   readonly sequence: number
   readonly value: JsonValue
   readonly bytes: number
+  readonly publisher: string
 }
 
 interface PendingSend {
   readonly pool: ChannelPool
   readonly value: JsonValue
   readonly bytes: number
+  readonly publisher: string
   readonly resolve: () => void
   readonly reject: (error: unknown) => void
   dispose(): void
@@ -177,6 +179,14 @@ export class ChannelBroker {
   private readonly applicationPool = pool(CHANNEL_LIMITS)
   private readonly presentationPool = pool(PRESENTATION_CHANNEL_LIMITS)
   private failure?: ChannelOperationError
+  private readonly receivedPublishers = new WeakMap<object, string>()
+
+  /** Private accepted-send sideband. It is never serialized into Run/0. */
+  publisherOf(received: JsonValue): string | undefined {
+    return received !== null && typeof received === 'object'
+      ? this.receivedPublishers.get(received)
+      : undefined
+  }
 
   participant(id: string, options: ChannelParticipantOptions = {}): ChannelParticipant {
     if (this.participants.has(id)) throw new TypeError('channel participant already exists')
@@ -548,7 +558,7 @@ export class ChannelBroker {
       source.delivery === 'broadcast' ||
       (source.pending.length === 0 && this.hasCapacity(source.receivers[0]!, bytes))
     ) {
-      this.accept(source, item, bytes)
+      this.accept(source, item, bytes, owner.id)
       return null
     }
     if (
@@ -575,6 +585,7 @@ export class ChannelBroker {
         pool: source.pool,
         value: item,
         bytes,
+        publisher: owner.id,
         resolve,
         reject,
         dispose: () => signal?.removeEventListener('abort', onAbort),
@@ -875,7 +886,7 @@ export class ChannelBroker {
     )
   }
 
-  private accept(source: Source, value: JsonValue, bytes: number): void {
+  private accept(source: Source, value: JsonValue, bytes: number, publisher: string): void {
     if (source.totalBytes + bytes > source.pool.limits.sourceBytes) {
       const error = new ChannelOperationError(
         'RESOURCE_EXHAUSTED',
@@ -885,7 +896,7 @@ export class ChannelBroker {
       throw error
     }
     source.totalBytes += bytes
-    const item = { sequence: ++source.sequence, value, bytes }
+    const item = { sequence: ++source.sequence, value, bytes, publisher }
     for (const receiver of source.receivers) {
       if (receiver.released || receiver.failure !== undefined || receiver.ended) continue
       try {
@@ -911,7 +922,9 @@ export class ChannelBroker {
   private readItem(receiver: Receiver): JsonValue {
     const item = receiver.queue.shift()!
     receiver.inFlight = item
-    return { item: { sequence: item.sequence, value: item.value } }
+    const response = { item: { sequence: item.sequence, value: item.value } }
+    this.receivedPublishers.set(response, item.publisher)
+    return response
   }
 
   private deliver(receiver: Receiver): void {
@@ -944,7 +957,7 @@ export class ChannelBroker {
       try {
         this.assertWritable(source)
         for (const constraint of source.constraints) validateConstraint(constraint, pending.value)
-        this.accept(source, pending.value, pending.bytes)
+        this.accept(source, pending.value, pending.bytes, pending.publisher)
         pending.resolve()
       } catch (error) {
         const failure =

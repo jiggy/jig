@@ -19,8 +19,10 @@ or UTF-16 units. Publishers and consumers enforce semantic rules beyond schema.
 | Kind | Fields | Meaning |
 | --- | --- | --- |
 | `notice` | `text`: 1–4096 scalars, multiline allowed; optional `severity`: `info`, `warning`, `error` | Append one complete attributed message; never a fragment. |
-| `activity` | `id`: 1–64 scalars; `label`: 1–256; optional `progress` | Fully replace transient state for this connected source instance and opaque ID. |
-| `clear` | `id`: 1–64 scalars | Remove the slot idempotently. Unknown IDs do nothing. |
+| `activity` | `id`: 1–64 single-line scalars; `label`: 1–256; optional `progress`, `detail`, own-call `operationId` | Fully replace transient state for this connected source instance and opaque ID. |
+| `clear` | `id`: 1–64 single-line scalars | Remove the slot idempotently. Unknown IDs do nothing. |
+| `view` | `id`, `title`, `summary`, `sections`; optional `landing: true`, own-call `operationId` | Replace one complete attributed workspace view; see dashboard semantics below. |
+| `retire-view` | `id` | Remove a view and claim its ID against reuse. |
 
 Notice severity defaults to info. It classifies author-reported importance, never
 host-attested blocking state, execution failure, retry or cancellation authority.
@@ -38,8 +40,8 @@ progress. Replacement retains first-appearance order; clearing and reusing an ID
 creates a new appearance. IDs are presentation slots, not durable tasks, native
 paths or host-attested provenance.
 
-Only consecutive unsent tail activities with the same ID may coalesce. Notices,
-clears and the immutable in-flight snapshot are barriers. Accepted transport order
+Only consecutive unsent tail replacements of the same activity or view may coalesce. Notices,
+clears, view retirements and the immutable in-flight snapshot are barriers. Accepted transport order
 is not an application revision counter or exhaustive history. No count, exact
 100%, clear, or EOF establishes execution success. No rate, ETA or overall-run
 percentage is promised; incomplete counts must never round to 100%.
@@ -63,7 +65,13 @@ after draining begins are lifecycle errors. Disabled valid offers are no-ops.
 | Notices / canonical notice payload | 128 / 512 KiB |
 | Active keys | 16 |
 | Dispatch rate | At most 5/s |
-| Local send wait / aggregate drain | 500 ms / 500 ms |
+| Local send wait / aggregate drain | 500 ms / 4000 ms |
+
+The aggregate best-effort drain allowance starts at body exit. Already drained or
+unwired scopes add no waiting period. Four seconds accommodates a full backlog
+with prompt acknowledgements, without guaranteeing every legal sequence of
+sub-500 ms sends. The Run deadline can expire during this final drain; it is
+never extended. Send and close settlement may exceed either allowance.
 
 Lifecycle is accepting → draining → finished, with observation disabling and
 publisher failure retained separately. Charge attempts/bytes before dispatch,
@@ -101,7 +109,8 @@ old screen snapshots. Complete notices already admitted to the bounded presenter
 keep its ownership and order through ordinary retirement. Obsolete transient
 projections may be superseded; accepted notice jobs may not. Printing a notice
 cannot restore retired activity. Already dispatched output is irreversible and
-cannot be retracted. No notice history or unbounded tombstone map is retained.
+cannot be retracted. Attention retains at most 128 reports /512 KiB. View retirement claims are bounded
+by the lifetime ID limits; there is no unbounded history or tombstone map.
 
 Shared queues, traffic, rate and slot budgets can stop healthy contributors.
 This does not establish fairness, commutativity, independent transcripts or
@@ -118,8 +127,8 @@ selection and retains existing human channel stdout or exact begin/data/end/term
 NDJSON. `--json` disables automatic Flow observation independently of host diagnostics.
 Operator-only `--updates off` disables automatic selection and ambiguity hints;
 it does not override explicit reception and is forbidden in entrypoint defaults.
-Otherwise require terminal stderr; stdin/stdout TTY do not govern eligibility.
-NO_COLOR and TERM=dumb change rendering only.
+Otherwise observe the admitted optional port on stderr, using plain output when redirected.
+NO_COLOR and TERM=dumb select nonanimated plain automatic output. Stdout TTY does not govern eligibility.
 
 Exactly one optional send port must resolve from admitted captured bytes to the
 supported identity/version/digest. Zero matches is silent; multiple matches emit
@@ -130,13 +139,14 @@ internal origin; it never modifies parsed receive names or stdout envelopes.
 Stdout remains the ordinary human final result or single terminal JSON value.
 
 One stderr presenter owns host progress, diagnostics, activities and notices.
-It retains at most 16 slots in first-appearance order. Animated mode uses one
-transient physical line for the host wait, refreshed at most 5/s. Activity activation
+It retains at most 16 slots in first-appearance order. Before application views or host calls, animated mode uses one
+transient physical line for the host wait, refreshed at most 5/s. During execution
+the bounded inline dashboard projects actual calls and the selected application view. Activity activation
 and meaningful label/unit changes append complete attributed indented lines, with
 reported counts. These are state projections, not exhaustive activity history;
 obsolete queued projections may disappear, while printed phase lines remain.
-Count-only changes retain state without flooding either terminal mode. No phase
-percentage or bar is inferred. Retired activities never emit new projections. Escape controls/bidi before terminal-cell truncation
+Count-only changes retain state without flooding either terminal mode. No overall-run percentage, phase percentage or ETA is inferred. A progress block
+with an explicit positive denominator may display a count bar. Retired activities never emit new projections. Escape controls/bidi before terminal-cell truncation
 of transient text; preserve complete notice content as a contiguous block with
 Flow attribution on its first line and indented continuations. Escape every
 payload line. Application payload bypasses trusted heading/status recognition and
@@ -179,7 +189,7 @@ allocation capacity without promising zero overhead or outcome invariance.
 Installed stdout/stderr blockage or disconnection continues to request root
 cancellation. Stderr flush failure can prevent final stdout. No notices or final
 records are guaranteed after output loss. Independent host fencing owns cleanup.
-Prompts, approvals, links, plans, durable logs and replay are outside this
+Prompts, approvals, executable links, plans, durable logs and replay are outside this
 profile. Markdown's sequential interpreter can reference the agreement but lacks
 the code helpers' safe optional concurrent publishing; no parity is claimed.
 
@@ -199,3 +209,106 @@ composition is separate evidence. Promote only if shared replacement and counts
 justify their additional ceremony. Passing protocol checks does not establish
 better human supervision, fairness, optimal limits or Markdown parity. Change a
 provisional limit or descriptor deliberately and re-review it before promotion.
+
+## Read-only run dashboard and domain views
+
+Jig owns the run shell and the actual observed invocation tree. Applications own
+workspace views through the same optional `jig:user-updates` agreement and
+scoped publisher. There is no new channel, FLOW operation, domain task ontology,
+executable widget, arbitrary layout language or execution-changing control.
+
+`view` contains `id`, `title`, `summary`, `sections`, optional `landing: true`
+and optional own-call `operationId`. `retire-view` contains `id`. A section has
+optional title and blocks. Blocks are literal reports with optional references,
+label/value facts, explicit completed/total progress, or typed collections with
+stable row IDs, exact cells and optional non-collection row details. The canonical
+descriptor owns the closed field schema; semantic validation additionally checks
+column types, duplicate IDs, counts, aggregate bounds and safe references.
+
+Full view replacement is atomic after validation and capacity reservation. A
+rejected replacement preserves the last complete snapshot and marks the source
+incomplete. Source, landing and call association stay fixed for a view lifetime;
+title, summary and content may change. Omission removes optional old content.
+Unknown raw retirement claims and retires its ID once. Retired IDs never revive.
+Clean EOF removes activities but freezes views with ended context and last update;
+loss, invalid data and quota freeze them incomplete. Host stopping permanently
+fences callbacks. No observation ending or domain status establishes success.
+
+Per publisher, at most 16 lifetime view IDs and 8 retained live/frozen views /128
+KiB; per command, 64 lifetime IDs and 32 retained views /512 KiB. Each view has
+8 sections, 32 total blocks including row details, 128 total rows, 8 columns per
+collection, 1024 cells, 8 details per row, 32 facts per block, 8 references per
+report. IDs/keys use 1–64 scalars; titles/labels 1–128; summary 1–1024;
+report/text values 0–4096; units 1–32. IDs, keys, titles, labels and units are
+single-line. Activity's existing 64/256/32 bounds remain; optional `detail` is
+1–4096 multiline scalars and own-call `operationId` stays fixed until clear.
+
+Actual accepted-send participant provenance is private sideband, including pending
+sends and writer transfer. Creator or owner identity and public IDs never prove
+the sender. View keys use actual publisher instance plus local ID. Call keys use
+actual invoking instance plus original caller-local operation ID, independently
+of flattened private execution IDs. Duplicate operations join; deliberate retries
+need fresh IDs. Bounded dynamic reference lookup uses only current retained views,
+actual own calls and verified delivered-file evidence, with no pending join map,
+speculative node, URI lookup or implicit descendant subscription.
+
+Record references name same-publisher view/collection/row. Call references name
+the publisher's own operation ID, using the Run/0 ASCII identifier rule. Artifact
+references name a declared output attachment and a safe relative file path (512
+UTF-8 bytes, 16 segments, no absolute/dot/dot-dot/backslash/control/protected .jig
+segments). A child-only file is unavailable unless its parent remaps and delivers
+it. Pending delivery and missing targets remain explicit and may resolve later.
+Previews use the exact immutable verified bytes retained by the delivery owner,
+never reopen destination paths. One explicit inspector retains at most one output
+snapshot /16 MiB /64 files and one active UTF-8 text/diff preview /64 KiB. Binary
+or unavailable capture stays unavailable; clipping is explicit and character-safe.
+Every command exit closes preview and presentation owners.
+
+The host tree retains 256 nodes, depth 32 and 256 KiB metadata. It projects only
+parent identity, reviewed slot, bounded caller intent, time, lifecycle state and
+safe cause. It excludes inputs, prompts, native arguments, secrets and arbitrary
+results. States distinguish requested/not-started, active, cancel-requested,
+returned, failed/refused and uncertain. Returned does not mean domain success.
+Overflow preserves represented nodes, saturated omission counts and explicit
+incompleteness. Root result, cleanup and delivery are independent host facts.
+
+Operator-only `--display auto|plain|dashboard` selects presentation; defaults
+never come from a project entrypoint. Auto uses bounded noninteractive inline
+output on suitable terminal stderr, without raw input or alternate screen.
+Plain, redirected stderr, NO_COLOR and TERM=dumb use nonanimated summaries.
+Explicit dashboard requires terminal stdin/stderr; otherwise it explains a plain
+fallback once. `--json` and effective `--receive` retain their exact existing
+stdout semantics and disable automatic Flow observation; dashboard cannot override.
+
+The explicit inspector has Overview and attributed application views, collection
+selection, stable row details, local filtering/sorting, scrolling and reference
+activation. Tab/Shift-Tab changes views, c changes collections, j/k selects rows,
+/ filters supplied records, s sorts, r selects a reference, Enter activates it,
+[/] scrolls and q/Escape leaves. It requires no mouse capture. Filters describe
+supplied records, not a complete server dataset. Updates preserve surviving
+selection; deleting the selected row chooses the nearest preceding surviving
+visible row, else the first visible row, else empty details. Unselected retirement
+leaves selection; selected retirement returns to Overview. Only explicit reference
+activation jumps. Missing targets explain unavailability without moving focus.
+
+Live q/Escape/input EOF restores input and returns to inline without cancelling
+work or re-entering inspection later. Live Ctrl-C and shutdown use existing Jig
+cancellation and cleanup; no second Ctrl-C is required. After execution, cleanup
+and delivery settle, an inspector still open becomes clearly read-only result
+inspection with literal host/application/delivery facts and completeness. It keeps
+no live Flow, channel or execution owner. q/Escape exits; post-settlement Ctrl-C
+closes presentation without relabelling admitted execution. Auto/plain exit promptly.
+
+One bounded stderr owner refreshes at most 5/s with 16 pending writes /256 KiB,
+including in-flight. Reserve one write /32 KiB for a host-critical or unavailable
+explanation. Complete bounded Flow warnings/errors and safe host causes append
+outside redraw with attribution. Sticky attention prioritizes host failure or
+uncertain cleanup, observation/output incompleteness, Flow error, Flow warning;
+first accepted within priority wins, with additional report count. Narrow layouts
+reduce workspace first and explicitly clip the sticky projection; full reports
+remain in the transcript. View/source ending cannot erase admitted attention.
+Plain output emits new/changed complete titles and summaries without dumping rows
+or count-only updates. Settlement emits each retained view's latest attributed
+summary once with ended/incomplete context, followed by host result/evidence.
+Optional snapshots are not a promised durable UI history; applications retain
+outcome evidence separately.

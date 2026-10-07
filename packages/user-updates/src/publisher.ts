@@ -8,11 +8,25 @@ import {
   type UserUpdate,
   validateUserUpdate,
 } from './message.js'
+import {
+  dataRecord,
+  VIEW_LIMITS,
+  type ViewOptions,
+  type ViewSnapshot,
+  validateView,
+} from './view.js'
+
+export type ActivityDetails = Readonly<{ detail?: string; operationId?: string }>
+export interface UserView {
+  update(snapshot: ViewSnapshot): void
+  retire(): void
+}
 
 export interface UserUpdates {
   notice(text: string, severity?: NoticeSeverity): void
-  activity(id: string, label: string, progress?: Progress): void
+  activity(id: string, label: string, progress?: Progress, details?: ActivityDetails): void
   clear(id: string): void
+  view(id: string, options: ViewOptions): UserView
 }
 
 const claims = new WeakSet<ChannelSender>()
@@ -35,6 +49,9 @@ class Publisher implements UserUpdates {
   #notices = 0
   #noticeBytes = 0
   #keys = new Set<string>()
+  #viewIds = new Set<string>()
+  #activityCalls = new Map<string, string | undefined>()
+  #landing: string | undefined
   #pump: Promise<void> | undefined
   #close: Promise<Outcome> | undefined
   #failure: unknown
@@ -54,11 +71,60 @@ class Publisher implements UserUpdates {
   notice(text: string, severity?: NoticeSeverity): void {
     this.#offer({ kind: 'notice', text, ...(severity === undefined ? {} : { severity }) })
   }
-  activity(id: string, label: string, progress?: Progress): void {
-    this.#offer({ kind: 'activity', id, label, ...(progress === undefined ? {} : { progress }) })
+  activity(id: string, label: string, progress?: Progress, details: ActivityDetails = {}): void {
+    const fields = dataRecord(details, ['detail', 'operationId'])
+    const value = validateUserUpdate({
+      kind: 'activity',
+      id,
+      label,
+      ...(progress === undefined ? {} : { progress }),
+      ...fields,
+    }) as Extract<UserUpdate, { kind: 'activity' }>
+    if (this.#activityCalls.has(id) && this.#activityCalls.get(id) !== value.operationId)
+      throw new TypeError('Activity call association is fixed until clear')
+    this.#offer(value)
+    if (this.#enabled) this.#activityCalls.set(id, value.operationId)
   }
   clear(id: string): void {
     this.#offer({ kind: 'clear', id })
+    this.#activityCalls.delete(id)
+  }
+  view(id: string, options: ViewOptions): UserView {
+    const declaration = validateView({
+      kind: 'view',
+      id,
+      ...dataRecord(options, ['title', 'landing', 'operationId']),
+      summary: 'Declaration',
+      sections: [],
+    })
+    if (this.#phase !== 'accepting')
+      throw new Error('User updates scope is no longer accepting offers')
+    if (this.#viewIds.has(id)) throw new Error('View ID already has a scope owner')
+    if (this.#viewIds.size >= VIEW_LIMITS.claimsPerSource)
+      throw new Error('View ID claim limit exceeded')
+    this.#viewIds.add(id)
+    let retired = false,
+      published = false
+    const { summary: _summary, sections: _sections, ...identity } = declaration
+    return Object.freeze({
+      update: (snapshot: ViewSnapshot) => {
+        const replacement = dataRecord(snapshot, ['title', 'summary', 'sections'])
+        const value = validateUserUpdate({ ...identity, ...replacement })
+        if (retired) throw new Error('View has been retired')
+        if (declaration.landing && this.#landing !== undefined && this.#landing !== id)
+          throw new TypeError('Only one view may nominate a landing hint')
+        this.#offer(value)
+        if (declaration.landing) this.#landing = id
+        published = true
+      },
+      retire: () => {
+        if (retired) return
+        if (this.#phase !== 'accepting')
+          throw new Error('User updates scope is no longer accepting offers')
+        if (published) this.#offer({ kind: 'retire-view', id })
+        retired = true
+      },
+    })
   }
 
   #offer(input: unknown): void {
@@ -69,7 +135,9 @@ class Publisher implements UserUpdates {
     if (!this.#enabled) return
     const tail = this.#queue.at(-1)
     const replace =
-      value.kind === 'activity' && tail?.value.kind === 'activity' && tail.value.id === value.id
+      (value.kind === 'activity' || value.kind === 'view') &&
+      tail?.value.kind === value.kind &&
+      tail.value.id === value.id
     const previousBytes = replace ? tail.bytes : 0
     if (value.kind === 'notice') {
       this.#notices++
@@ -144,6 +212,7 @@ class Publisher implements UserUpdates {
     }
     this.#queue = []
     this.#keys.clear()
+    this.#activityCalls.clear()
     for (const wake of this.#wake) wake()
     if (this.sender !== undefined && this.#close === undefined) {
       // This control operation is concurrent with the original send and never replaces it.

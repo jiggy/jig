@@ -14,6 +14,11 @@ operation. Python's independently packaged counterpart lives in `../jiggy-user-u
   canonical JSON using existing FLOW rules; never maintain a handwritten digest.
 - Validate and snapshot before disabled/unwired checks. Notices and clears are
   ordering barriers. A scope exclusively owns its writer and all local tasks.
+- Views are whole portable documents, never callbacks or terminal layout. Keep
+  TS/Python closed schemas, semantic aggregate limits and JSON/0 numeric/byte
+  accounting identical. `view()` claims a local lifetime ID; one landing hint,
+  fixed call association, no reuse after retirement. Only consecutive unsent
+  same-view/activity tails coalesce; removals and in-flight items are barriers.
 - Local publication budgets stop observations, never cancel original sends or
   discard their eventual errors. Close acknowledgement is not send settlement.
 - Only genuine observer LAGGED/DISCONNECTED may degrade. Preserve root cancellation
@@ -31,3 +36,7 @@ author-reported importance, not host status or a reliable diagnostic transport.
 `just build`, `bun test`, packed Node consumer, and the matching Python publisher
 must establish lifecycle, identity and boundedness separately. Public availability
 must state the tested runtimes; approval of a design is not qualification.
+
+The final best-effort drain allows 4000 ms from body exit; individual send wait
+remains 500 ms. Drained/unwired scopes add no waiting period. Neither allowance
+is a scope-return ceiling or delivery guarantee; preserve the root deadline.

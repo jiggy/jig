@@ -37,14 +37,43 @@ The optional [user-updates profile](user-updates.md) shares stderr presentation
 with host progress and diagnostics. Resolve entrypoint/operator arguments first:
 effective `--receive` retains ordinary stdout channel behavior, `--json` disables
 automatic Flow observation, and operator-only `--updates off` disables automatic
-selection/hints without cancelling explicit reception. Otherwise terminal stderr
-can observe one exact optional canonical port. Stdout keeps its existing envelope.
+selection/hints without cancelling explicit reception. Otherwise stderr
+can observe one exact optional canonical port, using plain text when redirected.
+Stdout keeps its existing envelope.
 Application notices retain attribution and bypass trusted heading/success styling.
 Activities are transient owned state, cleared on every end; counts and EOF never
 establish success. Accepted notice jobs survive ordinary source retirement while
 obsolete repaints are superseded. Host stopping/terminal presentation fences late
 Flow updates. Exact bounds, separate allocation policy and output failure remain
 governed by that profile and [channels](channels.md).
+
+Operator-only `--display auto|plain|dashboard` controls Run presentation. Auto
+uses a bounded noninteractive inline region on suitable stderr; it borrows no
+input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
+use nonanimated summaries. Explicit dashboard requires terminal stdin and stderr,
+independently of stdout; otherwise explain the plain fallback once. JSON and
+effective reception retain their exact output and disable automatic Flow observation.
+No project entrypoint can choose display mode.
+
+The shell presents host execution, cleanup, delivery and complete known safe
+causes separately from attributed domain reports. Overview is the actual observed
+invocation tree; application views compose literal reports, facts, measured
+progress and typed collections. Calls returning, reported 100%, EOF and view
+status never imply domain success. Full errors/warnings append outside redraw;
+sticky attention and visible incompleteness survive view retirement. Narrow
+layouts shrink workspace before hiding the cause and disclose clipping.
+
+The explicit inspector provides tabs, record selection/details, local filter/sort,
+scrolling and reference activation. References can resolve current same-publisher
+records, actual own calls and verified delivered files. Previews use bounded
+immutable capture, never mutable destination reads. Live q/Escape/input EOF
+restores input and continues inline, without re-entering later. Live Ctrl-C uses
+existing cancellation and cleanup. After all execution, cleanup and delivery
+settle, an inspector still open shows literal settled facts and read-only results;
+q/Escape/Ctrl-C then closes presentation without changing admitted outcome.
+No Flow or channel remains alive for inspection. Every exit releases preview,
+input and presentation owners. Auto/plain emit the latest retained summaries
+with ended/incomplete context and exit promptly.
 
 1. **Task first.** Identify the requested task and relevant project or target.
    Name stages in ordinary language. Internal lifecycle and implementation
@@ -58,8 +87,8 @@ governed by that profile and [channels](channels.md).
    dependency preparation or approved reuse, and final recipe/review retention
    separately. Active elapsed time belongs to the current stage. In animated
    terminals, completed timed stages retain their duration as secondary text.
-   Interactive terminal stderr has one active line with
-   elapsed time. Preserve completed stages; never mark a failed or merely
+   Acquisition has one active line with elapsed time; running work can use the
+   bounded inline dashboard above. Preserve completed stages; never mark a failed or merely
    departed stage complete. Update waiting time in place, not by appending
    unchanged messages. Report the known wait reason; never invent percentages,
    estimated completion times, or internal Flow stages. Finish or suspend the

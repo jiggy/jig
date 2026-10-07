@@ -6,11 +6,13 @@ import hashlib
 import json
 import sys
 import weakref
+from decimal import Decimal
 from importlib.resources import files
 from types import MappingProxyType
 from typing import Any, Literal, Mapping, Required, TypedDict
 
 from jiggy.flow import ChannelSender, OperationError, RunContext
+from .view import ViewOptions, ViewSnapshot, Reference, validate_view, operation, record
 
 
 class Progress(TypedDict, total=False):
@@ -20,7 +22,22 @@ class Progress(TypedDict, total=False):
 
 
 def _canonical(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    # RFC 8785 accounting for already validated JSON/0. Python's JSON encoder
+    # uses padded exponents and a different decimal threshold than ECMAScript.
+    def encode(v: Any) -> str:
+        if type(v) is dict:
+            keys=sorted(v,key=lambda key:key.encode('utf-16be'))
+            return '{'+','.join(encode(k)+':'+encode(v[k]) for k in keys)+'}'
+        if type(v) is list: return '['+','.join(encode(item) for item in v)+']'
+        if type(v) is float:
+            if v == 0: return '0'
+            if v.is_integer(): return str(int(v))
+            shortest=repr(v)
+            if abs(v)>=1e-6: return format(Decimal(shortest),'f')
+            mantissa,separator,exponent=shortest.partition('e')
+            return mantissa+('e'+str(int(exponent)) if separator else '')
+        return json.dumps(v,ensure_ascii=False,separators=(',',':'),allow_nan=False)
+    return encode(value).encode('utf-8')
 
 
 _descriptor = json.loads(files(__package__).joinpath("user-updates.json").read_bytes())
@@ -57,7 +74,7 @@ def _count(value: Any) -> int:
 
 def validate_user_update(value: Any) -> dict[str, Any]:
     """Validate unknown input and return a private JSON snapshot."""
-    root = _record(value, {"kind", "text", "severity", "id", "label", "progress"})
+    root = _record(value, {"kind", "text", "severity", "id", "label", "progress", "detail", "operationId", "title", "summary", "landing", "sections"})
     kind = root.get("kind")
     if type(kind) is not str:
         raise TypeError("Unknown user update kind")
@@ -72,10 +89,12 @@ def validate_user_update(value: Any) -> dict[str, Any]:
             result["severity"] = severity
     elif kind == "clear":
         _record(root, {"kind", "id"})
-        result = {"kind": kind, "id": _text(root.get("id"), 64)}
+        result = {"kind": kind, "id": _text(root.get("id"), 64, True)}
     elif kind == "activity":
-        _record(root, {"kind", "id", "label", "progress"})
-        result = {"kind": kind, "id": _text(root.get("id"), 64), "label": _text(root.get("label"), 256, True)}
+        _record(root, {"kind", "id", "label", "progress", "detail", "operationId"})
+        result = {"kind": kind, "id": _text(root.get("id"), 64, True), "label": _text(root.get("label"), 256, True)}
+        if 'detail' in root: result['detail'] = _text(root['detail'],4096)
+        if 'operationId' in root: result['operationId'] = operation(root['operationId'])
         if "progress" in root:
             p = _record(root["progress"], {"completed", "total", "unit"})
             progress: dict[str, Any] = {"completed": _count(p.get("completed"))}
@@ -86,11 +105,38 @@ def validate_user_update(value: Any) -> dict[str, Any]:
             if "unit" in p:
                 progress["unit"] = _text(p["unit"], 32, True)
             result["progress"] = progress
+    elif kind == 'view':
+        result = validate_view(root)
+    elif kind == 'retire-view':
+        _record(root, {'kind','id'})
+        result = {'kind':kind,'id':_text(root.get('id'),64,True)}
     else:
         raise TypeError("Unknown user update kind")
     if len(_canonical(result)) > 32768:
         raise TypeError("Encoded user update exceeds 32 KiB")
     return result
+
+
+class UserView:
+    """One scope-owned local view handle; declarations allocate no host resources."""
+    def __init__(self, owner: UserUpdates, identity: dict[str, Any]):
+        self._owner, self._identity = owner, identity
+        self._retired = self._published = False
+
+    def update(self, snapshot: ViewSnapshot) -> None:
+        value = validate_user_update({**self._identity, **record(snapshot,{'title','summary','sections'})})
+        if self._retired: raise RuntimeError('View has been retired')
+        if self._identity.get('landing') and self._owner._landing not in (None,self._identity['id']):
+            raise TypeError('Only one view may nominate a landing hint')
+        self._owner._offer(value)
+        if self._identity.get('landing'): self._owner._landing = self._identity['id']
+        self._published = True
+
+    def retire(self) -> None:
+        if self._retired: return
+        if self._owner._phase != 'accepting': raise RuntimeError('User updates scope is no longer accepting offers')
+        if self._published: self._owner._offer({'kind':'retire-view','id':self._identity['id']})
+        self._retired = True
 
 
 class UserUpdates:
@@ -104,6 +150,9 @@ class UserUpdates:
         self._retained = self._bytes = self._attempts = self._traffic = 0
         self._notices = self._notice_bytes = 0
         self._keys: set[str] = set()
+        self._view_ids: set[str] = set()
+        self._activity_calls: dict[str, str | None] = {}
+        self._landing: str | None = None
         self._pump: asyncio.Task[None] | None = None
         self._close: asyncio.Task[None] | None = None
         self._failure: BaseException | None = None
@@ -113,14 +162,31 @@ class UserUpdates:
     def notice(self, text: str, severity: Literal["info", "warning", "error"] | None = None) -> None:
         self._offer({"kind": "notice", "text": text, **({} if severity is None else {"severity": severity})})
 
-    def activity(self, id: str, label: str, progress: Progress | None = None) -> None:
+    def activity(self, id: str, label: str, progress: Progress | None = None, *, detail: str | None = None, operation_id: str | None = None) -> None:
         value: dict[str, Any] = {"kind": "activity", "id": id, "label": label}
         if progress is not None:
             value["progress"] = progress
+        if detail is not None: value['detail'] = detail
+        if operation_id is not None: value['operationId'] = operation_id
+        validate_user_update(value)
+        if id in self._activity_calls and self._activity_calls[id] != operation_id:
+            raise TypeError('Activity call association is fixed until clear')
         self._offer(value)
+        if self._enabled: self._activity_calls[id] = operation_id
 
     def clear(self, id: str) -> None:
         self._offer({"kind": "clear", "id": id})
+        self._activity_calls.pop(id, None)
+
+    def view(self, id: str, options: ViewOptions) -> UserView:
+        declaration = validate_view({'kind':'view','id':id,**record(options,{'title','landing','operationId'}),'summary':'Declaration','sections':[]})
+        if self._phase != 'accepting': raise RuntimeError('User updates scope is no longer accepting offers')
+        if id in self._view_ids: raise RuntimeError('View ID already has a scope owner')
+        if len(self._view_ids) >= 16: raise RuntimeError('View ID claim limit exceeded')
+        self._view_ids.add(id)
+        declaration.pop('summary')
+        declaration.pop('sections')
+        return UserView(self, declaration)
 
     def _offer(self, input: Any) -> None:
         value = validate_user_update(input)
@@ -130,7 +196,7 @@ class UserUpdates:
         if not self._enabled:
             return
         tail = self._queue[-1] if self._queue else None
-        replace = tail is not None and value["kind"] == "activity" and tail[0]["kind"] == "activity" and tail[0]["id"] == value["id"]
+        replace = tail is not None and value["kind"] in ('activity','view') and tail[0]["kind"] == value["kind"] and tail[0]["id"] == value["id"]
         prior = tail[1] if replace and tail is not None else 0
         if value["kind"] == "notice":
             self._notices += 1
@@ -172,6 +238,7 @@ class UserUpdates:
             self._bytes -= size
         self._queue.clear()
         self._keys.clear()
+        self._activity_calls.clear()
         self._stopped.set()
         if self._sender is not None and self._close is None:
             self._close = asyncio.create_task(self._sender.close(error="LAGGED"))
@@ -224,7 +291,7 @@ class UserUpdates:
         self._phase = "draining"
         pump = self._pump
         if pump is not None:
-            done, _ = await asyncio.wait({pump}, timeout=0.5)
+            done, _ = await asyncio.wait({pump}, timeout=4.0)
             if not done:
                 self._stop()
             await pump

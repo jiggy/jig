@@ -10,6 +10,7 @@ import {
 } from 'factory-repair-flow/progress'
 import { checkRoutingResult } from 'semantic-router-flow/decision'
 import { checkName, loadChecks } from './checks.ts'
+import { checksView, type FactoryStage, jobsView, patchesView } from './dashboard.ts'
 import {
   identity,
   inspect,
@@ -19,7 +20,7 @@ import {
   writeRepairDeliverables,
 } from './files.ts'
 import { candidates, methods } from './methods.ts'
-import { factoryReport, jobLabel, jobPlan, jobReport, repairActivity } from './presentation.ts'
+import { factoryReport, jobLabel, jobPlan, jobReport } from './presentation.ts'
 
 interface Job {
   id: string
@@ -128,11 +129,22 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
   const observed: Record<string, JsonValue> = Object.create(null)
   const retained: Record<string, JsonValue> = Object.create(null)
   const retainedFiles: Record<string, string> = Object.create(null)
+  const jobView = updates.view('jobs', { title: 'Software factory · Jobs', landing: true })
+  const checkView = updates.view('checks', { title: 'Checks' })
+  const patchView = updates.view('patches', { title: 'Patches' })
+  const stages = new Map<string, FactoryStage>()
+  const reports = new Map<string, string>()
+  const saved = new Set<string>()
+  const publishJobs = () => jobView.update(jobsView(prepared, stages, observed, saved))
+  const publishChecks = () => checkView.update(checksView(prepared, reports, observed))
+  const publishPatches = (conflicting = false) =>
+    patchView.update(patchesView(prepared, observed, conflicting))
+  publishJobs()
   let sequence = 0
   let saves = Promise.resolve()
   const active = new Set<string>()
   const clearJob = (jobId: string) => {
-    if (active.delete(jobId)) updates.clear(`job:${jobId}`)
+    active.delete(jobId)
   }
   // Job IDs are unique for this Run. Child callbacks are joined before the
   // parent clears their slots; attempts are labels, never completed-work counts.
@@ -144,12 +156,14 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
     detail?: string,
   ) => {
     run.signal.throwIfAborted()
-    const job = jobs.find((job) => job.id === jobId)!
     active.add(jobId)
-    updates.activity(
-      `job:${jobId}`,
-      repairActivity(job, phase, attempt, extra.method === 'p1' ? 1 : 2, detail),
-    )
+    stages.set(jobId, {
+      phase,
+      attempt,
+      maximum: extra.method === 'p1' ? 1 : 2,
+      ...(detail === undefined ? {} : { detail }),
+    })
+    publishJobs()
   }
   const invokeRepair = async (
     jobId: string,
@@ -159,7 +173,12 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
   ): Promise<RunResult> => {
     if (run.channels.progress === undefined)
       return run.call(
-        { operationId: `repair:${jobId}`, slot: method.slot, input },
+        {
+          operationId: `repair:${jobId}`,
+          slot: method.slot,
+          intent: jobLabel(jobs.find((job) => job.id === jobId)!),
+          input,
+        },
         { signal: selected },
       )
 
@@ -178,12 +197,14 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
             )
             break
           }
-          if (value.phase === 'observed' || value.phase === 'rejected')
+          if (value.phase === 'observed' || value.phase === 'rejected') {
+            reports.set(jobId, value.detail!)
             updates.notice(
               `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Worker report\n${value.detail}`,
               value.phase === 'rejected' ? 'warning' : 'info',
             )
-          else
+            publishChecks()
+          } else
             publishPhase(
               jobId,
               value.phase,
@@ -217,6 +238,7 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         {
           operationId: `repair:${jobId}`,
           slot: method.slot,
+          intent: jobLabel(jobs.find((job) => job.id === jobId)!),
           input,
           channels: { progress: pair.send },
         },
@@ -273,7 +295,12 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         if (candidateId === undefined) {
           publishPhase(job.id, 'selecting', 0)
           const decision = await run.call(
-            { operationId: `route:${job.id}`, slot: 'router', input: routingInput },
+            {
+              operationId: `route:${job.id}`,
+              slot: 'router',
+              intent: `Choose a reviewed repair approach for ${jobLabel(job)}`,
+              input: routingInput,
+            },
             { signal: selected.signal },
           )
           run.signal.throwIfAborted()
@@ -382,6 +409,8 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
             : jobReport(result as unknown as JsonValue, false),
           'ready' in result && result.ready ? 'info' : 'error',
         )
+        publishJobs()
+        if ('ready' in result && result.ready) publishPatches()
         // Serialize complete aggregates; Jig does not choose application ordering.
         const saving = saves.then(async () => {
           run.signal.throwIfAborted()
@@ -402,6 +431,7 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
           await run.call({
             operationId: `checkpoint:${++sequence}`,
             slot: 'checkpoint',
+            intent: `Save checked evidence for ${settled.length} of ${jobs.length} jobs`,
             input: {
               sequence,
               evidence: {
@@ -412,9 +442,11 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
               files,
             },
           })
+          saved.add(result.id)
           updates.notice(
             `${jobLabel(result)}: Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).${'ready' in result && result.ready ? `\n  Review files/${result.id}/review.patch before applying it.` : ''}`,
           )
+          publishJobs()
         })
         saves = saving
         await saving
@@ -456,6 +488,9 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
     )
   const ready =
     results.every((r) => 'ready' in r && r.ready) && !overlaps.some((o) => o.conflicting)
+  publishJobs()
+  publishChecks()
+  publishPatches(overlaps.some((o) => o.conflicting))
   await writeFile(
     join(deliverables.path, 'summary.txt'),
     results.map((r) => summary(r as unknown as JsonValue)).join('\n') +

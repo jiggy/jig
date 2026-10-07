@@ -6,6 +6,7 @@ import {
   parseChannelContract,
   requireChannelReference,
 } from '../channel-contract.js'
+import type { PrivateCallEvent } from '../cli-run-model.js'
 import type { PrivateUserUpdateSource } from '../cli-user-updates.js'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
@@ -23,6 +24,7 @@ import {
 /** Command-local presentation. Its callbacks confer no execution authority. */
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
+  call?(event: PrivateCallEvent): void
   readonly updates?: {
     open(port: string): PrivateUserUpdateSource
     ambiguous(ports: readonly string[]): void
@@ -186,7 +188,13 @@ export class PrivateRunChannels {
           return
         }
         if (reader.updates !== undefined) {
-          if (!reader.updates.accept(result.item!.value)) return
+          if (
+            !reader.updates.accept(
+              result.item!.value,
+              this.broker.publisherOf(result as unknown as JsonValue),
+            )
+          )
+            return
         } else await output.record({ type: 'data', channel: reader.name, ...result.item! })
       }
     } finally {

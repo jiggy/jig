@@ -211,6 +211,7 @@ export async function privateOwnFileCommand(
             send(socket, { ok: true, receipt: receipt as unknown as JsonValue })
           } else if (request.type === 'publish') {
             if (publication !== undefined) throw new Error('delivery already requested')
+            if (request.inspection === true) owner.enableInspection()
             if (request.cancelled === true) cancellation.abort()
             const record = checkpointRecord(request.record!, checkpoints)
             // Only the trusted coordinator publishes, after settling its Run.
@@ -257,6 +258,9 @@ export async function privateOwnFileCommand(
             }
             publication = delivered
               .then((receipt) => {
+                // Execution, cleanup and publication have settled. Explicit
+                // inspection retains only this presentation/file owner.
+                if (request.inspection === true) clearTimeout(timer)
                 send(socket, {
                   ok: true,
                   receipt,
@@ -267,12 +271,21 @@ export async function privateOwnFileCommand(
                 cancellation.abort()
                 socket.destroy()
               })
+          } else if (request.type === 'preview') {
+            if (typeof request.path !== 'string' || !publication)
+              throw new Error('preview unavailable')
+            await publication
+            const preview = owner.preview(request.path)
+            send(socket, {
+              ok: true,
+              preview: preview === undefined ? null : preview,
+            } as unknown as JsonValue)
           } else if (request.type === 'cancel') {
             cancellation.abort()
           } else throw new Error('invalid file owner request')
         } catch {
           send(socket, { ok: false })
-          if (request.type !== 'checkpoint') cancellation.abort()
+          if (request.type !== 'checkpoint' && request.type !== 'preview') cancellation.abort()
         }
       }
     })()
@@ -438,6 +451,7 @@ export async function privateConnectFileOwner(): Promise<
   const iterator = messages(socket)[Symbol.asyncIterator]()
   let destination: string | undefined
   let checkpoint: import('./private-run-checkpoint.js').RetainedRunCheckpoint | null | undefined
+  let inspection = false
   const request = async (fields: Record<string, JsonValue>): Promise<Record<string, JsonValue>> => {
     send(socket, {
       ...fields,
@@ -456,6 +470,25 @@ export async function privateConnectFileOwner(): Promise<
     return next.value as Record<string, JsonValue>
   }
   return {
+    enableInspection() {
+      inspection = true
+    },
+    async preview(path) {
+      if (!inspection) return undefined
+      const reply = await request({ type: 'preview', path })
+      if (reply.preview === null) return undefined
+      const preview = reply.preview as Record<string, JsonValue>
+      if (
+        typeof preview.text !== 'string' ||
+        Buffer.byteLength(preview.text) > 65536 ||
+        !Number.isSafeInteger(preview.bytes) ||
+        Number(preview.bytes) < 0 ||
+        Number(preview.bytes) > 16 * 1024 * 1024 ||
+        typeof preview.clipped !== 'boolean'
+      )
+        throw new Error('Invalid preview response')
+      return { text: preview.text, bytes: Number(preview.bytes), clipped: preview.clipped }
+    },
     get checkpoint() {
       return checkpoint
     },
@@ -529,6 +562,7 @@ export async function privateConnectFileOwner(): Promise<
                     directories: transferred!.directories,
                   } as unknown as JsonValue),
           cancelled: signal?.aborted ?? false,
+          inspection,
         })
         const transfer =
           selected.platform === 'darwin' && transferred !== undefined

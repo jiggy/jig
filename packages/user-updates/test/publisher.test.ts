@@ -268,14 +268,79 @@ test('severity is a closed optional snapshot, including unwired validation', asy
   expect(m.values).toEqual([{ kind: 'notice', text: 'problem', severity: 'error' }])
 })
 
-test('error importance does not bypass queue ordering or aggregate drain loss', async () => {
+test('a full prompt backlog drains final distinct views without bypassing notice barriers', async () => {
   const m = mock()
   const result = await withUserUpdates(m.run, 'updates', (updates) => {
-    for (let n = 0; n < 8; n++) updates.notice(`Earlier ${n}`)
+    for (let n = 0; n < 12; n++) updates.notice(`Earlier ${n}`)
     updates.notice('Blocking failure retained in result', 'error')
+    for (const id of ['jobs', 'checks', 'patches'])
+      updates.view(id, { title: id }).update({ summary: `${id} final evidence`, sections: [] })
     return { outcome: 'blocked', output: { reason: 'Blocking failure retained in result' } }
   })
   expect(result.output.reason).toBe('Blocking failure retained in result')
-  expect(m.values).toEqual(m.values.map((_, n) => ({ kind: 'notice', text: `Earlier ${n}` })))
+  expect(m.values).toHaveLength(16)
+  expect(m.values.slice(0, 12)).toEqual(
+    Array.from({ length: 12 }, (_, n) => ({ kind: 'notice', text: `Earlier ${n}` })),
+  )
+  expect(m.values[12]).toEqual({
+    kind: 'notice',
+    text: 'Blocking failure retained in result',
+    severity: 'error',
+  })
+  expect(m.values.slice(13).map((value: any) => value.id)).toEqual(['jobs', 'checks', 'patches'])
+  expect(m.closes).toEqual([undefined])
+})
+
+test('aggregate drain expiry still joins a later unexpected original send error', async () => {
+  let sends = 0
+  const original = deferred<void>(),
+    closed = deferred<void>()
+  const m = mock(
+    async () => {
+      if (++sends === 9) return original.promise
+      await new Promise((resolve) => setTimeout(resolve, 450))
+    },
+    async () => {
+      closed.resolve()
+    },
+  )
+  let finished = false
+  const scope = withUserUpdates(m.run, 'updates', (updates) => {
+    for (let n = 0; n < 16; n++) updates.notice(`Queued ${n}`)
+  })
+    .finally(() => {
+      finished = true
+    })
+    .catch((error) => error)
+  await closed.promise
+  expect(sends).toBe(9)
+  expect(finished).toBe(false)
+  const failure = new OperationError('RESOURCE_EXHAUSTED')
+  original.reject(failure)
+  expect(await scope).toBe(failure)
+  expect(m.closes).toEqual([{ error: 'LAGGED' }])
+}, 10000)
+
+test('root deadline during drain stops publication and preserves owned settlement', async () => {
+  const root = new AbortController(),
+    began = deferred<void>(),
+    original = deferred<void>()
+  const m = mock(
+    async () => {
+      began.resolve()
+      await original.promise
+    },
+    async () => {
+      original.reject(new OperationError('LAGGED'))
+    },
+  )
+  const reason = new Error('Run deadline expired')
+  const scope = withUserUpdates({ ...m.run, signal: root.signal }, 'updates', (updates) => {
+    updates.notice('Final evidence')
+    return 7
+  }).catch((error) => error)
+  await began.promise
+  root.abort(reason)
+  expect(await scope).toBe(reason)
   expect(m.closes).toEqual([{ error: 'LAGGED' }])
 })

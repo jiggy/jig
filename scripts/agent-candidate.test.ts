@@ -113,7 +113,7 @@ test('PRs start complete hosted Mac qualification and quick checks finish indepe
   expect(summary.run).toContain('>> "$GITHUB_STEP_SUMMARY"')
   expect(
     mac.jobs.prerequisites.steps.find(
-      (s: any) => s.name === 'Prepare genuine pinned clients for offline startup',
+      (s: any) => s.run?.includes('scripts/ci/install-macos-test-clients.ts'),
     ).if,
   ).toBe('matrix.installed')
   expect(mac.concurrency['cancel-in-progress']).toContain("github.ref != 'refs/heads/main'")

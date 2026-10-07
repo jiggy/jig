@@ -215,6 +215,7 @@ Selection never approves changed source.
   --out DIR          Save a result packet to a new directory outside input roots
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
+  --display MODE     Select auto (default), plain, or a read-only dashboard
   --timeout DURATION Set the execution deadline (default: 30s; maximum: 24h)
                      Units: ms, s, m, h. Cleanup still runs after the deadline.
 
@@ -234,7 +235,6 @@ ${VERIFICATION_HELP}`,
 const RESOLUTION_WARNING =
   'Bun may contact dependency-selected public or private-network services before graph validation; requests cannot be undone, and unsupported dependencies may still fail. Applies only to this review; Runs gain no network access.'
 
-const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
 /** Private injection seam until the installed host owns project acquisition. */
@@ -290,6 +290,7 @@ interface CliRuntime {
   readonly currentDirectory: string
   readonly signal?: AbortSignal
   readonly interactive: boolean
+  readonly dashboardInput: boolean
   readonly confirm: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly answer: (prompt: string, signal?: AbortSignal) => Promise<string>
   readonly writeOutput: (text: string) => void
@@ -844,6 +845,10 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
+  if (!parsed.json && parsed.receive.length === 0)
+    runtime.progress.configureDisplay(parsed.display, runtime.dashboardInput)
+  if (parsed.display === 'dashboard' && !parsed.json && parsed.receive.length === 0)
+    runtime.host.delivery?.enableInspection?.()
   runtime.progress.note(
     `Running ${asciiJsonString(parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`)}`,
   )
@@ -899,10 +904,13 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
-    ...(parsed.receive.length === 0 &&
-    !parsed.json &&
-    parsed.updates !== 'off' &&
-    runtime.terminalError
+    ...(!parsed.json && parsed.receive.length === 0
+      ? {
+          call: (event: import('./cli-run-model.js').PrivateCallEvent) =>
+            runtime.progress.observeCall(event),
+        }
+      : {}),
+    ...(parsed.receive.length === 0 && !parsed.json && parsed.updates !== 'off'
       ? {
           updates: {
             open: (port: string) => runtime.progress.observe(port, true),
@@ -1149,6 +1157,20 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     const terminal = status.terminal
+    await runtime.progress.settleDashboard(
+      decodeJson1(encodedRecord),
+      delivery?.status === 'written' && runtime.host.delivery?.preview
+        ? {
+            resolve: (publisher, ref) =>
+              publisher === 'root' &&
+              files.outputAttachments.includes(ref.attachment) &&
+              delivery.files?.some((f) => f.path === ref.path)
+                ? ref.path
+                : undefined,
+            preview: (path) => runtime.host.delivery!.preview!(path),
+          }
+        : undefined,
+    )
     await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded' && !presentation)
       runtime.progress.note(
@@ -1413,6 +1435,7 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     interactive:
       options.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true),
+    dashboardInput: options.interactive ?? process.stdin.isTTY === true,
     confirm: async (prompt, signal) => {
       progress.pause()
       await progress.flush()

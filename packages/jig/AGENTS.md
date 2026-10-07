@@ -355,6 +355,25 @@ admitted FLOW packages.
 
 ## Verification
 
+Run presentation uses one bounded renderer-neutral model and one stderr writer.
+Keep host calls keyed by actual publisher instance plus original own operation ID;
+accepted-send publisher identity stays private sideband through pending sends.
+View documents cannot supply source ancestry or host status. Admission is atomic,
+retirement/EOF fence callbacks, and navigation follows stable identities. Optional
+tree/transcript overflow discloses incompleteness without canceling domain work;
+actual output disconnection retains the existing cancellation owner. Full safe
+causes settle outside redraw before final stdout. Serialize final view summaries
+within the same output ceiling.
+
+`--display` is operator-only. Auto borrows no input; explicit inspection owns and
+restores raw/flowing stdin and cannot keep a finite command alive after exit.
+Post-settlement inspection owns no execution/channel lifetime. Its artifact
+resolver uses verified delivery and one immutable bounded capture, never mutable
+destination reads. Test redirected stdout, idle stdin, split/batched keys,
+post-settlement Ctrl-C, narrow/Unicode frames, reference/scroll identity and late
+preview settlement. `test/dashboard.test.ts` covers model/renderer/input bounds;
+installed factory and file-delivery tests cover composition and immutable capture.
+
 - `just jig::check` builds and runs package tests, then automatically runs all
   discovered Mac-specific regression files on an exact supported native Mac.
   Root `just preflight` also includes quick tooling and the other portable
@@ -422,7 +441,10 @@ admitted FLOW packages.
   public dependencies and a deterministic Flow Agent peer, then removes the
   editable repair package after approval. It verifies admitted dependency
   imports, relayed worker progress, both blocked job causes and checkpoint
-  delivery without native clients or model calls.
+  delivery without native clients or model calls. A second reviewed peer returns
+  deterministic repairs through the public structured Agent result. Verify final
+  Jobs, Checks and Patches snapshots, independent acceptance, exact delivered patch
+  references, and complete ended summaries in automatic plain display.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete

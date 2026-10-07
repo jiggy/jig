@@ -9,3 +9,12 @@ async def invoices(run: RunContext) -> RunResult:
         updates.notice("A duplicate invoice needs review.", severity="warning")
         updates.clear("batch")
     return {"outcome": "needs-review", "output": {"duplicate": True}}
+
+
+async def document_review(run: RunContext) -> RunResult:
+    async with user_updates(run, "updates") as updates:
+        matters = updates.view("matters", {"title": "Document review", "landing": True})
+        matters.update({"summary": "Check the supplied documents", "sections": [
+            {"blocks": [{"kind": "report", "text": "Checking the requested questions"}]}]})
+        matters.retire()
+    return {"outcome": "needs-review", "output": None}

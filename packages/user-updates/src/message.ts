@@ -1,12 +1,22 @@
 import { createHash } from 'node:crypto'
 import descriptor from './user-updates.json' with { type: 'json' }
+import { operationId, type RetireView, scalarText, type ViewItem, validateView } from './view.js'
 
 export type NoticeSeverity = 'info' | 'warning' | 'error'
 export type Progress = Readonly<{ completed: number; total?: number; unit?: string }>
 export type UserUpdate =
   | Readonly<{ kind: 'notice'; text: string; severity?: NoticeSeverity }>
-  | Readonly<{ kind: 'activity'; id: string; label: string; progress?: Progress }>
+  | Readonly<{
+      kind: 'activity'
+      id: string
+      label: string
+      progress?: Progress
+      detail?: string
+      operationId?: string
+    }>
   | Readonly<{ kind: 'clear'; id: string }>
+  | ViewItem
+  | RetireView
 
 /** Canonical JSON for the closed profile and its descriptor (all keys are ASCII). */
 export function canonicalUserUpdate(value: unknown): string {
@@ -39,7 +49,7 @@ export const USER_UPDATES_LIMITS = Object.freeze({
   slots: 16,
   intervalMs: 200,
   sendWaitMs: 500,
-  drainMs: 500,
+  drainMs: 4000,
 })
 
 function record(value: unknown, fields: readonly string[]): Record<string, unknown> {
@@ -83,7 +93,20 @@ function count(value: unknown): number {
 
 /** Validate unknown input and return a private immutable snapshot. */
 export function validateUserUpdate(value: unknown): UserUpdate {
-  const root = record(value, ['kind', 'text', 'severity', 'id', 'label', 'progress'])
+  const root = record(value, [
+    'kind',
+    'text',
+    'severity',
+    'id',
+    'label',
+    'progress',
+    'detail',
+    'operationId',
+    'title',
+    'summary',
+    'landing',
+    'sections',
+  ])
   let result: UserUpdate
   switch (root.kind) {
     case 'notice': {
@@ -102,15 +125,19 @@ export function validateUserUpdate(value: unknown): UserUpdate {
     }
     case 'clear': {
       record(value, ['kind', 'id'])
-      result = Object.freeze({ kind: 'clear', id: text(root.id, 64) })
+      result = Object.freeze({ kind: 'clear', id: text(root.id, 64, true) })
       break
     }
     case 'activity': {
-      record(value, ['kind', 'id', 'label', 'progress'])
+      record(value, ['kind', 'id', 'label', 'progress', 'detail', 'operationId'])
       const base = {
         kind: 'activity' as const,
-        id: text(root.id, 64),
+        id: text(root.id, 64, true),
         label: text(root.label, 256, true),
+        ...(Object.hasOwn(root, 'detail') ? { detail: text(root.detail, 4096) } : {}),
+        ...(Object.hasOwn(root, 'operationId')
+          ? { operationId: operationId(root.operationId) }
+          : {}),
       }
       if (Object.hasOwn(root, 'progress')) {
         const p = record(root.progress, ['completed', 'total', 'unit'])
@@ -128,6 +155,14 @@ export function validateUserUpdate(value: unknown): UserUpdate {
           }),
         })
       } else result = Object.freeze(base)
+      break
+    }
+    case 'view':
+      result = validateView(value)
+      break
+    case 'retire-view': {
+      record(value, ['kind', 'id'])
+      result = Object.freeze({ kind: 'retire-view', id: scalarText(root.id, 64, true) })
       break
     }
     default:
