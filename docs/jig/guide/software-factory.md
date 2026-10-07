@@ -46,14 +46,20 @@ entrypoint defaults; supply that invocation's arguments in full.
 
 The standard [user-updates contract](../contracts/user-updates.md) supplies three
 factory views: **Jobs** shows requested goals, source scope, reviewed approach and
-current action; **Checks** shows repository tests and independent acceptance
+outcomes; **Checks** shows repository tests and independent acceptance
 cases; **Patches** shows independently checked patch packets and evidence links.
-The root Jobs view is the initial landing surface. Jig supplies the actual call
-tree separately, using the factory's readable call intent. Blocking causes appear
-immediately in the transcript and remain visible in the run shell.
+The dashboard starts in **Activity**, where current work and check reports appear.
+**Overview** shows the actual call tree, using the factory's readable call intent.
+Blocking causes remain in the attention bar; press `!` to read the complete cause.
 Use `jig run --display dashboard` to switch views, select a job, inspect its
-details, and open a verified patch preview after packet delivery. The completed
-inspector stays read-only until q, Escape or Ctrl-C closes it. Ordinary `jig run`
+details, and use `r` to select a verified file preview after packet delivery.
+Jobs includes the exact original request file; long displayed goals explicitly
+identify excerpts. Complete requests also remain in the supplied input and
+`result.json`.
+The completed inspector stays read-only for up to 60 seconds, subject to the
+earlier enclosing command deadline. Its countdown is separate from execution.
+Press `q` to close it; during work, `q` continues in the ordinary transcript.
+Escape closes the current panel before leaving the dashboard. Ordinary `jig run`
 shows an inline projection and exits with the final report; `--display plain`
 emits a simple transcript.
 The final application output gives a brief report of each job and public failure
@@ -64,7 +70,8 @@ slow observers may omit intermediate activity. A checkpoint notice follows
 durable storage; counts measure saved jobs, including failures. If live updates
 stop early, check the final report and saved evidence. These views report application observations; the
 final result and retained evidence determine whether a patch is review-ready.
-The factory's `checkpoint` slot separately retains settled job evidence across
+The factory's `checkpoint` slot separately retains settled job evidence and
+original request files across
 interruption.
 
 The factory accepts at most two jobs. It validates and captures every selected

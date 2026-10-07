@@ -34,7 +34,7 @@ async function fixture(work: (root: string) => Promise<void>) {
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
 
 test.skipIf(process.platform !== 'darwin')(
-  'native inspection retains immutable preview after the execution lifetime expires',
+  'native inspection retains immutable preview within the unchanged command lifetime',
   async () =>
     fixture(async (root) => {
       const ready = join(root, 'ready')
@@ -48,12 +48,39 @@ test.skipIf(process.platform !== 'darwin')(
         ],
         [join(root, 'packet'), join(root, 'pid'), 'preview', ready],
         undefined,
-        3000,
+        10_000,
       )
       expect(exit).toEqual({ exitCode: 0, signal: null })
       expect(await readFile(ready, 'utf8')).toBe('verified')
     }),
   15000,
+)
+
+test.skipIf(process.platform !== 'darwin')(
+  'settled native inspection cannot waive the original command expiry',
+  async () =>
+    fixture(async (root) => {
+      const ready = join(root, 'ready'),
+        destination = join(root, 'packet')
+      const exit = await privateOwnFileCommand(
+        [
+          process.execPath,
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+        ],
+        [destination, join(root, 'pid'), 'preview-expiry', ready],
+        undefined,
+        5_000,
+      )
+      expect(exit.signal).toBe('SIGTERM')
+      expect(await readFile(ready, 'utf8')).toBe('published')
+      expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
+        'succeeded',
+      )
+    }),
+  15_000,
 )
 
 test('inspection retains only verified immutable bytes and closes previews with the owner', async () =>

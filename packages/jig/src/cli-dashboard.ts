@@ -1,12 +1,18 @@
 import { StringDecoder } from 'node:string_decoder'
 import type { Block, DetailBlock, Reference, Value } from '@jigging/user-updates'
-import { privateCliHeading } from './cli-presentation.js'
-import type { PrivateRunModel } from './cli-run-model.js'
+import { privateCliHeading, privateCliSecondary } from './cli-presentation.js'
+import {
+  type PrivateRunModel,
+  type PrivateWorkspaceRecord,
+  privateAttentionImportance,
+} from './cli-run-model.js'
+import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import {
   privateTerminalWidth,
   privateTruncateUpdate,
   privateUpdateText,
-} from './cli-user-updates.js'
+  privateWrappedUpdate,
+} from './private-terminal-text.js'
 
 type ScrollAnchor = { key: string; offset: number }
 export interface PrivateDashboardFrame {
@@ -47,12 +53,11 @@ function wrap(text: string, width: number): string[] {
 }
 
 /** Portable blocks have no terminal-specific callbacks, styling or executable content. */
-export function privateDashboardFrame(
+function privateInlineFrame(
   model: PrivateRunModel,
   width: number,
   height: number,
   color = false,
-  inspecting = false,
   scroll = 0,
   retainedAnchor?: ScrollAnchor,
 ): PrivateDashboardFrame {
@@ -93,23 +98,19 @@ export function privateDashboardFrame(
           add(
             `${b.title} — ${b.rows.length} supplied${b.total === undefined ? '' : ` / ${b.total} reported`} records`,
           )
-          const selected = inspecting && model.collection?.id === b.id
-          const rows = selected ? model.visibleRows() : b.rows
-          if (selected && model.filter) add(`Filter supplied records: ${model.filter}`)
+          const rows = b.rows
           if (!rows.length) add('No supplied records in this view')
-          for (const row of rows.slice(0, inspecting ? 128 : 4)) {
+          for (const row of rows.slice(0, 4)) {
             anchors.push({
               key: JSON.stringify([model.selected?.key, b.id, row.id]),
               line: lines.length,
             })
-            if (selected && model.row?.id === row.id) anchor = lines.length
             add(
-              `${selected && model.row?.id === row.id ? '> ' : '  '}${b.columns.map((c) => `${c.label}: ${value(publisher, row.cells[c.key] ?? null)}`).join(' | ')}`,
+              `  ${b.columns.map((c) => `${c.label}: ${value(publisher, row.cells[c.key] ?? null)}`).join(' | ')}`,
             )
-            if (!inspecting || (selected && model.row?.id === row.id))
-              blocks(publisher, row.details ?? [])
+            blocks(publisher, row.details ?? [])
           }
-          if (!inspecting && rows.length > 4)
+          if (rows.length > 4)
             add(`${rows.length - 4} more supplied records; use --display dashboard to inspect`)
           break
         }
@@ -156,16 +157,6 @@ export function privateDashboardFrame(
       )
   }
   const shellLength = lines.length
-  if (inspecting) {
-    add(
-      [
-        'Overview',
-        ...[...model.views.values()].map(
-          (v) => `${model.sourceLabel(v.publisher)}: ${v.value.title}`,
-        ),
-      ].join('  |  '),
-    )
-  }
   if (selected) {
     if (selected.value.operationId)
       add(
@@ -224,9 +215,7 @@ export function privateDashboardFrame(
     add(model.preview.text)
   }
   if (model.feedback) add(model.feedback)
-  const footer = inspecting
-    ? 'Tab views · c collections · j/k rows · / filter · s sort · r reference · Enter open · [/] scroll · q leave'
-    : 'Read-only observations · --display dashboard opens the inspector'
+  const footer = 'Read-only observations · --display dashboard opens the inspector'
   const footerLines = wrap(footer, width).slice(0, Math.max(1, Math.min(2, height - 2)))
   const available = Math.max(1, height - footerLines.length)
   let projection = lines
@@ -285,25 +274,582 @@ function privateTruncateStyled(text: string, width: number): string {
   return privateTerminalWidth(plain) <= width ? text : privateTruncateUpdate(plain, width)
 }
 
-/** An explicit inspector borrows stdin until it exits; Jig retains cancellation ownership. */
+export type PrivateDashboardPanel =
+  | { kind: 'detail'; key: string; signature: string; scroll: number }
+  | { kind: 'preview'; scroll: number }
+  | { kind: 'attention'; index: number; scroll: number }
+  | { kind: 'references'; selected?: string | undefined; origin: string }
+  | { kind: 'filter'; draft: string; collection: string }
+  | { kind: 'help'; scroll: number }
+export type PrivateDashboardState = { readonly panels: readonly PrivateDashboardPanel[] }
+const referenceKey = (ref: Reference): string =>
+  JSON.stringify(
+    ref.kind === 'call'
+      ? ['call', ref.operationId]
+      : ref.kind === 'record'
+        ? ['record', ref.viewId, ref.collectionId, ref.rowId]
+        : ['artifact', ref.attachment, ref.path],
+  )
+const cell = (value: Value): string =>
+  value === null
+    ? 'null'
+    : typeof value === 'object'
+      ? 'Reference'
+      : privateUpdateText(String(value))
+function recordReferences(record: PrivateWorkspaceRecord | undefined): Reference[] {
+  const result: Reference[] = [],
+    seen = new Set<string>()
+  const add = (reference: Reference) => {
+    const key = referenceKey(reference)
+    if (seen.has(key)) return
+    seen.add(key)
+    result.push(reference)
+  }
+  const block = (block: DetailBlock) => {
+    if (block.kind === 'report') for (const reference of block.references ?? []) add(reference)
+    if (block.kind === 'facts')
+      for (const item of block.items)
+        if (item.value !== null && typeof item.value === 'object') add(item.value)
+  }
+  if (record?.block) block(record.block)
+  if (record?.row) {
+    for (const value of Object.values(record.row.cells))
+      if (value !== null && typeof value === 'object') add(value)
+    for (const detail of record.row.details ?? []) block(detail)
+  }
+  if (record?.activity?.operationId) add({ kind: 'call', operationId: record.activity.operationId })
+  return result
+}
+function progressText(block: Extract<DetailBlock, { kind: 'progress' }>, width: number): string {
+  const count = `${block.completed}${block.total === undefined ? '' : ` / ${block.total}`}${block.unit ? ` ${privateUpdateText(block.unit)}` : ''}`
+  if (block.total && width >= 40) {
+    const size = Math.max(4, Math.min(12, width - 30)),
+      filled = Math.floor((block.completed / block.total) * size)
+    return `${privateUpdateText(block.label)} [${'='.repeat(filled)}${' '.repeat(size - filled)}] ${count}`
+  }
+  return `${privateUpdateText(block.label)} ${count}`
+}
+function* detailLines(
+  model: PrivateRunModel,
+  record: PrivateWorkspaceRecord,
+  width: number,
+): Generator<string> {
+  yield `${record.publisher ? model.sourceLabel(record.publisher) : (record.journal?.source ?? 'Jig')} — literal detail`
+  const wrap = function* (text: string) {
+    yield* privateWrappedUpdate(text, width)
+  }
+  const block = function* (b: DetailBlock): Generator<string> {
+    if (b.kind === 'report') {
+      yield* wrap(b.text)
+      for (const ref of b.references ?? [])
+        yield* wrap(model.resolve(record.publisher ?? 'root', ref).label)
+    } else if (b.kind === 'facts')
+      for (const item of b.items) {
+        yield* wrap(
+          `${item.label}: ${item.value !== null && typeof item.value === 'object' ? model.resolve(record.publisher ?? 'root', item.value).label : String(item.value)}`,
+        )
+      }
+    else yield progressText(b, width)
+  }
+  if (record.text !== undefined) yield* wrap(record.text)
+  if (record.block) yield* block(record.block)
+  if (record.collection) {
+    yield* wrap(record.collection.title)
+    if (record.row) {
+      for (const column of record.collection.columns) {
+        const value = record.row.cells[column.key] ?? null
+        yield* wrap(
+          `${column.label}: ${typeof value === 'object' && value !== null ? model.resolve(record.publisher ?? 'root', value).label : String(value)}`,
+        )
+      }
+      for (const b of record.row.details ?? []) yield* block(b)
+    } else
+      yield record.collection.rows.length
+        ? 'No matching supplied records; / edits the filter'
+        : 'No supplied records'
+  }
+  if (record.activity) {
+    yield* wrap(record.activity!.label)
+    if (record.activity!.progress)
+      yield progressText(
+        { kind: 'progress', label: 'Reported count', ...record.activity!.progress },
+        width,
+      )
+    if (record.activity!.detail) yield* wrap(record.activity!.detail)
+    if (record.activity!.operationId)
+      yield* wrap(
+        `Associated own call: ${model.resolve(record.publisher!, { kind: 'call', operationId: record.activity!.operationId }).label}`,
+      )
+  }
+  if (record.journal) {
+    yield `${record.journal!.source} — ${record.journal!.importance === 'info' ? 'information' : `reported ${record.journal!.importance}`}`
+    if (record.journal!.operationsPath)
+      yield* wrap(
+        `Actual operations path: ${record.journal!.operationsPath.length ? record.journal!.operationsPath.join(' / ') : '(root)'}`,
+      )
+    yield* wrap(record.journal!.text)
+    if (record.journal!.clipped) yield '[Diagnostic capture truncated]'
+  }
+  if (record.call) {
+    const n = record.call
+    yield* wrap(n.intent ?? n.slot)
+    yield* wrap(
+      `Reviewed slot: ${n.slot}\nOriginal operation: ${n.operationId}\nHost lifecycle: ${n.state}\nObserved time: ${n.time}`,
+    )
+    yield 'Returned does not certify the application outcome'
+    if (n.cause) yield* wrap(n.cause)
+  }
+}
+function tableColumns(
+  collection: NonNullable<PrivateWorkspaceRecord['collection']>,
+  rows: NonNullable<PrivateWorkspaceRecord['collection']>['rows'],
+  width: number,
+) {
+  const columns: { key: string; label: string; size: number; numeric: boolean }[] = []
+  let remaining = Math.max(0, width - 2)
+  for (const column of collection.columns) {
+    const natural = Math.max(
+      privateTerminalWidth(privateUpdateText(column.label)),
+      ...rows.map((row) => privateTerminalWidth(cell(row.cells[column.key] ?? null))),
+      4,
+    )
+    const minimum = Math.min(12, Math.max(4, privateTerminalWidth(column.label)))
+    if (remaining < minimum + (columns.length ? 3 : 0)) break
+    const size = Math.min(natural, 24, remaining - (columns.length ? 3 : 0))
+    columns.push({
+      key: column.key,
+      label: privateUpdateText(column.label),
+      size,
+      numeric: column.type === 'number',
+    })
+    remaining -= size + (columns.length > 1 ? 3 : 0)
+  }
+  const hidden = collection.columns.length - columns.length
+  return { columns, hidden }
+}
+const aligned = (text: string, size: number, right = false) => {
+  const bounded = privateTruncateUpdate(text, size, 1024),
+    padding = ' '.repeat(Math.max(0, size - privateTerminalWidth(bounded)))
+  return right ? padding + bounded : bounded + padding
+}
+function tabs(model: PrivateRunModel, width: number): string {
+  const entries = [
+    { key: 'activity', label: 'Activity' },
+    { key: 'overview', label: 'Overview' },
+    ...[...model.views.values()].map((v) => ({
+      key: v.key,
+      label: `${model.sourceLabel(v.publisher)}: ${privateUpdateText(v.value.title)}`,
+    })),
+  ]
+  const current = entries.findIndex((e) => e.key === model.surface)
+  const all = entries
+    .map((entry, index) => (index === current ? `[${entry.label}]` : entry.label))
+    .join(' | ')
+  if (privateTerminalWidth(all) <= width) return all
+  return privateTruncateUpdate(
+    `${current + 1}/${entries.length} [${entries[current]?.label ?? 'Activity'}]  Tab views`,
+    width,
+  )
+}
+const duration = (ms: number) => `${Math.max(0, Math.floor(ms / 1000))}s`
+type WorkspaceTone = 'heading' | 'secondary' | 'warning' | 'error'
+const attentionTone = (priority: number): WorkspaceTone =>
+  priority === 2 || priority >= 4 ? 'error' : 'warning'
+/** Fixed workspace shell; only the bounded body scrolls. Ordinary output stays separate. */
+export function privateDashboardFrame(
+  model: PrivateRunModel,
+  width: number,
+  height: number,
+  color = false,
+  inspecting = false,
+  scroll = 0,
+  retainedAnchor?: ScrollAnchor,
+  state?: PrivateDashboardState,
+): PrivateDashboardFrame {
+  if (width < 1 || height < 1) return { lines: [], references: [] }
+  if (!inspecting) return privateInlineFrame(model, width, height, color, scroll, retainedAnchor)
+  width = Math.max(1, Math.min(4096, Math.floor(width)))
+  height = Math.max(1, Math.min(100, Math.floor(height)))
+  const panels = state?.panels ?? [],
+    panel = panels.at(-1),
+    compact = width < 40 || height < 10
+  const lines: string[] = [],
+    references = recordReferences(model.record)
+  let frameBytes = 0,
+    clipped = false
+  const add = (text: string, tone?: WorkspaceTone, secondaryPrefix?: string) => {
+    if (lines.length >= height) return false
+    const plain = privateTruncateUpdate(
+      privateUpdateText(text).replaceAll('\n', '\\n'),
+      width,
+      Math.max(3, Math.min(4096, 32000 - frameBytes - 64)),
+    )
+    // Only host-owned roles add SGR, after payload escaping and cell/byte truncation.
+    const prefixLength = secondaryPrefix
+      ? privateUpdateText(secondaryPrefix).replaceAll('\n', '\\n').length
+      : 0
+    const rendered =
+      tone === 'secondary'
+        ? privateCliSecondary(plain, color)
+        : tone
+          ? privateCliHeading(plain, tone === 'heading' ? 'info' : tone, color)
+          : prefixLength
+            ? privateCliSecondary(plain.slice(0, prefixLength), color) + plain.slice(prefixLength)
+            : plain
+    const bytes = Buffer.byteLength(rendered) + 1
+    if (frameBytes + bytes > 32000) {
+      clipped = true
+      return false
+    }
+    lines.push(rendered)
+    frameBytes += bytes
+    return true
+  }
+  const target = `Jig · ${privateUpdateText(model.workspace.target)}`
+  const phase =
+    model.workspace.phase === 'settled'
+      ? 'Settled · read-only'
+      : privateUpdateText(model.workspace.hostStage)
+  const time = `elapsed ${duration((model.workspace.now ?? privatePresentationNow()) - model.workspace.startedAt)} · limit ${model.workspace.limitMs === undefined ? 'unspecified' : duration(model.workspace.limitMs)}`
+  const countdown =
+    model.workspace.phase === 'settled' && model.workspace.inspectionDeadline !== undefined
+      ? ` · inspection closes in ${duration(model.workspace.inspectionDeadline - (model.workspace.now ?? privatePresentationNow()))}`
+      : ''
+  const sticky = model.sticky
+  const attentionPrefix = sticky
+    ? `! full cause${model.attention.length > 1 ? ` (+${model.attention.length - 1})` : ''} · ${privateUpdateText(sticky.source)} · ${privateAttentionImportance(sticky.priority)}`
+    : ''
+  const attention = sticky
+    ? `${privateTruncateUpdate(attentionPrefix, Math.max(1, width - Math.min(20, Math.floor(width / 3)) - 2))}: ${privateUpdateText(sticky.text).split('\n')[0]}`
+    : model.incomplete
+      ? `! ${privateUpdateText(model.incomplete)} · ! attention`
+      : ''
+  if (compact) {
+    add(
+      `${privateTruncateUpdate(target, Math.max(1, width - 15))} · ${privateTruncateUpdate(phase, 12)}`,
+      'heading',
+    )
+    if (height >= 4 && !panel) add(`${time}${countdown}`, 'secondary')
+    if (attention && lines.length < height - 1) add(attention, attentionTone(sticky?.priority ?? 3))
+  } else {
+    const stage = privateTruncateUpdate(phase, Math.max(12, Math.floor(width / 3)))
+    add(
+      `${privateTruncateUpdate(target, Math.max(1, width - privateTerminalWidth(stage) - 3))} · ${stage}`,
+      'heading',
+    )
+    add(`${time}${countdown}`, 'secondary')
+    add(tabs(model, width), 'heading')
+    if (attention) add(attention, attentionTone(sticky?.priority ?? 3))
+  }
+  const facts = model.workspace.facts
+  if (!compact && model.workspace.phase === 'settled' && facts) {
+    const left = Math.max(1, Math.floor((width - 3) / 2)),
+      right = Math.max(1, width - left - 3)
+    add(
+      `${privateTruncateUpdate(`Execution ${privateUpdateText(facts.execution)}`, left)} · ${privateTruncateUpdate(`Application ${privateUpdateText(facts.application)}`, right)}`,
+    )
+    add(
+      `${privateTruncateUpdate(`Cleanup ${privateUpdateText(facts.cleanup)}`, left)} · ${privateTruncateUpdate(`Delivery ${privateUpdateText(facts.delivery)}`, right)}`,
+    )
+  }
+  const footer = (
+    panel?.kind === 'filter'
+      ? compact
+        ? 'Enter set Esc undo'
+        : 'Filter draft: Enter apply · Esc discard · Ctrl-C stop'
+      : compact
+        ? 'q inline ^C stop !'
+        : panel?.kind === 'references'
+          ? 'q continues inline · j/k choose · Enter activate · Esc back'
+          : panel?.kind === 'attention'
+            ? 'q continues inline · ←/→ causes · ↑/↓ scroll · Esc back'
+            : panel?.kind === 'help'
+              ? 'Esc back · q continues inline · Ctrl-C stop (live)'
+              : panel?.kind === 'detail' || panel?.kind === 'preview'
+                ? 'q continues inline · ↑/↓ scroll · r references · Esc back'
+                : compact
+                  ? '! full cause · q continues inline · Ctrl-C stop'
+                  : 'q continues inline · Tab · ↑↓ · Enter detail · ! cause · ? help'
+  )
+    .replaceAll(
+      'q continues inline',
+      model.workspace.phase === 'settled' ? 'q closes inspection' : 'q continues inline',
+    )
+    .replaceAll('q inline', model.workspace.phase === 'settled' ? 'q close' : 'q inline')
+    .replaceAll('^C stop', model.workspace.phase === 'settled' ? '^C close' : '^C stop')
+    .replaceAll(
+      'Ctrl-C stop (live)',
+      model.workspace.phase === 'settled' ? 'Ctrl-C closes' : 'Ctrl-C stops',
+    )
+    .replaceAll('Ctrl-C stop', model.workspace.phase === 'settled' ? 'Ctrl-C close' : 'Ctrl-C stop')
+  const bodyRoom = Math.max(0, height - lines.length - 1)
+  let offset = 0,
+    anchor: ScrollAnchor | undefined
+  if (bodyRoom) {
+    if (panel) {
+      let content: Iterable<string>
+      const panelHeadingTone =
+          panel.kind === 'references'
+            ? undefined
+            : panel.kind === 'attention'
+              ? attentionTone((model.attention[panel.index] ?? sticky)?.priority ?? 3)
+              : 'heading',
+        selectedReference =
+          panel.kind === 'references'
+            ? references.findIndex((ref) => referenceKey(ref) === panel.selected)
+            : -1
+      if (panel.kind === 'filter')
+        content = privateWrappedUpdate(
+          `Filter supplied records\nDraft: ${panel.draft}\nApplied: ${model.filter || '(none)'}\nRows change only after Enter. Empty Enter clears.`,
+          width,
+        )
+      else if (panel.kind === 'help')
+        content = privateWrappedUpdate(
+          panels.at(-2)?.kind === 'filter'
+            ? 'Filter editing\nPrintable text is literal, including q j k s r ! ?.\nEnter applies; Escape discards; Backspace/Delete removes the last scalar.\nTab and arrow controls do nothing. Ctrl-C stops live work; Ctrl-D leaves.'
+            : 'Workspace help\nTab / Shift-Tab: Activity, Overview and supplied views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: full literal detail; Escape returns one level.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention choose causes.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause from every tab; ?: this help.\nq: live continues inline; settled closes inspection. Ctrl-C: stop live work, close settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
+          width,
+        )
+      else if (panel.kind === 'attention') {
+        const report = model.attention[panel.index] ?? sticky
+        content = report
+          ? privateWrappedUpdate(
+              `${report.source} — ${privateAttentionImportance(report.priority)} (${panel.index + 1}/${model.attention.length})\n${report.text}`,
+              width,
+            )
+          : privateWrappedUpdate(model.incomplete ?? 'No retained causes', width)
+      } else if (panel.kind === 'preview')
+        content = privateWrappedUpdate(
+          `Immutable delivered-file preview: ${model.previewTitle ?? 'verified capture'}${model.preview?.clipped ? ' [capture clipped at 64 KiB]' : ''}\n${model.preview?.text ?? (model.feedback || 'Loading preview')}`,
+          width,
+        )
+      else if (panel.kind === 'references')
+        content = references.length
+          ? (function* () {
+              for (const ref of references)
+                yield `${referenceKey(ref) === panel.selected ? '> ' : '  '}${model.resolve(model.record?.publisher ?? 'root', ref).label}`
+            })()
+          : ['No references in the selected record']
+      else {
+        const record = model.records().find((record) => record.key === panel.key)
+        content = record ? detailLines(model, record, width) : ['Selected record unavailable']
+      }
+      const requested = 'scroll' in panel ? panel.scroll : 0
+      // Retain only the visible page. Counting remaining lines is bounded by the
+      // admitted text, while the frame buffer never grows with document length.
+      let index = 0,
+        count = 0,
+        last = '',
+        lastTone: WorkspaceTone | undefined
+      for (const line of content) {
+        last = line
+        lastTone =
+          index === selectedReference ? 'heading' : index === 0 ? panelHeadingTone : undefined
+        if (index++ < requested) continue
+        if (count++ >= bodyRoom) {
+          clipped = true
+          break
+        }
+        if (!add(line, lastTone)) break
+      }
+      offset = requested
+      if (count === 0 && index > 0) {
+        add(last, lastTone)
+        offset = index - 1
+      }
+    } else if (compact) {
+      if (bodyRoom) add('Compact viewport · Enter detail · ! full cause', 'secondary')
+    } else {
+      const records = model.records(),
+        body: {
+          key?: string
+          text: () => string
+          tone?: WorkspaceTone
+          secondaryPrefix?: string
+        }[] = [],
+        tables = new Map<string, ReturnType<typeof tableColumns>>()
+      // Every collapsed record is one physical line; table headers occur once.
+      let priorCollection: string | undefined,
+        priorSection: string | undefined,
+        priorKind = ''
+      for (const record of records) {
+        if (record.section && record.section !== priorSection) {
+          body.push({ text: () => privateUpdateText(record.section!), tone: 'heading' })
+          priorSection = record.section
+        }
+        if (model.surface === 'activity') {
+          const current = record.kind === 'host' || record.kind === 'activity'
+          if ((current ? 'current' : 'recent') !== priorKind) {
+            priorKind = current ? 'current' : 'recent'
+            body.push({
+              text: () => (current ? 'Current work' : 'Recent activity'),
+              tone: 'heading',
+            })
+          }
+        }
+        const selected = model.record?.key === record.key,
+          prefix = selected ? '> ' : '  '
+        let text: () => string = () => ''
+        if (record.collection) {
+          const collection = record.collection,
+            rows = model.visibleRows(collection),
+            table = tables.get(collection.id) ?? tableColumns(collection, rows, width)
+          tables.set(collection.id, table)
+          if (priorCollection !== collection.id) {
+            const filter = model.local.filters.get(collection.id),
+              sort = model.local.sorts.get(collection.id)
+            body.push({
+              tone: 'heading',
+              text: () =>
+                `${table.hidden ? `+${table.hidden} columns (Enter detail) · ` : ''}${privateUpdateText(collection.title)} · ${rows.length}/${collection.rows.length} supplied${collection.total === undefined ? '' : ` / ${collection.total} reported`}${filter ? ` · filter ${privateUpdateText(filter)}` : ''}${sort ? ` · sort ${privateUpdateText(sort.key)}` : ''}`,
+            })
+            body.push({
+              tone: 'heading',
+              text: () =>
+                '  ' +
+                table.columns
+                  .map((column) => aligned(column.label, column.size, column.numeric))
+                  .join(' | '),
+            })
+            priorCollection = collection.id
+          }
+          text = () =>
+            record.row
+              ? table.columns
+                  .map((column) =>
+                    aligned(
+                      cell(record.row!.cells[column.key] ?? null),
+                      column.size,
+                      column.numeric,
+                    ),
+                  )
+                  .join(' | ')
+              : collection.rows.length
+                ? 'No matching supplied records · / recovers filter'
+                : 'No supplied records'
+        } else if (record.kind === 'summary')
+          text = () => `Summary ▸ ${privateUpdateText(record.text!).split('\n')[0]}`
+        else if (record.block?.kind === 'report') {
+          const report = record.block
+          text = () => `Report ▸ ${privateUpdateText(report.text).split('\n')[0]}`
+        } else if (record.block?.kind === 'facts') {
+          const facts = record.block
+          text = () =>
+            `Facts ▸ ${facts.items
+              .slice(0, 2)
+              .map(
+                (f) =>
+                  `${privateTruncateUpdate(privateUpdateText(f.label), 24, 1024)} ${privateTruncateUpdate(cell(f.value), 24, 1024)}`,
+              )
+              .join(' · ')}${facts.items.length > 2 ? ` · +${facts.items.length - 2} facts` : ''}`
+        } else if (record.block?.kind === 'progress')
+          text = () =>
+            progressText(record.block as Extract<DetailBlock, { kind: 'progress' }>, width - 2)
+        else if (record.activity)
+          text = () =>
+            `${model.sourceLabel(record.publisher!)} · ${privateUpdateText(record.activity!.label)}${record.activity!.progress ? ` · ${record.activity!.progress.completed}${record.activity!.progress.total === undefined ? '' : `/${record.activity!.progress.total}`}` : ''}`
+        else if (record.journal)
+          text = () =>
+            `${record.journal!.source} · ${record.journal!.importance} · ${privateUpdateText(record.journal!.text).split('\n')[0]}${record.journal!.clipped ? ' [capture truncated]' : ''}`
+        else if (record.call)
+          text = () =>
+            `${'  '.repeat(Math.min(record.depth ?? 0, 12))}${model.descendants(record.call!.key).length ? (model.treeExpanded(record.call!.key) ? '▾' : '▸') : '·'} ${privateUpdateText(record.call!.intent ?? record.call!.slot)} · ${record.call!.state}${record.hidden ? ` (+${record.hidden} hidden, ${record.issues} issues)` : ''}`
+        else text = () => privateUpdateText(record.text ?? '')
+        body.push({
+          key: record.key,
+          text: () => privateTruncateUpdate(prefix + text(), width, 4096),
+          ...(selected ? { tone: 'heading' as const } : {}),
+          ...(record.journal
+            ? {
+                secondaryPrefix: `${prefix}${record.journal.source} · ${record.journal.importance} · `,
+              }
+            : {}),
+        })
+      }
+      if (model.surface === 'activity') {
+        const omitted = Object.entries(model.journalOmitted)
+          .filter(([, count]) => count)
+          .map(([kind, count]) => `${count} ${kind}`)
+        if (omitted.length)
+          body.push({ text: () => `[History omitted: ${omitted.join(', ')}]`, tone: 'secondary' })
+        if (model.record?.journal && model.journal.at(-1)?.key !== model.record.key)
+          body.push({ text: () => 'Latest activity below; selection retained', tone: 'secondary' })
+      }
+      if (model.surface === 'overview') {
+        if (!model.calls.size) body.push({ text: () => 'Waiting for actual observed invocations' })
+        if (model.omissions)
+          body.push({
+            text: () => `${model.omissions} call observations omitted`,
+            tone: 'secondary',
+          })
+      }
+      const selectedView = model.selected,
+        operationId = selectedView?.value.operationId
+      if (selectedView && operationId)
+        body.unshift({
+          tone: 'secondary',
+          text: () =>
+            `Associated own call: ${model.resolve(selectedView.publisher, { kind: 'call', operationId }).label}`,
+        })
+      if (model.selected?.ended)
+        body.unshift({
+          tone: 'secondary',
+          text: () =>
+            `${model.selected!.ended}; last update ${new Date(model.selected!.updated).toISOString()}`,
+        })
+      if (model.feedback) body.push({ text: () => privateUpdateText(model.feedback) })
+      const selectedIndex = body.findIndex((line) => line.key === model.record?.key)
+      const retained = retainedAnchor && body.findIndex((line) => line.key === retainedAnchor.key)
+      const desired =
+        retained !== undefined && retained >= 0
+          ? retained + retainedAnchor!.offset
+          : scroll || model.local.scroll || Math.max(0, selectedIndex - Math.floor(bodyRoom / 2))
+      offset = Math.max(0, Math.min(desired, Math.max(0, body.length - bodyRoom)))
+      for (const line of body.slice(offset, offset + bodyRoom))
+        if (!add(line.text(), line.tone, line.secondaryPrefix)) break
+      const anchored =
+        body
+          .slice(0, offset + 1)
+          .reverse()
+          .find((line) => line.key) ?? body.slice(offset).find((line) => line.key)
+      if (anchored?.key) anchor = { key: anchored.key, offset: offset - body.indexOf(anchored) }
+    }
+  }
+  // Blank body lines keep the footer fixed at the physical bottom.
+  while (lines.length < height - 1 && frameBytes < 31900) add('')
+  const hasNewActivity =
+    model.surface === 'activity' &&
+    model.record?.journal &&
+    model.journal.at(-1)?.key !== model.record.key
+  add(
+    compact && clipped
+      ? model.workspace.phase === 'settled'
+        ? 'q close ^C close ↓'
+        : 'q inline ^C stop ↓'
+      : clipped
+        ? `↓ more · ${footer}`
+        : hasNewActivity
+          ? `+ new activity · ${footer}`
+          : footer,
+    'secondary',
+  )
+  return { lines, references, scroll: offset, ...(anchor ? { anchor } : {}) }
+}
+
+/** One borrowed input owner with three bounded local overlay levels. */
 export class PrivateDashboardInput {
   #active = false
   #raw = false
   #paused = true
-  #search: string | undefined
-  #reference: Reference | undefined
-  #referenceView: string | undefined
-  #referenceVersion = -1
-  #referenceMissing = false
-  #scroll = 0
-  #scrollView: string | undefined
-  #scrollAnchor: ScrollAnchor | undefined
-  #references: readonly Reference[] = []
   #settled = false
+  #captured = false
   #resolve: (() => void) | undefined
   #ended = false
   #pending = ''
   #escapeTimer: ReturnType<typeof setTimeout> | undefined
+  #panels: PrivateDashboardPanel[] = []
+  #references: readonly Reference[] = []
+  #surface = ''
   readonly #decoder = new StringDecoder('utf8')
   readonly #data = (bytes: Buffer) => {
     if (bytes.includes(3)) {
@@ -319,59 +865,90 @@ export class PrivateDashboardInput {
     readonly change: () => void,
     readonly cancel: () => void,
     readonly input = process.stdin,
+    readonly onLeave: () => void = () => {},
   ) {}
   get active(): boolean {
     return this.#active
   }
+  get state(): PrivateDashboardState {
+    this.#reconcile()
+    return { panels: this.#panels }
+  }
   get scroll(): number {
-    return this.#scrollView === this.model.selected?.key ? this.#scroll : 0
+    this.#reconcile()
+    const panel = this.#panels.at(-1)
+    return panel && 'scroll' in panel ? panel.scroll : this.model.local.scroll
   }
   get anchor(): ScrollAnchor | undefined {
-    return this.#scrollView === this.model.selected?.key ? this.#scrollAnchor : undefined
+    this.#reconcile()
+    return this.#panels.length ? undefined : this.model.local.anchor
+  }
+  capture(): void {
+    if (this.#captured) return
+    this.#captured = true
+    this.#raw = this.input.isRaw
+    this.#paused = this.input.isPaused() || this.input.readableFlowing !== true
   }
   start(): void {
     if (this.#active || this.#ended) return
-    this.#raw = this.input.isRaw
-    // A fresh idle stream has readableFlowing=null and isPaused()=false.
-    // Resuming it is our ownership; pause it again so inspection cannot keep
-    // the finite command alive after its input listener is removed.
-    this.#paused = this.input.isPaused() || this.input.readableFlowing !== true
-    this.input.setRawMode(true)
-    this.input.on('data', this.#data)
-    this.input.once('end', this.#end)
-    this.input.resume()
-    this.#active = true
+    this.capture()
+    this.#surface = this.model.surface
+    try {
+      this.input.setRawMode(true)
+      this.input.on('data', this.#data)
+      this.input.once('end', this.#end)
+      this.input.resume()
+      this.#active = true
+    } catch (error) {
+      this.input.removeListener('data', this.#data)
+      this.input.removeListener('end', this.#end)
+      try {
+        this.input.setRawMode(this.#raw)
+      } finally {
+        if (this.#paused) this.input.pause()
+      }
+      throw error
+    }
   }
   frame(references: readonly Reference[], scroll?: number, anchor?: ScrollAnchor): void {
-    this.#scrollView = this.model.selected?.key
-    if (scroll !== undefined) this.#scroll = scroll
-    this.#scrollAnchor = anchor
+    this.#reconcile()
     this.#references = references
-    const view = this.model.selected?.key
-    if (view !== this.#referenceView || this.#referenceVersion !== this.model.selectionVersion) {
-      this.#referenceView = view
-      this.#referenceVersion = this.model.selectionVersion
-      this.#reference = references[0]
-      this.#referenceMissing = false
-    } else if (this.#reference !== undefined) {
-      this.#referenceMissing = !references.some(
-        (ref) => referenceKey(ref) === referenceKey(this.#reference!),
-      )
-      if (this.#referenceMissing)
-        this.model.feedback = 'Selected reference unavailable; press r to choose another'
-    } else if (!this.#referenceMissing) this.#reference = references[0]
+    const panel = this.#panels.at(-1)
+    if (panel && 'scroll' in panel) {
+      if (scroll !== undefined) panel.scroll = scroll
+    } else {
+      if (scroll !== undefined) this.model.local.scroll = scroll
+      this.model.local.anchor = anchor
+    }
+  }
+  #reconcile(): void {
+    // Reconcile before projection as well as after it: record keys are local to each surface.
+    if (this.#surface !== this.model.surface) {
+      this.#panels = []
+      this.#references = []
+      this.#surface = this.model.surface
+    }
+    const detail = this.#panels.find((p) => p.kind === 'detail')
+    if (detail?.kind === 'detail') {
+      const record = this.model.record
+      if (record?.key !== detail.key || record.signature !== detail.signature) {
+        this.#panels = []
+        this.#references = []
+      }
+    }
   }
   async settled(): Promise<void> {
     this.#settled = true
-    if (!this.#active) return
-    await new Promise<void>((resolve) => {
-      this.#resolve = resolve
-    })
+    if (this.#active)
+      await new Promise<void>((resolve) => {
+        this.#resolve = resolve
+      })
   }
   markSettled(): void {
     this.#settled = true
   }
   leave(): void {
+    if (this.#ended) return
     this.#ended = true
     clearTimeout(this.#escapeTimer)
     this.#escapeTimer = undefined
@@ -379,28 +956,44 @@ export class PrivateDashboardInput {
     if (this.#active) {
       this.input.removeListener('data', this.#data)
       this.input.removeListener('end', this.#end)
-      this.input.setRawMode(this.#raw)
-      if (this.#paused) this.input.pause()
-      this.#active = false
+      try {
+        this.input.setRawMode(this.#raw)
+      } catch {
+        this.model.feedback = 'Terminal input restoration unavailable'
+      } finally {
+        try {
+          if (this.#paused) this.input.pause()
+        } catch {
+          this.model.feedback = 'Terminal input restoration unavailable'
+        }
+        this.#active = false
+      }
     }
     this.#resolve?.()
     this.#resolve = undefined
+    this.model.dismissPreview()
+    this.#panels = []
+    this.onLeave()
     this.change()
+  }
+  #push(panel: PrivateDashboardPanel): void {
+    if (this.#panels.length >= 3) this.#panels.pop()
+    this.#panels.push(panel)
   }
   #drainKeys(): void {
     clearTimeout(this.#escapeTimer)
     this.#escapeTimer = undefined
     while (this.#active && this.#pending) {
       if (this.#pending.startsWith('\u001b')) {
-        // biome-ignore lint/suspicious/noControlCharactersInRegex: Decode bounded terminal escape sequences.
-        const sequence = /^\u001b\[[0-9;]*[A-Za-z~]/.exec(this.#pending)
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Decode owned terminal controls.
+        const sequence = /^\u001b(?:\[[0-?]*[ -/]*[@-~]|O[@-~])/.exec(this.#pending)
         if (sequence) {
           this.#pending = this.#pending.slice(sequence[0].length)
           this.#read(sequence[0])
           continue
         }
-        // biome-ignore lint/suspicious/noControlCharactersInRegex: Retain an incomplete terminal escape sequence until its owned timeout.
-        const incomplete = /^\u001b\[[0-9;]*$/.test(this.#pending)
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Preserve split terminal sequences.
+        const incomplete = /^\u001b(?:\[[0-?]*[ -/]*|O)?$/.test(this.#pending)
         if (this.#pending.length === 1 || incomplete) {
           this.#escapeTimer = setTimeout(() => {
             this.#escapeTimer = undefined
@@ -409,9 +1002,9 @@ export class PrivateDashboardInput {
           }, 30)
           return
         }
-        this.#pending = ''
+        this.#pending = this.#pending.slice(1)
         this.#read('\u001b')
-        return
+        continue
       }
       const scalar = String.fromCodePoint(this.#pending.codePointAt(0)!)
       this.#pending = this.#pending.slice(scalar.length)
@@ -419,100 +1012,144 @@ export class PrivateDashboardInput {
     }
   }
   #read(text: string): void {
+    this.#reconcile()
     if (text === '\u0003') {
-      if (this.#settled) this.leave()
-      else {
-        this.cancel()
-        this.leave()
-      }
-      return
-    }
-    if (text === '\u001b' || text === '\u0004') {
+      if (!this.#settled) this.cancel()
       this.leave()
       return
     }
-    if (text === '\u001b[A') text = 'k'
-    if (text === '\u001b[B') text = 'j'
-    if (this.#search !== undefined) {
+    if (text === '\u0004') {
+      this.leave()
+      return
+    }
+    this.model.markNavigation()
+    const panel = this.#panels.at(-1)
+    if (panel?.kind === 'filter') {
       if (text === '\r' || text === '\n') {
-        this.#search = undefined
-        return
-      }
-      if (text === '\u007f') this.#search = [...this.#search].slice(0, -1).join('')
-      else if (!/[\p{Cc}\p{Cf}]/u.test(text))
-        this.#search = [...(this.#search + text)].slice(0, 128).join('')
-      this.model.filterRows(this.#search)
+        this.model.filterRows(panel.draft)
+        this.#panels.pop()
+      } else if (text === '\u001b') this.#panels.pop()
+      else if (text === '\u007f' || text === '\b' || text === '\u001b[3~')
+        panel.draft = [...panel.draft].slice(0, -1).join('')
+      else if (![...text].some((scalar) => /[\p{Cc}\p{Cf}]/u.test(scalar)))
+        panel.draft = [...(panel.draft + text)].slice(0, 128).join('')
+      this.change()
       return
     }
-    if (text === 'q' || text === '\u001b' || text === '\u0004') {
+    if (text === 'q') {
       this.leave()
       return
     }
-    if (text === '\t') {
-      this.model.cycleView(1)
-      this.#scroll = 0
-      this.#scrollAnchor = undefined
-    } else if (text === '\u001b[Z') {
-      this.model.cycleView(-1)
-      this.#scroll = 0
-      this.#scrollAnchor = undefined
-    } else if (text === 'j') {
-      this.model.moveRow(1)
-      this.#scroll = 0
-      this.#scrollAnchor = undefined
-    } else if (text === 'k') {
-      this.model.moveRow(-1)
-      this.#scroll = 0
-      this.#scrollAnchor = undefined
-    } else if (text === 'c') {
-      this.model.cycleCollection()
-      this.#scroll = 0
-      this.#scrollAnchor = undefined
-    } else if (text === 's') {
-      this.model.sortRows()
-      this.#scroll = 0
-      this.#scrollAnchor = undefined
-    } else if (text === '/') {
-      this.#search = ''
-      this.#scroll = 0
-      this.#scrollAnchor = undefined
-      this.model.filterRows('')
-    } else if (text === ']') {
-      this.#scroll = Math.min(8192, this.#scroll + 3)
-      this.#scrollAnchor = undefined
-    } else if (text === '[') {
-      this.#scroll = Math.max(0, this.#scroll - 3)
-      this.#scrollAnchor = undefined
-    } else if (text === 'r') {
-      const prior = this.#references.findIndex(
-        (ref) =>
-          this.#reference !== undefined && referenceKey(ref) === referenceKey(this.#reference),
-      )
-      const next = (prior + 1) % Math.max(1, this.#references.length)
-      this.#reference = this.#references[next]
-      this.#referenceMissing = false
-      this.model.feedback = this.#reference
-        ? `Selected reference ${next + 1}; Enter to open`
-        : 'No references in this view'
-    } else if (text === '\r' || text === '\n') {
-      if (this.#referenceMissing)
-        this.model.feedback = 'Selected reference unavailable; press r to choose another'
-      else if (
-        this.#reference &&
-        this.model.selected &&
-        this.model.selected.key === this.#referenceView
-      )
-        void this.model.activate(this.model.selected.publisher, this.#reference)
+    if (text === '\u001b') {
+      if (this.#panels.length) {
+        const dismissed = this.#panels.pop()
+        if (dismissed?.kind === 'preview') this.model.dismissPreview()
+        this.change()
+      } else this.leave()
+      return
+    }
+    if (text === '\t' || text === '\u001b[Z') {
+      this.#panels = []
+      this.model.cycleView(text === '\t' ? 1 : -1)
+      this.#surface = this.model.surface
+      this.change()
+      return
+    }
+    if (text === '?') {
+      this.#push({ kind: 'help', scroll: 0 })
+      this.change()
+      return
+    }
+    if (text === '!') {
+      this.#push({
+        kind: 'attention',
+        index: Math.max(0, this.model.attention.indexOf(this.model.sticky!)),
+        scroll: 0,
+      })
+      this.change()
+      return
+    }
+    const delta =
+      text === 'j' || text === '\u001b[B' ? 1 : text === 'k' || text === '\u001b[A' ? -1 : 0
+    const page =
+      text === ']' || text === '\u001b[6~' ? 3 : text === '[' || text === '\u001b[5~' ? -3 : 0
+    if (panel?.kind === 'references') {
+      const refs = this.#references.length ? this.#references : recordReferences(this.model.record)
+      if (delta) {
+        const index = refs.findIndex((r) => referenceKey(r) === panel.selected)
+        panel.selected =
+          refs[Math.max(0, Math.min(refs.length - 1, index + delta))] &&
+          referenceKey(refs[Math.max(0, Math.min(refs.length - 1, index + delta))]!)
+      }
+      if (text === '\r' || text === '\n') {
+        const reference = refs.find((r) => referenceKey(r) === panel.selected)
+        if (!reference)
+          this.model.feedback = 'Selected reference unavailable; press r to choose another'
+        else {
+          const publisher = this.model.record?.publisher ?? 'root'
+          const available = this.model.resolve(publisher, reference).available
+          this.#panels.pop()
+          if (reference.kind === 'artifact' && available) this.#push({ kind: 'preview', scroll: 0 })
+          else if (available) this.#panels = []
+          void this.model.activate(publisher, reference)
+        }
+      }
+    } else if (panel && 'scroll' in panel) {
+      if (panel.kind === 'attention' && (text === '\u001b[C' || text === '\u001b[D')) {
+        panel.index =
+          (panel.index +
+            (text === '\u001b[C' ? 1 : -1) +
+            Math.max(1, this.model.attention.length)) %
+          Math.max(1, this.model.attention.length)
+        panel.scroll = 0
+      } else if (delta || page)
+        panel.scroll = Math.max(0, Math.min(524288, panel.scroll + (page || delta)))
+      else if (text === '\u001b[H' || text === '\u001b[1~') panel.scroll = 0
+      if ((text === '\r' || text === '\n') && panel.kind === 'detail') {
+        if (this.model.disclosure()) this.model.toggleDisclosure()
+        this.#panels.pop()
+      } else if (text === 'r' && (panel.kind === 'detail' || panel.kind === 'preview'))
+        this.#chooseReference()
+    } else if (delta) {
+      this.model.moveRecord(delta)
+      this.model.local.anchor = undefined
+    } else if (page) {
+      this.model.local.scroll = Math.max(0, Math.min(8192, this.model.local.scroll + page))
+      this.model.local.anchor = undefined
+    } else if (text === '\u001b[H' || text === '\u001b[1~') {
+      this.model.moveRecord(-1000)
+      this.model.local.anchor = undefined
+    } else if (text === '\u001b[F' || text === '\u001b[4~') {
+      this.model.moveRecord(1000)
+      this.model.local.anchor = undefined
+    } else if (text === '\u001b[C' || text === '\u001b[D')
+      this.model.expandTree(text === '\u001b[C')
+    else if (text === 'c') this.model.cycleCollection()
+    else if (text === 's') this.model.sortRows()
+    else if (text === '/') {
+      if (this.model.requireCollection())
+        this.#push({
+          kind: 'filter',
+          draft: this.model.filter,
+          collection: this.model.collection!.id,
+        })
+    } else if (text === 'r') this.#chooseReference()
+    else if (text === '\r' || text === '\n') {
+      const record = this.model.record
+      if (record) {
+        if (!this.model.disclosure()) this.model.toggleDisclosure()
+        this.#push({ kind: 'detail', key: record.key, signature: record.signature, scroll: 0 })
+      }
     }
     this.change()
   }
-}
-function referenceKey(ref: Reference): string {
-  return JSON.stringify(
-    ref.kind === 'call'
-      ? ['call', ref.operationId]
-      : ref.kind === 'record'
-        ? ['record', ref.viewId, ref.collectionId, ref.rowId]
-        : ['artifact', ref.attachment, ref.path],
-  )
+  #chooseReference(): void {
+    const refs = recordReferences(this.model.record)
+    this.#references = refs
+    this.#push({
+      kind: 'references',
+      selected: refs[0] && referenceKey(refs[0]),
+      origin: this.model.record?.key ?? '',
+    })
+  }
 }

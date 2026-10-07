@@ -20,7 +20,7 @@ import {
   writeRepairDeliverables,
 } from './files.ts'
 import { candidates, methods } from './methods.ts'
-import { factoryReport, jobLabel, jobPlan, jobReport } from './presentation.ts'
+import { factoryReport, jobLabel, jobReport, repairActivity } from './presentation.ts'
 
 interface Job {
   id: string
@@ -120,16 +120,22 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
       ),
     })
   updates.notice(
-    [
-      `Software factory: ${jobs.length} requested ${jobs.length === 1 ? 'repair' : 'repairs'}. Each patch is checked separately and saved for human review.`,
-      ...prepared.map(({ job, input }) => jobPlan(job, input)),
-    ].join('\n\n'),
+    `Software factory: ${jobs.length} requested ${jobs.length === 1 ? 'repair' : 'repairs'}. No checked patches yet. Jobs contains goals and scope; Checks contains evidence; Patches contains candidates for human review. Changes are not applied.`,
   )
   const changes: { job: string; path: string; content: string }[] = []
   const observed: Record<string, JsonValue> = Object.create(null)
   const retained: Record<string, JsonValue> = Object.create(null)
   const retainedFiles: Record<string, string> = Object.create(null)
-  const jobView = updates.view('jobs', { title: 'Software factory · Jobs', landing: true })
+  // Preserve the exact request independently of bounded observational excerpts.
+  // Checkpoint aggregation below selects only settled jobs' files.
+  for (const { job, input } of prepared) {
+    run.signal.throwIfAborted()
+    const output = join(deliverables.path, job.id)
+    await mkdir(output)
+    await writeFile(join(output, 'goal.txt'), input.issue, { flag: 'wx' })
+    retainedFiles[`${job.id}/goal.txt`] = input.issue
+  }
+  const jobView = updates.view('jobs', { title: 'Jobs' })
   const checkView = updates.view('checks', { title: 'Checks' })
   const patchView = updates.view('patches', { title: 'Patches' })
   const stages = new Map<string, FactoryStage>()
@@ -140,11 +146,13 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
   const publishPatches = (conflicting = false) =>
     patchView.update(patchesView(prepared, observed, conflicting))
   publishJobs()
+  publishChecks()
+  publishPatches()
   let sequence = 0
   let saves = Promise.resolve()
   const active = new Set<string>()
   const clearJob = (jobId: string) => {
-    active.delete(jobId)
+    if (active.delete(jobId)) updates.clear(`factory:${jobId}`)
   }
   // Job IDs are unique for this Run. Child callbacks are joined before the
   // parent clears their slots; attempts are labels, never completed-work counts.
@@ -163,7 +171,18 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
       maximum: extra.method === 'p1' ? 1 : 2,
       ...(detail === undefined ? {} : { detail }),
     })
-    publishJobs()
+    updates.activity(
+      `factory:${jobId}`,
+      repairActivity(
+        jobs.find((job) => job.id === jobId)!,
+        phase,
+        attempt,
+        extra.method === 'p1' ? 1 : 2,
+        detail,
+      ),
+      undefined,
+      detail === undefined ? undefined : { detail },
+    )
   }
   const invokeRepair = async (
     jobId: string,
@@ -200,7 +219,7 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
           if (value.phase === 'observed' || value.phase === 'rejected') {
             reports.set(jobId, value.detail!)
             updates.notice(
-              `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Worker report\n${value.detail}`,
+              `${jobLabel(jobs.find((job) => job.id === jobId)!)}: ${value.detail}`,
               value.phase === 'rejected' ? 'warning' : 'info',
             )
             publishChecks()
@@ -357,7 +376,6 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
         }
       }
       const output = join(deliverables.path, job.id)
-      await mkdir(output)
       await writeRepairDeliverables(output, input, result)
       for (const [path, text] of Object.entries(repairDeliverables(input, result)))
         retainedFiles[`${job.id}/${path}`] = text
@@ -409,8 +427,6 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
             : jobReport(result as unknown as JsonValue, false),
           'ready' in result && result.ready ? 'info' : 'error',
         )
-        publishJobs()
-        if ('ready' in result && result.ready) publishPatches()
         // Serialize complete aggregates; Jig does not choose application ordering.
         const saving = saves.then(async () => {
           run.signal.throwIfAborted()
@@ -446,7 +462,6 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
           updates.notice(
             `${jobLabel(result)}: Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).${'ready' in result && result.ready ? `\n  Review files/${result.id}/review.patch before applying it.` : ''}`,
           )
-          publishJobs()
         })
         saves = saving
         await saving
@@ -464,6 +479,11 @@ async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): P
     const known = jobs
       .filter((job) => Object.hasOwn(observed, job.id))
       .map((job) => observed[job.id]!)
+    // Storage failure does not erase already observed repair outcomes. These
+    // optional snapshots still make no claim that their files were delivered.
+    publishJobs()
+    publishChecks()
+    publishPatches(patchConflicts(changes).some((overlap) => overlap.conflicting))
     throw new OperationError(error.code, error.message, {
       summary: factoryReport(
         known,

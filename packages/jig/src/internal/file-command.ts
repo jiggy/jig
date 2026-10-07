@@ -20,6 +20,10 @@ import {
   PrivateRunCheckpoints,
   type RunCheckpointIdentity,
 } from './private-run-checkpoint.js'
+import {
+  PRIVATE_PRESENTATION_DEADLINE_ENV,
+  privateConstrainPresentationDeadline,
+} from './root-run-timeout-policy.js'
 
 const MARKER = 'JIG_PRIVATE_FILE_OWNER'
 const RECOVERY = 'JIG_PRIVATE_FILE_RECOVERY'
@@ -258,9 +262,8 @@ export async function privateOwnFileCommand(
             }
             publication = delivered
               .then((receipt) => {
-                // Execution, cleanup and publication have settled. Explicit
-                // inspection retains only this presentation/file owner.
-                if (request.inspection === true) clearTimeout(timer)
+                // Inspection owns immutable bytes only. The original absolute
+                // command timer remains effective through presentation and exit.
                 send(socket, {
                   ok: true,
                   receipt,
@@ -307,9 +310,14 @@ export async function privateOwnFileCommand(
       await native?.close()
       throw error
     })
+  const presentationDeadline = privateConstrainPresentationDeadline(process.env, lifetimeMs)
   const child = spawn(command[0]!, [...command.slice(1), ...arguments_], {
     cwd: process.cwd(),
-    env: { ...process.env, [MARKER]: JSON.stringify(selected) },
+    env: {
+      ...process.env,
+      [MARKER]: JSON.stringify(selected),
+      [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline),
+    },
     stdio: 'inherit',
   })
   childPid = child.pid
@@ -351,7 +359,7 @@ export async function privateOwnFileCommand(
     await task
     if (recovery !== undefined && checkpoints !== undefined && publication === undefined) {
       try {
-        const recovered = await recoverCommand(command, arguments_, recovery)
+        const recovered = await recoverCommand(command, arguments_, recovery, presentationDeadline)
         const record = checkpointRecord(
           { ...recovered, ...checkpoints.identity } as JsonValue,
           checkpoints,
@@ -600,10 +608,20 @@ async function recoverCommand(
   command: readonly string[],
   args: readonly string[],
   recovery: PrivateFileRecovery,
+  inheritedPresentationDeadline: number,
 ): Promise<Record<string, JsonValue>> {
+  const presentationDeadline = privateConstrainPresentationDeadline(
+    { ...process.env, [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(inheritedPresentationDeadline) },
+    30_000,
+  )
   const child = spawn(command[0]!, [...command.slice(1), ...args], {
     cwd: recovery.project,
-    env: { ...process.env, [MARKER]: undefined, [RECOVERY]: JSON.stringify(recovery) },
+    env: {
+      ...process.env,
+      [MARKER]: undefined,
+      [RECOVERY]: JSON.stringify(recovery),
+      [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const chunks: Buffer[] = []

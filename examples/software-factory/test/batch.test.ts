@@ -241,6 +241,12 @@ test('synthetic selected cancellation preserves the other worker and its verifie
     expect(saves[0].evidence.pending).toHaveLength(1)
     expect(saves[0].evidence.jobs).toHaveLength(1)
     expect(saves[0].evidence.pending).not.toContain(saves[0].evidence.jobs[0].id)
+    const firstSettled = saves[0].evidence.jobs[0].id
+    const stillPending = saves[0].evidence.pending[0]
+    expect(saves[0].files[`${firstSettled}/goal.txt`]).toBe(job.issue)
+    expect(saves[0].files[`${stillPending}/goal.txt`]).toBeUndefined()
+    expect(saves[1].files['first/goal.txt']).toBe(job.issue)
+    expect(saves[1].files['second/goal.txt']).toBe(job.issue)
     expect(saves[1].files['second/review.patch']).toContain('--- a/src/report.ts')
     expect(saves[1].evidence.pending).toEqual([])
     expect(actual.outcome).toBe('blocked')
@@ -253,7 +259,8 @@ test('synthetic selected cancellation preserves the other worker and its verifie
       },
       { id: 'second', status: 'settled', ready: true },
     ])
-    expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
+    expect((await readdir(out)).sort()).toEqual(['first', 'second', 'summary.txt'])
+    expect(await readFile(join(out, 'first/goal.txt'), 'utf8')).toBe(job.issue)
     expect(await readFile(join(out, 'second/review.patch'), 'utf8')).toContain(
       '--- a/src/report.ts',
     )
@@ -523,6 +530,72 @@ test('an explicit reviewed method bypasses semantic routing and remains visible 
   })
 })
 
+test('maximum requested goals survive exact file, checkpoint and result retention with optional observation', async () => {
+  for (const wired of [false, true])
+    await batchFixture(async (run, out) => {
+      const issue = 'Goal: ' + '\u0001'.repeat(7994)
+      const messages: JsonValue[] = []
+      const saves: any[] = []
+      const result = await repairBatch({
+        ...run,
+        input: {
+          jobs: (run.input as any).jobs.map((entry: any) => ({ ...entry, issue, method: 'p1' })),
+        },
+        channels: wired
+          ? {
+              progress: {
+                direction: 'send',
+                delivery: 'broadcast',
+                contract: USER_UPDATES_CONTRACT,
+                send: async (value: JsonValue) => {
+                  validateUserUpdate(value)
+                  messages.push(value)
+                },
+                close: async () => {},
+              },
+            }
+          : {},
+        channel: async () =>
+          ({
+            send: {
+              direction: 'send',
+              delivery: 'direct',
+              send: async () => {},
+              close: async () => {},
+            },
+            receive: { async *[Symbol.asyncIterator]() {}, close: async () => {} },
+          }) as any,
+        call: async (call) => {
+          if (call.slot === 'checkpoint') {
+            saves.push(call.input)
+            return { outcome: 'done', output: null }
+          }
+          expect(
+            await readFile(join(out, call.operationId.split(':')[1]!, 'goal.txt'), 'utf8'),
+          ).toBe(issue)
+          throw new OperationError('EXECUTION_FAILED', 'Deterministic proposal refusal.')
+        },
+      } as RunContext)
+      expect(result.outcome).toBe('blocked')
+      expect((result.output as any).jobs.map((entry: any) => entry.issue)).toEqual([issue, issue])
+      expect(saves.at(-1).files['first/goal.txt']).toBe(issue)
+      expect(saves.at(-1).files['second/goal.txt']).toBe(issue)
+      expect(await readFile(join(out, 'first/goal.txt'), 'utf8')).toBe(issue)
+      if (wired) {
+        const views = messages.filter((value) => (value as any).kind === 'view') as any[]
+        expect(new Set(views.map((value) => value.title))).toEqual(
+          new Set(['Jobs', 'Checks', 'Patches']),
+        )
+        expect(views.filter((value) => value.id === 'jobs').at(-1).summary).toContain(
+          '2 of 2 repairs settled',
+        )
+        expect(JSON.stringify(views.find((value) => value.id === 'jobs'))).toContain(
+          '[excerpt; complete goal',
+        )
+      }
+    })
+}, 10_000)
+
 test('optional profile retains checkpoint ordering and settles after reader loss', async () => {
   for (const lost of [false, true])
     await batchFixture(async (run) => {
@@ -595,12 +668,14 @@ test('optional profile retains checkpoint ordering and settles after reader loss
       })
       expect(closed).toBe(1)
       if (!lost) {
-        const notices = messages.filter((value) => (value as any).kind === 'notice') as any[]
+        const views = messages.filter((value) => (value as any).kind === 'view') as any[]
         expect(
-          notices.some(
-            (value) => value.text.includes('Requested goal:') && value.text.includes(job.issue),
-          ),
+          views.some((value) => value.id === 'jobs' && JSON.stringify(value).includes(job.issue)),
         ).toBe(true)
+        expect(new Set(views.map((value) => value.title))).toEqual(
+          new Set(['Jobs', 'Checks', 'Patches']),
+        )
+        expect(views.every((value) => value.landing === undefined)).toBe(true)
         expect(
           messages.some(
             (value) =>
@@ -647,7 +722,7 @@ test('abstention, Agent refusal and invalid replacement-router results never dis
       expect(workers).toEqual(['repair:second'])
       expect(actual.outcome).toBe('blocked')
       expect((actual.output as any).jobs[1]).toMatchObject({ ready: true })
-      expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
+      expect((await readdir(out)).sort()).toEqual(['first', 'second', 'summary.txt'])
     })
 })
 
@@ -728,7 +803,7 @@ test('failed or forged worker evidence cannot become a patch after a valid route
         routing: { slot: 'single-pass' },
       })
       expect((actual.output as any).jobs[1]).toMatchObject({ ready: true })
-      expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
+      expect((await readdir(out)).sort()).toEqual(['first', 'second', 'summary.txt'])
     })
 })
 
@@ -759,7 +834,7 @@ test('failed-stage summaries preserve public causes and healthy evidence without
       expect(actual.outcome).toBe('blocked')
       expect((actual.output as any).jobs[0]).toMatchObject({ status: 'failed', stage, message })
       expect(calls.filter((id) => id.endsWith(':first'))).toHaveLength(stage === 'routing' ? 1 : 2)
-      expect((await readdir(out)).sort()).toEqual(['second', 'summary.txt'])
+      expect((await readdir(out)).sort()).toEqual(['first', 'second', 'summary.txt'])
       const summary = await readFile(join(out, 'summary.txt'), 'utf8')
       for (const text of [summary, saves.at(-1).files['summary.txt']]) {
         expect(text).toContain(`Failed stage: ${stage}`)
@@ -868,7 +943,7 @@ test('concurrent blocking failures are reported before checkpoint settlement and
       const settled = invocation.catch((error) => error)
       try {
         // The paced optional path remains live while storage is pending.
-        await new Promise((resolve) => setTimeout(resolve, 1600))
+        await new Promise((resolve) => setTimeout(resolve, 2200))
         expect(checkpointFinished).toBe(false)
         const errors = messages.filter((value) => (value as any).severity === 'error') as any[]
         expect(errors).toHaveLength(2)
@@ -901,7 +976,7 @@ test('concurrent blocking failures are reported before checkpoint settlement and
         expect(JSON.stringify({ summary: result.output.summary }).length).toBeLessThanOrEqual(2048)
       }
     })
-})
+}, 10_000)
 
 test('complete blocking causes and operator steps survive with progress disabled', async () => {
   await batchFixture(async (run) => {
@@ -933,9 +1008,32 @@ test('complete blocking causes and operator steps survive with progress disabled
 test('checkpoint failure retains healthy and failed jobs without claiming packet files exist', async () => {
   await batchFixture(async (run) => {
     const { result: checked } = await syntheticRepair()
+    const messages: JsonValue[] = []
     const failure = await repairBatch({
       ...run,
       input: { jobs: (run.input as any).jobs.map((entry: any) => ({ ...entry, method: 'p1' })) },
+      channels: {
+        progress: {
+          direction: 'send',
+          delivery: 'broadcast',
+          contract: USER_UPDATES_CONTRACT,
+          send: async (value: JsonValue) => {
+            validateUserUpdate(value)
+            messages.push(value)
+          },
+          close: async () => {},
+        },
+      },
+      channel: async () =>
+        ({
+          send: {
+            direction: 'send',
+            delivery: 'direct',
+            send: async () => {},
+            close: async () => {},
+          },
+          receive: { async *[Symbol.asyncIterator]() {}, close: async () => {} },
+        }) as any,
       call: async (call) => {
         if (call.slot === 'checkpoint')
           throw new OperationError('EXECUTION_FAILED', 'Storage refused the checkpoint.', {
@@ -956,5 +1054,21 @@ test('checkpoint failure retains healthy and failed jobs without claiming packet
     expect(failure.details.summary).toContain('Checkpoint and file delivery were not confirmed')
     expect(failure.details.summary).not.toContain('files/first/review.patch')
     expect(failure.details.summary).not.toContain('Saved job summaries')
+    const finalViews = new Map(
+      messages
+        .filter((value) => (value as any).kind === 'view')
+        .map((value) => [(value as any).id, value as any]),
+    )
+    expect([...finalViews.keys()]).toEqual(['jobs', 'checks', 'patches'])
+    expect(finalViews.get('jobs').summary).toContain('2 of 2 repairs settled')
+    expect(finalViews.get('checks').sections[0].blocks[0].rows[0].cells.repository).toContain(
+      'independently verified',
+    )
+    expect(finalViews.get('patches').summary).toContain('after verified packet delivery')
+    for (const row of finalViews.get('jobs').sections[0].blocks[1].rows)
+      expect(row.details[1].items.find((item: any) => item.label === 'Checkpoint').value).toBe(
+        'Not acknowledged',
+      )
+    expect(JSON.stringify(finalViews.get('patches'))).not.toContain('Saved job summaries')
   })
 })

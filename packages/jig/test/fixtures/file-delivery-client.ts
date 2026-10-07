@@ -26,7 +26,7 @@ if (owner === undefined || destination === undefined || pidFile === undefined)
   throw new Error('missing test owner')
 try {
   await writeFile(pidFile, String(process.pid))
-  if (stopAt === 'preview') {
+  if (stopAt === 'preview' || stopAt === 'preview-expiry') {
     owner.enableInspection?.()
     await owner.prepare(destination, [])
     const source = await mkdtemp(join(dirname(pidFile), 'preview-source-'))
@@ -41,7 +41,12 @@ try {
       )
       if (receipt.status !== 'written') throw new Error('preview fixture publication failed')
       await writeFile(join(destination, 'files/review.patch'), 'Changed destination')
-      // Inspection must outlive the execution timer, with no live Flow owner.
+      if (stopAt === 'preview-expiry') {
+        await writeFile(readyFile!, 'published')
+        await Bun.sleep(30_000)
+        throw new Error('inspection waived the original command timer')
+      }
+      // Immutable preview outlives execution, within the command's original timer.
       await Bun.sleep(3500)
       const preview = await owner.preview?.('review.patch')
       if (preview?.text !== 'Exact verified patch\n')

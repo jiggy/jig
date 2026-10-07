@@ -51,7 +51,10 @@ Operator-only `--display auto|plain|dashboard` controls Run presentation. Auto
 uses a bounded noninteractive inline region on suitable stderr; it borrows no
 input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
 use nonanimated summaries. Explicit dashboard requires terminal stdin and stderr,
-independently of stdout; otherwise explain the plain fallback once. JSON and
+independently of stdout; otherwise explain the plain fallback once. It owns one
+alternate screen after effective argument/target selection. Earlier installed
+launcher and delegation failures remain ordinary diagnostics. Explicit dashboard
+with NO_COLOR keeps screen controls without color. JSON and
 effective reception retain their exact output and disable automatic Flow observation.
 No project entrypoint can choose display mode.
 
@@ -59,19 +62,30 @@ The shell presents host execution, cleanup, delivery and complete known safe
 causes separately from attributed domain reports. Overview is the actual observed
 invocation tree; application views compose literal reports, facts, measured
 progress and typed collections. Calls returning, reported 100%, EOF and view
-status never imply domain success. Full errors/warnings append outside redraw;
-sticky attention and visible incompleteness survive view retirement. Narrow
-layouts shrink workspace before hiding the cause and disclose clipping.
+status never imply domain success. Auto/plain commit complete errors and warnings
+to scrollback. Explicit dashboard retains them in bounded Activity and attention,
+with full causes one action away from every view; leaving restores the screen and
+commits complete retained essential causes before final stdout. Sticky attention
+and visible incompleteness survive view retirement. Narrow layouts shrink
+workspace before hiding the cause and disclose clipping.
 
-The explicit inspector provides tabs, record selection/details, local filter/sort,
-scrolling and reference activation. References can resolve current same-publisher
+The explicit workspace has stable Activity, Overview and attributed domain tabs,
+aligned collections, collapsed reports, record details, local filter/sort,
+scrolling and explicitly selected references. All valid block types are reachable
+in supplied order; selecting a row alone does not expand it. References can resolve current same-publisher
 records, actual own calls and verified delivered files. Previews use bounded
-immutable capture, never mutable destination reads. Live q/Escape/input EOF
+immutable capture, never mutable destination reads. Escape dismisses local help,
+filter, reference selection, attention, preview or detail before leaving. Live q,
+standalone Escape or input EOF
 restores input and continues inline, without re-entering later. Live Ctrl-C uses
 existing cancellation and cleanup. After all execution, cleanup and delivery
 settle, an inspector still open shows literal settled facts and read-only results;
 q/Escape/Ctrl-C then closes presentation without changing admitted outcome.
-No Flow or channel remains alive for inspection. Every exit releases preview,
+No Flow or channel remains alive for inspection. Inspection lasts at most 60
+seconds and intersects any earlier enclosing command limit; its countdown is
+separate from the execution limit. Unknown Linux command lifetime skips settled
+inspection. An expiring presentation lease leaves live execution running through
+its ordinary owner; it never extends an execution timer. Every exit releases preview,
 input and presentation owners. Auto/plain emit the latest retained summaries
 with ended/incomplete context and exit promptly.
 
@@ -87,8 +101,9 @@ with ended/incomplete context and exit promptly.
    dependency preparation or approved reuse, and final recipe/review retention
    separately. Active elapsed time belongs to the current stage. In animated
    terminals, completed timed stages retain their duration as secondary text.
-   Acquisition has one active line with elapsed time; running work can use the
-   bounded inline dashboard above. Preserve completed stages; never mark a failed or merely
+   Ordinary acquisition has one active line with elapsed time; running work can use the
+   bounded inline dashboard above. Explicit dashboard retains stages inside its
+   Activity view. Preserve completed stages; never mark a failed or merely
    departed stage complete. Update waiting time in place, not by appending
    unchanged messages. Report the known wait reason; never invent percentages,
    estimated completion times, or internal Flow stages. Finish or suspend the
@@ -236,9 +251,13 @@ with ended/incomplete context and exit promptly.
    version stdout remains the version alone. Human status uses stderr.
    Redirected streams contain no terminal escapes or animation; failures and
    consequential notices remain readable. `NO_COLOR` (including an empty value)
-   and `TERM=dumb` select plain presentation without animation. Plain terminal
+   and `TERM=dumb` select plain automatic presentation without animation; an
+   explicitly selected eligible dashboard with NO_COLOR uses screen controls
+   without SGR styling. Plain terminal
    progress reports stage changes once. Do not require Unicode, a pager, cursor
-   hiding, an alternate screen, or interactivity. Escape untrusted control and
+   hiding, an alternate screen, or interactivity for ordinary output. Explicit
+   dashboard uses an alternate screen and restores prior input/screen ownership.
+   Escape untrusted control and
    review Unicode characters before presentation.
 10. **Acceptance is required.** A CLI-affecting change must check rendered
     success, failure, long waits, cancellation, and uncertain cleanup, plus

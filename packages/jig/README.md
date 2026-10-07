@@ -54,10 +54,14 @@ jig completion <bash|zsh|fish>
 ```
 
 Runs show an inline invocation tree and optional application views on terminal
-stderr. `jig run --display dashboard` opens a read-only keyboard inspector with
-tabs, record details, filtering and verified text/patch previews. q or Escape
-leaves inspection; Ctrl-C during work cancels and waits for cleanup. After work
-and delivery settle, Ctrl-C simply closes result inspection. Use `--display plain`
+stderr. `jig run --display dashboard` opens a terminal workspace with Activity,
+the actual call tree, domain tabs, aligned records and expandable evidence.
+Enter opens details; `!` opens retained causes, and `?` explains the current keys.
+q leaves while work continues inline; Escape first dismisses a local panel.
+Ctrl-C during work cancels and waits for cleanup. After work and delivery settle,
+Ctrl-C simply closes read-only result inspection. Its separate countdown lasts
+at most 60 seconds within the enclosing command lifetime. File previews use
+verified immutable delivery. Use `--display plain`
 for nonanimated summaries. `--json` and effective `--receive` preserve exact
 machine/channel output. Flow authors compose views through the portable
 [user-updates agreement](https://jig.md/guide/channels), without terminal code or

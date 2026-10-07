@@ -5,7 +5,13 @@ import {
   privateCliSecondary,
   privateCliStyleEnabled,
 } from './cli-presentation.js'
-import { type PrivateCallEvent, type PrivatePreview, PrivateRunModel } from './cli-run-model.js'
+import {
+  type PrivateAttention,
+  type PrivateCallEvent,
+  type PrivatePreview,
+  PrivateRunModel,
+  privateAttentionReceipt,
+} from './cli-run-model.js'
 import {
   PrivateCliUserUpdates,
   type PrivateUserUpdateSource,
@@ -13,6 +19,10 @@ import {
   privateTruncateUpdate,
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-user-updates.js'
+import {
+  privatePresentationNow,
+  privateSettledInspectionDeadline,
+} from './internal/root-run-timeout-policy.js'
 import type { JsonValue } from './json.js'
 
 type WriteJob = {
@@ -21,16 +31,39 @@ type WriteJob = {
   readonly dispatch: () => void | Promise<void>
 }
 
+export interface PrivateProgressLifetime {
+  readonly presentationDeadline?: number | undefined
+  readonly clock?: () => number
+  readonly platform?: NodeJS.Platform
+  readonly rows?: () => number
+}
+
+const SCREEN_ENTER = '\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J'
+const SCREEN_RESTORE = '\u001b[?25h\u001b[?1049l'
+const FRAME_PREFIX = '\u001b[H\u001b[2J'
+const OUTPUT_JOB_BYTES = 32_768
+
 /** One bounded active line on terminal stderr; never infers completed work. */
 export class PrivateCliProgress {
   readonly model = new PrivateRunModel()
   #plain = false
   #dashboard: PrivateDashboardInput | undefined
+  #screen: 'ordinary' | 'entering' | 'live' | 'closing' = 'ordinary'
+  #workspaceUsed = false
+  #screenEntered = false
+  #workspaceClose: Promise<void> | undefined
+  #settled = false
+  #left = false
+  #closingCommand = false
+  #exitMessage: string | undefined
+  #deadlineTimer: ReturnType<typeof setTimeout> | undefined
+  #hostEntry = 0
   #paintedRows = 0
   #reportedViews = false
   #callTranscriptStopped = false
   #unavailableReported = false
   #committingCauses = false
+  #causeTask: Promise<void> | undefined
   #pendingErase = false
   #eraseQueued = false
   #stage = ''
@@ -59,12 +92,19 @@ export class PrivateCliProgress {
     this.model,
   )
   readonly #abort = () => {
+    if (this.#settled) {
+      this.#dashboard?.leave()
+      return
+    }
+    if (this.#cancelled) return
+    this.#cancelled = true
     this.#dashboard?.leave()
     this.pause()
-    this.#cancelled = true
     this.#updates.stop()
     this.#stage = 'Cancellation requested; waiting for work to stop and clean up'
     this.#started = performance.now()
+    this.model.workspace.stageStartedAt = this.#now()
+    this.model.setHostStage(this.#stage, 'cancellation')
     this.#write()
   }
 
@@ -73,22 +113,52 @@ export class PrivateCliProgress {
     readonly write: (text: string) => void | Promise<void>,
     readonly signal?: AbortSignal,
     readonly animated = privateCliStyleEnabled(enabled),
-    readonly columns: () => number = () => process.stderr.columns || 80,
+    readonly columns: () => number = () => process.stderr.columns ?? 80,
     readonly hostFormat: (text: string) => string = (text) => text,
+    readonly lifetime: PrivateProgressLifetime = {},
   ) {
+    this.model.workspace.startedAt = this.#now()
     this.model.onChange = () => this.#flowChanged()
   }
 
   get animation(): boolean {
     return this.animated && !this.#plain
   }
-  configureDisplay(
+  get workspaceUsed(): boolean {
+    return this.#workspaceUsed
+  }
+  get workspaceActive(): boolean {
+    return this.#screen === 'entering' || this.#screen === 'live'
+  }
+  #now(): number {
+    return (this.lifetime.clock ?? privatePresentationNow)()
+  }
+  #attach(): void {
+    if (this.#attached) return
+    this.#attached = true
+    this.signal?.addEventListener('abort', this.#abort, { once: true })
+    process.stderr.on('resize', this.#resize)
+    if (this.animation || this.workspaceActive) {
+      this.#timer = setInterval(() => this.#flowChanged(), 1_000)
+      this.#timer.unref()
+    }
+  }
+  async configureDisplay(
     display: 'auto' | 'plain' | 'dashboard',
     usableInput: boolean,
     input = process.stdin,
-  ): void {
+  ): Promise<void> {
     this.#plain = display === 'plain'
     if (display === 'dashboard') {
+      if (this.#left) return
+      if (
+        this.lifetime.presentationDeadline !== undefined &&
+        this.lifetime.presentationDeadline <= this.#now()
+      ) {
+        this.#left = true
+        this.notice('Command lifetime limits the dashboard; work continues in ordinary display.\n')
+        return
+      }
       if (
         !this.enabled ||
         !usableInput ||
@@ -105,8 +175,45 @@ export class PrivateCliProgress {
           () => this.#flowChanged(),
           () => process.emit('SIGINT'),
           input,
+          () => this.#leaveWorkspace(),
         )
-        this.#dashboard.start()
+        try {
+          this.#dashboard.capture()
+          this.#screen = 'entering'
+          this.#attach()
+          await this.#drainWrites()
+          if (this.#left || this.signal?.aborted) {
+            this.#dashboard.leave()
+            return
+          }
+          this.#screenEntered = true
+          this.#enqueue({
+            bytes: Buffer.byteLength(SCREEN_ENTER),
+            transient: false,
+            dispatch: () => this.write(SCREEN_ENTER),
+          })
+          await this.#drainWrites()
+          this.#workspaceUsed = true
+          if (this.#left || this.signal?.aborted) {
+            this.#dashboard.leave()
+            await this.closeWorkspace()
+            return
+          }
+          this.#screen = 'live'
+          this.#dashboard.start()
+          this.#armDeadline(this.lifetime.presentationDeadline)
+          this.#write()
+        } catch (error) {
+          this.#exitMessage = 'Dashboard input unavailable; using plain display.\n'
+          this.#dashboard.leave()
+          await this.closeWorkspace().catch(() => undefined)
+          this.#plain = true
+          if (this.#outputFailed) throw error
+          if (this.#exitMessage) {
+            this.notice(this.#exitMessage)
+            this.#exitMessage = undefined
+          }
+        }
       }
     }
   }
@@ -133,34 +240,152 @@ export class PrivateCliProgress {
     }
   }
   #commitCauses(): void {
-    if (this.#committingCauses || this.#outputFailed) return
+    if (this.#committingCauses || this.#outputFailed || this.#screen !== 'ordinary') return
+    if (!this.model.attention.some((cause) => !cause.committed)) return
     this.#committingCauses = true
-    try {
-      for (const cause of this.model.attention) {
-        if (cause.committed) continue
-        cause.committed = true
-        const accepted = this.#flowNotice(
-          `  ${cause.priority >= 3 ? 'Jig / ' : ''}${privateUpdateTextForProgress(cause.source)}: ${cause.priority >= 3 ? 'host-reported cause' : cause.priority === 2 ? 'Flow-reported error' : 'Flow-reported warning'}\n    ${privateUpdateTextForProgress(cause.text).replaceAll('\n', '\n    ')}\n`,
-        )
-        if (!accepted) {
-          cause.committed = false
-          this.#callTranscriptStopped = true
-          this.#unavailable(
-            '  Jig: Live call reports incomplete: presentation capacity reached. Check the final result.\n',
-          )
-          break
+    this.#causeTask = Promise.resolve()
+      .then(async () => {
+        while (this.#screen === 'ordinary') {
+          const causes = this.model.attention.filter((cause) => !cause.committed)
+          if (!causes.length) break
+          let batch = '',
+            bytes = 0
+          let completed: PrivateAttention[] = []
+          const deliver = async () => {
+            if (!batch) return
+            await this.#drainWrites()
+            const text = batch
+            const receipts = completed
+            const erase = this.#erase()
+            if (erase) {
+              this.#enqueue({
+                bytes: Buffer.byteLength(erase),
+                transient: false,
+                dispatch: () => this.write(erase),
+              })
+              await this.#drainWrites()
+            }
+            if (
+              !this.#enqueue({
+                bytes: Buffer.byteLength(text),
+                transient: false,
+                dispatch: async () => {
+                  await this.write(text)
+                  for (const receipt of receipts) receipt.committed = true
+                },
+              })
+            )
+              throw this.#outputFailure
+            await this.#drainWrites()
+            batch = ''
+            bytes = 0
+            completed = []
+          }
+          for (const cause of causes) {
+            for (const scalar of privateAttentionReceipt(cause)) {
+              const size = Buffer.byteLength(scalar)
+              if (bytes + size > OUTPUT_JOB_BYTES) await deliver()
+              batch += scalar
+              bytes += size
+            }
+            completed.push(cause)
+          }
+          await deliver()
         }
-      }
-    } finally {
-      this.#committingCauses = false
+      })
+      .catch((error) => this.#failOutput(error))
+      .finally(() => {
+        this.#committingCauses = false
+        this.#causeTask = undefined
+        this.#flowChanged()
+      })
+  }
+
+  #armDeadline(deadline: number | undefined): void {
+    clearTimeout(this.#deadlineTimer)
+    this.#deadlineTimer = undefined
+    if (deadline === undefined || !this.#dashboard?.active) return
+    const remaining = deadline - this.#now()
+    if (remaining <= 0) {
+      this.#exitMessage = this.#settled
+        ? 'Results settled; command lifetime limits dashboard inspection. Inspect the result and any written output packet.\n'
+        : 'Command lifetime limits the dashboard; work continues in ordinary display.\n'
+      this.#dashboard.leave()
+      return
     }
+    this.#deadlineTimer = setTimeout(
+      () => {
+        this.#exitMessage = this.#settled
+          ? 'Results settled; dashboard inspection time elapsed. Inspect the result and any written output packet.\n'
+          : 'Command lifetime limits the dashboard; work continues in ordinary display.\n'
+        this.#dashboard?.leave()
+      },
+      Math.min(remaining, 2_147_483_647),
+    )
+  }
+
+  #dropFrames(): void {
+    clearTimeout(this.#refresh)
+    this.#refresh = undefined
+    this.#jobs = this.#jobs.filter((job) => {
+      if (!job.transient) return true
+      this.#pendingBytes -= job.bytes
+      return false
+    })
+  }
+
+  #leaveWorkspace(): void {
+    this.#left = true
+    if (this.#screen === 'ordinary' || this.#screen === 'closing') return
+    this.#screen = 'closing'
+    this.#dropFrames()
+    clearTimeout(this.#deadlineTimer)
+    this.#deadlineTimer = undefined
+    this.#visible = false
+    this.#paintedRows = 0
+    this.#pendingErase = false
+    if (this.#screenEntered && !this.#outputFailed)
+      this.#enqueue({
+        bytes: Buffer.byteLength(SCREEN_RESTORE),
+        transient: false,
+        dispatch: () => this.write(SCREEN_RESTORE),
+      })
+    this.#workspaceClose = this.#drainWrites()
+      .then(async () => {
+        this.#screen = 'ordinary'
+        this.#screenEntered = false
+        this.#commitCauses()
+        if (this.#causeTask) await this.#causeTask
+        const message =
+          this.#exitMessage ??
+          (!this.#settled && !this.#cancelled && !this.#closingCommand
+            ? 'Dashboard closed; work continues in ordinary display.\n'
+            : undefined)
+        this.#exitMessage = undefined
+        if (message && !this.#outputFailed) this.notice(message)
+        if (this.#cancelled && this.#stage) this.#write()
+        await this.#drainWrites()
+      })
+      .catch((error) => {
+        this.#screen = 'ordinary'
+        this.#screenEntered = false
+        this.#failOutput(error)
+      })
+  }
+
+  /** Input restoration is synchronous; terminal restoration remains in the one writer. */
+  async closeWorkspace(): Promise<void> {
+    this.#dashboard?.leave()
+    if (this.#screen !== 'ordinary') this.#leaveWorkspace()
+    await this.#workspaceClose
+    if (this.#outputFailed) throw this.#outputFailure
   }
   #unavailable(text: string): void {
-    this.model.incomplete = 'Live observation is incomplete; see the transcript and final result'
+    this.model.incomplete = 'Live observation is incomplete; inspect the final result'
     if (this.#unavailableReported) return
-    this.model.addAttention('Jig', text, 3)
     this.#unavailableReported = true
-    this.#flowNotice(text, false)
+    this.model.addAttention('Jig', text, 3, false)
+    this.#commitCauses()
   }
   async settleDashboard(
     record: JsonValue,
@@ -172,38 +397,57 @@ export class PrivateCliProgress {
       preview: (path: string) => Promise<PrivatePreview | undefined>
     },
   ): Promise<void> {
+    this.#settled = true
     this.#dashboard?.markSettled()
     this.stopUpdates()
     const r = record as Record<string, JsonValue>
     const result = r.result as Record<string, JsonValue> | undefined
     const delivery = r.delivery as Record<string, JsonValue> | undefined
-    this.model.context = `Settled · execution: ${String(r.status)} · application outcome: ${JSON.stringify(result?.outcome ?? r.outcome ?? null)} · delivery: ${String(delivery?.status ?? 'not requested')}`
-    const causes = [
-      ...(r.status !== 'succeeded' && typeof r.message === 'string' ? [r.message] : []),
-      ...(r.cleanup
-        ? ['Cleanup could not be confirmed; inspect effects before starting new work.']
-        : []),
-      ...(delivery && delivery.status !== 'written'
-        ? [
-            'Result packet delivery was not confirmed; inspect the destination before starting new work.',
-          ]
-        : []),
-    ]
+    this.model.setWorkspaceFacts({
+      execution: String(r.status),
+      application: JSON.stringify(result?.outcome ?? r.outcome ?? null),
+      cleanup: r.cleanup ? 'unconfirmed' : 'complete',
+      delivery: String(delivery?.status ?? 'not requested'),
+      completeness:
+        this.model.incomplete ??
+        (Object.values(this.model.journalOmitted).some((count) => count > 0)
+          ? 'Activity history omitted'
+          : 'observation ended'),
+    })
+    this.model.context = `Settled · execution: ${String(r.status)} · application outcome: ${JSON.stringify(result?.outcome ?? r.outcome ?? null)} · cleanup: ${r.cleanup ? 'unconfirmed' : 'settled'} · delivery: ${String(delivery?.status ?? 'not requested')}`
+    const causes = this.#workspaceUsed
+      ? [
+          ...(r.status !== 'succeeded' && typeof r.message === 'string' ? [r.message] : []),
+          ...(r.cleanup
+            ? ['Cleanup could not be confirmed; inspect effects before starting new work.']
+            : []),
+          ...(delivery && delivery.status !== 'written'
+            ? [
+                'Result packet delivery was not confirmed; inspect the destination before starting new work.',
+              ]
+            : []),
+        ]
+      : []
     await this.flush()
     for (const cause of causes) {
-      this.model.addAttention('Jig', cause, 4)
-      if (this.#dashboard?.active)
-        this.#flowNotice(`  Jig: ${privateUpdateTextForProgress(cause)}\n`, false)
-      await this.flush()
+      this.model.addAttention('Jig', cause, 4, false)
     }
     if (artifact) this.model.setArtifacts(artifact.resolve, artifact.preview)
     if (!this.#cancelled && this.#dashboard?.active) {
+      const deadline = privateSettledInspectionDeadline(
+        this.lifetime.presentationDeadline,
+        this.lifetime.platform ?? process.platform,
+        this.#now(),
+      )
+      this.model.setWorkspacePhase('settled', deadline)
+      this.#armDeadline(deadline)
       this.#write()
       await this.flush()
       await this.#dashboard.settled()
     }
+    await this.closeWorkspace()
     this.pause()
-    if (!this.#reportedViews) {
+    if (!this.#workspaceUsed && !this.#reportedViews) {
       this.#reportedViews = true
       await this.flush()
       for (const view of this.model.views.values()) {
@@ -242,8 +486,26 @@ export class PrivateCliProgress {
   }
 
   async flush(): Promise<void> {
+    await this.#workspaceClose
+    this.#commitCauses()
+    while (this.#causeTask !== undefined) await this.#causeTask
+    await this.#drainWrites()
+  }
+
+  async #drainWrites(): Promise<void> {
     while (this.#settlement !== undefined) await this.#settlement
     if (this.#outputFailed) throw this.#outputFailure
+  }
+
+  #failOutput(error: unknown): void {
+    if (this.#outputFailed) return
+    this.#outputFailed = true
+    this.#outputFailure = error
+    this.#dropFrames()
+    for (const queued of this.#jobs) this.#pendingBytes -= queued.bytes
+    this.#jobs = []
+    this.#dashboard?.leave()
+    this.#failedOutput?.(error)
   }
 
   #enqueue(job: WriteJob, flow = false): boolean {
@@ -267,9 +529,7 @@ export class PrivateCliProgress {
       this.#pendingBytes + job.bytes > 262_144
     ) {
       if (job.transient) return false
-      this.#outputFailed = true
-      this.#outputFailure = new Error('Terminal presentation exceeded bounded output capacity')
-      this.#failedOutput?.(this.#outputFailure)
+      this.#failOutput(new Error('Terminal presentation exceeded bounded output capacity'))
       return false
     }
     this.#pendingBytes += job.bytes
@@ -288,7 +548,6 @@ export class PrivateCliProgress {
       this.#dispatching = false
       this.#settlement = undefined
       this.#scheduleErase()
-      this.#commitCauses()
       this.#dispatch()
     }
     try {
@@ -296,20 +555,12 @@ export class PrivateCliProgress {
       if (result !== undefined) {
         this.#settlement = Promise.resolve(result)
           .catch((error) => {
-            this.#outputFailed = true
-            this.#outputFailure = error
-            this.#failedOutput?.(error)
-            for (const queued of this.#jobs) this.#pendingBytes -= queued.bytes
-            this.#jobs = []
+            this.#failOutput(error)
           })
           .finally(finished)
       } else finished()
     } catch (error) {
-      this.#outputFailed = true
-      this.#outputFailure = error
-      this.#failedOutput?.(error)
-      for (const queued of this.#jobs) this.#pendingBytes -= queued.bytes
-      this.#jobs = []
+      this.#failOutput(error)
       finished()
     }
   }
@@ -360,6 +611,7 @@ export class PrivateCliProgress {
   }
 
   #flowNotice(text: string, flow = true): boolean {
+    if (this.workspaceActive) return true
     const accepted = this.#enqueue(
       {
         bytes: Buffer.byteLength(text) + 5,
@@ -376,6 +628,10 @@ export class PrivateCliProgress {
   }
 
   #flowChanged(plain?: string, project: () => string | undefined = () => plain): boolean {
+    this.#commitCauses()
+    if (this.workspaceActive) plain = undefined
+    if (this.#screen === 'entering' || this.#screen === 'closing' || this.#committingCauses)
+      return true
     if (!this.enabled) return plain === undefined ? true : this.#flowNotice(plain)
     if (plain !== undefined && !this.#cancelled) {
       return this.#enqueue(
@@ -408,17 +664,11 @@ export class PrivateCliProgress {
   stage(value: string): void {
     if (!this.enabled || this.#cancelled || value === this.#stage) return
     this.pause()
-    if (!this.#attached) {
-      this.#attached = true
-      this.signal?.addEventListener('abort', this.#abort, { once: true })
-      process.stderr.on('resize', this.#resize)
-      if (this.animation) {
-        this.#timer = setInterval(() => this.#flowChanged(), 1_000)
-        this.#timer.unref()
-      }
-    }
+    this.#attach()
     this.#stage = value
     this.#started = performance.now()
+    this.model.workspace.stageStartedAt = this.#now()
+    if (this.workspaceActive) this.model.setHostStage(value, `stage:${++this.#hostEntry}`)
     if (this.signal?.aborted) this.#abort()
     else this.#write()
   }
@@ -430,13 +680,20 @@ export class PrivateCliProgress {
       this.#pendingBytes -= job.bytes
       return false
     })
-    this.#requestErase()
-    if (this.#stage && this.animation) this.#emit(`  - ${this.#stage}\n`, true)
+    if (!this.workspaceActive && this.#screen !== 'closing') {
+      this.#requestErase()
+      if (this.#stage && this.animation) this.#emit(`  - ${this.#stage}\n`, true)
+    }
     this.#stage = ''
   }
 
   /** A complete notice preserves the known active stage and its heartbeat. */
-  notice(value: string): void {
+  notice(value: string, importance: 'info' | 'warning' | 'error' = 'info'): void {
+    if (this.workspaceActive) {
+      this.model.addHostEntry(`notice:${++this.#hostEntry}`, value, importance)
+      if (importance !== 'info') this.model.addAttention('Jig', value, 4, false)
+      return
+    }
     value = this.hostFormat(value)
     this.#enqueue({
       bytes: Buffer.byteLength(value) + 5,
@@ -449,7 +706,11 @@ export class PrivateCliProgress {
     if (this.animation) this.#write()
   }
 
-  diagnostic(text: string): void {
+  diagnostic(text: string, operations: readonly string[] = [], clipped = false): void {
+    if (this.workspaceActive) {
+      this.model.addDiagnostic(text, operations, clipped)
+      return
+    }
     this.#flowNotice(text, false)
   }
 
@@ -459,6 +720,12 @@ export class PrivateCliProgress {
       return
     }
     if (!this.#stage) return
+    if (this.workspaceActive) {
+      const elapsed = timing ? ` (${((performance.now() - this.#started) / 1000).toFixed(1)}s)` : ''
+      this.model.setHostStage(`${this.#stage} — complete${elapsed}`, `stage:${this.#hostEntry}`)
+      this.#stage = ''
+      return
+    }
     this.#requestErase()
     if (this.animation)
       this.#emit(
@@ -469,11 +736,16 @@ export class PrivateCliProgress {
   }
 
   note(value: string): void {
+    if (this.workspaceActive) {
+      this.model.addHostEntry(`note:${++this.#hostEntry}`, value)
+      return
+    }
     this.pause()
     if (this.enabled) this.#emit(`${value}\n`)
   }
 
   close(): void {
+    this.#closingCommand = true
     this.#dashboard?.leave()
     this.stopUpdates()
     this.pause()
@@ -481,6 +753,8 @@ export class PrivateCliProgress {
     this.#refresh = undefined
     clearInterval(this.#timer)
     this.#timer = undefined
+    clearTimeout(this.#deadlineTimer)
+    this.#deadlineTimer = undefined
     this.signal?.removeEventListener('abort', this.#abort)
     process.stderr.removeListener('resize', this.#resize)
     this.#attached = false
@@ -488,6 +762,7 @@ export class PrivateCliProgress {
   }
 
   #write(): void {
+    if (this.#screen === 'entering' || this.#screen === 'closing' || this.#committingCauses) return
     if (!this.#stage && !this.#dashboard?.active) return
     if (!this.animation && !this.#dashboard?.active) {
       const stage = this.#stage
@@ -514,25 +789,40 @@ export class PrivateCliProgress {
     this.#lastRefresh = performance.now()
     if (!this.#stage && !this.#dashboard?.active) return
     const columns = Math.max(1, Math.min(4096, this.columns()))
+    const physicalRows = Math.max(
+      0,
+      Math.min(4096, this.lifetime.rows?.() ?? process.stderr.rows ?? 24),
+    )
+    if (this.#dashboard?.active && (columns < 18 || physicalRows < 4)) {
+      this.#exitMessage = 'Dashboard unavailable at this terminal size; using ordinary display.\n'
+      this.#dashboard.leave()
+      return
+    }
+    this.model.workspace.now = this.#now()
     if (this.model.calls.size || this.model.views.size || this.#dashboard?.active) {
       const inspecting = this.#dashboard?.active === true
       const frame = privateDashboardFrame(
         this.model,
         columns,
-        Math.min(
-          inspecting ? process.stderr.rows || 24 : 16,
-          Math.max(3, (process.stderr.rows || 24) - 4),
-        ),
+        inspecting ? physicalRows : Math.min(16, Math.max(3, physicalRows - 4)),
         this.animation,
         inspecting,
         this.#dashboard?.scroll,
         this.#dashboard?.anchor,
+        this.#dashboard?.state,
       )
       this.#dashboard?.frame(frame.references, frame.scroll, frame.anchor)
-      const erase = this.#erase()
+      const erase = inspecting ? FRAME_PREFIX : this.#erase()
       this.#visible = true
       this.#paintedRows = frame.lines.length
-      return this.write(erase + frame.lines.join('\n'))
+      const text = erase + frame.lines.join('\n')
+      if (Buffer.byteLength(text) > OUTPUT_JOB_BYTES) {
+        this.#unavailable(
+          'Dashboard projection incomplete: terminal byte limit reached. Inspect full causes and the final result.\n',
+        )
+        return
+      }
+      return this.write(text)
     }
     const elapsed = ` ${((performance.now() - this.#started) / 1000).toFixed(0)}s`
     const prefix = columns > 5 ? '  … ' : ''

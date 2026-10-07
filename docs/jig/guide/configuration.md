@@ -117,7 +117,7 @@ for the guarantees and limits.
 | Setting | Values and behavior |
 | --- | --- |
 | `JIG_THEME` | `one-dark` (default), `one-light`, or `macchiato`; unknown values use One Dark |
-| `NO_COLOR` | Any present value, including an empty value, disables colors and animation |
+| `NO_COLOR` | Any present value, including an empty value, disables colors and automatic inline animation; an explicitly selected dashboard keeps keyboard navigation and screen controls without color |
 | `TERM=dumb` | Selects plain output without animation |
 | `COLORTERM` | `truecolor` or `24bit` enables truecolor accents; otherwise Jig uses 256-color accents when `TERM` contains `256color`, or basic terminal colors |
 

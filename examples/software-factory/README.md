@@ -49,8 +49,15 @@ before choosing another Run, and review any changed configuration first.
 For a settled unsuccessful proposal, inspect its command evidence and proposal
 patches; these are not accepted patches to apply. A healthy job's `review.patch`
 remains available even when the batch outcome is `blocked`.
-The factory first introduces each job by its optional `label` (or its `id`),
-requested goal, editable source files, reviewed repair approach and named checks.
+The factory identifies jobs by their optional `label` (or their `id`).
+Use `jig run --display dashboard` for a workspace that starts in **Activity**.
+**Jobs** contains goals, editable source files, reviewed approach and outcomes;
+**Checks** contains repository tests and independent acceptance cases;
+**Patches** contains checked candidates for human review. **Overview** shows
+the actual calls. Select a record and press Enter for details; `!` opens a
+blocking cause, and `r` selects an evidence reference. Press `q` during work
+to continue in the ordinary transcript. The read-only completed inspector has
+a separate countdown of up to 60 seconds, limited by the enclosing command.
 During work it identifies the command slot or case being run, then reports the
 observed repository-command status and passing or mismatched acceptance cases.
 Collected command invocations and a procedural next step explain why it requests
@@ -62,8 +69,10 @@ files and verified check counts. Failed proposals retain their rejection or chec
 cause even with updates disabled. Passing these fixed checks does not prove every
 sentence of an issue correct. Full evidence remains
 in `result.json`; `files/summary.txt` starts with the same plain-language report.
-Long goals and paths may shorten in the terminal; each job's complete `issue`,
-editable paths and verified acceptance-case IDs remain in `result.json`.
+Long goals may show a marked excerpt. Each job's exact original request is
+saved in `files/<job>/goal.txt`; Jobs offers its reference after verified packet
+delivery. Complete `issue`, editable paths and verified acceptance-case IDs
+also remain in `result.json`. Checkpoints include request files only for settled jobs.
 The standard [user-updates contract](../../docs/jig/contracts/user-updates.md)
 shows current job activity on terminal stderr.
 Use `--receive progress --json` for explicit machine records, or `--updates off`

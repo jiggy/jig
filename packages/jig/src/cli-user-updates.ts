@@ -7,35 +7,13 @@ import { privateCliHeading } from './cli-presentation.js'
 import { PrivateRunModel } from './cli-run-model.js'
 import { canonicalJson, type JsonValue } from './json.js'
 
-export function privateUpdateText(text: string): string {
-  return text.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, (character) =>
-    character === '\n'
-      ? character
-      : [...character]
-          .map((unit) => `\\u${unit.codePointAt(0)!.toString(16).padStart(4, '0')}`)
-          .join(''),
-  )
-}
+export {
+  privateTerminalWidth,
+  privateTruncateUpdate,
+  privateUpdateText,
+} from './private-terminal-text.js'
 
-export function privateTerminalWidth(text: string): number {
-  return (globalThis as unknown as { Bun: { stringWidth(text: string): number } }).Bun.stringWidth(
-    text,
-  )
-}
-
-export function privateTruncateUpdate(text: string, columns: number): string {
-  if (privateTerminalWidth(text) <= columns) return text
-  if (columns < 3) return '.'.repeat(Math.max(0, columns))
-  let result = ''
-  // Grapheme boundaries avoid cutting a combining sequence or an emoji cluster.
-  for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(
-    text,
-  )) {
-    if (privateTerminalWidth(result + segment) > columns - 3) break
-    result += segment
-  }
-  return `${result}...`
-}
+import { privateUpdateText } from './private-terminal-text.js'
 
 type Activity = Extract<UserUpdate, { kind: 'activity' }>
 type Slot = { readonly attribution: string; value: Activity }
@@ -138,7 +116,16 @@ export class PrivateCliUserUpdates {
           }
         } else if (value.kind === 'notice') {
           this.#notices++
-          this.#noticeBytes += canonicalJson(value as JsonValue).byteLength
+          const payloadBytes = canonicalJson(value as JsonValue).byteLength
+          this.#noticeBytes += payloadBytes
+          if (
+            this.#notices > limits.notices ||
+            this.#noticeBytes > limits.noticeBytes ||
+            !this.model.acceptNotice(publisher, value.severity ?? 'info', value.text, payloadBytes)
+          ) {
+            retire('Updates incomplete: notice observation limit reached.')
+            return false
+          }
           const importance =
             value.severity === 'error' || value.severity === 'warning'
               ? `  ${privateCliHeading(`${attribution}-reported ${value.severity}:`, value.severity, this.color())}\n`
@@ -151,19 +138,20 @@ export class PrivateCliUserUpdates {
               localAttribution,
               value.text,
               value.severity === 'error' ? 2 : 1,
+              false,
+              this.color(),
             )
           ) {
             // The reserved host explanation is committed independently of a clipped sticky cause.
-            this.notice(text)
             retire('Updates incomplete: additional Flow reports unavailable.')
             return false
           }
           if (value.severity === 'error' || value.severity === 'warning')
             attention = this.model.attention.at(-1)
           if (
-            this.#notices > limits.notices ||
-            this.#noticeBytes > limits.noticeBytes ||
-            !this.notice(text)
+            !(value.severity === 'error' || value.severity === 'warning'
+              ? this.changed()
+              : this.notice(text))
           ) {
             if (attention) attention.committed = false
             retire('Updates incomplete: presentation limit reached.')

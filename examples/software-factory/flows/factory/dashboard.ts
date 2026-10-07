@@ -1,16 +1,33 @@
 import type { JsonValue } from '@jigging/flow'
 import type { Collection, ViewSnapshot } from '@jigging/user-updates'
 import type { RepairInput } from 'factory-repair-flow/policy'
-import { jobLabel, repairActivity } from './presentation.ts'
+import { jobLabel } from './presentation.ts'
 
 export type DashboardJob = { id: string; label?: string; directory: string; method?: string }
 export type FactoryStage = { phase: string; attempt: number; maximum: number; detail?: string }
 export type PreparedJob = { job: DashboardJob; input: RepairInput }
-function clip(text: string, max = 512): string {
-  const scalars = [...text]
-  return scalars.length <= max
-    ? text
-    : scalars.slice(0, max - 48).join('') + ' [clipped; full evidence in result.json]'
+// Budget the encoded text, including controls, rather than only its length.
+// Two rows with all optional details must still fit one 32 KiB update.
+function clip(
+  text: string,
+  max = 512,
+  bytes = 1024,
+  marker = ' [excerpt; full evidence in result.json]',
+): string {
+  if ([...text].length <= max && Buffer.byteLength(JSON.stringify(text)) <= bytes) return text
+  let prefix = ''
+  const reservedScalars = [...marker].length
+  const reservedBytes = Buffer.byteLength(JSON.stringify(marker)) - 2
+  let used = 2
+  let count = 0
+  for (const scalar of text) {
+    const size = Buffer.byteLength(JSON.stringify(scalar)) - 2
+    if (count + reservedScalars >= max || used + size + reservedBytes > bytes) break
+    prefix += scalar
+    used += size
+    count++
+  }
+  return prefix + marker
 }
 const object = (value: JsonValue | undefined): Record<string, any> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -30,8 +47,8 @@ export function jobsView(
     title: 'Requested repairs',
     columns: [
       { key: 'job', label: 'Job', type: 'text' },
-      { key: 'action', label: 'Current action', type: 'text' },
-      { key: 'call', label: 'Execution', type: 'reference' },
+      { key: 'action', label: 'Outcome', type: 'text' },
+      { key: 'call', label: 'Call', type: 'reference' },
     ],
     rows: prepared.map(({ job, input }) => {
       const stage = stages.get(job.id),
@@ -40,22 +57,37 @@ export function jobsView(
         ? outcome.ready
           ? 'Checked patch ready for human review'
           : (outcome.message ?? 'No independently verified patch')
-        : stage
-          ? repairActivity(job, stage.phase, stage.attempt, stage.maximum, stage.detail).slice(
-              jobLabel(job).length + 2,
-            )
-          : 'Preparing captured inputs'
+        : 'In progress; follow Activity'
       const operationId = stage?.phase === 'selecting' ? `route:${job.id}` : `repair:${job.id}`
       return {
         id: job.id,
         cells: { job: jobLabel(job), action: clip(action), call: { kind: 'call', operationId } },
         details: [
-          { kind: 'report', text: clip(`Goal: ${input.issue}`) },
+          {
+            kind: 'report',
+            text: clip(
+              `Requested goal: ${input.issue}`,
+              4096,
+              4096,
+              ` [excerpt; complete goal in supplied job input and files/${job.id}/goal.txt after packet delivery]`,
+            ),
+            references: [
+              { kind: 'artifact', attachment: 'deliverables', path: `${job.id}/goal.txt` },
+            ],
+          },
           {
             kind: 'facts',
             items: [
               { label: 'Source', value: job.directory },
-              { label: 'Editable files', value: clip(input.editPaths.join(', ')) },
+              {
+                label: 'Editable files',
+                value: clip(
+                  input.editPaths.join(', '),
+                  4096,
+                  3072,
+                  ' [excerpt; complete paths in supplied job input and retained job evidence]',
+                ),
+              },
               {
                 label: 'Approach',
                 value:
@@ -66,12 +98,22 @@ export function jobsView(
                       : 'Reviewed approach selection',
               },
               {
-                label: 'Evidence',
-                value: saved.has(job.id) ? 'Checkpoint acknowledged' : 'Final evidence pending',
+                label: 'Checkpoint',
+                value: saved.has(job.id) ? 'Acknowledged' : 'Not acknowledged',
               },
             ],
           },
-          ...(stage?.detail ? [{ kind: 'report' as const, text: clip(stage.detail, 1024) }] : []),
+          {
+            kind: 'report',
+            text: clip(
+              `Checks: repository tests plus ${input.cases.length} independent CLI cases: ${input.cases.map((c) => c.id).join(', ')}. Each patch is checked separately.`,
+              1024,
+              1536,
+            ),
+          },
+          ...(stage?.detail
+            ? [{ kind: 'report' as const, text: clip(stage.detail, 1024, 2048) }]
+            : []),
           ...(outcome.message
             ? [{ kind: 'report' as const, text: clip(`Reported cause: ${outcome.message}`) }]
             : []),
@@ -133,7 +175,8 @@ export function checksView(
           text: clip(
             reports.get(job.id) ??
               'No worker check report received. Optional live reports are provisional; final acceptance uses returned evidence.',
-            2048,
+            4096,
+            8192,
           ),
         },
       ],
@@ -199,7 +242,7 @@ export function patchesView(
   return {
     summary: conflicting
       ? 'The proposed patches conflict. Resolve the overlap before applying either patch.'
-      : `${rows.length} checked ${rows.length === 1 ? 'patch' : 'patches'} available for human review. Changes have not been applied.`,
+      : `${rows.length} independently checked ${rows.length === 1 ? 'candidate' : 'candidates'} for human review. File links become available after verified packet delivery. Changes have not been applied.`,
     sections: [
       {
         blocks: [
@@ -217,7 +260,7 @@ export function patchesView(
           },
           {
             kind: 'report',
-            text: 'Full final evidence: result.json. Saved job summaries: files/summary.txt.',
+            text: 'Detailed job evidence is retained in the final result. The summary file is available only if Jig confirms its delivery.',
             references: [{ kind: 'artifact', attachment: 'deliverables', path: 'summary.txt' }],
           },
         ],

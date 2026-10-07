@@ -14,10 +14,12 @@ patch authority and every merge decision stays with a person.
   job dispatch, checkpoint aggregation, conflict detection, and final summaries.
   `presentation.ts` translates observed phases, reviewed proposal budgets and
   failure evidence into ordinary language; optional input labels name jobs for people.
-  It introduces requested goals, source scope, reviewed approach and checks before
-  work, and repeats goals with verified outcomes in the final report.
+  It names observed work and repeats goals with verified outcomes in the final report.
   `dashboard.ts` composes the portable Jobs, Checks and Patches documents using
-  public user-updates types. Jobs is the root landing view; call references name
+  public user-updates types. Activity is the initial host surface. All three
+  domain views are offered before work and at settlement. Jobs retains goals,
+  scope and outcomes; current phases use one root activity slot per job rather
+  than duplicate whole-view publications. Call references name
   actual own operation IDs, and patch references name only accepted files in
   deliverables. Checks distinguish provisional reports from independent final
   verification, including settled jobs with no checked patch. No host-domain
@@ -84,8 +86,14 @@ patch authority and every merge decision stays with a person.
   verification names the independently checked proposal and acceptance cases;
   changed paths compare accepted replacement bytes with captured originals.
   Shorten goal/path context before blocking causes to fit the host brief budget.
-  Group introductory context into one bounded notice so it does not unnecessarily
-  delay blocking outcomes in the paced publisher.
+  Keep the introduction short and point to the three domain views.
+  Budget every complete snapshot using encoded bytes as well as scalar limits;
+  valid maximum input must not fail optional publication. Short goals remain
+  complete in Jobs; oversized goals explicitly identify their excerpt and exact
+  source. Write each original goal to `<job>/goal.txt` before paid work, retain it
+  in settled checkpoint files and final evidence, and offer an ordinary artifact
+  reference pending verified delivery. Never advertise an unfinished goal as
+  checkpoint-saved or read a mutable destination to preview it.
 - Live worker check reports remain provisional. Show repository-command status,
   named acceptance mismatches, collected invocations and the next procedural step;
   expected nonzero rejection exits may pass exact application assertions. Do not

@@ -275,40 +275,122 @@ incompleteness. Root result, cleanup and delivery are independent host facts.
 Operator-only `--display auto|plain|dashboard` selects presentation; defaults
 never come from a project entrypoint. Auto uses bounded noninteractive inline
 output on suitable terminal stderr, without raw input or alternate screen.
-Plain, redirected stderr, NO_COLOR and TERM=dumb use nonanimated summaries.
-Explicit dashboard requires terminal stdin/stderr; otherwise it explains a plain
-fallback once. `--json` and effective `--receive` retain their exact existing
-stdout semantics and disable automatic Flow observation; dashboard cannot override.
+Plain, redirected stderr, NO_COLOR and TERM=dumb use nonanimated automatic output.
+Explicit dashboard requires terminal stdin/stderr and a suitable TERM; otherwise
+it explains a plain fallback once. NO_COLOR permits explicit screen control but
+disables SGR styling. `--json` and effective `--receive` retain their exact existing
+stdout semantics and disable automatic observation/dashboard; dashboard cannot override.
 
-The explicit inspector has Overview and attributed application views, collection
-selection, stable row details, local filtering/sorting, scrolling and reference
-activation. Tab/Shift-Tab changes views, c changes collections, j/k selects rows,
-/ filters supplied records, s sorts, r selects a reference, Enter activates it,
-[/] scrolls and q/Escape leaves. It requires no mouse capture. Filters describe
-supplied records, not a complete server dataset. Updates preserve surviving
-selection; deleting the selected row chooses the nearest preceding surviving
-visible row, else the first visible row, else empty details. Unselected retirement
-leaves selection; selected retirement returns to Overview. Only explicit reference
-activation jumps. Missing targets explain unavailability without moving focus.
+### Workspace and navigation
 
-Live q/Escape/input EOF restores input and returns to inline without cancelling
-work or re-entering inspection later. Live Ctrl-C and shutdown use existing Jig
-cancellation and cleanup; no second Ctrl-C is required. After execution, cleanup
-and delivery settle, an inspector still open becomes clearly read-only result
-inspection with literal host/application/delivery facts and completeness. It keeps
-no live Flow, channel or execution owner. q/Escape exits; post-settlement Ctrl-C
-closes presentation without relabelling admitted execution. Auto/plain exit promptly.
+After effective arguments and any target selection, explicit dashboard owns one
+alternate screen on stderr. Earlier installed startup/selection/delegation failures
+remain ordinary diagnostics. One fixed shell shows the actual target, host state,
+elapsed execution limit, stable Activity/Overview/attributed application tabs,
+attention and contextual help. Only the body scrolls. Activity is the fallback
+landing; the first eligible root landing hint may select a view before human
+navigation. Later updates never steal focus. Titles may change without reordering
+tabs or changing their identity. No mouse capture or terminal author callbacks.
 
-One bounded stderr owner refreshes at most 5/s with 16 pending writes /256 KiB,
-including in-flight. Reserve one write /32 KiB for a host-critical or unavailable
-explanation. Complete bounded Flow warnings/errors and safe host causes append
-outside redraw with attribution. Sticky attention prioritizes host failure or
-uncertain cleanup, observation/output incompleteness, Flow error, Flow warning;
-first accepted within priority wins, with additional report count. Narrow layouts
-reduce workspace first and explicitly clip the sticky projection; full reports
-remain in the transcript. View/source ending cannot erase admitted attention.
-Plain output emits new/changed complete titles and summaries without dumping rows
-or count-only updates. Settlement emits each retained view's latest attributed
-summary once with ended/incomplete context, followed by host result/evidence.
-Optional snapshots are not a promised durable UI history; applications retain
-outcome evidence separately.
+Collections have aligned headers and one clipped line per record; selection alone
+never expands it. Numbers align right, boolean/null cells remain literal, and
+application status-looking text never receives a host success verdict. Omitted
+columns/counts are explicit. Enter opens complete escaped cells and supplied
+details in a bounded body panel. Reports and long summaries start collapsed.
+Details wrap graphemes while preserving authored line breaks; every safe value
+remains reachable by scrolling. A count bar requires a positive supplied total.
+
+Summary, reports, facts, progress and collection rows/empty states are selectable
+in section/block order, including views with no collections. Updates preserve
+surviving row identities; deletion chooses the nearest preceding surviving visible
+row, else first, else a selectable empty/no-match state. Local disclosure and text
+anchors reset when complete semantic report content (including references) or
+summary text changes. An ordinal is not a durable report identity. Unselected
+retirement preserves focus; selected retirement returns to Overview. Ended/frozen
+views retain ended/incomplete context and last-update information.
+
+Tab/Shift-Tab changes views and closes local panels. Arrows/j/k select body records;
+Enter opens/closes detail. Left/Right collapses/expands actual calls in Overview;
+hidden descendants/issues are counted without inventing a node. `c` moves to the
+next supplied collection in block order, wrapping; from another block it chooses
+the next collection after it. Zero collections explains absence; one already
+selected collection is unchanged. `/` and `s` operate only on the selected row's
+collection or its empty/no-match state, otherwise explain how to select one.
+Filter/sort are local to collection identity and describe supplied records only.
+
+Filter editing accepts every printable scalar literally, including shortcut
+letters. Typing edits a draft; Enter commits, Escape discards, empty commit clears.
+Backspace/Delete removes the last scalar; unsupported controls and Tab do nothing.
+No navigation escape sequence is translated into filter letters. `r` explicitly
+selects references from the selected record/detail; arrows/j/k chooses a reference
+and Enter alone activates it. Missing targets explain absence without a focus jump.
+Default Enter never opens an unrelated file. `!` opens the winning full attention
+cause from every view; Left/Right chooses other retained causes. `?` opens contextual
+help. Detail/preview/attention arrows and brackets/Page keys scroll without moving
+the underlying record. Escape dismisses one local help/reference/attention/preview/
+detail level before leaving; at most three overlay levels are retained. Home/End
+select list ends. q leaves outside filter editing; Ctrl-C and input EOF/Ctrl-D are
+always authoritative.
+
+Normal workspace requires at least 40 columns/10 rows. Between 18x4 and that
+threshold, a compact surface retains task/state, attributed cause beginning with
+clipping, full-cause access, leave and stop controls. Below 18 columns or 4 rows,
+release to plain output once with a size explanation and complete retained causes.
+Never draw beyond the physical viewport, including zero dimensions. No automatic
+re-entry follows fallback. Reduce workspace before cause and disclose clipping.
+
+### Bounded Activity, attention and exit
+
+Activity shows the current host stage and up to 16 current reported activities,
+plus collapsed literal notices, host stage history and attributed diagnostics.
+Clear/EOF removes current activities without inventing completed history. Actual
+publisher/call-path attribution is retained; prose punctuation never establishes
+job ancestry. Do not duplicate every view snapshot or repaint into history.
+History retains at most 128 Flow notices/512 KiB canonical payload, 64 host
+entries/128 KiB escaped text and 32 diagnostic paths/64 KiB escaped projection:
+224 entries/704 KiB plus bounded metadata. Diagnostic machine capture remains
+separate. Routine history capacity freezes retained state with an omission cue;
+it cannot cancel execution. New entries never move a reader's stable selection.
+This is bounded session inspection, not a complete or durable transcript.
+
+One stderr owner refreshes at most 5/s with 16 pending writes/256 KiB including
+in-flight, one reserved 32 KiB critical write, and at most 32 KiB per encoded
+projection including controls. Attention retains at most 128 reports/512 KiB of
+their complete escaped exit representation, including attribution/importance;
+32 KiB remains reserved for host/incomplete causes. Capacity is checked before
+mutation. Sticky priority is host failure/unconfirmed cleanup, observation/output
+incompleteness, Flow error, Flow warning; first accepted within priority wins with
+additional count. View/source ending cannot erase admitted attention. Additional
+unretained causes are disclosed, never claimed present.
+
+Auto/plain commit complete essential notices outside redraw. Explicit dashboard
+keeps them inside its workspace, then restores the original screen and commits
+complete retained essential causes in awaited batches of at most 32 KiB before
+final stdout. Admission is not successful output delivery. Closing fences callbacks,
+discards undispatched replaceable frames, preserves complete required writes and
+restores prior raw/flowing input. A 45-second conservative presentation reserve
+before enclosing command limits covers at most 16 queued/in-flight writes,
+16 cause batches, two controls and one final stdout write under the installed
+one-second write timeout, plus release margin. Actual output loss or external
+hard termination can prevent restoration/final output; cleanup ownership remains.
+
+Live q/standalone Escape/input EOF restores input/screen and continues inline once
+without cancelling or re-entering later. Do not replay routine history. Ctrl-C and
+live shutdown use existing cancellation and join cleanup. After all execution,
+channels, attempted cleanup and delivery settle, an open workspace becomes read-only
+with separate literal execution/application/cleanup/delivery facts. It owns no live
+Flow, channel or execution owner. Inspection is capped at 60 seconds, intersected
+with the minimum earlier presentation constraint from every enclosing command
+owner; its visible countdown is separate from the execution limit. An expiring
+live lease continues ordinary execution. Missing reliable Linux lifetime skips
+settled inspection; no presentation path extends or clears enforcement timers.
+q/Escape/keyboard Ctrl-C then closes without changing admitted outcome. External
+settled shutdown preserves frozen facts and the existing interrupted process status,
+without claiming execution cancellation. Every exit releases input/preview/screen.
+
+Auto/plain exit promptly and emit each retained latest attributed summary once
+with ended/incomplete context, then host result/evidence. A session that actually
+entered fullscreen omits that summary replay, retaining ordinary final result and
+essential causes. Dashboard diagnostic retention does not prove its full text was
+printed live; final bounded diagnostic evidence must remain visible. Applications
+retain essential outcome evidence independently of every optional observation.

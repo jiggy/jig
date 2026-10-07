@@ -214,20 +214,20 @@ hostTest(
       const finalPatches = updates
         .filter((update) => update.kind === 'view' && update.id === 'patches')
         .at(-1)
-      expect(finalPatches.summary).toContain('0 checked patches')
-      expect(
-        updates.some(
-          (update) => update.kind === 'notice' && update.text.includes('Requested goal:'),
-        ),
-      ).toBe(true)
+      expect(finalPatches.summary).toContain('0 independently checked candidates')
       expect(
         updates.some(
           (update) =>
             update.kind === 'view' &&
             update.id === 'jobs' &&
-            JSON.stringify(update.sections).includes('repository test command'),
+            JSON.stringify(update).includes('Requested goal:'),
         ),
       ).toBe(true)
+      const retainedChecks = JSON.stringify(finalChecks.sections)
+      expect(retainedChecks).toContain('Repository test command failed.')
+      expect(retainedChecks).toContain('Independent acceptance cases: 1/4 passed.')
+      expect(retainedChecks).toContain('Independent acceptance cases: 2/4 passed.')
+      expect(retainedChecks).toContain('Observed commands:')
       expect(
         updates.some(
           (update) => update.kind === 'notice' && update.text.includes('Baseline check report:'),
@@ -238,6 +238,10 @@ hostTest(
       expect(await readFile(join(project, 'factory-result/files/summary.txt'), 'utf8')).toContain(
         cause,
       )
+      for (const job of terminal[0].result.output.jobs)
+        expect(
+          await readFile(join(project, `factory-result/files/${job.id}/goal.txt`), 'utf8'),
+        ).toBe(job.issue)
       // A second reviewed ordinary peer returns deterministic fixture repairs.
       // The factory source, test commands and independent assertions stay unchanged.
       await cp(join(example, 'flows/repair'), join(project, 'flows/repair'), {
@@ -308,7 +312,7 @@ await handle(async run => {
       const patches = checkedUpdates
         .filter((update) => update.kind === 'view' && update.id === 'patches')
         .at(-1)
-      expect(patches.summary).toContain('2 checked patches')
+      expect(patches.summary).toContain('2 independently checked candidates')
       expect(patches.sections[0].blocks[0].rows.map((row) => row.cells.patch)).toEqual([
         { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
         { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
@@ -337,8 +341,7 @@ await handle(async run => {
         delivery: { status: 'written' },
       })
       const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
-      for (const title of ['Software factory · Jobs', 'Checks', 'Patches'])
-        expect(transcript).toContain(title)
+      for (const title of ['Jobs', 'Checks', 'Patches']) expect(transcript).toContain(title)
       expect(transcript).toContain('Observation ended')
       expect(transcript).not.toContain('\u001b')
       passed = true

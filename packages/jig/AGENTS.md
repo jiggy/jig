@@ -277,11 +277,18 @@ admitted FLOW packages.
   output, then check cancellation. The question and answer share one line without
   intervening stages or notices.
   Readiness status words carry green/amber emphasis without claiming execution.
-  Activity phase changes append separate attributed indented lines; only host
+  In auto/plain, activity phase changes append separate attributed indented lines; only host
   waiting owns a transient line. Clear events silently retire their slots;
   printed phases remain history, and application notices own job outcomes.
   Complete notices have one Flow-attributed first line and indented continuation
   lines; escape every payload line without recognizing it as host prose.
+  Explicit dashboard instead owns one alternate screen after effective selection,
+  retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
+  aligned collections, collapsed detail, actual collapsible Overview and contextual
+  keys serve progressive disclosure without terminal author callbacks. Attention
+  remains attributed and reachable from every view; restore the original screen
+  and commit complete retained essential causes before final stdout. No ordinary
+  notice or repeated view-summary spill while that workspace is open.
   Explicit notice severity is Flow-reported
   importance, never host outcome or guaranteed delivery.
   A heading must never have less emphasis than its subordinate details. Expanded
@@ -362,11 +369,19 @@ View documents cannot supply source ancestry or host status. Admission is atomic
 retirement/EOF fence callbacks, and navigation follows stable identities. Optional
 tree/transcript overflow discloses incompleteness without canceling domain work;
 actual output disconnection retains the existing cancellation owner. Full safe
-causes settle outside redraw before final stdout. Serialize final view summaries
-within the same output ceiling.
+causes settle through the single bounded writer before final stdout; dashboard
+commits them after screen restoration in awaited 32 KiB batches, charged by
+complete escaped representation. Serialize auto/plain final view summaries
+within the same output ceiling; actually entered fullscreen omits summary replay.
 
 `--display` is operator-only. Auto borrows no input; explicit inspection owns and
 restores raw/flowing stdin and cannot keep a finite command alive after exit.
+The private presentation deadline intersects every earlier enclosing command
+owner and a 60-second settled cap, with a derived 45-second closing reserve;
+presentation never waives enforcement. Unknown Linux lifetime skips inspection.
+Verify mixed-block traversal, draft filter/reference/attention modes, exact size
+cutoffs, per-surface identity, escaped attention admission, nearly-timeout batched
+exit, phase-aware signals and screen restoration on setup/output exceptions.
 Post-settlement inspection owns no execution/channel lifetime. Its artifact
 resolver uses verified delivery and one immutable bounded capture, never mutable
 destination reads. Test redirected stdout, idle stdin, split/batched keys,

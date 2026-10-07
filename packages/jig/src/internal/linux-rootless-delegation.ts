@@ -4,14 +4,14 @@ import { constants, realpathSync } from 'node:fs'
 import {
   access,
   mkdir,
-  readFile,
   readdir,
+  readFile,
   realpath,
   stat,
   statfs,
   writeFile,
 } from 'node:fs/promises'
-import { createServer, connect, type Server, type Socket } from 'node:net'
+import { connect, createServer, type Server, type Socket } from 'node:net'
 import { isAbsolute, posix } from 'node:path'
 import { privateLinuxHostToolCandidates } from './linux-host-paths.js'
 
@@ -22,7 +22,9 @@ import {
 } from './linux-rootless-acquisition.js'
 import {
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
+  PRIVATE_PRESENTATION_DEADLINE_ENV,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
+  privateConstrainPresentationDeadline,
 } from './root-run-timeout-policy.js'
 
 const CGROUP_ROOT = '/sys/fs/cgroup'
@@ -411,6 +413,10 @@ export async function reexecutePrivateRootlessLinuxCommand(
   try {
     await ready.listening
     lifetimeTimerStarted = true
+    const presentationDeadline = privateConstrainPresentationDeadline(
+      controlEnvironment,
+      commandLifetimeMs,
+    )
     await startLifetimeTimer(
       managerPath,
       controlPath,
@@ -440,6 +446,7 @@ export async function reexecutePrivateRootlessLinuxCommand(
           [SCOPE_VARIABLE]: unit,
           [SOCKET_VARIABLE]: socketPath,
           [TOKEN_VARIABLE]: token,
+          [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline),
         },
         stdio: 'inherit',
         windowsHide: true,

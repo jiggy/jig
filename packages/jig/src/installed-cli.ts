@@ -39,6 +39,7 @@ import {
   openPrivateProjectSession,
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
+import { privatePresentationDeadline } from './internal/root-run-timeout-policy.js'
 import { canonicalJson } from './json.js'
 
 interface InstalledCliOutcome {
@@ -245,6 +246,7 @@ async function runWithEnvironment(
         return exit(
           await main(arguments_, {
             host,
+            presentationDeadline: privatePresentationDeadline(process.env),
             ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined
               ? {}
               : { expectedAdmissionDigest: process.env.JIG_PRIVATE_RUN_ADMISSION }),

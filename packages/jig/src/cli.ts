@@ -41,6 +41,7 @@ import { privateProfileSpan } from './internal/private-profile.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
+  privatePresentationNow,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
@@ -259,6 +260,8 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
+  readonly presentationDeadline?: number | undefined
+  readonly dashboardInputStream?: typeof process.stdin
   readonly standardContractDirectory?: string
   readonly expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
@@ -291,6 +294,7 @@ interface CliRuntime {
   readonly signal?: AbortSignal
   readonly interactive: boolean
   readonly dashboardInput: boolean
+  readonly dashboardInputStream: typeof process.stdin
   readonly confirm: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly answer: (prompt: string, signal?: AbortSignal) => Promise<string>
   readonly writeOutput: (text: string) => void
@@ -845,10 +849,21 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
+  runtime.progress.model.configureWorkspace({
+    target:
+      parsed.target.kind === 'flow'
+        ? flowSelector(parsed.target.path)
+        : `binding:${parsed.target.id}`,
+    limitMs: parsed.timeoutMs,
+    startedAt: privatePresentationNow(),
+  })
   if (!parsed.json && parsed.receive.length === 0)
-    runtime.progress.configureDisplay(parsed.display, runtime.dashboardInput)
-  if (parsed.display === 'dashboard' && !parsed.json && parsed.receive.length === 0)
-    runtime.host.delivery?.enableInspection?.()
+    await runtime.progress.configureDisplay(
+      parsed.display,
+      runtime.dashboardInput,
+      runtime.dashboardInputStream,
+    )
+  if (runtime.progress.workspaceActive) runtime.host.delivery?.enableInspection?.()
   runtime.progress.note(
     `Running ${asciiJsonString(parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`)}`,
   )
@@ -938,6 +953,10 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     },
     diagnostic(bytes, operations = []) {
       const decoded = diagnostics.record(bytes, operations)
+      if (runtime.progress.workspaceActive) {
+        runtime.progress.diagnostic(decoded, operations)
+        return
+      }
       const source = JSON.stringify(operations)
       if (source !== diagnosticSource) {
         diagnosticSource = source
@@ -955,7 +974,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         ),
         true,
       )
-      presentation?.diagnostic(decoded, operations)
+      // Fullscreen journal admission does not prove this bounded evidence was
+      // delivered in scrollback. Preserve the full capture for its final result.
+      if (!runtime.progress.workspaceUsed) presentation?.diagnostic(decoded, operations)
     },
   }
   const emitTerminal = async (record: JsonValue): Promise<void> => {
@@ -1147,6 +1168,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       // File manifests or late observations may exceed JSON/0 even when the
       // accepted terminal fits. Preserve that terminal; never truncate it or
       // reinterpret a report failure as permission to repeat the Run.
+      await runtime.progress.closeWorkspace()
       await emitTerminal(publicTerminal(status.terminal))
       runtime.writeError(
         renderDiagnostic(
@@ -1411,9 +1433,10 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     options.writeStderr ?? writeError,
     options.signal,
     privateCliStyleEnabled(terminal),
-    () => process.stderr.columns || 80,
+    () => process.stderr.columns ?? 80,
     (text) =>
       privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
+    { presentationDeadline: options.presentationDeadline },
   )
   return {
     ...(options.expectedAdmissionDigest === undefined
@@ -1436,6 +1459,7 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     interactive:
       options.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true),
     dashboardInput: options.interactive ?? process.stdin.isTTY === true,
+    dashboardInputStream: options.dashboardInputStream ?? process.stdin,
     confirm: async (prompt, signal) => {
       progress.pause()
       await progress.flush()
@@ -1449,6 +1473,7 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
       return (options.answer ?? terminalAnswer)(prompt, signal)
     },
     writeRecord: async (text) => {
+      await progress.closeWorkspace()
       progress.pause()
       await progress.flush()
       if (options.writeRecord) await options.writeRecord(text)
@@ -1468,7 +1493,7 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     },
     writeError: (text) => {
       progress.pause()
-      progress.notice(text)
+      progress.notice(text, 'error')
     },
     writeNotice: (text) => progress.notice(text),
     writeDiagnostic: (text) => {

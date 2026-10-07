@@ -40,6 +40,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.
+  Its private presentation constraint uses common-host monotonic milliseconds.
+  Seed it before an enclosing file-command child/timer or Linux delegation timer,
+  reserve 45 seconds for bounded restoration/reporting, and preserve the minimum
+  inherited value through reexecution. It only shortens the screen lease; it
+  never grants execution or extends, restarts or clears an enforcement timer.
 - Admission storage uses the closed native descriptor operations while SQLite
   retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
   Darwin resolves system ancestor aliases only for SQLite's visible filename;
@@ -536,6 +541,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through its authenticated transient-scope lifetime socket to the inner CLI.
   Keep that socket open for cooperative cancellation and confirmed cleanup;
   its closure remains the independent emergency scope fence.
+- Explicit dashboard inspection intersects its original presentation constraint
+  with a 60-second settled cap. Linux without a reliable inherited constraint
+  closes settled presentation immediately; live presentation expiry returns to
+  ordinary output without requesting cancellation. File publication and preview
+  retention never waive the original command timer. External interruption after
+  settlement closes presentation with the existing interruption exit status;
+  keyboard Ctrl-C after settlement only closes inspection. Frozen result facts
+  and all actual execution/cleanup deadlines remain unchanged.
 - The optional installed-startup diagnostic accepts only a private local trace
   destination, activates after rootless-host acquisition, and removes its
   selector from operator configuration before opening a project session. It
@@ -960,6 +973,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Native and installed-consumer qualification still establish actual enforcement.
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.
+- `workspace-progress.test.ts` covers private deadline minima, queued screen
+  entry/restoration, phase-aware interruption, escaped cause batching and full
+  final diagnostics with injected streams and clocks. These portable cases do
+  not qualify common-clock subprocess behavior, terminal restoration or actual
+  command expiry on another supported host. The native file-delivery inspection
+  cases separately verify immutable bytes and the unchanged hard command timer.
 - On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables
   `macos-process-controls.test.ts` and `macos-execution.test.ts` with the
   candidate native runtime outside an enclosing sandbox. They use finite

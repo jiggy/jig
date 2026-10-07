@@ -81,6 +81,8 @@ promptly and retain their reasons in final results independently of observation.
 `activity(id, label, progress?, {detail?, operationId?})` replaces the complete slot.
 The optional detail explains the current procedure; an own-call operation ID
 links to host-observed execution without inventing a call or changing its status.
+That association stays fixed until `clear(id)`. When moving a shared activity slot
+to another call, clear it first or give the new activity its own ID.
 Progress has required
 `completed`, optional `total`, and optional `unit`, for example
 `{completed: 3, total: 8, unit: 'files'}` in TypeScript. Counts may decrease or
@@ -111,14 +113,33 @@ project entrypoint; `--updates off` does not cancel that explicit choice. Multip
 canonical ports get one hint instead of a guess. Unsupported contracts remain
 ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
 
-Use `jig run --display dashboard` for keyboard navigation. Tab changes views;
-j/k selects records, c changes collections, / filters, s sorts, r selects a
-reference, Enter opens it, and [/] scrolls. q or Escape leaves inspection while
-live work continues. Ctrl-C during work requests cancellation and cleanup. After
-execution, cleanup and delivery settle, the inspector can stay open to inspect
-results; Ctrl-C then closes inspection without changing the admitted result.
+Use `jig run --display dashboard` for a terminal workspace. **Activity** collects
+current work and expandable notices; **Overview** shows actual calls, with branches
+you can collapse. Your domain tabs retain their own records and evidence. Routine
+reports stay collapsed, while attributed causes remain visible across tabs. `!`
+opens their full explanation and `?` shows contextual help.
+
+Give each child call a short, descriptive `intent` in `run.call(...)`; Overview
+uses that supplied label. Without it, the graph shows the reviewed slot name.
+Enter on a call shows its original operation ID and host lifecycle.
+
+Tab changes views; arrows/j/k selects records and Enter opens detail. `c` selects
+a collection; `/` edits its filter and `s` changes sorting. Filter text is literal:
+Enter applies it and Escape discards the draft. `r` explicitly selects a reference;
+Enter then opens the chosen record, call or verified immutable file preview.
+Brackets/Page keys scroll details. Escape returns from a local panel before
+leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
+and waits for cleanup. After execution, cleanup and delivery settle, result
+inspection is read-only and Ctrl-C simply closes it. Its separate visible
+countdown is at most 60 seconds within any earlier command limit; unknown Linux
+lifetime skips settled inspection. Leaving restores your terminal and prints
+retained essential causes before the final result.
 `--display plain` selects nonanimated presentation. `--json` or effective
 `--receive` keeps exact existing output and takes precedence over the dashboard.
+The workspace needs terminal input/stderr and at least 18 columns/4 rows;
+smaller terminals release to plain output. Normal tables need 40 columns/10 rows.
+Explicit dashboard with NO_COLOR uses screen controls without color. Activity is
+bounded session history; omission is disclosed, and result evidence remains separate.
 
 ## Give a Flow its own workspace
 
