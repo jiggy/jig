@@ -2,9 +2,13 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 import { type UserUpdates, withUserUpdates } from '@jigging/user-updates'
+import type { RepairInput } from 'factory-repair-flow/policy'
+import {
+  type RepairPhase,
+  readRepairProgress,
+  repairProgressSchema,
+} from 'factory-repair-flow/progress'
 import { checkRoutingResult } from 'semantic-router-flow/decision'
-import type { RepairInput } from '../repair/policy.ts'
-import { type RepairPhase, readRepairProgress, repairProgressSchema } from '../repair/progress.ts'
 import { checkName, loadChecks } from './checks.ts'
 import {
   identity,

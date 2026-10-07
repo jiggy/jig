@@ -1,5 +1,5 @@
 import type { JsonValue, RunResult } from '@jigging/flow'
-import type { RepairInput } from '../repair/policy.ts'
+import type { RepairInput } from 'factory-repair-flow/policy'
 import { reportedText } from './files.ts'
 
 type JobEvidence = {

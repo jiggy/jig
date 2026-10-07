@@ -18,6 +18,10 @@ patch authority and every merge decision stays with a person.
   work, and repeats goals with verified outcomes in the final report.
 - `flows/router/` owns the portable decision Flow, separately governed below.
 - `flows/repair/` owns the factory's independently editable repair specialist.
+- The factory declares `factory-repair-flow` as a workspace dependency and
+  imports its policy types and progress decoder through manifest exports.
+  Cross-Flow helpers require declared package dependencies, never ambient
+  imports into sibling directories.
 - `bindings/` composes one-proposal and checked-correction configurations of
   that specialist with one ordinary Agent and fixed Bun test/CLI grants.
 - `jig.ts` declares the project entrypoint with the factory target, batch/source
@@ -111,6 +115,10 @@ optional observation delivery.
 ## Verification
 
 - `bun test examples/software-factory/test`
+- Jig's `package-provider-host.test.ts` also runs this application through the
+  installed CLI with a deterministic Flow Agent peer. It verifies reviewed
+  repair-dependency imports, live worker reports and checkpoint delivery after
+  the editable repair source is removed; it makes no live Agent claim.
 - The release gate repeats deterministic application tests against packed SDK
   candidates. Jig's private repair-batch host fixture exercises the same
   contained command and checkpoint boundaries, but does not qualify this

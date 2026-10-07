@@ -418,6 +418,11 @@ admitted FLOW packages.
   It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
   It also verifies prompt failed settlement of a deliberately crashing Flow
   through the installed CLI, followed by ordinary use of the same project.
+  Its software-factory consumer runs the unchanged application with packed
+  public dependencies and a deterministic Flow Agent peer, then removes the
+  editable repair package after approval. It verifies admitted dependency
+  imports, relayed worker progress, both blocked job causes and checkpoint
+  delivery without native clients or model calls.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete

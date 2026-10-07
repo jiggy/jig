@@ -12,7 +12,8 @@ operator's fixed commands and application-owned acceptance cases.
   and outcome evidence.
 - `evidence.ts` evaluates collected command output against unchanged cases.
 - `progress.ts` owns the closed application-local progress shape and bounded
-  worker reports of check facts and procedural next steps.
+  worker reports of check facts and procedural next steps. The `./progress`
+  manifest export lets the factory consume this shape as a declared dependency.
 - `FLOW.*`, `settings.schema.json`, and `contracts/` declare the portable method
   and its Agent and command boundaries.
 
