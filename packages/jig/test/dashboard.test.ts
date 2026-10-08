@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
 import { type Reference, type ViewItem, validateUserUpdate } from '@jigging/user-updates'
-import { PrivateDashboardInput, privateDashboardFrame } from '../src/cli-dashboard.js'
+import {
+  PrivateDashboardInput,
+  privateDashboardDetailParts,
+  privateDashboardFrame,
+} from '../src/cli-dashboard.js'
 import { privateCliStyleEnabled } from '../src/cli-presentation.js'
 import { PrivateCliProgress } from '../src/cli-progress.js'
 import {
@@ -528,7 +532,7 @@ test('duplicate cell/detail references produce one marker and every distinct tar
     input.emit('data', Buffer.from('\r'))
     const literal = paint().lines.join('\n')
     expect(literal).toContain('AUTHORED LITERAL REFERENCES')
-    expect(literal.split('\n').filter((line) => line === 'first-call: active')).toHaveLength(2)
+    expect(literal.match(/first-call: active/g)).toHaveLength(2)
     expect(model.record?.row?.details?.[0]).toMatchObject({ references: authored.slice(0, 8) })
     expect(model.record?.row?.details?.[1]).toMatchObject({ references: authored.slice(8) })
     input.emit('data', Buffer.from('r'))
@@ -1434,13 +1438,14 @@ test('detail scrolling beyond the end retains the final literal line and a finit
     panels: [{ kind: 'detail', key: record.key, signature: record.signature, scroll: 999 }],
   })
   expect(frame.lines.join('\n')).toContain('Last literal line')
-  expect(frame.scroll).toBe(2)
+  expect(frame.scroll).toBe(1)
 })
 
 test('Enter toggles the literal detail panel and keeps the same record', () => {
   const model = new PrivateRunModel(),
     input = new Input()
   model.acceptView('root', v())
+  model.cycleCollection()
   const keys = new PrivateDashboardInput(
     model,
     () => {},
@@ -1555,9 +1560,7 @@ test('wide collections use spare width and show literal selected detail without 
   expect(wide).toContain('Independent cases: 4/4 passed')
   expect(wide).toContain('Delivered file: a/review.patch')
   expect(wide).toContain('Selected detail')
-  expect(wide.indexOf('Goal: reject fractional')).toBeLessThan(
-    wide.indexOf('Outcome: Checked patch'),
-  )
+  expect(wide).not.toContain('Outcome: Checked patch')
   expect(wide).not.toContain('1/1 supplied / 1 reported')
   expect(activated).toBe(0)
   expect(model.preview).toBeUndefined()
@@ -1826,4 +1829,55 @@ test('diagnostic capacity loss and final completeness remain visible from every 
       expect(frame.lines).toHaveLength(height!)
     }
   }
+})
+
+test('automatic details add context; exact call identity is reserved for expansion', () => {
+  const model = new PrivateRunModel()
+  model.observeCall({
+    publisher: 'root',
+    operationId: 'baseline-1',
+    slot: 'cli',
+    intent: 'Check acceptance case',
+    state: 'returned',
+    time: Date.parse('2026-10-08T10:15:20Z'),
+  })
+  model.select('overview')
+  const record = model.record!
+  const preview = privateDashboardDetailParts(model, record, true)
+  const full = privateDashboardDetailParts(model, record)
+  expect(preview).not.toContainEqual({ kind: 'text', text: 'Check acceptance case' })
+  expect(preview).toContainEqual({
+    kind: 'field',
+    label: 'Last observed',
+    value: '2026-10-08 10:15:20 UTC',
+  })
+  expect(preview.some((p) => p.kind === 'field' && p.label === 'Original operation')).toBeFalse()
+  expect(full).toContainEqual({ kind: 'field', label: 'Original operation', value: 'baseline-1' })
+  expect(
+    preview.some(
+      (p) =>
+        p.kind === 'text' &&
+        p.text.includes('does not establish whether the application checks passed'),
+    ),
+  ).toBeTrue()
+  model.close()
+})
+
+test('entries with no extra detail explain that fact without opening a duplicate pane', () => {
+  const model = new PrivateRunModel(),
+    input = new Input()
+  model.acceptView('root', v())
+  const keys = new PrivateDashboardInput(
+    model,
+    () => {},
+    () => {},
+    input as any,
+  )
+  keys.start()
+  expect(model.record?.kind).toBe('summary')
+  input.emit('data', Buffer.from('\r'))
+  expect(keys.state.panels).toHaveLength(0)
+  expect(model.feedback).toBe('No additional detail was supplied for this entry.')
+  keys.leave()
+  model.close()
 })

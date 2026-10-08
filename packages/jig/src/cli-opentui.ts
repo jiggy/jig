@@ -1,12 +1,20 @@
 import { PassThrough, Writable } from 'node:stream'
 import type { Reference } from '@jigging/user-updates'
-import type { BoxRenderable, CapturedLine, CliRenderer, ScrollBoxRenderable } from '@opentui/core'
+import type {
+  BoxRenderable,
+  CapturedLine,
+  CliRenderer,
+  ScrollBoxRenderable,
+  StyledText,
+} from '@opentui/core'
 import {
+  type PrivateDashboardDetailPart,
   type PrivateDashboardState,
-  privateDashboardDetailLines,
+  privateDashboardDetailParts,
   privateDashboardFrame,
   privateDashboardReferences,
 } from './cli-dashboard.js'
+import { privateCliSyntaxHex } from './cli-presentation.js'
 import {
   type PrivateRunModel,
   type PrivateWorkspaceRecord,
@@ -28,6 +36,7 @@ const palettes = {
     muted: '#939dad',
     edge: '#343d4b',
     accent: '#9bb8ff',
+    label: '#8bd5ca',
     select: '#293750',
     warning: '#efc581',
     error: '#fb9c96',
@@ -40,6 +49,7 @@ const palettes = {
     muted: '#59677d',
     edge: '#bac2d0',
     accent: '#2452a0',
+    label: '#006f7b',
     select: '#dbe7ff',
     warning: '#8a520c',
     error: '#a82b29',
@@ -87,8 +97,14 @@ export class PrivateOpenTuiDashboard {
   #lastFrame = ''
   #selection = ''
   #reveal: string | undefined
+  #detailScrollTarget: number | undefined
   #closed = false
   readonly #layout = () => {
+    if (this.#detailScrollTarget !== undefined && !this.#closed) {
+      const target = this.#detailScrollTarget
+      this.#detailScrollTarget = undefined
+      this.#detail.scrollTop = target
+    }
     if (this.#reveal && !this.#closed) {
       const reveal = this.#reveal
       this.#reveal = undefined
@@ -219,13 +235,13 @@ export class PrivateOpenTuiDashboard {
   }
   #text(
     parent: BoxRenderable,
-    content: string,
+    content: string | StyledText,
     role: 'normal' | 'muted' | 'accent' | 'warning' | 'error' = 'normal',
     strong = false,
   ) {
     const p = process.env.JIG_THEME === 'one-light' ? palettes.light : palettes.dark
     const node = new this.core.TextRenderable(this.renderer, {
-      content: safe(content),
+      content: typeof content === 'string' ? safe(content) : content,
       fg: role === 'normal' ? p.fg : role === 'muted' ? p.muted : p[role],
       attributes: strong ? this.core.TextAttributes.BOLD : 0,
       wrapMode: 'word',
@@ -234,34 +250,146 @@ export class PrivateOpenTuiDashboard {
     })
     parent.add(node)
   }
+  #field(label: string, value: string | number | boolean | null, reference = false): StyledText {
+    const p = process.env.JIG_THEME === 'one-light' ? palettes.light : palettes.dark
+    const role = reference
+      ? 'key'
+      : value === null || typeof value === 'boolean'
+        ? 'literal'
+        : typeof value === 'number'
+          ? 'number'
+          : 'string'
+    return this.core
+      .t`${this.core.bold(this.core.fg(p.label)(safe(label)))}${this.core.fg(p.muted)(': ')}${this.core.fg(reference ? p.accent : typeof value === 'string' ? p.fg : `#${privateCliSyntaxHex(role)}`)(safe(String(value)))}`
+  }
+  #value(text: string): StyledText {
+    // Syntax colors are lexical decoration of escaped literal data, never a verdict
+    // or command recognizer. Only host-generated recorded-value parts use this.
+    const result = new this.core.StyledText([])
+    const value = safe(text)
+    const token = /"(?:[^"\\]|\\.)*"|\b(?:true|false|null)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g
+    let offset = 0
+    for (const match of value.matchAll(token)) {
+      if (match.index > offset)
+        result.chunks.push(
+          this.core.fg(
+            process.env.JIG_THEME === 'one-light' ? palettes.light.fg : palettes.dark.fg,
+          )(value.slice(offset, match.index)),
+        )
+      const role = match[0].startsWith('"')
+        ? /^\s*:/.test(value.slice(match.index + match[0].length))
+          ? 'key'
+          : 'string'
+        : /^(true|false|null)$/.test(match[0])
+          ? 'literal'
+          : 'number'
+      result.chunks.push(this.core.fg(`#${privateCliSyntaxHex(role)}`)(match[0]))
+      offset = match.index + match[0].length
+    }
+    if (offset < value.length)
+      result.chunks.push(
+        this.core.fg(process.env.JIG_THEME === 'one-light' ? palettes.light.fg : palettes.dark.fg)(
+          value.slice(offset),
+        ),
+      )
+    return result
+  }
+  #parts(parent: BoxRenderable, parts: readonly PrivateDashboardDetailPart[], publisher: string) {
+    if (!parts.length)
+      this.#text(
+        parent,
+        'No additional detail was supplied. This entry is shown in full in the list.',
+        'muted',
+      )
+    for (const part of parts) {
+      if (part.kind === 'field') {
+        const reference = part.value !== null && typeof part.value === 'object'
+        const value = reference
+          ? this.model.resolve(publisher, part.value as Reference).label
+          : (part.value as string | number | boolean | null)
+        this.#text(parent, this.#field(part.label, value, reference))
+      } else if (part.kind === 'heading') {
+        this.#text(parent, `\n${part.text}`, 'accent', true)
+      } else if (part.kind === 'value') this.#text(parent, this.#value(part.text))
+      else this.#text(parent, part.text, part.kind === 'note' ? 'muted' : 'normal')
+    }
+  }
   #record(record: PrivateWorkspaceRecord): string {
     if (record.row && record.collection) {
-      const values = record.collection.columns.map((c) => {
-        const v = record.row!.cells[c.key] ?? null
-        return `${c.label}: ${v !== null && typeof v === 'object' ? this.model.resolve(record.publisher ?? 'root', v).label : String(v)}`
-      })
-      return values.join('\n')
+      return record.collection.columns
+        .slice(0, 3)
+        .map((c) => {
+          const v = record.row!.cells[c.key] ?? null
+          return `${c.label}: ${v !== null && typeof v === 'object' ? this.model.resolve(record.publisher ?? 'root', v).label : String(v)}`
+        })
+        .join('\n')
     }
     if (record.call)
-      return `${'  '.repeat(Math.min(record.depth ?? 0, 12))}${this.model.descendants(record.call.key).length ? (this.model.treeExpanded(record.call.key) ? '▾' : '▸') : '·'} ${record.call.intent ?? record.call.slot}\n${record.call.state}${record.hidden ? ` · ${record.hidden} calls collapsed${record.issues ? ` · ${record.issues} issues` : ''}` : ''}`
-    if (record.activity)
-      return `${record.activity.label}${record.activity.detail ? `\n${record.activity.detail}` : ''}`
+      return `${'  '.repeat(Math.min(record.depth ?? 0, 12))}${this.model.descendants(record.call.key).length ? (this.model.treeExpanded(record.call.key) ? '▾' : '▸') : '·'} ${one(record.call.intent ?? record.call.slot)}\n${record.call.state}${record.hidden ? ` · ${record.hidden} calls collapsed${record.issues ? ` · ${record.issues} issues` : ''}` : ''}`
+    if (record.activity) return record.activity.label
     if (record.journal)
-      return `${record.journal.source}${record.journal.kind === 'diagnostic' ? ' · importance unspecified' : record.journal.importance !== 'info' ? ` · reported ${record.journal.importance}` : ''}\n${record.journal.text.split('\n')[0]}`
+      return `${record.journal.source}${record.journal.kind === 'diagnostic' ? ' · importance unspecified' : record.journal.importance !== 'info' ? ` · reported ${record.journal.importance}` : ''}\n${privateTruncateUpdate(record.journal.text.split('\n')[0] ?? '', 120)}`
     if (record.block?.kind === 'progress') {
       const b = record.block
       const size = 16,
         filled = b.total ? Math.min(size, Math.floor((b.completed / b.total) * size)) : 0
       return `${b.label}\n${b.total ? `${'━'.repeat(filled)}${'─'.repeat(size - filled)}  ` : ''}${b.completed}${b.total === undefined ? '' : ` / ${b.total}`}${b.unit ? ` ${b.unit}` : ''}`
     }
-    if (record.block?.kind === 'facts')
-      return record.block.items
-        .map(
-          (f) =>
-            `${f.label}: ${typeof f.value === 'object' && f.value !== null ? this.model.resolve(record.publisher ?? 'root', f.value).label : String(f.value)}`,
+    if (record.block?.kind === 'facts') return `Facts · ${record.block.items.length} fields`
+    return privateTruncateUpdate(
+      (record.block?.kind === 'report' ? record.block.text : (record.text ?? '')).split('\n')[0] ??
+        '',
+      120,
+    )
+  }
+  #card(parent: BoxRenderable, record: PrivateWorkspaceRecord, label: string, selected: boolean) {
+    if (record.row && record.collection) {
+      for (const [index, c] of record.collection.columns.slice(0, 3).entries()) {
+        const value = record.row.cells[c.key] ?? null
+        const ref = value !== null && typeof value === 'object'
+        const text = ref ? this.model.resolve(record.publisher ?? 'root', value).label : value
+        this.#text(
+          parent,
+          index === 0
+            ? safe(String(text))
+            : this.#field(c.label, text as string | number | boolean | null, ref),
+          index === 0 ? 'accent' : 'normal',
+          index === 0,
         )
-        .join('\n')
-    return record.block?.kind === 'report' ? record.block.text.split('\n')[0]! : (record.text ?? '')
+      }
+    } else if (record.call) {
+      const [title, state] = label.split('\n')
+      this.#text(parent, title!, selected ? 'accent' : 'normal', selected)
+      this.#text(
+        parent,
+        state!,
+        record.call.state === 'failed'
+          ? 'error'
+          : record.call.state === 'uncertain' || record.call.state === 'cancel-requested'
+            ? 'warning'
+            : record.call.state === 'active'
+              ? 'accent'
+              : 'muted',
+        record.call.state === 'active',
+      )
+    } else if (record.block?.kind === 'progress') {
+      const [title, counts] = label.split('\n')
+      this.#text(parent, title!, 'accent', true)
+      this.#text(parent, counts!, 'accent')
+    } else {
+      const [title, ...body] = label.split('\n')
+      this.#text(
+        parent,
+        title!,
+        record.journal?.importance === 'error'
+          ? 'error'
+          : record.journal?.importance === 'warning'
+            ? 'warning'
+            : 'accent',
+        true,
+      )
+      if (body.length) this.#text(parent, body.join('\n'))
+    }
   }
   #capture(color: boolean): string {
     const text = privateOpenTuiCells(this.renderer.currentRenderBuffer.getSpanLines(), color)
@@ -388,24 +516,20 @@ export class PrivateOpenTuiDashboard {
         ? width - (width < 50 ? 0 : 4)
         : Math.max(1, width - 6 - Math.floor((width - 6) * 0.43))
     this.#list.title = ` ${one(model.selected?.value.title ?? (model.surface === 'overview' ? 'Execution graph' : 'Activity'))} `
-    this.#detail.title = ` ${panel ? (panel.kind === 'preview' ? 'Immutable captured preview' : panel.kind) : 'Selected detail'} `
+    this.#detail.title = ` ${panel ? (panel.kind === 'preview' ? 'Immutable captured preview' : panel.kind) : 'Selected detail'}${!panel || panel.kind === 'detail' ? ` · ${privateTruncateUpdate(one(model.record ? (this.#record(model.record).split('\n')[0] ?? '') : ''), 64)}` : ''} `
     const records = model.records(),
       labels = records.map((record) => this.#record(record)),
       detail = model.record
-        ? [
-            ...privateDashboardDetailLines(
-              model,
-              model.record,
-              Math.max(1, width - Number(this.#list.width) - 12),
-              true,
-            ),
-          ].join('\n')
-        : model.context
+        ? privateDashboardDetailParts(model, model.record, true)
+        : [{ kind: 'note' as const, text: model.context }]
     const signature = JSON.stringify([
       model.surface,
       records,
       labels,
       detail,
+      privateDashboardReferences(model.record).map(
+        (ref) => model.resolve(model.record?.publisher ?? 'root', ref).label,
+      ),
       model.record?.key,
       panel,
       model.preview,
@@ -415,24 +539,33 @@ export class PrivateOpenTuiDashboard {
     ])
     if (signature !== this.#signature) {
       this.#signature = signature
+      this.#detailScrollTarget = panel?.kind === 'detail' ? panel.scroll : 0
       for (const parent of [this.#list, this.#detail])
         for (const child of parent.getChildren()) child.destroyRecursively()
       if (panel) {
         // The bounded literal projection also serves compact accessible text and
         // all navigation overlays. OpenTUI owns the pane geometry and scrolling.
-        const projection = privateDashboardFrame(
-          model,
-          Math.max(18, width - 8),
-          100,
-          false,
-          true,
-          scroll,
-          undefined,
-          state,
-        )
-        const separator = projection.lines.findIndex((l) => /^─+$/.test(l))
-        const start = separator < 0 ? Math.min(3, projection.lines.length - 1) : separator + 1
-        this.#text(this.#detail, projection.lines.slice(start, -1).join('\n'))
+        if (panel.kind === 'detail' && model.record) {
+          this.#parts(
+            this.#detail,
+            privateDashboardDetailParts(model, model.record),
+            model.record.publisher ?? 'root',
+          )
+        } else {
+          const projection = privateDashboardFrame(
+            model,
+            Math.max(18, width - 8),
+            100,
+            false,
+            true,
+            scroll,
+            undefined,
+            state,
+          )
+          const separator = projection.lines.findIndex((l) => /^─+$/.test(l))
+          const start = separator < 0 ? Math.min(3, projection.lines.length - 1) : separator + 1
+          this.#text(this.#detail, projection.lines.slice(start, -1).join('\n'))
+        }
       } else {
         let section = '',
           collection = ''
@@ -464,23 +597,12 @@ export class PrivateOpenTuiDashboard {
             backgroundColor: selected ? p.select : p.panel,
           })
           this.#list.add(card)
-          this.#text(
-            card,
-            labels[index]!,
-            record.call?.state === 'failed' || record.journal?.importance === 'error'
-              ? 'error'
-              : record.call?.state === 'uncertain' || record.journal?.importance === 'warning'
-                ? 'warning'
-                : selected
-                  ? 'accent'
-                  : 'normal',
-            selected,
-          )
+          this.#card(card, record, labels[index]!, selected)
           if (selected && this.#selection !== `${model.surface}:${record.key}`)
             this.#reveal = `record-${index}`
         }
         this.#selection = `${model.surface}:${model.record?.key}`
-        this.#text(this.#detail, detail)
+        this.#parts(this.#detail, detail, model.record?.publisher ?? 'root')
         if (model.feedback) this.#text(this.#detail, model.feedback, 'muted')
       }
     }
@@ -519,35 +641,77 @@ export class PrivateOpenTuiDashboard {
 /** Core supplies laid-out cells, not terminal authority. Encode only published
  * text/color spans, with a hard ceiling including every generated SGR byte. */
 export function privateOpenTuiCells(lines: readonly CapturedLine[], color: boolean): string {
-  let text = '\u001b[H\u001b[2J',
-    bytes = Buffer.byteLength(text)
+  let text = `${color ? '\u001b[0m' : ''}\u001b[H\u001b[2J`,
+    bytes = Buffer.byteLength(text),
+    lastFg = '',
+    lastBg = '',
+    lastBold = false
   let clipped = false
-  for (const [index, line] of lines.entries()) {
-    const prefix = `\u001b[${index + 1};1H`
-    if (bytes + prefix.length + 384 > 32768) {
+  const append = (value: string) => {
+    const size = Buffer.byteLength(value)
+    if (bytes + size + 384 > 32768) {
       clipped = true
-      break
+      return false
     }
-    text += prefix
-    bytes += prefix.length
-    for (const span of line.spans) {
+    text += value
+    bytes += size
+    return true
+  }
+  // Draw the last three rows first so output-budget exhaustion cannot hide exit
+  // controls. Absolute positioning preserves geometry independent of write order.
+  const indices = [...lines.keys()]
+  const order = [...indices.slice(-3), ...indices.slice(0, -3)]
+  outer: for (const index of order) {
+    if (!append(`\u001b[${index + 1};1H`)) break
+    const line = lines[index]!
+    for (const [si, span] of line.spans.entries()) {
       const fg = span.fg.toInts(),
         bg = span.bg.toInts()
-      const style = color
-        ? `\u001b[0;${span.attributes & 1 ? '1;' : ''}38;2;${fg.slice(0, 3).join(';')};48;2;${bg.slice(0, 3).join(';')}m`
-        : ''
-      const remaining = 32768 - bytes - style.length - (color ? 4 : 0) - 384
-      if (remaining <= 0) {
-        clipped = true
-        break
+      const blank = /^ +$/.test(span.text)
+      if (color) {
+        const codes: string[] = []
+        const nextBg = bg.slice(0, 3).join(';'),
+          nextFg = fg.slice(0, 3).join(';'),
+          bold = Boolean(span.attributes & 1)
+        if (nextBg !== lastBg) {
+          codes.push(`48;2;${nextBg}`)
+          lastBg = nextBg
+        }
+        // Foreground and weight cannot affect blank cells. Preserve them until
+        // the next visible glyph instead of changing styles across empty gutters.
+        if (!blank) {
+          if (nextFg !== lastFg) {
+            codes.push(`38;2;${nextFg}`)
+            lastFg = nextFg
+          }
+          if (bold !== lastBold) {
+            codes.push(bold ? '1' : '22')
+            lastBold = bold
+          }
+        }
+        if (codes.length && !append(`\u001b[${codes.join(';')}m`)) break outer
       }
-      const content = privateTruncateUpdate(span.text, 4096, remaining)
-      if (Buffer.byteLength(content) < Buffer.byteLength(span.text)) clipped = true
-      text += style + content + (color ? '\u001b[0m' : '')
-      bytes += style.length + Buffer.byteLength(content) + (color ? 4 : 0)
+      if (/^ +$/.test(span.text) && span.width === span.text.length && span.width > 8) {
+        // ECH uses the current background without advancing; CUF advances only
+        // between spans. Empty pane area costs controls, not one byte per cell.
+        if (
+          !append(
+            `\u001b[${span.width}X${si < line.spans.length - 1 ? `\u001b[${span.width}C` : ''}`,
+          )
+        )
+          break outer
+      } else {
+        const content = privateTruncateUpdate(span.text, 4096, 32768 - bytes - 384)
+        if (!append(content)) break outer
+        if (Buffer.byteLength(content) < Buffer.byteLength(span.text)) {
+          clipped = true
+          break outer
+        }
+      }
     }
   }
+  if (color) text += '\u001b[0m'
   if (clipped)
-    text += `\u001b[${Math.max(1, lines.length)};1H\u001b[2K${color ? '\u001b[0m' : ''}[Frame clipped · ! full cause · Enter detail · q leave]`
+    text += `\u001b[${Math.max(1, lines.length)};1H\u001b[2K[Frame clipped · ! full cause · Enter detail · q leave]`
   return text
 }

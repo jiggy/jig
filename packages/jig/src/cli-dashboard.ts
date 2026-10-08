@@ -336,6 +336,138 @@ function progressText(block: Extract<DetailBlock, { kind: 'progress' }>, width: 
   }
   return `${privateUpdateText(block.label)} ${count}`
 }
+/** The list owns identity and a short observation; details add context or evidence.
+ * Typed parts are private presentation data, not a new author-facing contract. */
+export type PrivateDashboardDetailPart =
+  | { kind: 'heading' | 'text' | 'note' | 'value'; text: string }
+  | { kind: 'field'; label: string; value: Value }
+
+export function privateDashboardDetailParts(
+  model: PrivateRunModel,
+  record: PrivateWorkspaceRecord,
+  preview = false,
+): PrivateDashboardDetailPart[] {
+  const parts: PrivateDashboardDetailPart[] = []
+  const text = (value: string, kind: 'text' | 'note' | 'value' = 'text') => {
+    if (value) parts.push({ kind, text: value })
+  }
+  const heading = (value: string) => parts.push({ kind: 'heading', text: value })
+  const field = (label: string, value: Value) => parts.push({ kind: 'field', label, value })
+  const block = (b: DetailBlock) => {
+    if (b.kind === 'report') {
+      text(
+        b.text,
+        model.workspace.recorded && record.collection?.id === 'recorded-fields' ? 'value' : 'text',
+      )
+      for (const ref of b.references ?? []) field('Evidence', ref)
+    } else if (b.kind === 'facts') {
+      for (const item of b.items) field(item.label, item.value)
+    } else {
+      field(
+        b.label,
+        `${b.completed}${b.total === undefined ? '' : ` / ${b.total}`}${b.unit ? ` ${b.unit}` : ''}`,
+      )
+    }
+  }
+  const remainder = (value: string) => {
+    const first = value.split('\n')[0] ?? ''
+    // A shortened teaser must never discard its full literal source.
+    text(
+      privateTruncateUpdate(first, 120) !== privateUpdateText(first)
+        ? value
+        : value.slice(first.length).replace(/^\n/, ''),
+    )
+  }
+  if (record.text !== undefined && !record.journalGroup) remainder(record.text)
+  if (record.journalGroup) {
+    heading('Stage history')
+    for (const entry of record.journalGroup) text(entry.text)
+  }
+  if (record.block?.kind === 'report') {
+    remainder(record.block.text)
+    for (const ref of record.block.references ?? []) field('Evidence', ref)
+  } else if (record.block?.kind === 'facts') block(record.block)
+  else if (record.block?.kind === 'progress')
+    text(
+      'These are publisher-reported counts. Reaching the total does not establish the application outcome.',
+      'note',
+    )
+  if (record.collection && record.row) {
+    for (const b of record.row.details ?? []) block(b)
+    const columns = preview ? record.collection.columns.slice(3) : record.collection.columns
+    if (columns.length) {
+      heading(preview ? 'Additional fields' : 'Record fields')
+      for (const column of columns) field(column.label, record.row.cells[column.key] ?? null)
+    }
+  } else if (record.collection)
+    text(
+      record.collection.rows.length
+        ? 'No matching supplied records; / edits the filter'
+        : 'No supplied records',
+      'note',
+    )
+  if (record.activity) {
+    if (record.activity.detail) text(record.activity.detail)
+    if (record.activity.progress)
+      block({ kind: 'progress', label: 'Reported count', ...record.activity.progress })
+    if (record.activity.operationId)
+      field('Associated call', { kind: 'call', operationId: record.activity.operationId })
+  }
+  if (record.journal) {
+    remainder(record.journal.text)
+    if (record.journal.operationsPath)
+      field('Invocation path', record.journal.operationsPath.join(' / ') || '(root)')
+    if (record.journal.kind === 'diagnostic')
+      text('Diagnostic importance was not supplied.', 'note')
+    if (record.journal.clipped) text('Diagnostic capture was truncated.', 'note')
+  }
+  if (record.call) {
+    const n = record.call
+    heading('Call observation')
+    text(
+      {
+        requested: 'The caller requested this invocation. Execution has not been observed yet.',
+        active: 'This invocation is running. Its result has not returned to the caller.',
+        'cancel-requested': 'Cancellation was requested. Settlement and cleanup are still pending.',
+        returned:
+          'The invocation returned to its caller. This observation does not establish whether the application checks passed.',
+        failed:
+          'The host observed an invocation failure. The known cause is shown below when available.',
+        uncertain:
+          'The invocation could not be confirmed. Inspect its cause and effects before starting new work.',
+      }[n.state],
+    )
+    if (n.cause) {
+      heading('Reported cause')
+      text(n.cause)
+    }
+    const observed = new Date(n.time)
+    field(
+      'Last observed',
+      Number.isFinite(observed.getTime())
+        ? observed
+            .toISOString()
+            .replace('T', ' ')
+            .replace(/\.\d{3}Z$/, ' UTC')
+        : 'Time unavailable',
+    )
+    const descendants = model.descendants(n.key)
+    if (descendants.length)
+      field(
+        'Child calls',
+        `${descendants.length} observed; ${descendants.filter((c) => c.state === 'failed' || c.state === 'uncertain').length} failed or uncertain`,
+      )
+    if (!preview) {
+      heading('Invocation identity')
+      if (n.intent !== undefined) field('Caller intent', n.intent)
+      field('Reviewed slot', n.slot)
+      field('Original operation', n.operationId)
+      field('Host lifecycle', n.state)
+    }
+  }
+  return parts
+}
+
 export function* privateDashboardDetailLines(
   model: PrivateRunModel,
   record: PrivateWorkspaceRecord,
@@ -344,80 +476,20 @@ export function* privateDashboardDetailLines(
 ): Generator<string> {
   if (!preview)
     yield `${record.publisher ? model.sourceLabel(record.publisher) : (record.journal?.source ?? 'Jig')} · detail`
-  const wrap = function* (text: string) {
+  const parts = privateDashboardDetailParts(model, record, preview)
+  if (!parts.length) {
+    yield 'No additional detail was supplied. This entry is shown in full in the list.'
+    return
+  }
+  for (const part of parts) {
+    const text =
+      part.kind === 'field'
+        ? `${part.label}: ${typeof part.value === 'object' && part.value !== null ? model.resolve(record.publisher ?? 'root', part.value).label : String(part.value)}`
+        : part.text
     yield* privateWrappedUpdate(text, width, true)
   }
-  const block = function* (b: DetailBlock): Generator<string> {
-    if (b.kind === 'report') {
-      yield* wrap(b.text)
-      for (const ref of b.references ?? [])
-        yield* wrap(model.resolve(record.publisher ?? 'root', ref).label)
-    } else if (b.kind === 'facts')
-      for (const item of b.items) {
-        yield* wrap(
-          `${item.label}: ${item.value !== null && typeof item.value === 'object' ? model.resolve(record.publisher ?? 'root', item.value).label : String(item.value)}`,
-        )
-      }
-    else yield progressText(b, width)
-  }
-  if (record.text !== undefined) yield* wrap(record.text)
-  if (record.journalGroup) for (const entry of record.journalGroup) yield* wrap(entry.text)
-  if (record.block) yield* block(record.block)
-  if (record.collection) {
-    if (!preview) yield* wrap(record.collection.title)
-    if (record.row) {
-      if (preview) {
-        const first = record.collection.columns[0]
-        if (first)
-          yield* wrap(
-            `${first.label}: ${displayCell(model, record.publisher ?? 'root', record.row.cells[first.key] ?? null)}`,
-          )
-        for (const b of record.row.details ?? []) yield* block(b)
-      }
-      for (const column of record.collection.columns) {
-        const value = record.row.cells[column.key] ?? null
-        yield* wrap(
-          `${column.label}: ${typeof value === 'object' && value !== null ? model.resolve(record.publisher ?? 'root', value).label : String(value)}`,
-        )
-      }
-      if (!preview) for (const b of record.row.details ?? []) yield* block(b)
-    } else
-      yield record.collection.rows.length
-        ? 'No matching supplied records; / edits the filter'
-        : 'No supplied records'
-  }
-  if (record.activity) {
-    yield* wrap(record.activity!.label)
-    if (record.activity!.progress)
-      yield progressText(
-        { kind: 'progress', label: 'Reported count', ...record.activity!.progress },
-        width,
-      )
-    if (record.activity!.detail) yield* wrap(record.activity!.detail)
-    if (record.activity!.operationId)
-      yield* wrap(
-        `Associated own call: ${model.resolve(record.publisher!, { kind: 'call', operationId: record.activity!.operationId }).label}`,
-      )
-  }
-  if (record.journal) {
-    yield `${record.journal!.source}${record.journal!.kind === 'diagnostic' ? ' · severity not supplied' : record.journal!.importance === 'info' ? '' : ` · reported ${record.journal!.importance}`}`
-    if (record.journal!.operationsPath)
-      yield* wrap(
-        `Actual operations path: ${record.journal!.operationsPath.length ? record.journal!.operationsPath.join(' / ') : '(root)'}`,
-      )
-    yield* wrap(record.journal!.text)
-    if (record.journal!.clipped) yield '[Diagnostic capture truncated]'
-  }
-  if (record.call) {
-    const n = record.call
-    yield* wrap(n.intent ?? n.slot)
-    yield* wrap(
-      `Reviewed slot: ${n.slot}\nOriginal operation: ${n.operationId}\nHost lifecycle: ${n.state}\nObserved time: ${n.time}`,
-    )
-    yield 'Returned does not certify the application outcome'
-    if (n.cause) yield* wrap(n.cause)
-  }
 }
+
 function tableColumns(
   model: PrivateRunModel,
   publisher: string,
@@ -1339,7 +1411,9 @@ export class PrivateDashboardInput {
     } else if (text === 'r') this.#chooseReference()
     else if (text === '\r' || text === '\n') {
       const record = this.model.record
-      if (record) {
+      if (record && privateDashboardDetailParts(this.model, record, true).length === 0) {
+        this.model.feedback = 'No additional detail was supplied for this entry.'
+      } else if (record) {
         if (!this.model.disclosure()) this.model.toggleDisclosure()
         this.#push({ kind: 'detail', key: record.key, signature: record.signature, scroll: 0 })
       }

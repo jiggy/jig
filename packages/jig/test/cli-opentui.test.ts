@@ -196,6 +196,7 @@ test('native records refresh reference availability after delivery without a new
     ],
   })
   model.select(JSON.stringify(['root', 'evidence']))
+  model.moveRecord(1)
   const dashboard = await PrivateOpenTuiDashboard.create(
     await privatePrepareOpenTui(),
     model,
@@ -277,5 +278,122 @@ test('native span encoding charges ANSI and escaped zero-width content and discl
     expect(Buffer.byteLength(text)).toBeLessThanOrEqual(32768)
     expect(text).toContain('Frame clipped')
     if (!color) expect(text).not.toMatch(sgr)
+  }
+})
+
+test('large native panes keep color roles and exit controls without spending the frame budget on blanks', async () => {
+  const original = process.env.JIG_THEME
+  try {
+    for (const theme of ['one-dark', 'one-light'])
+      for (const color of [true, false]) {
+        process.env.JIG_THEME = theme
+        const model = scene()
+        model.moveRecord(1)
+        const dashboard = await PrivateOpenTuiDashboard.create(
+          await privatePrepareOpenTui(),
+          model,
+          240,
+          80,
+        )
+        try {
+          const frame = await dashboard.frame(240, 80, { panels: [] }, 0, color)
+          expect(frame.text).not.toContain('Frame clipped')
+          expect(Buffer.byteLength(frame.text)).toBeLessThan(24_000)
+          expect(frame.text).toContain('q inline')
+          expect(frame.text).toContain('Ctrl-C stop')
+          const spans = dashboard.renderer.currentRenderBuffer
+            .getSpanLines()
+            .flatMap((l) => l.spans)
+          const title = spans.find((s) => s.text.includes('MAT-043') && Boolean(s.attributes & 1))!
+          const key = spans.find((s) => s.text.includes('Completeness'))!
+          const value = spans.find((s) => s.text.includes('Documents present'))!
+          expect(title.attributes & 1).toBe(1)
+          expect(key.attributes & 1).toBe(1)
+          expect(key.fg.toInts()).not.toEqual(value.fg.toInts())
+          expect(title.fg.toInts()).not.toEqual(value.fg.toInts())
+          if (!color) expect(frame.text).not.toMatch(sgr)
+        } finally {
+          dashboard.close()
+          model.close()
+        }
+      }
+  } finally {
+    if (original === undefined) delete process.env.JIG_THEME
+    else process.env.JIG_THEME = original
+  }
+})
+
+test('expanded native detail scrolls to the last supplied evidence line after layout', async () => {
+  const model = scene()
+  model.acceptView('root', {
+    kind: 'view',
+    id: 'long-evidence',
+    title: 'Evidence',
+    sections: [
+      {
+        blocks: [
+          {
+            kind: 'report',
+            text:
+              'Evidence title\n' +
+              Array.from({ length: 90 }, (_, i) => `Evidence line ${i}`).join('\n'),
+          },
+        ],
+      },
+    ],
+  })
+  model.select(JSON.stringify(['root', 'long-evidence']))
+  model.moveRecord(1)
+  const record = model.record!
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    120,
+    32,
+  )
+  try {
+    const frame = await dashboard.frame(
+      120,
+      32,
+      { panels: [{ kind: 'detail', key: record.key, signature: record.signature, scroll: 999 }] },
+      0,
+      false,
+    )
+    expect(frame.text).toContain('Evidence line 89')
+    expect(frame.text).not.toContain('Frame clipped')
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('multiline caller intent cannot replace or recolor the actual host call state', async () => {
+  const model = scene()
+  model.observeCall({
+    publisher: 'root',
+    operationId: 'failure',
+    slot: 'check',
+    intent: 'Caller title\nreturned',
+    state: 'failed',
+    time: 1000,
+  })
+  model.select('overview')
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    120,
+    32,
+  )
+  try {
+    const frame = await dashboard.frame(120, 32, { panels: [] }, 0, true)
+    expect(strip(frame.text)).toContain('Caller title · returned')
+    const spans = dashboard.renderer.currentRenderBuffer.getSpanLines().flatMap((l) => l.spans)
+    const state = spans.find((s) => s.text.trim() === 'failed')!
+    const title = spans.find((s) => s.text.includes('Caller title'))!
+    expect(state).toBeDefined()
+    expect(state.fg.toInts()).not.toEqual(title.fg.toInts())
+  } finally {
+    dashboard.close()
+    model.close()
   }
 })

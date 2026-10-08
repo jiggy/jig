@@ -25,6 +25,11 @@ descriptors.
   Terminal panes consume semantic view data without exporting renderer types;
   required display support is checked before execution. Native cell rendering
   retains the shared bounded writer and explicit compact-size behavior.
+  Lists, selected context and explicitly expanded evidence have distinct roles;
+  duplicate-only detail is unavailable. Color denotes declared syntax/navigation
+  and host observations, never application success inferred from literal words.
+  Large blank panes preserve the frame budget and exit controls. Recorded results
+  navigate ordinary fields without reconstructing domain views or privileging keys.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.

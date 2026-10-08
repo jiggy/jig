@@ -548,3 +548,96 @@ test('saved diagnostic excerpt limits disclose clipping and capture truncation b
       capture.close()
     }
   }))
+
+test('saved results expose separate literal fields and additional evidence, without privileging application field names', async () =>
+  fixture(async (root) => {
+    await packet(
+      root,
+      {},
+      {
+        output: {
+          summary: 'First line\nExtra evidence',
+          count: 42,
+          eligible: true,
+          message: 'done',
+        },
+      },
+    )
+    const capture = privateCaptureSavedResult(root)
+    try {
+      const view = privateSavedResultViews(capture)[0]!
+      expect(() => validateUserUpdate(view)).not.toThrow()
+      const block = view.sections[0]!.blocks[0]!
+      expect(block.kind).toBe('collection')
+      if (block.kind !== 'collection') throw new Error('Expected recorded fields')
+      const fields = block.rows.map((row) => row.cells.field)
+      expect(fields).toContain('"output" › "summary"')
+      expect(fields).toContain('"output" › "count"')
+      expect(fields).toContain('"output" › "eligible"')
+      const scalar = block.rows.find((row) => row.cells.field === '"output" › "message"')!
+      expect(scalar.cells.value).toBe('"done"')
+      expect(scalar.details).toHaveLength(0)
+      const multi = block.rows.find((row) => row.cells.field === '"output" › "summary"')!
+      expect(multi.cells.value).toBe('"First line"…')
+      expect(multi.details).toMatchObject([
+        { kind: 'report', text: '|-\nFirst line\nExtra evidence\n' },
+      ])
+    } finally {
+      capture.close()
+    }
+  }))
+
+test('recorded field identity and clipped escaped values retain bounded expansion and exact JSON access', async () =>
+  fixture(async (root) => {
+    const key = 'long-field-'.repeat(40)
+    await packet(
+      root,
+      {},
+      {
+        output: {
+          [key]: 'scalar',
+          ...Object.fromEntries(
+            Array.from({ length: 24 }, (_, i) => [`evidence-${i}`, '\u0000'.repeat(4000)]),
+          ),
+        },
+      },
+    )
+    const capture = privateCaptureSavedResult(root)
+    try {
+      const view = privateSavedResultViews(capture)[0]!
+      expect(() => validateUserUpdate(view)).not.toThrow()
+      const fields = view.sections[0]!.blocks[0]!
+      if (fields.kind !== 'collection') throw new Error('Expected recorded fields')
+      const long = fields.rows.find((row) => String(row.cells.field).includes('long-field'))!
+      expect(long.cells.field).toEndWith('…')
+      expect(JSON.stringify(long.details)).toContain(key)
+      expect(fields.rows.length).toBeLessThanOrEqual(16)
+      expect(Buffer.byteLength(JSON.stringify(view))).toBeLessThan(20_000)
+      expect(JSON.stringify(view)).toContain('JSON inspection')
+      expect(Object.keys(capture.record.output as object)).toHaveLength(25)
+    } finally {
+      capture.close()
+    }
+  }))
+
+test('recorded multiline expansion preserves trailing spaces and blank lines', async () =>
+  fixture(async (root) => {
+    const value = 'First line\nTrailing spaces  \n\n'
+    await packet(root, {}, { output: { evidence: value } })
+    const capture = privateCaptureSavedResult(root)
+    try {
+      const view = privateSavedResultViews(capture)[0]!
+      expect(() => validateUserUpdate(view)).not.toThrow()
+      const fields = view.sections[0]!.blocks[0]!
+      if (fields.kind !== 'collection') throw new Error('Expected recorded fields')
+      const row = fields.rows.find((row) => row.cells.field === '"output" › "evidence"')!
+      const text = row
+        .details!.filter((b) => b.kind === 'report')
+        .map((b) => b.text)
+        .join('')
+      expect(text).toContain('Trailing spaces  \n\n')
+      expect(capture.record.output).toEqual({ evidence: value })
+    } finally {
+      capture.close()
+    }
+  }))

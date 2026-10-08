@@ -74,7 +74,30 @@ The explicit workspace has stable Activity, Overview and attributed domain tabs,
 labelled collection cards, collapsed reports, record details, local filter/sort,
 scrolling and explicitly selected references. All valid block types are reachable
 in supplied order. Wide layouts project selected literal details beside the list;
-selection alone never activates a reference. Narrow layouts keep collapsed rows
+selection alone never activates a reference. The information hierarchy separates
+list identity and brief observations, selected additional context, and explicitly
+expanded evidence or invocation identity. Lists preserve declared column order;
+native collection cards show the first three fields and put remaining fields
+beside supplied row details. Fact entries disclose their fields on selection.
+Report teasers disclose remaining text and references; shortened teasers retain
+their complete source in detail. Entries with no additional context explain that
+fact instead of opening a duplicate detail panel. Full record expansion retains
+all supplied fields. Automatic call detail explains the observed lifecycle and
+shows a readable UTC observation time and known cause; reviewed slot and original
+operation identity belong to explicit expansion. No command, result, duration or
+domain verdict is invented from call metadata.
+
+Navigation, headings, declared labels, typed values, measured counts and host
+states have distinct foreground roles. Active calls use an accent, returned calls
+remain secondary, failed calls use red and uncertain/cancel-requested calls use
+amber, with explicit state words retained. Returned calls never receive a green
+application-success verdict. Escaped recorded values may use lexical syntax
+colors without interpreting their words as status or commands. Color-free
+presentation preserves every distinction through wording and hierarchy. Large
+empty panes must not exhaust the encoded frame budget or hide exit controls;
+actual content overflow still discloses clipping.
+
+Narrow layouts keep collapsed rows
 and Enter opens full detail. Returned tree branches collapse by default; active,
 failed and uncertain branches remain visible, with operator choices retained.
 Activity orders recent reports first and folds informational setup history into
@@ -450,6 +473,11 @@ reading operator configuration or credentials, acquiring execution authority,
 or contacting a provider. It rejects target and verification arguments. Plain
 is the default; JSON or redirected stdout takes precedence over dashboard.
 Saved inspection displays fixed Recorded result, Files and Diagnostics views.
+Recorded result separates bounded selectable fields, including ordinary output
+members, from their expanded literal values. No application field name receives
+special summary or outcome meaning. Scalar values shown completely in the list
+have no redundant expansion; multiline, shortened and nested values retain bounded
+evidence and explicit excerpt limits. Exact JSON inspection retains the full report.
 Every saved value is a recorded local claim, including host-shaped fields;
 matching file digests establish manifest consistency, not authenticated provenance.
 Current packets retain no portable views or invocation history, so inspection

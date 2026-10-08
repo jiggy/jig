@@ -385,6 +385,18 @@ text preserves cause and controls down to 18x4.
 Pane caches include resolved reference labels and selected details, so host call
 settlement and verified delivery refresh existing views without another Flow
 report. Unchanged captured cells do not produce another terminal frame.
+Lists own brief identity/observation; selected parts add context and evidence.
+Keep the typed detail projection shared with compact text. Native cards show
+three declared columns, with other fields and authored details reachable beside
+them; full expansion retains all fields. Facts expand into typed fields. Do not
+open duplicate panes for entries with no additional detail. Call previews explain
+lifecycle and readable UTC time; exact slot/operation identity requires expansion.
+Color navigation, labels, typed values and host states independently. Returned
+calls stay secondary, never green domain success. Recorded field navigation and
+lexical value colors remain literal local claims without privileged output keys.
+Encode empty native spans with bounded erase/cursor controls and reuse unchanged
+styles. Render exit rows before body rows so genuine byte overflow retains controls;
+do not raise the ceiling to accommodate empty pane backgrounds.
 Keep host calls keyed by actual publisher instance plus original own operation ID;
 accepted-send publisher identity stays private sideband through pending sends.
 View documents cannot supply source ancestry or host status. Admission is atomic,

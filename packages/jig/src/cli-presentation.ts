@@ -27,11 +27,15 @@ const syntaxThemes = {
   macchiato: { key: '8aadf4', string: 'a6da95', number: 'f5a97f', literal: 'c6a0f6' },
 } as const
 
-function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
+export function privateCliSyntaxHex(role: SyntaxRole, env = process.env): string {
   const theme = env.JIG_THEME
   const palette =
     theme === 'one-light' || theme === 'macchiato' ? syntaxThemes[theme] : syntaxThemes['one-dark']
-  const hex = palette[role]
+  return palette[role]
+}
+
+function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
+  const hex = privateCliSyntaxHex(role, env)
   const rgb = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16))
   if (env.COLORTERM === 'truecolor' || env.COLORTERM === '24bit') return `38;2;${rgb.join(';')}`
   if (env.TERM?.includes('256color')) {

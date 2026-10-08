@@ -1,4 +1,4 @@
-import type { Block, ViewItem } from '@jigging/user-updates'
+import type { Block, Collection, DetailBlock, ViewItem } from '@jigging/user-updates'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
@@ -79,7 +79,7 @@ function excerpt(text: string, bytes: number): { text: string; clipped: boolean 
   const value = new TextDecoder().decode(encoded.subarray(0, bytes), { stream: true })
   return { text: value, clipped: encoded.length > bytes }
 }
-function reports(text: string, maximum = 16_384): Block[] {
+function reports(text: string, maximum = 16_384): DetailBlock[] {
   // Retained view capacity counts serialized JSON, including escaped controls.
   const scalars: string[] = []
   let bytes = 0,
@@ -93,7 +93,7 @@ function reports(text: string, maximum = 16_384): Block[] {
     scalars.push(scalar)
     bytes += size
   }
-  const result: Block[] = []
+  const result: DetailBlock[] = []
   for (let offset = 0; offset < scalars.length; offset += 4096)
     result.push({ kind: 'report', text: scalars.slice(offset, offset + 4096).join('') })
   if (clipped)
@@ -104,12 +104,73 @@ function reports(text: string, maximum = 16_384): Block[] {
   return result.length ? result : [{ kind: 'report', text: 'No recorded content.' }]
 }
 export function privateSavedResultViews(packet: PrivateSavedResult): ViewItem[] {
-  const report = recordedFields(packet)
-  const reportBlocks = reports(report.text)
-  if (report.omitted)
+  const rows: Collection['rows'][number][] = []
+  let remaining = 12_000,
+    omitted = false
+  const add = (path: string[], value: JsonValue) => {
+    if (remaining < 256 || rows.length >= 16) {
+      omitted = true
+      return
+    }
+    const full = privateCliValueFields(value, 0)
+    const multiline = full.slice(0, -1).includes('\n')
+    const preview = excerpt(
+      typeof value === 'string'
+        ? JSON.stringify(value.split('\n')[0])
+        : (full.split('\n')[0] ?? ''),
+      100,
+    )
+    const name = excerpt(path.map((part) => JSON.stringify(part)).join(' › '), 120)
+    const evidence = name.clipped ? privateCliValueFields({ field: path, value }, 0) : full
+    const blocks = reports(evidence, Math.max(0, Math.min(4096, remaining)))
+    const cost = Buffer.byteLength(JSON.stringify(blocks))
+    if (cost > remaining || rows.length >= 16) {
+      omitted = true
+      return
+    }
+    remaining -= cost
+    rows.push({
+      id: `field-${rows.length}`,
+      cells: {
+        field: name.text + (name.clipped ? '…' : ''),
+        value: preview.text + (preview.clipped || multiline ? '…' : ''),
+      },
+      details: name.clipped || multiline || preview.clipped ? blocks : [],
+    })
+  }
+  // Navigate ordinary recorded fields, without assigning application meaning to names.
+  for (const key of [
+    'status',
+    'outcome',
+    'code',
+    'message',
+    'output',
+    'details',
+    'cleanup',
+    'command',
+  ]) {
+    const value = packet.record[key]
+    if (value === undefined) continue
+    if (object(value) && Object.keys(value).length)
+      for (const [name, item] of Object.entries(value)) add([key, name], item)
+    else add([key], value)
+  }
+  const reportBlocks: Block[] = [
+    {
+      kind: 'collection',
+      id: 'recorded-fields',
+      title: 'Recorded fields',
+      columns: [
+        { key: 'field', label: 'Field', type: 'text' },
+        { key: 'value', label: 'Recorded value', type: 'text' },
+      ],
+      rows,
+    },
+  ]
+  if (omitted)
     reportBlocks.push({
       kind: 'report',
-      text: 'Large or nested recorded fields are omitted from this human excerpt. Its complete exact JSON is available in result.json or JSON inspection.',
+      text: 'Additional recorded fields are omitted from this human view. Read result.json or use JSON inspection for the complete value.',
     })
   const result: ViewItem[] = [
     {
