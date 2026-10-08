@@ -12,6 +12,8 @@ operation. Python's independently packaged counterpart lives in `../jiggy-user-u
 - `src/user-updates.json` is the canonical self-contained descriptor. Copies in
   distribution artifacts must preserve its exact bytes. Derive identity from
   canonical JSON using existing FLOW rules; never maintain a handwritten digest.
+  Root `.gitattributes` retains LF bytes for every `user-updates.json` copy,
+  including Windows checkouts used to qualify installed Python artifacts.
 - Validate and snapshot before disabled/unwired checks. Notices and clears are
   ordering barriers. A scope exclusively owns its writer and all local tasks.
 - Views are whole portable documents, never callbacks or terminal layout. Keep
@@ -21,6 +23,8 @@ operation. Python's independently packaged counterpart lives in `../jiggy-user-u
   same-view/activity tails coalesce; removals and in-flight items are barriers.
 - Local publication budgets stop observations, never cancel original sends or
   discard their eventual errors. Close acknowledgement is not send settlement.
+  Final drain follows restarted pumps under one body-exit timer before closing
+  the writer; an offer during pump teardown cannot escape scope ownership.
 - Only genuine observer LAGGED/DISCONNECTED may degrade. Preserve root cancellation
   and body errors; expose unexpected publisher failures.
 - All original material here is MPL-2.0, including the descriptor. Keep its license

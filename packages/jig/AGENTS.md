@@ -515,6 +515,9 @@ buffer release and output failure independently of recorded execution status.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
+  Its trusted npm installation accepts `JIG_NPM` and uses the selected absolute
+  `JIG_AUTHORING_NODE_PATH` directory for npm's interpreter when the host PATH
+  excludes runner tool-cache binaries. This does not change Run authority.
 - The same installed smoke runs `test/installed-conversation-adoption.ts` in
   a fresh ordinary project using the frozen Jig/SDK/method archives, public
   `new --use` and `import-contract`, and the unchanged public conversation

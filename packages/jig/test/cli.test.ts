@@ -532,7 +532,7 @@ test('inspect is read-only and host-free, with exact JSON for subprocesses', asy
       }),
     ).toBe(0)
     expect(output).toContain('No approved revision')
-    expect(output).toContain('jig review')
+    expect(withoutPresentationControls(output)).toContain('jig review')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -799,7 +799,7 @@ describe('finite Jig project commands', () => {
         },
       }),
     ).toBe(1)
-    const output = transcript.join('')
+    const output = withoutPresentationControls(transcript.join(''))
     expect(output).toContain('Value: entire input')
     expect(output).toMatch(/jig inspect\s+'flow:flows\/work'/)
     expect(output).toContain('Run output: result')
@@ -832,7 +832,7 @@ describe('finite Jig project commands', () => {
       })
       expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
       expect(invocation.error).toContain('Review required')
-      expect(invocation.error).toContain('$ jig review')
+      expect(withoutPresentationControls(invocation.error)).toContain('$ jig review')
       expect(invocation.error).toContain('No Flow was started for this Run.')
       expect(invocation.error).not.toContain('Inspect any effects')
       if (terminalOutput) {
@@ -1518,7 +1518,9 @@ describe('finite Jig project commands', () => {
       }
       const invocation = commandInvocation(host, { terminalOutput: false, terminalError })
       expect(await main(['run', 'binding:work', ...args], invocation.options)).toBe(1)
-      expect(invocation.error.includes('Flow: Application says complete')).toBe(enabled)
+      expect(
+        withoutPresentationControls(invocation.error).includes('Flow: Application says complete'),
+      ).toBe(enabled)
       if (args.some((value) => value === '--receive')) {
         expect(JSON.parse(invocation.output)).toMatchObject({
           type: 'terminal',

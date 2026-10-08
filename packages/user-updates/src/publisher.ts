@@ -271,7 +271,7 @@ class Publisher implements UserUpdates {
     let timer: ReturnType<typeof setTimeout> | undefined
     if (this.#pump !== undefined) {
       timer = setTimeout(() => this.#stop(), limits.drainMs)
-      await this.#pump
+      while (this.#pump !== undefined) await this.#pump
       clearTimeout(timer)
     }
     if (this.sender !== undefined && this.#close === undefined)

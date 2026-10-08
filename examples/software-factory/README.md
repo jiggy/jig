@@ -56,8 +56,8 @@ Use `jig run --display dashboard` for a workspace that starts in **Activity**.
 **Patches** contains checked candidates for human review. **Overview** shows
 the actual calls. Select a record and press Enter for details; `!` opens a
 blocking cause, and `r` selects an evidence reference. Press `q` during work
-to continue in the ordinary transcript. The read-only completed inspector has
-a separate countdown of up to 60 seconds, limited by the enclosing command.
+to continue in the ordinary transcript. The read-only completed inspector stays
+open until you close it, subject to any explicit enclosing command limit.
 During work it identifies the command slot or case being run, then reports the
 observed repository-command status and passing or mismatched acceptance cases.
 Collected command invocations and a procedural next step explain why it requests

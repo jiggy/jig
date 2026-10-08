@@ -179,7 +179,7 @@ Its contained profile can receive preference-change notifications while host
 preference values remain inaccessible. A fresh check refuses configured managed
 policy or unavailable preference synchronization before review selection and
 every native launch. Keep managed settings intact and choose an integration that
-supports them; Jig does not bypass operator policy. Other Mac OS profiles still
+supports them; Jig does not bypass operator policy. Other macOS profiles still
 require separate qualification for this Codex path. Startup qualification does
 not prove endpoint availability or online subscription routing. Rosetta and
 Apple Silicon execution of this Codex profile are currently refused.

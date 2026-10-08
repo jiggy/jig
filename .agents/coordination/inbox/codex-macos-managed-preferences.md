@@ -2,7 +2,7 @@
 
 The contained Codex profile supports notification-only preference refresh on
 Intel macOS 14.4.1 build 23E224, while refusing configured managed policy.
-Other Mac OS profiles and actual managed-policy consumption remain unqualified.
+Other macOS profiles and actual managed-policy consumption remain unqualified.
 Installation discovery and review do not qualify session startup; limits are documented in the
 [Agent guide](../../../docs/jig/guide/agents.md#codex).
 

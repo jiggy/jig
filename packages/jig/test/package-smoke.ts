@@ -13,7 +13,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
 import { checkInstalledConversation } from './installed-conversation-adoption.js'
 
@@ -112,7 +112,7 @@ try {
   )
   await run(
     [
-      'npm',
+      process.env.JIG_NPM ?? 'npm',
       'install',
       '--ignore-scripts',
       '--no-audit',
@@ -121,6 +121,11 @@ try {
       join(temporary, 'cache'),
     ],
     consumer,
+    process.env.JIG_AUTHORING_NODE_PATH
+      ? {
+          PATH: `${dirname(process.env.JIG_AUTHORING_NODE_PATH)}${delimiter}${process.env.PATH ?? ''}`,
+        }
+      : {},
   )
   const installed = join(consumer, 'node_modules', '@jigging', 'jig')
   const runtime = join(consumer, 'node_modules', '@oven', installedRuntime.package, 'bin', 'bun')

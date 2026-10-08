@@ -94,9 +94,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   case runs once in its dedicated step; the remaining provider cases use the
   complementary name pattern. Installed-evidence runs complete packed CLI
   composition, operational and hostile baselines on a separate proof host.
-  Pass the runner's absolute Node executable to the packed compiler smoke test
-  because the acquisition host uses a fixed
-  path that excludes runner tool-cache binaries.
+  Pass the runner's absolute Node and npm executables to the packed smoke test
+  because the acquisition host uses a fixed path that excludes runner tool-cache
+  binaries. The trusted npm installation step uses the selected Node directory
+  for its interpreter; contained package execution keeps its ordinary policy.
 - Native Agent API Qualification consumes the exact host archives from the
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API

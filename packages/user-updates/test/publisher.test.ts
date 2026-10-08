@@ -158,6 +158,40 @@ test('close acknowledgement does not swallow a delayed unexpected send rejection
   expect(m.closes).toHaveLength(1)
 })
 
+test.each([false, true])(
+  'final drain joins a restarted pump and preserves its failure (%s)',
+  async (rejectLast) => {
+    // Sweep body continuations across the first pump's promise settlement window.
+    for (let turns = 0; turns < 10; turns++) {
+      const began = deferred<void>()
+      const events: string[] = []
+      const failure = new OperationError('RESOURCE_EXHAUSTED')
+      const m = mock(
+        async (value) => {
+          const text = (value as { text: string }).text
+          events.push(text)
+          if (text === 'first') began.resolve()
+          if (text === 'last' && rejectLast) throw failure
+        },
+        async () => {
+          events.push('closed')
+        },
+      )
+      const scope = withUserUpdates(m.run, 'updates', async (updates) => {
+        updates.notice('first')
+        await began.promise
+        for (let turn = 0; turn < turns; turn++) await Promise.resolve()
+        updates.notice('last')
+        return 'domain result'
+      })
+      if (rejectLast) expect(await scope.catch((error) => error)).toBe(failure)
+      else expect(await scope).toBe('domain result')
+      expect(events).toEqual(['first', 'last', 'closed'])
+      expect(m.closes).toEqual([rejectLast ? { error: 'LAGGED' } : undefined])
+    }
+  },
+)
+
 test('local capacity stops observation and joins the original send once', async () => {
   const original = deferred<void>()
   const began = deferred<void>()

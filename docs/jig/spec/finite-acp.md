@@ -519,7 +519,7 @@ keys in the public suite search list. Configured managed policy or unavailable
 observation refuses the contained profile with a value-free diagnostic.
 Ordinary nonforced preferences may exist and remain unreadable. This qualifies
 the observed absence of managed policy, not continuous enforcement of policy
-introduced after the check. Managed-policy consumption, other Mac OS profiles,
+introduced after the check. Managed-policy consumption, other macOS profiles,
 and changed native preference interfaces require separate qualification.
 Rosetta and Apple Silicon are refused for this Codex path. The observer also
 refuses an inherited sandbox and has its own deadline even if the host exits.

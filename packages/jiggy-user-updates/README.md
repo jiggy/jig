@@ -18,7 +18,7 @@ handle(run)
 ```
 
 Create the `contracts` parent directory, import the agreement with `jig import-contract jig:user-updates
-contracts/user-updates`, then declare an optional send channel in `FLOW.meta.json`:
+contracts/user-updates`, then declare an optional send channel:
 `{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}`
 in `FLOW.contract.json` (create this descriptor if absent).
 Use `--receive updates` for explicit observation. The exact same provisional
