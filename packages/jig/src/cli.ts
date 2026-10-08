@@ -966,6 +966,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   })
   const automaticPresentation = !parsed.json && parsed.receive.length === 0
   const dashboardRequested = automaticPresentation && parsed.display === 'dashboard'
+  if (dashboardRequested)
+    await runtime.progress.prepareDashboard(runtime.dashboardInput, runtime.dashboardInputStream)
   if (automaticPresentation && !dashboardRequested)
     await runtime.progress.configureDisplay(
       parsed.display,

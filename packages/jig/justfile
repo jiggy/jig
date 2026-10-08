@@ -24,7 +24,7 @@
     bun node_modules/typescript/bin/tsc -p tsconfig.json
     cp dist/internal/contract-authoring-worker.js libexec/authoring/contract-authoring-worker.js
     bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js
-    bun build src/installed-cli.ts --target=bun --format=esm --outfile=libexec/installed-cli.js
+    bun build src/installed-cli.ts --target=bun --format=esm --external=@opentui/core --outfile=libexec/installed-cli.js
     bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js
     bun build src/internal/macos-native-supervisor.ts --target=bun --format=esm --outfile=libexec/macos-native-supervisor.js
     cp support/macos-exec-universal libexec/macos-exec

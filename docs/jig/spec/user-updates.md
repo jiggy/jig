@@ -296,8 +296,8 @@ landing; the first eligible root landing hint may select a view before human
 navigation. Later updates never steal focus. Titles may change without reordering
 tabs or changing their identity. No mouse capture or terminal author callbacks.
 
-Collections have aligned headers and one clipped line per record; selection alone
-never expands it. Numbers align right, boolean/null cells remain literal, and
+Collections use labelled record cards in the terminal panes; selection alone
+never opens references or full detail. Boolean/null cells remain literal, and
 application status-looking text never receives a host success verdict. Omitted
 columns/counts are explicit. Enter opens complete escaped cells and supplied
 details in a bounded body panel. Reports and long summaries start collapsed.
@@ -336,7 +336,7 @@ detail level before leaving; at most three overlay levels are retained. Home/End
 select list ends. q leaves outside filter editing; Ctrl-C and input EOF/Ctrl-D are
 always authoritative.
 
-Normal workspace requires at least 40 columns/10 rows. Between 18x4 and that
+Normal panes require at least 50 columns/14 rows. Between 18x4 and that
 threshold, a compact surface retains task/state, attributed cause beginning with
 clipping, full-cause access, leave and stop controls. Below 18 columns or 4 rows,
 release to plain output once with a size explanation and complete retained causes.

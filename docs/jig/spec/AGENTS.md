@@ -22,6 +22,9 @@ descriptors.
   file capture, exact JSON and independent read status. Workspace entry follows trusted root execution admission; initial refusals stay
   plain. Inspection is operator-controlled, subject to explicit inherited command
   constraints, and retains no execution or channel owner.
+  Terminal panes consume semantic view data without exporting renderer types;
+  required display support is checked before execution. Native cell rendering
+  retains the shared bounded writer and explicit compact-size behavior.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.

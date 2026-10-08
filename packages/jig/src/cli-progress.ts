@@ -1,5 +1,6 @@
 import type { Reference } from '@jigging/user-updates'
 import { PrivateDashboardInput, privateDashboardFrame } from './cli-dashboard.js'
+import { PrivateOpenTuiDashboard, privatePrepareOpenTui } from './cli-opentui.js'
 import {
   privateCliHeading,
   privateCliSecondary,
@@ -38,7 +39,6 @@ export interface PrivateProgressLifetime {
 
 const SCREEN_ENTER = '\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J'
 const SCREEN_RESTORE = '\u001b[?25h\u001b[?1049l'
-const FRAME_PREFIX = '\u001b[H\u001b[2J'
 const OUTPUT_JOB_BYTES = 32_768
 
 /** One bounded active line on terminal stderr; never infers completed work. */
@@ -46,6 +46,8 @@ export class PrivateCliProgress {
   readonly model = new PrivateRunModel()
   #plain = false
   #dashboard: PrivateDashboardInput | undefined
+  #nativeDashboard: PrivateOpenTuiDashboard | undefined
+  #dashboardCore: Awaited<ReturnType<typeof privatePrepareOpenTui>> | undefined
   #screen: 'ordinary' | 'entering' | 'live' | 'closing' = 'ordinary'
   #workspaceUsed = false
   #screenEntered = false
@@ -141,6 +143,15 @@ export class PrivateCliProgress {
       this.#timer.unref()
     }
   }
+  async prepareDashboard(usableInput: boolean, input = process.stdin): Promise<void> {
+    if (
+      this.enabled &&
+      usableInput &&
+      typeof input.setRawMode === 'function' &&
+      process.env.TERM !== 'dumb'
+    )
+      this.#dashboardCore ??= await privatePrepareOpenTui()
+  }
   async configureDisplay(
     display: 'auto' | 'plain' | 'dashboard',
     usableInput: boolean,
@@ -168,6 +179,7 @@ export class PrivateCliProgress {
           'Dashboard unavailable without terminal input and stderr; using plain display.\n',
         )
       } else {
+        if (!this.#dashboardCore) await this.prepareDashboard(usableInput, input)
         this.#dashboard = new PrivateDashboardInput(
           this.model,
           () => this.#flowChanged(),
@@ -186,6 +198,12 @@ export class PrivateCliProgress {
             this.#dashboard.leave()
             return
           }
+          this.#nativeDashboard = await PrivateOpenTuiDashboard.create(
+            this.#dashboardCore!,
+            this.model,
+            this.columns(),
+            this.lifetime.rows?.() ?? process.stderr.rows ?? 24,
+          )
           this.#screenEntered = true
           this.#enqueue({
             bytes: Buffer.byteLength(SCREEN_ENTER),
@@ -390,6 +408,8 @@ export class PrivateCliProgress {
     this.#left = true
     if (this.#screen === 'ordinary' || this.#screen === 'closing') return
     this.#screen = 'closing'
+    this.#nativeDashboard?.close()
+    this.#nativeDashboard = undefined
     this.#dropFrames()
     clearTimeout(this.#deadlineTimer)
     this.#deadlineTimer = undefined
@@ -467,6 +487,8 @@ export class PrivateCliProgress {
           : 'observation ended'),
     })
     this.model.context = `Settled · execution: ${String(r.status)} · application outcome: ${JSON.stringify(result?.outcome ?? r.outcome ?? null)} · cleanup: ${r.cleanup ? 'unconfirmed' : 'settled'} · delivery: ${String(delivery?.status ?? 'not requested')}`
+    this.model.workspace.now = this.#now()
+    this.model.setWorkspacePhase('settled')
     const causes = this.#workspaceUsed
       ? [
           ...(r.status !== 'succeeded' && typeof r.message === 'string' ? [r.message] : []),
@@ -848,20 +870,24 @@ export class PrivateCliProgress {
       return
     }
     this.model.workspace.now = this.#now()
+    if (this.#dashboard?.active && this.#nativeDashboard) {
+      const owner = this.#nativeDashboard
+      return owner
+        .frame(columns, physicalRows, this.#dashboard.state, this.#dashboard.scroll, this.animation)
+        .then((frame) => {
+          if (this.#nativeDashboard !== owner || this.#screen !== 'live') return
+          this.#dashboard?.frame(frame.references, frame.scroll)
+          return this.write(frame.text)
+        })
+    }
     if (this.model.calls.size || this.model.views.size || this.#dashboard?.active) {
-      const inspecting = this.#dashboard?.active === true
       const frame = privateDashboardFrame(
         this.model,
         columns,
-        inspecting ? physicalRows : Math.min(16, Math.max(3, physicalRows - 4)),
+        Math.min(16, Math.max(3, physicalRows - 4)),
         this.animation,
-        inspecting,
-        this.#dashboard?.scroll,
-        this.#dashboard?.anchor,
-        this.#dashboard?.state,
       )
-      this.#dashboard?.frame(frame.references, frame.scroll, frame.anchor)
-      const erase = inspecting ? FRAME_PREFIX : this.#erase()
+      const erase = this.#erase()
       this.#visible = true
       this.#paintedRows = frame.lines.length
       const text = erase + frame.lines.join('\n')

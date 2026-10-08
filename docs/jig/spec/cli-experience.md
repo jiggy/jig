@@ -71,7 +71,7 @@ and visible incompleteness survive view retirement. Narrow layouts shrink
 workspace before hiding the cause and disclose clipping.
 
 The explicit workspace has stable Activity, Overview and attributed domain tabs,
-aligned collections, collapsed reports, record details, local filter/sort,
+labelled collection cards, collapsed reports, record details, local filter/sort,
 scrolling and explicitly selected references. All valid block types are reachable
 in supplied order. Wide layouts project selected literal details beside the list;
 selection alone never activates a reference. Narrow layouts keep collapsed rows

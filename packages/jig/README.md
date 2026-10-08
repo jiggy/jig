@@ -56,7 +56,7 @@ jig completion <bash|zsh|fish>
 
 Runs show an inline invocation tree and optional application views on terminal
 stderr. `jig run --display dashboard` opens a terminal workspace with Activity,
-the actual call tree, domain tabs, aligned records and expandable evidence once
+the actual call tree, domain tabs, record cards and expandable evidence once
 root execution begins. Initial review, input, file and runtime refusals stay in
 ordinary output.
 Wide layouts show selected record details beside the list. Enter opens full
@@ -72,6 +72,11 @@ for nonanimated summaries. `--json` and effective `--receive` preserve exact
 machine/channel output. Flow authors compose views through the portable
 [user-updates agreement](https://jig.md/guide/channels), without terminal code or
 host-specific domain adapters.
+
+The dashboard uses pinned OpenTUI Core, installed with Jig and loaded only for
+an eligible explicit dashboard. Missing native display support refuses before
+execution with `JIG_DASHBOARD_UNAVAILABLE`; restore the complete installation or
+select `--display plain`. Flows and the user-updates SDK do not depend on OpenTUI.
 
 `review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.

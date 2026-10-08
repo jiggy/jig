@@ -301,7 +301,9 @@ const displayCell = (model: PrivateRunModel, publisher: string, value: Value): s
   value !== null && typeof value === 'object'
     ? privateUpdateText(model.resolve(publisher, value).label)
     : cell(value)
-function recordReferences(record: PrivateWorkspaceRecord | undefined): Reference[] {
+export function privateDashboardReferences(
+  record: PrivateWorkspaceRecord | undefined,
+): Reference[] {
   const result: Reference[] = [],
     seen = new Set<string>()
   const add = (reference: Reference) => {
@@ -334,7 +336,7 @@ function progressText(block: Extract<DetailBlock, { kind: 'progress' }>, width: 
   }
   return `${privateUpdateText(block.label)} ${count}`
 }
-function* detailLines(
+export function* privateDashboardDetailLines(
   model: PrivateRunModel,
   record: PrivateWorkspaceRecord,
   width: number,
@@ -496,7 +498,8 @@ const duration = (ms: number) => `${Math.max(0, Math.floor(ms / 1000))}s`
 type WorkspaceTone = 'heading' | 'secondary' | 'warning' | 'error' | 'success' | 'selection'
 const attentionTone = (priority: number): WorkspaceTone =>
   priority === 2 || priority >= 4 ? 'error' : 'warning'
-/** Fixed workspace shell; only the bounded body scrolls. Ordinary output stays separate. */
+/** Bounded textual projection for inline output, compact native surfaces and
+ * navigation overlays. This projection owns no terminal or renderer lifetime. */
 export function privateDashboardFrame(
   model: PrivateRunModel,
   width: number,
@@ -515,7 +518,7 @@ export function privateDashboardFrame(
     panel = panels.at(-1),
     compact = width < 40 || height < 10
   const lines: string[] = [],
-    references = recordReferences(model.record)
+    references = privateDashboardReferences(model.record)
   let frameBytes = 0,
     clipped = false
   const commit = (rendered: string) => {
@@ -725,7 +728,9 @@ export function privateDashboardFrame(
           : ['No references in the selected record']
       else {
         const record = model.records().find((record) => record.key === panel.key)
-        content = record ? detailLines(model, record, width) : ['Selected record unavailable']
+        content = record
+          ? privateDashboardDetailLines(model, record, width)
+          : ['Selected record unavailable']
       }
       const requested = 'scroll' in panel ? panel.scroll : 0
       // Retain only the visible page. Counting remaining lines is bounded by the
@@ -912,7 +917,7 @@ export function privateDashboardFrame(
       offset = Math.max(0, Math.min(desired, Math.max(0, body.length - bodyRoom)))
       if (sideBySide) {
         const detail: string[] = ['Selected detail · Enter expand · r references', '']
-        for (const line of detailLines(model, model.record!, detailWidth, true)) {
+        for (const line of privateDashboardDetailLines(model, model.record!, detailWidth, true)) {
           if (detail.length >= bodyRoom) {
             clipped = true
             break
@@ -1266,7 +1271,9 @@ export class PrivateDashboardInput {
     const page =
       text === ']' || text === '\u001b[6~' ? 3 : text === '[' || text === '\u001b[5~' ? -3 : 0
     if (panel?.kind === 'references') {
-      const refs = this.#references.length ? this.#references : recordReferences(this.model.record)
+      const refs = this.#references.length
+        ? this.#references
+        : privateDashboardReferences(this.model.record)
       if (delta) {
         const index = refs.findIndex((r) => referenceKey(r) === panel.selected)
         panel.selected =
@@ -1340,7 +1347,7 @@ export class PrivateDashboardInput {
     this.change()
   }
   #chooseReference(): void {
-    const refs = recordReferences(this.model.record)
+    const refs = privateDashboardReferences(this.model.record)
     this.#references = refs
     this.#push({
       kind: 'references',

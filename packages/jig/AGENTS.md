@@ -285,7 +285,7 @@ admitted FLOW packages.
   Explicit dashboard instead owns one alternate screen after trusted root execution
   admission, keeping initial input/review/runtime refusals in ordinary output,
   retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
-  responsive selected-record details, aligned collections, collapsed detail,
+  responsive selected-record details, labelled collection cards, collapsed detail,
   newest-first Activity with expandable setup, actual collapsible Overview and contextual
   keys serve progressive disclosure without terminal author callbacks. Attention
   remains attributed and reachable from every view. Diagnostic reports have a
@@ -373,6 +373,18 @@ admitted FLOW packages.
 ## Verification
 
 Run presentation uses one bounded renderer-neutral model and one stderr writer.
+`src/cli-opentui.ts` owns native terminal panes and cell drawing. OpenTUI Core
+and its Tree-sitter peer are required exact npm dependencies, external to the
+CLI bundle; only an eligible explicit dashboard lazily loads and verifies native
+support before execution. Flows and public SDKs remain display-neutral. Core
+renders to memory using inert streams; Jig owns real input, signals, screen
+restoration and the bounded writer. Encode only published captured spans, charge
+SGR and UTF-8 bytes to the existing frame ceiling, disclose clipping, and fence
+pending native cell reads before destruction. Normal panes require 50x14; compact
+text preserves cause and controls down to 18x4.
+Pane caches include resolved reference labels and selected details, so host call
+settlement and verified delivery refresh existing views without another Flow
+report. Unchanged captured cells do not produce another terminal frame.
 Keep host calls keyed by actual publisher instance plus original own operation ID;
 accepted-send publisher identity stays private sideband through pending sends.
 View documents cannot supply source ancestry or host status. Admission is atomic,

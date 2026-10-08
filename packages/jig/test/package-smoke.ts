@@ -6,6 +6,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rename,
   rm,
   stat,
   symlink,
@@ -157,6 +158,10 @@ try {
     '@oven/bun-darwin-aarch64': '1.4.2',
     '@oven/bun-linux-x64-baseline': '1.3.3',
   })
+  assert.deepEqual(installedManifest.dependencies, {
+    '@opentui/core': '0.5.17',
+    'web-tree-sitter': '0.25.10',
+  })
   assert.equal(Object.hasOwn(installedManifest, 'private'), false)
   const sourceManifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert.equal(installedManifest.version, sourceManifest.version)
@@ -216,6 +221,39 @@ try {
   const executable = join(installed, 'bin', 'jig')
   const piLauncher = join(installed, 'libexec', 'agent', 'pi-agent-launcher.js')
   const command = join(consumer, 'node_modules', '.bin', 'jig')
+  // The ordinary script-disabled install must retain Core's native and peer
+  // closure. Plain commands and public authoring do not import that renderer.
+  const rendererCheck = join(consumer, 'renderer-check.mjs')
+  await writeFile(
+    rendererCheck,
+    `import { createRequire } from 'node:module';
+const resolve = createRequire(${JSON.stringify(join(installed, 'package.json'))});
+const path = resolve.resolve('@opentui/core');
+const core = await import(path);
+const buffer = core.OptimizedBuffer.create(1, 1, 'unicode');
+buffer.destroy();
+console.log(path);
+`,
+  )
+  const renderer = await run([runtime, rendererCheck], consumer)
+  const rendererDirectory = resolve(renderer.stdout.trim(), '..')
+  const rendererManifest = JSON.parse(
+    await readFile(join(rendererDirectory, 'package.json'), 'utf8'),
+  )
+  assert.equal(rendererManifest.version, '0.5.17')
+  const hiddenRenderer = `${rendererDirectory}.missing-test`
+  await rename(rendererDirectory, hiddenRenderer)
+  try {
+    assert.match((await run([command, '--help'], consumer)).stdout, /Jig runs reusable methods/)
+    const authoringCheck = join(consumer, 'authoring-without-renderer.mjs')
+    await writeFile(
+      authoringCheck,
+      "import { defineJig } from '@jigging/jig';\nconsole.log(typeof defineJig);\n",
+    )
+    assert.equal((await run([runtime, authoringCheck], consumer)).stdout, 'function\n')
+  } finally {
+    await rename(hiddenRenderer, rendererDirectory)
+  }
   assert.notEqual((await stat(executable)).mode & 0o111, 0)
   assert.notEqual((await stat(piLauncher)).mode & 0o111, 0)
   const launcher = await readFile(executable, 'utf8')

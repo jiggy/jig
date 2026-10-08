@@ -126,6 +126,8 @@ Give each child call a short, descriptive `intent` in `run.call(...)`; Overview
 uses that supplied label. Without it, the graph shows the reviewed slot name.
 Enter on a call shows its original operation ID and host lifecycle.
 
+The terminal renderer is included with Jig. Flows supply semantic reports, facts,
+counts and collections; they do not import a UI library or choose terminal widgets.
 Wide layouts show selected record details beside the list; narrower layouts use
 Enter for full detail. Tab changes views; arrows/j/k selects records. `c` selects
 a collection; `/` edits its filter and `s` changes sorting. Filter text is literal:
@@ -142,7 +144,7 @@ retained essential causes before the final result.
 `--display plain` selects nonanimated presentation. `--json` or effective
 `--receive` keeps exact existing output and takes precedence over the dashboard.
 The workspace needs terminal input/stderr and at least 18 columns/4 rows;
-smaller terminals release to plain output. Normal tables need 40 columns/10 rows.
+smaller terminals release to plain output. Normal panes need 50 columns/14 rows.
 Explicit dashboard with NO_COLOR uses screen controls without color. Activity is
 bounded session history; omission is disclosed, and result evidence remains separate.
 Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
