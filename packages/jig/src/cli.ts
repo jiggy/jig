@@ -4,6 +4,7 @@ import { lstat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
+import type { Reference } from '@jigging/user-updates'
 import manifest from '../package.json' with { type: 'json' }
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
 import {
@@ -963,13 +964,24 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     limitMs: parsed.timeoutMs,
     startedAt: privatePresentationNow(),
   })
-  if (!parsed.json && parsed.receive.length === 0)
+  const automaticPresentation = !parsed.json && parsed.receive.length === 0
+  const dashboardRequested = automaticPresentation && parsed.display === 'dashboard'
+  if (automaticPresentation && !dashboardRequested)
     await runtime.progress.configureDisplay(
       parsed.display,
       runtime.dashboardInput,
       runtime.dashboardInputStream,
     )
-  if (runtime.progress.workspaceActive) runtime.host.delivery?.enableInspection?.()
+  // Immutable delivery capture must be selected before publication, even though
+  // the screen waits for trusted root dispatch rather than prerequisite checks.
+  if (
+    dashboardRequested &&
+    runtime.terminalError &&
+    runtime.dashboardInput &&
+    typeof runtime.dashboardInputStream.setRawMode === 'function' &&
+    process.env.TERM !== 'dumb'
+  )
+    runtime.host.delivery?.enableInspection?.()
   runtime.progress.note(
     `Running ${asciiJsonString(parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`)}`,
   )
@@ -1013,6 +1025,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   const submissionId = runtime.createSubmissionId()
   let settledRoot: Extract<RootRunStatus, { state: 'terminal' }> | undefined
   const diagnostics = new PrivateRunDiagnostics()
+  let dashboardEntry: Promise<void> | undefined
+  let cleanupFailed = false
   let diagnosticSource = '[]'
   const writeLive = (text: string, diagnostic = false): void => {
     try {
@@ -1025,6 +1039,17 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
+    ...(dashboardRequested
+      ? {
+          dispatched: () => {
+            // Root execution never waits on terminal setup. The CLI owns and
+            // joins that setup before settlement or error presentation.
+            dashboardEntry ??= runtime.progress
+              .configureDisplay('dashboard', runtime.dashboardInput, runtime.dashboardInputStream)
+              .catch((error) => outputStop.abort(error))
+          },
+        }
+      : {}),
     ...(!parsed.json && parsed.receive.length === 0
       ? {
           call: (event: import('./cli-run-model.js').PrivateCallEvent) =>
@@ -1063,6 +1088,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         runtime.progress.diagnostic(decoded, operations)
         return
       }
+      if (dashboardRequested) runtime.progress.model.addDiagnostic(decoded, operations)
       const source = JSON.stringify(operations)
       if (source !== diagnosticSource) {
         diagnosticSource = source
@@ -1180,7 +1206,6 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       }
     }
     runtime.progress.complete()
-    let cleanupFailed = false
     let status: Extract<RootRunStatus, { state: 'terminal' }>
     try {
       status = await withProjectSession(
@@ -1223,6 +1248,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         throw error
       status = settledRoot
     }
+    await dashboardEntry
     let record = publicTerminal(status.terminal)
     runtime.progress.stopUpdates()
     const runDiagnostics = diagnostics.snapshot()
@@ -1268,13 +1294,42 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     if (runtime.signal?.aborted)
       record = { ...(record as Record<string, JsonValue>), command: { status: 'interrupted' } }
     let encodedRecord: Uint8Array
+    const artifact =
+      delivery?.status === 'written' && runtime.host.delivery?.preview
+        ? {
+            resolve: (publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) =>
+              publisher === 'root' &&
+              files.outputAttachments.includes(ref.attachment) &&
+              delivery.files?.some((f) => f.path === ref.path)
+                ? ref.path
+                : undefined,
+            preview: (path: string) => runtime.host.delivery!.preview!(path),
+          }
+        : undefined
     try {
       encodedRecord = canonicalJson(record)
     } catch {
       // File manifests or late observations may exceed JSON/0 even when the
       // accepted terminal fits. Preserve that terminal; never truncate it or
       // reinterpret a report failure as permission to repeat the Run.
-      await runtime.progress.closeWorkspace()
+      if (dashboardEntry !== undefined) {
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_REPORT_LIMIT',
+            'The expanded report exceeds JSON/0 limits. The execution terminal is preserved; inspect any result packet before starting new work.',
+          ),
+        )
+        await runtime.progress.settleDashboard(
+          {
+            ...(publicTerminal(status.terminal) as Record<string, JsonValue>),
+            ...(cleanupFailed
+              ? { cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } }
+              : {}),
+            ...(delivery === undefined ? {} : { delivery }),
+          } as JsonValue,
+          artifact,
+        )
+      } else await runtime.progress.closeWorkspace()
       await emitTerminal(publicTerminal(status.terminal))
       runtime.writeError(
         renderDiagnostic(
@@ -1285,20 +1340,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     const terminal = status.terminal
-    await runtime.progress.settleDashboard(
-      decodeJson1(encodedRecord),
-      delivery?.status === 'written' && runtime.host.delivery?.preview
-        ? {
-            resolve: (publisher, ref) =>
-              publisher === 'root' &&
-              files.outputAttachments.includes(ref.attachment) &&
-              delivery.files?.some((f) => f.path === ref.path)
-                ? ref.path
-                : undefined,
-            preview: (path) => runtime.host.delivery!.preview!(path),
-          }
-        : undefined,
-    )
+    await runtime.progress.settleDashboard(decodeJson1(encodedRecord), artifact)
     await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded' && !presentation)
       runtime.progress.note(
@@ -1335,6 +1377,21 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     if (runtime.signal?.aborted) return 2
     return status.terminal.status === 'succeeded' ? 0 : status.terminal.status === 'failed' ? 1 : 2
+  } catch (error) {
+    await dashboardEntry
+    if (dashboardEntry !== undefined && !runtime.signal?.aborted) {
+      // No terminal is invented when command observation failed after dispatch.
+      // Owned project cleanup has already run through withProjectSession.
+      const exitCode = renderFailure(error, runtime)
+      await runtime.progress.settleDashboard({
+        status: 'unknown',
+        message:
+          'The command could not confirm an execution result. Inspect any result and effects before starting new work.',
+        ...(cleanupFailed ? { cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } } : {}),
+      })
+      return exitCode
+    }
+    throw error
   } finally {
     try {
       await files.close()
@@ -1398,10 +1455,21 @@ function parseReview(
 }
 
 /** Private installed-launcher seam; it deliberately exposes no package API. */
-export function privateCliCommandLifetimeMs(arguments_: readonly string[]): number {
+export function privateCliCommandLifetimeMs(
+  arguments_: readonly string[],
+  interactiveDashboard = false,
+): number | null {
   if (arguments_[0] !== 'run') return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   try {
-    return privateRootlessCommandLifetime(parseRun(arguments_).timeoutMs)
+    const parsed = parseRun(arguments_)
+    if (
+      interactiveDashboard &&
+      parsed.display === 'dashboard' &&
+      !parsed.json &&
+      parsed.receive.length === 0
+    )
+      return null
+    return privateRootlessCommandLifetime(parsed.timeoutMs)
   } catch {
     // `main` renders invalid invocations inside this short bounded envelope.
     return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS

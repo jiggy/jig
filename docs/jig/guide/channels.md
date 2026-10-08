@@ -134,11 +134,10 @@ Enter then opens the chosen record, call or verified immutable file preview.
 Brackets/Page keys scroll details. Escape returns from a local panel before
 leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
 and waits for cleanup. After execution, cleanup and delivery settle, result
-inspection is read-only and Ctrl-C simply closes it. Its separate visible
-countdown closes after 60 seconds of inactivity, bounded by five minutes and any
-earlier command limit. Accepted navigation refreshes the idle timer; screen
-refreshes and updates do not. Unknown Linux
-lifetime skips settled inspection. Leaving restores your terminal and prints
+inspection is read-only and stays open until q, Escape or keyboard Ctrl-C, subject
+to any explicit enclosing command limit. Initial input, review, file and runtime
+refusals stay in ordinary output; the workspace opens only once root execution
+begins. Leaving restores your terminal and prints
 retained essential causes before the final result.
 `--display plain` selects nonanimated presentation. `--json` or effective
 `--receive` keeps exact existing output and takes precedence over the dashboard.

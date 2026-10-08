@@ -23,6 +23,7 @@ import {
 import {
   PRIVATE_PRESENTATION_DEADLINE_ENV,
   privateConstrainPresentationDeadline,
+  privatePresentationDeadline,
 } from './root-run-timeout-policy.js'
 
 const MARKER = 'JIG_PRIVATE_FILE_OWNER'
@@ -104,7 +105,7 @@ export async function privateOwnFileCommand(
   command: readonly string[],
   arguments_: readonly string[],
   signal: AbortSignal | undefined,
-  lifetimeMs: number,
+  lifetimeMs: number | null,
   onStaged?: () => Promise<void>,
 ): Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }> {
   if (!['linux', 'darwin'].includes(process.platform))
@@ -310,13 +311,20 @@ export async function privateOwnFileCommand(
       await native?.close()
       throw error
     })
-  const presentationDeadline = privateConstrainPresentationDeadline(process.env, lifetimeMs)
+  // Interactive inspection has no default command cap. An explicit outer
+  // constraint remains inherited, and cancellation still owns bounded teardown.
+  const presentationDeadline =
+    lifetimeMs === null
+      ? privatePresentationDeadline(process.env)
+      : privateConstrainPresentationDeadline(process.env, lifetimeMs)
   const child = spawn(command[0]!, [...command.slice(1), ...arguments_], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       [MARKER]: JSON.stringify(selected),
-      [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline),
+      ...(presentationDeadline === undefined
+        ? {}
+        : { [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline) }),
     },
     stdio: 'inherit',
   })
@@ -349,7 +357,10 @@ export async function privateOwnFileCommand(
   const interrupt = () => stop(PRIVATE_FILE_COMMAND_SETTLEMENT_MS)
   signal?.addEventListener('abort', interrupt, { once: true })
   if (signal?.aborted) interrupt()
-  const timer = setTimeout(() => stop(PRIVATE_FILE_COMMAND_STOP_GRACE_MS), lifetimeMs)
+  const timer =
+    lifetimeMs === null
+      ? undefined
+      : setTimeout(() => stop(PRIVATE_FILE_COMMAND_STOP_GRACE_MS), lifetimeMs)
   let exit: { exitCode: number | null; signal: NodeJS.Signals | null }
   try {
     exit = await completion
@@ -608,10 +619,15 @@ async function recoverCommand(
   command: readonly string[],
   args: readonly string[],
   recovery: PrivateFileRecovery,
-  inheritedPresentationDeadline: number,
+  inheritedPresentationDeadline: number | undefined,
 ): Promise<Record<string, JsonValue>> {
   const presentationDeadline = privateConstrainPresentationDeadline(
-    { ...process.env, [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(inheritedPresentationDeadline) },
+    {
+      ...process.env,
+      ...(inheritedPresentationDeadline === undefined
+        ? {}
+        : { [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(inheritedPresentationDeadline) }),
+    },
     30_000,
   )
   const child = spawn(command[0]!, [...command.slice(1), ...args], {

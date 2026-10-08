@@ -52,8 +52,9 @@ uses a bounded noninteractive inline region on suitable stderr; it borrows no
 input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
 use nonanimated summaries. Explicit dashboard requires terminal stdin and stderr,
 independently of stdout; otherwise explain the plain fallback once. It owns one
-alternate screen after effective argument/target selection. Earlier installed
-launcher and delegation failures remain ordinary diagnostics. Explicit dashboard
+alternate screen only after trusted root execution admission crosses the dispatch
+boundary. Initial review, input, file, output and runtime prerequisite failures
+remain ordinary diagnostics. Entry does not depend on application views or updates. Explicit dashboard
 with NO_COLOR keeps screen controls without color. JSON and
 effective reception retain their exact output and disable automatic Flow observation.
 No project entrypoint can choose display mode.
@@ -91,14 +92,16 @@ settle, an inspector still open shows literal settled facts and read-only result
 if the operator has not navigated, it selects the root publisher's landing view
 or first retained root view and its first row when present.
 q/Escape/Ctrl-C then closes presentation without changing admitted outcome.
-No Flow or channel remains alive for inspection. Inspection closes after 60 seconds
-of inactivity and has an absolute five-minute limit. It intersects any earlier
-enclosing command limit; its countdown is separate from the execution limit.
-Accepted navigation refreshes only an unexpired idle lease. Repaints, updates,
-resizes and preview completion cannot refresh it or revive expired inspection.
-Execution elapsed time freezes at settlement. Unknown Linux command lifetime skips settled
-inspection. An expiring presentation lease leaves live execution running through
-its ordinary owner; it never extends an execution timer. Every exit releases preview,
+No Flow or channel remains alive for inspection. Inspection has no built-in idle
+or absolute expiry; it remains open until the operator leaves, input/output fails
+or an external interruption closes it. Explicit inherited enclosing command
+constraints still apply, and no input or repaint extends them. Eligible interactive
+effective dashboard commands omit the default enclosing presentation lifetime,
+while setup, Run execution, cancellation and cleanup keep their own bounds.
+Execution elapsed time freezes at settlement. An expiring explicit presentation
+constraint leaves live execution running through its ordinary owner; it never
+extends an execution timer. Immutable delivery inspection is selected before
+capture/publication even though screen entry waits for dispatch. Every exit releases preview,
 input and presentation owners. Auto/plain emit the latest retained summaries
 with ended/incomplete context and exit promptly.
 
@@ -469,10 +472,10 @@ recorded execution outcome; exit 1 means invalid/unavailable report, incomplete
 file verification or output failure; exit 2 means external interruption.
 Explicit JSON emits the unchanged decoded report even when file capture is
 incomplete, with findings on stderr and exit 1. Invalid reports emit no fabricated
-record. Terminal text is escaped literal data. Saved inspection uses the same
-60-second idle and five-minute absolute caps and respects inherited presentation
-constraints. It acquires no execution lifetime: the Linux live-Run restriction
-for unknown enclosing lifetime does not prevent standalone saved inspection.
+record. Terminal text is escaped literal data. Saved inspection remains open until q, contextual Escape or keyboard Ctrl-C,
+subject to explicit inherited presentation constraints and input/output failure
+or external interruption. It acquires no execution lifetime and has no built-in
+idle or absolute expiry on any supported host.
 
 The CLI's shared presentation and progress modules own human formatting;
 command branches supply facts. Installed-launcher errors follow the same

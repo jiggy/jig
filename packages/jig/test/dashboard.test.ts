@@ -1253,7 +1253,7 @@ test('zero physical dimensions draw nothing and settled facts/footer remain phas
     delivery: 'written',
     completeness: 'Observation ended',
   })
-  model.setWorkspacePhase('settled', 5000)
+  model.setWorkspacePhase('settled')
   model.workspace.now = 1000
   for (const surface of [JSON.stringify(['root', 'jobs']), undefined]) {
     model.select(surface)
@@ -1469,7 +1469,7 @@ test('settlement offers the landing result without moving an operator who has na
     cleanup: 'complete',
     delivery: 'written',
   })
-  model.setWorkspacePhase('settled', 90000)
+  model.setWorkspacePhase('settled')
   expect(model.row?.id).toBe('a')
   model.workspace.now = 65000
   expect(privateDashboardFrame(model, 120, 45, false, true).lines[1]).toContain('elapsed 30s')
@@ -1730,14 +1730,13 @@ test('saved inspection exposes only recorded views and never promotes saved clai
   }
   model.select(model.surfaceKeys()[0])
   model.workspace.now = 31000
-  model.workspace.inspectionHardDeadline = 301000
   model.setWorkspaceFacts({
     execution: 'succeeded',
     application: '"done"',
     cleanup: 'complete',
     delivery: 'written',
   })
-  model.setWorkspacePhase('settled', 91000)
+  model.setWorkspacePhase('settled')
   const frame = privateDashboardFrame(model, 120, 45, true, true)
   const text = frame.lines.join('\n')
   expect(text).toContain('Saved result · read-only')
@@ -1755,8 +1754,7 @@ test('saved inspection exposes only recorded views and never promotes saved clai
     model.cycleView(1)
     expect(surfaces).toContain(model.surface)
   }
-  model.workspace.inspectionDeadline = model.workspace.inspectionHardDeadline
-  expect(privateDashboardFrame(model, 120, 45, false, true).lines[1]).toContain('(limit)')
+  expect(privateDashboardFrame(model, 120, 45, false, true).lines[1]).toBe('Recorded local data')
   model.setArtifacts(
     (_publisher, ref) => (ref.path === 'review.patch' ? 'captured-patch' : undefined),
     async () => ({ text: 'captured bytes', bytes: 14, clipped: false }),

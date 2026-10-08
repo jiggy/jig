@@ -282,7 +282,8 @@ admitted FLOW packages.
   printed phases remain history, and application notices own job outcomes.
   Complete notices have one Flow-attributed first line and indented continuation
   lines; escape every payload line without recognizing it as host prose.
-  Explicit dashboard instead owns one alternate screen after effective selection,
+  Explicit dashboard instead owns one alternate screen after trusted root execution
+  admission, keeping initial input/review/runtime refusals in ordinary output,
   retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
   responsive selected-record details, aligned collections, collapsed detail,
   newest-first Activity with expandable setup, actual collapsible Overview and contextual
@@ -385,15 +386,20 @@ within the same output ceiling; actually entered fullscreen omits summary replay
 
 `--display` is operator-only. Auto borrows no input; explicit inspection owns and
 restores raw/flowing stdin and cannot keep a finite command alive after exit.
-The private presentation deadline intersects every earlier enclosing command
-owner and a five-minute settled cap, with a 60-second idle lease and a derived
-45-second closing reserve. Only accepted input refreshes an unexpired idle lease;
-repaint, resize and preview completion cannot extend it;
-presentation never waives enforcement. Unknown Linux lifetime skips inspection.
+Inspection has no local idle or absolute expiry. q, contextual Escape and settled
+keyboard Ctrl-C close it; input/output loss and external interruption still close
+and restore it. Any explicit inherited presentation constraint remains a minimum
+across enclosing owners, with a 45-second closing reserve for finite command
+timers. Only an eligible interactive effective dashboard omits the default file
+and delegation command envelope; machine modes and setup/cleanup owners retain
+their bounds. Run timeouts and explicit enforcement timers remain unchanged.
 Verify mixed-block traversal, draft filter/reference/attention modes, exact size
 cutoffs, per-surface identity, escaped attention admission, nearly-timeout batched
 exit, phase-aware signals and screen restoration on setup/output exceptions.
-Post-settlement inspection owns no execution/channel lifetime. Its artifact
+Trusted root admission, rather than Flow views or elapsed time, starts screen
+entry; the CLI joins entry before settlement. Early host/call/diagnostic evidence
+remains in the model. Post-settlement inspection owns no execution/channel
+lifetime. Select immutable delivery capture before publication. Its artifact
 resolver uses verified delivery and one immutable bounded capture, never mutable
 destination reads. Test redirected stdout, idle stdin, split/batched keys,
 post-settlement Ctrl-C, narrow/Unicode frames, reference/scroll identity and late

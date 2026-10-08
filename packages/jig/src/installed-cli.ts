@@ -188,17 +188,24 @@ async function runWithEnvironment(
 
   try {
     const recovery = privateFileRecovery()
+    const commandLifetimeMs = privateCliCommandLifetimeMs(
+      arguments_,
+      process.stdin.isTTY === true &&
+        process.stderr.isTTY === true &&
+        typeof process.stdin.setRawMode === 'function' &&
+        process.env.TERM !== 'dumb',
+    )
     if (recovery === undefined && privateNeedsFileOwner(arguments_)) {
       return await privateOwnFileCommand(
         [executablePath, ...BUN_POLICY, installedCliPath],
         arguments_,
         signal,
-        privateCliCommandLifetimeMs(arguments_),
+        commandLifetimeMs,
       )
     }
     if (process.platform === 'linux') {
       const delegation = await acquireOrReexecutePrivateRootlessLinux({
-        commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
+        commandLifetimeMs,
         commandArguments: arguments_,
         ...(signal === undefined ? {} : { signal }),
       })

@@ -69,7 +69,7 @@ from the terminal view; the machine record keeps that exact value.
 In an explicit dashboard, diagnostic text retained in a collapsed Activity entry
 may not have been read. Its complete bounded final evidence remains visible.
 The [workspace controls](channels.md#observe-the-work) explain expandable reports,
-attributed causes and the separate read-only inspection countdown. Closing that
+attributed causes and read-only result inspection. Closing that
 workspace restores the terminal before Jig prints the final result.
 Lists and multiline text use ordinary YAML formatting;
 strings remain quoted where needed to retain exact values.
@@ -114,8 +114,9 @@ File previews use immutable captured bytes checked against the saved manifest;
 matching digests establish consistency with that manifest. Missing or mismatched
 files are reported, while already verified previews remain available. Live Flow
 tabs and call history are not retained in current packets and are not reconstructed.
-The inspector closes after 60 seconds of inactivity or five minutes in total,
-subject to any earlier command limit. Press `q` to close it sooner.
+The inspector stays open until `q`, Escape or keyboard Ctrl-C, subject to any
+explicit enclosing command limit. Input/output failure or external interruption
+also closes it and releases its retained evidence.
 
 Exit 0 means the saved report and files were read consistently, even if that report
 records a failed Run. Exit 1 means invalid or unavailable evidence, incomplete

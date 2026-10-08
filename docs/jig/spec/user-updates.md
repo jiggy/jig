@@ -283,9 +283,13 @@ stdout semantics and disable automatic observation/dashboard; dashboard cannot o
 
 ### Workspace and navigation
 
-After effective arguments and any target selection, explicit dashboard owns one
-alternate screen on stderr. Earlier installed startup/selection/delegation failures
-remain ordinary diagnostics. One fixed shell shows the actual target, host state,
+After effective arguments and target selection, explicit dashboard waits for
+trusted root execution admission before owning one alternate screen on stderr.
+Initial review, input, files, output and runtime prerequisite failures remain
+ordinary diagnostics. Entry is independent of application views or update ports;
+early host stages, call observations and diagnostics stay in the retained model.
+Immutable delivery inspection is selected before capture/publication, without
+requiring the screen to be open. One fixed shell shows the actual target, host state,
 elapsed execution limit, stable Activity/Overview/attributed application tabs,
 attention and contextual help. Only the body scrolls. Activity is the fallback
 landing; the first eligible root landing hint may select a view before human
@@ -374,25 +378,28 @@ keeps them inside its workspace, then restores the original screen and commits
 complete retained essential causes in awaited batches of at most 32 KiB before
 final stdout. Admission is not successful output delivery. Closing fences callbacks,
 discards undispatched replaceable frames, preserves complete required writes and
-restores prior raw/flowing input. A 45-second conservative presentation reserve
-before enclosing command limits covers at most 16 queued/in-flight writes,
+restores prior raw/flowing input. For finite enclosing command limits, a
+45-second conservative presentation reserve covers at most 16 queued/in-flight writes,
 16 cause batches, two controls and one final stdout write under the installed
 one-second write timeout, plus release margin. Actual output loss or external
 hard termination can prevent restoration/final output; cleanup ownership remains.
+Inherited presentation constraints use an epoch reference with monotonic elapsed
+time within each process. Host-clock changes between coordinator startups can
+shift that reference; independent execution and command timers remain authoritative.
 
 Live q/standalone Escape/input EOF restores input/screen and continues inline once
 without cancelling or re-entering later. Do not replay routine history. Ctrl-C and
 live shutdown use existing cancellation and join cleanup. After all execution,
 channels, attempted cleanup and delivery settle, an open workspace becomes read-only
 with separate literal execution/application/cleanup/delivery facts. It owns no live
-Flow, channel or execution owner. Inspection closes after 60 seconds of inactivity
-and is capped at five minutes in total, intersected
-with the minimum earlier presentation constraint from every enclosing command
-owner; its visible countdown is separate from the execution limit. Accepted
-navigation refreshes only an unexpired idle lease; repaint, resize, updates and
-preview completion never do. An expiring
-live lease continues ordinary execution. Missing reliable Linux lifetime skips
-settled inspection; no presentation path extends or clears enforcement timers.
+Flow, channel or execution owner. Inspection has no built-in idle or absolute
+expiry. Any explicit inherited presentation constraint remains the minimum across
+enclosing owners and cannot be refreshed by input, repaint, resize, updates or
+preview completion. Eligible interactive effective dashboard commands omit only
+the default enclosing presentation lifetime; setup, Run execution, cancellation
+and cleanup retain their bounds. An expiring explicit presentation constraint
+continues live execution through its ordinary owner; no presentation path extends
+or clears execution enforcement timers.
 q/Escape/keyboard Ctrl-C then closes without changing admitted outcome. External
 settled shutdown preserves frozen facts and the existing interrupted process status,
 without claiming execution cancellation. Every exit releases input/preview/screen.

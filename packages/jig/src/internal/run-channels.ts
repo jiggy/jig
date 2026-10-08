@@ -24,6 +24,8 @@ import {
 /** Command-local presentation. Its callbacks confer no execution authority. */
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
+  /** Trusted root admission crossed the execution boundary; not a Flow claim. */
+  dispatched?(): void
   call?(event: PrivateCallEvent): void
   readonly updates?: {
     open(port: string): PrivateUserUpdateSource

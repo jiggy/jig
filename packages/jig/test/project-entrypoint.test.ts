@@ -113,6 +113,16 @@ test('explicit options replace complete defaults, with paths resolved by origin'
   expect(privateNeedsFileOwner(args)).toBe(true)
 })
 
+test('effective entrypoint reception retains the finite command envelope despite a dashboard option', () => {
+  const args = resolveProjectEntrypoint(
+    'binding:factory --receive progress --timeout 8m',
+    ['--display', 'dashboard'],
+    '/project',
+  )
+  expect(parseRun(args)).toMatchObject({ display: 'dashboard', receive: ['progress'] })
+  expect(privateCliCommandLifetimeMs(args, true)).toBe(780_000)
+})
+
 test('file defaults are references, with fresh input capture deferred until invocation', () => {
   const args = resolveProjectEntrypoint(
     'binding:factory --input @missing.json --out result',

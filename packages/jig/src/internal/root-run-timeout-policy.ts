@@ -2,13 +2,16 @@ export const PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS = 30_000
 export const PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS = 24 * 60 * 60_000
 export const PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS = 5 * 60_000
 export const PRIVATE_PRESENTATION_CLOSE_RESERVE_MS = 45_000
-export const PRIVATE_SETTLED_INSPECTION_MS = 60_000
-export const PRIVATE_MAX_SETTLED_INSPECTION_MS = 300_000
 export const PRIVATE_PRESENTATION_DEADLINE_ENV = 'JIG_PRIVATE_PRESENTATION_DEADLINE'
 
-/** Same-host monotonic time, including across trusted coordinator reexecution. */
+/**
+ * Epoch-referenced presentation time, advancing monotonically within one process.
+ * Bun's hrtime origin is process-local. The epoch reference preserves normal
+ * cross-process scalar meaning; host-clock changes between startups can shift it.
+ * Independent execution and command timers remain the enforcement authorities.
+ */
 export function privatePresentationNow(): number {
-  return Number(process.hrtime.bigint() / 1_000_000n)
+  return Math.floor(performance.timeOrigin + performance.now())
 }
 
 /** This private scalar can constrain presentation only; it is never launch authority. */
@@ -32,38 +35,6 @@ export function privateConstrainPresentationDeadline(
   const local = Math.max(0, now + lifetimeMs - PRIVATE_PRESENTATION_CLOSE_RESERVE_MS)
   const inherited = privatePresentationDeadline(environment)
   return Math.min(local, inherited ?? local)
-}
-
-export function privateSettledInspectionDeadline(
-  inherited: number | undefined,
-  platform: NodeJS.Platform,
-  now = privatePresentationNow(),
-): number {
-  return Math.min(
-    now + PRIVATE_SETTLED_INSPECTION_MS,
-    privateInspectionHardDeadline(inherited, platform, now),
-  )
-}
-
-/** Read-only navigation may refresh idle time, never this immutable hard bound. */
-export function privateInspectionHardDeadline(
-  inherited: number | undefined,
-  platform: NodeJS.Platform,
-  now = privatePresentationNow(),
-  standalone = false,
-): number {
-  if (!standalone && platform === 'linux' && inherited === undefined) return now
-  return Math.min(now + PRIVATE_MAX_SETTLED_INSPECTION_MS, inherited ?? Infinity)
-}
-
-export function privateRefreshInspectionDeadline(
-  deadline: number,
-  hard: number,
-  now = privatePresentationNow(),
-): number | undefined {
-  // Input cannot resurrect an expired display before its queued timer runs.
-  if (now >= deadline || now >= hard) return undefined
-  return Math.min(now + PRIVATE_SETTLED_INSPECTION_MS, hard)
 }
 
 export function requirePrivateRootRunTimeout(value: number): number {

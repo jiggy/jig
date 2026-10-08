@@ -40,11 +40,18 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.
-  Its private presentation constraint uses common-host monotonic milliseconds.
-  Seed it before an enclosing file-command child/timer or Linux delegation timer,
+  Its private presentation constraint uses epoch-referenced milliseconds from
+  `Math.floor(performance.timeOrigin + performance.now())`, advancing monotonically
+  within one process and retaining normal scalar meaning across Bun reexecution.
+  Do not use process-relative `hrtime` as an inherited absolute deadline. Host-clock
+  adjustments between process startups can shift the epoch reference; independent
+  execution and command timers remain the enforcement authorities.
+  Seed it before a finite enclosing file-command or Linux delegation timer,
   reserve 45 seconds for bounded restoration/reporting, and preserve the minimum
-  inherited value through reexecution. It only shortens the screen lease; it
-  never grants execution or extends, restarts or clears an enforcement timer.
+  inherited value through reexecution. Eligible interactive effective dashboard
+  commands omit only the default command envelope; finite explicit constraints
+  and bounded setup, Run, cancellation and cleanup owners remain enforced. The
+  scalar only constrains presentation; it never grants execution authority.
 - Admission storage uses the closed native descriptor operations while SQLite
   retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
   Darwin resolves system ancestor aliases only for SQLite's visible filename;
@@ -531,7 +538,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   retained on pending sends; it never enters public channel envelopes. Host call
   observations carry only actual own operation identity, parent, slot, bounded
   intent, state/time and safe cause. Optional observation exceptions cannot
-  change dispatch or settlement. Explicit result inspection owns one bounded
+  change dispatch or settlement. Successful root execution-owner admission emits
+  one private best-effort dispatch observation before exchange, independent of
+  update ports or views. The CLI owns and joins asynchronous screen entry; earlier
+  refusals remain ordinary diagnostics. Explicit result inspection owns one bounded
   immutable copy of verified delivery bytes; it never reopens destination files,
   retains an execution owner or extends a Flow's deadline. Release preview
   buffers and private presentation connections on every exit.
@@ -564,19 +574,19 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through its authenticated transient-scope lifetime socket to the inner CLI.
   Keep that socket open for cooperative cancellation and confirmed cleanup;
   its closure remains the independent emergency scope fence.
-- Explicit dashboard inspection intersects its original presentation constraint
-  with 60 seconds of accepted-input idle time and an immutable five-minute cap.
-  Check both idle and hard expiry before refreshing on input; repaint, resize,
-  preview completion and unsupported controls cannot refresh either. Contextual
-  Escape and literal filter keys retain their existing meanings. Linux without a reliable inherited constraint
-  closes settled presentation immediately; live presentation expiry returns to
-  ordinary output without requesting cancellation. File publication and preview
-  retention never waive the original command timer. External interruption after
+- Explicit dashboard inspection has no local idle or absolute expiry. It remains
+  read-only until q, contextual Escape or settled keyboard Ctrl-C. Literal filter
+  keys retain their existing meanings. Any inherited finite presentation deadline
+  still applies and cannot be refreshed by input, repaint or preview completion;
+  live presentation expiry returns to ordinary output without requesting
+  cancellation. File publication and preview retention never waive an explicit
+  command timer. Select immutable delivery inspection before capture/publication,
+  even while screen entry waits for successful root admission. External interruption after
   settlement closes presentation with the existing interruption exit status;
   keyboard Ctrl-C after settlement only closes inspection. Frozen result facts
   and all actual execution/cleanup deadlines remain unchanged.
-  Standalone saved inspection owns no execution lifetime; its local idle/hard
-  bounds apply on Linux too, intersecting any earlier inherited constraint.
+  Standalone saved inspection owns no execution lifetime or local expiry on any
+  supported host; any earlier inherited constraint still applies.
   It exits 0 for a valid consistent report even if recorded execution failed,
   1 for unavailable/invalid reports, incomplete files or output failure, and
   2 for external interruption. JSON remains the unchanged recorded value;
@@ -1006,12 +1016,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Native and installed-consumer qualification still establish actual enforcement.
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.
-- `workspace-progress.test.ts` covers private deadline minima, queued screen
-  entry/restoration, phase-aware interruption, escaped cause batching and full
+- `workspace-progress.test.ts` covers operator-controlled inspection, private
+  deadline minima, trusted dispatch versus initial refusal, effective machine
+  modes, queued screen entry/restoration, phase-aware interruption, escaped cause batching and full
   final diagnostics with injected streams and clocks. These portable cases do
-  not qualify common-clock subprocess behavior, terminal restoration or actual
+  include one owned Bun-to-Bun expired-constraint regression, but do not qualify
+  host-clock adjustments, terminal restoration or actual
   command expiry on another supported host. The native file-delivery inspection
-  cases separately verify immutable bytes and the unchanged hard command timer.
+  cases separately verify immutable bytes, explicit command limits and terminal
+  restoration after sustained inspection.
 - On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables
   `macos-process-controls.test.ts` and `macos-execution.test.ts` with the
   candidate native runtime outside an enclosing sandbox. They use finite

@@ -20,12 +20,7 @@ import {
   privateTruncateUpdate,
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-user-updates.js'
-import {
-  privateInspectionHardDeadline,
-  privatePresentationNow,
-  privateRefreshInspectionDeadline,
-  privateSettledInspectionDeadline,
-} from './internal/root-run-timeout-policy.js'
+import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
 
@@ -38,7 +33,6 @@ type WriteJob = {
 export interface PrivateProgressLifetime {
   readonly presentationDeadline?: number | undefined
   readonly clock?: () => number
-  readonly platform?: NodeJS.Platform
   readonly rows?: () => number
 }
 
@@ -61,7 +55,6 @@ export class PrivateCliProgress {
   #closingCommand = false
   #exitMessage: string | undefined
   #deadlineTimer: ReturnType<typeof setTimeout> | undefined
-  #inspectionHardDeadline: number | undefined
   #hostEntry = 0
   #paintedRows = 0
   #reportedViews = false
@@ -181,7 +174,7 @@ export class PrivateCliProgress {
           () => process.emit('SIGINT'),
           input,
           () => this.#leaveWorkspace(),
-          () => this.#inspectionInteraction(),
+          () => this.#withinCommandDeadline(),
         )
         if (this.#settled) this.#dashboard.markSettled()
         try {
@@ -208,11 +201,7 @@ export class PrivateCliProgress {
           }
           this.#screen = 'live'
           this.#dashboard.start()
-          this.#armDeadline(
-            this.#settled
-              ? this.model.workspace.inspectionDeadline
-              : this.lifetime.presentationDeadline,
-          )
+          this.#armDeadline()
           this.#write()
         } catch (error) {
           this.#exitMessage = 'Dashboard input unavailable; using plain display.\n'
@@ -312,9 +301,10 @@ export class PrivateCliProgress {
       })
   }
 
-  #armDeadline(deadline: number | undefined): void {
+  #armDeadline(): void {
     clearTimeout(this.#deadlineTimer)
     this.#deadlineTimer = undefined
+    const deadline = this.lifetime.presentationDeadline
     if (deadline === undefined || !this.#dashboard?.active) return
     const remaining = deadline - this.#now()
     if (remaining <= 0) {
@@ -327,7 +317,7 @@ export class PrivateCliProgress {
     this.#deadlineTimer = setTimeout(
       () => {
         this.#exitMessage = this.#settled
-          ? 'Results settled; dashboard inspection reached its idle or command limit. Inspect the result and any written output packet.\n'
+          ? 'Results settled; command lifetime limits dashboard inspection. Inspect the result and any written output packet.\n'
           : 'Command lifetime limits the dashboard; work continues in ordinary display.\n'
         this.#dashboard?.leave()
       },
@@ -335,16 +325,9 @@ export class PrivateCliProgress {
     )
   }
 
-  #inspectionInteraction(): boolean {
-    if (!this.#settled) return true
-    const deadline = this.model.workspace.inspectionDeadline
-    const hard = this.#inspectionHardDeadline
-    if (deadline === undefined || hard === undefined) return false
-    const refreshed = privateRefreshInspectionDeadline(deadline, hard, this.#now())
-    if (refreshed === undefined) return false
-    this.model.workspace.inspectionDeadline = refreshed
-    this.#armDeadline(refreshed)
-    return true
+  #withinCommandDeadline(): boolean {
+    const deadline = this.lifetime.presentationDeadline
+    return deadline === undefined || this.#now() < deadline
   }
 
   async inspectSavedResult(
@@ -380,19 +363,10 @@ export class PrivateCliProgress {
       async (path) => packet.preview(path),
     )
     this.model.workspace.now = this.#now()
-    const hard = privateInspectionHardDeadline(
-      this.lifetime.presentationDeadline,
-      this.lifetime.platform ?? process.platform,
-      this.#now(),
-      true,
-    )
-    const deadline = Math.min(this.#now() + 60_000, hard)
-    this.#inspectionHardDeadline = hard
-    this.model.workspace.inspectionHardDeadline = hard
-    this.model.setWorkspacePhase('settled', deadline)
+    this.model.setWorkspacePhase('settled')
     await this.configureDisplay('dashboard', usableInput, input)
     if (this.#dashboard?.active) {
-      this.#armDeadline(deadline)
+      this.#armDeadline()
       this.#write()
       await this.flush()
       await this.#dashboard.settled()
@@ -513,20 +487,9 @@ export class PrivateCliProgress {
     if (artifact) this.model.setArtifacts(artifact.resolve, artifact.preview)
     if (!this.#cancelled && this.#dashboard?.active) {
       const now = this.#now()
-      const deadline = privateSettledInspectionDeadline(
-        this.lifetime.presentationDeadline,
-        this.lifetime.platform ?? process.platform,
-        now,
-      )
-      this.#inspectionHardDeadline = privateInspectionHardDeadline(
-        this.lifetime.presentationDeadline,
-        this.lifetime.platform ?? process.platform,
-        now,
-      )
       this.model.workspace.now = now
-      this.model.workspace.inspectionHardDeadline = this.#inspectionHardDeadline
-      this.model.setWorkspacePhase('settled', deadline)
-      this.#armDeadline(deadline)
+      this.model.setWorkspacePhase('settled')
+      this.#armDeadline()
       this.#write()
       await this.flush()
       await this.#dashboard.settled()

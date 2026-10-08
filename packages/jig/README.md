@@ -56,14 +56,16 @@ jig completion <bash|zsh|fish>
 
 Runs show an inline invocation tree and optional application views on terminal
 stderr. `jig run --display dashboard` opens a terminal workspace with Activity,
-the actual call tree, domain tabs, aligned records and expandable evidence.
+the actual call tree, domain tabs, aligned records and expandable evidence once
+root execution begins. Initial review, input, file and runtime refusals stay in
+ordinary output.
 Wide layouts show selected record details beside the list. Enter opens full
 details; `!` opens retained causes, `d` opens attributed diagnostics, and `?`
 explains the current keys.
 q leaves while work continues inline; Escape first dismisses a local panel.
 Ctrl-C during work cancels and waits for cleanup. After work and delivery settle,
-Ctrl-C simply closes read-only result inspection. Its separate countdown lasts
-60 seconds of inactivity, bounded by five minutes and any earlier command limit.
+Ctrl-C simply closes read-only result inspection. Inspection stays open until you
+leave, subject to any explicit enclosing command limit.
 File previews use
 verified immutable delivery. Use `--display plain`
 for nonanimated summaries. `--json` and effective `--receive` preserve exact

@@ -1,19 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { RootAdministrationError } from '../src/administration/root.js'
+import { main, privateCliCommandLifetimeMs } from '../src/cli.js'
 import { PrivateCliProgress } from '../src/cli-progress.js'
 import { privateAttentionReceipt } from '../src/cli-run-model.js'
 import {
-  PRIVATE_MAX_SETTLED_INSPECTION_MS,
   PRIVATE_PRESENTATION_CLOSE_RESERVE_MS,
   PRIVATE_PRESENTATION_DEADLINE_ENV,
-  PRIVATE_SETTLED_INSPECTION_MS,
   privateConstrainPresentationDeadline,
-  privateInspectionHardDeadline,
   privatePresentationDeadline,
   privatePresentationNow,
-  privateRefreshInspectionDeadline,
   privateRootlessCommandLifetime,
-  privateSettledInspectionDeadline,
 } from '../src/internal/root-run-timeout-policy.js'
 
 class Input extends EventEmitter {
@@ -49,6 +49,407 @@ const priorTerm = process.env.TERM
 beforeAll(() => {
   process.env.TERM = 'xterm-256color'
 })
+
+test('only effective interactive dashboard selection omits the default command envelope', () => {
+  const dashboard = ['run', 'flow:flows/work', '--display', 'dashboard']
+  expect(privateCliCommandLifetimeMs(dashboard, true)).toBeNull()
+  expect(privateCliCommandLifetimeMs([...dashboard, '--timeout', '1ms'], true)).toBeNull()
+  expect(privateCliCommandLifetimeMs(dashboard, false)).toBe(330_000)
+  for (const machine of [['--json'], ['--receive', 'events']])
+    expect(privateCliCommandLifetimeMs([...dashboard, ...machine], true)).toBe(330_000)
+  for (const display of ['auto', 'plain'])
+    expect(
+      privateCliCommandLifetimeMs(['run', 'flow:flows/work', '--display', display], true),
+    ).toBe(330_000)
+  expect(privateCliCommandLifetimeMs(['review'], true)).toBe(300_000)
+})
+
+test('initial refusal never borrows stdin or writes alternate-screen controls', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-workspace-prerequisites-'))
+  try {
+    await mkdir(join(root, 'occupied'))
+    await writeFile(join(root, 'input.json'), '{invalid JSON')
+    const cases = [
+      { name: 'unreviewed project', failure: 'acquire' },
+      { name: 'missing runtime prerequisite', failure: 'acquire' },
+      { name: 'review required', failure: 'start' },
+      { name: 'invalid approved input', failure: 'terminal' },
+      { name: 'invalid input file', args: ['--input', '@input.json'] },
+      { name: 'invalid selected files', args: ['--attach', 'source=missing'] },
+      { name: 'occupied output destination', args: ['--out', 'occupied'] },
+    ]
+    for (const scenario of cases) {
+      const input = new Input()
+      let stderr = '',
+        closed = 0
+      const code = await main(
+        ['run', 'flow:flows/work', '--display', 'dashboard', ...(scenario.args ?? [])],
+        {
+          currentDirectory: root,
+          interactive: true,
+          terminalError: true,
+          terminalOutput: false,
+          dashboardInputStream: input as any,
+          host: {
+            async acquire() {
+              if (scenario.failure === 'acquire') throw new Error(scenario.name)
+              return {
+                rootAdministration: {
+                  async startRun() {
+                    if (scenario.failure === 'start')
+                      throw new RootAdministrationError('UNAVAILABLE', 'Review is required', {
+                        code: 'ADMISSION_MISSING',
+                      })
+                    return { runId: 'sha256:' + 'a'.repeat(64) }
+                  },
+                  async runStatus() {
+                    return {
+                      runId: 'sha256:' + 'a'.repeat(64),
+                      state: 'terminal',
+                      terminal: {
+                        status: 'failed',
+                        code: 'INVALID_INPUT',
+                        message: 'Input was refused before execution',
+                        diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+                      },
+                    }
+                  },
+                },
+                async close() {
+                  closed++
+                },
+              }
+            },
+          } as any,
+          writeStderr: async (text) => {
+            stderr += text
+          },
+          writeError: (text) => {
+            stderr += text
+          },
+          writeRecord: async () => {},
+          writeOutput: () => {},
+        },
+      )
+      expect(code).not.toBe(0)
+      expect(stderr).not.toContain(entered)
+      expect(stderr).not.toContain(restored)
+      expect(input.rawChanges).toEqual([])
+      expect(input.listenerCount('data')).toBe(0)
+      expect(closed).toBe(scenario.failure === 'start' || scenario.failure === 'terminal' ? 1 : 0)
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('trusted root dispatch opens short no-view Runs and updates-off; machine modes stay plain', async () => {
+  for (const mode of [[], ['--updates', 'off'], ['--json'], ['--receive', 'events']]) {
+    const input = new Input()
+    const machine = mode.includes('--json') || mode.includes('--receive')
+    let stderr = '',
+      stdout = '',
+      closed = 0,
+      settled = false
+    const timeline: string[] = []
+    const code = await main(['run', 'flow:flows/work', '--display', 'dashboard', ...mode], {
+      currentDirectory: '/project',
+      interactive: true,
+      terminalError: true,
+      terminalOutput: false,
+      dashboardInputStream: input as any,
+      host: {
+        async acquire(_project: string, options: any) {
+          expect(stderr).not.toContain(entered)
+          expect(input.isRaw).toBeFalse()
+          return {
+            rootAdministration: {
+              async startRun() {
+                timeline.push('DISPATCH')
+                expect(Boolean(options.channelOutput.dispatched)).toBe(!machine)
+                options.channelOutput.dispatched?.()
+                return { runId: 'sha256:' + 'a'.repeat(64) }
+              },
+              async runStatus() {
+                return {
+                  runId: 'sha256:' + 'a'.repeat(64),
+                  state: 'terminal',
+                  terminal: {
+                    status: 'failed',
+                    code: 'EXECUTION_FAILED',
+                    message: 'Failure after actual dispatch',
+                    diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+                  },
+                }
+              },
+            },
+            async close() {
+              closed++
+              timeline.push('OWNER_CLOSED')
+            },
+          }
+        },
+      } as any,
+      writeStderr: async (text) => {
+        stderr += text
+        timeline.push(text)
+        if (!settled && text.includes('Settled')) {
+          settled = true
+          expect(closed).toBe(1)
+          expect(stdout).toBe('')
+          queueMicrotask(() => input.emit('data', Buffer.from('q')))
+        }
+      },
+      writeRecord: async (text) => {
+        stdout += text
+        timeline.push('STDOUT')
+      },
+      writeOutput: (text) => {
+        stdout += text
+        timeline.push('STDOUT')
+      },
+      writeError: (text) => {
+        stderr += text
+      },
+    })
+    expect(code).toBe(1)
+    expect(input.isRaw).toBeFalse()
+    expect(closed).toBe(1)
+    if (machine) {
+      expect(settled).toBeFalse()
+      expect(stderr).not.toContain(entered)
+      expect(input.rawChanges).toEqual([])
+    } else {
+      expect(settled).toBeTrue()
+      expect(timeline.findIndex((text) => text.includes(entered))).toBeGreaterThan(
+        timeline.indexOf('DISPATCH'),
+      )
+      expect(timeline.indexOf('STDOUT')).toBeGreaterThan(
+        timeline.findIndex((text) => text.includes(restored)),
+      )
+    }
+    const value = JSON.parse(stdout)
+    const result = machine && mode.includes('--receive') ? value.result : value
+    expect(result.status).toBe('failed')
+    expect(result.code).toBe('EXECUTION_FAILED')
+  }
+})
+
+test('post-dispatch observation failure keeps read-only evidence and cleanup uncertainty until exit', async () => {
+  for (const closeFails of [false, true]) {
+    const input = new Input()
+    let stderr = '',
+      stdout = '',
+      closed = 0,
+      settled = false
+    const code = await main(['run', 'flow:flows/work', '--display', 'dashboard'], {
+      currentDirectory: '/project',
+      interactive: true,
+      terminalError: true,
+      terminalOutput: false,
+      dashboardInputStream: input as any,
+      host: {
+        async acquire(_project: string, options: any) {
+          options.channelOutput.diagnostic(Buffer.from('EARLY_RETAINED_DIAGNOSTIC\n'), [])
+          expect(stderr).not.toContain(entered)
+          return {
+            rootAdministration: {
+              async startRun() {
+                options.channelOutput.dispatched()
+                return { runId: 'sha256:' + 'a'.repeat(64) }
+              },
+              async runStatus() {
+                throw new RootAdministrationError('UNAVAILABLE', 'private observation failure')
+              },
+            },
+            async close() {
+              closed++
+              if (closeFails) throw new Error('private close failure')
+            },
+          }
+        },
+      } as any,
+      writeStderr: async (text) => {
+        stderr += text
+        if (!settled && text.includes('Settled')) {
+          settled = true
+          expect(closed).toBe(1)
+          expect(text).toContain('execution: unknown')
+          expect(text).toContain(closeFails ? 'cleanup: unconfirmed' : 'cleanup: complete')
+          expect(stdout).toBe('')
+          queueMicrotask(() => input.emit('data', Buffer.from('q')))
+        }
+      },
+      writeError: (text) => {
+        stderr += text
+      },
+      writeOutput: (text) => {
+        stdout += text
+      },
+      writeRecord: async (text) => {
+        stdout += text
+      },
+    })
+    expect(code).toBe(2)
+    expect(settled).toBeTrue()
+    expect(stdout).toBe('')
+    expect(stderr.slice(stderr.indexOf(entered), stderr.indexOf(restored))).toContain(
+      'EARLY_RETAINED_DIAGNOSTIC',
+    )
+    expect(stderr).not.toContain('private observation failure')
+    expect(stderr).not.toContain('private close failure')
+    expect(input.isRaw).toBeFalse()
+    expect(input.listenerCount('data')).toBe(0)
+  }
+})
+
+test('immutable inspection is enabled before delivery preparation and delayed screen entry', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-workspace-delivery-'))
+  try {
+    const input = new Input()
+    let inspection = false,
+      stderr = '',
+      stdout = '',
+      settled = false
+    const code = await main(
+      ['run', 'flow:flows/work', '--display', 'dashboard', '--out', 'result'],
+      {
+        currentDirectory: root,
+        interactive: true,
+        terminalError: true,
+        terminalOutput: false,
+        dashboardInputStream: input as any,
+        host: {
+          delivery: {
+            enableInspection() {
+              inspection = true
+              expect(stderr).not.toContain(entered)
+            },
+            async prepare() {
+              expect(inspection).toBeTrue()
+              expect(stderr).not.toContain(entered)
+            },
+            async publish() {
+              expect(inspection).toBeTrue()
+              return { status: 'written', destination: join(root, 'result'), files: [] }
+            },
+          },
+          async acquire(_project: string, options: any) {
+            return {
+              rootAdministration: {
+                async startRun() {
+                  options.channelOutput.dispatched()
+                  return { runId: 'sha256:' + 'a'.repeat(64) }
+                },
+                async runStatus() {
+                  return {
+                    runId: 'sha256:' + 'a'.repeat(64),
+                    state: 'terminal',
+                    terminal: {
+                      status: 'succeeded',
+                      outcome: 'done',
+                      output: null,
+                      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+                    },
+                  }
+                },
+              },
+              async close() {},
+            }
+          },
+        } as any,
+        writeStderr: async (text) => {
+          stderr += text
+          if (!settled && text.includes('Settled')) {
+            settled = true
+            expect(text).toContain('Delivery written')
+            queueMicrotask(() => input.emit('data', Buffer.from('q')))
+          }
+        },
+        writeError: (text) => {
+          stderr += text
+        },
+        writeOutput: (text) => {
+          stdout += text
+        },
+        writeRecord: async (text) => {
+          stdout += text
+        },
+      },
+    )
+    expect(code).toBe(0)
+    expect(settled).toBeTrue()
+    expect(JSON.parse(stdout).delivery.status).toBe('written')
+    expect(input.isRaw).toBeFalse()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('an expanded-report failure keeps its known terminal open until the operator leaves', async () => {
+  const input = new Input()
+  const terminal = {
+    status: 'succeeded',
+    outcome: 'done',
+    output: ['x'.repeat(8 * 1024 * 1024), 'y'.repeat(8 * 1024 * 1024 - 1024)],
+    diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+  }
+  let stderr = '',
+    stdout = '',
+    settled = false,
+    closed = 0
+  const code = await main(['run', 'flow:flows/work', '--display', 'dashboard'], {
+    currentDirectory: '/project',
+    interactive: true,
+    terminalError: true,
+    terminalOutput: false,
+    dashboardInputStream: input as any,
+    host: {
+      async acquire(_project: string, options: any) {
+        return {
+          rootAdministration: {
+            async startRun() {
+              options.channelOutput.dispatched()
+              options.channelOutput.diagnostic(Buffer.from('d'.repeat(4096)), [])
+              return { runId: 'sha256:' + 'a'.repeat(64) }
+            },
+            async runStatus() {
+              return { runId: 'sha256:' + 'a'.repeat(64), state: 'terminal', terminal }
+            },
+          },
+          async close() {
+            closed++
+          },
+        }
+      },
+    } as any,
+    writeStderr: async (text) => {
+      stderr += text
+      if (!settled && text.includes('Settled')) {
+        settled = true
+        expect(closed).toBe(1)
+        expect(text).toContain('Execution succeeded')
+        expect(stdout).toBe('')
+        queueMicrotask(() => input.emit('data', Buffer.from('q')))
+      }
+    },
+    writeError: (text) => {
+      stderr += text
+    },
+    writeOutput: (text) => {
+      stdout += text
+    },
+    writeRecord: async (text) => {
+      stdout += text
+    },
+  })
+  expect(code).toBe(2)
+  expect(settled).toBeTrue()
+  expect(JSON.parse(stdout).output).toEqual(terminal.output)
+  expect(stderr).toContain('JIG_REPORT_LIMIT')
+  expect(input.isRaw).toBeFalse()
+})
+
 afterAll(() => {
   if (priorTerm === undefined) delete process.env.TERM
   else process.env.TERM = priorTerm
@@ -59,7 +460,6 @@ function workspace(
     signal?: AbortSignal
     deadline?: number
     now?: () => number
-    platform?: NodeJS.Platform
     columns?: () => number
     rows?: () => number
   } = {},
@@ -74,7 +474,6 @@ function workspace(
     {
       presentationDeadline: options.deadline,
       clock: options.now,
-      platform: options.platform ?? 'darwin',
       rows: options.rows ?? (() => 24),
     },
   )
@@ -87,15 +486,47 @@ function workspace(
 }
 
 describe('private presentation deadline', () => {
-  test('accepted navigation refreshes only unexpired idle time inside immutable inspection bounds', () => {
-    expect(PRIVATE_MAX_SETTLED_INSPECTION_MS).toBe(300_000)
-    expect(privateInspectionHardDeadline(undefined, 'linux', 100, true)).toBe(300_100)
-    expect(privateInspectionHardDeadline(undefined, 'linux', 100)).toBe(100)
-    expect(privateRefreshInspectionDeadline(60_100, 300_100, 60_099)).toBe(120_099)
-    expect(privateRefreshInspectionDeadline(60_100, 300_100, 60_100)).toBeUndefined()
-    expect(privateRefreshInspectionDeadline(300_100, 300_100, 300_100)).toBeUndefined()
-    expect(privateRefreshInspectionDeadline(60_100, 60_100, 59_999)).toBe(60_100)
+  test('an expired constraint retains its meaning across owned Bun reexecution', async () => {
+    const deadline = privateConstrainPresentationDeadline(
+      {},
+      PRIVATE_PRESENTATION_CLOSE_RESERVE_MS + 75,
+    )
+    await pause(150)
+    const moduleUrl = new URL('../src/internal/root-run-timeout-policy.ts', import.meta.url).href
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '--eval',
+        `import { privatePresentationNow, privatePresentationDeadline, privateConstrainPresentationDeadline } from ${JSON.stringify(moduleUrl)};
+console.log(JSON.stringify({ now: privatePresentationNow(), inherited: privatePresentationDeadline(process.env), constrained: privateConstrainPresentationDeadline(process.env, 60_000) }));`,
+      ],
+      {
+        env: { ...process.env, [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(deadline) },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const timer = setTimeout(() => child.kill('SIGKILL'), 5_000)
+    try {
+      const [output, error, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code).toBe(0)
+      expect(error).toBe('')
+      const observation = JSON.parse(output)
+      expect(observation.inherited).toBe(deadline)
+      expect(observation.constrained).toBe(deadline)
+      expect(observation.now).toBeGreaterThan(deadline)
+    } finally {
+      clearTimeout(timer)
+      if (child.exitCode === null) child.kill('SIGKILL')
+      await child.exited
+    }
   })
+
   test('enclosing timers seed the earliest close bound once and preserve inherited time', () => {
     expect(PRIVATE_PRESENTATION_CLOSE_RESERVE_MS).toBe(45_000)
     const first = privateConstrainPresentationDeadline({}, 330_000, 1_000)
@@ -111,12 +542,6 @@ describe('private presentation deadline', () => {
       expect(
         privatePresentationDeadline({ [PRIVATE_PRESENTATION_DEADLINE_ENV]: text }),
       ).toBeUndefined()
-    expect(privateSettledInspectionDeadline(undefined, 'linux', 100)).toBe(100)
-    expect(privateSettledInspectionDeadline(undefined, 'darwin', 100)).toBe(
-      100 + PRIVATE_SETTLED_INSPECTION_MS,
-    )
-    expect(privateSettledInspectionDeadline(200, 'darwin', 100)).toBe(200)
-    expect(privateSettledInspectionDeadline(50, 'linux', 100)).toBe(50)
   })
   test('the host clock is monotonic and a shorter file-owner deadline dominates delegation', () => {
     const before = privatePresentationNow(),
@@ -130,13 +555,11 @@ describe('private presentation deadline', () => {
       130_000,
     )
     expect(delegated).toBe(file)
-    const settled = privateSettledInspectionDeadline(delegated, 'linux', 170_000)
-    expect(settled).toBe(175_000)
   })
 })
 
-describe('one bounded workspace lease', () => {
-  test('actual accepted keys extend settled idle inspection but never its five-minute or inherited bound', async () => {
+describe('one command-owned workspace', () => {
+  test('settled inspection has no idle or absolute cap; an explicit command deadline remains fixed', async () => {
     for (const inherited of [undefined, 90_000]) {
       let now = 100
       const input = new Input()
@@ -149,40 +572,29 @@ describe('one bounded workspace lease', () => {
           output: null,
         })
         await pause()
-        expect(progress.model.workspace.inspectionDeadline).toBe(60_100)
-        const hard = inherited ?? 300_100
-        expect(progress.model.workspace.inspectionHardDeadline).toBe(hard)
-        now = 59_100
+        now = inherited === undefined ? 21_600_100 : 89_999
         input.emit('data', Buffer.from('?'))
-        expect(progress.model.workspace.inspectionDeadline).toBe(Math.min(119_100, hard))
-        now = 61_000
         input.emit('data', Buffer.from('\u001b'))
         await pause(40)
         expect(input.isRaw).toBeTrue()
-        let last = progress.model.workspace.inspectionDeadline!
-        input.emit('data', Buffer.from('\u001b[999A'))
-        expect(progress.model.workspace.inspectionDeadline).toBe(last)
-        while (now + 30_000 < hard) {
-          now += 30_000
+        expect(progress.model.workspace.phase).toBe('settled')
+        if (inherited === undefined) input.emit('data', Buffer.from('q'))
+        else {
+          now = inherited
           input.emit('data', Buffer.from('\t'))
-          last = Math.min(now + 60_000, hard)
-          expect(progress.model.workspace.inspectionDeadline).toBe(last)
         }
-        now = hard
-        input.emit('data', Buffer.from('\t'))
         await settling
         expect(input.isRaw).toBeFalse()
-        expect(progress.model.workspace.inspectionDeadline).toBe(last)
       } finally {
         progress.close()
         await progress.flush()
       }
     }
   })
-  test('a queued key at idle expiry cannot resurrect the screen before the timer callback runs', async () => {
+  test('a queued key cannot evade an expired explicit enclosing deadline', async () => {
     let now = 100
     const input = new Input()
-    const progress = workspace(async () => {}, { now: () => now })
+    const progress = workspace(async () => {}, { now: () => now, deadline: 60_100 })
     try {
       await progress.configureDisplay('dashboard', true, input as any)
       const settling = progress.settleDashboard({
@@ -195,7 +607,6 @@ describe('one bounded workspace lease', () => {
       input.emit('data', Buffer.from('?'))
       await settling
       expect(input.isRaw).toBeFalse()
-      expect(progress.model.workspace.inspectionDeadline).toBe(60_100)
       expect(progress.model.workspace.facts?.application).toBe('"literal"')
     } finally {
       progress.close()
@@ -209,7 +620,7 @@ describe('one bounded workspace lease', () => {
       signals++
     }
     process.on('SIGINT', interrupted)
-    const progress = workspace(async () => {}, { platform: 'linux', now: () => 100 })
+    const progress = workspace(async () => {}, { now: () => 100 })
     const packet = {
       directory: '/selected/packet',
       record: { status: 'failed', code: 'recorded', message: 'recorded cause' },
@@ -223,8 +634,6 @@ describe('one bounded workspace lease', () => {
       const inspecting = progress.inspectSavedResult(packet, true, input as any)
       await pause()
       expect(input.isRaw).toBeTrue()
-      expect(progress.model.workspace.inspectionDeadline).toBe(60_100)
-      expect(progress.model.workspace.inspectionHardDeadline).toBe(300_100)
       expect(progress.model.workspace.recorded).toBeTrue()
       expect(progress.model.calls.size).toBe(0)
       input.emit('data', Buffer.from([3]))
@@ -266,7 +675,7 @@ describe('one bounded workspace lease', () => {
       else delete (process.stderr as any).columns
     }
   })
-  test('an already expired private lease skips entry and cannot restart at settlement', async () => {
+  test('an already expired enclosing command deadline skips entry and cannot restart at settlement', async () => {
     let text = ''
     const input = new Input()
     const progress = workspace(
@@ -455,7 +864,7 @@ describe('one bounded workspace lease', () => {
     progress.close()
     await progress.flush()
   })
-  test('Linux without reliable enclosing lifetime immediately releases settled presentation', async () => {
+  test('without an enclosing deadline, settled results wait for operator exit', async () => {
     let text = ''
     const input = new Input(),
       stop = new AbortController()
@@ -463,13 +872,21 @@ describe('one bounded workspace lease', () => {
       (chunk) => {
         text += chunk
       },
-      { signal: stop.signal, platform: 'linux', now: () => 100 },
+      { signal: stop.signal, now: () => 100 },
     )
     await progress.configureDisplay('dashboard', true, input as any)
-    await progress.settleDashboard({ status: 'succeeded', outcome: 'done', output: null })
+    const settling = progress.settleDashboard({
+      status: 'succeeded',
+      outcome: 'done',
+      output: null,
+    })
+    await pause()
+    expect(input.isRaw).toBeTrue()
+    input.emit('data', Buffer.from('q'))
+    await settling
     expect(input.isRaw).toBeFalse()
     expect(stop.signal.aborted).toBeFalse()
-    expect(text).toContain('Results settled; command lifetime limits dashboard inspection')
+    expect(text).not.toContain('command lifetime limits dashboard inspection')
     expect(text).not.toContain('Cancellation requested')
     progress.close()
     await progress.flush()
@@ -579,7 +996,7 @@ describe('one bounded workspace lease', () => {
     progress.close()
     await progress.flush()
   })
-  test('resize below minimum releases the lease once without drawing imaginary rows', async () => {
+  test('resize below minimum restores the terminal once without drawing imaginary rows', async () => {
     let columns = 80,
       rows = 24,
       text = ''
@@ -632,18 +1049,19 @@ test('fullscreen final reporting preserves full bounded diagnostics and frozen s
       }
       const host = {
         async acquire(_project: string, options: any) {
-          options.channelOutput.diagnostic(Buffer.from(diagnostic), [])
-          const source = options.channelOutput.updates.open('updates')
-          source.accept({
-            kind: 'view',
-            id: 'view',
-            title: 'Application view',
-            summary: 'SUMMARY_SHOULD_NOT_REPLAY',
-            sections: [],
-          })
           return {
             rootAdministration: {
               async startRun() {
+                options.channelOutput.dispatched()
+                options.channelOutput.diagnostic(Buffer.from(diagnostic), [])
+                const source = options.channelOutput.updates.open('updates')
+                source.accept({
+                  kind: 'view',
+                  id: 'view',
+                  title: 'Application view',
+                  summary: 'SUMMARY_SHOULD_NOT_REPLAY',
+                  sections: [],
+                })
                 return { runId: 'sha256:' + 'a'.repeat(64) }
               },
               async runStatus() {

@@ -81,8 +81,6 @@ export type PrivateWorkspace = {
   facts?: PrivateWorkspaceFacts
   phase: 'live' | 'settled'
   settledAt?: number | undefined
-  inspectionDeadline?: number | undefined
-  inspectionHardDeadline?: number | undefined
   recorded?: boolean | undefined
 }
 export type PrivateJournalEntry = {
@@ -270,11 +268,10 @@ export class PrivateRunModel {
     this.workspace.facts = facts
     this.onChange()
   }
-  setWorkspacePhase(phase: 'live' | 'settled', inspectionDeadline?: number | undefined): void {
+  setWorkspacePhase(phase: 'live' | 'settled'): void {
     if (phase === 'settled' && this.workspace.phase !== 'settled')
       this.workspace.settledAt = this.workspace.now ?? privatePresentationNow()
     this.workspace.phase = phase
-    this.workspace.inspectionDeadline = inspectionDeadline
     if (phase === 'settled' && !this.#chosen) {
       const rootViews = [...this.views.values()].filter((view) => view.publisher === 'root')
       const landing = rootViews.find((view) => view.value.landing) ?? rootViews[0]

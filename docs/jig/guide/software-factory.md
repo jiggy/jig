@@ -59,8 +59,8 @@ Jobs includes the exact original request file; long displayed goals explicitly
 identify excerpts. Complete requests also remain in the supplied input and
 `result.json`.
 The completed inspector selects Jobs unless you already chose a view. It stays
-read-only for 60 seconds of inactivity, bounded by five minutes and the earlier
-enclosing command deadline. Its countdown is separate from execution.
+read-only until you leave, subject to any explicit enclosing command deadline.
+Execution, cleanup and delivery have already settled.
 Press `q` to close it; during work, `q` continues in the ordinary transcript.
 Escape closes the current panel before leaving the dashboard. Ordinary `jig run`
 shows an inline projection and exits with the final report; `--display plain`

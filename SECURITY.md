@@ -275,7 +275,10 @@ destination nor the delivery socket. On cancellation, the owner sends SIGTERM
 to its exact trusted child and allows at most 60 seconds for cooperative Run
 settlement and delivery before SIGKILL and reaping. The existing absolute
 command expiry can shorten that wait and retains a 250 ms escalation grace;
-later signals cannot extend either bound. This changes no payload deadline
+later signals cannot extend either bound. Eligible interactive dashboards omit
+the default outer command expiry so settled read-only inspection can wait for
+the operator; explicit enclosing limits and bounded setup, Run execution and
+cleanup remain enforced. This changes no payload deadline
 or cancellation authority. The independent cgroup owner still fences the complete payload tree;
 the child signal is not a substitute for that boundary. Atomic no-replace publication creates
 private files and directories; it promises complete visibility, not power-loss

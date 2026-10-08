@@ -25,6 +25,7 @@ import {
   PRIVATE_PRESENTATION_DEADLINE_ENV,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
   privateConstrainPresentationDeadline,
+  privatePresentationDeadline,
 } from './root-run-timeout-policy.js'
 
 const CGROUP_ROOT = '/sys/fs/cgroup'
@@ -92,7 +93,7 @@ export interface PrivateRootlessLinuxDelegationDependencies {
     command: readonly [string, ...string[]],
     directory: string,
     environment: NodeJS.ProcessEnv,
-    commandLifetimeMs: number,
+    commandLifetimeMs: number | null,
     signal?: AbortSignal,
   ) => Promise<PrivateRootlessLinuxReexecution>
 }
@@ -121,18 +122,20 @@ export type PrivateRootlessLinuxDelegation =
  */
 export async function acquireOrReexecutePrivateRootlessLinux(
   input: {
-    readonly commandLifetimeMs?: number
+    readonly commandLifetimeMs?: number | null
     readonly commandArguments?: readonly string[]
     readonly signal?: AbortSignal
     readonly dependencies?: PrivateRootlessLinuxDelegationDependencies
   } = {},
 ): Promise<PrivateRootlessLinuxDelegation> {
   const dependencies = input.dependencies ?? systemDependencies
-  const commandLifetimeMs = input.commandLifetimeMs ?? COMMAND_LIFETIME_MS
+  const commandLifetimeMs =
+    input.commandLifetimeMs === null ? null : (input.commandLifetimeMs ?? COMMAND_LIFETIME_MS)
   if (
-    !Number.isSafeInteger(commandLifetimeMs) ||
-    commandLifetimeMs < 100 ||
-    commandLifetimeMs > MAX_COMMAND_LIFETIME_MS
+    commandLifetimeMs !== null &&
+    (!Number.isSafeInteger(commandLifetimeMs) ||
+      commandLifetimeMs < 100 ||
+      commandLifetimeMs > MAX_COMMAND_LIFETIME_MS)
   ) {
     throw new PrivateRootlessLinuxAcquisitionError()
   }
@@ -380,7 +383,7 @@ export async function reexecutePrivateRootlessLinuxCommand(
   directory: string,
   environment: NodeJS.ProcessEnv,
   startupTimeoutMs = STARTUP_TIMEOUT_MS,
-  commandLifetimeMs = COMMAND_LIFETIME_MS,
+  commandLifetimeMs: number | null = COMMAND_LIFETIME_MS,
   signal?: AbortSignal,
 ): Promise<PrivateRootlessLinuxReexecution> {
   if (
@@ -388,9 +391,10 @@ export async function reexecutePrivateRootlessLinuxCommand(
     !Number.isSafeInteger(startupTimeoutMs) ||
     startupTimeoutMs < 100 ||
     startupTimeoutMs > 60_000 ||
-    !Number.isSafeInteger(commandLifetimeMs) ||
-    commandLifetimeMs < 100 ||
-    commandLifetimeMs > MAX_COMMAND_LIFETIME_MS
+    (commandLifetimeMs !== null &&
+      (!Number.isSafeInteger(commandLifetimeMs) ||
+        commandLifetimeMs < 100 ||
+        commandLifetimeMs > MAX_COMMAND_LIFETIME_MS))
   ) {
     throw new Error('invalid transient scope timing policy')
   }
@@ -412,19 +416,21 @@ export async function reexecutePrivateRootlessLinuxCommand(
   let scopeSettled = false
   try {
     await ready.listening
-    lifetimeTimerStarted = true
-    const presentationDeadline = privateConstrainPresentationDeadline(
-      controlEnvironment,
-      commandLifetimeMs,
-    )
-    await startLifetimeTimer(
-      managerPath,
-      controlPath,
-      lifetimeTimer,
-      unit,
-      commandLifetimeMs,
-      controlEnvironment,
-    )
+    const presentationDeadline =
+      commandLifetimeMs === null
+        ? privatePresentationDeadline(controlEnvironment)
+        : privateConstrainPresentationDeadline(controlEnvironment, commandLifetimeMs)
+    if (commandLifetimeMs !== null) {
+      lifetimeTimerStarted = true
+      await startLifetimeTimer(
+        managerPath,
+        controlPath,
+        lifetimeTimer,
+        unit,
+        commandLifetimeMs,
+        controlEnvironment,
+      )
+    }
     const launched = spawn(
       managerPath,
       [
@@ -446,7 +452,9 @@ export async function reexecutePrivateRootlessLinuxCommand(
           [SCOPE_VARIABLE]: unit,
           [SOCKET_VARIABLE]: socketPath,
           [TOKEN_VARIABLE]: token,
-          [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline),
+          ...(presentationDeadline === undefined
+            ? {}
+            : { [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline) }),
         },
         stdio: 'inherit',
         windowsHide: true,
@@ -477,8 +485,10 @@ export async function reexecutePrivateRootlessLinuxCommand(
     }
     scopeSettled = true
     await ready.close()
-    await stopLifetimeTimer(controlPath, lifetimeTimer, controlEnvironment)
-    lifetimeTimerStarted = false
+    if (lifetimeTimerStarted) {
+      await stopLifetimeTimer(controlPath, lifetimeTimer, controlEnvironment)
+      lifetimeTimerStarted = false
+    }
     return Object.freeze({
       kind: 'private-rootless-linux-reexecuted/1' as const,
       exitCode: outcome.exitCode,
@@ -972,7 +982,7 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
     command: readonly [string, ...string[]],
     directory: string,
     environment: NodeJS.ProcessEnv,
-    commandLifetimeMs: number,
+    commandLifetimeMs: number | null,
     signal?: AbortSignal,
   ) =>
     reexecutePrivateRootlessLinuxCommand(

@@ -560,10 +560,6 @@ export function privateDashboardFrame(
         : 'Settled · read-only'
       : privateUpdateText(model.workspace.hostStage)
   const time = `elapsed ${duration((model.workspace.settledAt ?? model.workspace.now ?? privatePresentationNow()) - model.workspace.startedAt)} · execution limit ${model.workspace.limitMs === undefined ? 'unspecified' : duration(model.workspace.limitMs)}`
-  const countdown =
-    model.workspace.phase === 'settled' && model.workspace.inspectionDeadline !== undefined
-      ? `inspection closes ${model.workspace.inspectionDeadline === model.workspace.inspectionHardDeadline ? 'in' : 'after'} ${duration(model.workspace.inspectionDeadline - (model.workspace.now ?? privatePresentationNow()))}${model.workspace.inspectionDeadline === model.workspace.inspectionHardDeadline ? ' (limit)' : ' idle'}`
-      : ''
   const sticky = model.sticky
   const diagnostics = model.journal.filter((entry) => entry.kind === 'diagnostic')
   const omittedDiagnostics = model.journalOmitted.diagnostic
@@ -594,12 +590,7 @@ export function privateDashboardFrame(
       'heading',
     )
     if (height >= 4 && !panel && !(attention && compactLoss && height === 4))
-      add(
-        model.workspace.recorded
-          ? countdown || 'Recorded local data'
-          : `${time}${countdown ? ` · ${countdown}` : ''}`,
-        'secondary',
-      )
+      add(model.workspace.recorded ? 'Recorded local data' : time, 'secondary')
     if (attention && lines.length < height - 1) add(attention, attentionTone(sticky?.priority ?? 3))
     if (compactLoss && lines.length < height - 1) add(`! ${compactLoss}`, 'warning')
   } else {
@@ -608,12 +599,7 @@ export function privateDashboardFrame(
       `${privateTruncateUpdate(target, Math.max(1, width - privateTerminalWidth(stage) - 3))} · ${stage}`,
       'heading',
     )
-    add(
-      model.workspace.recorded
-        ? countdown || 'Recorded local data'
-        : `${time}${countdown ? ` · ${countdown}` : ''}`,
-      'secondary',
-    )
+    add(model.workspace.recorded ? 'Recorded local data' : time, 'secondary')
     add(tabs(model, width), 'heading')
     if (attention) add(attention, attentionTone(sticky?.priority ?? 3))
     if (diagnostics.length || omittedDiagnostics)

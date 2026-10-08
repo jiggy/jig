@@ -19,8 +19,9 @@ descriptors.
   Interrupted delivery retains confirmed terminal/checkpoint evidence, not
   unfinished final files; cleanup uncertainty and forced termination stay explicit.
   Saved-result inspection owns recorded-claim attribution, confined immutable
-  file capture, exact JSON and independent read status. Workspace inspection has
-  separate idle and absolute limits; accepted input cannot revive an expired lease.
+  file capture, exact JSON and independent read status. Workspace entry follows trusted root execution admission; initial refusals stay
+  plain. Inspection is operator-controlled, subject to explicit inherited command
+  constraints, and retains no execution or channel owner.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.
