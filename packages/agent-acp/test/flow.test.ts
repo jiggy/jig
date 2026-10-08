@@ -288,12 +288,87 @@ describe('native request failure diagnostics', () => {
       expect(failure).toBeInstanceOf(OperationError)
       expect(failure).toMatchObject({
         code: 'EXECUTION_FAILED',
-        message: `Native ACP request failed during ${method}; private client details were withheld.`,
+        details: { nativeRequest: { method, code: -32603 } },
       })
+      expect(failure.message).toContain(`native code -32603; ${method}`)
+      expect(failure.message).toContain('Detailed client cause is unavailable')
+      expect(JSON.stringify({ message: failure.message, details: failure.details })).not.toContain(
+        'secret-token',
+      )
       expect(f.frames.at(-1)?.method).toBe(method)
       expect(f.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
     },
   )
+})
+
+test('closed native reasons are validated independently and never expose native data', async () => {
+  const cases = [
+    { data: { reason: 'managed-preferences-unavailable' }, known: true },
+    { data: { reason: 'unknown' }, known: false },
+    {
+      data: { reason: 'managed-preferences-unavailable', credential: 'secret-token' },
+      known: false,
+    },
+    { data: { reason: null }, known: false },
+    { data: null, known: false },
+    { data: ['managed-preferences-unavailable'], known: false },
+    {
+      data: 'failed to load configuration: Failed to synchronize managed preferences\n\nCheck secret-token',
+      known: false,
+    },
+    { data: { reason: 'managed-preferences-unavailable' }, code: -32602, known: false },
+    { data: { reason: 'managed-preferences-unavailable' }, method: 'initialize', known: false },
+    { data: { reason: 'managed-preferences-unavailable' }, method: 'session/prompt', known: false },
+  ]
+  for (const value of cases) {
+    const method = value.method ?? 'session/new',
+      code = value.code ?? -32603
+    const f = fixture({
+      async emit(frame, send) {
+        if (frame.method !== method) return false
+        await f.frameSend(send, {
+          jsonrpc: '2.0',
+          id: frame.id!,
+          error: {
+            code,
+            message: 'secret-token',
+            data: value.data,
+          },
+        })
+        return true
+      },
+    })
+    const failure = await agentAcpFlow(f.run).catch((error) => error)
+    expect(failure).toBeInstanceOf(OperationError)
+    expect(failure).toMatchObject({
+      code: 'EXECUTION_FAILED',
+      details: {
+        nativeRequest: {
+          method,
+          code,
+          ...(value.known ? { reason: 'managed-preferences-unavailable' } : {}),
+        },
+      },
+    })
+    if (value.known) {
+      expect(failure.message).toContain(
+        'The native client reported a configuration failure: macOS managed preferences could not be synchronized.',
+      )
+      expect(failure.message).toContain(
+        'Have the operator responsible for this Codex installation check its managed-preference configuration and availability.',
+      )
+      expect(failure.message).not.toContain('Detailed client cause is unavailable')
+    } else {
+      expect(failure.message).toContain('Detailed client cause is unavailable')
+      expect(failure.message).not.toContain('operator responsible for this Codex installation')
+      expect(failure.details.nativeRequest).not.toHaveProperty('reason')
+    }
+    expect(JSON.stringify({ message: failure.message, details: failure.details })).not.toContain(
+      'secret-token',
+    )
+    expect(f.frames.at(-1)?.method).toBe(method)
+    expect(f.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
+  }
 })
 
 describe('ordinary session retention and restoration', () => {
@@ -1027,4 +1102,26 @@ describe('ordinary finite ACP Agent Flow', () => {
       diagnostic.mockRestore()
     }
   })
+})
+
+test.each([
+  null,
+  { code: 'secret', message: 'private' },
+  { code: 0.5, message: 'private' },
+  { code: 1 },
+  { code: 1, message: 42 },
+  { code: 1, message: 'private', extra: true },
+])('independently rejects malformed native errors %j', async (error) => {
+  const f = fixture({
+    async emit(frame, send) {
+      if (frame.method !== 'session/new') return false
+      await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, error } as any)
+      return true
+    },
+  })
+  const failure = await agentAcpFlow(f.run).catch((error) => error)
+  expect(failure).toBeInstanceOf(OperationError)
+  expect(failure.code).toBe('INVALID_RESULT')
+  expect(failure.message).not.toContain('private')
+  expect(f.frames.at(-1)?.method).toBe('session/new')
 })

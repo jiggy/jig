@@ -27,11 +27,15 @@ const syntaxThemes = {
   macchiato: { key: '8aadf4', string: 'a6da95', number: 'f5a97f', literal: 'c6a0f6' },
 } as const
 
-function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
+export function privateCliSyntaxHex(role: SyntaxRole, env = process.env): string {
   const theme = env.JIG_THEME
   const palette =
     theme === 'one-light' || theme === 'macchiato' ? syntaxThemes[theme] : syntaxThemes['one-dark']
-  const hex = palette[role]
+  return palette[role]
+}
+
+function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
+  const hex = privateCliSyntaxHex(role, env)
   const rgb = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16))
   if (env.COLORTERM === 'truecolor' || env.COLORTERM === '24bit') return `38;2;${rgb.join(';')}`
   if (env.TERM?.includes('256color')) {
@@ -46,6 +50,11 @@ function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
     return `38;5;${16 + 36 * (cube[0] ?? 0) + 6 * (cube[1] ?? 0) + (cube[2] ?? 0)}`
   }
   return { key: '36', string: '32', number: '33', literal: '35' }[role]
+}
+
+/** Selection denotes navigation focus, never an application verdict. */
+export function privateCliSelection(text: string, color: boolean): string {
+  return color ? `\u001b[1;${syntaxColor('literal', process.env)}m${text}\u001b[0m` : text
 }
 
 /** Color tokens in the existing escaped representation, never parse/reserialize policy. */
@@ -70,6 +79,51 @@ function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
       return `\u001b[${syntaxColor(role, env)}m${token}\u001b[39m`
     },
   )
+}
+
+/** Host-authored command references; escaped values and block scalars never enter here. */
+function commandText(line: string): string {
+  if (/^Usage: jig /.test(line)) return line.replace(/^Usage: (.*)$/, 'Usage: `$1`')
+  const catalog = /^( +)(jig .+?)( {2,}[A-Z][a-z].*)$/.exec(line)
+  if (catalog) return `${catalog[1]}\`${catalog[2]}\`${catalog[3]}`
+  if (/^\s*(?:\$ )?(?:jig |cd )/.test(line))
+    return line.replace(/^(\s*)(?!\$ )(jig |cd )/, '$1$ $2')
+  if (line.includes('"') || /^\s*(?:[+-] |[{}[\]])/.test(line)) return line
+  // Temporary command spans identify syntax; delimiters are removed at rendering. Arguments are
+  // limited to explicit flags, placeholders, selectors and shell-quoted words;
+  // prose after the command is never turned into a command argument.
+  return line.replace(
+    /`[^`]*`|(?<![\w./:])jig (?:init|new|review|run|inspect|completion|import-contract|<command>)(?: (?:--[a-z][a-z-]*|<[^>\n]+>|'(?:[^']|'"'"')*'|(?:binding|flow|npm):[^\s,;().]+))*/g,
+    (command) => (command.startsWith('`') ? command : `\`${command}\``),
+  )
+}
+
+/** Shell quoting is retained; only trusted command syntax receives accents. */
+function commandSyntax(text: string, color: boolean, env: NodeJS.ProcessEnv): string {
+  if (!color) return text
+  let word = 0
+  let optional = 0
+  let program: string | undefined
+  return text.replace(/'[^']*'|"(?:\\.|[^"\\])*"|<[^>]+>|\[|\]|[^\s[\]]+/g, (token) => {
+    if (token === '[') optional++
+    if (token === ']') optional--
+    if (token === '$' || token === '[' || token === ']') return privateCliSecondary(token, true)
+    const index = word++
+    if (index === 0) program = token
+    const role: SyntaxRole = token.startsWith('--')
+      ? 'literal'
+      : token.startsWith('<') ||
+          /^[A-Z][A-Z0-9|@=:_-]+$/.test(token) ||
+          (optional > 0 && !token.startsWith("'") && !token.startsWith('"'))
+        ? 'number'
+        : (index === 0 || (index === 1 && program === 'jig')) &&
+            !token.startsWith("'") &&
+            !token.startsWith('"')
+          ? 'key'
+          : 'string'
+    const emphasis = index <= 1 && role === 'key' ? '1;' : ''
+    return `\u001b[${emphasis}${syntaxColor(role, env)}m${token}\u001b[0m`
+  })
 }
 
 /** Style only trusted human text; machine records and live diagnostics bypass this. */
@@ -98,6 +152,7 @@ export function privateCliHumanText(
           indent: /^ +\|/.test(body) ? indent - 1 : /^ +- "/.test(body) ? indent + 2 : indent,
           prefix,
         }
+      line = commandText(line)
       const section =
         /^(Run output:|Approval environment matches|Approval validity not checked|No approved revision|ACP runtimes selected|Project entrypoint|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
@@ -114,7 +169,18 @@ export function privateCliHumanText(
             color,
           )
       } else if (color) {
-        if (
+        if (/^\s*\$ /.test(line)) rendered = commandSyntax(line, true, env)
+        else if (/^\s+--[a-z]/.test(line))
+          rendered = wrapped.replace(
+            /^(\s*)(--[a-z-]+)(?: (JSON\|@FILE|NAME=DIR|NAME=FILE|[A-Z][A-Z0-9|@=:_-]+|off))?/,
+            (_match, indent: string, flag: string, value?: string) =>
+              `${indent}\u001b[${syntaxColor('literal', env)}m${flag}\u001b[0m${value === undefined ? '' : ` \u001b[${syntaxColor(value === 'off' ? 'string' : 'number', env)}m${value}\u001b[0m`}`,
+          )
+        else if (/^ {2}"(?:[^"\\]|\\.)*" - (?:ready|unavailable)$/.test(line))
+          rendered = line.replace(/(ready|unavailable)$/, (status) =>
+            privateCliHeading(status, status === 'ready' ? 'success' : 'warning', true),
+          )
+        else if (
           /^ {2}(?:Execution: failed\.|Cleanup: not confirmed\.|Packet delivery: "failed"\.)/.test(
             line,
           )
@@ -165,6 +231,10 @@ export function privateCliHumanText(
           }`
         } else rendered = highlightPolicy(wrapped, env)
       }
+      if (!/^\s*\$ /.test(line) && !line.includes('"'))
+        rendered = rendered.replace(/`((?:jig|cd) [^`\n]+)`/g, (_span, command: string) =>
+          commandSyntax(command, color, env),
+        )
       // Width is supplied only for a terminal. Plain terminal mode keeps the same
       // spatial hierarchy; redirected text retains its compact, complete transcript.
       if (section && columns !== undefined) {
@@ -184,7 +254,8 @@ function wrapHumanLine(line: string, columns?: number): string {
     line.includes('"') ||
     line.includes('\u001b') ||
     line.includes('\r') ||
-    /^\s*(?:jig |cd |[{}])/.test(line)
+    line.includes('`jig ') ||
+    /^\s*(?:\$ |jig |cd |[{}])/.test(line)
   )
     return line
   const indent = /^ */.exec(line)?.[0] ?? ''
@@ -221,6 +292,7 @@ export function privateCliDiagnostic(
     JIG_TARGET_NOT_FOUND: 'Error: Target is not approved',
     JIG_INSPECTION_UNAVAILABLE: 'Error: Approved snapshot is unavailable',
     JIG_RUN_INPUT_INVALID: 'Error: Run input is invalid',
+    JIG_DASHBOARD_UNAVAILABLE: 'Error: Dashboard support is unavailable',
     JIG_RUN_TARGET_INVALID: 'Error: Run target is invalid',
     JIG_INIT_DESTINATION_EXISTS: 'Error: Project destination already exists',
     JIG_INIT_UNAVAILABLE: 'Error: Project could not be created',

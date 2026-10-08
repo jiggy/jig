@@ -23,7 +23,8 @@ docs/flow/spec/machine/schema-0.json|schemas/schema-0.json'
     default_base=https://jig.md
     home_title='<title>Jig</title>'
     guide_title='<title>Get started with Jig - Jig</title>'
-    json_map='docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
+    json_map='packages/user-updates/src/user-updates.json|contracts/user-updates.json
+docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
 docs/jig/spec/contracts/agent-run/contract.json|contracts/agent-run/contract.json
 docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json|contracts/agent-run/contracts/acp-public-updates.json
@@ -71,9 +72,10 @@ grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 
 if [ "$site_name" = jig ]; then
-  for contract in agent-run project-command http-request run-checkpoint acp-public-updates finite-acp; do
+  for contract in user-updates agent-run project-command http-request run-checkpoint acp-public-updates finite-acp; do
     case $contract in
       agent-run) title='<title>Agent Run contract - Jig</title>' ;;
+      user-updates) title='<title>User updates contract - Jig</title>' ;;
       http-request) title='<title>HTTP Request contract - Jig</title>' ;;
       project-command) title='<title>Project Command contract - Jig</title>' ;;
       run-checkpoint) title='<title>Run Checkpoint contract - Jig</title>' ;;
@@ -84,6 +86,8 @@ if [ "$site_name" = jig ]; then
       "$base/contracts/$contract" > "$temporary/contract.html"
     grep -Fq "$title" "$temporary/contract.html"
   done
+  curl --fail --location --silent --show-error "$base/contracts/user-updates/LICENSE" > "$temporary/LICENSE"
+  cmp "$repository/packages/user-updates/LICENSE" "$temporary/LICENSE"
 fi
 
 printf '%s\n' "$json_map" |

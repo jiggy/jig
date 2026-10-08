@@ -1,22 +1,23 @@
 import {
+  type AgentInput,
   AgentMethodError,
+  type AgentSessionReceipt,
   finishAgent,
   prepareAgent,
-  type AgentInput,
-  type AgentSessionReceipt,
   type SkillText,
 } from '@jigging/agent-method'
 import {
-  handle,
-  OperationError,
   type ChannelPair,
   type ChannelReceiver,
   type ChannelSender,
+  handle,
   type JsonObject,
   type JsonValue,
+  OperationError,
   type RunContext,
   type RunResult,
 } from '@jigging/flow'
+import { converse } from './conversation.js'
 import {
   FiniteAcpFrames,
   FiniteAcpTransportError,
@@ -24,7 +25,6 @@ import {
   readFiniteAcpReady,
 } from './transport.js'
 import { OptionalUpdates } from './updates.js'
-import { converse } from './conversation.js'
 
 const encoder = new TextEncoder()
 const REQUESTS = './contracts/finite-acp/requests.json'
@@ -281,11 +281,50 @@ class FinitePeer {
       keys(frame, ['jsonrpc', 'id'], ['result', 'error'])
       if (frame.id !== id || Object.hasOwn(frame, 'result') === Object.hasOwn(frame, 'error'))
         failure('Native ACP response does not match its request')
-      if (frame.error !== undefined)
+      if (frame.error !== undefined) {
+        const error = object(frame.error)
+        keys(error, ['code', 'message'], ['data'])
+        if (
+          typeof error.code !== 'number' ||
+          !Number.isSafeInteger(error.code) ||
+          typeof error.message !== 'string'
+        )
+          failure('Native ACP error response is invalid')
+        const operation = {
+          initialize: 'initialize the AI client',
+          'session/new': 'start an AI session',
+          'session/resume': 'restore an AI session',
+          'session/set_config_option': 'configure the AI session',
+          'session/set_mode': 'select the AI session mode',
+          'session/prompt': 'get an AI response',
+        }[method]
+        const reason =
+          method === 'session/new' &&
+          error.code === -32603 &&
+          error.data !== null &&
+          typeof error.data === 'object' &&
+          !Array.isArray(error.data) &&
+          Object.keys(error.data).length === 1 &&
+          Object.hasOwn(error.data, 'reason') &&
+          (error.data as JsonObject).reason === 'managed-preferences-unavailable'
+            ? 'managed-preferences-unavailable'
+            : undefined
+        const explanation =
+          reason === undefined
+            ? 'Detailed client cause is unavailable.'
+            : 'The native client reported a configuration failure: macOS managed preferences could not be synchronized. Have the operator responsible for this Codex installation check its managed-preference configuration and availability.'
         throw new OperationError(
           'EXECUTION_FAILED',
-          `Native ACP request failed during ${method}; private client details were withheld.`,
+          `Could not ${operation} (native code ${error.code}; ${method}). ${explanation}`,
+          {
+            nativeRequest: {
+              method,
+              code: error.code,
+              ...(reason === undefined ? {} : { reason }),
+            },
+          },
         )
+      }
       return object(frame.result)
     }
   }

@@ -84,6 +84,7 @@ jobs:
           --filter @jigging/agent-method --filter @jigging/flow-authoring
           --filter @jigging/agent-acp
           --filter @jigging/flow
+          --filter @jigging/user-updates
 
       - name: Build source-test workspace packages
         run: just --justfile packages/jig/justfile build

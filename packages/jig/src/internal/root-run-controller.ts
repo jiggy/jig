@@ -380,6 +380,11 @@ async function startOrResumeCurrentExecution(
       // delivery and the helper's absolute timer owns the hard fence after
       // grace; aborting the Backend signal here would skip that protocol.
       stop.releaseStartupEnforcement()
+      try {
+        input.channelOutput?.dispatched?.()
+      } catch {
+        // Optional command presentation cannot alter admitted execution.
+      }
       input.files?.retainOutput(component.output)
       const parent = work
       const dispatcher = operationDispatcher(
@@ -1205,6 +1210,16 @@ function operationDispatcher(
   }
   return Object.freeze({
     channels: channels.root,
+    onCall: (call, state, cause) =>
+      input.channelOutput?.call?.({
+        publisher: channels.root.id,
+        operationId: call.operationId,
+        slot: call.slot,
+        ...(call.intent === undefined ? {} : { intent: call.intent }),
+        state,
+        time: Date.now(),
+        ...(cause === undefined ? {} : { cause }),
+      }),
     onCancellation: (code) => channels.broker.abort(code),
     validateResult: (result) => {
       const admitted = admitPrivatePackageResult(inspected, {
@@ -1237,6 +1252,7 @@ function operationDispatcher(
                 broker: channels.broker,
                 contracts: channels.contracts,
               },
+              onCall: input.channelOutput?.call,
               ...(input.channelOutput === undefined
                 ? {}
                 : {

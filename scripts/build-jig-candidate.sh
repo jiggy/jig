@@ -87,6 +87,7 @@ bun install \
   --filter @jigging/agent-acp \
   --filter @jigging/flow-authoring \
   --filter @jigging/flow \
+  --filter @jigging/user-updates \
   --ignore-scripts \
   --config=/dev/null \
   --cache-dir "$temporary/cache" \

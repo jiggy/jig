@@ -338,10 +338,15 @@ test('installed startup reporting works with and without a timing directory on s
     const bun = resolve(root, 'bun')
     await writeFile(
       bun,
-      '#!/usr/bin/env node\nrequire("node:fs").writeFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP}));\n',
+      '#!/usr/bin/env node\nrequire("node:fs").writeFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP,expectation:process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION}));\n',
       { mode: 0o700 },
     )
-    for (const directory of ['', root]) {
+    for (const [directory, expectation] of [
+      ['', 'startup'],
+      [root, 'startup'],
+      ['', 'unsupported'],
+      [root, 'unsupported'],
+    ]) {
       const result = spawnSync(
         '/bin/bash',
         ['-c', `set -euo pipefail\n${source.slice(start, end)}`],
@@ -351,6 +356,7 @@ test('installed startup reporting works with and without a timing directory on s
             PATH: `${root}:${process.env.PATH}`,
             CALLS: calls,
             JIG_MACOS_TEST_TIMINGS_DIRECTORY: directory,
+            codex_startup_expectation: expectation,
           },
           encoding: 'utf8',
         },
@@ -358,6 +364,7 @@ test('installed startup reporting works with and without a timing directory on s
       assert.equal(result.status, 0, result.stderr)
       const call = JSON.parse(await readFile(calls, 'utf8'))
       assert.equal(call.startup, '1')
+      assert.equal(call.expectation, expectation)
       assert.deepEqual(call.args, [
         'test',
         'packages/jig/test/native-agent-startup.test.ts',
@@ -371,6 +378,62 @@ test('installed startup reporting works with and without a timing directory on s
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('Mac qualification requires genuine Codex startup or explicit refusal by exact profile', async () => {
+  const qualification = await readFile(
+    resolve(import.meta.dirname, 'qualify-macos-host.sh'),
+    'utf8',
+  )
+  const gate = qualification.match(
+    /case "\$\(uname -s\):\$\(uname -m\):\$\(uname -r\):\$\(sw_vers -buildVersion\)" in\n[\s\S]*?\nesac/,
+  )
+  assert.ok(gate, 'qualification must select the expectation from the actual Mac tuple')
+  const shell = `
+uname() {
+  case "$1" in
+    -s) printf '%s\\n' "$TEST_KERNEL" ;;
+    -m) printf '%s\\n' "$TEST_ARCH" ;;
+    -r) printf '%s\\n' "$TEST_RELEASE" ;;
+    *) return 1 ;;
+  esac
+}
+sw_vers() { printf '%s\\n' "$TEST_BUILD"; }
+${gate[0]}
+printf '%s\\n' "$codex_startup_expectation"
+`
+  const run = (kernel, arch, release, build) =>
+    spawnSync('/bin/bash', ['-c', shell], {
+      env: {
+        ...process.env,
+        TEST_KERNEL: kernel,
+        TEST_ARCH: arch,
+        TEST_RELEASE: release,
+        TEST_BUILD: build,
+      },
+      encoding: 'utf8',
+    })
+  for (const [arch, release, build, expectation] of [
+    ['x86_64', '23.4.0', '23E224', 'startup'],
+    ['x86_64', '24.6.0', '24G830', 'unsupported'],
+    ['arm64', '24.6.0', '24G830', 'unsupported'],
+  ]) {
+    const result = run('Darwin', arch, release, build)
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stdout.trim(), expectation)
+  }
+  for (const tuple of [
+    ['Darwin', 'arm64', '23.4.0', '23E224'],
+    ['Darwin', 'x86_64', '24.6.0', '24G831'],
+    ['Linux', 'x86_64', '23.4.0', '23E224'],
+  ]) {
+    assert.equal(run(...tuple).status, 2, `unqualified tuple ${tuple} must refuse`)
+  }
+  assert.match(
+    qualification,
+    /JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="\$codex_startup_expectation" \\\n\s*bun test packages\/jig\/test\/native-agent-startup\.test\.ts/,
+  )
+  assert.ok(qualification.includes('macos-codex-preferences'))
 })
 
 test('every Linux hostile Jig test file enters provisioned host conformance', async () => {

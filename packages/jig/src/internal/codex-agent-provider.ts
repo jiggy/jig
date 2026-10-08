@@ -8,6 +8,7 @@ import {
   type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
 import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { privateMacosKernelPlatform } from './macos-process-controls.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
 
@@ -61,8 +62,9 @@ export interface PrivateCodexAgentSupport {
   readonly runtimeMounts: readonly PrivateAcpReadOnlyMount[]
   /** Exact host trust bundle selected by the installed Jig host. */
   readonly certificatesPath: string
-  /** Exact managed constraints containing PRIVATE_CODEX_REQUIREMENTS. */
+  /** Exact Linux managed constraints containing PRIVATE_CODEX_REQUIREMENTS. */
   readonly requirementsPath: string
+  readonly macosPreferencesObserverPath?: string
 }
 
 export interface PrivateCodexSubscriptionAgentConfiguration extends PrivateCodexAgentSupport {
@@ -115,6 +117,10 @@ export async function openPrivateCodexAgentProvider(
       cause: error,
     })
   }
+  // Preserve executable/installation discovery diagnostics before refusing an
+  // unqualified notification-page layout. The observer also excludes Rosetta.
+  if (process.platform === 'darwin' && privateMacosKernelPlatform() !== 'darwin-x64-23.4.0-23E224')
+    throw new PrivateAcpSetupError('preferences')
   const nativeBubblewrap =
     process.platform === 'darwin'
       ? { path: '/usr/bin/sandbox-exec', source: 'path' as const }
@@ -155,6 +161,9 @@ export async function openPrivateCodexAgentProvider(
     runtimeMounts: Object.freeze([...mounts.values()]),
     certificatesPath: await ordinaryFile(HOST_CERTIFICATES_PATH, 'host certificate bundle'),
     requirementsPath: join(releaseRoot, 'libexec', 'agent', 'codex-requirements.toml'),
+    ...(process.platform === 'darwin'
+      ? { macosPreferencesObserverPath: join(releaseRoot, 'libexec', 'macos-codex-preferences') }
+      : {}),
   })
   const apiKey = environment[OPENAI_API_KEY]
   const apiModel = environment[OPENAI_MODEL]
@@ -289,6 +298,9 @@ export async function createPrivateCodexSubscriptionAgentProvider(
       checked.fill(0)
     },
     nestedUserNamespaces: true,
+    ...(value.macosPreferencesObserverPath === undefined
+      ? {}
+      : { macosCodexPreferencesObserverPath: value.macosPreferencesObserverPath }),
     readOnlyMounts: [
       ...value.runtimeMounts,
       {
@@ -338,6 +350,9 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
     configuration: [{ configId: 'model', value: value.model }],
     modeId: 'read-only',
     nestedUserNamespaces: true,
+    ...(value.macosPreferencesObserverPath === undefined
+      ? {}
+      : { macosCodexPreferencesObserverPath: value.macosPreferencesObserverPath }),
     readOnlyMounts: [
       ...value.runtimeMounts,
       {
@@ -388,6 +403,7 @@ function codexEnvironment(
   support: PrivateCodexAgentSupport,
 ): Readonly<Record<string, string>> {
   return Object.freeze({
+    HOME: '/tmp',
     CODEX_CONFIG: JSON.stringify({
       analytics: { enabled: false },
       check_for_update_on_startup: false,

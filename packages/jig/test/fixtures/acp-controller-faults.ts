@@ -3,6 +3,7 @@
 import { mock } from 'bun:test'
 import assert from 'node:assert/strict'
 import * as acp from '../../src/internal/acp-agent-provider.js'
+import { PrivateAcpSetupError } from '../../src/internal/acp-setup-diagnostics.js'
 import * as store from '../../src/internal/activation-admission-store.js'
 import { PrivateOutputProfileError } from '../../src/internal/captured-output.js'
 import * as history from '../../src/internal/codex-session-state.js'
@@ -38,7 +39,7 @@ let saved: { scope: string; reference: string; lifetime?: 'run' } | undefined
 let scope: string | undefined
 let abort = new AbortController()
 let provider = { client: 'openai-codex', digest: digest(4) }
-const runtime = { environment: {}, configuration: [], readOnlyMounts: [] }
+const runtime = { client: 'openai-codex', environment: {}, configuration: [], readOnlyMounts: [] }
 const step = (name: string) => {
   events.push(name)
 }
@@ -107,7 +108,16 @@ mock.module('../../src/internal/acp-agent-provider.js', () => ({
   ...acp,
   requirePrivateAcpAgentProvider: (value: unknown) => value,
   privateAcpAgentRuntime: () => runtime,
-  revalidatePrivateAcpAgentProvider: async () => {},
+  revalidatePrivateAcpAgentProvider: async () => {
+    step('revalidate-provider')
+    if (mode === 'preferences-refusal' || mode === 'managed-policy-refusal') {
+      const failure = new PrivateAcpSetupError(
+        mode === 'preferences-refusal' ? 'preferences' : 'managed-policy',
+      )
+      failure.message = '/private/preference-state secret-policy-value'
+      throw failure
+    }
+  },
 }))
 mock.module('../../src/internal/direct-run.js', () => ({
   ...direct,
@@ -153,8 +163,13 @@ mock.module('../../src/internal/execution-backend.js', () => ({
     step('cancel-unused')
     return fence
   },
-  releasePrivateExecutionOwnerState: async () => {
+  releasePrivateExecutionOwnerState: async (owner: unknown, receipt: unknown) => {
     step('release')
+    if (mode === 'preferences-refusal' || mode === 'managed-policy-refusal') {
+      assert.deepEqual(owner, row.allocation.value.ownerAllocation)
+      assert.equal(receipt, fence, 'release must use the confirmed unused-allocation receipt')
+      assert.equal(row.sandbox, undefined, 'refusal must not admit a sandbox owner')
+    }
     if (mode === 'cleanup' || mode === 'native-session-cleanup') throw new Error('cleanup failed')
     return { digest: digest(9) }
   },
@@ -295,6 +310,34 @@ function before(a: string, b: string) {
   )
 }
 const run = async (value = input()) => await executePrivateRootFiniteAcp(value)
+for (const [failure, explanation] of [
+  ['preferences-refusal', 'macOS preferences could not be synchronized and verified'],
+  ['managed-policy-refusal', 'configured macOS managed policy is unsupported'],
+]) {
+  reset(failure)
+  const failures: string[] = []
+  const result: any = await run({
+    ...input(),
+    onFailure(phase: string) {
+      failures.push(phase)
+    },
+  })
+  assert.equal(result.status, 'failed')
+  assert.equal(result.code, 'EXECUTION_FAILED')
+  assert.ok(result.message.includes(explanation!))
+  assert.ok(result.message.includes('No native dispatch was attempted.'))
+  assert.ok(!JSON.stringify(result).match(/private\/|secret-policy-value/))
+  assert.deepEqual(failures, ['preparation'])
+  assert.deepEqual(events, [
+    'allocate',
+    'revalidate-provider',
+    'cancel-unused',
+    'release',
+    'owner-close',
+  ])
+  assert.equal(row, undefined, 'refused work must leave no durable child owner')
+}
+console.log('controller preference refusal checks passed')
 for (const [failure, phase, message] of [
   ['startup', 'sealing', 'startup failed'],
   ['admission', 'admission', 'admission failed'],

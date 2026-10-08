@@ -149,7 +149,10 @@ admitted FLOW packages.
 
 - `import-contract` copies a validated local invocation/channel bundle into a
   new directory, preserving bytes and relative paths. A direct descriptor path
-  or exact `npm:` package name selects the source; package lookup starts at the
+  or exact `npm:` package name selects the source; `jig:` names select the installed
+  standard library, listed by `--list`, with exact closures, digests and licenses.
+  These names are authoring selectors, never runtime resolution or authority.
+  Package lookup starts at the
   destination parent and uses the nearest installed `node_modules`. Closure
   descendants must be regular captured files. It neither acquires an execution
   host nor fetches, imports package code, replaces an existing destination, or
@@ -256,17 +259,56 @@ admitted FLOW packages.
 - Before any public CLI output change, read and apply
   [the CLI experience contract](../../docs/jig/spec/cli-experience.md).
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
-  presentation; launcher failures follow the same structure. Never introduce
+  presentation; `src/cli-user-updates.ts` owns scoped Flow activity state and
+  untrusted attributed notices within that presenter. Stopping and terminal host
+  states fence repaint callbacks; accepted complete notices retain order. The
+  automatic profile uses one separate command-only broker allocation, preserving
+  ordinary application channel quotas. Launcher failures follow the same structure. Never introduce
   a separate raw diagnostic style or route machine output through styling.
   Shell completion must work with macOS's system Bash 3.2 without installing
   another shell; collect replies with portable array/read operations.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
+  Suggested actions use standalone `$ jig ...` commands. Help and host command
+  references omit Markdown backticks; command names, flags, placeholders and
+  argument literals use distinct syntax accents. Preserve quoting and never wrap
+  commands. Application data bypasses recognition.
+  Before any confirmation or answer prompt, pause progress and await its queued
+  output, then check cancellation. The question and answer share one line without
+  intervening stages or notices.
+  Readiness status words carry green/amber emphasis without claiming execution.
+  In auto/plain, activity phase changes append separate attributed indented lines; only host
+  waiting owns a transient line. Clear events silently retire their slots;
+  printed phases remain history, and application notices own job outcomes.
+  Complete notices have one Flow-attributed first line and indented continuation
+  lines; escape every payload line without recognizing it as host prose.
+  Explicit dashboard instead owns one alternate screen after trusted root execution
+  admission, keeping initial input/review/runtime refusals in ordinary output,
+  retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
+  responsive selected-record details, labelled collection cards, collapsed detail,
+  newest-first Activity with expandable setup, actual collapsible Overview and contextual
+  keys serve progressive disclosure without terminal author callbacks. Attention
+  remains attributed and reachable from every view. Diagnostic reports have a
+  separate literal panel; unknown severity stays unknown. Freeze execution elapsed
+  at settlement, select the root landing or first root view only when the operator has not navigated,
+  and never project settled host facts as current work.
+  Authored detail prose wraps at complete grapheme/word boundaries; file preview
+  wrapping keeps its existing literal path. Style each pane independently so list
+  focus or headings cannot color unrelated detail text. Charge composed SGR to the
+  same encoded frame ceiling.
+  Restore the original screen and commit complete retained essential causes before
+  final stdout. No ordinary
+  notice or repeated view-summary spill while that workspace is open.
+  Explicit notice severity is Flow-reported
+  importance, never host outcome or guaranteed delivery.
   A heading must never have less emphasis than its subordinate details. Expanded
   unavailable-client labels use bold amber above normal-contrast setup instructions;
   the compact names-only unavailable summary remains secondary.
-  Separate unchanged prepared-file and dependency-layout explanations onto a
-  secondary gray line beneath the prominent explanation of what changed.
+  Unchanged source, prepared-file and dependency-layout reassurance belongs only
+  in `--details`. Keep the changed fact, environment uncertainty and approval
+  consequence visible in compact reviews. Omit repeated ACP selections only
+  after proving unchanged runtime identity under identical recipient routes;
+  unknown comparisons remain visible, and details always show selections.
   Dim executable paths and unchanged context; omit review categories with no
   changes from the ordinary summary. Changed-record labels and their identifiers
   use bold amber: they identify work requiring attention, not secondary metadata.
@@ -303,7 +345,9 @@ admitted FLOW packages.
   with the cause and next action after evidence. Omit packet provenance manifests
   from human results; retain full machine and packet records. A confirmed written
   packet permits compact success output: show small application answers, but
-  point to `result.json` for large output and checkpoint evidence, and show the
+  retain at most eight complete top-level scalar fields within 2048 JSON characters
+  alongside large nested evidence, without assigning meaning to field names.
+  Identify that brief view and point to `result.json` for full output and checkpoint evidence, and show the
   nonzero delivered file count. Omit null checkpoints from human results.
   Uncertain delivery keeps evidence visible. Input errors name
   the approved schema without guessing source freshness. Emit the dependency
@@ -327,6 +371,69 @@ admitted FLOW packages.
   work.
 
 ## Verification
+
+Run presentation uses one bounded renderer-neutral model and one stderr writer.
+`src/cli-opentui.ts` owns native terminal panes and cell drawing. OpenTUI Core
+and its Tree-sitter peer are required exact npm dependencies, external to the
+CLI bundle; only an eligible explicit dashboard lazily loads and verifies native
+support before execution. Flows and public SDKs remain display-neutral. Core
+renders to memory using inert streams; Jig owns real input, signals, screen
+restoration and the bounded writer. Encode only published captured spans, charge
+SGR and UTF-8 bytes to the existing frame ceiling, disclose clipping, and fence
+pending native cell reads before destruction. Normal panes require 50x14; compact
+text preserves cause and controls down to 18x4.
+Pane caches include resolved reference labels and selected details, so host call
+settlement and verified delivery refresh existing views without another Flow
+report. Unchanged captured cells do not produce another terminal frame.
+Lists own brief identity/observation; selected parts add context and evidence.
+Keep the typed detail projection shared with compact text. Native cards show
+three declared columns, with other fields and authored details reachable beside
+them; full expansion retains all fields. Facts expand into typed fields. Do not
+open duplicate panes for entries with no additional detail. Call previews explain
+lifecycle and readable UTC time; exact slot/operation identity requires expansion.
+Color navigation, labels, typed values and host states independently. Returned
+calls stay secondary, never green domain success. Recorded field navigation and
+lexical value colors remain literal local claims without privileged output keys.
+Encode empty native spans with bounded erase/cursor controls and reuse unchanged
+styles. Render exit rows before body rows so genuine byte overflow retains controls;
+do not raise the ceiling to accommodate empty pane backgrounds.
+Keep host calls keyed by actual publisher instance plus original own operation ID;
+accepted-send publisher identity stays private sideband through pending sends.
+View documents cannot supply source ancestry or host status. Admission is atomic,
+retirement/EOF fence callbacks, and navigation follows stable identities. Optional
+tree/transcript overflow discloses incompleteness without canceling domain work;
+actual output disconnection retains the existing cancellation owner. Full safe
+causes settle through the single bounded writer before final stdout; dashboard
+commits them after screen restoration in awaited 32 KiB batches, charged by
+complete escaped representation. Serialize auto/plain final view summaries
+within the same output ceiling; actually entered fullscreen omits summary replay.
+
+`--display` is operator-only. Auto borrows no input; explicit inspection owns and
+restores raw/flowing stdin and cannot keep a finite command alive after exit.
+Inspection has no local idle or absolute expiry. q, contextual Escape and settled
+keyboard Ctrl-C close it; input/output loss and external interruption still close
+and restore it. Any explicit inherited presentation constraint remains a minimum
+across enclosing owners, with a 45-second closing reserve for finite command
+timers. Only an eligible interactive effective dashboard omits the default file
+and delegation command envelope; machine modes and setup/cleanup owners retain
+their bounds. Run timeouts and explicit enforcement timers remain unchanged.
+Verify mixed-block traversal, draft filter/reference/attention modes, exact size
+cutoffs, per-surface identity, escaped attention admission, nearly-timeout batched
+exit, phase-aware signals and screen restoration on setup/output exceptions.
+Trusted root admission, rather than Flow views or elapsed time, starts screen
+entry; the CLI joins entry before settlement. Early host/call/diagnostic evidence
+remains in the model. Post-settlement inspection owns no execution/channel
+lifetime. Select immutable delivery capture before publication. Its artifact
+resolver uses verified delivery and one immutable bounded capture, never mutable
+destination reads. Test redirected stdout, idle stdin, split/batched keys,
+post-settlement Ctrl-C, narrow/Unicode frames, reference/scroll identity and late
+preview settlement. `test/dashboard.test.ts` covers model/renderer/input bounds;
+installed factory and file-delivery tests cover composition and immutable capture.
+`inspect --result` bypasses project/environment acquisition and reads only the
+selected descriptor-confined packet. Its fixed views label all evidence recorded,
+never reconstruct live views or authority, and preserve exact decoded JSON.
+Qualify partial file capture, framing/byte/path limits, link refusal, interruption,
+buffer release and output failure independently of recorded execution status.
 
 - `just jig::check` builds and runs package tests, then automatically runs all
   discovered Mac-specific regression files on an exact supported native Mac.
@@ -359,6 +466,15 @@ admitted FLOW packages.
   and pricing files, and the published Bread 1.0 text's fixed digest. The check
   uses retained local text, without a Bread checkout or network lookup.
 - Trust-boundary changes require the provisioned host-conformance workflow.
+- Mac Codex preference qualification uses `macos-preferences-observer.test.ts`
+  and `macos-preferences-boundary.test.ts` with `JIG_MACOS_PROCESS_TEST=1`.
+  The actual-observer positive and injected-policy cases require native Intel
+  23E224 without configured Codex MDM. They prove closed decisions, inherited
+  sandbox refusal and parent-loss expiry, not installed MDM consumption. The
+  raw boundary test checks populated synthetic preferences, read-only counters,
+  inherited rights and cleanup. Genuine startup is qualified separately by
+  `native-agent-startup.test.ts`; other Mac profiles must explicitly refuse
+  Codex selection while retaining their independent client checks.
 - CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-value-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,
   plain/redirected output, narrow widths, and light/dark terminal palettes.
@@ -382,6 +498,14 @@ admitted FLOW packages.
   It accepts `JIG_PACKAGE_ARCHIVE` or packs the built candidate.
   It also verifies prompt failed settlement of a deliberately crashing Flow
   through the installed CLI, followed by ordinary use of the same project.
+  Its software-factory consumer runs the unchanged application with packed
+  public dependencies and a deterministic Flow Agent peer, then removes the
+  editable repair package after approval. It verifies admitted dependency
+  imports, relayed worker progress, both blocked job causes and checkpoint
+  delivery without native clients or model calls. A second reviewed peer returns
+  deterministic repairs through the public structured Agent result. Verify final
+  Jobs, Checks and Patches snapshots, independent acceptance, exact delivered patch
+  references, and complete ended summaries in automatic plain display.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
@@ -391,6 +515,9 @@ admitted FLOW packages.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
+  Its trusted npm installation accepts `JIG_NPM` and uses the selected absolute
+  `JIG_AUTHORING_NODE_PATH` directory for npm's interpreter when the host PATH
+  excludes runner tool-cache binaries. This does not change Run authority.
 - The same installed smoke runs `test/installed-conversation-adoption.ts` in
   a fresh ordinary project using the frozen Jig/SDK/method archives, public
   `new --use` and `import-contract`, and the unchanged public conversation

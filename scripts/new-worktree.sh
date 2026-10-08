@@ -66,7 +66,8 @@ fi
 # A late filesystem error must preserve the checkout for inspection, not force
 # removal of potentially changed work. Git handles its own creation failures.
 trap 'log "Setup incomplete; worktree retained for inspection: $wt"' ERR
-for name in "${shared_names[@]}"; do
+# Bash 3.2 (macOS) treats an empty array as unset under nounset.
+for name in ${shared_names[@]+"${shared_names[@]}"}; do
   # Directory form derives the same basename and refuses an existing entry on
   # both BSD and GNU ln, without GNU's -T option or following a colliding entry.
   ln -s -- "../$name" "$wt/"

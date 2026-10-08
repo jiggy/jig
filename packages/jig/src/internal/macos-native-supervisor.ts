@@ -31,7 +31,10 @@ import {
   requirePrivateMacosOwnerDirectory,
 } from './macos-owner-state.js'
 import { acquirePrivateMacosCoalition, privateMacosPeerIdentity } from './macos-process-controls.js'
-import type { PrivateMacosSandboxFiles } from './macos-sandbox-profile.js'
+import {
+  type PrivateMacosSandboxFiles,
+  privateMacosSandboxProfile,
+} from './macos-sandbox-profile.js'
 import {
   type PrivateMacosScopeExecution,
   type PrivateMacosScopeLimits,
@@ -127,7 +130,11 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
     (record.maxOutputBytes as number) > PRIVATE_MACOS_MAX_OUTPUT_BYTES
   )
     throw new Error('invalid macOS guardian configuration')
-  object(record.files, 'readOnlyFiles,readOnlyTrees,writableTrees,protectedRoots,network')
+  object(
+    record.files,
+    `readOnlyFiles,readOnlyTrees,writableTrees,protectedRoots,network${record.files !== null && typeof record.files === 'object' && Object.hasOwn(record.files, 'codexPreferenceNotifications') ? ',codexPreferenceNotifications' : ''}`,
+  )
+  privateMacosSandboxProfile(record.files as unknown as PrivateMacosSandboxFiles)
   object(
     record.limits,
     'memoryBytes,pids,cpuQuotaMicros,cpuPeriodMicros,deadlineUnixMs,cleanupTimeoutMs',

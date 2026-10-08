@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./policy": "./policy.ts",
+    "./progress": "./progress.ts",
     "./repair": "./repair.ts"
   },
   "dependencies": {

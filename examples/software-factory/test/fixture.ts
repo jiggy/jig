@@ -46,7 +46,7 @@ const proposal = {
   ],
 }
 
-function recorded(
+export function recorded(
   command: string,
   files: Record<string, string>,
   args: string[],
@@ -86,12 +86,14 @@ export async function syntheticRepair(
   commandFailure?: OperationError,
 ) {
   let agents = 0
+  const calls: { operationId: string; slot: string; intent?: string }[] = []
   const result = await repair({
     input,
     settings: { maxProposals },
     signal: new AbortController().signal,
     channels,
     call: async (call) => {
+      calls.push({ operationId: call.operationId, slot: call.slot, intent: call.intent })
       if (call.slot === 'agent') {
         agents++
         return { outcome: 'done', output: { text: 'Synthetic proposal.', structured: proposal } }
@@ -114,5 +116,5 @@ export async function syntheticRepair(
       }
     },
   })
-  return { result, agents }
+  return { result, agents, calls }
 }

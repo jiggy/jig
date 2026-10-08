@@ -59,9 +59,18 @@ arrive through the ordinary Agent Flow's admitted resource call. A
 native ACP client starts with an empty work directory. Jig provides it no
 filesystem, terminal, or MCP client capability, no MCP servers, and no
 persistent permission. Claude and Pi profiles disable their tools; Codex uses
-its qualified constrained workspace mode, with managed restrictions protecting
-projected authentication. This is not a universal claim that native tools are
-disabled. Profiles also restrict extensions, plugins and native Skills as
+its pinned constrained workspace mode with permission requests refused. Linux
+additionally supplies managed restrictions; subscription authentication stays
+in memory with ephemeral storage, rather than in a tool-readable file.
+On qualified Intel build 23E224, Codex alone may read system preference change
+counters and contact exact preference services, without permission to read or
+write preference values. A fresh trusted observation refuses configured managed
+policy or unavailable synchronization before selection and each native launch.
+It does not continuously monitor later policy changes; other OS profiles require
+separate qualification. This is not a universal claim that native tools are
+disabled. Rosetta and Apple Silicon are refused for this Codex path. The trusted
+observer refuses inherited sandbox uncertainty and retains its deadline after
+parent loss. Profiles also restrict extensions, plugins and native Skills as
 specified in [Finite ACP](docs/jig/spec/finite-acp.md). Secrets never enter Flow environments, launch
 arguments, Plans, locks, or retained Run state. Instructions and selected Skills
 are explicit caller data, not secret authority or host-attested provenance.
@@ -266,7 +275,10 @@ destination nor the delivery socket. On cancellation, the owner sends SIGTERM
 to its exact trusted child and allows at most 60 seconds for cooperative Run
 settlement and delivery before SIGKILL and reaping. The existing absolute
 command expiry can shorten that wait and retains a 250 ms escalation grace;
-later signals cannot extend either bound. This changes no payload deadline
+later signals cannot extend either bound. Eligible interactive dashboards omit
+the default outer command expiry so settled read-only inspection can wait for
+the operator; explicit enclosing limits and bounded setup, Run execution and
+cleanup remain enforced. This changes no payload deadline
 or cancellation authority. The independent cgroup owner still fences the complete payload tree;
 the child signal is not a substitute for that boundary. Atomic no-replace publication creates
 private files and directories; it promises complete visibility, not power-loss

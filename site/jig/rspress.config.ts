@@ -1,8 +1,8 @@
 import { resolve } from 'node:path'
 import { defineConfig } from '@rspress/core'
 import { accessibleMarkdown } from '../theme/accessible-markdown'
-import { diagramImages } from '../theme/diagram-images'
 import { codeThemes } from '../theme/code-themes'
+import { diagramImages } from '../theme/diagram-images'
 import { documentationIndex } from '../theme/llms'
 
 const siteDirectory = import.meta.dirname
@@ -60,16 +60,19 @@ const sidebar = [
       { text: 'HTTP Request', link: '/spec/http-request' },
       { text: 'Finite ACP', link: '/spec/finite-acp' },
       { text: 'Channels', link: '/spec/channels' },
+      { text: 'User updates', link: '/spec/user-updates' },
       { text: 'Run Checkpoint', link: '/spec/run-checkpoint' },
     ],
   },
   {
-    text: 'Invocation identities',
+    text: 'Standard library',
     collapsible: true,
     collapsed: true,
     items: [
+      { text: 'Overview', link: '/contracts/' },
       { text: 'Agent Run', link: '/contracts/agent-run' },
       { text: 'ACP public updates', link: '/contracts/acp-public-updates' },
+      { text: 'User updates', link: '/contracts/user-updates' },
       { text: 'Project Command', link: '/contracts/project-command' },
       { text: 'HTTP Request', link: '/contracts/http-request' },
       { text: 'Finite ACP', link: '/contracts/finite-acp' },

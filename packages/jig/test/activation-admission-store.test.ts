@@ -16,6 +16,7 @@ import {
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 import { main, privateCliPrepareArguments } from '../src/cli.js'
 import { CheckError } from '../src/diagnostics.js'
 import {
@@ -963,7 +964,7 @@ describe.serial('direct alpha activation store', () => {
             expect(output).toContain(heading)
             expect(output).toMatch(/Visible source\s+changes are not checked/)
             if (state !== 'environment-matches') {
-              expect(output).toContain('jig review')
+              expect(stripVTControlCharacters(output)).toContain('jig review')
               expect(output).not.toContain('Next: jig run')
             }
           }

@@ -9,7 +9,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
 ## Ownership
 
 - `contract-import.ts` owns explicit, inert contract-bundle copying: capture
-  the descriptor and exact offline channel closure, validate before writing,
+  an invocation descriptor and exact offline channel closure, or a standalone
+  channel descriptor. `standard-contracts.ts` owns the closed `jig:` catalog of
+  installed invocation and channel agreements. `--list` stays offline; imports
+  capture the exact descriptor closure and its license and verify the catalog
+  digest. Names select agreements, never implementations or authority. Validate before writing,
   and publish a new directory without replacement. Source package code,
   unrelated files, network access and Run approval stay outside this operation.
   Native publication uses exclusive directory rename from a newly owned staging
@@ -36,6 +40,18 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value;
   explicit operator timeouts remain separate from bounded cleanup settlement.
+  Its private presentation constraint uses epoch-referenced milliseconds from
+  `Math.floor(performance.timeOrigin + performance.now())`, advancing monotonically
+  within one process and retaining normal scalar meaning across Bun reexecution.
+  Do not use process-relative `hrtime` as an inherited absolute deadline. Host-clock
+  adjustments between process startups can shift the epoch reference; independent
+  execution and command timers remain the enforcement authorities.
+  Seed it before a finite enclosing file-command or Linux delegation timer,
+  reserve 45 seconds for bounded restoration/reporting, and preserve the minimum
+  inherited value through reexecution. Eligible interactive effective dashboard
+  commands omit only the default command envelope; finite explicit constraints
+  and bounded setup, Run, cancellation and cleanup owners remain enforced. The
+  scalar only constrains presentation; it never grants execution authority.
 - Admission storage uses the closed native descriptor operations while SQLite
   retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
   Darwin resolves system ancestor aliases only for SQLite's visible filename;
@@ -135,6 +151,29 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Recheck the selected parent and exact staging identity before exclusive
   publication; a moved parent cannot redirect writes or cleanup. Invalid final
   files retain the known execution terminal and never authorize replay.
+- `saved-result.ts` captures operator-selected local result packets for
+  `inspect --result`, without a project, approval, provider, verification setting
+  or execution owner. Recorded facts and diagnostic paths are unauthenticated
+  local claims. One JSON/0 document plus the publisher's single trailing LF
+  and at most 64 manifest files /16 MiB are captured through held no-link
+  directory descriptors; validate the whole manifest before allocation/read.
+  The separate held `files/` descriptor preserves each delivered path's full
+  depth/byte budget. Matching size/digest establishes captured consistency,
+  never publication authority. Partial verification retains the valid report
+  and prior verified copies; later previews use only those immutable buffers.
+  The regular-file reader owns each allocation until post-read checks and
+  descriptor closure succeed; rejected allocations are zeroed even when read,
+  stat or close throws. Finish every owned directory close before transferring
+  the inspection's buffer owner. A close failure disposes accepted copies too;
+  collective cleanup preserves the primary capture failure or interruption.
+  Every exit closes descriptors and releases retained bytes. No recorded field
+  can select execution, a current evidence destination, or mutable preview reads.
+  Private saved views retain every captured file's full preview reference while
+  disclosing clipped table names. Charge human report/diagnostic excerpts by
+  serialized JSON bytes so all three views fit one publisher's retained budget.
+  Keep distinct root diagnostics beside child reports; only an exactly matching
+  rendered root entry replaces the root envelope. Capture truncation disclosures
+  precede excerpts, and human clipping never changes exact JSON inspection.
 - `macos-file-command.ts` supplies private filesystem sockets for the independent
   command owner. Bind the control connection to its directly spawned coordinator
   and bind descriptor transfers to that connection's kernel PID version; the
@@ -400,6 +439,20 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
   under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
   projections cannot overlap these runtime roots. Host control remains excluded.
+  Only the verified Codex profile may select exact preference-service lookup
+  and read-only daemon/current-UID notification-counter pages. This grants no
+  preference reads, writes, other IPC or networking; preserve the flag through
+  intent lowering, sealing and guardian message validation. On Intel build
+  23E224 the pages are qualified as 16 KiB invalidation counters, including
+  cross-domain change activity. Other OS profiles need independent qualification.
+  `macos-codex-preferences.ts` runs the authenticated installed observer in a
+  fresh bounded process during provider selection and each launch/restoration,
+  outside resource/installation caches. Forced policy or unavailable observation
+  refuses execution with a closed actionable cause. This is an observation
+  boundary, not continuous MDM enforcement. Codex HOME relocates to private tmp.
+  Reject Rosetta and arm64 in the universal observer, and retain its native
+  self-deadline after coordinator loss. Inherited sandbox uncertainty also
+  refuses observation. Missing observer support is an installation failure.
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
   rights and descriptors, apply the selected profile, report private readiness,
   and wait for admission before execution. Close all child control handoffs
@@ -459,6 +512,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   dispatch without exposing exception text or weakening uncertainty and cleanup.
   Failed finite ACP operations identify the last host execution phase using
   fixed text; starting a client does not establish remote dispatch.
+  Native error text/data remain private. The authentic runtime retains its
+  host-selected client identity; only Codex's demonstrated `session/new` managed
+  preference error shape maps to the closed reason specified in `finite-acp.md`.
+  Build a fresh constant projection and discard raw fields/private guidance.
+  The reason is an attributed native report, never permission to retry or a
+  diagnosis of sandbox policy, credentials, effects, or cleanup.
 - Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or finite ACP resource endpoints. Unused incoming
   rights may move onward; each child and effect retains its own participant identity.
@@ -475,6 +534,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   named contract. ACP ingress is separately bounded and never
   blocks its protocol reader; failed progress does not manufacture failed work.
   The installed writer bounds live stdout/stderr and cancels on delivery loss.
+  Read-only dashboard provenance is broker-captured accepted-send identity,
+  retained on pending sends; it never enters public channel envelopes. Host call
+  observations carry only actual own operation identity, parent, slot, bounded
+  intent, state/time and safe cause. Optional observation exceptions cannot
+  change dispatch or settlement. Successful root execution-owner admission emits
+  one private best-effort dispatch observation before exchange, independent of
+  update ports or views. The CLI owns and joins asynchronous screen entry; earlier
+  refusals remain ordinary diagnostics. Explicit result inspection owns one bounded
+  immutable copy of verified delivery bytes; it never reopens destination files,
+  retains an execution owner or extends a Flow's deadline. Release preview
+  buffers and private presentation connections on every exit.
   Command reports retain aggregate-bounded diagnostics with host-assigned call
   paths, independently of root-process stderr. Settled root notifications let
   interrupted commands report known terminals without reopening closed authority.
@@ -504,6 +574,24 @@ child calls, project commands, delegated HTTP, and Agent providers.
   through its authenticated transient-scope lifetime socket to the inner CLI.
   Keep that socket open for cooperative cancellation and confirmed cleanup;
   its closure remains the independent emergency scope fence.
+- Explicit dashboard inspection has no local idle or absolute expiry. It remains
+  read-only until q, contextual Escape or settled keyboard Ctrl-C. Literal filter
+  keys retain their existing meanings. Any inherited finite presentation deadline
+  still applies and cannot be refreshed by input, repaint or preview completion;
+  live presentation expiry returns to ordinary output without requesting
+  cancellation. File publication and preview retention never waive an explicit
+  command timer. Select immutable delivery inspection before capture/publication,
+  even while screen entry waits for successful root admission. External interruption after
+  settlement closes presentation with the existing interruption exit status;
+  keyboard Ctrl-C after settlement only closes inspection. Frozen result facts
+  and all actual execution/cleanup deadlines remain unchanged.
+  Standalone saved inspection owns no execution lifetime or local expiry on any
+  supported host; any earlier inherited constraint still applies.
+  It exits 0 for a valid consistent report even if recorded execution failed,
+  1 for unavailable/invalid reports, incomplete files or output failure, and
+  2 for external interruption. JSON remains the unchanged recorded value;
+  current verification findings stay on stderr. Normal inspection closure
+  never changes recorded Run facts or grants authority to repeat work.
 - The optional installed-startup diagnostic accepts only a private local trace
   destination, activates after rootless-host acquisition, and removes its
   selector from operator configuration before opening a project session. It
@@ -529,6 +617,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   current support without cgroup acquisition or namespace execution; Run retains
   full launch revalidation. Include selected child identities, isolate unrelated
   targets, and report failed comparisons as unchecked without private causes.
+  Compact reviews may suppress repeated ACP selections across source edits only
+  under identical package paths and resolved slots, by recomputing both retained
+  recipe and observation digests with an authentic current environment. The shared
+  identity calculation returns inert hashes, never an executable recipe; unknown
+  or changed environments retain the selection. This display proof changes no
+  approval, persistence or launch revalidation.
 - One resolved slot table pins exact Flow targets or qualified native invocations.
   `project-feature-qualification.ts` qualifies the selected graph from captured
   support/requirement metadata, without preparing execution or choosing alternatives.
@@ -922,6 +1016,15 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Native and installed-consumer qualification still establish actual enforcement.
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`.
+- `workspace-progress.test.ts` covers operator-controlled inspection, private
+  deadline minima, trusted dispatch versus initial refusal, effective machine
+  modes, queued screen entry/restoration, phase-aware interruption, escaped cause batching and full
+  final diagnostics with injected streams and clocks. These portable cases do
+  include one owned Bun-to-Bun expired-constraint regression, but do not qualify
+  host-clock adjustments, terminal restoration or actual
+  command expiry on another supported host. The native file-delivery inspection
+  cases separately verify immutable bytes, explicit command limits and terminal
+  restoration after sustained inspection.
 - On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables
   `macos-process-controls.test.ts` and `macos-execution.test.ts` with the
   candidate native runtime outside an enclosing sandbox. They use finite

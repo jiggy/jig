@@ -1,26 +1,36 @@
+import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
+import type { RootRunStatus } from '../administration/root.js'
 import {
   CHANNEL_CONTRACT_BYTES,
   type ChannelDeclaration as PackageChannelDeclaration,
   parseChannelContract,
   requireChannelReference,
 } from '../channel-contract.js'
+import type { PrivateCallEvent } from '../cli-run-model.js'
+import type { PrivateUserUpdateSource } from '../cli-user-updates.js'
 import type { JsonValue } from '../json.js'
-import type { RootRunStatus } from '../administration/root.js'
 import type { CapturedPackage } from '../package/capture.js'
-import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
+import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import {
   ChannelBroker,
+  type ChannelContractReference,
   type ChannelDeclaration,
   type ChannelGrant,
   ChannelOperationError,
   type ChannelParticipant,
   type ResolvedChannelContract,
-  type ChannelContractReference,
 } from '../run/channels.js'
 
 /** Command-local presentation. Its callbacks confer no execution authority. */
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
+  /** Trusted root admission crossed the execution boundary; not a Flow claim. */
+  dispatched?(): void
+  call?(event: PrivateCallEvent): void
+  readonly updates?: {
+    open(port: string): PrivateUserUpdateSource
+    ambiguous(ports: readonly string[]): void
+  }
   record(value: JsonValue): Promise<void>
   diagnostic(bytes: Uint8Array, operations?: readonly string[]): void
   /** Command-local observation of an authoritative settled root, including during close. */
@@ -63,7 +73,7 @@ export class PrivateRunChannels {
     )
     const cli = broker.participant('command', { resolveContract })
     const references: Record<string, string> = Object.create(null)
-    const readers: { name: string; endpoint: string }[] = []
+    const readers: { name: string; endpoint: string; updates?: PrivateUserUpdateSource }[] = []
     let context: PrivateRunChannels | undefined
     try {
       const selected = output?.receive ?? []
@@ -85,10 +95,32 @@ export class PrivateRunChannels {
         const receiver = 'receive' in pair ? pair.receive : cli.subscribe(pair.source)
         readers.push({ name, endpoint: receiver.endpoint })
       }
+      if (selected.length === 0 && output?.updates !== undefined) {
+        const expected = USER_UPDATES_CONTRACT
+        const matches = Object.entries(declarations).filter(
+          ([, port]) =>
+            port.direction === 'send' &&
+            !port.required &&
+            port.contract?.identity.id === expected.id &&
+            port.contract.identity.version === expected.version &&
+            port.contract.identity.digest === expected.digest,
+        )
+        if (matches.length > 1) output.updates.ambiguous(matches.map(([name]) => name))
+        else if (matches.length === 1) {
+          const pair = broker.createPresentation(cli, declarations)
+          references[pair.name] = pair.send.endpoint
+          readers.push({
+            name: pair.name,
+            endpoint: pair.receive.endpoint,
+            updates: output.updates.open(pair.name),
+          })
+        }
+      }
       const grants = cli.transfer(root, references, declarations)
       context = new PrivateRunChannels(root, grants, broker, contracts)
       for (const reader of readers) {
-        await output!.record({ type: 'begin', channel: reader.name, startSequence: 1 })
+        if (reader.updates === undefined)
+          await output!.record({ type: 'begin', channel: reader.name, startSequence: 1 })
         const task = context.drain(cli, reader, output!)
         // Preserve its failure for settlement without an unhandled rejection
         // when another selected stream fails during startup.
@@ -98,6 +130,7 @@ export class PrivateRunChannels {
       return context
     } catch (error) {
       broker.abort('CANCELLED')
+      for (const reader of readers) reader.updates?.retire()
       await Promise.allSettled(context?.readers ?? [])
       throw error
     }
@@ -115,7 +148,7 @@ export class PrivateRunChannels {
 
   private async drain(
     cli: ChannelParticipant,
-    reader: { name: string; endpoint: string },
+    reader: { name: string; endpoint: string; updates?: PrivateUserUpdateSource },
     output: PrivateRunChannelOutput,
   ): Promise<void> {
     try {
@@ -127,6 +160,14 @@ export class PrivateRunChannels {
         try {
           result = (await cli.next(reader.endpoint)) as typeof result
         } catch (error) {
+          if (reader.updates !== undefined) {
+            reader.updates.retire(
+              error instanceof ChannelOperationError && error.code === 'INVALID_INPUT'
+                ? 'Updates unavailable: contract violation.'
+                : `Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (${error instanceof ChannelOperationError ? error.code : 'DISCONNECTED'})`,
+            )
+            return
+          }
           await output.record({
             type: 'end',
             channel: reader.name,
@@ -136,6 +177,10 @@ export class PrivateRunChannels {
           return
         }
         if (result.end !== undefined) {
+          if (reader.updates !== undefined) {
+            reader.updates.retire()
+            return
+          }
           await output.record({
             type: 'end',
             channel: reader.name,
@@ -144,9 +189,18 @@ export class PrivateRunChannels {
           })
           return
         }
-        await output.record({ type: 'data', channel: reader.name, ...result.item! })
+        if (reader.updates !== undefined) {
+          if (
+            !reader.updates.accept(
+              result.item!.value,
+              this.broker.publisherOf(result as unknown as JsonValue),
+            )
+          )
+            return
+        } else await output.record({ type: 'data', channel: reader.name, ...result.item! })
       }
     } finally {
+      reader.updates?.retire()
       await cli.release(reader.endpoint)
     }
   }
@@ -161,7 +215,9 @@ export function channelContractResolver(
   return async (reference) => {
     if (typeof reference !== 'string') {
       const selector = reference
-      const packageInfo = inspected ?? (await (inspection ??= inspectCapturedPackage(captured)))
+      inspection ??=
+        inspected === undefined ? inspectCapturedPackage(captured) : Promise.resolve(inspected)
+      const packageInfo = inspected ?? (await inspection)
       const used = packageInfo.usedContracts.find((entry) => entry.slot === selector.slot)
       const port = used?.contract.invocation?.channels?.[selector.channel]
       if (!used || !port?.contract)

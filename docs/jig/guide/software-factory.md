@@ -44,12 +44,45 @@ jig run --input @batch.json --out factory-result-2
 Existing results are never overwritten. Explicitly naming a target bypasses
 entrypoint defaults; supply that invocation's arguments in full.
 
-Add `--receive progress --json` to observe each job's method selection and the
-repair specialist's baseline, proposal, check, and finish phases. The broadcast
-channel does not wait for a reader to accept each message. A `settled` notice
-follows the job's durable checkpoint. These messages show activity only; the
+The standard [user-updates contract](../contracts/user-updates.md) supplies three
+factory views: **Jobs** shows requested goals, source scope, reviewed approach and
+outcomes; **Checks** shows repository tests and independent acceptance
+cases; **Patches** shows independently checked patch packets and evidence links.
+**Activity** follows current work and check reports. **Overview** shows the actual
+call tree, distinguishing baseline checks from checks of each proposed repair.
+Jobs pairs concise outcomes, verified checks and patch references with each job's
+goal and evidence. Wide terminals show the selected job's details beside the list.
+Blocking causes remain in the attention bar; press `!` to read the complete cause.
+Use `jig run --display dashboard` to switch views, select a job, inspect its
+details, and use `r` to select a verified file preview after packet delivery.
+Jobs includes the exact original request file; long displayed goals explicitly
+identify excerpts. Complete requests also remain in the supplied input and
+`result.json`.
+The completed inspector selects Jobs unless you already chose a view. It stays
+read-only until you leave, subject to any explicit enclosing command deadline.
+Execution, cleanup and delivery have already settled.
+Press `q` to close it; during work, `q` continues in the ordinary transcript.
+Escape closes the current panel before leaving the dashboard. Ordinary `jig run`
+shows an inline projection and exits with the final report; `--display plain`
+emits a simple transcript.
+The final application output gives a brief report of each job and public failure
+causes, while full evidence remains in `result.json`.
+Reopen the saved evidence later without starting work:
+
+```sh
+jig inspect --result ./factory-result --display dashboard
+```
+
+This shows the recorded result, verified saved files and diagnostics. Current
+packets do not retain the live factory tabs or call graph.
+Add `--receive progress --json` for explicit machine records, or
+`--updates off` to disable automatic observation. Rapid phase replacements and
+slow observers may omit intermediate activity. A checkpoint notice follows
+durable storage; counts measure saved jobs, including failures. If live updates
+stop early, check the final report and saved evidence. These views report application observations; the
 final result and retained evidence determine whether a patch is review-ready.
-The factory's `checkpoint` slot separately retains settled job evidence across
+The factory's `checkpoint` slot separately retains settled job evidence and
+original request files across
 interruption.
 
 The factory accepts at most two jobs. It validates and captures every selected

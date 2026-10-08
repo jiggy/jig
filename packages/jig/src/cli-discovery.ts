@@ -1,3 +1,4 @@
+import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import type { JsonValue } from './json.js'
 
 function record(value: JsonValue | undefined): Record<string, JsonValue> {
@@ -105,8 +106,9 @@ export function invocationGuide(snapshot: JsonValue): string {
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
   const commands = 'init new review run inspect completion import-contract'
+  const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
-    '--help --input --attach --select --out --receive --timeout --verification --json'
+    '--help --input --attach --select --out --receive --updates --timeout --verification --json'
   if (shell === 'bash')
     return `_jig() {
   local cur="\${COMP_WORDS[COMP_CWORD]}" command="\${COMP_WORDS[1]}" prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -121,15 +123,25 @@ export function completionScript(shell: string): string | undefined {
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
   elif [[ "$prev" == --verification ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
+  elif [[ "$prev" == --updates && "$command" == run ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'off' -- "$cur")
+  elif [[ "$prev" == --display && "$command" == inspect ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'plain dashboard' -- "$cur")
   elif [[ "$cur" == -* ]]; then
     local opts='--help'
     case "$command" in
       run) opts='${runOptions}';;
       review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification';;
-      inspect) opts='--help --json --verification';;
+      inspect) opts='--help --json --verification --result --display';;
       init) opts='--help --bare --agent';;
+      import-contract) opts='--help --list';;
     esac
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W "$opts" -- "$cur")
+  elif (( word == 2 )) && [[ "$command" == import-contract ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${contracts}' -- "$cur")
+    if [[ "$cur" == *:* && "$COMP_WORDBREAKS" == *:* ]]; then
+      COMPREPLY=("\${COMPREPLY[@]#*:}")
+    fi
   elif (( word == 2 )) && [[ "$command" == run || "$command" == inspect ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(jig completion targets "$cur" 2>/dev/null)
     # Bash treats ':' as a word break; keep only the suffix it will replace.
@@ -148,14 +160,21 @@ _jig() {
     choices=(${commands} --help --version)
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
     choices=(cached strict fast)
+  elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
+    choices=(off)
+  elif [[ "$words[CURRENT-1]" == --display && "$words[2]" == inspect ]]; then
+    choices=(plain dashboard)
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
       review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification);;
-      inspect) choices=(--help --json --verification);;
+      inspect) choices=(--help --json --verification --result --display);;
       init) choices=(--help --bare --agent);;
+      import-contract) choices=(--help --list);;
       *) choices=(--help);;
     esac
+  elif (( CURRENT == 3 )) && [[ "$words[2]" == import-contract ]]; then
+    choices=(${contracts})
   elif (( CURRENT == 3 )) && [[ "$words[2]" == run || "$words[2]" == inspect ]]; then
     choices=("\${(@f)$(jig completion targets "$PREFIX" 2>/dev/null)}")
   else
@@ -169,9 +188,14 @@ compdef _jig jig
     return `complete -c jig -n '__fish_use_subcommand' -a '${commands}'
 complete -c jig -l help
 complete -c jig -l version -n '__fish_use_subcommand'
+complete -c jig -n '__fish_seen_subcommand_from import-contract' -l list
+complete -c jig -n '__fish_seen_subcommand_from import-contract' -a '${contracts}'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -a '(jig completion targets (commandline -ct) 2>/dev/null)'
 complete -c jig -n '__fish_seen_subcommand_from run review inspect' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
+complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
+complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain dashboard'
+complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}

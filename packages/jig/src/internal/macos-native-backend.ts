@@ -1,4 +1,3 @@
-import { privateMacosKernelPlatform, type PrivateMacosPlatform } from './macos-process-controls.js'
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import { lstat, mkdir, mkdtemp, realpath, rmdir } from 'node:fs/promises'
@@ -36,7 +35,11 @@ import {
 } from './macos-input-projection.js'
 import type { PrivateMacosGuardianStart } from './macos-native-supervisor.js'
 import { PRIVATE_MACOS_MAX_OUTPUT_BYTES } from './macos-output-policy.js'
-import { privateMacosCurrentProcessIdentity } from './macos-process-controls.js'
+import {
+  type PrivateMacosPlatform,
+  privateMacosCurrentProcessIdentity,
+  privateMacosKernelPlatform,
+} from './macos-process-controls.js'
 import {
   type PrivateMacosSandboxFiles,
   privateMacosSandboxProfile,
@@ -736,6 +739,9 @@ async function sealPlan(
       posix.join(allocation.directory, 'control'),
     ]),
     network: value.files.network,
+    ...(value.files.codexPreferenceNotifications === undefined
+      ? {}
+      : { codexPreferenceNotifications: value.files.codexPreferenceNotifications }),
   })
   privateMacosSandboxProfile(files)
   const storage = value.storage === undefined ? undefined : Object.freeze({ ...value.storage })

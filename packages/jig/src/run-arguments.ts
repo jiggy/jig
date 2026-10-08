@@ -22,6 +22,8 @@ export function parseRun(
   readonly timeoutMs: number
   readonly receive: readonly string[]
   readonly json: boolean
+  readonly updates: 'auto' | 'off'
+  readonly display: 'auto' | 'plain' | 'dashboard'
   readonly verification: string | undefined
 } {
   if (arguments_.length < 2)
@@ -33,6 +35,10 @@ export function parseRun(
     selectors = new Map<string, string[]>()
   let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
   let json = false
+  let updates: 'auto' | 'off' = 'auto'
+  let sawUpdates = false
+  let display: 'auto' | 'plain' | 'dashboard' = 'auto'
+  let sawDisplay = false
   let sawInput = false
   let sawTimeout = false
   let verification: string | undefined
@@ -55,6 +61,8 @@ export function parseRun(
         '--receive',
         '--timeout',
         '--verification',
+        '--updates',
+        '--display',
       ].includes(option!)
     )
       usage(
@@ -62,6 +70,19 @@ export function parseRun(
         `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.${spellingHint(option!, ['--input', '--attach', '--select', '--out', '--receive', '--timeout', '--verification', '--json'])}`,
       )
     if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
+    if (option === '--display') {
+      if (sawDisplay || !['auto', 'plain', 'dashboard'].includes(value))
+        usage('run', '--display accepts auto, plain or dashboard once.')
+      sawDisplay = true
+      display = value as typeof display
+      continue
+    }
+    if (option === '--updates') {
+      if (sawUpdates || value !== 'off') usage('run', '--updates accepts off once.')
+      sawUpdates = true
+      updates = 'off'
+      continue
+    }
     if (option === '--verification') {
       if (verification !== undefined) usage('run', '--verification may only be supplied once.')
       verification = parseVerification('run', value)
@@ -149,6 +170,8 @@ export function parseRun(
     timeoutMs,
     receive,
     json,
+    updates,
+    display,
     verification,
     attachments: [...attachments].map(([name, directory]) => ({
       name,

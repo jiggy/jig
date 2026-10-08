@@ -19,7 +19,8 @@ case "$#" in
   *) echo 'Unexpected qualification arguments' >&2; exit 2 ;;
 esac
 case "$(uname -s):$(uname -m):$(uname -r):$(sw_vers -buildVersion)" in
-  Darwin:x86_64:23.4.0:23E224|Darwin:x86_64:24.6.0:24G830|Darwin:arm64:24.6.0:24G830) ;;
+  Darwin:x86_64:23.4.0:23E224) codex_startup_expectation=startup ;;
+  Darwin:x86_64:24.6.0:24G830|Darwin:arm64:24.6.0:24G830) codex_startup_expectation=unsupported ;;
   *) echo 'Qualification requires an exact selected native Mac candidate.' >&2; exit 2 ;;
 esac
 if [[ "$EUID" == 0 ]]; then
@@ -62,7 +63,7 @@ snapshot() {
   {
     launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'
     mount | awk '/jig-/ {print "mount " $0}'
-    ps -axo pid=,command= | awk '/macos-native-supervisor|macos-exec|\/jig-guardian-/ && !/awk/ {print "process " $0}'
+    ps -axo pid=,command= | awk '/macos-native-supervisor|macos-exec|macos-codex-preferences|\/jig-guardian-/ && !/awk/ {print "process " $0}'
   } | LC_ALL=C sort
 }
 snapshot > "$scratch/before"
@@ -83,13 +84,13 @@ finish() {
 }
 trap finish EXIT
 # Freeze all package inputs once; each consumer must use these same bytes.
-for package in flow-sdk agent-method agent-acp; do
+for package in flow-sdk user-updates agent-method agent-acp; do
   mkdir "$scratch/$package"
   bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
 done
 mkdir "$scratch/jig"
 (cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
-for package in flow-sdk agent-method agent-acp jig; do
+for package in flow-sdk user-updates agent-method agent-acp jig; do
   archives=("$scratch/$package/"*.tgz)
   if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
     echo "Expected one frozen $package archive" >&2
@@ -97,6 +98,7 @@ for package in flow-sdk agent-method agent-acp jig; do
   fi
   case "$package" in
     flow-sdk) export FLOW_SDK_PACKAGE_ARCHIVE="${archives[0]}" ;;
+    user-updates) export USER_UPDATES_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-method) export AGENT_METHOD_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-acp) export AGENT_ACP_PACKAGE_ARCHIVE="${archives[0]}" ;;
     jig) export JIG_PACKAGE_ARCHIVE="${archives[0]}" ;;
@@ -125,7 +127,10 @@ if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   if [[ -n "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" ]]; then
     startup_options+=(--reporter=junit "--reporter-outfile=$JIG_MACOS_TEST_TIMINGS_DIRECTORY/installed-startup.xml")
   fi
-  JIG_NATIVE_AGENT_STARTUP=1 bun test packages/jig/test/native-agent-startup.test.ts "${startup_options[@]}"
+  # The genuine Codex path must start only on its qualified preference profile;
+  # other selected Mac hosts must prove explicit refusal, never skip the case.
+  JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="$codex_startup_expectation" \
+    bun test packages/jig/test/native-agent-startup.test.ts "${startup_options[@]}"
   # Pack and install the result in a separate ordinary consumer, then use its CLI.
   bun packages/jig/test/package-smoke.ts
 fi

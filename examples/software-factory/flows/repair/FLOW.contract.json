@@ -13,9 +13,18 @@
         "properties": {
           "phase": {
             "type": "string",
-            "enum": ["baseline", "proposal", "check", "finished"]
+            "enum": ["baseline", "proposal", "check", "finished", "command", "observed", "rejected"]
           },
-          "attempt": { "type": "integer", "minimum": 0, "maximum": 2 }
+          "attempt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          }
         },
         "required": ["phase", "attempt"],
         "additionalProperties": false

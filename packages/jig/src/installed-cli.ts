@@ -1,5 +1,5 @@
 import { realpath } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -8,6 +8,7 @@ import {
   privateCliCommandLifetimeMs,
   privateCliPrepareArguments,
   privateCliRequiresHost,
+  privateCliSavedResultInspection,
   privateCliVerification,
   publicTerminal,
 } from './cli.js'
@@ -39,6 +40,7 @@ import {
   openPrivateProjectSession,
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
+import { privatePresentationDeadline } from './internal/root-run-timeout-policy.js'
 import { canonicalJson } from './json.js'
 
 interface InstalledCliOutcome {
@@ -86,6 +88,7 @@ async function runPrivateInstalledCli(
   )
   if ('exitCode' in prepared) return exit(prepared.exitCode)
   arguments_ = prepared.arguments
+  if (privateCliSavedResultInspection(arguments_)) return runWithEnvironment(arguments_, {}, signal)
   if (prepared.admissionDigest !== undefined)
     process.env.JIG_PRIVATE_RUN_ADMISSION = prepared.admissionDigest
   const expectedAdmissionDigest = process.env.JIG_PRIVATE_RUN_ADMISSION
@@ -139,9 +142,36 @@ async function runWithEnvironment(
   operatorEnvironment: Readonly<Record<string, string | undefined>>,
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
+  if (privateCliSavedResultInspection(arguments_)) {
+    const outputStop = new AbortController()
+    const stdout = new PrivateCliOutput(process.stdout, outputStop)
+    const stderr = new PrivateCliOutput(process.stderr, outputStop)
+    try {
+      const code = await main(arguments_, {
+        presentationDeadline: privatePresentationDeadline(process.env),
+        ...(signal === undefined ? {} : { signal }),
+        writeOutput: (text) => {
+          void stdout.write(text).catch(() => undefined)
+        },
+        writeRecord: async (text) => {
+          await stderr.flush()
+          await stdout.write(text)
+        },
+        writeError: (text) => {
+          void stderr.write(text).catch(() => undefined)
+        },
+        writeStderr: (text) => stderr.write(text),
+      })
+      await Promise.all([stdout.flush(), stderr.flush()])
+      return exit(signal?.aborted ? 2 : outputStop.signal.aborted ? 1 : code)
+    } catch {
+      return exit(signal?.aborted ? 2 : 1)
+    }
+  }
   if (!privateCliRequiresHost(arguments_)) {
     return exit(
       await main(arguments_, {
+        standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
         ...(signal === undefined ? {} : { signal }),
         ...(arguments_[0] !== 'inspect'
           ? {}
@@ -158,17 +188,24 @@ async function runWithEnvironment(
 
   try {
     const recovery = privateFileRecovery()
+    const commandLifetimeMs = privateCliCommandLifetimeMs(
+      arguments_,
+      process.stdin.isTTY === true &&
+        process.stderr.isTTY === true &&
+        typeof process.stdin.setRawMode === 'function' &&
+        process.env.TERM !== 'dumb',
+    )
     if (recovery === undefined && privateNeedsFileOwner(arguments_)) {
       return await privateOwnFileCommand(
         [executablePath, ...BUN_POLICY, installedCliPath],
         arguments_,
         signal,
-        privateCliCommandLifetimeMs(arguments_),
+        commandLifetimeMs,
       )
     }
     if (process.platform === 'linux') {
       const delegation = await acquireOrReexecutePrivateRootlessLinux({
-        commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
+        commandLifetimeMs,
         commandArguments: arguments_,
         ...(signal === undefined ? {} : { signal }),
       })
@@ -244,6 +281,7 @@ async function runWithEnvironment(
         return exit(
           await main(arguments_, {
             host,
+            presentationDeadline: privatePresentationDeadline(process.env),
             ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined
               ? {}
               : { expectedAdmissionDigest: process.env.JIG_PRIVATE_RUN_ADMISSION }),
@@ -257,6 +295,7 @@ async function runWithEnvironment(
             writeError: (text) => {
               void stderr.write(text).catch(() => undefined)
             },
+            writeStderr: (text) => stderr.write(text),
             signal: AbortSignal.any([
               outputStop.signal,
               ...(signal === undefined ? [] : [signal]),

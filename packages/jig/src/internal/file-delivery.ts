@@ -54,6 +54,8 @@ export interface PrivateDeliveryReceipt {
     | 'DEADLINE_EXCEEDED'
 }
 export interface PrivateDeliveryConnection {
+  enableInspection?(): void
+  preview?(path: string): Promise<{ text: string; bytes: number; clipped: boolean } | undefined>
   readonly checkpoint?: RetainedRunCheckpoint | null | undefined
   prepare(directory: string, roots: readonly number[]): Promise<void>
   bindCheckpoint?(identity: RunCheckpointIdentity, project: string, epoch: number): Promise<void>
@@ -79,6 +81,27 @@ export class PrivateFileDeliveryOwner {
   #published = false
   #preparing = false
   #publishing = false
+  #previewFiles: Map<string, Buffer> | undefined
+  #retainPreview = false
+
+  enableInspection(): void {
+    if (!this.#publishing) this.#retainPreview = true
+  }
+  preview(path: string): { text: string; bytes: number; clipped: boolean } | undefined {
+    privateFilePath(path)
+    const contents = this.#previewFiles?.get(path)
+    if (!contents) return undefined
+    const size = Math.min(65536, contents.length)
+    let text: string | undefined
+    for (let end = size; end >= Math.max(0, size - (contents.length > size ? 3 : 0)); end--) {
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(contents.subarray(0, end))
+        break
+      } catch {}
+    }
+    if (text === undefined) return undefined
+    return { text, bytes: contents.length, clipped: contents.length > size }
+  }
 
   constructor(
     readonly signal: AbortSignal,
@@ -253,6 +276,12 @@ export class PrivateFileDeliveryOwner {
       await publishPrivateDirectory(this.#parent, name, this.#leaf)
       this.#published = true
       this.#stage = undefined
+      if (this.#retainPreview) {
+        // These are the exact fenced bytes used for verified publication. The
+        // private presentation copy never reopens the mutable destination.
+        if (files.length <= 64 && files.reduce((n, f) => n + f.bytes, 0) <= 16 * 1024 * 1024)
+          this.#previewFiles = new Map(files.map((file) => [file.path, Buffer.from(file.contents)]))
+      }
       return delivery
     } catch {
       let code: PrivateDeliveryReceipt['code'] =
@@ -273,6 +302,8 @@ export class PrivateFileDeliveryOwner {
   }
 
   async close(): Promise<void> {
+    for (const bytes of this.#previewFiles?.values() ?? []) bytes.fill(0)
+    this.#previewFiles = undefined
     await this.#cleanupStage()
     if (this.#parent !== undefined) {
       await this.#parent.close()

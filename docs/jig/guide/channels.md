@@ -1,59 +1,204 @@
 # Add progress to a Flow
 
-When a method takes time, its caller may need to show what stage it has reached.
-A Flow can publish selected progress through an optional output channel while
-its final result remains the source of the execution outcome.
+A method can tell its caller what it is doing before its result arrives. Use
+complete notices for messages, replaceable activities for current work, and
+read-only views for a domain workspace. The
+application still checks its result; a count or closed update stream never
+establishes success.
 
-Add this declaration to that Flow's `FLOW.contract.json`:
+## Import one agreement
+
+Declare `@jigging/user-updates` alongside `@jigging/flow` in the Flow package's
+dependencies. From that package, create a `contracts` directory and import:
+
+```sh
+mkdir -p contracts
+jig import-contract jig:user-updates contracts/user-updates
+```
+
+The importer copies exact local descriptor bytes and its license, refuses an
+existing destination, and runs no package code or network request. Other hosts
+can copy the same agreement from the library or its
+[download](https://jig.md/contracts/user-updates.json), with the accompanying
+[MPL-2.0 license](https://jig.md/contracts/user-updates/LICENSE).
+
+Add this optional port to `FLOW.contract.json`. If the Flow has no invocation
+descriptor yet, create one with the following contents:
 
 ```json
-{
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
-  "channels": {
-    "progress": {
-      "direction": "send",
-      "required": false,
-      "delivery": "direct",
-      "schema": { "type": "string", "maxLength": 256 }
-    }
-  }
-}
+{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}
 ```
 
-Inside the existing handler, publish a short application-owned message at the
-appropriate stage:
+The name `updates` is local. No named invocation contract for the whole Flow is
+required. Direct delivery is the default; broadcast remains an ordinary choice.
+Managed TypeSpec source borrows this exact descriptor; generation preserves its
+bytes instead of rebuilding a similar model.
+
+## Publish within the handler
+
+Keep the method's work and checks inside one scope:
 
 ```ts
-const progress = run.channels.progress
-if (progress?.direction === 'send')
-  await progress.send('Checking the proposed result')
+import { withUserUpdates } from '@jigging/user-updates'
+
+return withUserUpdates(run, 'updates', async updates => {
+  updates.activity('check', 'Checking the proposed result')
+  const result = await checkProposal()
+  updates.notice('The proposal checks have ended.')
+  updates.clear('check')
+  return result
+})
 ```
 
-The optional endpoint is absent when the caller has not connected it. This is
-an integration excerpt, not a complete Flow: retain your method's work, result
-checks, and failure handling. A message describes activity; it does not establish
-that a result passed its checks.
+Here `checkProposal()` is the application's existing procedure returning its
+Run result. The scope validates offers, bounds queues, paces publication, and
+settles its operations before returning. It owns that writer exclusively; do
+not independently send, close, transfer, or wrap it again. Running without an
+observer is allowed.
+Invalid offers still throw when unwired, and offers after scope exit are errors.
 
-## Connect a software caller
+Python uses its independently packaged `jiggy-user-updates` helper with the
+same descriptor and meanings:
 
-For a Flow declaring that output, add `--receive progress --json` to its ordinary
-`jig run` command. Review the changed declaration and source before running.
+```python
+from jiggy.user_updates import user_updates
 
-Read `begin`, ordered `data`, `end`, then `terminal` records from stdout. Parse
-each complete line as JSON and keep stderr separate. Only `terminal.result`
-reports the Run outcome. A disconnected stream or missing terminal means the
-caller lacks a complete result. The [subprocess output contract](../spec/channels.md#installed-subprocess-output)
-defines exact fields and bounds.
+async with user_updates(run, "updates") as updates:
+    updates.activity("check", "Checking the proposed result")
+    result = await check_proposal()
+    updates.notice("The proposal checks have ended.")
+    updates.clear("check")
+    return result
+```
 
-Decide whether observation failure should fail your application. The simple
-`await send()` above propagates delivery errors. An application that treats
-progress as optional can handle known delivery failures and stop publishing,
-while continuing to await its work. Cancellation and uncertain owned work must
-still propagate; do not catch every error and report success.
+`notice(text, severity?)` is one complete message; multiline content is allowed.
+Use `info` (default), `warning` or `error` to report importance. For example,
+`updates.notice("Could not start the AI session.", "error")` in TypeScript or
+`updates.notice("Could not start the AI session.", severity="error")` in Python.
+Jig prominently labels attributed Flow-reported errors. Severity does not change
+ordering, quotas, optional delivery or execution authority. Offer blocking failures
+promptly and retain their reasons in final results independently of observation.
+`activity(id, label, progress?, {detail?, operationId?})` replaces the complete slot.
+The optional detail explains the current procedure; an own-call operation ID
+links to host-observed execution without inventing a call or changing its status.
+That association stays fixed until `clear(id)`. When moving a shared activity slot
+to another call, clear it first or give the new activity its own ID.
+Progress has required
+`completed`, optional `total`, and optional `unit`, for example
+`{completed: 3, total: 8, unit: 'files'}` in TypeScript. Counts may decrease or
+change units; omitted progress removes the old count. `clear(id)` is idempotent.
+Every source ending removes all its transient activities without decorating them
+as successful. Keep essential warnings and outcome evidence in results/artifacts.
 
-Closing an observer stops observation, not the underlying work. Channels have
-no retention or replay guarantee. [Run Checkpoint](../spec/run-checkpoint.md)
-is a separate capability for retaining completed artifacts across interruption.
+Local publication limits, 500 ms send wait or 4000 ms final drain expiry stop
+optional observation;
+original send and close operations still settle, so cleanup can take longer.
+Known observer loss may degrade. Unexpected publisher errors and root cancellation
+remain failures. A body error stays primary with a bounded secondary diagnostic.
+See [exact bounds and lifecycle](../spec/user-updates.md).
+
+## Observe the work
+
+After reviewing the changed source, ordinary `jig run` automatically displays
+exactly one optional canonical output on stderr. Suitable terminals show a bounded
+inline dashboard with the actual invocation tree and application views. Complete
+notices remain in the transcript with Flow attribution. Plain or redirected
+stderr shows meaningful label, title and summary changes without repeating counts.
+Stdout remains the ordinary final result. `--updates off` disables automatic
+observation; `--json` also disables it, while host diagnostics remain available.
+
+Explicit `--receive updates` exposes the existing selected-channel stdout
+presentation or JSON/NDJSON. It takes precedence even when supplied by the approved
+project entrypoint; `--updates off` does not cancel that explicit choice. Multiple
+canonical ports get one hint instead of a guess. Unsupported contracts remain
+ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
+
+Use `jig run --display dashboard` for a terminal workspace. **Activity** collects
+current work and the newest notices first; setup stages expand from one entry.
+**Overview** shows actual calls, opening active or problematic branches and
+collapsing returned branches. You can expand them to see their calls.
+Your domain tabs retain their own records and evidence. Routine
+reports stay collapsed, while attributed causes remain visible across tabs. `!`
+opens their full explanation, `d` opens attributed diagnostic text, and `?` shows
+contextual help. Diagnostic text with no structured severity stays unclassified.
+
+Give each child call a short, descriptive `intent` in `run.call(...)`; Overview
+uses that supplied label. Without it, the graph shows the reviewed slot name.
+Enter on a call shows its original operation ID and host lifecycle.
+
+The terminal renderer is included with Jig. Flows supply semantic reports, facts,
+counts and collections; they do not import a UI library or choose terminal widgets.
+Wide layouts show selected record details beside the list; narrower layouts use
+Enter for full detail. Tab changes views; arrows/j/k selects records. `c` selects
+a collection; `/` edits its filter and `s` changes sorting. Filter text is literal:
+Enter applies it and Escape discards the draft. `r` explicitly selects a reference;
+Enter then opens the chosen record, call or verified immutable file preview.
+Brackets/Page keys scroll details. Escape returns from a local panel before
+leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
+and waits for cleanup. After execution, cleanup and delivery settle, result
+inspection is read-only and stays open until q, Escape or keyboard Ctrl-C, subject
+to any explicit enclosing command limit. Initial input, review, file and runtime
+refusals stay in ordinary output; the workspace opens only once root execution
+begins. Leaving restores your terminal and prints
+retained essential causes before the final result.
+`--display plain` selects nonanimated presentation. `--json` or effective
+`--receive` keeps exact existing output and takes precedence over the dashboard.
+The workspace needs terminal input/stderr and at least 18 columns/4 rows;
+smaller terminals release to plain output. Normal panes need 50 columns/14 rows.
+Explicit dashboard with NO_COLOR uses screen controls without color. Activity is
+bounded session history; omission is disclosed, and result evidence remains separate.
+Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
+after the dashboard closes, without starting another Run.
+
+## Give a Flow its own workspace
+
+One declaration and one full snapshot are enough:
+
+```ts
+const matters = updates.view('matters', {title: 'Document review', landing: true})
+matters.update({
+  summary: 'Review the supplied documents and retain findings for a person to check.',
+  sections: [{blocks: [{
+    kind: 'collection', id: 'matters', title: 'Supplied matters',
+    columns: [{key: 'name', label: 'Matter', type: 'text'}],
+    rows: [{id: 'one', cells: {name: 'Lease review'}, details: [{
+      kind: 'report', text: 'Check the supplied lease against the requested questions.',
+    }]}],
+  }]}],
+})
+```
+
+Use `report`, `facts`, explicit count `progress`, and typed `collection` blocks.
+Compose your domain helper from these ordinary records; no terminal code or host
+adapter is needed. Python exposes the same `updates.view(id, options)` handle
+with `update(snapshot)` and `retire()`.
+
+Every update replaces the whole view atomically. Stable collection/row IDs preserve
+selection. Keep essential conclusions in the result and files: optional updates
+can stop, and frozen views show when their observation ended. A handle owns its
+ID for the scope; retired IDs cannot be reused. At most eight views per publisher
+are retained. Only one view may offer a landing hint; the root hint selects the
+initial surface until the operator chooses.
+
+Typed references address a current same-publisher record, an actual own call, or
+a declared output file. For example, `{kind: 'call', operationId: 'check-lease'}`
+or `{kind: 'artifact', attachment: 'deliverables', path: 'draft.txt'}`. Missing
+targets remain visibly unavailable. Artifact references resolve only after Jig
+verifies delivery; a preview reads the immutable admitted capture, even if the
+destination later changes. Text/diff previews are limited to 64 KiB. References
+never execute work, apply a patch, open an external program, or grant authority.
+
+For software consumers, use `--receive updates --json`, parse complete stdout
+lines as JSON, and keep stderr separate. Read `begin`, ordered `data`, `end`, then
+`terminal`. Only `terminal.result` reports the Run outcome. A disconnected stream
+or missing terminal is incomplete delivery. There is no retention or replay.
+[Run Checkpoint](../spec/run-checkpoint.md) separately retains settled artifacts.
+
+A simpler string channel with explicit reception remains useful when messages
+alone suffice. Raw authors must own validation, optional error handling and
+cleanup themselves. The profile's shared replacement/count meaning is useful when
+callers need current activity state across implementations; it is not required
+for every log or output.
 
 ## Connect methods while they work
 

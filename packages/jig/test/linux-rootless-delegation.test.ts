@@ -1,16 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import { constants } from 'node:fs'
-
-import {
-  acquireOrReexecutePrivateRootlessLinux,
-  preparePrivateRootlessLinuxScope,
-  type PrivateRootlessLinuxDelegationDependencies,
-  type PrivateRootlessLinuxScopeDependencies,
-} from '../src/internal/linux-rootless-delegation.js'
 import {
   PrivateRootlessLinuxAcquisitionError,
   type PrivateRootlessLinuxAcquisitionObservation,
 } from '../src/internal/linux-rootless-acquisition.js'
+import {
+  acquireOrReexecutePrivateRootlessLinux,
+  type PrivateRootlessLinuxDelegationDependencies,
+  type PrivateRootlessLinuxScopeDependencies,
+  preparePrivateRootlessLinuxScope,
+} from '../src/internal/linux-rootless-delegation.js'
 
 const UNIT = 'jig-0123456789abcdef01234567.scope'
 const SCOPE = `/sys/fs/cgroup/user.slice/${UNIT}`
@@ -144,6 +143,25 @@ describe('private rootless Linux delegation', () => {
       },
     ])
     expect(environment).toEqual({})
+  })
+
+  test('interactive presentation omits only the default command timer and preserves inherited constraints', async () => {
+    const environment = { JIG_PRIVATE_PRESENTATION_DEADLINE: '12345' }
+    let lifetime: number | null | undefined
+    const dependencies = orchestrationDependencies({
+      acquire: async () => {
+        throw new PrivateRootlessLinuxAcquisitionError()
+      },
+      environment: () => environment,
+      reexecute: async (_manager, _unit, _command, _directory, forwarded, selected) => {
+        expect(forwarded).toBe(environment)
+        expect(forwarded.JIG_PRIVATE_PRESENTATION_DEADLINE).toBe('12345')
+        lifetime = selected
+        return { kind: 'private-rootless-linux-reexecuted/1', exitCode: 0, signal: null }
+      },
+    })
+    await acquireOrReexecutePrivateRootlessLinux({ commandLifetimeMs: null, dependencies })
+    expect(lifetime).toBeNull()
   })
 
   test('rejects command lifetimes outside the bounded rootless envelope before acquisition', async () => {

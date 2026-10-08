@@ -12,11 +12,31 @@ descriptors.
   setup cause/selection locations, and one dependency-network notice per review.
   Schema authoring recovery identifies the required dialect and supported
   vocabulary without exposing rejected values or private compiler diagnostics.
+  Command syntax accents omit Markdown delimiters; prompts wait for queued
+  progress. Compact reviews preserve changed facts and uncertainty while
+  unchanged reassurance belongs to details. Repeated ACP selections require
+  unchanged environment proof under identical recipient routes.
   Interrupted delivery retains confirmed terminal/checkpoint evidence, not
   unfinished final files; cleanup uncertainty and forced termination stay explicit.
+  Saved-result inspection owns recorded-claim attribution, confined immutable
+  file capture, exact JSON and independent read status. Workspace entry follows trusted root execution admission; initial refusals stay
+  plain. Inspection is operator-controlled, subject to explicit inherited command
+  constraints, and retains no execution or channel owner.
+  Terminal panes consume semantic view data without exporting renderer types;
+  required display support is checked before execution. Native cell rendering
+  retains the shared bounded writer and explicit compact-size behavior.
+  Lists, selected context and explicitly expanded evidence have distinct roles;
+  duplicate-only detail is unavailable. Color denotes declared syntax/navigation
+  and host observations, never application success inferred from literal words.
+  Large blank panes preserve the frame budget and exit controls. Recorded results
+  navigate ordinary fields without reconstructing domain views or privileging keys.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.
+- `user-updates.md` owns Jig's exact optional-port selection, separate CLI pool,
+  bounded shared stderr presentation and qualification policy. The portable
+  descriptor and scoped libraries belong to `packages/user-updates/` and
+  `packages/jiggy-user-updates/`, without new FLOW wire operations.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
 - `agent-run.md` owns the explicit-context Agent method interface. Ordinary

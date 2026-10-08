@@ -70,6 +70,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   interpreter/OS matrix. Read-only jobs prepare and verify registry bytes; the
   isolated OIDC publisher executes no repository code. Duplicate-upload skipping
   never substitutes for digest verification.
+- CI separately freezes the experimental Python user-updates wheel/sdist and
+  checks them against the same SDK wheel on the interpreter/OS matrix. These
+  artifacts are qualification inputs, not added publication candidates. Host
+  installed-update checks also receive the frozen user-updates npm archive.
 - After npm or PyPI convergence and source tagging, create missing package-specific
   GitHub prereleases with exact registry version links, install commands, and docs.
   Preserve existing release notes on retries; never present source archives as
@@ -90,9 +94,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   case runs once in its dedicated step; the remaining provider cases use the
   complementary name pattern. Installed-evidence runs complete packed CLI
   composition, operational and hostile baselines on a separate proof host.
-  Pass the runner's absolute Node executable to the packed compiler smoke test
-  because the acquisition host uses a fixed
-  path that excludes runner tool-cache binaries.
+  Pass the runner's absolute Node and npm executables to the packed smoke test
+  because the acquisition host uses a fixed path that excludes runner tool-cache
+  binaries. The trusted npm installation step uses the selected Node directory
+  for its interpreter; contained package execution keeps its ordinary policy.
 - Native Agent API Qualification consumes the exact host archives from the
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
@@ -136,6 +141,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   disjoint, exhaustive name groups and balances them with all other files.
   Tests run in fresh, sequential per-group Bun processes inside each host.
   One shard per architecture additionally checks genuine pinned clients offline,
+  requiring Codex preference-profile refusal on 24G830 while Claude and Pi start,
   ordinary npm installation and packed
   consumer execution. Native containment/recovery and descriptor-handoff probes
   run once in a dedicated step on shard zero. Per-architecture aggregate checks

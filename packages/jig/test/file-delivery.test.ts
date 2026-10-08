@@ -34,6 +34,90 @@ async function fixture(work: (root: string) => Promise<void>) {
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
 
 test.skipIf(process.platform !== 'darwin')(
+  'native inspection retains immutable preview within the unchanged command lifetime',
+  async () =>
+    fixture(async (root) => {
+      const ready = join(root, 'ready')
+      const exit = await privateOwnFileCommand(
+        [
+          process.execPath,
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+        ],
+        [join(root, 'packet'), join(root, 'pid'), 'preview', ready],
+        undefined,
+        10_000,
+      )
+      expect(exit).toEqual({ exitCode: 0, signal: null })
+      expect(await readFile(ready, 'utf8')).toBe('verified')
+    }),
+  15000,
+)
+
+test.skipIf(process.platform !== 'darwin')(
+  'settled native inspection cannot waive the original command expiry',
+  async () =>
+    fixture(async (root) => {
+      const ready = join(root, 'ready'),
+        destination = join(root, 'packet')
+      const exit = await privateOwnFileCommand(
+        [
+          process.execPath,
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+        ],
+        [destination, join(root, 'pid'), 'preview-expiry', ready],
+        undefined,
+        5_000,
+      )
+      expect(exit.signal).toBe('SIGTERM')
+      expect(await readFile(ready, 'utf8')).toBe('published')
+      expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
+        'succeeded',
+      )
+    }),
+  15_000,
+)
+
+test('inspection retains only verified immutable bytes and closes previews with the owner', async () =>
+  fixture(async (root) => {
+    const source = join(root, 'source'),
+      destination = join(root, 'packet')
+    await mkdir(source)
+    await writeFile(join(source, 'review.patch'), 'Original checked patch\n')
+    await writeFile(join(source, 'large.txt'), 'x' + '🧭'.repeat(20000))
+    await writeFile(join(source, 'binary'), Buffer.from([255, 128]))
+    const fd = privateOpenFileRoot(source),
+      capture = capturePrivateOutput(fd)
+    closeSync(fd)
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    owner.enableInspection()
+    try {
+      expect(owner.preview('review.patch')).toBeUndefined()
+      await owner.prepare(destination, [])
+      expect((await owner.publish(record, { kind: 'snapshot', capture })).status).toBe('written')
+      await writeFile(join(destination, 'files/review.patch'), 'Changed destination')
+      expect(owner.preview('review.patch')?.text).toBe('Original checked patch\n')
+      const large = owner.preview('large.txt')!
+      expect(large.clipped).toBe(true)
+      expect(Buffer.byteLength(large.text)).toBeLessThanOrEqual(65536)
+      expect(large.text.endsWith('🧭')).toBe(true)
+      expect(large.bytes).toBe(80001)
+      expect(owner.preview('binary')).toBeUndefined()
+      await rm(destination, { recursive: true })
+      expect(owner.preview('review.patch')?.text).toContain('Original')
+    } finally {
+      await owner.close()
+      capture.close()
+    }
+    expect(owner.preview('review.patch')).toBeUndefined()
+  }))
+
+test.skipIf(process.platform !== 'darwin')(
   'native command authenticates its parent and transfers renamed input roots and immutable final output',
   async () =>
     fixture(async (root) => {

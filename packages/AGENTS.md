@@ -52,6 +52,11 @@ and optional contract authoring toolchain.
 
 ## Child DOX Index
 
+- [user-updates/AGENTS.md](user-updates/AGENTS.md) — Portable user-updates
+  agreement, semantic validation and scoped TypeScript publishing.
+- [jiggy-user-updates/AGENTS.md](jiggy-user-updates/AGENTS.md) — Independently
+  packaged Python user-updates publisher using the same canonical agreement.
+
 - [agent-method/AGENTS.md](agent-method/AGENTS.md) — Shared Agent procedure,
   bounded Skill reader, and complete ordinary Flow artifact.
 - [agent-acp/AGENTS.md](agent-acp/AGENTS.md) — Ordinary finite native Agent

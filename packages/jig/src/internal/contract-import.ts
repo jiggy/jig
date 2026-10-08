@@ -2,9 +2,13 @@ import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import { type FileHandle, lstat, open, realpath } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { CHANNEL_CONTRACT_SCHEMA, parseChannelContract } from '../channel-contract.js'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
+import { decodeJson1, type JsonObject } from '../json.js'
 import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
+import { npmPackageName } from '../project/package-selector.js'
 import {
   mkdirPrivateFile,
   openPrivateFile,
@@ -16,7 +20,7 @@ import {
   unlinkPrivateFile,
 } from './descriptor-files.js'
 import { privateFilePath } from './file-input.js'
-import { npmPackageName } from '../project/package-selector.js'
+import { standardContract } from './standard-contracts.js'
 
 async function installedDescriptor(selector: string, destination: string): Promise<string> {
   let name: string
@@ -54,7 +58,8 @@ export async function importContract(
   source: string,
   destination: string,
   signal?: AbortSignal,
-): Promise<{ descriptor: string; files: number; digest: string }> {
+  standardDirectory?: string,
+): Promise<{ descriptor: string; files: number; digest: string; kind: 'channel' | 'invocation' }> {
   let root: FileHandle | undefined
   let parent: FileHandle | undefined
   let staged: PrivateChildLocation | undefined
@@ -62,9 +67,22 @@ export async function importContract(
   let phase: 'source' | 'destination' = 'source'
   try {
     signal?.throwIfAborted()
-    const selected = source.startsWith('npm:')
-      ? await installedDescriptor(source, destination)
-      : source
+    const standard = source.startsWith('jig:') ? standardContract(source) : undefined
+    if (source.startsWith('jig:') && standard === undefined)
+      invalid(
+        'CONTRACT_IMPORT_SOURCE',
+        'Choose a Jig standard contract from jig import-contract --list.',
+        source,
+      )
+    const selected = standard
+      ? resolve(
+          standardDirectory ?? fileURLToPath(new URL('../../libexec/contracts/', import.meta.url)),
+          standard.name,
+          standard.file,
+        )
+      : source.startsWith('npm:')
+        ? await installedDescriptor(source, destination)
+        : source
     const name = basename(selected)
     // The operator chooses the source root; descendants are captured without links.
     root = await open(
@@ -79,8 +97,14 @@ export async function importContract(
       })
     captured = await capture([name])
     const descriptor = await captured.read(name, 262_144)
-    const references = invocationContractChannelPaths(descriptor, name)
-    const paths = [name, ...references]
+    const decoded = decodeJson1(descriptor)
+    const standalone =
+      decoded !== null &&
+      typeof decoded === 'object' &&
+      !Array.isArray(decoded) &&
+      (decoded as JsonObject).$schema === CHANNEL_CONTRACT_SCHEMA
+    const references = standalone ? [] : invocationContractChannelPaths(descriptor, name)
+    const paths = [name, ...references, ...(standard ? ['LICENSE'] : [])]
     if (new Set(paths).size !== paths.length)
       invalid('CONTRACT_IMPORT_INVALID', 'The descriptor cannot also be a channel agreement.')
     await captured.dispose()
@@ -92,7 +116,16 @@ export async function importContract(
       )
     const documents = new Map<string, Uint8Array>()
     for (const path of references) documents.set(path, await captured.read(path, 262_144))
-    const contract = parseInvocationContract(descriptor, name, documents)
+    const contract = standalone
+      ? parseChannelContract(descriptor, name)
+      : parseInvocationContract(descriptor, name, documents)
+    if (standard && contract.digest !== standard.digest)
+      invalid(
+        'CONTRACT_IMPORT_SOURCE',
+        'The installed standard agreement differs from this Jig version. Reinstall Jig.',
+        source,
+      )
+    if (standard) documents.set('LICENSE', await captured.read('LICENSE', 262_144))
     signal?.throwIfAborted()
 
     phase = 'destination'
@@ -125,7 +158,12 @@ export async function importContract(
     } finally {
       await stage.close()
     }
-    return { descriptor: `${target}/${name}`, files: paths.length, digest: contract.digest }
+    return {
+      descriptor: `${target}/${name}`,
+      files: paths.length,
+      digest: contract.digest,
+      kind: standalone ? 'channel' : 'invocation',
+    }
   } catch (error) {
     if (signal?.aborted) throw error
     if ((error as NodeJS.ErrnoException).code === 'EEXIST')

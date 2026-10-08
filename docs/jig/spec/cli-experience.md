@@ -10,8 +10,8 @@ makes usable control an observable requirement;
 
 ## Required experience
 
-`jig import-contract <descriptor.json|npm:package> <new-directory>` is explicit offline
-authoring. It captures and validates one invocation descriptor and its exact
+`jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>` is explicit offline
+authoring. It captures and validates one standalone channel descriptor, or an invocation descriptor and its exact
 channel closure (at most 64 agreements, 256 KiB per file, 1 MiB captured bytes),
 preserves bytes and relative paths, and publishes only to an absent destination
 whose parent already exists. An exact `npm:` selector resolves an installed
@@ -24,6 +24,109 @@ It does not evaluate package code, fetch dependencies, acquire execution
 authority or approve a Run. Cancellation before publication leaves no destination;
 completed publication is not undone. Process loss may leave an unpublished
 `.jig-contract-*` staging directory, not a successfully imported bundle.
+`jig import-contract --list` lists the installed standard agreements and their
+purposes without project loading or host acquisition. Exact `jig:` selectors
+cover Agent Run, Project Command, HTTP Request, Run Checkpoint, Finite ACP,
+ACP public updates and user-updates. They copy the bundled canonical descriptor,
+referenced agreements and license; unsupported names fail without a fallback.
+The installed catalog checks each exact supported digest. A copied standard
+agreement is a project-owned snapshot, never a runtime resolver, implementation
+selection or authority grant. User-updates retains its MPL-2.0 license.
+
+The optional [user-updates profile](user-updates.md) shares stderr presentation
+with host progress and diagnostics. Resolve entrypoint/operator arguments first:
+effective `--receive` retains ordinary stdout channel behavior, `--json` disables
+automatic Flow observation, and operator-only `--updates off` disables automatic
+selection/hints without cancelling explicit reception. Otherwise stderr
+can observe one exact optional canonical port, using plain text when redirected.
+Stdout keeps its existing envelope.
+Application notices retain attribution and bypass trusted heading/success styling.
+Activities are transient owned state, cleared on every end; counts and EOF never
+establish success. Accepted notice jobs survive ordinary source retirement while
+obsolete repaints are superseded. Host stopping/terminal presentation fences late
+Flow updates. Exact bounds, separate allocation policy and output failure remain
+governed by that profile and [channels](channels.md).
+
+Operator-only `--display auto|plain|dashboard` controls Run presentation. Auto
+uses a bounded noninteractive inline region on suitable stderr; it borrows no
+input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
+use nonanimated summaries. Explicit dashboard requires terminal stdin and stderr,
+independently of stdout; otherwise explain the plain fallback once. It owns one
+alternate screen only after trusted root execution admission crosses the dispatch
+boundary. Initial review, input, file, output and runtime prerequisite failures
+remain ordinary diagnostics. Entry does not depend on application views or updates. Explicit dashboard
+with NO_COLOR keeps screen controls without color. JSON and
+effective reception retain their exact output and disable automatic Flow observation.
+No project entrypoint can choose display mode.
+
+The shell presents host execution, cleanup, delivery and complete known safe
+causes separately from attributed domain reports. Overview is the actual observed
+invocation tree; application views compose literal reports, facts, measured
+progress and typed collections. Calls returning, reported 100%, EOF and view
+status never imply domain success. Auto/plain commit complete errors and warnings
+to scrollback. Explicit dashboard retains them in bounded Activity and attention,
+with full causes one action away from every view; leaving restores the screen and
+commits complete retained essential causes before final stdout. Sticky attention
+and visible incompleteness survive view retirement. Narrow layouts shrink
+workspace before hiding the cause and disclose clipping.
+
+The explicit workspace has stable Activity, Overview and attributed domain tabs,
+labelled collection cards, collapsed reports, record details, local filter/sort,
+scrolling and explicitly selected references. All valid block types are reachable
+in supplied order. Wide layouts project selected literal details beside the list;
+selection alone never activates a reference. The information hierarchy separates
+list identity and brief observations, selected additional context, and explicitly
+expanded evidence or invocation identity. Lists preserve declared column order;
+native collection cards show the first three fields and put remaining fields
+beside supplied row details. Fact entries disclose their fields on selection.
+Report teasers disclose remaining text and references; shortened teasers retain
+their complete source in detail. Entries with no additional context explain that
+fact instead of opening a duplicate detail panel. Full record expansion retains
+all supplied fields. Automatic call detail explains the observed lifecycle and
+shows a readable UTC observation time and known cause; reviewed slot and original
+operation identity belong to explicit expansion. No command, result, duration or
+domain verdict is invented from call metadata.
+
+Navigation, headings, declared labels, typed values, measured counts and host
+states have distinct foreground roles. Active calls use an accent, returned calls
+remain secondary, failed calls use red and uncertain/cancel-requested calls use
+amber, with explicit state words retained. Returned calls never receive a green
+application-success verdict. Escaped recorded values may use lexical syntax
+colors without interpreting their words as status or commands. Color-free
+presentation preserves every distinction through wording and hierarchy. Large
+empty panes must not exhaust the encoded frame budget or hide exit controls;
+actual content overflow still discloses clipping.
+
+Narrow layouts keep collapsed rows
+and Enter opens full detail. Returned tree branches collapse by default; active,
+failed and uncertain branches remain visible, with operator choices retained.
+Activity orders recent reports first and folds informational setup history into
+one expandable entry. It does not present settled work as current activity.
+`d` opens attributed diagnostic reports from every view. Unknown diagnostic
+severity remains unknown; text content never determines severity.
+References can resolve current same-publisher
+records, actual own calls and verified delivered files. Previews use bounded
+immutable capture, never mutable destination reads. Escape dismisses local help,
+filter, reference selection, attention, preview or detail before leaving. Live q,
+standalone Escape or input EOF
+restores input and continues inline, without re-entering later. Live Ctrl-C uses
+existing cancellation and cleanup. After all execution, cleanup and delivery
+settle, an inspector still open shows literal settled facts and read-only results;
+if the operator has not navigated, it selects the root publisher's landing view
+or first retained root view and its first row when present.
+q/Escape/Ctrl-C then closes presentation without changing admitted outcome.
+No Flow or channel remains alive for inspection. Inspection has no built-in idle
+or absolute expiry; it remains open until the operator leaves, input/output fails
+or an external interruption closes it. Explicit inherited enclosing command
+constraints still apply, and no input or repaint extends them. Eligible interactive
+effective dashboard commands omit the default enclosing presentation lifetime,
+while setup, Run execution, cancellation and cleanup keep their own bounds.
+Execution elapsed time freezes at settlement. An expiring explicit presentation
+constraint leaves live execution running through its ordinary owner; it never
+extends an execution timer. Immutable delivery inspection is selected before
+capture/publication even though screen entry waits for dispatch. Every exit releases preview,
+input and presentation owners. Auto/plain emit the latest retained summaries
+with ended/incomplete context and exit promptly.
 
 1. **Task first.** Identify the requested task and relevant project or target.
    Name stages in ordinary language. Internal lifecycle and implementation
@@ -37,16 +140,28 @@ completed publication is not undone. Process loss may leave an unpublished
    dependency preparation or approved reuse, and final recipe/review retention
    separately. Active elapsed time belongs to the current stage. In animated
    terminals, completed timed stages retain their duration as secondary text.
-   Interactive terminal stderr has one active line with
-   elapsed time. Preserve completed stages; never mark a failed or merely
+   Ordinary acquisition has one active line with elapsed time; running work can use the
+   bounded inline dashboard above. Explicit dashboard retains stages inside its
+   Activity view. Preserve completed stages; never mark a failed or merely
    departed stage complete. Update waiting time in place, not by appending
    unchanged messages. Report the known wait reason; never invent percentages,
    estimated completion times, or internal Flow stages. Finish or suspend the
-   active line before prompts, notices, streamed diagnostics, or results.
+   active line before prompts, notices, streamed diagnostics, or results. Await
+   queued progress output before reading any answer so the answer remains beside
+   its question without intervening status output.
 3. **Consistent visual hierarchy.** Use bold task/section headings and final
    outcomes, green completion, amber warnings, and red failures. Text must
    carry every meaning independently of color or symbols. Use foreground colors
    without background fills; provide syntax palettes for light and dark terminals.
+   Actual action commands and examples use standalone `  $ jig ...` (or `cd`)
+   lines when enabled; the prompt prefix remains in plain output. Command names
+   use bold syntax accents, flags, placeholders and argument literals have distinct
+   accents, and punctuation is secondary. Help and host command references omit
+   Markdown backticks. Commands never
+   wrap, shell quoting remains exact, and examples with placeholders are labelled
+   templates. Recognize commands only in host prose, never application data.
+   Target readiness retains explicit words, green for ready and amber for unavailable;
+   readiness is not execution.
    Narrow terminals must retain complete consent and recovery information;
    only the transient progress label may shorten to fit. Separate major terminal
    sections with a blank line, a restrained horizontal rule, and a bold heading;
@@ -56,7 +171,15 @@ completed publication is not undone. Process loss may leave an unpublished
    categories, change counts, completed-stage text, elapsed time, and optional
    detail notes, executable paths, and unchanged context. Changed-record labels,
    including their identifiers, use bold amber to draw attention to changed work.
-   Omit review categories with no changes from the ordinary summary.
+   Omit review categories with no changes from the ordinary summary. ACP selections
+   are omitted only when matching ready targets prove unchanged runtime identity
+   under identical recipient routes. Identical request, recipe and observation
+   identities provide that proof directly; changed source requires both retained
+   identities to match recomputation under the current authenticated environment.
+   New, changed or unknown environments keep current selections visible;
+   `--details` always shows them. This presentation comparison neither approves
+   nor authorizes execution. A combined mismatch cannot identify which environment
+   component changed.
    Keep permission consequences, changed policy values, failures,
    and next actions at normal or emphasized contrast. Gray never hides content
    or substitutes for labels, spacing, or explicit status words.
@@ -116,8 +239,8 @@ completed publication is not undone. Process loss may leave an unpublished
    context to reconstruct both complete public values from its diff.
    When retained execution or a selected child changes but public target fields
    do not, identify the changed execution environment, prepared files, or child
-   selection and explain what approval authorizes. State when source, dependencies,
-   settings and permissions are unchanged. A combined environment fingerprint does
+   selection and explain what approval authorizes. Unchanged source, dependencies,
+   settings and permission reassurance appears only in `--details`. A combined environment fingerprint does
    not identify individual old components; disclose this limitation rather than
    inventing a component diff. Never substitute an opaque "retained identity"
    label or identical before/after blocks for an explanation.
@@ -142,6 +265,12 @@ completed publication is not undone. Process loss may leave an unpublished
    may summarize large application output and checkpoint evidence by pointing
    to `result.json` instead of repeating them. An uncertain or failed packet
    delivery must not cause the terminal to hide result evidence.
+   For a large object with a written packet, retain a bounded view of up to eight
+   top-level scalar fields totaling at most 2048 JSON characters. State that this
+   is a brief view and the full result is stored. Do not interpret field names or
+   text as trusted status, truncate individual values to make them fit, or change
+   machine output. This lets an application provide a concise report alongside
+   large nested evidence without a special summary field or domain adapter.
    Emphasize failed execution and unconfirmed cleanup in red, uncertain execution
    or delivery in amber, and completed execution or written delivery in green.
    Keep the same explicit status words when color is disabled. Application
@@ -161,9 +290,13 @@ completed publication is not undone. Process loss may leave an unpublished
    version stdout remains the version alone. Human status uses stderr.
    Redirected streams contain no terminal escapes or animation; failures and
    consequential notices remain readable. `NO_COLOR` (including an empty value)
-   and `TERM=dumb` select plain presentation without animation. Plain terminal
+   and `TERM=dumb` select plain automatic presentation without animation; an
+   explicitly selected eligible dashboard with NO_COLOR uses screen controls
+   without SGR styling. Plain terminal
    progress reports stage changes once. Do not require Unicode, a pager, cursor
-   hiding, an alternate screen, or interactivity. Escape untrusted control and
+   hiding, an alternate screen, or interactivity for ordinary output. Explicit
+   dashboard uses an alternate screen and restores prior input/screen ownership.
+   Escape untrusted control and
    review Unicode characters before presentation.
 10. **Acceptance is required.** A CLI-affecting change must check rendered
     success, failure, long waits, cancellation, and uncertain cleanup, plus
@@ -222,7 +355,7 @@ explicit package manifest declaration when present, otherwise the tested SDK.
 Explicit membership arrays must be edited by the author before review.
 
 Optional `--use` declarations select at most 16 distinct contract slots. Each
-source is a project-relative descriptor path or an exact installed `npm:` package
+source is a `jig:` standard invocation agreement, a project-relative descriptor path or an exact installed `npm:` package
 name; npm lookup starts in the project and searches its ancestors, nearest first.
 Each complete validated bundle is copied unchanged to `contracts/<slot>`, and
 `FLOW.meta.json` references its descriptor under `uses.<slot>`. The generated
@@ -256,6 +389,9 @@ characters and identifies changes of emitting invocation.
 Human final results count invocation paths whose diagnostic text was already
 shown live, without replaying it or creating a result section for that count
 alone. Retain any unseen suffix and disclose capture truncation with its path.
+Unseen text appears in a separate human diagnostics section, without the machine
+capture's byte-count or field-name bookkeeping. Escape it as literal data;
+neither command recognition nor prose-based severity inference applies.
 Interleaved invocation paths are tracked separately. JSON records and result
 packets retain their complete bounded captures independently of this presentation.
 Human output omits packet provenance manifests and digests already retained in
@@ -330,6 +466,44 @@ and remote availability remain unchecked. Run still revalidates before execution
 Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Redirected output or `--json` is JSON, never styling.
+
+`jig inspect --result <directory> [--display plain|dashboard] [--json]` reads a
+saved packet without loading a project, verifying an execution installation,
+reading operator configuration or credentials, acquiring execution authority,
+or contacting a provider. It rejects target and verification arguments. Plain
+is the default; JSON or redirected stdout takes precedence over dashboard.
+Saved inspection displays fixed Recorded result, Files and Diagnostics views.
+Recorded result separates bounded selectable fields, including ordinary output
+members, from their expanded literal values. No application field name receives
+special summary or outcome meaning. Scalar values shown completely in the list
+have no redundant expansion; multiline, shortened and nested values retain bounded
+evidence and explicit excerpt limits. Exact JSON inspection retains the full report.
+Every saved value is a recorded local claim, including host-shaped fields;
+matching file digests establish manifest consistency, not authenticated provenance.
+Current packets retain no portable views or invocation history, so inspection
+MUST NOT reconstruct either. Only the selected packet directory supplies files;
+recorded destinations or attachment names cannot select another path.
+
+Capture holds a descriptor-confined packet root and opens `files/` as its child.
+Public relative file paths retain their own path profile before that prefix is
+applied. Refuse links, multiple-link files, special files, traversal, duplicate
+manifest paths and out-of-profile sizes. Capture admits at most 16 MiB of JSON
+value plus the publisher's single framing LF, 64 manifest files and 16 MiB
+aggregate file bytes, within ten seconds. File previews use already verified
+immutable captures, with at most one 64 KiB UTF-8 preview; they never reopen a
+mutable path. One owner releases descriptors and captured buffers on every exit.
+Partial file verification preserves the valid report and already verified
+captures while disclosing unavailable evidence. It never invents replacement JSON.
+
+Exit 0 means valid report and complete consistent file capture, regardless of the
+recorded execution outcome; exit 1 means invalid/unavailable report, incomplete
+file verification or output failure; exit 2 means external interruption.
+Explicit JSON emits the unchanged decoded report even when file capture is
+incomplete, with findings on stderr and exit 1. Invalid reports emit no fabricated
+record. Terminal text is escaped literal data. Saved inspection remains open until q, contextual Escape or keyboard Ctrl-C,
+subject to explicit inherited presentation constraints and input/output failure
+or external interruption. It acquires no execution lifetime and has no built-in
+idle or absolute expiry on any supported host.
 
 The CLI's shared presentation and progress modules own human formatting;
 command branches supply facts. Installed-launcher errors follow the same

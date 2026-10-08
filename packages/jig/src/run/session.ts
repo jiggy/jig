@@ -125,6 +125,12 @@ export interface RunHostOperationDispatcher {
   /** Validate admitted package outcomes/schema before any implicit source seal. */
   validateResult?(result: RunResult): void
   call?(call: RunHostCall, signal: AbortSignal): Promise<RunHostOperationTerminal>
+  /** Bounded metadata only; observation cannot change dispatch or its terminal. */
+  onCall?(
+    call: Pick<RunHostCall, 'operationId' | 'slot' | 'intent'>,
+    state: 'requested' | 'active' | 'cancel-requested' | 'returned' | 'failed' | 'uncertain',
+    cause?: string,
+  ): void
 }
 
 export interface RunHostLimits {
@@ -585,6 +591,8 @@ export class RunHostSession {
     const dispatch = this.dispatcher?.call
     if (dispatch === undefined) {
       const terminal = failedOperation('UNAVAILABLE', 'no invocation dispatcher is installed')
+      this.observeCall(operation.call, 'requested')
+      this.observeCall(operation.call, 'failed', terminal.message)
       const settled: OperationRecord = {
         signature: operation.signature,
         controller: new AbortController(),
@@ -603,8 +611,17 @@ export class RunHostSession {
     }
     this.operations.set(operation.operationId, record)
     this.attachOperationWaiter(request.id, record)
+    this.observeCall(operation.call, 'requested')
+    record.controller.signal.addEventListener(
+      'abort',
+      () => this.observeCall(operation.call, 'cancel-requested'),
+      { once: true },
+    )
     const task = Promise.resolve()
-      .then(() => this.dispatcher!.call!(operation.call, record.controller.signal))
+      .then(() => {
+        this.observeCall(operation.call, 'active')
+        return this.dispatcher!.call!(operation.call, record.controller.signal)
+      })
       .then((terminal) => normalizeOperationTerminal(terminal))
       .catch((error) => {
         if (error instanceof RunHostFatalOperationError) {
@@ -627,8 +644,46 @@ export class RunHostSession {
             : 'the host operation failed',
         )
       })
-      .then((terminal) => this.settleOperation(record, terminal))
+      .then((terminal) => {
+        this.observeCall(
+          operation.call,
+          terminal.status === 'succeeded'
+            ? 'returned'
+            : terminal.code === 'UNCERTAIN'
+              ? 'uncertain'
+              : 'failed',
+          terminal.status === 'failed' ? terminal.message : undefined,
+        )
+        this.settleOperation(record, terminal)
+      })
     this.own(task)
+  }
+
+  private observeCall(
+    call: RunHostCall,
+    state: Parameters<NonNullable<RunHostOperationDispatcher['onCall']>>[1],
+    cause?: string,
+  ): void {
+    const scalars = call.intent === undefined ? undefined : [...call.intent]
+    const intent =
+      scalars === undefined
+        ? undefined
+        : scalars.length <= 1024
+          ? call.intent
+          : scalars.slice(0, 1014).join('') + ' [clipped]'
+    try {
+      this.dispatcher?.onCall?.(
+        {
+          operationId: call.operationId,
+          slot: call.slot,
+          ...(intent === undefined ? {} : { intent }),
+        },
+        state,
+        cause,
+      )
+    } catch {
+      // Optional private observation is never dispatch or settlement authority.
+    }
   }
 
   private receiveNotification(notification: ParsedNotification): void {

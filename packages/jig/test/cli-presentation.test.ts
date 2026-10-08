@@ -428,3 +428,66 @@ describe('CLI experience contract', () => {
     expect(error).not.toContain('\u001b')
   })
 })
+
+test('command actions remain distinct and unwrapped, while scalar data is preserved', () => {
+  const input =
+    'Next step: Inspect the schema:\n  $ jig inspect \'binding:factory\'\nThen run jig review --details.\n  "output": |-\n    $ jig run\n    jig review\n'
+  const plain = privateCliHumanText(input, false, 24)
+  const color = privateCliHumanText(input, true, 24)
+  expect(strip(color)).toBe(plain)
+  expect(plain).toContain("  $ jig inspect 'binding:factory'\n")
+  expect(plain).toContain('jig review --details')
+  expect(plain).toContain('    $ jig run\n    jig review\n')
+  expect(color).toContain('\u001b[1;36mjig\u001b[0m')
+  const ready = privateCliHumanText(
+    '  "binding:agent" - ready\n  "binding:other" - unavailable\n',
+    true,
+  )
+  expect(ready).toContain('\u001b[1;32mready')
+  expect(ready).toContain('\u001b[1;33munavailable')
+})
+
+test('command catalog templates stay separate from executable examples', () => {
+  const plain = privateCliHumanText(
+    '  jig init <directory>       Create a project\nExample:\n  $ jig new worker --use agent=jig:agent-run\n',
+    false,
+  )
+  expect(plain).toContain('  jig init <directory>       Create a project')
+  expect(plain).not.toContain('$ jig init')
+  expect(plain).toContain('  $ jig new worker --use agent=jig:agent-run')
+})
+
+test('project state paths and prose do not become command references', () => {
+  const text = 'Preserve .jig and jig.lock. The .jig state is damaged.'
+  expect(privateCliHumanText(text, false)).toBe(text)
+  expect(privateCliHumanText(text, true)).toBe(text)
+})
+
+test('help syntax distinguishes commands, flags, placeholders and quoted literals without Markdown ticks', () => {
+  const help =
+    'Usage: jig run [binding:id] [--input JSON|@FILE]\n  --input JSON|@FILE  Supply input\n  jig init <directory>       Create a project\n  $ jig run binding:worker --input \'"Ada"\'\n'
+  const plain = privateCliHumanText(help, false)
+  expect(plain).not.toContain('`')
+  expect(plain).toContain('--input \'"Ada"\'')
+  for (const JIG_THEME of ['one-dark', 'one-light', 'macchiato']) {
+    const color = privateCliHumanText(help, true, undefined, {
+      JIG_THEME,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+    })
+    expect(strip(color)).toBe(plain)
+    expect(color).not.toContain('`')
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Assert exact ANSI token colors.
+    const commands = /\u001b\[([^m]+)mjig\u001b\[0m/.exec(color)
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Assert exact ANSI token colors.
+    const flags = /\u001b\[([^m]+)m--input\u001b\[0m/.exec(color)
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Assert exact ANSI token colors.
+    const placeholders = /\u001b\[([^m]+)m<directory>\u001b\[0m/.exec(color)
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Assert exact ANSI token colors.
+    const literals = /\u001b\[([^m]+)m'"Ada"'\u001b\[0m/.exec(color)
+    expect(commands?.[1]).toBeDefined()
+    expect(new Set([commands?.[1], flags?.[1], placeholders?.[1], literals?.[1]]).size).toBe(4)
+  }
+  const data = '  "summary": |-\n    `jig review` is application text.\n'
+  expect(strip(privateCliHumanText(data, true))).toBe(data)
+})

@@ -1,5 +1,6 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { PrivateCallEvent } from '../cli-run-model.js'
 import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
@@ -133,6 +134,7 @@ interface ChildCleanup {
 }
 
 interface ChildInput {
+  readonly onCall?: ((event: PrivateCallEvent) => void) | undefined
   readonly projectRoot: string
   readonly packageStoreRoot: PrivateFileLocation
   readonly parent: PrivateReacquiredRootExecutionWork
@@ -221,6 +223,21 @@ export async function executePrivateRootFlowCall(
     participant = input.channels?.broker.participant(`flow:${input.call.operationId}`, {
       resolveContract,
     })
+    if (participant && request.channels) {
+      try {
+        input.onCall?.({
+          publisher: request.channels.caller.id,
+          operationId: request.call.operationId,
+          slot: request.call.slot,
+          ...(request.call.intent === undefined ? {} : { intent: request.call.intent }),
+          state: 'active',
+          time: Date.now(),
+          childPublisher: participant.id,
+        })
+      } catch {
+        // Presentation cannot admit, fail or change execution of a child.
+      }
+    }
     return await executePreparedChild(input, selected, inspected, participant, declarations)
   } catch (error) {
     if (error instanceof ChannelOperationError)
@@ -494,6 +511,16 @@ function specialistDispatcher(
   let active = false
   return {
     ...(participant === undefined ? {} : { channels: participant }),
+    onCall: (call, state, cause) =>
+      input.onCall?.({
+        publisher: participant?.id ?? `flow:${input.call.operationId}`,
+        operationId: call.operationId,
+        slot: call.slot,
+        ...(call.intent === undefined ? {} : { intent: call.intent }),
+        state,
+        time: Date.now(),
+        ...(cause === undefined ? {} : { cause }),
+      }),
     ...(input.onDiagnostic === undefined
       ? {}
       : { onDiagnostic: (bytes: Uint8Array) => input.onDiagnostic!(bytes, input.diagnosticPath) }),

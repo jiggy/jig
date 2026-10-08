@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
   if (setrlimit(RLIMIT_CORE, &core)) return 64;
   if (getuid() == 0 || getuid() != geteuid() || getgid() != getegid()) return 65;
   if (argc < 6 || argv[3][0] != '/' || argv[5][0] != '/' ||
-      (strcmp(argv[4], "closed") && strcmp(argv[4], "dns"))) return 66;
+      (strcmp(argv[4], "closed") && strcmp(argv[4], "services"))) return 66;
   char *end;
   errno = 0;
   unsigned long length = strtoul(argv[2], &end, 10);

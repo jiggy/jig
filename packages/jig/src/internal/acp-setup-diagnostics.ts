@@ -8,6 +8,8 @@ export type AcpSetupStage =
   | 'login'
   | 'api'
   | 'model'
+  | 'preferences'
+  | 'managed-policy'
 
 /** Only closed stages cross the public boundary; underlying errors may contain secrets. */
 export class PrivateAcpSetupError extends Error {
@@ -82,7 +84,7 @@ const clients = {
 } as const
 
 export function acpSetupCode(client: Client, stage: AcpSetupStage): string {
-  return `PROJECT_ACP_${client.toUpperCase()}_${stage.toUpperCase()}`
+  return `PROJECT_ACP_${client.toUpperCase()}_${stage.toUpperCase().replaceAll('-', '_')}`
 }
 
 /** Closed causes, never native exception text or environment values. */
@@ -99,6 +101,9 @@ export const ACP_SETUP_CAUSES: Readonly<Record<string, string>> = Object.freeze(
         login: 'its subscription authentication is missing, expired, or unsupported',
         api: 'its API authentication or configuration is missing or invalid',
         model: 'its model configuration is missing or invalid',
+        preferences: 'its macOS preference state could not be synchronized and verified',
+        'managed-policy':
+          'configured macOS managed policy is not supported by its contained profile',
       }
       return Object.entries(causes).map(([stage, cause]) => [
         acpSetupCode(client as Client, stage as AcpSetupStage),
@@ -125,6 +130,10 @@ export function acpSetupHints(platform: 'linux' | 'darwin'): Readonly<Record<str
           login: profile.login,
           api: profile.api,
           model: profile.model,
+          preferences:
+            'Check macOS preference-service availability and the installed Jig runtime. No preference values were exposed. Use a qualified host or another configured Agent client if the check remains unavailable.',
+          'managed-policy':
+            'Use a Jig integration that supports the configured managed policy, or another configured Agent client. Keep operator-managed settings intact; this profile does not bypass them.',
         }
         return Object.entries(hints).map(([stage, hint]) => [
           acpSetupCode(client as Client, stage as AcpSetupStage),

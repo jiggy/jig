@@ -140,8 +140,9 @@ try {
     assert.match(unchanged.stdout, /^Project ready\n/)
     assert.match(unchanged.stdout, /The exact reviewed revision is approved/)
     assert.match(unchanged.stdout, /No Flow was started/)
-    assert.match(unchanged.stdout, /Next: jig run \(or jig run <target>; see jig run --help\)\./)
-    assert.match(unchanged.stdout, /jig run --help/)
+    assert.match(unchanged.stdout, /Next, choose or run an approved target:/)
+    assert.match(unchanged.stdout, /^  \$ jig run$/m)
+    assert.match(unchanged.stdout, /^  \$ jig run --help$/m)
     assert.doesNotMatch(
       unchanged.stdout,
       /Review changes before approval|planDigest|lockDigest|recipeDigest|observationDigest|coordinator|cgroup|bubblewrap/i,
@@ -172,10 +173,10 @@ try {
   assert.match(schemaInvalid.stderr, /Value: "\/name"\n  Expected string; received integer\./)
   assert.match(
     schemaInvalid.stderr,
-    /Next step: Run jig inspect 'flow:flows\/hello' to see the approved schema and correct --input\./,
+    /Next step: Inspect the approved schema and correct --input:\n {2}\n {4}\$ jig inspect 'flow:flows\/hello'/,
   )
   assert.match(schemaInvalid.stderr, /Jig runs the last approved revision/)
-  assert.match(schemaInvalid.stderr, /run jig review to approve those edits first/)
+  assert.match(schemaInvalid.stderr, /approve those edits first:\n {2}\n {4}\$ jig review/)
   assert.match(schemaInvalid.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
   const rejectedTerminal = requireRecord(JSON.parse(schemaInvalid.stdout))
   assert.equal(rejectedTerminal.status, 'failed')

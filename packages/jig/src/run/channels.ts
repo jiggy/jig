@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
 
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { compileEmbeddedSchema } from '../schema/index.js'
@@ -15,6 +16,28 @@ export const CHANNEL_LIMITS = Object.freeze({
   pendingSends: 16,
   pendingBytes: 256 * 1024,
 })
+
+/** CLI-only lifetime pool. This is never a channel/create option or Flow grant. */
+export const PRESENTATION_CHANNEL_LIMITS = Object.freeze({
+  sources: 1,
+  receivers: 1,
+  itemBytes: 32 * 1024,
+  sourceBytes: 4 * 1024 * 1024,
+  bufferedItems: 16,
+  bufferedBytes: 256 * 1024,
+  pendingSends: 1,
+  pendingBytes: 32 * 1024,
+})
+interface ChannelPool {
+  readonly limits: typeof CHANNEL_LIMITS | typeof PRESENTATION_CHANNEL_LIMITS
+  sources: number
+  receivers: number
+  pendingSends: number
+  pendingBytes: number
+}
+function pool(limits: ChannelPool['limits']): ChannelPool {
+  return { limits, sources: 0, receivers: 0, pendingSends: 0, pendingBytes: 0 }
+}
 
 export interface ChannelIdentity {
   readonly id: string
@@ -89,11 +112,14 @@ interface Item {
   readonly sequence: number
   readonly value: JsonValue
   readonly bytes: number
+  readonly publisher: string
 }
 
 interface PendingSend {
+  readonly pool: ChannelPool
   readonly value: JsonValue
   readonly bytes: number
+  readonly publisher: string
   readonly resolve: () => void
   readonly reject: (error: unknown) => void
   dispose(): void
@@ -116,6 +142,7 @@ interface Endpoint {
 }
 
 interface Source {
+  readonly pool: ChannelPool
   readonly owner: ChannelParticipant
   readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelIdentity
@@ -149,10 +176,17 @@ export class ChannelBroker {
   private readonly participants = new Map<string, ChannelParticipant>()
   private readonly sources: Source[] = []
   private readonly subscriptions = new Map<string, Source>()
-  private receivers = 0
-  private pendingSends = 0
-  private pendingBytes = 0
+  private readonly applicationPool = pool(CHANNEL_LIMITS)
+  private readonly presentationPool = pool(PRESENTATION_CHANNEL_LIMITS)
   private failure?: ChannelOperationError
+  private readonly receivedPublishers = new WeakMap<object, string>()
+
+  /** Private accepted-send sideband. It is never serialized into Run/0. */
+  publisherOf(received: JsonValue): string | undefined {
+    return received !== null && typeof received === 'object'
+      ? this.receivedPublishers.get(received)
+      : undefined
+  }
 
   participant(id: string, options: ChannelParticipantOptions = {}): ChannelParticipant {
     if (this.participants.has(id)) throw new TypeError('channel participant already exists')
@@ -197,13 +231,61 @@ export class ChannelBroker {
     const constraint =
       contract === undefined ? compileConstraint(options.schema) : namedConstraint(contract)
     this.assertOpen(owner)
+    return this.allocate(owner, delivery, contract, constraint, this.applicationPool, true)
+  }
+
+  /** Only the command can allocate for the unique exact optional admitted port. */
+  createPresentation(
+    owner: ChannelParticipant,
+    declarations: Readonly<Record<string, ChannelDeclaration>>,
+  ): { name: string; send: ChannelGrant; receive: ChannelGrant } {
+    this.assertOpen(owner)
+    if (owner.id !== 'command')
+      throw new ChannelOperationError(
+        'PERMISSION_DENIED',
+        'only the command owns presentation allocation',
+      )
+    const matches = Object.entries(declarations).filter(
+      ([, port]) =>
+        port.direction === 'send' &&
+        !port.required &&
+        port.contract !== undefined &&
+        sameIdentity(port.contract.identity, USER_UPDATES_CONTRACT),
+    )
+    if (matches.length !== 1)
+      throw new ChannelOperationError(
+        'INVALID_INPUT',
+        'presentation requires one exact optional user-updates port',
+      )
+    const [name, port] = matches[0]!
+    const allocation = this.allocate(
+      owner,
+      port.delivery ?? 'direct',
+      port.contract,
+      namedConstraint(port.contract!),
+      this.presentationPool,
+      false,
+    ) as DirectAllocation
+    return { name, ...allocation }
+  }
+
+  private allocate(
+    owner: ChannelParticipant,
+    delivery: 'direct' | 'broadcast',
+    contract: ResolvedChannelContract | undefined,
+    constraint: Constraint,
+    allocationPool: ChannelPool,
+    creator: boolean,
+  ): DirectAllocation | BroadcastAllocation {
     if (
-      this.sources.length >= CHANNEL_LIMITS.sources ||
-      (delivery === 'direct' && this.receivers >= CHANNEL_LIMITS.receivers)
+      allocationPool.sources >= allocationPool.limits.sources ||
+      ((delivery === 'direct' || !creator) &&
+        allocationPool.receivers >= allocationPool.limits.receivers)
     ) {
       throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root channel allocation limit reached')
     }
     const source = {
+      pool: allocationPool,
       owner,
       delivery,
       ...(contract === undefined ? {} : { contract: Object.freeze({ ...contract.identity }) }),
@@ -216,7 +298,8 @@ export class ChannelBroker {
     } as unknown as Source
     source.send = this.endpoint(owner, source, 'send')
     this.sources.push(source)
-    if (delivery === 'broadcast') {
+    allocationPool.sources++
+    if (delivery === 'broadcast' && creator) {
       const reference = `source:${randomUUID()}`
       this.subscriptions.set(reference, source)
       return { send: grant(source.send), source: reference }
@@ -233,7 +316,7 @@ export class ChannelBroker {
         'channel subscription authority is not held by this participant',
       )
     this.assertWritable(source)
-    if (this.receivers >= CHANNEL_LIMITS.receivers)
+    if (source.pool.receivers >= source.pool.limits.receivers)
       throw new ChannelOperationError(
         'RESOURCE_EXHAUSTED',
         'root channel receiver allocation limit reached',
@@ -452,12 +535,12 @@ export class ChannelBroker {
     try {
       const encoded = canonicalJson(value)
       bytes = encoded.byteLength
-      if (bytes > CHANNEL_LIMITS.itemBytes) {
-        throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'channel item exceeds 64 KiB')
+      if (bytes > source.pool.limits.itemBytes) {
+        throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'channel item exceeds its byte limit')
       }
       item = decodeJson1(encoded)
       for (const constraint of source.constraints) validateConstraint(constraint, item)
-      if (source.totalBytes + bytes > CHANNEL_LIMITS.sourceBytes) {
+      if (source.totalBytes + bytes > source.pool.limits.sourceBytes) {
         throw new ChannelOperationError(
           'RESOURCE_EXHAUSTED',
           'channel source lifetime byte limit reached',
@@ -475,20 +558,20 @@ export class ChannelBroker {
       source.delivery === 'broadcast' ||
       (source.pending.length === 0 && this.hasCapacity(source.receivers[0]!, bytes))
     ) {
-      this.accept(source, item, bytes)
+      this.accept(source, item, bytes, owner.id)
       return null
     }
     if (
-      this.pendingSends >= CHANNEL_LIMITS.pendingSends ||
-      this.pendingBytes + bytes > CHANNEL_LIMITS.pendingBytes
+      source.pool.pendingSends >= source.pool.limits.pendingSends ||
+      source.pool.pendingBytes + bytes > source.pool.limits.pendingBytes
     ) {
       throw new ChannelOperationError(
         'RESOURCE_EXHAUSTED',
         'root pending channel sends reached their bounded capacity',
       )
     }
-    this.pendingSends += 1
-    this.pendingBytes += bytes
+    source.pool.pendingSends += 1
+    source.pool.pendingBytes += bytes
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {
         const index = source.pending.indexOf(pending)
@@ -499,8 +582,10 @@ export class ChannelBroker {
         this.flush(source)
       }
       const pending: PendingSend = {
+        pool: source.pool,
         value: item,
         bytes,
+        publisher: owner.id,
         resolve,
         reject,
         dispose: () => signal?.removeEventListener('abort', onAbort),
@@ -750,7 +835,7 @@ export class ChannelBroker {
     }
     endpoint.receiver = receiver
     source.receivers.push(receiver)
-    this.receivers += 1
+    source.pool.receivers += 1
     return receiver
   }
 
@@ -796,13 +881,13 @@ export class ChannelBroker {
   private hasCapacity(receiver: Receiver, bytes: number): boolean {
     return (
       receiver.queue.length + (receiver.inFlight === undefined ? 0 : 1) <
-        CHANNEL_LIMITS.bufferedItems &&
-      receiver.bufferedBytes + bytes <= CHANNEL_LIMITS.bufferedBytes
+        receiver.endpoint.source.pool.limits.bufferedItems &&
+      receiver.bufferedBytes + bytes <= receiver.endpoint.source.pool.limits.bufferedBytes
     )
   }
 
-  private accept(source: Source, value: JsonValue, bytes: number): void {
-    if (source.totalBytes + bytes > CHANNEL_LIMITS.sourceBytes) {
+  private accept(source: Source, value: JsonValue, bytes: number, publisher: string): void {
+    if (source.totalBytes + bytes > source.pool.limits.sourceBytes) {
       const error = new ChannelOperationError(
         'RESOURCE_EXHAUSTED',
         'channel source lifetime byte limit reached',
@@ -811,7 +896,7 @@ export class ChannelBroker {
       throw error
     }
     source.totalBytes += bytes
-    const item = { sequence: ++source.sequence, value, bytes }
+    const item = { sequence: ++source.sequence, value, bytes, publisher }
     for (const receiver of source.receivers) {
       if (receiver.released || receiver.failure !== undefined || receiver.ended) continue
       try {
@@ -837,7 +922,9 @@ export class ChannelBroker {
   private readItem(receiver: Receiver): JsonValue {
     const item = receiver.queue.shift()!
     receiver.inFlight = item
-    return { item: { sequence: item.sequence, value: item.value } }
+    const response = { item: { sequence: item.sequence, value: item.value } }
+    this.receivedPublishers.set(response, item.publisher)
+    return response
   }
 
   private deliver(receiver: Receiver): void {
@@ -855,8 +942,8 @@ export class ChannelBroker {
   }
 
   private removePending(pending: PendingSend): void {
-    this.pendingSends -= 1
-    this.pendingBytes -= pending.bytes
+    pending.pool.pendingSends -= 1
+    pending.pool.pendingBytes -= pending.bytes
     pending.dispose()
   }
 
@@ -870,7 +957,7 @@ export class ChannelBroker {
       try {
         this.assertWritable(source)
         for (const constraint of source.constraints) validateConstraint(constraint, pending.value)
-        this.accept(source, pending.value, pending.bytes)
+        this.accept(source, pending.value, pending.bytes, pending.publisher)
         pending.resolve()
       } catch (error) {
         const failure =

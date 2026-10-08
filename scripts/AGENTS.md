@@ -13,7 +13,8 @@ operational baselines, and public-site assembly.
   workspace entries. Tracked source stays local to each checkout; parent links
   into the primary checkout stay unchanged. It does not copy environment files,
   create shared tool state, install dependencies, or choose another workspace.
-  Use portable BSD/GNU link creation and refuse collisions while retaining a
+  Use Bash 3.2-compatible constructs and portable BSD/GNU link creation; support
+  checkouts with no shared links and refuse collisions while retaining a
   partially created checkout for inspection.
 - Justfiles own task composition; scripts retain substantive orchestration.
   TypeScript candidate and site scripts invoke the relevant justfile, not
@@ -102,6 +103,10 @@ operational baselines, and public-site assembly.
   invocation resolution.
   Agent Run publication includes its complete referenced events, commands and
   replies channel bundle, even when a consumer uses only one-shot calls.
+  User updates publication copies the portable library's exact descriptor and
+  MPL-2.0 license. The release gate freezes its archive beside the SDK, installs
+  both through ordinary dependencies, and qualifies TypeScript/Node and both
+  Python distributions separately.
 
 ## Local Contracts
 
@@ -155,8 +160,9 @@ operational baselines, and public-site assembly.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
   missing-build, mismatched-version, matching-version, and PATH behavior.
 - `bun test scripts/new-worktree.test.ts` uses disposable Git repositories to
-  verify link ownership, shared environment updates, separate indexes, and
-  refusals that preserve existing work and workspace state.
+  verify link ownership, setup without shared links, shared environment updates,
+  separate indexes, and refusals that preserve existing work and workspace state.
+  On macOS it invokes `/bin/bash` to cover the bundled Bash 3.2.
 - `just test-tooling` also checks recipe parsing, argument and working-directory
   handling, Linux host shard proof-step coverage and fail-closed aggregation,
   example dependency versions against public package manifests,

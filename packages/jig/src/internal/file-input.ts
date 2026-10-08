@@ -42,7 +42,12 @@ export function privateOpenFileRoot(path: string): number {
     ? privateMacosOpenFileRoot(path)
     : privateLinuxOpenFileRoot(path)
 }
-export function privatePublishDirectory(parent: number, staged: string, destination: string, sourceParent = parent): void {
+export function privatePublishDirectory(
+  parent: number,
+  staged: string,
+  destination: string,
+  sourceParent = parent,
+): void {
   if (process.platform !== 'darwin') {
     privateLinuxPublishDirectory(parent, staged, destination, sourceParent)
     return
@@ -94,11 +99,14 @@ export interface PrivateFileSelection {
 
 export function privateReadRegularFile(parent: number, path: string, maxBytes: number): Buffer {
   const fd = privateOpenAt(parent, privateFilePath(path), constants.O_RDONLY | constants.O_NONBLOCK)
+  let bytes: Buffer | undefined, result: Buffer | undefined
+  let failed = false,
+    failure: unknown
   try {
     const before = fstatSync(fd, { bigint: true })
     if (!before.isFile() || before.nlink !== 1n) throw new PrivateFileInputError('linked')
     if (before.size > BigInt(maxBytes)) throw new PrivateFileInputError('bytes', maxBytes)
-    const bytes = Buffer.alloc(Number(before.size) + 1)
+    bytes = Buffer.alloc(Number(before.size) + 1)
     let offset = 0
     while (offset < bytes.length) {
       const count = readSync(fd, bytes, offset, bytes.length - offset, null)
@@ -114,10 +122,25 @@ export function privateReadRegularFile(parent: number, path: string, maxBytes: n
       after.nlink !== 1n
     )
       throw new PrivateFileInputError('changed')
-    return bytes.subarray(0, offset)
-  } finally {
-    closeSync(fd)
+    result = bytes.subarray(0, offset)
+  } catch (error) {
+    failed = true
+    failure = error
   }
+  try {
+    closeSync(fd)
+  } catch (error) {
+    if (!failed) {
+      failed = true
+      failure = error
+    }
+  }
+  // The caller cannot own this allocation until every check and close succeeds.
+  if (failed) {
+    bytes?.fill(0)
+    throw failure
+  }
+  return result!
 }
 
 /**

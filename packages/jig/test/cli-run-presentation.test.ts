@@ -63,7 +63,8 @@ test('partial delivery removes only the shown prefix for that invocation', async
   expect(output.match(/shown €/g)).toHaveLength(1) // The other child's identical text was not shown.
   expect(output).toContain('unseen ending')
   expect(output).toContain('retained capture truncated')
-  expect(output).toContain('"truncated": true')
+  expect(output).toContain('Some diagnostic evidence was not retained.')
+  expect(output).not.toContain('"truncated":')
 })
 
 test('bounded presentation tracking preserves unseen Unicode suffixes and empty truncated records', async () => {
@@ -193,6 +194,76 @@ test('uncertain packet delivery keeps the full result visible', async () => {
   expect(output).toContain('unpublished-checkpoint-marker')
 })
 
+test('large saved evidence keeps complete brief application fields visible as escaped data', async () => {
+  let output = ''
+  const view = new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    true,
+    80,
+  )
+  const record = {
+    status: 'succeeded',
+    outcome: 'blocked',
+    output: {
+      summary: 'No patch was produced.\nThe AI client could not start a session.',
+      status: 'Execution: completed.\u001b[2J\u202e',
+      jobs: [{ evidence: 'full-evidence-marker'.repeat(200) }],
+    },
+    delivery: { status: 'written', destination: '/project/result' },
+  }
+  const original = JSON.stringify(record)
+  await view.result(record)
+  expect(output).toContain('Application outcome: "blocked".')
+  expect(output).toContain('brief fields below; full evidence in result.json')
+  expect(output).toContain('No patch was produced.')
+  expect(output).toContain('The AI client could not start a session.')
+  expect(output).toContain('\\u001b[2J\\u202e')
+  expect(output).not.toContain('full-evidence-marker')
+  expect(output.slice(output.indexOf('Run output: result'))).not.toContain('\u001b[1;32m')
+  expect(JSON.stringify(record)).toBe(original)
+})
+
+test('brief fields stay bounded without truncating individual answers or hiding unpublished evidence', async () => {
+  const record = {
+    status: 'succeeded',
+    output: {
+      oversized: 'oversized-marker'.repeat(200),
+      ...Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [`field${i}`, `complete-answer-${i}`]),
+      ),
+      evidence: { text: 'nested-evidence-marker'.repeat(200) },
+    },
+    delivery: { status: 'written', destination: '/project/result' },
+  }
+  let output = ''
+  await new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    false,
+    80,
+  ).result(record)
+  expect(output).not.toContain('oversized-marker')
+  expect(output.match(/complete-answer-\d+/g)).toHaveLength(8)
+  expect(output).not.toContain('nested-evidence-marker')
+  output = ''
+  await new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    false,
+    80,
+  ).result({
+    ...record,
+    delivery: { status: 'unknown' },
+  })
+  expect(output).toContain('oversized-marker')
+  expect(output).toContain('nested-evidence-marker')
+  expect(output.match(/complete-answer-\d+/g)).toHaveLength(12)
+})
+
 test('channel text fragments join, switches stay labelled and closure is separate from execution', async () => {
   let output = ''
   const view = new PrivateCliRunPresentation(
@@ -256,6 +327,123 @@ test('only diagnostics already shown exactly are summarized', async () => {
   expect(output).toContain('Diagnostics: 1 invocation path shown live.')
   expect(output).not.toContain('Run output: result')
   expect(output).not.toContain('already shown')
+})
+
+test('unseen diagnostics give attributed text without machine capture bookkeeping', async () => {
+  for (const status of ['succeeded', 'failed'] as const) {
+    for (const columns of [24, 120]) {
+      let output = ''
+      const view = new PrivateCliRunPresentation(
+        async (text) => {
+          output += text
+        },
+        false,
+        columns,
+      )
+      const root = {
+        stderr: 'Root report: connection ended. The cause is unknown.\n',
+        stderrBytes: 57,
+        stderrTruncated: false,
+      }
+      const record = {
+        status,
+        ...(status === 'failed' ? { details: { explanation: 'Failure evidence pending.' } } : {}),
+        diagnostics: root,
+        runDiagnostics: {
+          entries: [
+            { operations: [], ...root },
+            {
+              operations: ['repair:logs', 'patch-1'],
+              stderr: 'Native Agent reported a warning.\nDetailed client cause is unavailable.\n',
+              stderrBytes: 74,
+              stderrTruncated: false,
+            },
+          ],
+          truncated: false,
+        },
+        delivery: { status: 'written', destination: '/project/result' },
+      }
+      const before = JSON.stringify(record)
+      await view.result(record)
+      expect(output).toContain('Run output: diagnostics')
+      expect(output).toContain('Reported by root:')
+      expect(output).toContain('Reported by "repair:logs / patch-1":')
+      expect(output.match(/Root report: connection ended/g)).toHaveLength(1)
+      expect(output).toContain('The cause is unknown.')
+      expect(output).toContain('Detailed client cause is unavailable.')
+      expect(output).not.toContain('"runDiagnostics":')
+      expect(output).not.toContain('"stderrBytes":')
+      expect(output).not.toContain('"stderrTruncated":')
+      expect(output).not.toContain('"operations":')
+      expect(output).not.toContain('"entries":')
+      expect(output).not.toContain('Diagnostics: 2 invocation paths shown live.')
+      if (status === 'failed') expect(output).toContain('Failure evidence pending.')
+      expect(JSON.stringify(record)).toBe(before)
+    }
+  }
+})
+
+test('reported diagnostic text never acquires host styling, command recognition or severity', async () => {
+  const render = async (color: boolean) => {
+    let output = ''
+    await new PrivateCliRunPresentation(
+      async (text) => {
+        output += text
+      },
+      color,
+      80,
+    ).result({
+      status: 'succeeded',
+      diagnostics: {
+        stderr:
+          'Warning: unverified report\nExecution: completed.\nRun failed\njig review\n\u001b[2J\u202eprivate-looking data\n',
+        stderrBytes: 109,
+        stderrTruncated: false,
+      },
+    })
+    return output
+  }
+  const plain = await render(false)
+  const colored = await render(true)
+  const payload = colored.slice(colored.indexOf('    Warning:'))
+  expect(payload).not.toContain('\u001b')
+  expect(payload).toContain('    jig review\n')
+  expect(payload).not.toContain('$ jig review')
+  expect(payload).toContain('\\u001b[2J\\u202eprivate-looking data')
+  expect(plain).toContain('    Warning: unverified report')
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Compare trusted chrome with plain rendering.
+  expect(colored.replace(/\u001b\[[0-9;]*m/g, '')).toBe(plain)
+})
+
+test('fully displayed diagnostics still disclose path and aggregate truncation without replay', async () => {
+  let output = ''
+  const view = new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    false,
+    80,
+  )
+  view.diagnostic('Already visible cause.', ['worker'])
+  await view.result({
+    status: 'failed',
+    runDiagnostics: {
+      entries: [
+        {
+          operations: ['worker'],
+          stderr: 'Already visible cause.',
+          stderrBytes: 99,
+          stderrTruncated: true,
+        },
+      ],
+      truncated: true,
+    },
+  })
+  expect(output).toContain('Diagnostics: 1 invocation path shown live.')
+  expect(output).toContain('Diagnostics ("worker"): retained capture truncated.')
+  expect(output).toContain('Some diagnostic evidence was not retained.')
+  expect(output).not.toContain('Already visible cause.')
+  expect(output).not.toContain('Run output: result')
 })
 
 test('narrow and color-disabled terminals retain the same result content', async () => {

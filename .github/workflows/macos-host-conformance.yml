@@ -44,7 +44,7 @@ jobs:
       - name: Require the exact rootless candidate host and native clients
         run: scripts/ci/qualify-macos-host.sh --preflight
       - name: Install build dependencies without lifecycle scripts
-        run: bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/agent-acp --filter @jigging/flow-authoring --filter @jigging/flow
+        run: bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/agent-acp --filter @jigging/flow-authoring --filter @jigging/flow --filter @jigging/user-updates
       - name: Build candidate
         run: just --justfile packages/jig/justfile build
       - name: Qualify rootless host and installed consumer

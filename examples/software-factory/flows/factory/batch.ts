@@ -1,9 +1,16 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
+import { type UserUpdates, withUserUpdates } from '@jigging/user-updates'
+import type { RepairInput } from 'factory-repair-flow/policy'
+import {
+  type RepairPhase,
+  readRepairProgress,
+  repairProgressSchema,
+} from 'factory-repair-flow/progress'
 import { checkRoutingResult } from 'semantic-router-flow/decision'
-import type { RepairInput } from '../repair/policy.ts'
 import { checkName, loadChecks } from './checks.ts'
+import { checksView, type FactoryStage, jobsView, patchesView } from './dashboard.ts'
 import {
   identity,
   inspect,
@@ -13,19 +20,11 @@ import {
   writeRepairDeliverables,
 } from './files.ts'
 import { candidates, methods } from './methods.ts'
-
-const repairProgressSchema = {
-  type: 'object',
-  properties: {
-    phase: { type: 'string', enum: ['baseline', 'proposal', 'check', 'finished'] },
-    attempt: { type: 'integer', minimum: 0, maximum: 2 },
-  },
-  required: ['phase', 'attempt'],
-  additionalProperties: false,
-} as const
+import { factoryReport, jobLabel, jobReport, repairActivity } from './presentation.ts'
 
 interface Job {
   id: string
+  label?: string
   directory: string
   checks: string
   issue: string
@@ -48,12 +47,24 @@ export function batchJobs(value: unknown): Job[] {
       !job ||
       Object.keys(job).some(
         (k) =>
-          !['id', 'directory', 'checks', 'issue', 'editPaths', 'method', 'cancelAfterMs'].includes(
-            k,
-          ),
+          ![
+            'id',
+            'label',
+            'directory',
+            'checks',
+            'issue',
+            'editPaths',
+            'method',
+            'cancelAfterMs',
+          ].includes(k),
       ) ||
       typeof job.id !== 'string' ||
       !/^[a-z][a-z0-9-]{0,31}$/.test(job.id) ||
+      (job.label !== undefined &&
+        (typeof job.label !== 'string' ||
+          !job.label.trim() ||
+          [...job.label].length > 80 ||
+          /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(job.label))) ||
       typeof job.directory !== 'string' ||
       job.directory.length > 256 ||
       !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(job.directory) ||
@@ -89,27 +100,10 @@ export function patchConflicts(changes: readonly { job: string; path: string; co
 
 /** Application promises schedule work; Jig's exact slots and root budget bound it. */
 export async function repairBatch(run: RunContext): Promise<RunResult> {
-  const progress = run.channels?.progress
-  if (progress && (progress.direction !== 'send' || progress.delivery !== 'broadcast'))
-    throw new TypeError('progress must be a broadcast send channel.')
-  try {
-    return await repairBatchWithProgress(run, progress?.direction === 'send' ? progress : undefined)
-  } finally {
-    if (progress?.direction === 'send') {
-      try {
-        await progress.close()
-      } catch {
-        run.signal.throwIfAborted()
-        // Progress is observational; a lost reader must not change the work result.
-      }
-    }
-  }
+  return withUserUpdates(run, 'progress', (updates) => repairBatchWithProgress(run, updates))
 }
 
-async function repairBatchWithProgress(
-  run: RunContext,
-  progress: Extract<RunContext['channels'][string], { direction: 'send' }> | undefined,
-): Promise<RunResult> {
+async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): Promise<RunResult> {
   const { source, deliverables } = run.attachments
   if (source?.access !== 'read' || deliverables?.access !== 'read-write')
     throw new TypeError('Supply source and deliverables attachments.')
@@ -125,72 +119,145 @@ async function repairBatchWithProgress(
         await loadChecks(job.checks, import.meta.dir),
       ),
     })
+  updates.notice(
+    `Software factory: ${jobs.length} requested ${jobs.length === 1 ? 'repair' : 'repairs'}. No checked patches yet. Jobs contains goals and scope; Checks contains evidence; Patches contains candidates for human review. Changes are not applied.`,
+  )
   const changes: { job: string; path: string; content: string }[] = []
+  const observed: Record<string, JsonValue> = Object.create(null)
   const retained: Record<string, JsonValue> = Object.create(null)
   const retainedFiles: Record<string, string> = Object.create(null)
+  // Preserve the exact request independently of bounded observational excerpts.
+  // Checkpoint aggregation below selects only settled jobs' files.
+  for (const { job, input } of prepared) {
+    run.signal.throwIfAborted()
+    const output = join(deliverables.path, job.id)
+    await mkdir(output)
+    await writeFile(join(output, 'goal.txt'), input.issue, { flag: 'wx' })
+    retainedFiles[`${job.id}/goal.txt`] = input.issue
+  }
+  const jobView = updates.view('jobs', { title: 'Jobs' })
+  const checkView = updates.view('checks', { title: 'Checks' })
+  const patchView = updates.view('patches', { title: 'Patches' })
+  const stages = new Map<string, FactoryStage>()
+  const reports = new Map<string, string>()
+  const saved = new Set<string>()
+  const publishJobs = () => jobView.update(jobsView(prepared, stages, observed, saved))
+  const publishChecks = () => checkView.update(checksView(prepared, reports, observed))
+  const publishPatches = (conflicting = false) =>
+    patchView.update(patchesView(prepared, observed, conflicting))
+  publishJobs()
+  publishChecks()
+  publishPatches()
   let sequence = 0
   let saves = Promise.resolve()
-  let progressAvailable = progress !== undefined
-  const publish = async (value: Record<string, JsonValue>) => {
-    run.signal.throwIfAborted()
-    if (!progress || !progressAvailable) return
-    try {
-      await progress.send(value)
-    } catch {
-      run.signal.throwIfAborted()
-      progressAvailable = false
-    }
+  const active = new Set<string>()
+  const clearJob = (jobId: string) => {
+    if (active.delete(jobId)) updates.clear(`factory:${jobId}`)
   }
-  const publishPhase = async (
+  // Job IDs are unique for this Run. Child callbacks are joined before the
+  // parent clears their slots; attempts are labels, never completed-work counts.
+  const publishPhase = (
     jobId: string,
-    phase: 'selecting' | 'invoking' | 'baseline' | 'proposal' | 'check' | 'finished' | 'settled',
+    phase: 'selecting' | 'invoking' | RepairPhase,
     attempt: number,
-    extra: { method?: 'p1' | 'p2'; status?: 'review-ready' | 'unsuccessful' | 'unrouted' } = {},
-  ) => publish({ jobId, phase, attempt, ...extra })
+    extra: { method?: 'p1' | 'p2' } = {},
+    detail?: string,
+  ) => {
+    run.signal.throwIfAborted()
+    active.add(jobId)
+    stages.set(jobId, {
+      phase,
+      attempt,
+      maximum: extra.method === 'p1' ? 1 : 2,
+      ...(detail === undefined ? {} : { detail }),
+    })
+    updates.activity(
+      `factory:${jobId}`,
+      repairActivity(
+        jobs.find((job) => job.id === jobId)!,
+        phase,
+        attempt,
+        extra.method === 'p1' ? 1 : 2,
+        detail,
+      ),
+      undefined,
+      detail === undefined ? undefined : { detail },
+    )
+  }
   const invokeRepair = async (
     jobId: string,
     method: (typeof methods)[number],
     input: RepairInput,
     selected: AbortSignal,
   ): Promise<RunResult> => {
-    if (!progress || !progressAvailable)
+    if (run.channels.progress === undefined)
       return run.call(
-        { operationId: `repair:${jobId}`, slot: method.slot, input },
+        {
+          operationId: `repair:${jobId}`,
+          slot: method.slot,
+          intent: jobLabel(jobs.find((job) => job.id === jobId)!),
+          input,
+        },
         { signal: selected },
       )
 
     const pair = await run.channel({ schema: repairProgressSchema })
+    let observing = true
     const forwarding = (async () => {
       try {
-        for await (const value of pair.receive) {
-          if (
-            value === null ||
-            typeof value !== 'object' ||
-            Array.isArray(value) ||
-            typeof value.phase !== 'string' ||
-            !['baseline', 'proposal', 'check', 'finished'].includes(value.phase) ||
-            typeof value.attempt !== 'number'
-          )
-            continue
-          await publishPhase(
-            jobId,
-            value.phase as 'baseline' | 'proposal' | 'check' | 'finished',
-            value.attempt,
-            {
-              method: method.id,
-            },
-          )
+        for await (const raw of pair.receive) {
+          if (!observing) break
+          let value: ReturnType<typeof readRepairProgress>
+          try {
+            value = readRepairProgress(raw)
+          } catch {
+            updates.notice(
+              `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Live repair updates were invalid. The repair result will still be checked.`,
+            )
+            break
+          }
+          if (value.phase === 'observed' || value.phase === 'rejected') {
+            reports.set(jobId, value.detail!)
+            updates.notice(
+              `${jobLabel(jobs.find((job) => job.id === jobId)!)}: ${value.detail}`,
+              value.phase === 'rejected' ? 'warning' : 'info',
+            )
+            publishChecks()
+          } else
+            publishPhase(
+              jobId,
+              value.phase,
+              value.attempt,
+              {
+                method: method.id,
+              },
+              value.detail,
+            )
         }
-      } catch {
+      } catch (error) {
         run.signal.throwIfAborted()
-        // Phase observation is best-effort; repair outcome remains authoritative.
+        if (
+          !(error instanceof OperationError) ||
+          !['LAGGED', 'DISCONNECTED', 'OWNER_CLOSED', 'INVALID_INPUT'].includes(error.code)
+        )
+          throw error
+        updates.notice(
+          `${jobLabel(jobs.find((job) => job.id === jobId)!)}: Live repair updates stopped (${error.code}). The repair result will still be checked.`,
+        )
+      } finally {
+        observing = false
+        clearJob(jobId)
       }
     })()
+    // The child may still be working when its observation fails. Keep the
+    // original rejection owned until the call and reader are both joined.
+    void forwarding.catch(() => undefined)
     try {
       const result = await run.call(
         {
           operationId: `repair:${jobId}`,
           slot: method.slot,
+          intent: jobLabel(jobs.find((job) => job.id === jobId)!),
           input,
           channels: { progress: pair.send },
         },
@@ -199,175 +266,251 @@ async function repairBatchWithProgress(
       await forwarding
       return result
     } catch (error) {
+      observing = false
       try {
         await pair.receive.close()
-      } catch {
+      } catch (closeError) {
         run.signal.throwIfAborted()
+        if (
+          !(closeError instanceof OperationError) ||
+          !['LAGGED', 'DISCONNECTED', 'OWNER_CLOSED'].includes(closeError.code)
+        ) {
+          console.error('Child activity cleanup also failed; the repair failure remains primary.')
+        }
       }
-      await forwarding.catch(() => undefined)
+      await forwarding.catch((observationError) => {
+        if (observationError !== error)
+          console.error('Child activity also failed; the repair failure remains primary.')
+      })
       throw error
     }
   }
-  const results = await Promise.all(
-    prepared
-      .map(async ({ job, input }) => {
-        const routingInput = { task: input.issue, candidates }
-        const routing: Record<string, JsonValue> = job.method
-          ? { mode: 'explicit', candidateId: job.method }
-          : { mode: 'automatic', input: routingInput }
-        const captured = {
-          id: job.id,
-          directory: job.directory,
-          baseDigest: identity(input.files),
-          acceptanceDigest: identity(input.cases),
-          routing,
-        }
-        const selected = new AbortController()
-        const timer =
-          job.cancelAfterMs === undefined
-            ? undefined
-            : setTimeout(() => selected.abort(), job.cancelAfterMs)
-        let result: RunResult
-        let stage = job.method === undefined ? 'routing' : 'repair'
-        try {
-          run.signal.throwIfAborted()
-          let candidateId = job.method
-          if (candidateId === undefined) {
-            await publishPhase(job.id, 'selecting', 0)
-            const decision = await run.call(
-              { operationId: `route:${job.id}`, slot: 'router', input: routingInput },
-              { signal: selected.signal },
-            )
-            run.signal.throwIfAborted()
-            // A replacement router has no more authority than the ordinary router.
-            let route: ReturnType<typeof checkRoutingResult>
-            try {
-              route = checkRoutingResult(decision, candidates)
-            } catch {
-              throw new OperationError('INVALID_RESULT', 'Router returned an invalid decision.')
-            }
-            routing.result = route
-            if (route.outcome !== 'done' || route.output.candidateId === null) {
-              return { ...captured, status: 'unrouted' }
-            }
-            candidateId = route.output.candidateId
-          }
-          const method = methods.find((candidate) => candidate.id === candidateId)
-          if (!method)
-            throw new OperationError('INVALID_RESULT', 'The selected method has no reviewed slot.')
-          routing.slot = method.slot
-          // Do not reset the job budget after routing, including between calls.
-          if (selected.signal.aborted)
-            throw new OperationError('CANCELLED', 'The routing and repair interval expired.')
-          await publishPhase(job.id, 'invoking', 0, { method: method.id })
-          stage = 'repair'
-          result = await invokeRepair(job.id, method, input, selected.signal)
-        } catch (error) {
-          run.signal.throwIfAborted()
-          // Preserve settled failure, not an invented candidate or verdict.
-          const value = error as { code?: string; message?: string; details?: JsonValue }
-          return {
-            ...captured,
-            status: 'failed',
-            stage,
-            code: value.code ?? 'EXECUTION_FAILED',
-            message: value.message ?? 'Routing or repair failed.',
-            ...(value.details === undefined ? {} : { details: value.details }),
-          }
-        } finally {
-          clearTimeout(timer)
-        }
+  const workers = prepared
+    .map(async ({ job, input }) => {
+      const routingInput = { task: input.issue, candidates }
+      const routing: Record<string, JsonValue> = job.method
+        ? { mode: 'explicit', candidateId: job.method }
+        : { mode: 'automatic', input: routingInput }
+      const captured = {
+        id: job.id,
+        ...(job.label === undefined ? {} : { label: job.label }),
+        directory: job.directory,
+        issue: input.issue,
+        editPaths: input.editPaths,
+        baseDigest: identity(input.files),
+        acceptanceDigest: identity(input.cases),
+        routing,
+      }
+      const selected = new AbortController()
+      const timer =
+        job.cancelAfterMs === undefined
+          ? undefined
+          : setTimeout(() => selected.abort(), job.cancelAfterMs)
+      let result: RunResult
+      let stage = job.method === undefined ? 'routing' : 'repair'
+      try {
         run.signal.throwIfAborted()
-        let checked: ReturnType<typeof inspect>
-        try {
-          checked = inspect(input, result)
-        } catch (error) {
-          return {
-            ...captured,
-            status: 'failed',
-            stage: 'validation',
-            code: 'INVALID_RESULT',
-            message: error instanceof Error ? error.message : 'Invalid worker evidence.',
-            rejectedResult: result,
+        let candidateId = job.method
+        if (candidateId === undefined) {
+          publishPhase(job.id, 'selecting', 0)
+          const decision = await run.call(
+            {
+              operationId: `route:${job.id}`,
+              slot: 'router',
+              intent: `Choose a reviewed repair approach for ${jobLabel(job)}`,
+              input: routingInput,
+            },
+            { signal: selected.signal },
+          )
+          run.signal.throwIfAborted()
+          // A replacement router has no more authority than the ordinary router.
+          let route: ReturnType<typeof checkRoutingResult>
+          try {
+            route = checkRoutingResult(decision, candidates)
+          } catch {
+            throw new OperationError('INVALID_RESULT', 'Router returned an invalid decision.')
           }
+          routing.result = route
+          if (route.outcome !== 'done' || route.output.candidateId === null) {
+            return { ...captured, status: 'unrouted' }
+          }
+          candidateId = route.output.candidateId
         }
-        const output = join(deliverables.path, job.id)
-        await mkdir(output)
-        await writeRepairDeliverables(output, input, result)
-        for (const [path, text] of Object.entries(repairDeliverables(input, result)))
-          retainedFiles[`${job.id}/${path}`] = text
-        if (checked.ready) {
-          const attempt = (result.output as any).attempts.at(-1)
-          for (const file of attempt.proposal.replacements)
-            changes.push({
-              job: job.id,
-              path: `${job.directory}/${file.path}`,
-              content: file.content,
-            })
-        }
+        const method = methods.find((candidate) => candidate.id === candidateId)
+        if (!method)
+          throw new OperationError('INVALID_RESULT', 'The selected method has no reviewed slot.')
+        routing.slot = method.slot
+        // Do not reset the job budget after routing, including between calls.
+        if (selected.signal.aborted)
+          throw new OperationError('CANCELLED', 'The routing and repair interval expired.')
+        publishPhase(job.id, 'invoking', 0, { method: method.id })
+        stage = 'repair'
+        result = await invokeRepair(job.id, method, input, selected.signal)
+      } catch (error) {
+        run.signal.throwIfAborted()
+        // Preserve settled failure, not an invented candidate or verdict.
+        const value = error as { code?: string; message?: string; details?: JsonValue }
         return {
           ...captured,
-          status: 'settled',
-          ready: checked.ready,
-          result,
+          status: 'failed',
+          stage,
+          code: value.code ?? 'EXECUTION_FAILED',
+          message: value.message ?? 'Routing or repair failed.',
+          ...(value.details === undefined ? {} : { details: value.details }),
         }
-      })
-      .map((worker) =>
-        worker.then(async (result) => {
-          // Serialize complete aggregates; Jig does not choose application ordering.
-          const saving = saves.then(async () => {
-            run.signal.throwIfAborted()
-            retained[result.id] = result as unknown as JsonValue
-            const settled = jobs.filter((j) => Object.hasOwn(retained, j.id))
-            const pending = jobs.filter((j) => !Object.hasOwn(retained, j.id)).map((j) => j.id)
-            const files: Record<string, string> = Object.create(null)
-            for (const job of settled)
-              for (const [path, text] of Object.entries(retainedFiles))
-                if (path.startsWith(`${job.id}/`)) files[path] = text
-            files['summary.txt'] =
-              settled
-                .map((j) => {
-                  return summary(retained[j.id]!)
-                })
-                .join('\n') +
-              `\nPending: ${pending.join(', ') || 'none'}\nPatches were checked separately. Review before applying.\n`
-            await run.call({
-              operationId: `checkpoint:${++sequence}`,
-              slot: 'checkpoint',
-              input: {
-                sequence,
-                evidence: {
-                  jobs: settled.map((j) => retained[j.id]!),
-                  pending,
-                  overlaps: patchConflicts(changes.filter((c) => Object.hasOwn(retained, c.job))),
-                },
-                files,
-              },
-            })
-            await publishPhase(result.id, 'settled', 0, {
-              status:
-                'ready' in result && result.ready
-                  ? 'review-ready'
-                  : result.status === 'unrouted'
-                    ? 'unrouted'
-                    : 'unsuccessful',
-              ...(typeof result.routing.slot === 'string' &&
-              (result.routing.slot === 'single-pass' ||
-                result.routing.slot === 'checked-correction')
-                ? { method: result.routing.slot === 'single-pass' ? 'p1' : 'p2' }
-                : {}),
-            })
+      } finally {
+        clearTimeout(timer)
+      }
+      run.signal.throwIfAborted()
+      let checked: ReturnType<typeof inspect>
+      try {
+        checked = inspect(input, result)
+      } catch (error) {
+        return {
+          ...captured,
+          status: 'failed',
+          stage: 'validation',
+          code: 'INVALID_RESULT',
+          message: error instanceof Error ? error.message : 'Invalid worker evidence.',
+          rejectedResult: result,
+        }
+      }
+      const output = join(deliverables.path, job.id)
+      await writeRepairDeliverables(output, input, result)
+      for (const [path, text] of Object.entries(repairDeliverables(input, result)))
+        retainedFiles[`${job.id}/${path}`] = text
+      if (checked.ready) {
+        const attempt = (result.output as any).attempts.at(-1)
+        for (const file of attempt.proposal.replacements)
+          changes.push({
+            job: job.id,
+            path: `${job.directory}/${file.path}`,
+            content: file.content,
           })
-          saves = saving
-          await saving
-          return result
-        }),
+      }
+      return {
+        ...captured,
+        status: 'settled',
+        ready: checked.ready,
+        ...(checked.ready
+          ? {
+              verification: {
+                proposal: (result.output as any).attempts.length,
+                changedPaths: (result.output as any).attempts
+                  .at(-1)
+                  .proposal.replacements.filter(
+                    (file: { path: string; content: string }) =>
+                      input.files[file.path] !== file.content,
+                  )
+                  .map((file: { path: string }) => file.path),
+                acceptanceCases: (result.output as any).attempts
+                  .at(-1)
+                  .evaluation.acceptance.map((entry: { id: string }) => entry.id),
+              },
+            }
+          : {}),
+        result,
+      }
+    })
+    .map((worker) =>
+      worker.then(async (result) => {
+        run.signal.throwIfAborted()
+        observed[result.id] = result as unknown as JsonValue
+        clearJob(result.id)
+        updates.notice(
+          'ready' in result && result.ready
+            ? jobReport(result as unknown as JsonValue, false, {
+                goal: 200,
+                paths: 160,
+                deliveryPending: true,
+              })
+            : jobReport(result as unknown as JsonValue, false),
+          'ready' in result && result.ready ? 'info' : 'error',
+        )
+        // Serialize complete aggregates; Jig does not choose application ordering.
+        const saving = saves.then(async () => {
+          run.signal.throwIfAborted()
+          retained[result.id] = result as unknown as JsonValue
+          const settled = jobs.filter((j) => Object.hasOwn(retained, j.id))
+          const pending = jobs.filter((j) => !Object.hasOwn(retained, j.id)).map((j) => j.id)
+          const files: Record<string, string> = Object.create(null)
+          for (const job of settled)
+            for (const [path, text] of Object.entries(retainedFiles))
+              if (path.startsWith(`${job.id}/`)) files[path] = text
+          files['summary.txt'] =
+            settled
+              .map((j) => {
+                return summary(retained[j.id]!)
+              })
+              .join('\n') +
+            `\nPending: ${pending.join(', ') || 'none'}\nPatches were checked separately. Review before applying.\n`
+          await run.call({
+            operationId: `checkpoint:${++sequence}`,
+            slot: 'checkpoint',
+            intent: `Save checked evidence for ${settled.length} of ${jobs.length} jobs`,
+            input: {
+              sequence,
+              evidence: {
+                jobs: settled.map((j) => retained[j.id]!),
+                pending,
+                overlaps: patchConflicts(changes.filter((c) => Object.hasOwn(retained, c.job))),
+              },
+              files,
+            },
+          })
+          saved.add(result.id)
+          updates.notice(
+            `${jobLabel(result)}: Results and diagnostic evidence have been saved (${settled.length} of ${jobs.length} jobs).${'ready' in result && result.ready ? `\n  Review files/${result.id}/review.patch before applying it.` : ''}`,
+          )
+        })
+        saves = saving
+        await saving
+        return result
+      }),
+    )
+  // Every child producer settles before the publisher scope drains, including
+  // when one checkpoint fails while another job is still running.
+  const settledWorkers = await Promise.allSettled(workers)
+  const failure = settledWorkers.find((result) => result.status === 'rejected')
+  if (failure?.status === 'rejected') {
+    run.signal.throwIfAborted()
+    const error = failure.reason
+    if (!(error instanceof OperationError) || Object.keys(observed).length === 0) throw error
+    const known = jobs
+      .filter((job) => Object.hasOwn(observed, job.id))
+      .map((job) => observed[job.id]!)
+    // Storage failure does not erase already observed repair outcomes. These
+    // optional snapshots still make no claim that their files were delivered.
+    publishJobs()
+    publishChecks()
+    publishPatches(patchConflicts(changes).some((overlap) => overlap.conflicting))
+    throw new OperationError(error.code, error.message, {
+      summary: factoryReport(
+        known,
+        patchConflicts(changes).some((overlap) => overlap.conflicting),
+        false,
+        jobs.length,
       ),
-  )
+      jobs: known,
+      ...(error.details === undefined ? {} : { operationDetails: error.details }),
+    })
+  }
+  const results = settledWorkers.map((result) => {
+    if (result.status !== 'fulfilled') throw new Error('Unsettled factory worker')
+    return result.value
+  })
   run.signal.throwIfAborted()
   const overlaps = patchConflicts(changes)
+  if (overlaps.some((overlap) => overlap.conflicting))
+    updates.notice(
+      'The proposed patches conflict. Resolve the overlap before applying either change.',
+      'error',
+    )
   const ready =
     results.every((r) => 'ready' in r && r.ready) && !overlaps.some((o) => o.conflicting)
+  publishJobs()
+  publishChecks()
+  publishPatches(overlaps.some((o) => o.conflicting))
   await writeFile(
     join(deliverables.path, 'summary.txt'),
     results.map((r) => summary(r as unknown as JsonValue)).join('\n') +
@@ -377,7 +520,17 @@ async function repairBatchWithProgress(
         .join('\n'),
     { flag: 'wx' },
   )
-  return { outcome: ready ? 'done' : 'blocked', output: { jobs: results, overlaps } as JsonValue }
+  return {
+    outcome: ready ? 'done' : 'blocked',
+    output: {
+      summary: factoryReport(
+        results as unknown as JsonValue[],
+        overlaps.some((overlap) => overlap.conflicting),
+      ),
+      jobs: results,
+      overlaps,
+    } as JsonValue,
+  }
 }
 
 function summary(value: JsonValue): string {
@@ -401,6 +554,7 @@ function summary(value: JsonValue): string {
     job.routing.slot ?? (route?.outcome === 'done' ? 'abstained' : (route?.outcome ?? 'failed'))
   const mode = job.routing.mode === 'explicit' ? 'explicit' : 'automatic'
   const lines = [
+    jobReport(value, true, { goal: 200, paths: 160, includeReason: false }),
     `${job.id}: ${job.ready ? 'review-ready' : 'unsuccessful'}; routing (${mode}): ${selection}`,
   ]
   if (route) lines.push(`  Reported routing reason: ${reportedText(route.output.reason)}`)

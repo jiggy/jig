@@ -15,6 +15,27 @@ The authoring compiler runs separately from Flow execution; consumers of
 generated native JSON do not need it. Node is an operator-supplied runtime,
 not bundled in the archive.
 
+BUNDLED USER UPDATES PROFILE
+---------------------------
+
+Jig includes @jigging/user-updates (MPL-2.0) validation code and the exact
+portable descriptor in libexec/contracts/user-updates/user-updates.json. The complete license
+is retained as libexec/contracts/user-updates/LICENSE and accompanies offline imported copies.
+Source is available in packages/user-updates at https://github.com/jiggy/jig.
+
+EXTERNAL DASHBOARD DEPENDENCIES — NOT BUNDLED
+--------------------------------------------
+
+Jig declares required exact dependencies on @opentui/core 0.5.17 (MIT) and
+web-tree-sitter 0.25.10 (MIT). Package managers install their complete runtime
+closures, including OpenTUI's matching optional native platform package. These
+packages and their licenses are distributed separately from the Jig archive.
+OpenTUI is loaded only for explicit terminal dashboard presentation; no Flow or
+user-updates library adopts its types or widgets.
+
+https://github.com/anomalyco/opentui
+https://github.com/tree-sitter/tree-sitter
+
 EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED
 ------------------------------------------
 

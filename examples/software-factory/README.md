@@ -49,10 +49,39 @@ before choosing another Run, and review any changed configuration first.
 For a settled unsuccessful proposal, inspect its command evidence and proposal
 patches; these are not accepted patches to apply. A healthy job's `review.patch`
 remains available even when the batch outcome is `blocked`.
-Use `--receive progress --json` to observe method selection and the repair
-specialist's baseline, proposal, check, and finish phases. The broadcast channel
-does not wait for a reader to accept each message. A `settled` notice follows
-the durable checkpoint. Progress is activity, not evidence that a patch passed;
+The factory identifies jobs by their optional `label` (or their `id`).
+Use `jig run --display dashboard` for a workspace that starts in **Activity**.
+**Jobs** contains goals, editable source files, reviewed approach and outcomes;
+**Checks** contains repository tests and independent acceptance cases;
+**Patches** contains checked candidates for human review. **Overview** shows
+the actual calls. Select a record and press Enter for details; `!` opens a
+blocking cause, and `r` selects an evidence reference. Press `q` during work
+to continue in the ordinary transcript. The read-only completed inspector stays
+open until you close it, subject to any explicit enclosing command limit.
+During work it identifies the command slot or case being run, then reports the
+observed repository-command status and passing or mismatched acceptance cases.
+Collected command invocations and a procedural next step explain why it requests
+a fix, asks for a correction or returns evidence. Proposal numbers include the
+reviewed limit, such as “1 of 2”. Worker reports remain provisional until the
+factory independently checks the returned evidence.
+The final brief repeats requested goals and, for accepted patches, names changed
+files and verified check counts. Failed proposals retain their rejection or check
+cause even with updates disabled. Passing these fixed checks does not prove every
+sentence of an issue correct. Full evidence remains
+in `result.json`; `files/summary.txt` starts with the same plain-language report.
+Long goals may show a marked excerpt. Each job's exact original request is
+saved in `files/<job>/goal.txt`; Jobs offers its reference after verified packet
+delivery. Complete `issue`, editable paths and verified acceptance-case IDs
+also remain in `result.json`. Checkpoints include request files only for settled jobs.
+The standard [user-updates contract](../../docs/jig/contracts/user-updates.md)
+shows current job activity on terminal stderr.
+Use `--receive progress --json` for explicit machine records, or `--updates off`
+to turn automatic observation off. The scoped publisher bounds observation work;
+rapid phases can replace one another, and slow or lost observation can end early.
+A saved-results notice follows durable storage; its count measures saved jobs,
+including failed jobs, rather than successful repairs. If live observation ends
+early, use the final report and saved evidence to determine the work's outcome.
+Progress is activity, not evidence that a patch passed;
 the separate `checkpoint` slot retains settled evidence across interruption.
 
 Patches are checked separately. Overlap is reported, conflicting overlap blocks
@@ -64,8 +93,10 @@ selected patches yourself.
 Keep the common paths selected by `bindings/single-pass.ts`, `bindings/checked-correction.ts`, then add each small
 project below the source attachment. Add a named `*-cases.json` beside the
 factory Flow and list its name, issue, directory, and existing `src/*.ts` or
-`src/*.js` edit paths in `batch.json`. The batch accepts one or two jobs. Review
-again after Flow, entrypoint, command, case, Agent, or grant changes. New job input
+`src/*.js` edit paths in `batch.json`. The batch accepts one or two jobs.
+Use an optional single-line `label` of up to 80 characters to give each job a
+readable name while preserving its `id` in paths and evidence.
+Review again after Flow, entrypoint, command, case, Agent, or grant changes. New job input
 and source files are captured for each Run without another review.
 
 The reviewed configurations permit one or two Agent proposals and share the same

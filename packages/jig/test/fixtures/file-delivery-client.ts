@@ -26,7 +26,37 @@ if (owner === undefined || destination === undefined || pidFile === undefined)
   throw new Error('missing test owner')
 try {
   await writeFile(pidFile, String(process.pid))
-  if (stopAt === 'snapshot') {
+  if (stopAt === 'preview' || stopAt === 'preview-expiry') {
+    owner.enableInspection?.()
+    await owner.prepare(destination, [])
+    const source = await mkdtemp(join(dirname(pidFile), 'preview-source-'))
+    await writeFile(join(source, 'review.patch'), 'Exact verified patch\n')
+    const fd = privateOpenFileRoot(source),
+      capture = capturePrivateOutput(fd)
+    closeSync(fd)
+    try {
+      const receipt = await owner.publish(
+        { status: 'succeeded', outcome: 'done', output: null },
+        privateSnapshotExecutionOutput(Promise.resolve(capture)),
+      )
+      if (receipt.status !== 'written') throw new Error('preview fixture publication failed')
+      await writeFile(join(destination, 'files/review.patch'), 'Changed destination')
+      if (stopAt === 'preview-expiry') {
+        await writeFile(readyFile!, 'published')
+        await Bun.sleep(30_000)
+        throw new Error('inspection waived the original command timer')
+      }
+      // Immutable preview outlives execution, within the command's original timer.
+      await Bun.sleep(3500)
+      const preview = await owner.preview?.('review.patch')
+      if (preview?.text !== 'Exact verified patch\n')
+        throw new Error('immutable preview changed or inspection expired')
+      await writeFile(readyFile!, 'verified')
+    } finally {
+      capture.close()
+      await rm(source, { recursive: true })
+    }
+  } else if (stopAt === 'snapshot') {
     const source = await mkdtemp(join(dirname(pidFile), 'source-'))
     const input = join(source, 'input')
     await mkdir(input)

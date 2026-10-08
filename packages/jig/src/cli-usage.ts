@@ -10,7 +10,7 @@ export class CliDiagnostic extends Error {
 }
 
 export function usage(command: string, message: string): never {
-  throw new CliDiagnostic('JIG_USAGE', `${message}\n\nHelp: jig ${command} --help`, 2)
+  throw new CliDiagnostic('JIG_USAGE', `${message}\n\nHelp:\n  $ jig ${command} --help`, 2)
 }
 
 /** Suggestions are spelling assistance, never alternate dispatch authority. */

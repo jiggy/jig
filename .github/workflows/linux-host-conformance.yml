@@ -16,6 +16,7 @@ on:
       - "packages/agent-acp/**"
       - "packages/flow-authoring/**"
       - "packages/flow-sdk/**"
+      - "packages/user-updates/**"
       - "docs/jig/spec/**"
       - "examples/tested-patch/**"
       - "examples/software-factory/**"
@@ -67,7 +68,7 @@ jobs:
           bun install --ignore-scripts --filter @jigging/jig
           --filter @jigging/agent-method --filter @jigging/flow-authoring
           --filter @jigging/agent-acp
-          --filter @jigging/flow
+          --filter @jigging/flow --filter @jigging/user-updates
 
       - name: Build and freeze archives once
         shell: bash
@@ -76,14 +77,15 @@ jobs:
           just --justfile packages/jig/justfile build
           artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
           mkdir "$artifact_directory"
-          mkdir "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
+          mkdir "$artifact_directory/user-updates" "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
+          bun pm pack --cwd packages/user-updates --ignore-scripts --destination "$artifact_directory/user-updates"
           bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$artifact_directory/flow-sdk"
           bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$artifact_directory/agent-method"
           bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$artifact_directory/agent-acp"
           bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
           (
             cd "$artifact_directory"
-            sha256sum flow-sdk/*.tgz agent-method/*.tgz agent-acp/*.tgz jig/*.tgz > SHA256SUMS
+            sha256sum user-updates/*.tgz flow-sdk/*.tgz agent-method/*.tgz agent-acp/*.tgz jig/*.tgz > SHA256SUMS
           )
 
       - name: Retain exact Linux host artifacts
@@ -135,7 +137,7 @@ jobs:
           bun install --ignore-scripts --filter @jigging/jig
           --filter @jigging/agent-method --filter @jigging/flow-authoring
           --filter @jigging/agent-acp
-          --filter @jigging/flow
+          --filter @jigging/flow --filter @jigging/user-updates
 
       - name: Build source-test workspace packages
         run: just --justfile packages/jig/justfile build
@@ -165,6 +167,7 @@ jobs:
             readlink -f "${archives[0]}"
           }
           {
+            printf 'USER_UPDATES_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/user-updates")"
             printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
             printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
             printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
@@ -286,6 +289,8 @@ jobs:
           "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE"
           "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE"
           "JIG_AUTHORING_NODE_PATH=$(command -v node)"
+          "JIG_NPM=$(command -v npm)"
+          "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" packages/jig/test/package-smoke.ts
 
       - name: Run Operational Baseline/1 against the packed archive

@@ -16,6 +16,7 @@ import { ChannelBroker } from '../src/run/channels.js'
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const runtime: PrivateAcpAgentRuntime = {
+  client: 'fixture',
   adapterPath: '/private/adapter',
   sandboxAdapterPath: '/adapter',
   adapterExecutable: false,
@@ -59,6 +60,7 @@ interface FakeOptions {
   failedAuth?: boolean
   wrongInitializeId?: boolean
   hangAuth?: boolean
+  failedNew?: boolean
 }
 function component(options: FakeOptions = {}) {
   const stdout = new Queue<Uint8Array>()
@@ -140,6 +142,18 @@ function component(options: FakeOptions = {}) {
           else reply({})
           break
         case 'session/new':
+          if (options.failedNew) {
+            emit({
+              jsonrpc: '2.0',
+              id: value.id,
+              error: {
+                code: -32603,
+                message: 'Internal error',
+                data: 'failed to load configuration: Failed to synchronize managed preferences\n\nCheck /private/secret-token and private configuration.',
+              },
+            })
+            break
+          }
           reply({ sessionId: 'owned', _meta: { secret: 'private-session' } })
           break
         case 'session/prompt':
@@ -273,6 +287,33 @@ async function fixture(options: FakeOptions = {}, selected = runtime, maxTurns =
 }
 
 describe('finite ACP resource transport (fake native process)', () => {
+  test.each(['openai-codex', 'other-client'])(
+    'native %s identity remains host-owned when projecting a configuration failure',
+    async (client) => {
+      const f = await fixture({ failedNew: true }, { ...runtime, client })
+      expect((await f.next())?.kind).toBe('ready')
+      await f.request(1, 'initialize', {
+        protocolVersion: 1,
+        clientCapabilities: {},
+        clientInfo: { name: 'openai-codex' },
+      })
+      expect((await f.next())?.result).toMatchObject({ protocolVersion: 1 })
+      await f.request(2, 'session/new', { cwd: '/work', mcpServers: [] })
+      expect((await f.next())?.error).toEqual({
+        code: -32603,
+        message: 'Native ACP request failed',
+        ...(client === 'openai-codex'
+          ? { data: { reason: 'managed-preferences-unavailable' } }
+          : {}),
+      })
+      f.app.close(f.requests.send.endpoint)
+      await f.resource
+      expect(f.native.writes.map((frame) => frame.method)).toEqual(['initialize', 'session/new'])
+      expect(JSON.stringify(f.exposed)).not.toContain('secret-token')
+      expect(JSON.stringify(f.exposed)).not.toContain('/private')
+    },
+  )
+
   test('a native session failure retains its closed cause through transport disposal', async () => {
     const f = await fixture({ hangPrompt: true })
     await f.initialize()

@@ -44,19 +44,51 @@ Project commands:
 
 ```text
 jig init [--bare] <directory> [--agent [codex|claude|pi]]
-jig new <name>
+jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig import-contract <descriptor.json|npm:package> <destination>
+jig inspect --result <directory> [--display plain|dashboard] [--json]
+jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
+jig import-contract --list
 jig completion <bash|zsh|fish>
 ```
+
+Runs show an inline invocation tree and optional application views on terminal
+stderr. `jig run --display dashboard` opens a terminal workspace with Activity,
+the actual call tree, domain tabs, record cards and expandable evidence once
+root execution begins. Initial review, input, file and runtime refusals stay in
+ordinary output.
+Wide layouts show selected record details beside the list. Enter opens full
+details; `!` opens retained causes, `d` opens attributed diagnostics, and `?`
+explains the current keys.
+q leaves while work continues inline; Escape first dismisses a local panel.
+Ctrl-C during work cancels and waits for cleanup. After work and delivery settle,
+Ctrl-C simply closes read-only result inspection. Inspection stays open until you
+leave, subject to any explicit enclosing command limit.
+File previews use
+verified immutable delivery. Use `--display plain`
+for nonanimated summaries. `--json` and effective `--receive` preserve exact
+machine/channel output. Flow authors compose views through the portable
+[user-updates agreement](https://jig.md/guide/channels), without terminal code or
+host-specific domain adapters.
+
+The dashboard uses pinned OpenTUI Core, installed with Jig and loaded only for
+an eligible explicit dashboard. Missing native display support refuses before
+execution with `JIG_DASHBOARD_UNAVAILABLE`; restore the complete installation or
+select `--display plain`. Flows and the user-updates SDK do not depend on OpenTUI.
 
 `review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
 
 `new` adds ordinary editable source under `flows/<name>` without installation or
-approval. Interactive `jig run` can offer an explicit choice of approved targets;
+approval. Jig's [standard library](https://jig.md/contracts/) uses one `jig:`
+namespace. `import-contract --list` lists its invocation and channel agreements
+offline. For example, `jig new worker --use agent=jig:agent-run` copies the complete
+Agent agreement and declares the collaborator slot. Importing preserves exact
+descriptors and licenses as local snapshots; implementations and grants remain
+separately selected and reviewed. Channel agreements belong under `channels`.
+Interactive `jig run` can offer an explicit choice of approved targets;
 scripts must name a target. Shell completion also reads only approved targets.
 A Binding can pin a declared read attachment with
 `attachments: { reference: './resources/reference' }`. Review captures and
@@ -89,6 +121,11 @@ evaluating source, contacting providers, preparing dependencies or changing stat
 It checks that approval against current local execution identities and reports
 changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
+
+`jig inspect --result ./result-packet --display dashboard` reopens saved result,
+file and diagnostic evidence without starting work or requiring a project.
+These are recorded local claims, not a new execution verdict. File previews use
+captured bytes checked against the packet manifest. See [results and recovery](https://jig.md/guide/results).
 
 `run` executes the approved revision and shows a YAML terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout

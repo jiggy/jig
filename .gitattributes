@@ -1,0 +1,2 @@
+# Imported and packaged user-updates descriptors preserve identical bytes on every OS.
+**/user-updates.json text eol=lf

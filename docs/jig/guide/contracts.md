@@ -101,7 +101,13 @@ overwrites or deletes them. Editing a borrowed agreement requires explicit
 regeneration before review. The generated descriptor still references that
 file, so distribute the complete bundle.
 
-To reuse a complete invocation contract from an installed package, use
+Jig's [standard library](../contracts/index.md) uses the `jig:` namespace.
+Browse it with `jig import-contract --list`; for example,
+`jig import-contract jig:agent-run contracts/agent-run` copies the installed
+Agent agreement and all of its referenced channels and license. This selects
+an agreement, not an Agent implementation or permission to invoke one.
+
+To reuse a complete invocation contract from another installed package, use
 `jig import-contract npm:<package> <new-directory>`. Jig resolves the nearest
 installation from the destination's parent, so project-root and member-local
 dependencies use the same command. For an independently supplied contract, use

@@ -174,17 +174,24 @@ Bubblewrap installation is needed. A missing or unverifiable system helper
 requires repairing the supported host, not replacing it with another helper.
 
 Review checks the installation without opening a native session. Codex 0.159.0
-currently fails the separate offline session check on Mac with
-`Failed to synchronize managed preferences`: the client requires a macOS
-preference refresh that Jig's current containment does not support. Resolving
-its npm or Volta launcher does not resolve that startup failure. This client
-needs a correction that preserves the execution boundary before Mac Runs can
-be qualified.
+passes the separate offline startup check on Intel macOS 14.4.1, build 23E224.
+Its contained profile can receive preference-change notifications while host
+preference values remain inaccessible. A fresh check refuses configured managed
+policy or unavailable preference synchronization before review selection and
+every native launch. Keep managed settings intact and choose an integration that
+supports them; Jig does not bypass operator policy. Other macOS profiles still
+require separate qualification for this Codex path. Startup qualification does
+not prove endpoint availability or online subscription routing. Rosetta and
+Apple Silicon execution of this Codex profile are currently refused.
 
 The current adapter reads a file-backed login from `$CODEX_HOME/auth.json`,
 defaulting to `~/.codex/auth.json`. Configure Codex with
 `cli_auth_credentials_store = "file"` before signing in. Jig does not currently
 read Codex's OS-keyring credentials.
+
+An overridden `OPENAI_BASE_URL` must use HTTPS, without a username, password,
+query or fragment. The selected endpoint must pass normal certificate
+verification; a local HTTP server is not an accepted native Codex endpoint.
 
 The current adapter supplies a short-lived credential to the contained client;
 it does not give it your full authentication store or refresh credentials.

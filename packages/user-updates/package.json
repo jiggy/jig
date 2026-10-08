@@ -1,0 +1,38 @@
+{
+  "name": "@jigging/user-updates",
+  "version": "0.1.0-alpha.1",
+  "description": "Portable user updates and a scoped FLOW publisher",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiggy/jig.git",
+    "directory": "packages/user-updates"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./user-updates.json": "./dist/user-updates.json",
+    "./LICENSE": "./LICENSE"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@jigging/flow": "0.1.0-alpha.13"
+  },
+  "devDependencies": {
+    "@jigging/flow": "0.1.0-alpha.13",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

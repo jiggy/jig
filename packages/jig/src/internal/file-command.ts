@@ -20,6 +20,11 @@ import {
   PrivateRunCheckpoints,
   type RunCheckpointIdentity,
 } from './private-run-checkpoint.js'
+import {
+  PRIVATE_PRESENTATION_DEADLINE_ENV,
+  privateConstrainPresentationDeadline,
+  privatePresentationDeadline,
+} from './root-run-timeout-policy.js'
 
 const MARKER = 'JIG_PRIVATE_FILE_OWNER'
 const RECOVERY = 'JIG_PRIVATE_FILE_RECOVERY'
@@ -100,7 +105,7 @@ export async function privateOwnFileCommand(
   command: readonly string[],
   arguments_: readonly string[],
   signal: AbortSignal | undefined,
-  lifetimeMs: number,
+  lifetimeMs: number | null,
   onStaged?: () => Promise<void>,
 ): Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }> {
   if (!['linux', 'darwin'].includes(process.platform))
@@ -211,6 +216,7 @@ export async function privateOwnFileCommand(
             send(socket, { ok: true, receipt: receipt as unknown as JsonValue })
           } else if (request.type === 'publish') {
             if (publication !== undefined) throw new Error('delivery already requested')
+            if (request.inspection === true) owner.enableInspection()
             if (request.cancelled === true) cancellation.abort()
             const record = checkpointRecord(request.record!, checkpoints)
             // Only the trusted coordinator publishes, after settling its Run.
@@ -257,6 +263,8 @@ export async function privateOwnFileCommand(
             }
             publication = delivered
               .then((receipt) => {
+                // Inspection owns immutable bytes only. The original absolute
+                // command timer remains effective through presentation and exit.
                 send(socket, {
                   ok: true,
                   receipt,
@@ -267,12 +275,21 @@ export async function privateOwnFileCommand(
                 cancellation.abort()
                 socket.destroy()
               })
+          } else if (request.type === 'preview') {
+            if (typeof request.path !== 'string' || !publication)
+              throw new Error('preview unavailable')
+            await publication
+            const preview = owner.preview(request.path)
+            send(socket, {
+              ok: true,
+              preview: preview === undefined ? null : preview,
+            } as unknown as JsonValue)
           } else if (request.type === 'cancel') {
             cancellation.abort()
           } else throw new Error('invalid file owner request')
         } catch {
           send(socket, { ok: false })
-          if (request.type !== 'checkpoint') cancellation.abort()
+          if (request.type !== 'checkpoint' && request.type !== 'preview') cancellation.abort()
         }
       }
     })()
@@ -294,9 +311,21 @@ export async function privateOwnFileCommand(
       await native?.close()
       throw error
     })
+  // Interactive inspection has no default command cap. An explicit outer
+  // constraint remains inherited, and cancellation still owns bounded teardown.
+  const presentationDeadline =
+    lifetimeMs === null
+      ? privatePresentationDeadline(process.env)
+      : privateConstrainPresentationDeadline(process.env, lifetimeMs)
   const child = spawn(command[0]!, [...command.slice(1), ...arguments_], {
     cwd: process.cwd(),
-    env: { ...process.env, [MARKER]: JSON.stringify(selected) },
+    env: {
+      ...process.env,
+      [MARKER]: JSON.stringify(selected),
+      ...(presentationDeadline === undefined
+        ? {}
+        : { [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline) }),
+    },
     stdio: 'inherit',
   })
   childPid = child.pid
@@ -328,7 +357,10 @@ export async function privateOwnFileCommand(
   const interrupt = () => stop(PRIVATE_FILE_COMMAND_SETTLEMENT_MS)
   signal?.addEventListener('abort', interrupt, { once: true })
   if (signal?.aborted) interrupt()
-  const timer = setTimeout(() => stop(PRIVATE_FILE_COMMAND_STOP_GRACE_MS), lifetimeMs)
+  const timer =
+    lifetimeMs === null
+      ? undefined
+      : setTimeout(() => stop(PRIVATE_FILE_COMMAND_STOP_GRACE_MS), lifetimeMs)
   let exit: { exitCode: number | null; signal: NodeJS.Signals | null }
   try {
     exit = await completion
@@ -338,7 +370,7 @@ export async function privateOwnFileCommand(
     await task
     if (recovery !== undefined && checkpoints !== undefined && publication === undefined) {
       try {
-        const recovered = await recoverCommand(command, arguments_, recovery)
+        const recovered = await recoverCommand(command, arguments_, recovery, presentationDeadline)
         const record = checkpointRecord(
           { ...recovered, ...checkpoints.identity } as JsonValue,
           checkpoints,
@@ -438,6 +470,7 @@ export async function privateConnectFileOwner(): Promise<
   const iterator = messages(socket)[Symbol.asyncIterator]()
   let destination: string | undefined
   let checkpoint: import('./private-run-checkpoint.js').RetainedRunCheckpoint | null | undefined
+  let inspection = false
   const request = async (fields: Record<string, JsonValue>): Promise<Record<string, JsonValue>> => {
     send(socket, {
       ...fields,
@@ -456,6 +489,25 @@ export async function privateConnectFileOwner(): Promise<
     return next.value as Record<string, JsonValue>
   }
   return {
+    enableInspection() {
+      inspection = true
+    },
+    async preview(path) {
+      if (!inspection) return undefined
+      const reply = await request({ type: 'preview', path })
+      if (reply.preview === null) return undefined
+      const preview = reply.preview as Record<string, JsonValue>
+      if (
+        typeof preview.text !== 'string' ||
+        Buffer.byteLength(preview.text) > 65536 ||
+        !Number.isSafeInteger(preview.bytes) ||
+        Number(preview.bytes) < 0 ||
+        Number(preview.bytes) > 16 * 1024 * 1024 ||
+        typeof preview.clipped !== 'boolean'
+      )
+        throw new Error('Invalid preview response')
+      return { text: preview.text, bytes: Number(preview.bytes), clipped: preview.clipped }
+    },
     get checkpoint() {
       return checkpoint
     },
@@ -529,6 +581,7 @@ export async function privateConnectFileOwner(): Promise<
                     directories: transferred!.directories,
                   } as unknown as JsonValue),
           cancelled: signal?.aborted ?? false,
+          inspection,
         })
         const transfer =
           selected.platform === 'darwin' && transferred !== undefined
@@ -566,10 +619,25 @@ async function recoverCommand(
   command: readonly string[],
   args: readonly string[],
   recovery: PrivateFileRecovery,
+  inheritedPresentationDeadline: number | undefined,
 ): Promise<Record<string, JsonValue>> {
+  const presentationDeadline = privateConstrainPresentationDeadline(
+    {
+      ...process.env,
+      ...(inheritedPresentationDeadline === undefined
+        ? {}
+        : { [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(inheritedPresentationDeadline) }),
+    },
+    30_000,
+  )
   const child = spawn(command[0]!, [...command.slice(1), ...args], {
     cwd: recovery.project,
-    env: { ...process.env, [MARKER]: undefined, [RECOVERY]: JSON.stringify(recovery) },
+    env: {
+      ...process.env,
+      [MARKER]: undefined,
+      [RECOVERY]: JSON.stringify(recovery),
+      [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const chunks: Buffer[] = []

@@ -12,8 +12,26 @@ patch authority and every merge decision stays with a person.
 - `flows/factory/` owns bounded batch validation, candidate-to-slot policy,
   source capture, independent evidence and routing-result validation, parallel
   job dispatch, checkpoint aggregation, conflict detection, and final summaries.
+  `presentation.ts` translates observed phases, reviewed proposal budgets and
+  failure evidence into ordinary language; optional input labels name jobs for people.
+  It names observed work and repeats goals with verified outcomes in the final report.
+  `dashboard.ts` composes the portable Jobs, Checks and Patches documents using
+  public user-updates types. Activity is the initial host surface. All three
+  domain views are offered before work and at settlement. Jobs retains goals,
+  scope and outcomes, with concise check verdicts and patch references only for
+  independently accepted jobs. Its details retain actual-call references,
+  verification and the human review step; current phases use one root activity slot per job rather
+  than duplicate whole-view publications. Call references name
+  actual own operation IDs, and patch references name only accepted files in
+  deliverables. Checks distinguish provisional reports from independent final
+  verification, including settled jobs with no checked patch. No host-domain
+  adapter, terminal callback, invented graph edge or execution control belongs here.
 - `flows/router/` owns the portable decision Flow, separately governed below.
 - `flows/repair/` owns the factory's independently editable repair specialist.
+- The factory declares `factory-repair-flow` as a workspace dependency and
+  imports its policy types and progress decoder through manifest exports.
+  Cross-Flow helpers require declared package dependencies, never ambient
+  imports into sibling directories.
 - `bindings/` composes one-proposal and checked-correction configurations of
   that specialist with one ordinary Agent and fixed Bun test/CLI grants.
 - `jig.ts` declares the project entrypoint with the factory target, batch/source
@@ -60,12 +78,47 @@ patch authority and every merge decision stays with a person.
   cause. Final and checkpoint summaries quote and bound reported text, identify
   available evidence, and give a safe next action without replaying work. Only
   independently accepted jobs advertise a review patch.
-- The optional `progress` broadcast channel reports routing and the repair
-  specialist's observed baseline, proposal, check, and finish phases. A `settled`
-  update follows the durable checkpoint. Progress never establishes acceptance;
+  Preserve complete short actionable causes in live notices and final summaries.
+  The shared quoted prefix permits 512 scalars within 400 double-escaped JSON
+  characters; the truncation marker is additional. Two jobs still fit the
+  host's 2048-character brief budget.
+  Oversized-cause markers refer to retained job evidence without claiming files
+  were delivered before checkpoint acknowledgement. Retained causes stay unchanged.
+- Final job evidence retains the full issue and editable paths. Accepted-job
+  verification names the independently checked proposal and acceptance cases;
+  changed paths compare accepted replacement bytes with captured originals.
+  Shorten goal/path context before blocking causes to fit the host brief budget.
+  Keep the introduction short and point to the three domain views.
+  Budget every complete snapshot using encoded bytes as well as scalar limits;
+  valid maximum input must not fail optional publication. Short goals remain
+  complete in Jobs; oversized goals explicitly identify their excerpt and exact
+  source. Write each original goal to `<job>/goal.txt` before paid work, retain it
+  in settled checkpoint files and final evidence, and offer an ordinary artifact
+  reference pending verified delivery. Never advertise an unfinished goal as
+  checkpoint-saved or read a mutable destination to preview it.
+- Live worker check reports remain provisional. Show repository-command status,
+  named acceptance mismatches, collected invocations and the next procedural step;
+  expected nonzero rejection exits may pass exact application assertions. Do not
+  print raw stdin, command logs or model reasoning. Final acceptance belongs to
+  factory evidence validation, never progress or Agent judgment.
+- The optional `progress` broadcast channel uses the exact canonical user-updates
+  profile through its scoped publisher. Root job IDs use a distinct namespace;
+  deliberate child phase readers settle before root clears. Notices count jobs
+  retained by successful checkpoints, never attempts or acceptance. A complete
+  checkpoint notice follows durable storage. Progress never establishes acceptance;
   the `checkpoint` slot is the separate collaborator for settled evidence.
+  Final snapshots remain optional observations. Test all three completed views
+  through the installed host, including fast blocked and accepted outcomes;
+  preserve final result/evidence independently. Publish blocking notices before
+  observational snapshots and checkpoint work.
 - Original sources remain read-only. The application writes patch packets only;
   a person decides whether to apply, combine, merge, or release them.
+
+
+Offer each blocking job outcome as an error notice before checkpoint storage;
+retain the same cause in the ordinary result. Saved-evidence notices follow
+checkpoint acknowledgement. Severity never controls execution or guarantees
+optional observation delivery.
 
 ## Work Guidance
 
@@ -82,6 +135,12 @@ patch authority and every merge decision stays with a person.
 ## Verification
 
 - `bun test examples/software-factory/test`
+- Jig's `package-provider-host.test.ts` also runs this application through the
+  installed CLI with a deterministic Flow Agent peer. It verifies reviewed
+  repair-dependency imports, live worker reports and checkpoint delivery after
+  the editable repair source is removed, all three final views for blocked and
+  independently checked repairs, delivered patch references and automatic plain
+  summaries; it makes no live Agent claim.
 - The release gate repeats deterministic application tests against packed SDK
   candidates. Jig's private repair-batch host fixture exercises the same
   contained command and checkpoint boundaries, but does not qualify this
