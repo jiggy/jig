@@ -80,7 +80,10 @@ export type PrivateWorkspace = {
   hostStage: string
   facts?: PrivateWorkspaceFacts
   phase: 'live' | 'settled'
+  settledAt?: number | undefined
   inspectionDeadline?: number | undefined
+  inspectionHardDeadline?: number | undefined
+  recorded?: boolean | undefined
 }
 export type PrivateJournalEntry = {
   kind: 'flow' | 'host' | 'diagnostic'
@@ -114,6 +117,7 @@ export type PrivateWorkspaceRecord = {
     | 'host'
     | 'activity'
     | 'journal'
+    | 'setup'
     | 'call'
   signature: string
   publisher?: string | undefined
@@ -124,6 +128,7 @@ export type PrivateWorkspaceRecord = {
   row?: Collection['rows'][number]
   activity?: Extract<UserUpdate, { kind: 'activity' }>
   journal?: PrivateJournalEntry
+  journalGroup?: readonly PrivateJournalEntry[]
   call?: PrivateCallNode
   depth?: number
   hidden?: number
@@ -186,6 +191,7 @@ export class PrivateRunModel {
   #chosen = false
   #locals = new Map<string, PrivateSurfaceState>()
   #treeExpanded = new Set<string>()
+  #treeChoices = new Set<string>()
   #journalSequence = 0
   #journalBytes = { flow: 0, host: 0, diagnostic: 0 }
   readonly journal: PrivateJournalEntry[] = []
@@ -265,8 +271,19 @@ export class PrivateRunModel {
     this.onChange()
   }
   setWorkspacePhase(phase: 'live' | 'settled', inspectionDeadline?: number | undefined): void {
+    if (phase === 'settled' && this.workspace.phase !== 'settled')
+      this.workspace.settledAt = this.workspace.now ?? privatePresentationNow()
     this.workspace.phase = phase
     this.workspace.inspectionDeadline = inspectionDeadline
+    if (phase === 'settled' && !this.#chosen) {
+      const rootViews = [...this.views.values()].filter((view) => view.publisher === 'root')
+      const landing = rootViews.find((view) => view.value.landing) ?? rootViews[0]
+      if (landing) {
+        this.#surface = landing.key
+        const records = this.records()
+        this.local.record = records.find((record) => record.row)?.key ?? records[0]?.key
+      }
+    }
     this.onChange()
   }
   setHostStage(text: string, id = 'stage'): void {
@@ -357,6 +374,7 @@ export class PrivateRunModel {
     )
   }
   sourceLabel(publisher: string): string {
+    if (this.workspace.recorded) return 'Recorded'
     if (publisher === 'root') return 'Flow'
     const parent = this.#parents.get(publisher)
     if (!this.#publisherLabels.has(publisher) && this.#publisherLabels.size < 256)
@@ -378,7 +396,7 @@ export class PrivateRunModel {
       ancestor = this.calls.get(ancestor)?.parent
       depth++
     }
-    const intent = event.intent === undefined ? undefined : bound(event.intent, 1024)
+    const intent = event.intent === undefined ? old?.intent : bound(event.intent, 1024)
     const cause = event.cause === undefined ? undefined : bound(event.cause, 4096)
     if (cause && (event.state === 'failed' || event.state === 'uncertain'))
       this.addAttention(this.sourceLabel(event.publisher), cause, 4, false)
@@ -407,7 +425,15 @@ export class PrivateRunModel {
     }
     this.#callBytes += bytes - prior
     this.calls.set(identity, node)
-    if (!old && parent === undefined) this.#treeExpanded.add(identity)
+    if (!this.#treeChoices.has(identity)) {
+      const descendants = this.descendants(identity)
+      if (
+        ['requested', 'active', 'cancel-requested', 'failed', 'uncertain'].includes(event.state) ||
+        descendants.some((node) => node.state !== 'returned')
+      )
+        this.#treeExpanded.add(identity)
+      else this.#treeExpanded.delete(identity)
+    }
     if (event.childPublisher !== undefined && this.#parents.size < 256)
       this.#parents.set(event.childPublisher, identity)
     this.onChange()
@@ -575,9 +601,14 @@ export class PrivateRunModel {
     this.onChange()
   }
   cycleView(delta: number): void {
-    const keys = ['activity', 'overview', ...this.views.keys()]
+    const keys = this.surfaceKeys()
     const index = keys.indexOf(this.#surface)
     this.select(keys[(index + delta + keys.length) % keys.length])
+  }
+  surfaceKeys(): string[] {
+    return this.workspace.recorded && this.views.size
+      ? [...this.views.keys()]
+      : ['activity', 'overview', ...this.views.keys()]
   }
   collections(): Collection[] {
     return (
@@ -661,14 +692,17 @@ export class PrivateRunModel {
       return result
     }
     if (this.#surface === 'activity') {
-      const result: PrivateWorkspaceRecord[] = [
-        {
-          key: 'current-host',
-          kind: 'host',
-          text: this.workspace.facts ? this.hostFactsText : this.workspace.hostStage,
-          signature: '',
-        },
-      ]
+      const result: PrivateWorkspaceRecord[] =
+        this.workspace.phase === 'live'
+          ? [
+              {
+                key: 'current-host',
+                kind: 'host',
+                text: this.workspace.hostStage,
+                signature: '',
+              },
+            ]
+          : []
       for (const [identity, activity] of this.activities)
         result.push({
           key: `activity:${identity}`,
@@ -677,7 +711,11 @@ export class PrivateRunModel {
           activity: activity.value,
           signature: '',
         })
-      for (const entry of this.journal)
+      const setup = this.journal.filter(
+        (entry) => entry.kind === 'host' && entry.importance === 'info',
+      )
+      for (const entry of [...this.journal].reverse()) {
+        if (entry.kind === 'host' && entry.importance === 'info') continue
         result.push({
           key: entry.key,
           kind: 'journal',
@@ -685,11 +723,18 @@ export class PrivateRunModel {
           publisher: entry.publisher,
           signature: '',
         })
+      }
+      if (setup.length)
+        result.push({
+          key: 'setup',
+          kind: 'setup',
+          text: `Jig stages · ${setup.length} reports · Enter history`,
+          journalGroup: setup,
+          signature: '',
+        })
       return result
     }
-    const result: PrivateWorkspaceRecord[] = [
-      { key: 'host-facts', kind: 'host', text: this.hostFactsText, signature: '' },
-    ]
+    const result: PrivateWorkspaceRecord[] = []
     const visit = (parent: string | undefined, depth: number) => {
       for (const node of this.calls.values()) {
         if (node.parent !== parent) continue
@@ -728,6 +773,7 @@ export class PrivateRunModel {
   expandTree(expand: boolean): void {
     const node = this.record?.call
     if (!node) return
+    this.#treeChoices.add(node.key)
     if (expand) this.#treeExpanded.add(node.key)
     else if (this.#treeExpanded.has(node.key)) this.#treeExpanded.delete(node.key)
     else if (node.parent) this.local.record = node.parent
@@ -879,8 +925,17 @@ export class PrivateRunModel {
     }
     const path = this.#artifact?.(publisher, ref)
     return path
-      ? { available: true, label: `Delivered file: ${ref.path}`, target: path }
-      : { available: false, label: 'Artifact unavailable; not present in verified delivered files' }
+      ? {
+          available: true,
+          label: `${this.workspace.recorded ? 'Captured recorded file' : 'Delivered file'}: ${ref.path}`,
+          target: path,
+        }
+      : {
+          available: false,
+          label: this.workspace.recorded
+            ? 'Artifact unavailable; not present in captured recorded files'
+            : 'Artifact unavailable; not present in verified delivered files',
+        }
   }
   async activate(publisher: string, ref: Reference): Promise<void> {
     if (this.#closed) return
@@ -927,11 +982,11 @@ export class PrivateRunModel {
           this.preview = preview
           this.feedback = resolved.label
           if (!preview)
-            this.feedback = 'Immutable preview unavailable; inspect the delivered location'
+            this.feedback = `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
         }
       } catch {
         if (!this.#closed && generation === this.#generation)
-          this.feedback = 'Immutable preview unavailable; inspect the delivered location'
+          this.feedback = `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
       } finally {
         this.#previewBusy = false
       }

@@ -144,6 +144,29 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Recheck the selected parent and exact staging identity before exclusive
   publication; a moved parent cannot redirect writes or cleanup. Invalid final
   files retain the known execution terminal and never authorize replay.
+- `saved-result.ts` captures operator-selected local result packets for
+  `inspect --result`, without a project, approval, provider, verification setting
+  or execution owner. Recorded facts and diagnostic paths are unauthenticated
+  local claims. One JSON/0 document plus the publisher's single trailing LF
+  and at most 64 manifest files /16 MiB are captured through held no-link
+  directory descriptors; validate the whole manifest before allocation/read.
+  The separate held `files/` descriptor preserves each delivered path's full
+  depth/byte budget. Matching size/digest establishes captured consistency,
+  never publication authority. Partial verification retains the valid report
+  and prior verified copies; later previews use only those immutable buffers.
+  The regular-file reader owns each allocation until post-read checks and
+  descriptor closure succeed; rejected allocations are zeroed even when read,
+  stat or close throws. Finish every owned directory close before transferring
+  the inspection's buffer owner. A close failure disposes accepted copies too;
+  collective cleanup preserves the primary capture failure or interruption.
+  Every exit closes descriptors and releases retained bytes. No recorded field
+  can select execution, a current evidence destination, or mutable preview reads.
+  Private saved views retain every captured file's full preview reference while
+  disclosing clipped table names. Charge human report/diagnostic excerpts by
+  serialized JSON bytes so all three views fit one publisher's retained budget.
+  Keep distinct root diagnostics beside child reports; only an exactly matching
+  rendered root entry replaces the root envelope. Capture truncation disclosures
+  precede excerpts, and human clipping never changes exact JSON inspection.
 - `macos-file-command.ts` supplies private filesystem sockets for the independent
   command owner. Bind the control connection to its directly spawned coordinator
   and bind descriptor transfers to that connection's kernel PID version; the
@@ -542,13 +565,23 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Keep that socket open for cooperative cancellation and confirmed cleanup;
   its closure remains the independent emergency scope fence.
 - Explicit dashboard inspection intersects its original presentation constraint
-  with a 60-second settled cap. Linux without a reliable inherited constraint
+  with 60 seconds of accepted-input idle time and an immutable five-minute cap.
+  Check both idle and hard expiry before refreshing on input; repaint, resize,
+  preview completion and unsupported controls cannot refresh either. Contextual
+  Escape and literal filter keys retain their existing meanings. Linux without a reliable inherited constraint
   closes settled presentation immediately; live presentation expiry returns to
   ordinary output without requesting cancellation. File publication and preview
   retention never waive the original command timer. External interruption after
   settlement closes presentation with the existing interruption exit status;
   keyboard Ctrl-C after settlement only closes inspection. Frozen result facts
   and all actual execution/cleanup deadlines remain unchanged.
+  Standalone saved inspection owns no execution lifetime; its local idle/hard
+  bounds apply on Linux too, intersecting any earlier inherited constraint.
+  It exits 0 for a valid consistent report even if recorded execution failed,
+  1 for unavailable/invalid reports, incomplete files or output failure, and
+  2 for external interruption. JSON remains the unchanged recorded value;
+  current verification findings stay on stderr. Normal inspection closure
+  never changes recorded Run facts or grants authority to repeat work.
 - The optional installed-startup diagnostic accepts only a private local trace
   destination, activates after rootless-host acquisition, and removes its
   selector from operator configuration before opening a project session. It

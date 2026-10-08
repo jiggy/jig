@@ -31,7 +31,11 @@ export function privateTruncateUpdate(text: string, columns: number, byteLimit =
   return result + suffix
 }
 /** Stream wrapped detail lines; never construct a whole wrapped document. */
-export function* privateWrappedUpdate(text: string, columns: number): Generator<string> {
+export function* privateWrappedUpdate(
+  text: string,
+  columns: number,
+  words = false,
+): Generator<string> {
   columns = Math.max(1, columns)
   let line = '',
     cells = 0,
@@ -40,11 +44,17 @@ export function* privateWrappedUpdate(text: string, columns: number): Generator<
     for (const { segment } of segmenter.segment(privateUpdateText(authored))) {
       const size = privateTerminalWidth(segment),
         encoded = Buffer.byteLength(segment)
-      if (line && (cells + size > columns || bytes + encoded > 4096)) {
-        yield line
-        line = ''
-        cells = 0
-        bytes = 0
+      while (line && (cells + size > columns || bytes + encoded > 4096)) {
+        let boundary = 0
+        if (words)
+          for (const piece of segmenter.segment(line))
+            if (piece.index > 0 && piece.segment.startsWith(' '))
+              boundary = piece.index + piece.segment.length
+        const cut = boundary || line.length
+        yield line.slice(0, cut)
+        line = line.slice(cut)
+        cells = privateTerminalWidth(line)
+        bytes = Buffer.byteLength(line)
       }
       // Pathological combining clusters have finite cells but many bytes. Split
       // only this case by scalar so every escaped character remains reachable.

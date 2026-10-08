@@ -98,7 +98,9 @@ installation to remain suitable. All modes hash files on a cache miss, so the
 first use of a tool can take longer. Most savings come from avoiding repeated
 hashing; fast's extra benefit over cached depends on the installation and host.
 
-The setting applies to review, Run and inspection. It is an operator preference,
+The setting applies to review, Run and approved-target inspection. Saved-result
+inspection (`jig inspect --result <directory>`) reads recorded evidence without
+execution-environment verification. It is an operator preference,
 separate from project configuration. Flow approval, retained package verification,
 sandbox requirements, permissions, resource limits, cancellation and cleanup
 still apply. Tool and runtime compromise remains outside Jig's threat model.

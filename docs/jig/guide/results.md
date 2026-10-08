@@ -53,8 +53,10 @@ and received JSON types. They do not print the rejected value. For example,
 not wrap it in an object. `jig inspect <target>` shows the approved input contract.
 
 Interactive stdout leads with execution and application outcome, plus packet
-delivery and unconfirmed cleanup when present. Small application results and
-unseen diagnostics follow as syntax-highlighted YAML. When a full packet was
+delivery and unconfirmed cleanup when present. Small application results follow
+as syntax-highlighted YAML. Unseen diagnostic text has its own section, grouped
+by the invocation that reported it, with any capture truncation made explicit.
+When a full packet was
 written, large results and checkpoint evidence stay in `result.json`; the
 terminal points there and reports the delivered file count instead of printing
 patches and check logs again. If packet delivery is uncertain, the terminal
@@ -94,6 +96,31 @@ call path identifying each emitter. Check its aggregate `truncated` flag and
 each entry's `stderrTruncated` before treating it as complete. The terminal's
 existing `diagnostics` field describes only root-process stderr. Neither field
 is an Agent answer or proof that the application achieved its objective.
+
+### Reopen a saved result
+
+```sh
+jig inspect --result ./result-packet --display dashboard
+```
+
+This opens **Recorded result**, **Files** and **Diagnostics** without starting a
+Run, reading project authority or contacting providers. Omit `--display dashboard`
+for a plain report. `--json` or redirected stdout returns the decoded report
+unchanged. The directory you select supplies the evidence; a recorded destination
+inside `result.json` does not redirect inspection elsewhere.
+
+Saved values are recorded local claims, not newly authenticated execution facts.
+File previews use immutable captured bytes checked against the saved manifest;
+matching digests establish consistency with that manifest. Missing or mismatched
+files are reported, while already verified previews remain available. Live Flow
+tabs and call history are not retained in current packets and are not reconstructed.
+The inspector closes after 60 seconds of inactivity or five minutes in total,
+subject to any earlier command limit. Press `q` to close it sooner.
+
+Exit 0 means the saved report and files were read consistently, even if that report
+records a failed Run. Exit 1 means invalid or unavailable evidence, incomplete
+file verification, or output failure; exit 2 means external interruption. Always
+examine the recorded execution and application outcome before deciding what to do.
 
 A `REVIEW_REQUIRED` diagnostic means the current execution environment differs
 from the approved revision. No Flow started for that Run. Run `jig review`, inspect

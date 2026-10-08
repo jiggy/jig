@@ -48,6 +48,11 @@ function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
   return { key: '36', string: '32', number: '33', literal: '35' }[role]
 }
 
+/** Selection denotes navigation focus, never an application verdict. */
+export function privateCliSelection(text: string, color: boolean): string {
+  return color ? `\u001b[1;${syntaxColor('literal', process.env)}m${text}\u001b[0m` : text
+}
+
 /** Color tokens in the existing escaped representation, never parse/reserialize policy. */
 function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
   if (

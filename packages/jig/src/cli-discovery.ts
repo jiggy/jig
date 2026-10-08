@@ -125,12 +125,14 @@ export function completionScript(shell: string): string | undefined {
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
   elif [[ "$prev" == --updates && "$command" == run ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'off' -- "$cur")
+  elif [[ "$prev" == --display && "$command" == inspect ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'plain dashboard' -- "$cur")
   elif [[ "$cur" == -* ]]; then
     local opts='--help'
     case "$command" in
       run) opts='${runOptions}';;
       review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification';;
-      inspect) opts='--help --json --verification';;
+      inspect) opts='--help --json --verification --result --display';;
       init) opts='--help --bare --agent';;
       import-contract) opts='--help --list';;
     esac
@@ -160,11 +162,13 @@ _jig() {
     choices=(cached strict fast)
   elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
     choices=(off)
+  elif [[ "$words[CURRENT-1]" == --display && "$words[2]" == inspect ]]; then
+    choices=(plain dashboard)
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
       review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification);;
-      inspect) choices=(--help --json --verification);;
+      inspect) choices=(--help --json --verification --result --display);;
       init) choices=(--help --bare --agent);;
       import-contract) choices=(--help --list);;
       *) choices=(--help);;
@@ -189,6 +193,8 @@ complete -c jig -n '__fish_seen_subcommand_from import-contract' -a '${contracts
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -a '(jig completion targets (commandline -ct) 2>/dev/null)'
 complete -c jig -n '__fish_seen_subcommand_from run review inspect' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
+complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
+complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain dashboard'
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'

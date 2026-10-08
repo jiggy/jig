@@ -12,6 +12,7 @@ import {
   PrivateRunModel,
   privateAttentionReceipt,
 } from './cli-run-model.js'
+import { privateSavedResultViews } from './cli-saved-result-presentation.js'
 import {
   PrivateCliUserUpdates,
   type PrivateUserUpdateSource,
@@ -20,9 +21,12 @@ import {
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-user-updates.js'
 import {
+  privateInspectionHardDeadline,
   privatePresentationNow,
+  privateRefreshInspectionDeadline,
   privateSettledInspectionDeadline,
 } from './internal/root-run-timeout-policy.js'
+import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
 
 type WriteJob = {
@@ -57,6 +61,7 @@ export class PrivateCliProgress {
   #closingCommand = false
   #exitMessage: string | undefined
   #deadlineTimer: ReturnType<typeof setTimeout> | undefined
+  #inspectionHardDeadline: number | undefined
   #hostEntry = 0
   #paintedRows = 0
   #reportedViews = false
@@ -176,7 +181,9 @@ export class PrivateCliProgress {
           () => process.emit('SIGINT'),
           input,
           () => this.#leaveWorkspace(),
+          () => this.#inspectionInteraction(),
         )
+        if (this.#settled) this.#dashboard.markSettled()
         try {
           this.#dashboard.capture()
           this.#screen = 'entering'
@@ -201,7 +208,11 @@ export class PrivateCliProgress {
           }
           this.#screen = 'live'
           this.#dashboard.start()
-          this.#armDeadline(this.lifetime.presentationDeadline)
+          this.#armDeadline(
+            this.#settled
+              ? this.model.workspace.inspectionDeadline
+              : this.lifetime.presentationDeadline,
+          )
           this.#write()
         } catch (error) {
           this.#exitMessage = 'Dashboard input unavailable; using plain display.\n'
@@ -316,12 +327,79 @@ export class PrivateCliProgress {
     this.#deadlineTimer = setTimeout(
       () => {
         this.#exitMessage = this.#settled
-          ? 'Results settled; dashboard inspection time elapsed. Inspect the result and any written output packet.\n'
+          ? 'Results settled; dashboard inspection reached its idle or command limit. Inspect the result and any written output packet.\n'
           : 'Command lifetime limits the dashboard; work continues in ordinary display.\n'
         this.#dashboard?.leave()
       },
       Math.min(remaining, 2_147_483_647),
     )
+  }
+
+  #inspectionInteraction(): boolean {
+    if (!this.#settled) return true
+    const deadline = this.model.workspace.inspectionDeadline
+    const hard = this.#inspectionHardDeadline
+    if (deadline === undefined || hard === undefined) return false
+    const refreshed = privateRefreshInspectionDeadline(deadline, hard, this.#now())
+    if (refreshed === undefined) return false
+    this.model.workspace.inspectionDeadline = refreshed
+    this.#armDeadline(refreshed)
+    return true
+  }
+
+  async inspectSavedResult(
+    packet: PrivateSavedResult,
+    usableInput: boolean,
+    input = process.stdin,
+  ): Promise<void> {
+    this.#settled = true
+    this.model.workspace.recorded = true
+    this.model.configureWorkspace({ target: packet.directory, startedAt: this.#now() })
+    this.model.context =
+      'Recorded local claims; file consistency does not authenticate this report. Live views and history were not retained.'
+    const r = packet.record
+    const delivery = r.delivery as Record<string, JsonValue> | undefined
+    this.model.setWorkspaceFacts({
+      execution: String(r.status),
+      application: JSON.stringify(r.outcome ?? null),
+      cleanup: r.cleanup ? 'reported unconfirmed' : 'no failure recorded',
+      delivery: String(delivery?.status ?? 'not recorded'),
+      completeness: packet.complete
+        ? 'files match the recorded manifest'
+        : 'file verification incomplete',
+    })
+    for (const view of privateSavedResultViews(packet)) this.model.acceptView('saved-result', view)
+    this.model.select(JSON.stringify(['saved-result', 'recorded-result']))
+    this.model.setArtifacts(
+      (publisher, ref) =>
+        publisher === 'saved-result' &&
+        ref.attachment === 'packet' &&
+        packet.files.some((file) => file.available && file.path === ref.path)
+          ? ref.path
+          : undefined,
+      async (path) => packet.preview(path),
+    )
+    this.model.workspace.now = this.#now()
+    const hard = privateInspectionHardDeadline(
+      this.lifetime.presentationDeadline,
+      this.lifetime.platform ?? process.platform,
+      this.#now(),
+      true,
+    )
+    const deadline = Math.min(this.#now() + 60_000, hard)
+    this.#inspectionHardDeadline = hard
+    this.model.workspace.inspectionHardDeadline = hard
+    this.model.setWorkspacePhase('settled', deadline)
+    await this.configureDisplay('dashboard', usableInput, input)
+    if (this.#dashboard?.active) {
+      this.#armDeadline(deadline)
+      this.#write()
+      await this.flush()
+      await this.#dashboard.settled()
+    }
+    await this.closeWorkspace()
+    this.pause()
+    await this.flush()
   }
 
   #dropFrames(): void {
@@ -434,11 +512,19 @@ export class PrivateCliProgress {
     }
     if (artifact) this.model.setArtifacts(artifact.resolve, artifact.preview)
     if (!this.#cancelled && this.#dashboard?.active) {
+      const now = this.#now()
       const deadline = privateSettledInspectionDeadline(
         this.lifetime.presentationDeadline,
         this.lifetime.platform ?? process.platform,
-        this.#now(),
+        now,
       )
+      this.#inspectionHardDeadline = privateInspectionHardDeadline(
+        this.lifetime.presentationDeadline,
+        this.lifetime.platform ?? process.platform,
+        now,
+      )
+      this.model.workspace.now = now
+      this.model.workspace.inspectionHardDeadline = this.#inspectionHardDeadline
       this.model.setWorkspacePhase('settled', deadline)
       this.#armDeadline(deadline)
       this.#write()

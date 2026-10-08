@@ -48,6 +48,7 @@ jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
+jig inspect --result <directory> [--display plain|dashboard] [--json]
 jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
 jig import-contract --list
 jig completion <bash|zsh|fish>
@@ -56,11 +57,14 @@ jig completion <bash|zsh|fish>
 Runs show an inline invocation tree and optional application views on terminal
 stderr. `jig run --display dashboard` opens a terminal workspace with Activity,
 the actual call tree, domain tabs, aligned records and expandable evidence.
-Enter opens details; `!` opens retained causes, and `?` explains the current keys.
+Wide layouts show selected record details beside the list. Enter opens full
+details; `!` opens retained causes, `d` opens attributed diagnostics, and `?`
+explains the current keys.
 q leaves while work continues inline; Escape first dismisses a local panel.
 Ctrl-C during work cancels and waits for cleanup. After work and delivery settle,
 Ctrl-C simply closes read-only result inspection. Its separate countdown lasts
-at most 60 seconds within the enclosing command lifetime. File previews use
+60 seconds of inactivity, bounded by five minutes and any earlier command limit.
+File previews use
 verified immutable delivery. Use `--display plain`
 for nonanimated summaries. `--json` and effective `--receive` preserve exact
 machine/channel output. Flow authors compose views through the portable
@@ -110,6 +114,11 @@ evaluating source, contacting providers, preparing dependencies or changing stat
 It checks that approval against current local execution identities and reports
 changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
+
+`jig inspect --result ./result-packet --display dashboard` reopens saved result,
+file and diagnostic evidence without starting work or requiring a project.
+These are recorded local claims, not a new execution verdict. File previews use
+captured bytes checked against the packet manifest. See [results and recovery](https://jig.md/guide/results).
 
 `run` executes the approved revision and shows a YAML terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout

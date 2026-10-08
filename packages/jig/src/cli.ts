@@ -20,6 +20,7 @@ import {
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
+import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
@@ -46,6 +47,7 @@ import {
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
+import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import type { RunTargetRef } from './project/author.js'
@@ -143,6 +145,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
+       jig inspect --result DIRECTORY [--display plain|dashboard] [--json]
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -153,11 +156,21 @@ No source evaluation, installation, provider requests, recovery or state writes.
 Visible edits, launch readiness and remote provider availability are not checked.
 
   --json     Emit JSON even in a terminal (redirected output is always JSON)
+  --result DIRECTORY  Inspect a saved packet without approval or new execution
+  --display MODE      For saved results: plain (default) or dashboard
+
+Saved results are local recorded claims. Files are captured once and checked
+against the recorded manifest; matching hashes do not authenticate the report.
+No project, provider, verification setting or execution support is acquired.
+Live views and history are not retained in a result packet. Inspection exits 0
+for valid consistent evidence (including failed Runs), 1 for unreadable/invalid
+evidence, incomplete files or output failure, and 2 for external interruption.
 
 Examples:
   jig inspect
   jig inspect flow:flows/hello
   jig inspect binding:repair --json
+  jig inspect --result ./result-packet --display dashboard
 
 ${VERIFICATION_HELP}`,
   init: `Usage: jig init [--bare] <directory> [--agent [codex|claude|pi]]
@@ -319,7 +332,7 @@ export async function main(
   try {
     await runtime.progress.flush()
   } catch {
-    return 2
+    return privateCliSavedResultInspection(arguments_) ? (runtime.signal?.aborted ? 2 : 1) : 2
   }
   return code
 }
@@ -623,8 +636,24 @@ function parseInspect(arguments_: readonly string[]) {
   let selector: string | undefined
   let json = false
   let verification: string | undefined
+  let resultDirectory: string | undefined
+  let display: 'plain' | 'dashboard' | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
+    if (value === '--result') {
+      const next = arguments_[++index]
+      if (resultDirectory !== undefined || next === undefined || next.startsWith('-'))
+        usage('inspect', 'Specify --result with one saved packet directory.')
+      resultDirectory = next
+      continue
+    }
+    if (value === '--display') {
+      const next = arguments_[++index]
+      if (display !== undefined || (next !== 'plain' && next !== 'dashboard'))
+        usage('inspect', 'Saved-result --display accepts plain or dashboard once.')
+      display = next
+      continue
+    }
     if (value === '--verification') {
       if (verification !== undefined) usage('inspect', '--verification may only be supplied once.')
       verification = parseVerification('inspect', arguments_[++index])
@@ -641,11 +670,88 @@ function parseInspect(arguments_: readonly string[]) {
       selector = value
     } else usage('inspect', 'Specify at most one target and one --json option.')
   }
-  return { selector, json, verification }
+  if (resultDirectory !== undefined && (selector !== undefined || verification !== undefined))
+    usage('inspect', '--result cannot be combined with a target or --verification.')
+  if (display !== undefined && resultDirectory === undefined)
+    usage('inspect', '--display requires --result DIRECTORY.')
+  return { selector, json, verification, resultDirectory, display: display ?? 'plain' }
+}
+
+/** Complete grammar classification before any installed inspection probes. */
+export function privateCliSavedResultInspection(arguments_: readonly string[]): boolean {
+  if (arguments_[0] !== 'inspect' || isHelpRequest(arguments_)) return false
+  try {
+    return parseInspect(arguments_).resultDirectory !== undefined
+  } catch {
+    return false
+  }
+}
+
+async function executeSavedResultInspect(
+  parsed: ReturnType<typeof parseInspect>,
+  runtime: CliRuntime,
+): Promise<number> {
+  let packet: ReturnType<typeof privateCaptureSavedResult> | undefined
+  try {
+    packet = privateCaptureSavedResult(
+      resolve(runtime.currentDirectory, parsed.resultDirectory!),
+      runtime.signal,
+    )
+    if (packet.finding)
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_RESULT_FILES_INCOMPLETE',
+          packet.finding,
+          'Saved file verification incomplete',
+        ),
+      )
+    if (parsed.json || !runtime.humanOutput) {
+      await runtime.writeRecord(`${textDecoder.decode(canonicalJson(packet.record))}\n`)
+    } else {
+      if (parsed.display === 'dashboard')
+        await runtime.progress.inspectSavedResult(
+          packet,
+          runtime.dashboardInput,
+          runtime.dashboardInputStream,
+        )
+      runtime.signal?.throwIfAborted()
+      // Recorded text bypasses trusted host-command recognition and styling.
+      await runtime.writeRecord(privateSavedResultPlain(packet))
+    }
+    return packet.complete ? 0 : 1
+  } catch (error) {
+    if (runtime.signal?.aborted) {
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_COMMAND_INTERRUPTED',
+          'Saved inspection was interrupted. No work was started and the recorded result is unchanged.',
+        ),
+      )
+      return 2
+    }
+    if (error instanceof PrivateSavedResultError)
+      runtime.writeError(
+        renderDiagnostic('JIG_RESULT_UNAVAILABLE', error.message, 'Saved result unavailable'),
+      )
+    else
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_RESULT_INSPECTION_FAILED',
+          'Saved inspection could not finish or deliver its output. The recorded result is unchanged; no work was started.',
+          'Saved inspection failed',
+        ),
+      )
+    return 1
+  } finally {
+    await runtime.progress.closeWorkspace().catch(() => undefined)
+    packet?.close()
+  }
 }
 
 async function executeInspect(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  const { selector, json } = parseInspect(arguments_)
+  const parsed = parseInspect(arguments_)
+  if (parsed.resultDirectory !== undefined) return executeSavedResultInspect(parsed, runtime)
+  const { selector, json } = parsed
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
@@ -1921,7 +2027,7 @@ function renderRunFailure(
   )
     return renderDiagnostic(
       terminal.code,
-      `Execution failed, but the host did not retain a more specific cause.\n${hasRunDiagnostics ? 'See attributed runDiagnostics in the result; diagnostic text is not a confirmed cause.' : 'No Flow diagnostic text was captured. This result does not establish whether the Flow started.'}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
+      `Execution failed, but the host did not retain a more specific cause.\n${hasRunDiagnostics ? 'See the attributed diagnostics shown above; diagnostic text is not a confirmed cause.' : 'No Flow diagnostic text was captured. This result does not establish whether the Flow started.'}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
       'Run failed',
     )
   const reasons: Record<string, string> = {

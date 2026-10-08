@@ -114,16 +114,20 @@ canonical ports get one hint instead of a guess. Unsupported contracts remain
 ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
 
 Use `jig run --display dashboard` for a terminal workspace. **Activity** collects
-current work and expandable notices; **Overview** shows actual calls, with branches
-you can collapse. Your domain tabs retain their own records and evidence. Routine
+current work and the newest notices first; setup stages expand from one entry.
+**Overview** shows actual calls, opening active or problematic branches and
+collapsing returned branches. You can expand them to see their calls.
+Your domain tabs retain their own records and evidence. Routine
 reports stay collapsed, while attributed causes remain visible across tabs. `!`
-opens their full explanation and `?` shows contextual help.
+opens their full explanation, `d` opens attributed diagnostic text, and `?` shows
+contextual help. Diagnostic text with no structured severity stays unclassified.
 
 Give each child call a short, descriptive `intent` in `run.call(...)`; Overview
 uses that supplied label. Without it, the graph shows the reviewed slot name.
 Enter on a call shows its original operation ID and host lifecycle.
 
-Tab changes views; arrows/j/k selects records and Enter opens detail. `c` selects
+Wide layouts show selected record details beside the list; narrower layouts use
+Enter for full detail. Tab changes views; arrows/j/k selects records. `c` selects
 a collection; `/` edits its filter and `s` changes sorting. Filter text is literal:
 Enter applies it and Escape discards the draft. `r` explicitly selects a reference;
 Enter then opens the chosen record, call or verified immutable file preview.
@@ -131,7 +135,9 @@ Brackets/Page keys scroll details. Escape returns from a local panel before
 leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
 and waits for cleanup. After execution, cleanup and delivery settle, result
 inspection is read-only and Ctrl-C simply closes it. Its separate visible
-countdown is at most 60 seconds within any earlier command limit; unknown Linux
+countdown closes after 60 seconds of inactivity, bounded by five minutes and any
+earlier command limit. Accepted navigation refreshes the idle timer; screen
+refreshes and updates do not. Unknown Linux
 lifetime skips settled inspection. Leaving restores your terminal and prints
 retained essential causes before the final result.
 `--display plain` selects nonanimated presentation. `--json` or effective
@@ -140,6 +146,8 @@ The workspace needs terminal input/stderr and at least 18 columns/4 rows;
 smaller terminals release to plain output. Normal tables need 40 columns/10 rows.
 Explicit dashboard with NO_COLOR uses screen controls without color. Activity is
 bounded session history; omission is disclosed, and result evidence remains separate.
+Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
+after the dashboard closes, without starting another Run.
 
 ## Give a Flow its own workspace
 

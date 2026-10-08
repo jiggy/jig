@@ -18,7 +18,9 @@ patch authority and every merge decision stays with a person.
   `dashboard.ts` composes the portable Jobs, Checks and Patches documents using
   public user-updates types. Activity is the initial host surface. All three
   domain views are offered before work and at settlement. Jobs retains goals,
-  scope and outcomes; current phases use one root activity slot per job rather
+  scope and outcomes, with concise check verdicts and patch references only for
+  independently accepted jobs. Its details retain actual-call references,
+  verification and the human review step; current phases use one root activity slot per job rather
   than duplicate whole-view publications. Call references name
   actual own operation IDs, and patch references name only accepted files in
   deliverables. Checks distinguish provisional reports from independent final

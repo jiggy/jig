@@ -3,12 +3,15 @@ import { EventEmitter } from 'node:events'
 import { PrivateCliProgress } from '../src/cli-progress.js'
 import { privateAttentionReceipt } from '../src/cli-run-model.js'
 import {
+  PRIVATE_MAX_SETTLED_INSPECTION_MS,
   PRIVATE_PRESENTATION_CLOSE_RESERVE_MS,
   PRIVATE_PRESENTATION_DEADLINE_ENV,
   PRIVATE_SETTLED_INSPECTION_MS,
   privateConstrainPresentationDeadline,
+  privateInspectionHardDeadline,
   privatePresentationDeadline,
   privatePresentationNow,
+  privateRefreshInspectionDeadline,
   privateRootlessCommandLifetime,
   privateSettledInspectionDeadline,
 } from '../src/internal/root-run-timeout-policy.js'
@@ -84,6 +87,15 @@ function workspace(
 }
 
 describe('private presentation deadline', () => {
+  test('accepted navigation refreshes only unexpired idle time inside immutable inspection bounds', () => {
+    expect(PRIVATE_MAX_SETTLED_INSPECTION_MS).toBe(300_000)
+    expect(privateInspectionHardDeadline(undefined, 'linux', 100, true)).toBe(300_100)
+    expect(privateInspectionHardDeadline(undefined, 'linux', 100)).toBe(100)
+    expect(privateRefreshInspectionDeadline(60_100, 300_100, 60_099)).toBe(120_099)
+    expect(privateRefreshInspectionDeadline(60_100, 300_100, 60_100)).toBeUndefined()
+    expect(privateRefreshInspectionDeadline(300_100, 300_100, 300_100)).toBeUndefined()
+    expect(privateRefreshInspectionDeadline(60_100, 60_100, 59_999)).toBe(60_100)
+  })
   test('enclosing timers seed the earliest close bound once and preserve inherited time', () => {
     expect(PRIVATE_PRESENTATION_CLOSE_RESERVE_MS).toBe(45_000)
     const first = privateConstrainPresentationDeadline({}, 330_000, 1_000)
@@ -124,6 +136,107 @@ describe('private presentation deadline', () => {
 })
 
 describe('one bounded workspace lease', () => {
+  test('actual accepted keys extend settled idle inspection but never its five-minute or inherited bound', async () => {
+    for (const inherited of [undefined, 90_000]) {
+      let now = 100
+      const input = new Input()
+      const progress = workspace(async () => {}, { now: () => now, deadline: inherited })
+      try {
+        await progress.configureDisplay('dashboard', true, input as any)
+        const settling = progress.settleDashboard({
+          status: 'succeeded',
+          outcome: 'literal',
+          output: null,
+        })
+        await pause()
+        expect(progress.model.workspace.inspectionDeadline).toBe(60_100)
+        const hard = inherited ?? 300_100
+        expect(progress.model.workspace.inspectionHardDeadline).toBe(hard)
+        now = 59_100
+        input.emit('data', Buffer.from('?'))
+        expect(progress.model.workspace.inspectionDeadline).toBe(Math.min(119_100, hard))
+        now = 61_000
+        input.emit('data', Buffer.from('\u001b'))
+        await pause(40)
+        expect(input.isRaw).toBeTrue()
+        let last = progress.model.workspace.inspectionDeadline!
+        input.emit('data', Buffer.from('\u001b[999A'))
+        expect(progress.model.workspace.inspectionDeadline).toBe(last)
+        while (now + 30_000 < hard) {
+          now += 30_000
+          input.emit('data', Buffer.from('\t'))
+          last = Math.min(now + 60_000, hard)
+          expect(progress.model.workspace.inspectionDeadline).toBe(last)
+        }
+        now = hard
+        input.emit('data', Buffer.from('\t'))
+        await settling
+        expect(input.isRaw).toBeFalse()
+        expect(progress.model.workspace.inspectionDeadline).toBe(last)
+      } finally {
+        progress.close()
+        await progress.flush()
+      }
+    }
+  })
+  test('a queued key at idle expiry cannot resurrect the screen before the timer callback runs', async () => {
+    let now = 100
+    const input = new Input()
+    const progress = workspace(async () => {}, { now: () => now })
+    try {
+      await progress.configureDisplay('dashboard', true, input as any)
+      const settling = progress.settleDashboard({
+        status: 'succeeded',
+        outcome: 'literal',
+        output: null,
+      })
+      await pause()
+      now = 60_100
+      input.emit('data', Buffer.from('?'))
+      await settling
+      expect(input.isRaw).toBeFalse()
+      expect(progress.model.workspace.inspectionDeadline).toBe(60_100)
+      expect(progress.model.workspace.facts?.application).toBe('"literal"')
+    } finally {
+      progress.close()
+      await progress.flush()
+    }
+  })
+  test('standalone Linux inspection owns recorded data only and closes keyboard Ctrl-C without a cancellation signal', async () => {
+    const input = new Input()
+    let signals = 0
+    const interrupted = () => {
+      signals++
+    }
+    process.on('SIGINT', interrupted)
+    const progress = workspace(async () => {}, { platform: 'linux', now: () => 100 })
+    const packet = {
+      directory: '/selected/packet',
+      record: { status: 'failed', code: 'recorded', message: 'recorded cause' },
+      files: [],
+      complete: true,
+      reportPreview: () => ({ text: '{"status":"failed"}', bytes: 19, clipped: false }),
+      preview: () => undefined,
+      close: () => {},
+    }
+    try {
+      const inspecting = progress.inspectSavedResult(packet, true, input as any)
+      await pause()
+      expect(input.isRaw).toBeTrue()
+      expect(progress.model.workspace.inspectionDeadline).toBe(60_100)
+      expect(progress.model.workspace.inspectionHardDeadline).toBe(300_100)
+      expect(progress.model.workspace.recorded).toBeTrue()
+      expect(progress.model.calls.size).toBe(0)
+      input.emit('data', Buffer.from([3]))
+      await inspecting
+      expect(signals).toBe(0)
+      expect(input.isRaw).toBeFalse()
+    } finally {
+      process.removeListener('SIGINT', interrupted)
+      progress.close()
+      await progress.flush()
+    }
+  })
   test('a physical zero-column terminal is not replaced with an eighty-column workspace', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(process.stderr, 'columns')
     let text = ''

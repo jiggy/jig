@@ -284,10 +284,19 @@ admitted FLOW packages.
   lines; escape every payload line without recognizing it as host prose.
   Explicit dashboard instead owns one alternate screen after effective selection,
   retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
-  aligned collections, collapsed detail, actual collapsible Overview and contextual
+  responsive selected-record details, aligned collections, collapsed detail,
+  newest-first Activity with expandable setup, actual collapsible Overview and contextual
   keys serve progressive disclosure without terminal author callbacks. Attention
-  remains attributed and reachable from every view; restore the original screen
-  and commit complete retained essential causes before final stdout. No ordinary
+  remains attributed and reachable from every view. Diagnostic reports have a
+  separate literal panel; unknown severity stays unknown. Freeze execution elapsed
+  at settlement, select the root landing or first root view only when the operator has not navigated,
+  and never project settled host facts as current work.
+  Authored detail prose wraps at complete grapheme/word boundaries; file preview
+  wrapping keeps its existing literal path. Style each pane independently so list
+  focus or headings cannot color unrelated detail text. Charge composed SGR to the
+  same encoded frame ceiling.
+  Restore the original screen and commit complete retained essential causes before
+  final stdout. No ordinary
   notice or repeated view-summary spill while that workspace is open.
   Explicit notice severity is Flow-reported
   importance, never host outcome or guaranteed delivery.
@@ -377,7 +386,9 @@ within the same output ceiling; actually entered fullscreen omits summary replay
 `--display` is operator-only. Auto borrows no input; explicit inspection owns and
 restores raw/flowing stdin and cannot keep a finite command alive after exit.
 The private presentation deadline intersects every earlier enclosing command
-owner and a 60-second settled cap, with a derived 45-second closing reserve;
+owner and a five-minute settled cap, with a 60-second idle lease and a derived
+45-second closing reserve. Only accepted input refreshes an unexpired idle lease;
+repaint, resize and preview completion cannot extend it;
 presentation never waives enforcement. Unknown Linux lifetime skips inspection.
 Verify mixed-block traversal, draft filter/reference/attention modes, exact size
 cutoffs, per-surface identity, escaped attention admission, nearly-timeout batched
@@ -388,6 +399,11 @@ destination reads. Test redirected stdout, idle stdin, split/batched keys,
 post-settlement Ctrl-C, narrow/Unicode frames, reference/scroll identity and late
 preview settlement. `test/dashboard.test.ts` covers model/renderer/input bounds;
 installed factory and file-delivery tests cover composition and immutable capture.
+`inspect --result` bypasses project/environment acquisition and reads only the
+selected descriptor-confined packet. Its fixed views label all evidence recorded,
+never reconstruct live views or authority, and preserve exact decoded JSON.
+Qualify partial file capture, framing/byte/path limits, link refusal, interruption,
+buffer release and output failure independently of recorded execution status.
 
 - `just jig::check` builds and runs package tests, then automatically runs all
   discovered Mac-specific regression files on an exact supported native Mac.

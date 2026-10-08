@@ -205,12 +205,12 @@ hostTest(
       const finalJobs = updates
         .filter((update) => update.kind === 'view' && update.id === 'jobs')
         .at(-1)
-      expect(finalJobs.summary).toContain('2 of 2 repairs settled')
+      expect(finalJobs.sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
       const finalChecks = updates
         .filter((update) => update.kind === 'view' && update.id === 'checks')
         .at(-1)
       expect(JSON.stringify(finalChecks)).not.toContain('Pending independent verification')
-      expect(JSON.stringify(finalChecks)).toContain('Settled; no checked patch')
+      expect(JSON.stringify(finalChecks)).toContain('No checked patch')
       const finalPatches = updates
         .filter((update) => update.kind === 'view' && update.id === 'patches')
         .at(-1)

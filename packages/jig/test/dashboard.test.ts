@@ -9,6 +9,11 @@ import {
   privateAttentionReceipt,
   privateRowRecordKey,
 } from '../src/cli-run-model.js'
+import {
+  privateTerminalWidth,
+  privateUpdateText,
+  privateWrappedUpdate,
+} from '../src/private-terminal-text.js'
 import { parseProjectEntrypoint, resolveProjectEntrypoint } from '../src/project/entrypoint.js'
 import { ChannelBroker } from '../src/run/channels.js'
 import { parseRun } from '../src/run-arguments.js'
@@ -765,7 +770,7 @@ test('Activity opens first, fixed shell retains task, configured limit and full-
   expect(model.surface).toBe('activity')
   expect(frame.lines).toHaveLength(24)
   expect(frame.lines[0]).toContain('binding:factory')
-  expect(frame.lines[1]).toContain('elapsed 30s · limit 300s')
+  expect(frame.lines[1]).toContain('elapsed 30s · execution limit 300s')
   expect(frame.lines[2]).toContain('[Activity]')
   expect(frame.lines[3]).toContain('! full cause')
   expect(frame.lines.at(-1)).toContain('q continues inline')
@@ -802,9 +807,9 @@ test('workspace styling preserves exact plain text while exposing typed visual h
   expect(colored.lines[3]).toStartWith('\u001b[1;33m')
   expect(colored.lines).toContain('\u001b[1mCurrent work\u001b[0m')
   expect(colored.lines).toContain('\u001b[1mRecent activity\u001b[0m')
-  expect(colored.lines.find((line) => plain(line).startsWith('> '))).toStartWith('\u001b[1m')
+  expect(colored.lines.find((line) => plain(line).startsWith('> '))).toStartWith('\u001b[1;')
   expect(colored.lines.find((line) => line.includes('ready success failed'))).toContain(
-    '\u001b[90m  Flow · info · \u001b[39mready success failed',
+    '\u001b[90m  Flow · \u001b[39mready success failed',
   )
   expect(colored.lines.at(-1)).toStartWith('\u001b[90m')
   expect(colored.lines.join('\n')).not.toContain('\u001b[41m')
@@ -833,7 +838,7 @@ test('workspace styling preserves exact plain text while exposing typed visual h
   expect(table.lines).toContain('\u001b[1mSupplied records\u001b[0m')
   expect(table.lines.find((line) => plain(line).startsWith('Matters ·'))).toStartWith('\u001b[1m')
   expect(table.lines.find((line) => plain(line).trim() === 'Matter')).toStartWith('\u001b[1m')
-  expect(table.lines.find((line) => plain(line).startsWith('> a'))).toStartWith('\u001b[1m')
+  expect(table.lines.find((line) => plain(line).startsWith('> a'))).toStartWith('\u001b[1;')
   expect(table.lines.find((line) => plain(line).trim() === 'b')).not.toContain('\u001b')
 })
 
@@ -846,7 +851,7 @@ test('attention emphasis follows explicit priority and leaves literal cause text
       panels: [{ kind: 'attention', index: 0, scroll: 0 }],
     })
     expect(frame.lines[3]).toStartWith(tone)
-    expect(frame.lines[4]).toStartWith(tone)
+    expect(frame.lines.find((line) => line.includes('Literal source —'))).toStartWith(tone)
     expect(frame.lines).toContain('Complete cause')
     expect(frame.lines).toContain('Second literal line')
     expect(frame.lines.join('\n')).not.toContain('\u001b[32m')
@@ -1151,6 +1156,9 @@ test('actual tree collapses descendants, counts issues and follows original oper
     cause: 'Specific failure',
   })
   model.select(undefined)
+  expect(model.records().filter((r) => r.kind === 'call')).toHaveLength(3)
+  model.selectRecord(JSON.stringify(['worker-instance', 'child']))
+  model.expandTree(false)
   expect(model.records().filter((r) => r.kind === 'call')).toHaveLength(2)
   model.selectRecord(JSON.stringify(['worker-instance', 'child']))
   expect(model.record).toMatchObject({ hidden: 1, issues: 1 })
@@ -1359,17 +1367,17 @@ test('batched record-reference jumps clear originating detail before the first t
     keys.start()
     model.onChange = paint
     input.emit('data', Buffer.from('\r'))
-    expect(frames.at(-1)).toContain('Flow — literal detail')
+    expect(frames.at(-1)).toContain('Flow · detail')
     expect(frames.at(-1)).toContain('Complete source context')
     frames.length = 0
     input.emit('data', Buffer.from('rjj\r'))
     expect(model.row?.id).toBe('beta')
     expect(keys.state.panels).toHaveLength(0)
-    expect(frames.every((frame) => !frame.includes('Flow — literal detail'))).toBe(true)
+    expect(frames.every((frame) => !frame.includes('Flow · detail'))).toBe(true)
     expect(frames.at(-1)).toContain('[Flow: Records]')
     expect(frames.at(-1)).toMatch(/\n> beta *\n/)
     input.emit('data', Buffer.from('\r'))
-    expect(frames.at(-1)).toContain('Flow — literal detail')
+    expect(frames.at(-1)).toContain('Flow · detail')
     expect(frames.at(-1)).toContain('Matter: beta')
     keys.leave()
   }
@@ -1404,7 +1412,7 @@ test('external surface and record changes reconcile detail scroll before project
   )
   expect(keys.scroll).toBe(0)
   expect(keys.state.panels).toHaveLength(0)
-  expect(frame.lines.join('\n')).not.toContain('Flow — literal detail')
+  expect(frame.lines.join('\n')).not.toContain('Flow · detail')
   input.emit('data', Buffer.from('\r]'))
   expect(keys.scroll).toBe(3)
   model.moveRecord(1)
@@ -1447,4 +1455,377 @@ test('Enter toggles the literal detail panel and keeps the same record', () => {
   expect(keys.state.panels).toHaveLength(0)
   expect(model.record?.key).toBe(identity)
   keys.leave()
+})
+
+test('settlement offers the landing result without moving an operator who has navigated', () => {
+  const model = new PrivateRunModel()
+  model.configureWorkspace({ target: 'binding:factory', startedAt: 1000 })
+  model.workspace.now = 31000
+  model.acceptView('root', v())
+  model.stop()
+  model.setWorkspaceFacts({
+    execution: 'succeeded',
+    application: '"done"',
+    cleanup: 'complete',
+    delivery: 'written',
+  })
+  model.setWorkspacePhase('settled', 90000)
+  expect(model.row?.id).toBe('a')
+  model.workspace.now = 65000
+  expect(privateDashboardFrame(model, 120, 45, false, true).lines[1]).toContain('elapsed 30s')
+  for (const surface of ['activity', 'overview']) {
+    model.select(surface)
+    const text = privateDashboardFrame(model, 120, 45, false, true).lines.join('\n')
+    expect(text).not.toContain('Current work')
+    expect(text).not.toContain('\\nApplication')
+    expect(text.match(/Execution succeeded/g)).toHaveLength(1)
+  }
+  const browsing = new PrivateRunModel()
+  browsing.acceptView('root', v())
+  browsing.select('activity')
+  browsing.setWorkspacePhase('settled')
+  expect(browsing.surface).toBe('activity')
+  const noHint = new PrivateRunModel()
+  noHint.acceptView('root', { ...v('first-result'), landing: undefined } as ViewItem)
+  expect(noHint.surface).toBe('activity')
+  noHint.setWorkspacePhase('settled')
+  expect(noHint.surface).toBe(JSON.stringify(['root', 'first-result']))
+  expect(noHint.row?.id).toBe('a')
+})
+
+test('wide collections use spare width and show literal selected detail without activating files', () => {
+  const model = new PrivateRunModel()
+  let activated = 0
+  model.setArtifacts(
+    () => 'patch',
+    async () => {
+      activated++
+      return { text: 'patch bytes', bytes: 11, clipped: false }
+    },
+  )
+  model.acceptView(
+    'root',
+    validateUserUpdate({
+      kind: 'view',
+      id: 'work',
+      title: 'Work',
+      landing: true,
+      summary: 'Two independently checked candidates; review before applying.',
+      sections: [
+        {
+          blocks: [
+            {
+              kind: 'collection',
+              id: 'work',
+              title: 'Requested repairs',
+              columns: [
+                { key: 'job', label: 'Job', type: 'text' },
+                { key: 'outcome', label: 'Outcome', type: 'text' },
+              ],
+              rows: [
+                {
+                  id: 'a',
+                  cells: {
+                    job: 'HTTP log report',
+                    outcome: 'Checked patch ready for human review',
+                  },
+                  details: [
+                    {
+                      kind: 'report',
+                      text: 'Goal: reject fractional HTTP status codes.\nSources have not been changed.',
+                      references: [
+                        { kind: 'artifact', attachment: 'deliverables', path: 'a/review.patch' },
+                      ],
+                    },
+                    { kind: 'facts', items: [{ label: 'Independent cases', value: '4/4 passed' }] },
+                  ],
+                },
+              ],
+              total: 1,
+            },
+          ],
+        },
+      ],
+    }) as ViewItem,
+  )
+  model.cycleCollection()
+  const wide = privateDashboardFrame(model, 160, 45, false, true).lines.join('\n')
+  expect(wide).toContain('Checked patch ready for human review')
+  expect(wide).toContain('Goal: reject fractional HTTP status codes.')
+  expect(wide).toContain('Independent cases: 4/4 passed')
+  expect(wide).toContain('Delivered file: a/review.patch')
+  expect(wide).toContain('Selected detail')
+  expect(wide.indexOf('Goal: reject fractional')).toBeLessThan(
+    wide.indexOf('Outcome: Checked patch'),
+  )
+  expect(wide).not.toContain('1/1 supplied / 1 reported')
+  expect(activated).toBe(0)
+  expect(model.preview).toBeUndefined()
+  const narrow = privateDashboardFrame(model, 80, 24, false, true).lines.join('\n')
+  expect(narrow).not.toContain('Goal: reject')
+  expect(narrow).toContain('Enter detail')
+  for (const [width, height] of [
+    [60, 18],
+    [80, 24],
+    [112, 32],
+    [160, 60],
+    [200, 90],
+  ]) {
+    const frame = privateDashboardFrame(model, width!, height!, true, true)
+    expect(Buffer.byteLength(frame.lines.join('\n'))).toBeLessThanOrEqual(32000)
+    expect(frame.lines).toHaveLength(height!)
+    for (const line of frame.lines) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(width!)
+  }
+})
+
+test('authored detail wraps at word boundaries while preserving escaped text and bounded long words', () => {
+  const prose =
+    'Requested goal: Count client errors separately from server errors. Review the patch before applying it.'
+  const lines = [...privateWrappedUpdate(prose, 45, true)]
+  expect(lines.join('')).toBe(prose)
+  expect(lines.every((line) => privateTerminalWidth(line) <= 45)).toBeTrue()
+  expect(lines.some((line) => line.includes('Count client errors'))).toBeTrue()
+  expect([...privateWrappedUpdate('a \u0301bc', 3, true)]).toEqual(['a \u0301', 'bc'])
+  const accentedSpace = 'Requested goal: inspect \u0301each document carefully.'
+  const accentLines = [...privateWrappedUpdate(accentedSpace, 26, true)]
+  expect(accentLines.join('')).toBe(accentedSpace)
+  expect(accentLines.every((line) => !line.startsWith('\u0301'))).toBeTrue()
+  const hostile = 'Goal: \u001b[31m ' + 'x'.repeat(100) + ' ' + '\u0300'.repeat(3000) + ' 結果 🙂'
+  const bounded = [...privateWrappedUpdate(hostile, 20, true)]
+  expect(bounded.join('')).toBe(privateUpdateText(hostile))
+  for (const line of bounded) {
+    expect(Buffer.byteLength(line)).toBeLessThanOrEqual(4096)
+    expect(privateTerminalWidth(line)).toBeLessThanOrEqual(20)
+  }
+})
+
+test('Activity prioritizes recent domain history and retains setup and host warnings through disclosure', () => {
+  const model = new PrivateRunModel(),
+    input = new Input()
+  for (let i = 0; i < 20; i++) model.addHostEntry(`setup:${i}`, `Setup step ${i}`)
+  model.acceptNotice('root', 'info', 'Starting the document review', 30)
+  model.addHostEntry('warning', 'Cleanup could not be confirmed', 'warning')
+  model.acceptNotice('root', 'info', 'Draft ready for professional review', 40)
+  model.setWorkspacePhase('settled')
+  let text = privateDashboardFrame(model, 80, 24, false, true).lines.join('\n')
+  expect(text.indexOf('Draft ready')).toBeLessThan(text.indexOf('Starting the document'))
+  expect(text).toContain('Cleanup could not be confirmed')
+  expect(text).toContain('Jig stages · 20 reports')
+  expect(text).not.toContain('Setup step 0')
+  const keys = new PrivateDashboardInput(
+    model,
+    () => {},
+    () => {},
+    input as any,
+  )
+  keys.start()
+  model.selectRecord('setup')
+  input.emit('data', Buffer.from('\r'))
+  text = privateDashboardFrame(
+    model,
+    80,
+    45,
+    false,
+    true,
+    keys.scroll,
+    keys.anchor,
+    keys.state,
+  ).lines.join('\n')
+  expect(text).toContain('Setup step 0')
+  expect(text).toContain('Setup step 19')
+  keys.leave()
+})
+
+test('diagnostics are attributed and one action away on every view without inferred severity', () => {
+  const model = new PrivateRunModel(),
+    input = new Input()
+  model.acceptView('root', v())
+  model.addDiagnostic('Warning title\nComplete safe explanation\u001b[31m', [
+    'repair:logs',
+    'patch-1',
+  ])
+  model.addDiagnostic('Different report', ['repair:timesheet', 'patch-1'])
+  const keys = new PrivateDashboardInput(
+    model,
+    () => {},
+    () => {},
+    input as any,
+  )
+  keys.start()
+  for (const surface of ['activity', 'overview', JSON.stringify(['root', 'jobs'])]) {
+    model.select(surface)
+    input.emit('data', Buffer.from('d'))
+    let text = privateDashboardFrame(
+      model,
+      80,
+      24,
+      false,
+      true,
+      0,
+      undefined,
+      keys.state,
+    ).lines.join('\n')
+    expect(text).toContain('Invocation: repair:logs / patch-1')
+    expect(text).toContain('Severity was not supplied')
+    expect(text).toContain('Complete safe explanation\\u001b[31m')
+    expect(text).not.toContain('\u001b[31m')
+    input.emit('data', Buffer.from('\u001b[C'))
+    text = privateDashboardFrame(model, 80, 24, false, true, 0, undefined, keys.state).lines.join(
+      '\n',
+    )
+    expect(text).toContain('Invocation: repair:timesheet / patch-1')
+    expect(text).toContain('Different report')
+  }
+  expect(model.attention).toHaveLength(0)
+  keys.leave()
+})
+
+test('completed trees start collapsed while explicit expansion and failed descendants remain visible', () => {
+  const model = new PrivateRunModel()
+  model.observeCall({
+    ...event('repair'),
+    intent: 'Repair HTTP statuses',
+    childPublisher: 'worker',
+  })
+  model.observeCall({
+    ...event('baseline'),
+    publisher: 'worker',
+    intent: 'Baseline · repository tests',
+  })
+  model.observeCall({ ...event('baseline', 'returned'), publisher: 'worker' })
+  model.observeCall(event('repair', 'returned'))
+  model.select(undefined)
+  expect(model.records().filter((record) => record.call)).toHaveLength(1)
+  model.expandTree(true)
+  expect(model.records().filter((record) => record.call)).toHaveLength(2)
+  const text = privateDashboardFrame(model, 120, 45, false, true).lines.join('\n')
+  expect(text).toContain('returned')
+  expect(text).not.toContain('tests passed')
+  const failed = new PrivateRunModel()
+  failed.observeCall({ ...event('parent'), childPublisher: 'child' })
+  failed.observeCall({
+    ...event('failure', 'failed'),
+    publisher: 'child',
+    cause: 'Native client could not start',
+  })
+  failed.observeCall(event('parent', 'returned'))
+  failed.select(undefined)
+  expect(failed.records().filter((record) => record.call)).toHaveLength(2)
+})
+
+test('saved inspection exposes only recorded views and never promotes saved claims to live host facts', async () => {
+  const model = new PrivateRunModel()
+  model.configureWorkspace({ target: 'saved packet', startedAt: 1000, recorded: true })
+  for (const [id, title] of [
+    ['result', 'Recorded result'],
+    ['files', 'Files'],
+    ['diagnostics', 'Diagnostics'],
+  ]) {
+    model.acceptView('saved-result', {
+      ...v(id),
+      title,
+      landing: undefined,
+      sections: [{ blocks: [{ kind: 'report', text: 'Recorded local evidence' }] }],
+    } as ViewItem)
+  }
+  model.select(model.surfaceKeys()[0])
+  model.workspace.now = 31000
+  model.workspace.inspectionHardDeadline = 301000
+  model.setWorkspaceFacts({
+    execution: 'succeeded',
+    application: '"done"',
+    cleanup: 'complete',
+    delivery: 'written',
+  })
+  model.setWorkspacePhase('settled', 91000)
+  const frame = privateDashboardFrame(model, 120, 45, true, true)
+  const text = frame.lines.join('\n')
+  expect(text).toContain('Saved result · read-only')
+  expect(text).toContain('[Recorded result] | Files | Diagnostics')
+  expect(text).not.toContain('Activity | Overview')
+  expect(text).not.toContain('Recorded: Recorded result')
+  expect(text).not.toContain('elapsed')
+  expect(text).not.toContain('execution limit')
+  expect(text).toContain('Recorded execution succeeded')
+  expect(text).toContain('Recorded cleanup complete')
+  expect(text).not.toContain('\u001b[32m')
+  expect(model.sourceLabel('saved-result')).toBe('Recorded')
+  const surfaces = model.surfaceKeys()
+  for (let i = 0; i < 6; i++) {
+    model.cycleView(1)
+    expect(surfaces).toContain(model.surface)
+  }
+  model.workspace.inspectionDeadline = model.workspace.inspectionHardDeadline
+  expect(privateDashboardFrame(model, 120, 45, false, true).lines[1]).toContain('(limit)')
+  model.setArtifacts(
+    (_publisher, ref) => (ref.path === 'review.patch' ? 'captured-patch' : undefined),
+    async () => ({ text: 'captured bytes', bytes: 14, clipped: false }),
+  )
+  const ref = { kind: 'artifact' as const, attachment: 'packet', path: 'review.patch' }
+  expect(model.resolve('saved-result', ref).label).toBe('Captured recorded file: review.patch')
+  expect(model.resolve('saved-result', { ...ref, path: 'missing' }).label).toContain(
+    'captured recorded files',
+  )
+  await model.activate('saved-result', ref)
+  const preview = privateDashboardFrame(model, 120, 45, false, true, 0, undefined, {
+    panels: [{ kind: 'preview', scroll: 0 }],
+  }).lines.join('\n')
+  expect(preview).toContain('Immutable recorded-file preview')
+  expect(preview).not.toContain('delivered-file preview')
+  for (const failedPreview of [
+    async () => undefined,
+    async () => {
+      throw new Error('unavailable')
+    },
+  ]) {
+    model.setArtifacts(() => 'captured-patch', failedPreview)
+    await model.activate('saved-result', ref)
+    expect(model.feedback).toBe('Immutable preview unavailable; inspect the selected packet')
+  }
+})
+
+test('diagnostic capacity loss and final completeness remain visible from every surface', () => {
+  const model = new PrivateRunModel(),
+    input = new Input()
+  model.acceptView('root', v())
+  for (let i = 0; i < 33; i++) model.addDiagnostic(`Report ${i}`, [`worker:${i}`])
+  model.setWorkspaceFacts({
+    execution: 'succeeded',
+    application: '"done"',
+    cleanup: 'complete',
+    delivery: 'written',
+    completeness: 'Activity history omitted',
+  })
+  model.setWorkspacePhase('settled')
+  const keys = new PrivateDashboardInput(
+    model,
+    () => {},
+    () => {},
+    input as any,
+  )
+  keys.start()
+  for (const surface of ['activity', 'overview', JSON.stringify(['root', 'jobs'])]) {
+    model.select(surface)
+    let text = privateDashboardFrame(model, 120, 32, false, true).lines.join('\n')
+    expect(text).toContain('1 updates omitted')
+    expect(text).toContain('Observation · Activity history omitted')
+    input.emit('data', Buffer.from('d'))
+    text = privateDashboardFrame(model, 120, 32, false, true, 0, undefined, keys.state).lines.join(
+      '\n',
+    )
+    expect(text).toContain('Diagnostic history incomplete: 1 report updates omitted.')
+  }
+  keys.leave()
+  for (const [width, height] of [
+    [35, 12],
+    [18, 4],
+  ]) {
+    for (const surface of ['activity', 'overview', JSON.stringify(['root', 'jobs'])]) {
+      model.select(surface)
+      const frame = privateDashboardFrame(model, width!, height!, false, true)
+      expect(frame.lines.join('\n')).toContain('omitted')
+      expect(frame.lines.join('\n')).toContain(width! < 28 ? 'd: omitted (1)' : '1 diagnostic')
+      expect(frame.lines).toHaveLength(height!)
+    }
+  }
 })

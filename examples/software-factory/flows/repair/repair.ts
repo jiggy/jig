@@ -86,6 +86,7 @@ async function repairWithProgress(
   }
   const observe = async (files: Record<string, string>, id: string) => {
     const values: unknown[] = []
+    const phaseLabel = proposal === 0 ? 'Baseline' : `Proposal ${proposal}`
     const requests = [
       { command: 'tests', args: [] as string[], stdin: '' },
       ...input.cases.map((c) => ({ command: 'cli', args: c.args, stdin: c.stdin })),
@@ -104,8 +105,8 @@ async function repairWithProgress(
         slot: request.command,
         intent:
           index === 0
-            ? 'Run repository tests'
-            : `Check acceptance case ${input.cases[index - 1]!.id}`,
+            ? `${phaseLabel}: repository tests`
+            : `${phaseLabel}: acceptance case ${input.cases[index - 1]!.id}`,
         input: { args: request.args, stdin: request.stdin, files },
       })
       if (observation.outcome !== 'done')
@@ -140,7 +141,9 @@ async function repairWithProgress(
         operationId: `patch-${index + 1}`,
         slot: 'agent',
         intent:
-          index === 0 ? 'Request a proposed repair' : 'Request a correction using failed checks',
+          index === 0
+            ? 'Proposal 1: request a repair'
+            : 'Proposal 2: request a correction using failed checks',
         input: {
           instructions:
             'Repair this small Bun project. Return complete replacement text for only the permitted editPaths and a short summary. ' +

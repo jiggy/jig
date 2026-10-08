@@ -8,6 +8,7 @@ import {
   privateCliCommandLifetimeMs,
   privateCliPrepareArguments,
   privateCliRequiresHost,
+  privateCliSavedResultInspection,
   privateCliVerification,
   publicTerminal,
 } from './cli.js'
@@ -87,6 +88,7 @@ async function runPrivateInstalledCli(
   )
   if ('exitCode' in prepared) return exit(prepared.exitCode)
   arguments_ = prepared.arguments
+  if (privateCliSavedResultInspection(arguments_)) return runWithEnvironment(arguments_, {}, signal)
   if (prepared.admissionDigest !== undefined)
     process.env.JIG_PRIVATE_RUN_ADMISSION = prepared.admissionDigest
   const expectedAdmissionDigest = process.env.JIG_PRIVATE_RUN_ADMISSION
@@ -140,6 +142,32 @@ async function runWithEnvironment(
   operatorEnvironment: Readonly<Record<string, string | undefined>>,
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
+  if (privateCliSavedResultInspection(arguments_)) {
+    const outputStop = new AbortController()
+    const stdout = new PrivateCliOutput(process.stdout, outputStop)
+    const stderr = new PrivateCliOutput(process.stderr, outputStop)
+    try {
+      const code = await main(arguments_, {
+        presentationDeadline: privatePresentationDeadline(process.env),
+        ...(signal === undefined ? {} : { signal }),
+        writeOutput: (text) => {
+          void stdout.write(text).catch(() => undefined)
+        },
+        writeRecord: async (text) => {
+          await stderr.flush()
+          await stdout.write(text)
+        },
+        writeError: (text) => {
+          void stderr.write(text).catch(() => undefined)
+        },
+        writeStderr: (text) => stderr.write(text),
+      })
+      await Promise.all([stdout.flush(), stderr.flush()])
+      return exit(signal?.aborted ? 2 : outputStop.signal.aborted ? 1 : code)
+    } catch {
+      return exit(signal?.aborted ? 2 : 1)
+    }
+  }
   if (!privateCliRequiresHost(arguments_)) {
     return exit(
       await main(arguments_, {

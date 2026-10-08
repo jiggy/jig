@@ -1,5 +1,5 @@
 import type { JsonValue } from '@jigging/flow'
-import type { Collection, ViewSnapshot } from '@jigging/user-updates'
+import type { Collection, DetailBlock, Report, ViewSnapshot } from '@jigging/user-updates'
 import type { RepairInput } from 'factory-repair-flow/policy'
 import { jobLabel } from './presentation.ts'
 
@@ -32,6 +32,48 @@ function clip(
 const object = (value: JsonValue | undefined): Record<string, any> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {}
 
+function goalReport(job: DashboardJob, input: RepairInput): Report {
+  return {
+    kind: 'report',
+    text: clip(
+      `Requested goal: ${input.issue}`,
+      4096,
+      4096,
+      ` [excerpt; complete goal in supplied job input and files/${job.id}/goal.txt after packet delivery]`,
+    ),
+    references: [{ kind: 'artifact', attachment: 'deliverables', path: `${job.id}/goal.txt` }],
+  }
+}
+
+function verificationDetails(outcome: {
+  verification?: { proposal: number; changedPaths: string[]; acceptanceCases: string[] }
+}): DetailBlock[] {
+  if (!outcome.verification) return []
+  const verified = outcome.verification
+  return [
+    {
+      kind: 'facts',
+      items: [
+        { label: 'Checked proposal', value: verified.proposal },
+        { label: 'Repository tests', value: 'Passed; independently verified' },
+        {
+          label: 'Acceptance cases',
+          value: `${verified.acceptanceCases.length} passed; independently verified`,
+        },
+        {
+          label: 'Changed files',
+          value: clip(
+            verified.changedPaths.join(', ') || 'None',
+            4096,
+            3072,
+            ' [excerpt; complete paths in retained job evidence]',
+          ),
+        },
+      ],
+    },
+  ]
+}
+
 /** Ordinary author-side projection: Jig knows nothing about repair policy. */
 export function jobsView(
   prepared: readonly PreparedJob[],
@@ -44,37 +86,44 @@ export function jobsView(
   const board: Collection = {
     kind: 'collection',
     id: 'jobs',
-    title: 'Requested repairs',
+    title: 'Repairs',
     columns: [
       { key: 'job', label: 'Job', type: 'text' },
       { key: 'action', label: 'Outcome', type: 'text' },
-      { key: 'call', label: 'Call', type: 'reference' },
+      { key: 'checks', label: 'Checks', type: 'text' },
+      { key: 'patch', label: 'Review patch', type: 'reference' },
     ],
     rows: prepared.map(({ job, input }) => {
       const stage = stages.get(job.id),
         outcome = object(outcomes[job.id])
       const action = outcome.status
         ? outcome.ready
-          ? 'Checked patch ready for human review'
-          : (outcome.message ?? 'No independently verified patch')
-        : 'In progress; follow Activity'
+          ? 'Ready for review'
+          : outcome.status === 'unrouted'
+            ? 'No repair started'
+            : outcome.status === 'failed'
+              ? outcome.code === 'UNCERTAIN'
+                ? 'Settlement unknown'
+                : 'Repair failed'
+              : 'No checked patch'
+        : 'In progress'
       const operationId = stage?.phase === 'selecting' ? `route:${job.id}` : `repair:${job.id}`
       return {
         id: job.id,
-        cells: { job: jobLabel(job), action: clip(action), call: { kind: 'call', operationId } },
+        cells: {
+          job: jobLabel(job),
+          action,
+          checks: outcome.verification
+            ? `Tests + ${outcome.verification.acceptanceCases.length}/${input.cases.length} cases passed`
+            : outcome.status
+              ? 'No accepted patch'
+              : 'Verification pending',
+          patch: outcome.ready
+            ? { kind: 'artifact', attachment: 'deliverables', path: `${job.id}/review.patch` }
+            : null,
+        },
         details: [
-          {
-            kind: 'report',
-            text: clip(
-              `Requested goal: ${input.issue}`,
-              4096,
-              4096,
-              ` [excerpt; complete goal in supplied job input and files/${job.id}/goal.txt after packet delivery]`,
-            ),
-            references: [
-              { kind: 'artifact', attachment: 'deliverables', path: `${job.id}/goal.txt` },
-            ],
-          },
+          goalReport(job, input),
           {
             kind: 'facts',
             items: [
@@ -98,38 +147,57 @@ export function jobsView(
                       : 'Reviewed approach selection',
               },
               {
-                label: 'Checkpoint',
-                value: saved.has(job.id) ? 'Acknowledged' : 'Not acknowledged',
+                label: 'Saved evidence',
+                value: saved.has(job.id) ? 'Checkpoint confirmed' : 'Checkpoint not confirmed',
               },
             ],
           },
-          {
-            kind: 'report',
-            text: clip(
-              `Checks: repository tests plus ${input.cases.length} independent CLI cases: ${input.cases.map((c) => c.id).join(', ')}. Each patch is checked separately.`,
-              1024,
-              1536,
-            ),
-          },
-          ...(stage?.detail
+          ...verificationDetails(outcome),
+          ...(!outcome.verification
+            ? [
+                {
+                  kind: 'report' as const,
+                  text: clip(
+                    `Required checks: repository tests plus ${input.cases.length} independent CLI cases: ${input.cases.map((c) => c.id).join(', ')}.`,
+                    1024,
+                    1536,
+                  ),
+                },
+              ]
+            : []),
+          ...(!outcome.status && stage?.detail
             ? [{ kind: 'report' as const, text: clip(stage.detail, 1024, 2048) }]
             : []),
-          ...(outcome.message
+          ...(!outcome.ready && outcome.message
             ? [{ kind: 'report' as const, text: clip(`Reported cause: ${outcome.message}`) }]
             : []),
+          {
+            kind: 'report',
+            text: outcome.ready
+              ? 'Review the patch before applying it. Original sources are unchanged. Each patch was checked separately; combined changes need their own checks. Patch preview is available after verified packet delivery.'
+              : outcome.status
+                ? 'No independently checked patch is available for this repair. Inspect its call and retained evidence for the observed cause.'
+                : 'Follow Activity for current work. This repair has not produced an independently checked patch yet.',
+            references: [{ kind: 'call', operationId }],
+          },
         ],
       }
     }),
     total: prepared.length,
   }
   return {
-    summary: `${settled} of ${prepared.length} repairs settled; ${ready} independently checked patches. Each patch is checked separately. Review patches before applying them.`,
+    summary:
+      settled === prepared.length
+        ? ready === 0
+          ? 'No checked patches. Inspect each repair for its cause; original sources are unchanged.'
+          : `${ready} independently checked ${ready === 1 ? 'patch' : 'patches'} ready for review.${ready < prepared.length ? ` ${prepared.length - ready} repair has no checked patch.` : ''} Original sources are unchanged.`
+        : `${prepared.length} requested repairs; ${settled} finished, ${ready} checked patches. Inspect a repair for its goal and scope; follow Activity for current work.`,
     sections: [
       {
         blocks: [
           {
             kind: 'progress',
-            label: 'Settled repairs',
+            label: 'Repairs finished',
             completed: settled,
             total: prepared.length,
             unit: 'jobs',
@@ -153,19 +221,20 @@ export function checksView(
       cells: {
         job: jobLabel(job),
         repository: verified
-          ? 'Passed; independently verified'
+          ? 'Verified pass'
           : outcome.status === 'failed'
-            ? 'Ended; verification unavailable'
+            ? 'Unavailable'
             : outcome.status
-              ? 'Settled; no checked patch'
-              : 'Pending independent verification',
+              ? 'No checked patch'
+              : 'Verification pending',
         cases: verified
-          ? `${verified.acceptanceCases.length} / ${input.cases.length} passed`
+          ? `${verified.acceptanceCases.length}/${input.cases.length} verified`
           : outcome.status
-            ? 'No accepted patch; inspect retained check evidence'
+            ? 'No accepted patch'
             : `${input.cases.length} supplied cases`,
       },
       details: [
+        ...verificationDetails(outcome),
         {
           kind: 'report' as const,
           text: clip(`Acceptance cases: ${input.cases.map((c) => c.id).join(', ')}`),
@@ -173,8 +242,9 @@ export function checksView(
         {
           kind: 'report' as const,
           text: clip(
-            reports.get(job.id) ??
-              'No worker check report received. Optional live reports are provisional; final acceptance uses returned evidence.',
+            reports.has(job.id)
+              ? `Worker-reported checks (provisional; independent acceptance is shown separately):\n${reports.get(job.id)}`
+              : 'No worker check report received. Optional live reports are provisional; final acceptance uses returned evidence.',
             4096,
             8192,
           ),
@@ -184,7 +254,9 @@ export function checksView(
   })
   return {
     summary:
-      'Repository tests and independent CLI cases check the requested behavior. Worker reports are provisional until the factory verifies returned evidence.',
+      Object.keys(outcomes).length === prepared.length
+        ? 'Finished checks: verified results are shown separately from provisional worker reports. Each patch is checked separately.'
+        : 'Repository tests and independent CLI cases check each proposed patch. Worker reports remain provisional until independently verified.',
     sections: [
       {
         blocks: [
@@ -212,7 +284,7 @@ export function patchesView(
 ): ViewSnapshot {
   const rows = prepared
     .filter(({ job }) => object(outcomes[job.id]).ready === true)
-    .map(({ job }) => {
+    .map(({ job, input }) => {
       const outcome = object(outcomes[job.id])
       return {
         id: job.id,
@@ -226,15 +298,13 @@ export function patchesView(
           },
         },
         details: [
-          {
-            kind: 'report' as const,
-            text: `Proposal ${outcome.verification.proposal} passed the repository command and independent cases. Original sources have not been changed. File preview becomes available only after Jig verifies packet delivery.`,
-          },
+          goalReport(job, input),
+          ...verificationDetails(outcome),
           {
             kind: 'report' as const,
             text: conflicting
               ? 'Patches overlap with conflicting replacements. Resolve the overlap before applying either patch.'
-              : 'Review this patch before applying it. Separate checks do not prove that combined patches work together.',
+              : 'Review this patch before applying it. Original sources are unchanged. Each patch was checked separately; combined changes need their own checks. Preview requires verified packet delivery.',
           },
         ],
       }
@@ -242,7 +312,7 @@ export function patchesView(
   return {
     summary: conflicting
       ? 'The proposed patches conflict. Resolve the overlap before applying either patch.'
-      : `${rows.length} independently checked ${rows.length === 1 ? 'candidate' : 'candidates'} for human review. File links become available after verified packet delivery. Changes have not been applied.`,
+      : `${rows.length} independently checked ${rows.length === 1 ? 'candidate' : 'candidates'} for human review. Changes have not been applied. Preview requires verified packet delivery.`,
     sections: [
       {
         blocks: [

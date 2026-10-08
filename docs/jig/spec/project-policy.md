@@ -1008,6 +1008,10 @@ loading and preserved through delegation, file delivery and recovery.
 This is a host performance/integrity choice, never a `jig.ts`, FLOW, Binding,
 approval, or capability setting. It applies to review, Run, and environment
 inspection, including each later installed-support revalidation boundary.
+Saved-result inspection (`jig inspect --result <directory>`) is a separate local
+evidence reader: it rejects `--verification`, ignores `JIG_VERIFICATION`, and
+performs no execution-environment acquisition or installation verification.
+Its recorded-claim and capture profile belongs to [CLI experience](cli-experience.md).
 
 - `cached` reuses an installed file's SHA-256 while its selected canonical path,
   device, inode, ownership, permissions, link count, size, modification time,

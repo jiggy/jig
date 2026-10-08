@@ -61,7 +61,8 @@ use-case and orchestration hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 
 - `guide/results.md` owns result interpretation, scripting failures, and
-  retained-state recovery; the quickstart links to it after the first outcome.
+  retained-state recovery, including recorded packet inspection without starting
+  execution; the quickstart links to it after the first outcome.
 - `index.md` and `guide/understand.md` introduce Agent work inside applications
   through the common Flow boundary and Jig's microkernel-inspired responsibilities.
   The landing page follows a suggestion into application checks, reveals Jig's

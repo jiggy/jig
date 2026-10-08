@@ -93,6 +93,24 @@ test('factory-owned repair configurations keep the same checks and a distinct pr
   expect(correctedEvidence.attempts).toHaveLength(2)
   expect(correctedEvidence.attempts[0]?.evaluation?.accepted).toBe(false)
   expect(correctedEvidence.attempts[1]?.evaluation?.accepted).toBe(true)
+  expect(correction.calls.find((call) => call.operationId === 'baseline-0')?.intent).toBe(
+    'Baseline: repository tests',
+  )
+  expect(correction.calls.find((call) => call.operationId === 'attempt-1-0')?.intent).toBe(
+    'Proposal 1: repository tests',
+  )
+  expect(correction.calls.find((call) => call.operationId === 'attempt-2-0')?.intent).toBe(
+    'Proposal 2: repository tests',
+  )
+  expect(correction.calls.find((call) => call.operationId === 'attempt-2-1')?.intent).toBe(
+    `Proposal 2: acceptance case ${repairInput.cases[0]!.id}`,
+  )
+  expect(
+    correction.calls.filter((call) => call.slot === 'agent').map((call) => call.intent),
+  ).toEqual([
+    'Proposal 1: request a repair',
+    'Proposal 2: request a correction using failed checks',
+  ])
 })
 
 test('factory-owned repair reports observed baseline, proposal, check, and finish phases', async () => {
@@ -586,9 +604,9 @@ test('maximum requested goals survive exact file, checkpoint and result retentio
         expect(new Set(views.map((value) => value.title))).toEqual(
           new Set(['Jobs', 'Checks', 'Patches']),
         )
-        expect(views.filter((value) => value.id === 'jobs').at(-1).summary).toContain(
-          '2 of 2 repairs settled',
-        )
+        const finished = views.filter((value) => value.id === 'jobs').at(-1)
+        expect(finished.summary).toContain('No checked patches')
+        expect(finished.sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
         expect(JSON.stringify(views.find((value) => value.id === 'jobs'))).toContain(
           '[excerpt; complete goal',
         )
@@ -1060,14 +1078,18 @@ test('checkpoint failure retains healthy and failed jobs without claiming packet
         .map((value) => [(value as any).id, value as any]),
     )
     expect([...finalViews.keys()]).toEqual(['jobs', 'checks', 'patches'])
-    expect(finalViews.get('jobs').summary).toContain('2 of 2 repairs settled')
-    expect(finalViews.get('checks').sections[0].blocks[0].rows[0].cells.repository).toContain(
-      'independently verified',
+    expect(finalViews.get('jobs').sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
+    expect(finalViews.get('jobs').summary).toContain('1 repair has no checked patch')
+    expect(finalViews.get('checks').sections[0].blocks[0].rows[0].cells.repository).toBe(
+      'Verified pass',
     )
-    expect(finalViews.get('patches').summary).toContain('after verified packet delivery')
+    expect(
+      JSON.stringify(finalViews.get('checks').sections[0].blocks[0].rows[0].details),
+    ).toContain('Passed; independently verified')
+    expect(finalViews.get('patches').summary).toContain('requires verified packet delivery')
     for (const row of finalViews.get('jobs').sections[0].blocks[1].rows)
-      expect(row.details[1].items.find((item: any) => item.label === 'Checkpoint').value).toBe(
-        'Not acknowledged',
+      expect(row.details[1].items.find((item: any) => item.label === 'Saved evidence').value).toBe(
+        'Checkpoint not confirmed',
       )
     expect(JSON.stringify(finalViews.get('patches'))).not.toContain('Saved job summaries')
   })

@@ -72,7 +72,15 @@ workspace before hiding the cause and disclose clipping.
 The explicit workspace has stable Activity, Overview and attributed domain tabs,
 aligned collections, collapsed reports, record details, local filter/sort,
 scrolling and explicitly selected references. All valid block types are reachable
-in supplied order; selecting a row alone does not expand it. References can resolve current same-publisher
+in supplied order. Wide layouts project selected literal details beside the list;
+selection alone never activates a reference. Narrow layouts keep collapsed rows
+and Enter opens full detail. Returned tree branches collapse by default; active,
+failed and uncertain branches remain visible, with operator choices retained.
+Activity orders recent reports first and folds informational setup history into
+one expandable entry. It does not present settled work as current activity.
+`d` opens attributed diagnostic reports from every view. Unknown diagnostic
+severity remains unknown; text content never determines severity.
+References can resolve current same-publisher
 records, actual own calls and verified delivered files. Previews use bounded
 immutable capture, never mutable destination reads. Escape dismisses local help,
 filter, reference selection, attention, preview or detail before leaving. Live q,
@@ -80,10 +88,15 @@ standalone Escape or input EOF
 restores input and continues inline, without re-entering later. Live Ctrl-C uses
 existing cancellation and cleanup. After all execution, cleanup and delivery
 settle, an inspector still open shows literal settled facts and read-only results;
+if the operator has not navigated, it selects the root publisher's landing view
+or first retained root view and its first row when present.
 q/Escape/Ctrl-C then closes presentation without changing admitted outcome.
-No Flow or channel remains alive for inspection. Inspection lasts at most 60
-seconds and intersects any earlier enclosing command limit; its countdown is
-separate from the execution limit. Unknown Linux command lifetime skips settled
+No Flow or channel remains alive for inspection. Inspection closes after 60 seconds
+of inactivity and has an absolute five-minute limit. It intersects any earlier
+enclosing command limit; its countdown is separate from the execution limit.
+Accepted navigation refreshes only an unexpired idle lease. Repaints, updates,
+resizes and preview completion cannot refresh it or revive expired inspection.
+Execution elapsed time freezes at settlement. Unknown Linux command lifetime skips settled
 inspection. An expiring presentation lease leaves live execution running through
 its ordinary owner; it never extends an execution timer. Every exit releases preview,
 input and presentation owners. Auto/plain emit the latest retained summaries
@@ -350,6 +363,9 @@ characters and identifies changes of emitting invocation.
 Human final results count invocation paths whose diagnostic text was already
 shown live, without replaying it or creating a result section for that count
 alone. Retain any unseen suffix and disclose capture truncation with its path.
+Unseen text appears in a separate human diagnostics section, without the machine
+capture's byte-count or field-name bookkeeping. Escape it as literal data;
+neither command recognition nor prose-based severity inference applies.
 Interleaved invocation paths are tracked separately. JSON records and result
 packets retain their complete bounded captures independently of this presentation.
 Human output omits packet provenance manifests and digests already retained in
@@ -424,6 +440,39 @@ and remote availability remain unchecked. Run still revalidates before execution
 Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Redirected output or `--json` is JSON, never styling.
+
+`jig inspect --result <directory> [--display plain|dashboard] [--json]` reads a
+saved packet without loading a project, verifying an execution installation,
+reading operator configuration or credentials, acquiring execution authority,
+or contacting a provider. It rejects target and verification arguments. Plain
+is the default; JSON or redirected stdout takes precedence over dashboard.
+Saved inspection displays fixed Recorded result, Files and Diagnostics views.
+Every saved value is a recorded local claim, including host-shaped fields;
+matching file digests establish manifest consistency, not authenticated provenance.
+Current packets retain no portable views or invocation history, so inspection
+MUST NOT reconstruct either. Only the selected packet directory supplies files;
+recorded destinations or attachment names cannot select another path.
+
+Capture holds a descriptor-confined packet root and opens `files/` as its child.
+Public relative file paths retain their own path profile before that prefix is
+applied. Refuse links, multiple-link files, special files, traversal, duplicate
+manifest paths and out-of-profile sizes. Capture admits at most 16 MiB of JSON
+value plus the publisher's single framing LF, 64 manifest files and 16 MiB
+aggregate file bytes, within ten seconds. File previews use already verified
+immutable captures, with at most one 64 KiB UTF-8 preview; they never reopen a
+mutable path. One owner releases descriptors and captured buffers on every exit.
+Partial file verification preserves the valid report and already verified
+captures while disclosing unavailable evidence. It never invents replacement JSON.
+
+Exit 0 means valid report and complete consistent file capture, regardless of the
+recorded execution outcome; exit 1 means invalid/unavailable report, incomplete
+file verification or output failure; exit 2 means external interruption.
+Explicit JSON emits the unchanged decoded report even when file capture is
+incomplete, with findings on stderr and exit 1. Invalid reports emit no fabricated
+record. Terminal text is escaped literal data. Saved inspection uses the same
+60-second idle and five-minute absolute caps and respects inherited presentation
+constraints. It acquires no execution lifetime: the Linux live-Run restriction
+for unknown enclosing lifetime does not prevent standalone saved inspection.
 
 The CLI's shared presentation and progress modules own human formatting;
 command branches supply facts. Installed-launcher errors follow the same

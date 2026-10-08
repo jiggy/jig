@@ -343,6 +343,12 @@ re-entry follows fallback. Reduce workspace before cause and disclose clipping.
 
 Activity shows the current host stage and up to 16 current reported activities,
 plus collapsed literal notices, host stage history and attributed diagnostics.
+Newest reports appear first; informational setup history is one expandable entry.
+Wide layouts project selected literal details beside the list without activating
+references. Completed actual-call branches collapse unless the operator expanded
+them; active and problematic branches remain visible. Host facts occupy the fixed
+shell rather than a duplicated synthetic work row. Settled inspection freezes
+elapsed execution time and does not claim current work.
 Clear/EOF removes current activities without inventing completed history. Actual
 publisher/call-path attribution is retained; prose punctuation never establishes
 job ancestry. Do not duplicate every view snapshot or repaint into history.
@@ -379,9 +385,12 @@ without cancelling or re-entering later. Do not replay routine history. Ctrl-C a
 live shutdown use existing cancellation and join cleanup. After all execution,
 channels, attempted cleanup and delivery settle, an open workspace becomes read-only
 with separate literal execution/application/cleanup/delivery facts. It owns no live
-Flow, channel or execution owner. Inspection is capped at 60 seconds, intersected
+Flow, channel or execution owner. Inspection closes after 60 seconds of inactivity
+and is capped at five minutes in total, intersected
 with the minimum earlier presentation constraint from every enclosing command
-owner; its visible countdown is separate from the execution limit. An expiring
+owner; its visible countdown is separate from the execution limit. Accepted
+navigation refreshes only an unexpired idle lease; repaint, resize, updates and
+preview completion never do. An expiring
 live lease continues ordinary execution. Missing reliable Linux lifetime skips
 settled inspection; no presentation path extends or clears enforcement timers.
 q/Escape/keyboard Ctrl-C then closes without changing admitted outcome. External

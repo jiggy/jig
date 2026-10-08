@@ -976,7 +976,7 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work', '--json'], invocation.options)).toBe(1)
     expect(invocation.error).not.toContain('No Flow diagnostic text was captured.')
-    expect(invocation.error).toContain('See attributed runDiagnostics')
+    expect(invocation.error).toContain('See the attributed diagnostics shown above')
     expect(JSON.parse(invocation.output).runDiagnostics.entries[0]).toMatchObject({
       operations: ['worker'],
       stderr: 'child warning',

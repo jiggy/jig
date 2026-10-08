@@ -9,7 +9,8 @@ operator's fixed commands and application-owned acceptance cases.
 
 - `policy.ts` validates bounded source, editable paths, and Agent proposals.
 - `repair.ts` owns baseline reproduction, at most two proposals, command calls,
-  and outcome evidence.
+  and outcome evidence. Call intents distinguish baseline checks from each
+  numbered proposal; returned calls never establish check acceptance.
 - `evidence.ts` evaluates collected command output against unchanged cases.
 - `progress.ts` owns the closed application-local progress shape and bounded
   worker reports of check facts and procedural next steps. The `./progress`
