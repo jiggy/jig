@@ -173,10 +173,10 @@ try {
   assert.match(schemaInvalid.stderr, /Value: "\/name"\n  Expected string; received integer\./)
   assert.match(
     schemaInvalid.stderr,
-    /Next step: Inspect the approved schema and correct --input:\n\n  \$ jig inspect 'flow:flows\/hello'/,
+    /Next step: Inspect the approved schema and correct --input:\n {2}\n {4}\$ jig inspect 'flow:flows\/hello'/,
   )
   assert.match(schemaInvalid.stderr, /Jig runs the last approved revision/)
-  assert.match(schemaInvalid.stderr, /approve those edits first:\n\n  \$ jig review/)
+  assert.match(schemaInvalid.stderr, /approve those edits first:\n {2}\n {4}\$ jig review/)
   assert.match(schemaInvalid.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
   const rejectedTerminal = requireRecord(JSON.parse(schemaInvalid.stdout))
   assert.equal(rejectedTerminal.status, 'failed')

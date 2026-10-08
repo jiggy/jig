@@ -721,10 +721,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     assert.equal(automatic.code, 0)
     assert.equal(automatic.stdout, ordinary.stdout)
     assert.deepEqual(JSON.parse(automatic.stdout).output, { allocations: 16 })
-    assert.match(
-      automatic.stderr,
-      /Flow: Checking invoices\n {2}Flow: Verification remains pending\./,
-    )
+    assert.match(automatic.stderr, /Flow: Checking invoices\n {4}Verification remains pending\./)
     for (const options of [['--updates', 'off'], ['--json']]) {
       const quiet = await terminal([...common, ...options])
       assert.equal(quiet.code, 0)
@@ -763,7 +760,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     assert.match(failed.stderr, /Flow-reported error:/)
     assert.match(
       failed.stderr,
-      /Flow: Invoice verification failed\.\n {2}Flow: No invoice was accepted\./,
+      /Flow: Invoice verification failed\.\n {4}No invoice was accepted\./,
     )
     assert.match(failed.stderr, /Invoice verification failed/)
   }
