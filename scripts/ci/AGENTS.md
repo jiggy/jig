@@ -42,6 +42,8 @@ Host preparation never becomes a consumer requirement.
   footer requires the exact reviewed owning filter; every primary pass must match
   that filter. Reconcile primary pass/skip records, owning files and the completed
   report. Retain filtered counts separately without giving them execution credit.
+  Mixed portable/host test files require explicit platform-skipped case names;
+  their frozen source blob alone cannot authorize skipping an unconditional case.
 - `build-candidates.mjs` archives clean tracked source and freezes all five npm
   archives on qualified native Linux x64 Bun 1.3.3/Just 1.43.1 using normal workspace
   resolution and package-owned packing. Preserve generated resolution, actual

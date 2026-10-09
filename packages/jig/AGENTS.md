@@ -529,8 +529,18 @@ buffer release and output failure independently of recorded execution status.
   imports, relayed worker progress, both blocked job causes and checkpoint
   delivery without native clients or model calls. A second reviewed peer returns
   deterministic repairs through the public structured Agent result. Verify final
-  Jobs, Checks and Patches snapshots, independent acceptance, exact delivered patch
-  references, and complete ended summaries in automatic plain display.
+  Jobs, Checks and Patches snapshots with closed explicit reception, independent
+  acceptance and exact delivered patch references. The heavy automatic plain
+  run independently verifies its own result packet, both accepted repairs and
+  delivered-file hashes. Its three latest accepted summaries must freeze either
+  cleanly with the complete final snapshots or with the exact truthful LAGGED
+  explanation; other failures and fabricated clean endings refuse qualification.
+  A separate small cold installed consumer requires all three automatic typed
+  views and clean EOF, then declares producer loss and verifies incomplete views
+  alongside the successful result and delivered evidence. Portable channel tests
+  also exercise actual observer receiver overflow and producer loss without
+  disabling independent application-channel delivery. Optional observation never
+  promises that every heavy Run ends cleanly or changes the work outcome.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete

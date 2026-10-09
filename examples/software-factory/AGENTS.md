@@ -143,8 +143,13 @@ optional observation delivery.
   installed CLI with a deterministic Flow Agent peer. It verifies reviewed
   repair-dependency imports, live worker reports and checkpoint delivery after
   the editable repair source is removed, all three final views for blocked and
-  independently checked repairs, delivered patch references and automatic plain
-  summaries; it makes no live Agent claim.
+  independently checked repairs, closed explicit reception, and delivered patch
+  references. Automatic plain display verifies independently complete result and
+  delivered-file evidence, with either complete ended summaries or precisely
+  marked incomplete LAGGED observation. A separate small installed consumer
+  requires three clean-ended automatic views and truthful producer-loss display;
+  bounded receiver loss is exercised through the actual observer separately.
+  These checks make no live Agent claim or optional-delivery guarantee.
 - The release gate repeats deterministic application tests against packed SDK
   candidates. Jig's private repair-batch host fixture exercises the same
   contained command and checkpoint boundaries, but does not qualify this

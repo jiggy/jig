@@ -1,6 +1,7 @@
 import { constants, Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -48,6 +49,146 @@ for await (const line of lines) {
  }
 }
 `
+
+const lostObservation =
+  "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)"
+const factorySummaries = {
+  Jobs: [
+    '2 requested repairs; 0 finished, 0 checked patches. Inspect a repair for its goal and scope; follow Activity for current work.',
+    '2 independently checked patches ready for review. Original sources are unchanged.',
+  ],
+  Checks: [
+    'Repository tests and independent CLI cases check each proposed patch. Worker reports remain provisional until independently verified.',
+    'Finished checks: verified results are shown separately from provisional worker reports. Each patch is checked separately.',
+  ],
+  Patches: [
+    '0 independently checked candidates for human review. Changes have not been applied. Preview requires verified packet delivery.',
+    '2 independently checked candidates for human review. Changes have not been applied. Preview requires verified packet delivery.',
+  ],
+} as const
+
+function assertTypedObservation(
+  transcript: string,
+  summaries: Readonly<Record<string, readonly [string, string]>> = factorySummaries,
+): 'ended' | 'lagged' {
+  if (
+    transcript.includes('\u001b') ||
+    /Updates unavailable|Updates incomplete|presentation limit|DISCONNECTED|OWNER_CLOSED|INVALID_INPUT|INVALID_RESULT|RESOURCE_EXHAUSTED|PROTOCOL_ERROR|CHANNEL_LOST/.test(
+      transcript,
+    )
+  )
+    throw new Error('Factory observation contains an unexpected failure or terminal control')
+  const frozen = [...transcript.matchAll(/^  Flow \/ ([^\n]+?) \((.+)\):\n    ([^\n]+)$/gm)]
+  if (
+    frozen.length !== 3 ||
+    new Set(frozen.map((row) => row[1])).size !== 3 ||
+    frozen.some((row) => !Object.hasOwn(summaries, row[1]))
+  )
+    throw new Error('Factory observation must freeze all three known views exactly once')
+  const lost = transcript.includes(lostObservation)
+  if (lost) {
+    if (
+      transcript.includes('Observation ended') ||
+      transcript.match(/^  Jig — observation incomplete:$/gm)?.length !== 1 ||
+      transcript.split('\n').filter((line) => line === `      Flow: ${lostObservation}`).length !==
+        1
+    )
+      throw new Error('Factory observation loss must retain its exact incomplete explanation')
+  } else if (
+    /observation incomplete|LAGGED/.test(
+      transcript.replace(
+        /^  Flow: (?:HTTP log report|Timesheet totals): Live repair updates stopped \(LAGGED\)\. The repair result will still be checked\.$/gm,
+        '',
+      ),
+    )
+  )
+    throw new Error('Factory observation reports unrecognized loss')
+  for (const [, title, reason, summary] of frozen) {
+    const known = summaries[title]!
+    if (reason !== (lost ? lostObservation : 'Observation ended'))
+      throw new Error('Factory observation has inconsistent frozen context')
+    if (!(lost ? known.some((value) => value === summary) : summary === known[1]))
+      throw new Error('Factory observation has an unknown or incomplete clean final summary')
+    const accepted = [
+      ...transcript.matchAll(new RegExp(`^  Flow: ${title}\\n    ([^\\n]+)$`, 'gm')),
+    ]
+    if (accepted.at(-1)?.[1] !== summary)
+      throw new Error('Factory observation freezes a view that was not its latest accepted summary')
+  }
+  let unexplained = transcript.replace(
+    /^  Flow: (?:HTTP log report|Timesheet totals): Live repair updates stopped \(LAGGED\)\. The repair result will still be checked\.$/gm,
+    '',
+  )
+  if (lost) {
+    unexplained = unexplained.replace(
+      `  Jig — observation incomplete:\n      Flow: ${lostObservation}\n`,
+      '',
+    )
+    for (const [, title] of frozen)
+      unexplained = unexplained.replace(`  Flow / ${title} (${lostObservation}):\n`, '')
+  }
+  if (/LAGGED|observation incomplete/i.test(unexplained))
+    throw new Error('Factory observation contains unexplained loss outside its exact context')
+  return lost ? 'lagged' : 'ended'
+}
+
+test('factory automatic observation accepts complete views or exact truthful loss and rejects malformed evidence', () => {
+  const clean = Object.entries(factorySummaries)
+    .map(
+      ([title, summaries]) =>
+        `  Flow: ${title}\n    ${summaries[1]}\n  Flow / ${title} (Observation ended):\n    ${summaries[1]}\n`,
+    )
+    .join('')
+  const loss =
+    `  Jig — observation incomplete:\n      Flow: ${lostObservation}\n` +
+    Object.entries(factorySummaries)
+      .map(
+        ([title, summaries]) =>
+          `  Flow: ${title}\n    ${summaries[0]}\n  Flow / ${title} (${lostObservation}):\n    ${summaries[0]}\n`,
+      )
+      .join('')
+  expect(assertTypedObservation(clean)).toBe('ended')
+  expect(assertTypedObservation(loss)).toBe('lagged')
+  for (const title of ['HTTP log report', 'Timesheet totals'])
+    for (const [transcript, reason] of [
+      [clean, 'ended'],
+      [loss, 'lagged'],
+    ] as const)
+      expect(
+        assertTypedObservation(
+          `${transcript}  Flow: ${title}: Live repair updates stopped (LAGGED). The repair result will still be checked.\n`,
+        ),
+      ).toBe(reason)
+  for (const altered of [
+    '',
+    '  Flow: Jobs\n    Something happened\n',
+    loss.replaceAll('LAGGED', 'DISCONNECTED'),
+    loss.replaceAll('LAGGED', 'INVALID_INPUT'),
+    loss.replaceAll(lostObservation, 'Updates unavailable: contract violation.'),
+    loss.replace('  Jig — observation incomplete:\n', ''),
+    loss.replace(`      Flow: ${lostObservation}\n`, ''),
+    loss.replace(`  Flow / Jobs (${lostObservation})`, '  Flow / Jobs (Observation ended)'),
+    loss.replace('  Flow / Jobs', '  Flow / Unknown'),
+    loss.replace('  Flow / Checks', '  Flow / Jobs'),
+    loss.replace(factorySummaries.Jobs[0], factorySummaries.Jobs[1]),
+    clean.replaceAll(factorySummaries.Jobs[1], factorySummaries.Jobs[0]),
+    clean.replaceAll('Observation ended', 'No end evidence'),
+    `${clean}  Jig — observation incomplete:\n`,
+    `${clean}  Flow: Unknown observation LAGGED\n`,
+    `${loss}  Flow: Unknown observation LAGGED\n`,
+    `${loss}  Flow: unknown observation incomplete\n`,
+    `${loss}  Jig — observation incomplete:\n`,
+    `${loss}      Flow: ${lostObservation}\n`,
+    loss.replace(
+      '  Jig — observation incomplete:\n',
+      '  Jig — observation incomplete:\n    Unknown context\n',
+    ),
+    `${clean}  Flow / Unknown (Observation ended):\n    Invented summary\n`,
+    `${loss}Updates incomplete: unexpected failure\n`,
+    `${loss}\u001b[31m`,
+  ])
+    expect(() => assertTypedObservation(altered)).toThrow()
+})
 
 hostTest(
   'installed software factory delivers complete blocked and checked dashboard views',
@@ -197,6 +338,12 @@ hostTest(
         })
         expect(job.result.output.baseline.acceptance).not.toHaveLength(0)
       }
+      expect(records.filter((record) => record.type === 'end')).toEqual([
+        expect.objectContaining({ type: 'end', channel: 'progress', status: 'closed' }),
+      ])
+      expect(records.some((record) => record.type === 'end' && record.error !== undefined)).toBe(
+        false,
+      )
       const updates = records
         .filter((record) => record.type === 'data')
         .map((record) => record.value)
@@ -317,6 +464,9 @@ await handle(async run => {
         { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
         { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
       ])
+      expect(checked.filter((record) => record.type === 'end')).toEqual([
+        expect.objectContaining({ type: 'end', channel: 'progress', status: 'closed' }),
+      ])
       expect(checked.some((record) => record.type === 'end' && record.error !== undefined)).toBe(
         false,
       )
@@ -340,14 +490,300 @@ await handle(async run => {
         outcome: 'done',
         delivery: { status: 'written' },
       })
+      expect(plain.output.jobs).toHaveLength(2)
+      expect(plain.output.jobs.map((job) => job.id)).toEqual(['logs', 'timesheet'])
+      expect(plain.output.jobs.map(({ result: _result, ...evidence }) => evidence)).toEqual(
+        checkedTerminal.output.jobs.map(({ result: _result, ...evidence }) => evidence),
+      )
+      expect(plain.output.overlaps).toEqual([])
+      const automaticPacket = JSON.parse(
+        await readFile(join(project, 'factory-auto/result.json'), 'utf8'),
+      )
+      expect(automaticPacket).toEqual(plain)
+      const automaticSummary = await readFile(
+        join(project, 'factory-auto/files/summary.txt'),
+        'utf8',
+      )
+      expect(automaticSummary).toBe(
+        await readFile(join(project, 'factory-checked/files/summary.txt'), 'utf8'),
+      )
+      expect(automaticSummary).toContain(
+        'Patches were checked separately, not as a combined change. Review before applying.',
+      )
+      const expectedFiles = [
+        'summary.txt',
+        ...['logs', 'timesheet'].flatMap((id) =>
+          ['goal.txt', 'proposal-1.patch', 'review.patch', 'summary.txt'].map(
+            (file) => `${id}/${file}`,
+          ),
+        ),
+      ].sort()
+      expect(plain.delivery.files.map((file) => file.path).sort()).toEqual(expectedFiles)
+      for (const file of plain.delivery.files) {
+        const delivered = await readFile(join(project, 'factory-auto/files', file.path))
+        expect(delivered.byteLength).toBe(file.bytes)
+        expect(`sha256:${createHash('sha256').update(delivered).digest('hex')}`).toBe(file.digest)
+        expect(delivered).toEqual(await readFile(join(project, 'factory-checked/files', file.path)))
+      }
+      for (const job of plain.output.jobs) {
+        expect(job).toMatchObject({
+          status: 'settled',
+          ready: true,
+          verification: {
+            proposal: 1,
+            changedPaths: job.editPaths,
+            acceptanceCases: JSON.parse(
+              await readFile(join(example, 'flows/factory', `${job.id}-cases.json`), 'utf8'),
+            ).map((item) => item.id),
+          },
+        })
+        expect(job.result.output.attempts[0].evaluation.repositoryTestsPassed).toBe(true)
+        expect(job.result.output.attempts[0].evaluation.acceptance).toHaveLength(4)
+        expect(
+          job.result.output.attempts[0].evaluation.acceptance.every((item) => item.passed === true),
+        ).toBe(true)
+        const reviewPatch = await readFile(
+          join(project, 'factory-auto/files', job.id, 'review.patch'),
+          'utf8',
+        )
+        for (const path of job.editPaths) expect(reviewPatch).toContain(`--- a/${path}`)
+        expect(
+          await readFile(join(project, 'factory-auto/files', job.id, 'goal.txt'), 'utf8'),
+        ).toBe(job.issue)
+      }
       const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
-      for (const title of ['Jobs', 'Checks', 'Patches']) expect(transcript).toContain(title)
-      expect(transcript).toContain('Observation ended')
-      expect(transcript).not.toContain('\u001b')
+      assertTypedObservation(transcript)
       passed = true
     } finally {
       if (passed) await rm(directory, { recursive: true, force: true })
       else console.error(`Software factory consumer evidence retained at ${directory}`)
+    }
+  },
+  600_000,
+)
+
+hostTest(
+  'installed automatic plain typed views end cleanly and report declared observation loss',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jig-observation-consumer-'))
+    const project = join(directory, 'project')
+    const tooling = join(directory, 'tooling')
+    const artifacts = join(directory, 'artifacts')
+    const evidence = join(directory, 'commands')
+    const packageRoot = join(import.meta.dir, '..')
+    let passed = false
+    let sequence = 0
+    await mkdir(evidence)
+    const command = async (args: string[], cwd: string) => {
+      const child = Bun.spawn(args, {
+        cwd,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const result = await settleTestCommand(child, {
+        evidence: join(evidence, String(++sequence)),
+        timeoutMs: MACOS_FIXTURE_SETTLEMENT_MS,
+      })
+      expect(result.code, result.stdout + result.stderr).toBe(0)
+      return result.stdout
+    }
+    const archive = async (name: string, variable: string) => {
+      const supplied = process.env[variable]
+      if (supplied) return supplied
+      const destination = join(artifacts, name)
+      await mkdir(destination, { recursive: true })
+      await command(
+        name === 'jig'
+          ? [process.execPath, 'scripts/pack.ts', '--destination', destination]
+          : [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', destination],
+        join(packageRoot, '..', name),
+      )
+      const manifest = JSON.parse(
+        await readFile(join(packageRoot, '..', name, 'package.json'), 'utf8'),
+      )
+      return join(
+        destination,
+        `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`,
+      )
+    }
+    try {
+      await mkdir(tooling)
+      await writeFile(
+        join(tooling, 'package.json'),
+        JSON.stringify({
+          private: true,
+          dependencies: { '@jigging/jig': `file:${await archive('jig', 'JIG_PACKAGE_ARCHIVE')}` },
+        }),
+      )
+      await command(
+        [process.execPath, 'install', '--ignore-scripts', '--backend', 'copyfile'],
+        tooling,
+      )
+      const installed = join(tooling, 'node_modules/.bin/jig')
+      const flow = join(project, 'flows/witness')
+      await mkdir(flow, { recursive: true })
+      await writeFile(
+        join(project, 'package.json'),
+        JSON.stringify({
+          private: true,
+          type: 'module',
+          workspaces: ['flows/*', 'libs/*'],
+        }),
+      )
+      for (const [name, variable] of [
+        ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
+        ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
+      ] as const) {
+        const library = join(project, 'libs', name)
+        await mkdir(library, { recursive: true })
+        await command(
+          ['tar', '-xzf', await archive(name, variable), '--strip-components=1', '-C', library],
+          project,
+        )
+      }
+      await cp(
+        join(project, 'libs/user-updates/dist/user-updates.json'),
+        join(flow, 'user-updates.json'),
+      )
+      await writeFile(
+        join(flow, 'package.json'),
+        JSON.stringify({
+          name: 'ordinary-observation-witness',
+          private: true,
+          type: 'module',
+          dependencies: { '@jigging/flow': 'workspace:*' },
+        }),
+      )
+      await writeFile(
+        join(flow, 'FLOW.contract.json'),
+        JSON.stringify({
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+          id: 'https://example.org/contracts/observation-witness',
+          version: '1.0.0',
+          input: {
+            type: 'object',
+            properties: { mode: { enum: ['clean', 'lagged'] } },
+            required: ['mode'],
+            additionalProperties: false,
+          },
+          channels: {
+            progress: {
+              direction: 'send',
+              required: false,
+              delivery: 'broadcast',
+              contract: './user-updates.json',
+            },
+          },
+          attachments: { deliverables: 'read-write' },
+        }),
+      )
+      await writeFile(
+        join(flow, 'FLOW.ts'),
+        `import {writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {handle} from '@jigging/flow';
+await handle(async run => {
+ const evidence='Ordinary result and delivered evidence remain independent of optional observation.\\n';
+ await writeFile(join(run.attachments.deliverables.path,'evidence.txt'),evidence,{flag:'wx'});
+ const sender=run.channels.progress;
+ if(!sender||sender.direction!=='send')throw new Error('The witness requires its selected observer');
+ for(const [id,title] of [['jobs','Jobs'],['checks','Checks'],['patches','Patches']]) await sender.send({kind:'view',id,title,summary:'Witness '+title+': evidence written',sections:[{blocks:[{kind:'facts',items:[{label:'Evidence',value:{kind:'artifact',attachment:'deliverables',path:'evidence.txt'}}]}]}]});
+ await sender.close(run.input.mode==='lagged'?{error:'LAGGED'}:undefined);
+ return {outcome:'done',output:{mode:run.input.mode,evidence:'evidence.txt'}};
+});`,
+      )
+      await writeFile(
+        join(project, 'jig.ts'),
+        "import {defineJig,discover} from '@jigging/jig';export default defineJig({flows:discover('flows')});",
+      )
+      await command(
+        [process.execPath, 'install', '--ignore-scripts', '--backend', 'copyfile'],
+        project,
+      )
+      await command(
+        [installed, 'review', '--yes', '--allow-resolution-network', '--allow-authority-changes'],
+        project,
+      )
+      for (const mode of ['clean', 'lagged'] as const) {
+        const destination = `witness-${mode}`
+        const stdout = await command(
+          [
+            installed,
+            'run',
+            'flow:flows/witness',
+            '--input',
+            JSON.stringify({ mode }),
+            '--out',
+            destination,
+            '--display',
+            'plain',
+            '--timeout',
+            `${MACOS_FIXTURE_RUN_MS}ms`,
+          ],
+          project,
+        )
+        const terminal = JSON.parse(stdout)
+        expect(terminal).toMatchObject({
+          status: 'succeeded',
+          outcome: 'done',
+          output: { mode, evidence: 'evidence.txt' },
+          delivery: { status: 'written' },
+        })
+        expect(
+          JSON.parse(await readFile(join(project, destination, 'result.json'), 'utf8')),
+        ).toEqual(terminal)
+        const delivered = await readFile(join(project, destination, 'files/evidence.txt'))
+        expect(delivered.toString()).toBe(
+          'Ordinary result and delivered evidence remain independent of optional observation.\n',
+        )
+        expect(terminal.delivery.files).toEqual([
+          {
+            path: 'evidence.txt',
+            bytes: delivered.byteLength,
+            digest: `sha256:${createHash('sha256').update(delivered).digest('hex')}`,
+          },
+        ])
+        const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
+        expect(transcript).not.toContain('\u001b')
+        expect(transcript).not.toContain('Updates unavailable')
+        expect(transcript).not.toContain('DISCONNECTED')
+        expect(
+          assertTypedObservation(
+            transcript,
+            Object.fromEntries(
+              ['Jobs', 'Checks', 'Patches'].map((title) => [
+                title,
+                [
+                  `Witness ${title}: evidence written`,
+                  `Witness ${title}: evidence written`,
+                ] as const,
+              ]),
+            ),
+          ),
+        ).toBe(mode === 'clean' ? 'ended' : 'lagged')
+        const reason = mode === 'clean' ? 'Observation ended' : lostObservation
+        for (const title of ['Jobs', 'Checks', 'Patches']) {
+          expect(transcript).toContain(`  Flow: ${title}\n    Witness ${title}: evidence written\n`)
+          expect(transcript).toContain(
+            `  Flow / ${title} (${reason}):\n    Witness ${title}: evidence written\n`,
+          )
+        }
+        if (mode === 'clean') {
+          expect(transcript).not.toContain('observation incomplete')
+          expect(transcript).not.toContain('LAGGED')
+        } else {
+          expect(transcript).toContain(
+            `  Jig — observation incomplete:\n      Flow: ${lostObservation}\n`,
+          )
+          expect(transcript).not.toContain('Observation ended')
+        }
+      }
+      passed = true
+    } finally {
+      if (passed) await rm(directory, { recursive: true, force: true })
+      else console.error(`Ordinary observation evidence retained at ${directory}`)
     }
   },
   600_000,
