@@ -161,6 +161,8 @@ operational baselines, and public-site assembly.
 - `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
   shell against controlled registry responses without credentials, including
   independent FLOW publication and host-group preflight refusal.
+  Controlled registry/API emulators use the test runner's Bun to avoid repeated
+  mock interpreter startup; the real publisher still performs its Node checks.
 - `node --test scripts/ci/*.test.mjs` checks conservative selection, artifact
   and run/attempt lineage, fresh qualification, and fail-closed release readiness
   using disposable Git repositories, archives and controlled API responses.

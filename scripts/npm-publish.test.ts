@@ -21,7 +21,7 @@ async function releaseScript() {
   return workflow.jobs.publish.steps.find((step: any) => step.id === 'release').run as string
 }
 
-const fakeNpm = `#!/usr/bin/env node
+const fakeNpm = `#!/usr/bin/env bun
 const { readFileSync, writeFileSync, copyFileSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -64,7 +64,7 @@ if (args[0] === 'view') {
 } else { process.stderr.write('unexpected mock npm command: ' + args.join(' ') + '\\n'); process.exit(2); }
 `
 
-const fakeGithub = `#!/usr/bin/env node
+const fakeGithub = `#!/usr/bin/env bun
 const {readFileSync,writeFileSync}=require('node:fs');
 const state=JSON.parse(readFileSync(process.env.MOCK_NPM_STATE,'utf8'));
 const snapshot=JSON.parse(process.env.QUALIFICATION_SNAPSHOT);
