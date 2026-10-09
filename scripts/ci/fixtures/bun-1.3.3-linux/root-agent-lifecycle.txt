@@ -1,0 +1,71 @@
+bun test v1.3.3 (274e01c7)
+
+packages/jig/test/root-agent-run-lifecycle.test.ts:
+(pass) contact-import variants are valid current FLOW packages [133.00ms]
+(pass) constructs the Agent fixture with the complete current SDK [46.00ms]
+(pass) constructs a deterministic ACP peer without importing a private API worker [1.00ms]
+(pass) constructs the packed ACP Agent with an exact native grant and ordinary default [45.00ms]
+(pass) constructs an ordinary workspace caller of the packed conversation helper [73.00ms]
+(pass) constructs a locked local workspace for root and child Skill-delivery evidence [21.00ms]
+(pass) assembles the batch host fixture over the current repair application [36.00ms]
+(pass) constructs unchanged packed HTTP Agent method siblings [58.00ms]
+(pass) constructs the repair application with unchanged sources and ordinary workspace dependencies [56.00ms]
+(pass) contained repair file application > exports successful repair evidence through a JSON leaf and real contained commands [16803.07ms]
+(pass) contained repair file application > exports unsuccessful repair evidence through a JSON leaf and real contained commands [21337.09ms]
+(pass) contained repair file application > exports batch repair evidence through a JSON leaf and real contained commands [18671.08ms]
+(pass) contained repair file application > exports mixed-batch repair evidence through a JSON leaf and real contained commands [17446.07ms]
+(pass) private contained Agent Run lifecycle > executes and cleans a five-level branch within the unchanged aggregate envelope [16481.06ms]
+(pass) private contained Agent Run lifecycle > runs a Bun subprocess and asynchronous I/O from root and child Flow recipes [5768.02ms]
+(pass) private contained Agent Run lifecycle > delivers complete selected Skill bytes from a workspace root Flow [6599.03ms]
+(pass) private contained Agent Run lifecycle > delivers complete selected Skill bytes from a workspace child Binding [10111.04ms]
+(pass) private contained Agent Run lifecycle > runs unchanged packed HTTP Agent siblings without a native Agent provider [14625.06ms]
+(pass) private contained Agent Run lifecycle > runs two unchanged packed HTTP Agents through simultaneous deep specialist branches [32742.13ms]
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Codex through ACP with an operator-provided file-backed subscription
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Codex through ACP with a Responses-compatible endpoint
+(skip) private contained Agent Run lifecycle > interrupts an immediate follow-up through installed Jig and published conversation packages with a Responses-compatible endpoint
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Claude Code through ACP with an Anthropic-compatible endpoint
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Pi through ACP with an explicit built-in API provider
+agent-lifecycle-scenario agent-success
+agent-lifecycle-scenario agent-repeat-0
+agent-lifecycle-scenario agent-repeat-1
+agent-lifecycle-scenario agent-schema-invalid
+agent-lifecycle-scenario agent-malformed
+agent-lifecycle-scenario agent-schema-input-invalid
+agent-lifecycle-scenario agent-deadline
+agent-root-execution-failure {"phase":"child-flow-sealing","causes":["ChannelOperationError:CANCELLED"]}
+agent-root-execution-failure {"phase":"child-contained-effect-admission","causes":["Error"]}
+(pass) private contained Agent Run lifecycle > fences root Agent Run success, invalid output, cancellation, deadline, and loss [32267.13ms]
+agent-lifecycle-scenario agent-success
+agent-lifecycle-scenario agent-repeat-0
+agent-lifecycle-scenario agent-repeat-1
+agent-lifecycle-scenario agent-schema-invalid
+agent-lifecycle-scenario agent-malformed
+agent-lifecycle-scenario agent-schema-input-invalid
+agent-lifecycle-scenario agent-deadline
+agent-root-execution-failure {"phase":"child-contained-effect-admission","causes":["Error"]}
+(pass) private contained Agent Run lifecycle > fences specialist Agent Run success, invalid output, cancellation, deadline, and loss [52147.21ms]
+agent-lifecycle-scenario agent-success
+agent-lifecycle-scenario agent-repeat-0
+agent-lifecycle-scenario agent-repeat-1
+agent-lifecycle-scenario agent-schema-invalid
+agent-root-execution-failure {"phase":"child-finite-acp-protocol","causes":["ChannelOperationError:CANCELLED"]}
+agent-lifecycle-scenario agent-malformed
+agent-root-execution-failure {"phase":"child-finite-acp-protocol","causes":["PrivateFiniteAcpPolicyError"]}
+agent-lifecycle-scenario agent-schema-input-invalid
+agent-lifecycle-scenario agent-deadline
+agent-root-execution-failure {"phase":"child-flow-sealing","causes":["ChannelOperationError:CANCELLED"]}
+agent-root-execution-failure {"phase":"child-finite-acp-admission","causes":["Error"]}
+(pass) private contained Agent Run lifecycle > fences root Agent ACP success, invalid output, cancellation, deadline, and loss [31335.13ms]
+
+5 tests skipped:
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Codex through ACP with an operator-provided file-backed subscription
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Codex through ACP with a Responses-compatible endpoint
+(skip) private contained Agent Run lifecycle > interrupts an immediate follow-up through installed Jig and published conversation packages with a Responses-compatible endpoint
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Claude Code through ACP with an Anthropic-compatible endpoint
+(skip) private contained Agent Run lifecycle > executes the ordinary ACP Agent with native Pi through ACP with an explicit built-in API provider
+
+ 22 pass
+ 5 skip
+ 0 fail
+ 456 expect() calls
+Ran 27 tests across 1 file. [277.03s]

@@ -47,6 +47,7 @@ export async function observedCount({
     return {
       count: reports.reduce((sum, report) => sum + report.count, 0),
       skipped: reports.reduce((sum, report) => sum + report.skipped, 0),
+      filtered: reports.reduce((sum, report) => sum + (report.filtered ?? 0), 0),
       skippedCases: reports.flatMap((report) => report.skippedCases),
       basis: 'test-cases',
     }
@@ -244,6 +245,7 @@ export async function writeJobEvidence({
     count,
     basis,
     skipped = 0,
+    filtered = 0,
     skippedCases = [],
   } = await observedCount({ ...reports, source: plan.identity.head, targetId: id, profiles })
   if (!Number.isSafeInteger(count) || count <= 0)
@@ -268,6 +270,7 @@ export async function writeJobEvidence({
     status: 'success',
     inventoryDigest: target.inventoryDigest,
     executedCount: count,
+    ...(filtered ? { observedFiltered: filtered } : {}),
     basis,
     unexpectedSkips: 0,
     ...skipProof,
@@ -338,7 +341,9 @@ export async function collectJobEvidence({
           row.status !== 'success' ||
           row.inventoryDigest !== target.inventoryDigest ||
           !Number.isSafeInteger(row.executedCount) ||
-          row.executedCount <= 0,
+          row.executedCount <= 0 ||
+          (row.observedFiltered !== undefined &&
+            (!Number.isSafeInteger(row.observedFiltered) || row.observedFiltered < 0)),
       )
     )
       throw new Error(`Missing execution reports: ${target.id}`)
@@ -348,6 +353,9 @@ export async function collectJobEvidence({
     return {
       ...rows[0],
       executedCount: rows.reduce((sum, row) => sum + row.executedCount, 0),
+      ...(rows.some((row) => row.observedFiltered !== undefined)
+        ? { observedFiltered: rows.reduce((sum, row) => sum + (row.observedFiltered ?? 0), 0) }
+        : {}),
       profiles,
       unexpectedSkips: rows.reduce((sum, row) => sum + row.unexpectedSkips, 0),
       observedSkipped: rows.reduce((sum, row) => sum + row.observedSkipped, 0),

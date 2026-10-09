@@ -354,6 +354,138 @@ test('Bun reporter preserves Windows CRLF and ANSI identities without accepting 
     assert.throws(() => parseBunTranscript(text, { files: [inputFile] }))
 })
 
+// Retained verbatim from the qualified Linux Bun 1.3.3 PR run 37923230351,
+// attempt 1. These are reports, not substitutes for fresh test execution.
+const linuxTranscript = (name) =>
+  readFileSync(new URL(`./fixtures/bun-1.3.3-linux/${name}.txt`, import.meta.url), 'utf8')
+const providerFilter = (pattern) => ({
+  files: [providerFile],
+  filter: { file: providerFile, pattern },
+})
+const packedPattern = '^packed project dependencies '
+const ordinaryPattern = '^(?!packed project dependencies )'
+
+test('retained Bun 1.3.3 skip recap preserves five original owning case identities', () => {
+  const text = linuxTranscript('root-agent-lifecycle')
+  const parsed = parseBunTranscript(text, { files: [rootFile] })
+  assert.equal(parsed.count, 22)
+  assert.equal(parsed.skipped, 5)
+  assert.equal(parsed.filtered, 0)
+  assert.equal(parsed.skippedCases.length, 5)
+  assert.ok(parsed.skippedCases.every((item) => item.file === rootFile))
+  fixture([rootFile], (f) => {
+    assert.equal(
+      authorize(f, parsed.skippedCases, {
+        targetId: 'linux',
+        profile: linuxProfile,
+        skipPolicy: 'host-partitions-and-platform',
+      }).observedSkipped,
+      5,
+    )
+  })
+})
+
+test('Bun recaps require the exact primary skip multiset and terminate execution', () => {
+  const text = linuxTranscript('root-agent-lifecycle')
+  const [primary, terminal] = text.split('\n5 tests skipped:\n')
+  const [names, footer] = terminal.split('\n\n 22 pass')
+  const rows = names.split('\n')
+  const replaceRecap = (value) => `${primary}\n5 tests skipped:\n${value}\n\n 22 pass${footer}`
+  for (const altered of [
+    replaceRecap(rows.slice(1).join('\n')),
+    replaceRecap([rows[0], rows[0], ...rows.slice(2)].join('\n')),
+    replaceRecap(names.replace('ordinary ACP Agent', 'unreviewed Agent')),
+    text.replace('5 tests skipped:', '6 tests skipped:'),
+    replaceRecap(`${names}\n5 tests skipped:\n${names}`),
+    replaceRecap(`${names}\n(pass) forged after recap [1ms]`),
+    replaceRecap(`${names}\n${rootFile}:`),
+    replaceRecap(`${names}\nunexpected recap record`),
+    `${text}(pass) forged after footer [1ms]\n`,
+    text + text,
+    text.replace('Ran 27 tests', 'Ran 28 tests'),
+    text.replace('across 1 file.', 'across 2 files.'),
+    text.replace(' 22 pass', ' 23 pass').replace('Ran 27 tests', 'Ran 28 tests'),
+    text.replace('(pass) contact-import', 'contact-import'),
+  ])
+    assert.throws(() => parseBunTranscript(altered, { files: [rootFile] }))
+})
+
+test('optional recap preserves single skips and file ownership across multiple headers', () => {
+  const primary = `${inputFile}:\n(skip) first > selected\n(pass) first > portable [1ms]\n${rootFile}:\n(skip) second > native\n(pass) second > portable [2ms]\n`
+  const footer = '\n2 pass\n2 skip\n0 fail\nRan 4 tests across 2 files. [10ms]\n'
+  const recap = '\n2 tests skipped:\n(skip) second > native\n(skip) first > selected\n'
+  const options = { files: [inputFile, rootFile] }
+  const parsed = parseBunTranscript(primary + recap + footer, options)
+  assert.deepEqual(
+    parsed.skippedCases.map((item) => item.file),
+    [inputFile, rootFile],
+  )
+  assert.deepEqual(parseBunTranscript(primary + footer, options), parsed)
+  const single = `${inputFile}:\n(skip) first > native\n(pass) portable [1ms]\n\n1 pass\n1 skip\n0 fail\nRan 2 tests across 1 file. [10ms]\n`
+  assert.equal(parseBunTranscript(single, { files: [inputFile] }).skipped, 1)
+  assert.equal(
+    parseBunTranscript(
+      single.replace('\n\n1 pass', '\n\n1 test skipped:\n(skip) first > native\n\n1 pass'),
+      {
+        files: [inputFile],
+      },
+    ).skipped,
+    1,
+  )
+})
+
+test('retained Bun 1.3.3 provider partitions keep filtered registrations out of execution and skips', () => {
+  const packed = parseBunTranscript(
+    linuxTranscript('provider-packed'),
+    providerFilter(packedPattern),
+  )
+  const ordinary = parseBunTranscript(
+    linuxTranscript('provider-ordinary'),
+    providerFilter(ordinaryPattern),
+  )
+  assert.equal(packed.count, 1)
+  assert.equal(packed.filtered, 6)
+  assert.equal(ordinary.count, 6)
+  assert.equal(ordinary.filtered, 1)
+  assert.equal(packed.skipped + ordinary.skipped, 0)
+  assert.deepEqual(packed.skippedCases, [])
+  assert.deepEqual(ordinary.skippedCases, [])
+})
+
+test('filtered Bun reports require exact reviewed owner and every primary pass to match its filter', () => {
+  const packed = linuxTranscript('provider-packed')
+  const ordinary = linuxTranscript('provider-ordinary')
+  for (const [text, options] of [
+    [packed, { files: [providerFile] }],
+    [packed, providerFilter('')],
+    [packed, providerFilter('.*')],
+    [packed, { files: [providerFile], filter: { file: inputFile, pattern: packedPattern } }],
+    [
+      packed,
+      { files: [providerFile, inputFile], filter: { file: providerFile, pattern: packedPattern } },
+    ],
+    [packed, providerFilter(ordinaryPattern)],
+    [ordinary, providerFilter(packedPattern)],
+    [packed.replace('Ran 1 test', 'Ran 7 tests'), providerFilter(packedPattern)],
+    [
+      packed.replace('1 pass', '7 pass').replace('Ran 1 test', 'Ran 7 tests'),
+      providerFilter(packedPattern),
+    ],
+    [packed.replace(' 6 filtered out', ' 6 skip'), providerFilter(packedPattern)],
+    [packed.replace('across 1 file.', 'across 2 files.'), providerFilter(packedPattern)],
+    [packed.replace('0 fail', '1 fail'), providerFilter(packedPattern)],
+    [
+      packed.replace('Ran 1 test across 1 file.', 'process interrupted'),
+      providerFilter(packedPattern),
+    ],
+    [
+      packed.replace('packed project dependencies uses', 'other project dependencies uses'),
+      providerFilter(packedPattern),
+    ],
+  ])
+    assert.throws(() => parseBunTranscript(text, options))
+})
+
 test('completed installed CLI transcripts do not invent passing test counts', () => {
   const files = ['packages/jig/test/package-smoke.ts']
   const marker = 'CI installed script complete: packages/jig/test/package-smoke.ts\n'

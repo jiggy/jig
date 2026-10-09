@@ -37,6 +37,11 @@ Host preparation never becomes a consumer requirement.
   extra records, altered identities and repetition across owning commands.
   Native prerequisite and installed-startup reports retain strict single-instance
   identity rules. Reporter-supplied lines or ordinals cannot create new identities.
+  Bun's optional skipped-test recap must reproduce the primary skipped-name
+  multiset exactly and supplies no additional execution records. A filtered-out
+  footer requires the exact reviewed owning filter; every primary pass must match
+  that filter. Reconcile primary pass/skip records, owning files and the completed
+  report. Retain filtered counts separately without giving them execution credit.
 - `build-candidates.mjs` archives clean tracked source and freezes all five npm
   archives on qualified native Linux x64 Bun 1.3.3/Just 1.43.1 using normal workspace
   resolution and package-owned packing. Preserve generated resolution, actual
