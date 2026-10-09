@@ -26,7 +26,7 @@ From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m --display tui
 ```
 
 Add `--receive progress` to see the repair specialist's phase and attempt
@@ -34,11 +34,31 @@ while the Run is active. Redirected stdout then uses NDJSON records; only the
 terminal record establishes the outcome. Phase records do not include Agent
 text or guarantee that a candidate passed its checks.
 
+The `updates` channel carries the optional semantic dashboards; `progress` retains the
+specialist’s separate closed phase records for explicit channel consumers. Neither
+establishes acceptance.
+
 The synthetic fixture is an HTTP log reporter with defects in parsing and
 aggregation. Open `repair-result/files/summary.txt`. A passing repair produces
 `review.patch`; valid unsuccessful proposals remain `proposal-N.patch`.
 `result.json` records candidate identities, command output and termination,
 and independent acceptance results. Review the patch before applying it.
+
+## Follow the work
+
+**Repair** retains the requested goal and editable scope. **Checks** separates the
+original failure from each proposal's repository and independent acceptance checks.
+Worker reports stay provisional until the project caller validates identities and
+recomputes the verdicts. **Evidence** links to the complete `goal.txt`, summaries and
+retained proposals; only an accepted candidate earns `review.patch`. Selecting a
+delivered file shows its content. The reusable specialist offers Repair and Checks
+without claiming that its caller has accepted a patch.
+
+Choose `--display web` instead of `--display tui` to use the same views in a
+browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 ## Follow the evidence
 

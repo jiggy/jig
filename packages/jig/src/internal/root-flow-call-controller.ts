@@ -101,6 +101,8 @@ import { isPrivateBranchDepth } from './root-operation-limits.js'
 import {
   channelContractResolver,
   type PrivateChannelContractCache,
+  type PrivateRunDiagnosticSource,
+  privateRunDiagnosticObserver,
   resolveChannelDeclarations,
 } from './run-channels.js'
 
@@ -149,7 +151,11 @@ interface ChildInput {
     readonly broker: ChannelBroker
     readonly contracts?: PrivateChannelContractCache
   }
-  readonly onDiagnostic?: (bytes: Uint8Array, operations?: readonly string[]) => void
+  readonly onDiagnostic?: (
+    bytes: Uint8Array,
+    operations?: readonly string[],
+    source?: PrivateRunDiagnosticSource,
+  ) => void
   readonly diagnosticPath?: readonly string[]
   readonly onFailure?: (phase: ChildFailurePhase, error: unknown) => void
   readonly onEffectFailure?: (phase: PrivateContainedEffectFailurePhase, error: unknown) => void
@@ -238,7 +244,30 @@ export async function executePrivateRootFlowCall(
         // Presentation cannot admit, fail or change execution of a child.
       }
     }
-    return await executePreparedChild(input, selected, inspected, participant, declarations)
+    const onDiagnostic =
+      input.onDiagnostic === undefined
+        ? undefined
+        : privateRunDiagnosticObserver({
+            output: { diagnostic: input.onDiagnostic },
+            ...(participant === undefined ? {} : { emitter: participant }),
+            ...(request.channels === undefined
+              ? {}
+              : {
+                  call: {
+                    caller: request.channels.caller,
+                    operationId: request.call.operationId,
+                  },
+                }),
+            ...(input.diagnosticPath === undefined ? {} : { operations: input.diagnosticPath }),
+          })
+    return await executePreparedChild(
+      input,
+      selected,
+      inspected,
+      participant,
+      declarations,
+      onDiagnostic,
+    )
   } catch (error) {
     if (error instanceof ChannelOperationError)
       return failed(error.code, error.message, error.details)
@@ -257,6 +286,7 @@ async function executePreparedChild(
   inspected: InspectedPackage,
   participant: ChannelParticipant | undefined,
   declarations: Readonly<Record<string, ChannelDeclaration>>,
+  onDiagnostic: ((bytes: Uint8Array) => void) | undefined,
 ): Promise<RunHostOperationTerminal> {
   if (selected.disposition.state !== 'ready')
     return failed('UNAVAILABLE', 'the admitted child Flow is unavailable on this host')
@@ -424,6 +454,7 @@ async function executePreparedChild(
         inspected,
         participant,
         recipe,
+        onDiagnostic,
       ),
     ).run()
     failurePhase = 'settlement'
@@ -507,6 +538,7 @@ function specialistDispatcher(
   inspected: InspectedPackage,
   participant: ChannelParticipant | undefined,
   recipe: PrivateDirectRunRecipe,
+  onDiagnostic: ((bytes: Uint8Array) => void) | undefined,
 ): RunHostOperationDispatcher {
   let active = false
   return {
@@ -521,9 +553,7 @@ function specialistDispatcher(
         time: Date.now(),
         ...(cause === undefined ? {} : { cause }),
       }),
-    ...(input.onDiagnostic === undefined
-      ? {}
-      : { onDiagnostic: (bytes: Uint8Array) => input.onDiagnostic!(bytes, input.diagnosticPath) }),
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
     validateResult(result) {
       const admitted = admitPrivatePackageResult(inspected, {
         status: 'succeeded',

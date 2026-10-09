@@ -142,7 +142,7 @@ On Linux x64/glibc, use Bun 1.3.3 (revision
 extracted repository root:
 
 ```sh
-bun install --filter @jigging/jig --ignore-scripts --config=/dev/null
+bun install --filter @jigging/jig --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui --ignore-scripts --config=/dev/null
 just --justfile packages/jig/justfile build
 ```
 

@@ -56,6 +56,12 @@ export interface PrivateDeliveryReceipt {
 export interface PrivateDeliveryConnection {
   enableInspection?(): void
   preview?(path: string): Promise<{ text: string; bytes: number; clipped: boolean } | undefined>
+  inspectionPreview?(
+    path: string,
+    options: PrivateDeliveryInspectionOptions,
+  ): Promise<PrivateDeliveryInspectionPreview>
+  /** Authority release, ACK and expected channel completion all precede resolution. */
+  retire?(options: PrivateDeliveryInspectionOptions): Promise<void>
   readonly checkpoint?: RetainedRunCheckpoint | null | undefined
   prepare(directory: string, roots: readonly number[]): Promise<void>
   bindCheckpoint?(identity: RunCheckpointIdentity, project: string, epoch: number): Promise<void>
@@ -66,6 +72,18 @@ export interface PrivateDeliveryConnection {
     signal?: AbortSignal,
   ): Promise<PrivateDeliveryReceipt>
 }
+
+export interface PrivateDeliveryInspectionOptions {
+  /** Epoch-referenced process-monotonic milliseconds, never a renewed allowance. */
+  readonly deadline: number
+  readonly signal?: AbortSignal
+}
+export type PrivateDeliveryInspectionPreview = Readonly<{
+  state: 'text' | 'empty' | 'non-text' | 'unavailable'
+  text?: string
+  bytes: number
+  clipped: boolean
+}>
 
 export type PrivateDeliveryOutput =
   | { readonly kind: 'linux-directory'; readonly fd: number }
@@ -83,14 +101,23 @@ export class PrivateFileDeliveryOwner {
   #publishing = false
   #previewFiles: Map<string, Buffer> | undefined
   #retainPreview = false
+  #close: Promise<void> | undefined
+  #preparation: Promise<void> | undefined
+  #publication: Promise<PrivateDeliveryReceipt> | undefined
 
   enableInspection(): void {
-    if (!this.#publishing) this.#retainPreview = true
+    if (!this.#publishing && !this.#close) this.#retainPreview = true
   }
   preview(path: string): { text: string; bytes: number; clipped: boolean } | undefined {
+    const preview = this.inspectionPreview(path)
+    return preview.text === undefined
+      ? undefined
+      : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
+  }
+  inspectionPreview(path: string): PrivateDeliveryInspectionPreview {
     privateFilePath(path)
     const contents = this.#previewFiles?.get(path)
-    if (!contents) return undefined
+    if (!contents) return { state: 'unavailable', bytes: 0, clipped: false }
     const size = Math.min(65536, contents.length)
     let text: string | undefined
     for (let end = size; end >= Math.max(0, size - (contents.length > size ? 3 : 0)); end--) {
@@ -99,8 +126,13 @@ export class PrivateFileDeliveryOwner {
         break
       } catch {}
     }
-    if (text === undefined) return undefined
-    return { text, bytes: contents.length, clipped: contents.length > size }
+    if (text === undefined) return { state: 'non-text', bytes: contents.length, clipped: false }
+    return {
+      state: contents.length === 0 ? 'empty' : 'text',
+      text,
+      bytes: contents.length,
+      clipped: contents.length > size,
+    }
   }
 
   constructor(
@@ -108,8 +140,14 @@ export class PrivateFileDeliveryOwner {
     readonly onStaged?: () => Promise<void>,
   ) {}
 
-  async prepare(directory: string, sourceFds: readonly number[]): Promise<void> {
-    if (this.#preparing || this.#parent !== undefined)
+  prepare(directory: string, sourceFds: readonly number[]): Promise<void> {
+    if (this.#close || this.#preparing || this.#parent !== undefined)
+      return Promise.reject(new Error('delivery destination unavailable'))
+    this.#preparation = this.#prepare(directory, sourceFds)
+    return this.#preparation
+  }
+  async #prepare(directory: string, sourceFds: readonly number[]): Promise<void> {
+    if (this.#close || this.#preparing || this.#parent !== undefined)
       throw new TypeError('delivery destination already selected')
     this.#preparing = true
     let parent: FileHandle | undefined
@@ -146,7 +184,25 @@ export class PrivateFileDeliveryOwner {
     }
   }
 
-  async publish(
+  publish(
+    record: JsonValue,
+    output: PrivateDeliveryOutput | undefined,
+    checkpoint?: RetainedRunCheckpoint,
+    retainAfterCancellation = false,
+    coordinatorLost?: AbortSignal,
+  ): Promise<PrivateDeliveryReceipt> {
+    if (this.#close || this.#publishing)
+      return Promise.reject(new Error('delivery owner unavailable'))
+    this.#publication = this.#publish(
+      record,
+      output,
+      checkpoint,
+      retainAfterCancellation,
+      coordinatorLost,
+    )
+    return this.#publication
+  }
+  async #publish(
     record: JsonValue,
     output: PrivateDeliveryOutput | undefined,
     checkpoint?: RetainedRunCheckpoint,
@@ -154,6 +210,7 @@ export class PrivateFileDeliveryOwner {
     coordinatorLost?: AbortSignal,
   ): Promise<PrivateDeliveryReceipt> {
     if (
+      this.#close ||
       this.#parent === undefined ||
       this.#leaf === undefined ||
       this.#destination === undefined ||
@@ -301,14 +358,33 @@ export class PrivateFileDeliveryOwner {
     }
   }
 
-  async close(): Promise<void> {
-    for (const bytes of this.#previewFiles?.values() ?? []) bytes.fill(0)
+  close(): Promise<void> {
+    this.#close ??= this.#closeOwned()
+    return this.#close
+  }
+  async #closeOwned(): Promise<void> {
+    // The same owner joins its original operations before consuming their held
+    // references. Their execution/publication outcomes remain independent.
+    await Promise.allSettled([this.#preparation, this.#publication])
+    const previews = this.#previewFiles,
+      parent = this.#parent,
+      stage = this.#stage
     this.#previewFiles = undefined
-    await this.#cleanupStage()
-    if (this.#parent !== undefined) {
-      await this.#parent.close()
-      this.#parent = undefined
+    this.#parent = undefined
+    this.#stage = undefined
+    for (const bytes of previews?.values() ?? []) bytes.fill(0)
+    const failures: unknown[] = []
+    try {
+      await this.#cleanupStage(stage, parent)
+    } catch (error) {
+      failures.push(error)
     }
+    try {
+      await parent?.close()
+    } catch (error) {
+      failures.push(error)
+    }
+    if (failures.length) throw new AggregateError(failures, 'delivery owner cleanup failed')
   }
   #verifyParent(): void {
     const current = privateOpenFileRoot(this.#parentPath!)
@@ -321,12 +397,12 @@ export class PrivateFileDeliveryOwner {
       closeSync(current)
     }
   }
-  async #cleanupStage(): Promise<void> {
-    if (this.#stage === undefined || this.#published) return
-    const info = await statPrivateChild(this.#parent!, this.#stage.location.name)
-    if (!info.isDirectory() || info.ino !== this.#stage.inode || info.dev !== this.#stage.device)
+  async #cleanupStage(stage = this.#stage, parent = this.#parent): Promise<void> {
+    if (stage === undefined || this.#published) return
+    const info = await statPrivateChild(parent!, stage.location.name)
+    if (!info.isDirectory() || info.ino !== stage.inode || info.dev !== stage.device)
       throw new Error('delivery cleanup identity changed')
-    await removePrivateDeliveryStage(this.#stage.location, this.#stage)
+    await removePrivateDeliveryStage(stage.location, stage)
     this.#stage = undefined
   }
 }

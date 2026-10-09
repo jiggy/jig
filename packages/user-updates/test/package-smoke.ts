@@ -52,12 +52,34 @@ try {
     await readFile(join(directory, 'node_modules/@jigging/user-updates/dist/user-updates.json')),
     await readFile(join(root, 'src/user-updates.json')),
   )
+  for (const name of ['validation.js', 'validation.d.ts', 'view.js']) {
+    const source = await readFile(
+      join(directory, 'node_modules/@jigging/user-updates/dist', name),
+      'utf8',
+    )
+    assert(
+      !/node:|\bBuffer\b|@jigging\/flow|publisher/.test(source),
+      `Portable validation closure: ${name}`,
+    )
+  }
   await writeFile(
     join(directory, 'consumer.mjs'),
     `
 import assert from 'node:assert/strict';
 import { OperationError } from '@jigging/flow';
 import { withUserUpdates, USER_UPDATES_CONTRACT, validateUserUpdate } from '@jigging/user-updates';
+import { validateUserUpdate as portableValidator } from '@jigging/user-updates/validation';
+assert.equal(portableValidator, validateUserUpdate);
+const originalBuffer = Object.getOwnPropertyDescriptor(globalThis, 'Buffer');
+try {
+  Object.defineProperty(globalThis, 'Buffer', {value:undefined,configurable:true});
+  const captured = path => ({kind:'view',id:'evidence',title:'Evidence',summary:'Captured file',sections:[{blocks:[{kind:'report',text:'Supplied file',references:[{kind:'artifact',attachment:'output',path}]}]}]});
+  assert.deepEqual(portableValidator(captured('é'.repeat(254)+'.txt')),captured('é'.repeat(254)+'.txt'));
+  assert.throws(() => portableValidator(captured('é'.repeat(255)+'.txt')), TypeError);
+} finally {
+  if(originalBuffer) Object.defineProperty(globalThis,'Buffer',originalBuffer);
+  else Reflect.deleteProperty(globalThis,'Buffer');
+}
 for (const connected of [true, false]) {
   const values = [], closes = [];
   const sender = { direction: 'send', delivery: 'direct', contract: USER_UPDATES_CONTRACT,
@@ -88,6 +110,8 @@ for (const code of ['DISCONNECTED', 'RESOURCE_EXHAUSTED']) {
     join(directory, 'consumer.ts'),
     `import { withUserUpdates, type Progress, type NoticeSeverity } from '@jigging/user-updates';
 import type { RunContext, RunResult } from '@jigging/flow';
+import { validateUserUpdate as portableValidator, type UserUpdate } from '@jigging/user-updates/validation';
+export const supplied: UserUpdate = portableValidator({kind:'notice',text:'Independent validation'});
 export const invoices = (run: RunContext): Promise<RunResult> => withUserUpdates(run, 'updates', updates => {
   const count: Progress = { completed: 2, total: 3, unit: 'invoices' };
   const severity: NoticeSeverity = 'warning';

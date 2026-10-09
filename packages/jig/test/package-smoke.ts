@@ -256,6 +256,46 @@ console.log(path);
       "import { defineJig } from '@jigging/jig';\nconsole.log(typeof defineJig);\n",
     )
     assert.equal((await run([runtime, authoringCheck], consumer)).stdout, 'function\n')
+    const tuiRefusal = await run(
+      [
+        process.env.PYTHON ?? 'python3',
+        join(import.meta.dir, 'fixtures/installed-tui-refusal.py'),
+        command,
+      ],
+      consumer,
+      {},
+      45_000,
+    )
+    assert.equal(JSON.parse(tuiRefusal.stdout).passed, true)
+    assert.equal(tuiRefusal.stderr, '')
+    // Saved inspection needs terminal stdout as well as terminal stderr. The
+    // test-only PTY owner keeps the capability in memory and emits sanitized
+    // evidence; no project, execution host or native renderer is involved.
+    const web = await run(
+      [
+        process.env.PYTHON ?? 'python3',
+        join(import.meta.dir, 'fixtures/installed-saved-web.py'),
+        command,
+        join(consumer, 'saved-web-packet'),
+      ],
+      consumer,
+      {},
+      90_000,
+    )
+    assert.deepEqual(JSON.parse(web.stdout), {
+      passed: true,
+      checks: [
+        'embedded-assets',
+        'bearer-required',
+        'recorded-capture',
+        'immutable-previews',
+        'exact-origin-close',
+        'piped-input',
+        'joined-exit',
+        'capability-redaction',
+      ],
+    })
+    assert.equal(web.stderr, '')
   } finally {
     await rename(hiddenRenderer, rendererDirectory)
   }

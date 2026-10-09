@@ -1,21 +1,33 @@
-import { StringDecoder } from 'node:string_decoder'
 import type { Block, DetailBlock, Reference, Value } from '@jigging/user-updates'
-import { privateCliHeading, privateCliSecondary, privateCliSelection } from './cli-presentation.js'
+import type { DisplayFact } from '@jigging/display-model'
+import { heading, secondary, selection } from './style.js'
 import {
-  type PrivateRunModel,
-  type PrivateWorkspaceRecord,
-  privateAttentionImportance,
-} from './cli-run-model.js'
-import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
+  type ViewerModel,
+  type ViewerRecord,
+  type ViewerJournalEntry,
+  attentionImportance,
+  observedTime,
+  recordReferences,
+  viewerFactText,
+  viewerFactTone,
+} from './viewer-model.js'
 import {
-  privateTerminalWidth,
-  privateTruncateUpdate,
-  privateUpdateText,
-  privateWrappedUpdate,
-} from './private-terminal-text.js'
+  terminalWidth,
+  truncateTerminalText,
+  escapeTerminalText,
+  wrapTerminalText,
+} from './text.js'
 
 type ScrollAnchor = { key: string; offset: number }
-export interface PrivateDashboardFrame {
+const diagnosticPath = (entry: ViewerJournalEntry): string => {
+  const path = entry.operationsPath?.join(' / ')
+  return path
+    ? `${path}${entry.pathClipped ? ' [path truncated]' : ''}`
+    : entry.pathClipped
+      ? 'Invocation path unavailable (clipped)'
+      : '(root)'
+}
+export interface ViewerFrame {
   readonly lines: readonly string[]
   readonly references: readonly Reference[]
   readonly scroll?: number
@@ -26,22 +38,22 @@ const scalar = (value: Value): string =>
     ? 'Unknown'
     : typeof value === 'object'
       ? 'Reference'
-      : privateUpdateText(String(value))
+      : escapeTerminalText(String(value))
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 function wrap(text: string, width: number): string[] {
   const result: string[] = []
-  for (const line of privateUpdateText(text).split('\n')) {
+  for (const line of escapeTerminalText(text).split('\n')) {
     let current = '',
       cells = 0
     for (const { segment } of segmenter.segment(line)) {
-      const size = privateTerminalWidth(segment)
+      const size = terminalWidth(segment)
       if (current && cells + size > width) {
         result.push(current)
         current = ''
         cells = 0
       }
       if (size > width) {
-        result.push(privateTruncateUpdate(segment, width))
+        result.push(truncateTerminalText(segment, width))
         continue
       }
       current += segment
@@ -54,13 +66,13 @@ function wrap(text: string, width: number): string[] {
 
 /** Portable blocks have no terminal-specific callbacks, styling or executable content. */
 function privateInlineFrame(
-  model: PrivateRunModel,
+  model: ViewerModel,
   width: number,
   height: number,
   color = false,
   scroll = 0,
   retainedAnchor?: ScrollAnchor,
-): PrivateDashboardFrame {
+): ViewerFrame {
   width = Math.max(1, Math.min(4096, width - 1))
   height = Math.max(3, Math.min(100, height))
   const lines: string[] = [],
@@ -95,10 +107,12 @@ function privateInlineFrame(
           break
         }
         case 'collection': {
+          const rows = model.visibleRows(b)
+          const filter = model.local.filters.get(b.id)
+          const sort = model.local.sorts.get(b.id)
           add(
-            `${b.title} — ${b.rows.length} supplied${b.total === undefined ? '' : ` / ${b.total} reported`} records`,
+            `${b.title} — ${rows.length}${filter ? ` of ${b.rows.length}` : ''} supplied${b.total === undefined ? '' : ` / ${b.total} reported`} records${filter ? ` · local filter ${filter}` : ''}${sort ? ` · local sort ${sort.key}` : ''}`,
           )
-          const rows = b.rows
           if (!rows.length) add('No supplied records in this view')
           for (const row of rows.slice(0, 4)) {
             anchors.push({
@@ -111,7 +125,7 @@ function privateInlineFrame(
             blocks(publisher, row.details ?? [])
           }
           if (rows.length > 4)
-            add(`${rows.length - 4} more supplied records; use --display dashboard to inspect`)
+            add(`${rows.length - 4} more supplied records; open terminal inspection for details`)
           break
         }
       }
@@ -120,19 +134,35 @@ function privateInlineFrame(
   const title = selected
     ? `${model.sourceLabel(selected.publisher)} / ${selected.value.title}`
     : 'Run overview'
-  lines.push(privateCliHeading(privateUpdateText(title), 'info', color))
-  if (model.incomplete) add(model.incomplete)
-  add(model.context)
+  lines.push(
+    heading(
+      truncateTerminalText(escapeTerminalText(title).replaceAll('\n', '\\n'), width),
+      'info',
+      color,
+    ),
+  )
+  const warning = model.observationWarning
+  const warningLine = warning && escapeTerminalText(warning).replaceAll('\n', '\\n')
+  const warningMarker =
+    warningLine &&
+    truncateTerminalText(
+      terminalWidth(warningLine) > width ? warningLine.split(' · ')[0]! : warningLine,
+      width,
+    )
+  if (warningMarker) lines.push(warningMarker)
+  if (warning && warningLine && warningMarker !== warningLine) add(warning)
+  if (model.workspace.facts) add(model.hostFactsText)
+  else add(model.context)
   const sticky = model.sticky
   if (sticky && height <= 6) {
     const cause = wrap(sticky.text, width)
     const content = [
-      privateTruncateUpdate(
-        model.incomplete ?? `Attention (${privateUpdateText(sticky.source)})`,
+      truncateTerminalText(
+        warningMarker ?? `Attention (${escapeTerminalText(sticky.source).replaceAll('\n', '\\n')})`,
         width,
       ),
       ...cause.slice(0, height - 2),
-      privateTruncateUpdate(
+      truncateTerminalText(
         sticky.committed
           ? '[Full report in transcript]'
           : '[Transcript incomplete; retained cause shown here]',
@@ -163,8 +193,7 @@ function privateInlineFrame(
         `Associated call: ${model.resolve(selected.publisher, { kind: 'call', operationId: selected.value.operationId }).label}`,
       )
     add(selected.value.summary)
-    if (selected.ended)
-      add(`${selected.ended}; last update ${new Date(selected.updated).toISOString()}`)
+    if (selected.ended) add(`${selected.ended}; last update ${observedTime(selected.updated)}`)
     for (const section of selected.value.sections) {
       if (section.title) add(section.title)
       blocks(selected.publisher, section.blocks)
@@ -173,9 +202,11 @@ function privateInlineFrame(
     const nodes = [...model.calls.values()]
     const children = new Map<string | undefined, typeof nodes>()
     for (const node of nodes) {
-      const list = children.get(node.parent) ?? []
+      const parent =
+        node.parent !== undefined && model.calls.has(node.parent) ? node.parent : undefined
+      const list = children.get(parent) ?? []
       list.push(node)
-      children.set(node.parent, list)
+      children.set(parent, list)
     }
     const draw = (parent: string | undefined, depth: number) => {
       for (const n of children.get(parent) ?? []) {
@@ -193,6 +224,8 @@ function privateInlineFrame(
           `${model.focusedCall === n.key ? '> ' : ''}${'  '.repeat(depth)}${depth ? '└─ ' : '• '}${n.slot} — ${status}${n.intent ? `: ${n.intent}` : ''}`,
         )
         if (n.cause) add(`${'  '.repeat(depth + 1)}Cause: ${n.cause}`)
+        if (n.parent && !model.calls.has(n.parent))
+          add('Enclosing invocation unavailable; relationship incomplete')
         if (depth < 32) draw(n.key, depth + 1)
       }
     }
@@ -215,14 +248,15 @@ function privateInlineFrame(
     add(model.preview.text)
   }
   if (model.feedback) add(model.feedback)
-  const footer = 'Read-only observations · --display dashboard opens the inspector'
+  const footer = 'Read-only observations · open terminal inspection for details'
   const footerLines = wrap(footer, width).slice(0, Math.max(1, Math.min(2, height - 2)))
   const available = Math.max(1, height - footerLines.length)
   let projection = lines
   let offset = 0,
     viewportAnchor: ScrollAnchor | undefined
   if (lines.length > available) {
-    const shell = lines.slice(0, Math.min(shellLength, Math.max(1, available - 2)))
+    const requiredShell = model.observationWarning ? 2 : 1
+    const shell = lines.slice(0, Math.min(shellLength, Math.max(requiredShell, available - 2)))
     const body = lines.slice(shellLength)
     const bodyRoom = Math.max(1, available - shell.length - 1)
     const follow =
@@ -271,18 +305,20 @@ function privateTruncateStyled(text: string, width: number): string {
   // Styled headings are host-owned and short. Width measurements ignore escapes.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip host ANSI styling for terminal cell measurement.
   const plain = text.replace(/\u001b\[[0-9;]*m/g, '')
-  return privateTerminalWidth(plain) <= width ? text : privateTruncateUpdate(plain, width)
+  return terminalWidth(plain) <= width ? text : truncateTerminalText(plain, width)
 }
 
-export type PrivateDashboardPanel =
+export type ViewerPanel =
+  | { kind: 'views'; selected: string }
   | { kind: 'detail'; key: string; signature: string; scroll: number }
-  | { kind: 'preview'; scroll: number }
+  | { kind: 'preview'; scroll: number; query?: string; matchOffset?: number }
+  | { kind: 'preview-search'; draft: string; signature: string }
   | { kind: 'attention'; index: number; scroll: number }
   | { kind: 'diagnostics'; index: number; scroll: number }
   | { kind: 'references'; selected?: string | undefined; origin: string }
   | { kind: 'filter'; draft: string; collection: string }
   | { kind: 'help'; scroll: number }
-export type PrivateDashboardState = { readonly panels: readonly PrivateDashboardPanel[] }
+export type ViewerState = { readonly panels: readonly ViewerPanel[] }
 const referenceKey = (ref: Reference): string =>
   JSON.stringify(
     ref.kind === 'call'
@@ -296,58 +332,48 @@ const cell = (value: Value): string =>
     ? 'null'
     : typeof value === 'object'
       ? 'Reference'
-      : privateUpdateText(String(value))
-const displayCell = (model: PrivateRunModel, publisher: string, value: Value): string =>
+      : escapeTerminalText(String(value))
+const displayCell = (model: ViewerModel, publisher: string, value: Value): string =>
   value !== null && typeof value === 'object'
-    ? privateUpdateText(model.resolve(publisher, value).label)
+    ? escapeTerminalText(model.resolve(publisher, value).label)
     : cell(value)
-export function privateDashboardReferences(
-  record: PrivateWorkspaceRecord | undefined,
-): Reference[] {
-  const result: Reference[] = [],
-    seen = new Set<string>()
-  const add = (reference: Reference) => {
-    const key = referenceKey(reference)
-    if (seen.has(key)) return
-    seen.add(key)
-    result.push(reference)
-  }
-  const block = (block: DetailBlock) => {
-    if (block.kind === 'report') for (const reference of block.references ?? []) add(reference)
-    if (block.kind === 'facts')
-      for (const item of block.items)
-        if (item.value !== null && typeof item.value === 'object') add(item.value)
-  }
-  if (record?.block) block(record.block)
-  if (record?.row) {
-    for (const value of Object.values(record.row.cells))
-      if (value !== null && typeof value === 'object') add(value)
-    for (const detail of record.row.details ?? []) block(detail)
-  }
-  if (record?.activity?.operationId) add({ kind: 'call', operationId: record.activity.operationId })
-  return result
+export function viewerReferences(record: ViewerRecord | undefined): Reference[] {
+  return recordReferences(record)
 }
+
 function progressText(block: Extract<DetailBlock, { kind: 'progress' }>, width: number): string {
-  const count = `${block.completed}${block.total === undefined ? '' : ` / ${block.total}`}${block.unit ? ` ${privateUpdateText(block.unit)}` : ''}`
+  const count = `${block.completed}${block.total === undefined ? '' : ` / ${block.total}`}${block.unit ? ` ${escapeTerminalText(block.unit)}` : ''}`
   if (block.total && width >= 40) {
     const size = Math.max(4, Math.min(12, width - 30)),
       filled = Math.floor((block.completed / block.total) * size)
-    return `${privateUpdateText(block.label)} [${'='.repeat(filled)}${' '.repeat(size - filled)}] ${count}`
+    return `${escapeTerminalText(block.label)} [${'='.repeat(filled)}${' '.repeat(size - filled)}] ${count}`
   }
-  return `${privateUpdateText(block.label)} ${count}`
+  return `${escapeTerminalText(block.label)} ${count}`
 }
 /** The list owns identity and a short observation; details add context or evidence.
  * Typed parts are private presentation data, not a new author-facing contract. */
-export type PrivateDashboardDetailPart =
+export function viewerPreviewState(model: ViewerModel): string {
+  return model.previewState === 'empty'
+    ? 'This captured text file is empty.'
+    : model.previewState === 'non-text'
+      ? 'This captured file is not available as a UTF-8 text preview.'
+      : model.previewState === 'unavailable'
+        ? 'Immutable content is unavailable.'
+        : model.previewState === 'pending'
+          ? 'Delivery is pending; no captured bytes are available yet.'
+          : 'Loading immutable captured content…'
+}
+export type ViewerDetailPart =
   | { kind: 'heading' | 'text' | 'note' | 'value'; text: string }
   | { kind: 'field'; label: string; value: Value }
 
-export function privateDashboardDetailParts(
-  model: PrivateRunModel,
-  record: PrivateWorkspaceRecord,
+export function viewerDetailParts(
+  model: ViewerModel,
+  record: ViewerRecord,
   preview = false,
-): PrivateDashboardDetailPart[] {
-  const parts: PrivateDashboardDetailPart[] = []
+  includeArtifactContent = true,
+): ViewerDetailPart[] {
+  const parts: ViewerDetailPart[] = []
   const text = (value: string, kind: 'text' | 'note' | 'value' = 'text') => {
     if (value) parts.push({ kind, text: value })
   }
@@ -357,7 +383,7 @@ export function privateDashboardDetailParts(
     if (b.kind === 'report') {
       text(
         b.text,
-        model.workspace.recorded && record.collection?.id === 'recorded-fields' ? 'value' : 'text',
+        model.workspace.recorded && model.selected?.role === 'recorded-report' ? 'value' : 'text',
       )
       for (const ref of b.references ?? []) field('Evidence', ref)
     } else if (b.kind === 'facts') {
@@ -373,12 +399,44 @@ export function privateDashboardDetailParts(
     const first = value.split('\n')[0] ?? ''
     // A shortened teaser must never discard its full literal source.
     text(
-      privateTruncateUpdate(first, 120) !== privateUpdateText(first)
+      !preview ||
+        truncateTerminalText(
+          first,
+          model.local.teaserWidth ?? 120,
+          model.local.teaserBytes ?? 4096,
+        ) !== escapeTerminalText(first)
         ? value
         : value.slice(first.length).replace(/^\n/, ''),
     )
   }
-  if (record.text !== undefined && !record.journalGroup) remainder(record.text)
+  const artifact = viewerReferences(record)
+  if (
+    includeArtifactContent &&
+    model.previewState &&
+    record.key === model.record?.key &&
+    (record.file || (artifact.length === 1 && artifact[0]?.kind === 'artifact'))
+  ) {
+    heading(model.previewTitle ?? 'Immutable captured content')
+    text(model.preview?.text ?? viewerPreviewState(model))
+    text(
+      `${model.artifactCapture.provenance === 'recorded-capture' ? 'Recorded capture' : 'Verified delivery'}${model.preview ? ` · ${model.preview.bytes} bytes${model.preview.clipped ? ' · excerpt clipped at 64 KiB' : ''}` : ''}`,
+      'note',
+    )
+  }
+  if (record.file) {
+    heading(record.file.path)
+    field(
+      'Capture',
+      model.artifactCapture.provenance === 'recorded-capture'
+        ? 'Recorded capture'
+        : 'Verified delivery',
+    )
+    field('Bytes', record.file.bytes)
+    field('Content', record.file.state)
+    if (record.file.clipped) text('The retained excerpt is clipped.', 'note')
+    if (!model.previewState) text('Enter previews this immutable captured file.', 'note')
+  }
+  if (record.text !== undefined && !record.journalGroup && !record.file) remainder(record.text)
   if (record.journalGroup) {
     heading('Stage history')
     for (const entry of record.journalGroup) text(entry.text)
@@ -415,8 +473,8 @@ export function privateDashboardDetailParts(
   }
   if (record.journal) {
     remainder(record.journal.text)
-    if (record.journal.operationsPath)
-      field('Invocation path', record.journal.operationsPath.join(' / ') || '(root)')
+    if (record.journal.operationsPath || record.journal.pathClipped)
+      field('Invocation path', diagnosticPath(record.journal))
     if (record.journal.kind === 'diagnostic')
       text('Diagnostic importance was not supplied.', 'note')
     if (record.journal.clipped) text('Diagnostic capture was truncated.', 'note')
@@ -440,6 +498,17 @@ export function privateDashboardDetailParts(
     if (n.cause) {
       heading('Reported cause')
       text(n.cause)
+    }
+    if (n.parent && !model.calls.has(n.parent))
+      text('Enclosing invocation unavailable; relationship incomplete.', 'note')
+    const related = viewerRelatedReports(model, record)
+    if (related.length) {
+      heading('Related reports')
+      for (const entry of related) {
+        field('Source', entry.source)
+        text(entry.text)
+        if (entry.clipped) text('This retained report was clipped.', 'note')
+      }
     }
     const observed = new Date(n.time)
     field(
@@ -468,15 +537,35 @@ export function privateDashboardDetailParts(
   return parts
 }
 
-export function* privateDashboardDetailLines(
-  model: PrivateRunModel,
-  record: PrivateWorkspaceRecord,
+export function viewerRelatedReports(model: ViewerModel, record: ViewerRecord) {
+  const node = record.call
+  return node
+    ? model.journal.filter((entry) => {
+        const attribution = entry.attribution
+        return attribution.provenance !== 'recorded-claim' && attribution.callId === node.id
+      })
+    : []
+}
+
+/** Context must add evidence/context, rather than generic lifecycle boilerplate. */
+export function viewerHasContext(model: ViewerModel, record: ViewerRecord | undefined): boolean {
+  if (!record) return false
+  if (record.file || model.previewState) return true
+  if (record.call) return Boolean(record.call.cause || viewerRelatedReports(model, record).length)
+  return viewerDetailParts(model, record, true, false).some(
+    (part) => part.kind !== 'note' && part.kind !== 'heading',
+  )
+}
+
+export function* viewerDetailLines(
+  model: ViewerModel,
+  record: ViewerRecord,
   width: number,
   preview = false,
 ): Generator<string> {
   if (!preview)
     yield `${record.publisher ? model.sourceLabel(record.publisher) : (record.journal?.source ?? 'Jig')} · detail`
-  const parts = privateDashboardDetailParts(model, record, preview)
+  const parts = viewerDetailParts(model, record, preview)
   if (!parts.length) {
     yield 'No additional detail was supplied. This entry is shown in full in the list.'
     return
@@ -484,36 +573,37 @@ export function* privateDashboardDetailLines(
   for (const part of parts) {
     const text =
       part.kind === 'field'
-        ? `${part.label}: ${typeof part.value === 'object' && part.value !== null ? model.resolve(record.publisher ?? 'root', part.value).label : String(part.value)}`
+        ? `${part.label}: ${typeof part.value === 'object' && part.value !== null ? model.resolve(record.publisher ?? model.rootSourceId, part.value).label : String(part.value)}`
         : part.text
-    yield* privateWrappedUpdate(text, width, true)
+    yield* wrapTerminalText(text, width, true)
   }
 }
 
-function tableColumns(
-  model: PrivateRunModel,
+export function viewerTableColumns(
+  model: ViewerModel,
   publisher: string,
-  collection: NonNullable<PrivateWorkspaceRecord['collection']>,
-  rows: NonNullable<PrivateWorkspaceRecord['collection']>['rows'],
+  collection: NonNullable<ViewerRecord['collection']>,
+  rows: NonNullable<ViewerRecord['collection']>['rows'],
   width: number,
+  maximum = collection.columns.length,
 ) {
   const columns: { key: string; label: string; size: number; natural: number; numeric: boolean }[] =
     []
   let remaining = Math.max(0, width - 2)
-  for (const column of collection.columns) {
+  for (const column of collection.columns.slice(0, maximum)) {
     const natural = Math.max(
-      privateTerminalWidth(privateUpdateText(column.label)),
+      terminalWidth(escapeTerminalText(column.label)),
       ...rows.map((row) =>
-        privateTerminalWidth(displayCell(model, publisher, row.cells[column.key] ?? null)),
+        terminalWidth(displayCell(model, publisher, row.cells[column.key] ?? null)),
       ),
       4,
     )
-    const minimum = Math.min(12, Math.max(4, privateTerminalWidth(column.label)))
+    const minimum = Math.min(12, Math.max(4, terminalWidth(column.label)))
     if (remaining < minimum + (columns.length ? 3 : 0)) break
     const size = minimum
     columns.push({
       key: column.key,
-      label: privateUpdateText(column.label),
+      label: escapeTerminalText(column.label),
       size,
       natural: Math.min(width, natural),
       numeric: column.type === 'number',
@@ -536,33 +626,26 @@ function tableColumns(
   const hidden = collection.columns.length - columns.length
   return { columns, hidden }
 }
-const aligned = (text: string, size: number, right = false) => {
-  const bounded = privateTruncateUpdate(text, size, 1024),
-    padding = ' '.repeat(Math.max(0, size - privateTerminalWidth(bounded)))
+export const viewerAligned = (text: string, size: number, right = false) => {
+  const bounded = truncateTerminalText(text, size, 1024),
+    padding = ' '.repeat(Math.max(0, size - terminalWidth(bounded)))
   return right ? padding + bounded : bounded + padding
 }
-function tabs(model: PrivateRunModel, width: number): string {
-  const entries = [
-    ...(model.workspace.recorded
-      ? []
-      : [
-          { key: 'activity', label: 'Activity' },
-          { key: 'overview', label: 'Overview' },
-        ]),
-    ...[...model.views.values()].map((v) => ({
-      key: v.key,
-      label: model.workspace.recorded
-        ? privateUpdateText(v.value.title)
-        : `${model.sourceLabel(v.publisher)}: ${privateUpdateText(v.value.title)}`,
-    })),
-  ]
+function tabs(model: ViewerModel, width: number): string {
+  const entries = model
+    .destinations()
+    .map((entry) => ({ ...entry, label: escapeTerminalText(entry.title) }))
   const current = entries.findIndex((e) => e.key === model.surface)
   const all = entries
     .map((entry, index) => (index === current ? `[${entry.label}]` : entry.label))
+    .map(
+      (label, index) =>
+        `${index && entries[index]!.group !== entries[index - 1]!.group ? 'Application › ' : ''}${label}`,
+    )
     .join(' | ')
-  if (privateTerminalWidth(all) <= width) return all
-  return privateTruncateUpdate(
-    `${current + 1}/${entries.length} [${entries[current]?.label ?? 'Activity'}]  Tab views`,
+  if (terminalWidth(all) <= width) return all
+  return truncateTerminalText(
+    `${current + 1}/${entries.length} [${entries[current]?.label ?? 'Activity'}]  v all views · Tab next`,
     width,
   )
 }
@@ -572,25 +655,49 @@ const attentionTone = (priority: number): WorkspaceTone =>
   priority === 2 || priority >= 4 ? 'error' : 'warning'
 /** Bounded textual projection for inline output, compact native surfaces and
  * navigation overlays. This projection owns no terminal or renderer lifetime. */
-export function privateDashboardFrame(
-  model: PrivateRunModel,
+export function viewerFrame(
+  model: ViewerModel,
   width: number,
   height: number,
   color = false,
   inspecting = false,
   scroll = 0,
   retainedAnchor?: ScrollAnchor,
-  state?: PrivateDashboardState,
-): PrivateDashboardFrame {
+  state?: ViewerState,
+): ViewerFrame {
   if (width < 1 || height < 1) return { lines: [], references: [] }
   if (!inspecting) return privateInlineFrame(model, width, height, color, scroll, retainedAnchor)
+  model.peekSelectedArtifact()
   width = Math.max(1, Math.min(4096, Math.floor(width)))
+  const teaserWidth = (cells: number) => {
+    const record = model.record
+    const prefix =
+      record?.kind === 'summary'
+        ? 'Summary ▸ '
+        : record?.block?.kind === 'report'
+          ? 'Report ▸ '
+          : record?.journal
+            ? `${record.journal.kind === 'diagnostic' ? `Diagnostic (${diagnosticPath(record.journal)})` : record.journal.source}${record.journal.importance === 'info' ? '' : ` · reported ${record.journal.importance}`} · `
+            : ''
+    model.local.teaserBytes = Math.max(
+      3,
+      4096 -
+        Buffer.byteLength(escapeTerminalText(prefix)) -
+        2 -
+        (record?.journal?.clipped ? 20 : 0),
+    )
+    return Math.max(
+      1,
+      cells - 2 - terminalWidth(escapeTerminalText(prefix)) - (record?.journal?.clipped ? 20 : 0),
+    )
+  }
+  model.local.teaserWidth = teaserWidth(width)
   height = Math.max(1, Math.min(100, Math.floor(height)))
   const panels = state?.panels ?? [],
     panel = panels.at(-1),
     compact = width < 40 || height < 10
   const lines: string[] = [],
-    references = privateDashboardReferences(model.record)
+    references = viewerReferences(model.record)
   let frameBytes = 0,
     clipped = false
   const commit = (rendered: string) => {
@@ -606,35 +713,35 @@ export function privateDashboardFrame(
   const paint = (plain: string, tone?: WorkspaceTone, secondaryPrefix?: string) => {
     // Only host-owned roles add SGR, after payload escaping and cell/byte truncation.
     const prefixLength = secondaryPrefix
-      ? privateUpdateText(secondaryPrefix).replaceAll('\n', '\\n').length
+      ? escapeTerminalText(secondaryPrefix).replaceAll('\n', '\\n').length
       : 0
     return tone === 'secondary'
-      ? privateCliSecondary(plain, color)
+      ? secondary(plain, color)
       : tone === 'selection'
-        ? privateCliSelection(plain, color)
+        ? selection(plain, color, model.theme)
         : tone
-          ? privateCliHeading(plain, tone === 'heading' ? 'info' : tone, color)
+          ? heading(plain, tone === 'heading' ? 'info' : tone, color)
           : prefixLength
-            ? privateCliSecondary(plain.slice(0, prefixLength), color) + plain.slice(prefixLength)
+            ? secondary(plain.slice(0, prefixLength), color) + plain.slice(prefixLength)
             : plain
   }
   const add = (text: string, tone?: WorkspaceTone, secondaryPrefix?: string) => {
     if (lines.length >= height) return false
-    const plain = privateTruncateUpdate(
-      privateUpdateText(text).replaceAll('\n', '\\n'),
+    const plain = truncateTerminalText(
+      escapeTerminalText(text).replaceAll('\n', '\\n'),
       width,
       Math.max(3, Math.min(4096, 32000 - frameBytes - 64)),
     )
     return commit(paint(plain, tone, secondaryPrefix))
   }
-  const target = `Jig · ${privateUpdateText(model.workspace.target)}`
+  const target = `Jig · ${escapeTerminalText(model.workspace.target)}`
   const phase =
     model.workspace.phase === 'settled'
       ? model.workspace.recorded
         ? 'Saved result · read-only'
         : 'Settled · read-only'
-      : privateUpdateText(model.workspace.hostStage)
-  const time = `elapsed ${duration((model.workspace.settledAt ?? model.workspace.now ?? privatePresentationNow()) - model.workspace.startedAt)} · execution limit ${model.workspace.limitMs === undefined ? 'unspecified' : duration(model.workspace.limitMs)}`
+      : escapeTerminalText(model.workspace.hostStage)
+  const time = `elapsed ${duration(model.workspace.elapsedMs)} · execution limit ${model.workspace.limitMs === undefined ? 'unspecified' : duration(model.workspace.limitMs)}`
   const sticky = model.sticky
   const diagnostics = model.journal.filter((entry) => entry.kind === 'diagnostic')
   const omittedDiagnostics = model.journalOmitted.diagnostic
@@ -647,35 +754,38 @@ export function privateDashboardFrame(
       ? `d: omitted (${omittedDiagnostics})`
       : `${omittedDiagnostics} diagnostic updates omitted · d reports`
     : facts?.completeness &&
-        facts.completeness !== 'observation ended' &&
-        facts.completeness !== 'files match the recorded manifest'
-      ? `Evidence: ${facts.completeness}`
+        (facts.completeness.clipped ||
+          (facts.completeness.value !== 'observation ended' &&
+            facts.completeness.value !== 'files match the recorded manifest'))
+      ? viewerFactText('Evidence', facts.completeness)
       : ''
   const attentionPrefix = sticky
-    ? `! full cause${model.attention.length > 1 ? ` (+${model.attention.length - 1})` : ''} · ${privateUpdateText(sticky.source)} · ${privateAttentionImportance(sticky.priority)}`
+    ? `! full cause${model.attention.length > 1 ? ` (+${model.attention.length - 1})` : ''} · ${escapeTerminalText(sticky.source)} · ${attentionImportance(sticky.priority)}`
     : ''
   const attention = sticky
-    ? `${privateTruncateUpdate(attentionPrefix, Math.max(1, width - Math.min(20, Math.floor(width / 3)) - 2))}: ${privateUpdateText(sticky.text).split('\n')[0]}`
-    : model.incomplete
-      ? `! ${privateUpdateText(model.incomplete)} · ! attention`
-      : ''
+    ? `${truncateTerminalText(attentionPrefix, Math.max(1, width - Math.min(20, Math.floor(width / 3)) - 2))}: ${escapeTerminalText(sticky.text).split('\n')[0]}`
+    : ''
+  const observationWarning = model.observationWarning
   if (compact) {
     add(
-      `${privateTruncateUpdate(target, Math.max(1, width - 15))} · ${privateTruncateUpdate(phase, 12)}`,
+      `${truncateTerminalText(target, Math.max(1, width - 15))} · ${truncateTerminalText(phase, 12)}`,
       'heading',
     )
-    if (height >= 4 && !panel && !(attention && compactLoss && height === 4))
+    if (observationWarning && lines.length < height - 1) add(observationWarning, 'warning')
+    if (height >= 4 && !panel && !observationWarning && !(attention && compactLoss && height === 4))
       add(model.workspace.recorded ? 'Recorded local data' : time, 'secondary')
-    if (attention && lines.length < height - 1) add(attention, attentionTone(sticky?.priority ?? 3))
+    if (attention && !panel && lines.length < height - 1)
+      add(attention, attentionTone(sticky?.priority ?? 3))
     if (compactLoss && lines.length < height - 1) add(`! ${compactLoss}`, 'warning')
   } else {
-    const stage = privateTruncateUpdate(phase, Math.max(12, Math.floor(width / 3)))
+    const stage = truncateTerminalText(phase, Math.max(12, Math.floor(width / 3)))
     add(
-      `${privateTruncateUpdate(target, Math.max(1, width - privateTerminalWidth(stage) - 3))} · ${stage}`,
+      `${truncateTerminalText(target, Math.max(1, width - terminalWidth(stage) - 3))} · ${stage}`,
       'heading',
     )
     add(model.workspace.recorded ? 'Recorded local data' : time, 'secondary')
     add(tabs(model, width), 'heading')
+    if (observationWarning) add(observationWarning, 'warning')
     if (attention) add(attention, attentionTone(sticky?.priority ?? 3))
     if (diagnostics.length || omittedDiagnostics)
       add(
@@ -688,48 +798,52 @@ export function privateDashboardFrame(
       right = Math.max(1, width - left - 3)
     const fact = (
       label: string,
-      value: string,
+      value: DisplayFact,
       size: number,
       tone?: 'success' | 'warning' | 'error',
     ) => {
-      const text = privateTruncateUpdate(
-        `${label} ${privateUpdateText(value).replaceAll('\n', '\\n')}`,
+      const text = truncateTerminalText(
+        escapeTerminalText(viewerFactText(label, value)).replaceAll('\n', '\\n'),
         size,
         4096,
       )
-      return tone ? privateCliHeading(text, tone, color) : text
+      return tone ? heading(text, tone, color) : text
     }
-    const recorded = model.workspace.recorded
     commit(
-      `${fact(recorded ? 'Recorded execution' : 'Execution', facts.execution, left, recorded ? undefined : facts.execution === 'succeeded' ? 'success' : facts.execution === 'failed' ? 'error' : facts.execution === 'lost' ? 'warning' : undefined)} · ${fact(recorded ? 'Recorded application' : 'Application', facts.application, right)}`,
+      `${fact('Execution', facts.execution, left, viewerFactTone('execution', facts.execution))} · ${fact('Application', facts.application, right)}`,
     )
     commit(
-      `${fact(recorded ? 'Recorded cleanup' : 'Cleanup', facts.cleanup, left, recorded ? undefined : facts.cleanup === 'complete' ? 'success' : facts.cleanup === 'unconfirmed' ? 'error' : undefined)} · ${fact(recorded ? 'Recorded delivery' : 'Delivery', facts.delivery, right, !recorded && facts.delivery === 'written' ? 'success' : undefined)}`,
+      `${fact('Cleanup', facts.cleanup, left, viewerFactTone('cleanup', facts.cleanup))} · ${fact('Delivery', facts.delivery, right, viewerFactTone('delivery', facts.delivery))}`,
     )
-    if (facts.completeness && facts.completeness !== 'observation ended')
-      add(`${recorded ? 'Recorded evidence' : 'Observation'} · ${facts.completeness}`, 'secondary')
+    if (
+      facts.completeness &&
+      (facts.completeness.clipped || facts.completeness.value !== 'observation ended')
+    )
+      add(viewerFactText('Observation', facts.completeness), 'secondary')
   }
   if (!compact && lines.length < height - 2) add('─'.repeat(Math.min(width, 4096)), 'secondary')
   const footer = (
-    panel?.kind === 'filter'
+    panel?.kind === 'filter' || panel?.kind === 'preview-search'
       ? compact
         ? 'Enter set Esc undo'
         : 'Filter draft: Enter apply · Esc discard · Ctrl-C stop'
       : compact
         ? 'q inline ^C stop !'
-        : panel?.kind === 'references'
-          ? 'q continues inline · j/k choose · Enter activate · Esc back'
-          : panel?.kind === 'attention'
-            ? 'q continues inline · ←/→ causes · ↑/↓ scroll · Esc back'
-            : panel?.kind === 'diagnostics'
-              ? 'q continues inline · ←/→ reports · ↑/↓ scroll · Esc back'
-              : panel?.kind === 'help'
-                ? 'Esc back · q continues inline · Ctrl-C stop (live)'
-                : panel?.kind === 'detail' || panel?.kind === 'preview'
-                  ? 'q continues inline · ↑/↓ scroll · r references · Esc back'
-                  : compact
-                    ? '! full cause · q continues inline · Ctrl-C stop'
-                    : 'q continues inline · Tab · ↑↓ · Enter detail · r refs · ! cause · ? help'
+        : panel?.kind === 'views'
+          ? 'q continues inline · ↑↓ choose · Enter open · Esc back'
+          : panel?.kind === 'references'
+            ? 'q continues inline · j/k choose · Enter activate · Esc back'
+            : panel?.kind === 'attention'
+              ? 'q continues inline · ←/→ causes · ↑/↓ scroll · Esc back'
+              : panel?.kind === 'diagnostics'
+                ? 'q continues inline · ←/→ reports · ↑/↓ scroll · Esc back'
+                : panel?.kind === 'help'
+                  ? 'Esc back · q continues inline · Ctrl-C stop (live)'
+                  : panel?.kind === 'detail' || panel?.kind === 'preview'
+                    ? 'q continues inline · ↑/↓ scroll · / excerpt search · r references · Esc back'
+                    : compact
+                      ? '! full cause · q continues inline · Ctrl-C stop'
+                      : 'q continues inline · Tab · ↑↓ · Enter detail · r refs · ! cause · ? help'
   )
     .replaceAll(
       'q continues inline',
@@ -758,53 +872,88 @@ export function privateDashboardFrame(
           panel.kind === 'references'
             ? references.findIndex((ref) => referenceKey(ref) === panel.selected)
             : -1
-      if (panel.kind === 'filter')
-        content = privateWrappedUpdate(
+      if (panel.kind === 'views')
+        content = (function* () {
+          yield 'Views · choose a destination'
+          let group = ''
+          for (const entry of model.destinations()) {
+            if (entry.group !== group) {
+              group = entry.group
+              yield group === 'application'
+                ? 'APPLICATION'
+                : group === 'recorded'
+                  ? 'RECORDED'
+                  : 'RUN'
+            }
+            yield `${entry.key === panel.selected ? '> ' : '  '}${escapeTerminalText(entry.title)}${entry.source ? ` · ${escapeTerminalText(entry.source)}` : ''}`
+          }
+        })()
+      else if (panel.kind === 'preview-search')
+        content = wrapTerminalText(
+          `Search retained excerpt\nDraft: ${panel.draft}\nLiteral text only; no files or earlier content are fetched.\nEnter searches; Escape discards.`,
+          width,
+        )
+      else if (panel.kind === 'filter')
+        content = wrapTerminalText(
           `Filter supplied records\nDraft: ${panel.draft}\nApplied: ${model.filter || '(none)'}\nRows change only after Enter. Empty Enter clears.`,
           width,
         )
       else if (panel.kind === 'help')
-        content = privateWrappedUpdate(
+        content = wrapTerminalText(
           panels.at(-2)?.kind === 'filter'
             ? 'Filter editing\nPrintable text is literal, including q j k s r ! ?.\nEnter applies; Escape discards; Backspace/Delete removes the last scalar.\nTab and arrow controls do nothing. Ctrl-C stops live work; Ctrl-D leaves.'
-            : 'Workspace help\nTab / Shift-Tab: Activity, Overview and supplied views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: full detail; Escape returns one level. Wide screens show selected detail alongside the list.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause; d: attributed diagnostic reports; ?: this help.\nq: live continues inline; settled closes inspection. Ctrl-C: stop live work, close settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
+            : 'Workspace help\nv: all grouped views. Tab / Shift-Tab: Execution, Activity, Delivered files and application views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: expand full detail or retained file content; Escape returns from an overlay, then a reference jump, then exits. Wide screens show useful selected context.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a typed reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause and workspace facts; d: attributed diagnostic reports; ?: this help.\nq: live continues inline; settled closes inspection. Ctrl-C: stop live work, close settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
           width,
         )
       else if (panel.kind === 'attention') {
         const report = model.attention[panel.index] ?? sticky
         content = report
-          ? privateWrappedUpdate(
-              `${report.source} — ${privateAttentionImportance(report.priority)} (${panel.index + 1}/${model.attention.length})\n${report.text}`,
+          ? wrapTerminalText(
+              `${report.source} — ${attentionImportance(report.priority)} (${panel.index + 1}/${model.attention.length})\n${report.text}${facts ? `\n\nWorkspace facts\n${model.hostFactsText}` : ''}`,
               width,
             )
-          : privateWrappedUpdate(model.incomplete ?? 'No retained causes', width)
+          : wrapTerminalText(
+              `${model.incomplete ?? 'No retained causes'}${facts ? `\n\nWorkspace facts\n${model.hostFactsText}` : ''}`,
+              width,
+            )
       } else if (panel.kind === 'diagnostics') {
         const report = diagnostics[panel.index]
         content = report
-          ? privateWrappedUpdate(
-              `Diagnostic report ${panel.index + 1}/${diagnostics.length}\nInvocation: ${report.operationsPath?.join(' / ') || '(root)'}\nSeverity was not supplied by the producer.${diagnosticLoss ? `\n${diagnosticLoss}` : ''}\n\n${report.text}${report.clipped ? '\n[Diagnostic capture truncated]' : ''}`,
+          ? wrapTerminalText(
+              `Diagnostic report ${panel.index + 1}/${diagnostics.length}\nInvocation: ${diagnosticPath(report)}\nSeverity was not supplied by the producer.${diagnosticLoss ? `\n${diagnosticLoss}` : ''}\n\n${report.text}${report.clipped ? '\n[Diagnostic capture truncated]' : ''}`,
               width,
             )
           : [diagnosticLoss || 'No captured diagnostic reports']
       } else if (panel.kind === 'preview')
-        content = privateWrappedUpdate(
-          `Immutable ${model.workspace.recorded ? 'recorded-file' : 'delivered-file'} preview: ${model.previewTitle ?? 'verified capture'}${model.preview?.clipped ? ' [capture clipped at 64 KiB]' : ''}\n${model.preview?.text ?? (model.feedback || 'Loading preview')}`,
+        content = wrapTerminalText(
+          `Immutable ${model.workspace.recorded ? 'recorded-file' : 'delivered-file'} preview: ${model.previewTitle ?? 'verified capture'}${model.preview?.clipped ? ' [capture clipped at 64 KiB]' : ''}\n${model.preview?.text ?? viewerPreviewState(model)}`,
           width,
         )
       else if (panel.kind === 'references')
         content = references.length
           ? (function* () {
               for (const ref of references)
-                yield `${referenceKey(ref) === panel.selected ? '> ' : '  '}${model.resolve(model.record?.publisher ?? 'root', ref).label}`
+                yield `${referenceKey(ref) === panel.selected ? '> ' : '  '}${model.resolve(model.record?.publisher ?? model.rootSourceId, ref).label}`
             })()
           : ['No references in the selected record']
       else {
         const record = model.records().find((record) => record.key === panel.key)
-        content = record
-          ? privateDashboardDetailLines(model, record, width)
-          : ['Selected record unavailable']
+        content = record ? viewerDetailLines(model, record, width) : ['Selected record unavailable']
       }
-      const requested = 'scroll' in panel ? panel.scroll : 0
+      const requested =
+        panel.kind === 'views'
+          ? Math.max(
+              0,
+              model.destinations().findIndex((entry) => entry.key === panel.selected) +
+                3 -
+                Math.floor(bodyRoom / 2),
+            )
+          : panel.kind === 'preview' && panel.matchOffset !== undefined
+            ? [...wrapTerminalText(model.preview?.text.slice(0, panel.matchOffset) ?? '', width)]
+                .length
+            : 'scroll' in panel
+              ? panel.scroll
+              : 0
       // Retain only the visible page. Counting remaining lines is bounded by the
       // admitted text, while the frame buffer never grows with document length.
       let index = 0,
@@ -837,17 +986,18 @@ export function privateDashboardFrame(
           tone?: WorkspaceTone
           secondaryPrefix?: string
         }[] = [],
-        tables = new Map<string, ReturnType<typeof tableColumns>>()
-      const sideBySide = width >= 112 && bodyRoom >= 10 && !!model.record,
+        tables = new Map<string, ReturnType<typeof viewerTableColumns>>()
+      const sideBySide = width >= 118 && bodyRoom >= 10 && viewerHasContext(model, model.record),
         listWidth = sideBySide ? Math.max(58, Math.floor((width - 3) * 0.55)) : width,
         detailWidth = width - listWidth - 3
+      model.local.teaserWidth = teaserWidth(listWidth)
       // Every collapsed record is one physical line; table headers occur once.
       let priorCollection: string | undefined,
         priorSection: string | undefined,
         priorKind = ''
       for (const record of records) {
         if (record.section && record.section !== priorSection) {
-          body.push({ text: () => privateUpdateText(record.section!), tone: 'heading' })
+          body.push({ text: () => escapeTerminalText(record.section!), tone: 'heading' })
           priorSection = record.section
         }
         if (model.surface === 'activity') {
@@ -868,7 +1018,14 @@ export function privateDashboardFrame(
             rows = model.visibleRows(collection),
             table =
               tables.get(collection.id) ??
-              tableColumns(model, record.publisher ?? 'root', collection, rows, listWidth)
+              viewerTableColumns(
+                model,
+                record.publisher ?? model.rootSourceId,
+                collection,
+                rows,
+                listWidth,
+                3,
+              )
           tables.set(collection.id, table)
           if (priorCollection !== collection.id) {
             const filter = model.local.filters.get(collection.id),
@@ -876,14 +1033,14 @@ export function privateDashboardFrame(
             body.push({
               tone: 'heading',
               text: () =>
-                `${table.hidden ? `+${table.hidden} columns (Enter detail) · ` : ''}${privateUpdateText(collection.title)} · ${filter ? `${rows.length} of ${collection.rows.length}` : collection.rows.length} records${collection.total === undefined || collection.total === collection.rows.length ? '' : ` / ${collection.total} reported`}${filter ? ` · filter ${privateUpdateText(filter)}` : ''}${sort ? ` · sort ${privateUpdateText(sort.key)}` : ''}`,
+                `${table.hidden ? `+${table.hidden} columns (Enter detail) · ` : ''}${escapeTerminalText(collection.title)} · ${filter ? `${rows.length} of ${collection.rows.length}` : collection.rows.length} records${collection.total === undefined || collection.total === collection.rows.length ? '' : ` / ${collection.total} reported`}${filter ? ` · filter ${escapeTerminalText(filter)}` : ''}${sort ? ` · sort ${escapeTerminalText(sort.key)}` : ''}`,
             })
             body.push({
               tone: 'heading',
               text: () =>
                 '  ' +
                 table.columns
-                  .map((column) => aligned(column.label, column.size, column.numeric))
+                  .map((column) => viewerAligned(column.label, column.size, column.numeric))
                   .join(' | '),
             })
             priorCollection = collection.id
@@ -892,10 +1049,10 @@ export function privateDashboardFrame(
             record.row
               ? table.columns
                   .map((column) =>
-                    aligned(
+                    viewerAligned(
                       displayCell(
                         model,
-                        record.publisher ?? 'root',
+                        record.publisher ?? model.rootSourceId,
                         record.row!.cells[column.key] ?? null,
                       ),
                       column.size,
@@ -907,10 +1064,10 @@ export function privateDashboardFrame(
                 ? 'No matching supplied records · / recovers filter'
                 : 'No supplied records'
         } else if (record.kind === 'summary')
-          text = () => `Summary ▸ ${privateUpdateText(record.text!).split('\n')[0]}`
+          text = () => `Summary ▸ ${escapeTerminalText(record.text!).split('\n')[0]}`
         else if (record.block?.kind === 'report') {
           const report = record.block
-          text = () => `Report ▸ ${privateUpdateText(report.text).split('\n')[0]}`
+          text = () => `Report ▸ ${escapeTerminalText(report.text).split('\n')[0]}`
         } else if (record.block?.kind === 'facts') {
           const facts = record.block
           text = () =>
@@ -918,7 +1075,7 @@ export function privateDashboardFrame(
               .slice(0, 2)
               .map(
                 (f) =>
-                  `${privateTruncateUpdate(privateUpdateText(f.label), 24, 1024)} ${privateTruncateUpdate(cell(f.value), 24, 1024)}`,
+                  `${truncateTerminalText(escapeTerminalText(f.label), 24, 1024)} ${truncateTerminalText(cell(f.value), 24, 1024)}`,
               )
               .join(' · ')}${facts.items.length > 2 ? ` · +${facts.items.length - 2} facts` : ''}`
         } else if (record.block?.kind === 'progress')
@@ -926,17 +1083,17 @@ export function privateDashboardFrame(
             progressText(record.block as Extract<DetailBlock, { kind: 'progress' }>, listWidth - 2)
         else if (record.activity)
           text = () =>
-            `${model.sourceLabel(record.publisher!)} · ${privateUpdateText(record.activity!.label)}${record.activity!.progress ? ` · ${record.activity!.progress.completed}${record.activity!.progress.total === undefined ? '' : `/${record.activity!.progress.total}`}` : ''}`
+            `${model.sourceLabel(record.publisher!)} · ${escapeTerminalText(record.activity!.label)}${record.activity!.progress ? ` · ${record.activity!.progress.completed}${record.activity!.progress.total === undefined ? '' : `/${record.activity!.progress.total}`}` : ''}`
         else if (record.journal)
           text = () =>
-            `${record.journal!.kind === 'diagnostic' ? `Diagnostic (${privateUpdateText(record.journal!.operationsPath?.join(' / ') || 'root')})` : record.journal!.source}${record.journal!.importance === 'info' ? '' : ` · reported ${record.journal!.importance}`} · ${privateUpdateText(record.journal!.text).split('\n')[0]}${record.journal!.clipped ? ' [capture truncated]' : ''}`
+            `${record.journal!.kind === 'diagnostic' ? `Diagnostic (${escapeTerminalText(diagnosticPath(record.journal!))})` : record.journal!.source}${record.journal!.importance === 'info' ? '' : ` · reported ${record.journal!.importance}`} · ${escapeTerminalText(record.journal!.text).split('\n')[0]}${record.journal!.clipped ? ' [capture truncated]' : ''}`
         else if (record.call)
           text = () =>
-            `${'  '.repeat(Math.min(record.depth ?? 0, 12))}${model.descendants(record.call!.key).length ? (model.treeExpanded(record.call!.key) ? '▾' : '▸') : '·'} ${privateUpdateText(record.call!.intent ?? record.call!.slot)} · ${record.call!.state}${record.hidden ? ` (${record.hidden} calls${record.issues ? `; ${record.issues} issues` : ''})` : ''}`
-        else text = () => privateUpdateText(record.text ?? '').split('\n')[0] ?? ''
+            `${'  '.repeat(Math.min(record.depth ?? 0, 12))}${model.descendants(record.call!.key).length ? (model.treeExpanded(record.call!.key) ? '▾' : '▸') : '·'} ${escapeTerminalText(record.call!.intent ?? record.call!.slot)} · ${record.call!.state}${record.hidden ? ` (${record.hidden} calls${record.issues ? `; ${record.issues} issues` : ''})` : ''}`
+        else text = () => escapeTerminalText(record.text ?? '').split('\n')[0] ?? ''
         body.push({
           key: record.key,
-          text: () => privateTruncateUpdate(prefix + text(), listWidth, 4096),
+          text: () => truncateTerminalText(prefix + text(), listWidth, 4096),
           ...(selected
             ? { tone: 'selection' as const }
             : record.journal?.importance === 'error' || record.call?.state === 'failed'
@@ -979,7 +1136,7 @@ export function privateDashboardFrame(
           tone: 'secondary',
           text: () => `${model.selected!.ended}; showing the last reported snapshot`,
         })
-      if (model.feedback) body.push({ text: () => privateUpdateText(model.feedback) })
+      if (model.feedback) body.push({ text: () => escapeTerminalText(model.feedback) })
       const selectedIndex = body.findIndex((line) => line.key === model.record?.key)
       const retained = retainedAnchor && body.findIndex((line) => line.key === retainedAnchor.key)
       const desired =
@@ -989,7 +1146,7 @@ export function privateDashboardFrame(
       offset = Math.max(0, Math.min(desired, Math.max(0, body.length - bodyRoom)))
       if (sideBySide) {
         const detail: string[] = ['Selected detail · Enter expand · r references', '']
-        for (const line of privateDashboardDetailLines(model, model.record!, detailWidth, true)) {
+        for (const line of viewerDetailLines(model, model.record!, detailWidth, true)) {
           if (detail.length >= bodyRoom) {
             clipped = true
             break
@@ -1001,18 +1158,18 @@ export function privateDashboardFrame(
         const visible = body.slice(offset, offset + bodyRoom)
         for (let i = 0; i < Math.max(visible.length, detail.length); i++) {
           const line = visible[i]
-          const left = aligned(
-            privateUpdateText(line?.text() ?? '').replaceAll('\n', '\\n'),
+          const left = viewerAligned(
+            escapeTerminalText(line?.text() ?? '').replaceAll('\n', '\\n'),
             listWidth,
           )
-          const right = privateTruncateUpdate(
-            privateUpdateText(detail[i] ?? '').replaceAll('\n', '\\n'),
+          const right = truncateTerminalText(
+            escapeTerminalText(detail[i] ?? '').replaceAll('\n', '\\n'),
             detailWidth,
           )
           if (
             !commit(
               paint(left, line?.tone, line?.secondaryPrefix) +
-                privateCliSecondary(' │ ', color) +
+                secondary(' │ ', color) +
                 paint(right, i === 0 ? 'heading' : undefined),
             )
           )
@@ -1050,383 +1207,4 @@ export function privateDashboardFrame(
     'secondary',
   )
   return { lines, references, scroll: offset, ...(anchor ? { anchor } : {}) }
-}
-
-/** One borrowed input owner with three bounded local overlay levels. */
-export class PrivateDashboardInput {
-  #active = false
-  #raw = false
-  #paused = true
-  #settled = false
-  #captured = false
-  #resolve: (() => void) | undefined
-  #ended = false
-  #pending = ''
-  #escapeTimer: ReturnType<typeof setTimeout> | undefined
-  #panels: PrivateDashboardPanel[] = []
-  #references: readonly Reference[] = []
-  #surface = ''
-  readonly #decoder = new StringDecoder('utf8')
-  readonly #data = (bytes: Buffer) => {
-    if (bytes.includes(3)) {
-      this.#read('\u0003')
-      return
-    }
-    this.#pending = [...(this.#pending + this.#decoder.write(bytes))].slice(0, 4096).join('')
-    this.#drainKeys()
-  }
-  readonly #end = () => this.leave()
-  constructor(
-    readonly model: PrivateRunModel,
-    readonly change: () => void,
-    readonly cancel: () => void,
-    readonly input = process.stdin,
-    readonly onLeave: () => void = () => {},
-    readonly onInteraction: () => boolean = () => true,
-  ) {}
-  get active(): boolean {
-    return this.#active
-  }
-  get state(): PrivateDashboardState {
-    this.#reconcile()
-    return { panels: this.#panels }
-  }
-  get scroll(): number {
-    this.#reconcile()
-    const panel = this.#panels.at(-1)
-    return panel && 'scroll' in panel ? panel.scroll : this.model.local.scroll
-  }
-  get anchor(): ScrollAnchor | undefined {
-    this.#reconcile()
-    return this.#panels.length ? undefined : this.model.local.anchor
-  }
-  capture(): void {
-    if (this.#captured) return
-    this.#captured = true
-    this.#raw = this.input.isRaw
-    this.#paused = this.input.isPaused() || this.input.readableFlowing !== true
-  }
-  start(): void {
-    if (this.#active || this.#ended) return
-    this.capture()
-    this.#surface = this.model.surface
-    try {
-      this.input.setRawMode(true)
-      this.input.on('data', this.#data)
-      this.input.once('end', this.#end)
-      this.input.resume()
-      this.#active = true
-    } catch (error) {
-      this.input.removeListener('data', this.#data)
-      this.input.removeListener('end', this.#end)
-      try {
-        this.input.setRawMode(this.#raw)
-      } finally {
-        if (this.#paused) this.input.pause()
-      }
-      throw error
-    }
-  }
-  frame(references: readonly Reference[], scroll?: number, anchor?: ScrollAnchor): void {
-    this.#reconcile()
-    this.#references = references
-    const panel = this.#panels.at(-1)
-    if (panel && 'scroll' in panel) {
-      if (scroll !== undefined) panel.scroll = scroll
-    } else {
-      if (scroll !== undefined) this.model.local.scroll = scroll
-      this.model.local.anchor = anchor
-    }
-  }
-  #reconcile(): void {
-    // Reconcile before projection as well as after it: record keys are local to each surface.
-    if (this.#surface !== this.model.surface) {
-      this.#panels = []
-      this.#references = []
-      this.#surface = this.model.surface
-    }
-    const detail = this.#panels.find((p) => p.kind === 'detail')
-    if (detail?.kind === 'detail') {
-      const record = this.model.record
-      if (record?.key !== detail.key || record.signature !== detail.signature) {
-        this.#panels = []
-        this.#references = []
-      }
-    }
-  }
-  async settled(): Promise<void> {
-    this.#settled = true
-    if (this.#active)
-      await new Promise<void>((resolve) => {
-        this.#resolve = resolve
-      })
-  }
-  markSettled(): void {
-    this.#settled = true
-  }
-  leave(): void {
-    if (this.#ended) return
-    this.#ended = true
-    clearTimeout(this.#escapeTimer)
-    this.#escapeTimer = undefined
-    this.#pending = ''
-    if (this.#active) {
-      this.input.removeListener('data', this.#data)
-      this.input.removeListener('end', this.#end)
-      try {
-        this.input.setRawMode(this.#raw)
-      } catch {
-        this.model.feedback = 'Terminal input restoration unavailable'
-      } finally {
-        try {
-          if (this.#paused) this.input.pause()
-        } catch {
-          this.model.feedback = 'Terminal input restoration unavailable'
-        }
-        this.#active = false
-      }
-    }
-    this.#resolve?.()
-    this.#resolve = undefined
-    this.model.dismissPreview()
-    this.#panels = []
-    this.onLeave()
-    this.change()
-  }
-  #push(panel: PrivateDashboardPanel): void {
-    if (this.#panels.length >= 3) this.#panels.pop()
-    this.#panels.push(panel)
-  }
-  #drainKeys(): void {
-    clearTimeout(this.#escapeTimer)
-    this.#escapeTimer = undefined
-    while (this.#active && this.#pending) {
-      if (this.#pending.startsWith('\u001b')) {
-        // biome-ignore lint/suspicious/noControlCharactersInRegex: Decode owned terminal controls.
-        const sequence = /^\u001b(?:\[[0-?]*[ -/]*[@-~]|O[@-~])/.exec(this.#pending)
-        if (sequence) {
-          this.#pending = this.#pending.slice(sequence[0].length)
-          this.#read(sequence[0])
-          continue
-        }
-        // biome-ignore lint/suspicious/noControlCharactersInRegex: Preserve split terminal sequences.
-        const incomplete = /^\u001b(?:\[[0-?]*[ -/]*|O)?$/.test(this.#pending)
-        if (this.#pending.length === 1 || incomplete) {
-          this.#escapeTimer = setTimeout(() => {
-            this.#escapeTimer = undefined
-            this.#pending = ''
-            this.#read('\u001b')
-          }, 30)
-          return
-        }
-        this.#pending = this.#pending.slice(1)
-        this.#read('\u001b')
-        continue
-      }
-      const scalar = String.fromCodePoint(this.#pending.codePointAt(0)!)
-      this.#pending = this.#pending.slice(scalar.length)
-      this.#read(scalar)
-    }
-  }
-  #read(text: string): void {
-    this.#reconcile()
-    if (text === '\u0003') {
-      if (!this.#settled) this.cancel()
-      this.leave()
-      return
-    }
-    if (text === '\u0004') {
-      this.leave()
-      return
-    }
-    const panel = this.#panels.at(-1)
-    if (panel?.kind === 'filter') {
-      const accepted =
-        ['\r', '\n', '\u001b', '\u007f', '\b', '\u001b[3~'].includes(text) ||
-        ![...text].some((scalar) => /[\p{Cc}\p{Cf}]/u.test(scalar))
-      if (accepted && !this.onInteraction()) {
-        this.leave()
-        return
-      }
-      if (accepted) this.model.markNavigation()
-      if (text === '\r' || text === '\n') {
-        this.model.filterRows(panel.draft)
-        this.#panels.pop()
-      } else if (text === '\u001b') this.#panels.pop()
-      else if (text === '\u007f' || text === '\b' || text === '\u001b[3~')
-        panel.draft = [...panel.draft].slice(0, -1).join('')
-      else if (![...text].some((scalar) => /[\p{Cc}\p{Cf}]/u.test(scalar)))
-        panel.draft = [...(panel.draft + text)].slice(0, 128).join('')
-      this.change()
-      return
-    }
-    if (text === 'q') {
-      this.leave()
-      return
-    }
-    if (text === '\u001b') {
-      if (this.#panels.length) {
-        if (!this.onInteraction()) {
-          this.leave()
-          return
-        }
-        this.model.markNavigation()
-        const dismissed = this.#panels.pop()
-        if (dismissed?.kind === 'preview') this.model.dismissPreview()
-        this.change()
-      } else this.leave()
-      return
-    }
-    if (
-      [
-        '\t',
-        '\u001b[Z',
-        '?',
-        '!',
-        'd',
-        'r',
-        'c',
-        's',
-        '/',
-        'j',
-        'k',
-        '[',
-        ']',
-        '\r',
-        '\n',
-        '\u001b[A',
-        '\u001b[B',
-        '\u001b[C',
-        '\u001b[D',
-        '\u001b[6~',
-        '\u001b[5~',
-        '\u001b[H',
-        '\u001b[1~',
-        '\u001b[F',
-        '\u001b[4~',
-      ].includes(text)
-    ) {
-      if (!this.onInteraction()) {
-        this.leave()
-        return
-      }
-      this.model.markNavigation()
-    }
-    if (text === '\t' || text === '\u001b[Z') {
-      this.#panels = []
-      this.model.cycleView(text === '\t' ? 1 : -1)
-      this.#surface = this.model.surface
-      this.change()
-      return
-    }
-    if (text === '?') {
-      this.#push({ kind: 'help', scroll: 0 })
-      this.change()
-      return
-    }
-    if (text === '!') {
-      this.#push({
-        kind: 'attention',
-        index: Math.max(0, this.model.attention.indexOf(this.model.sticky!)),
-        scroll: 0,
-      })
-      this.change()
-      return
-    }
-    if (text === 'd') {
-      this.#push({ kind: 'diagnostics', index: 0, scroll: 0 })
-      this.change()
-      return
-    }
-    const delta =
-      text === 'j' || text === '\u001b[B' ? 1 : text === 'k' || text === '\u001b[A' ? -1 : 0
-    const page =
-      text === ']' || text === '\u001b[6~' ? 3 : text === '[' || text === '\u001b[5~' ? -3 : 0
-    if (panel?.kind === 'references') {
-      const refs = this.#references.length
-        ? this.#references
-        : privateDashboardReferences(this.model.record)
-      if (delta) {
-        const index = refs.findIndex((r) => referenceKey(r) === panel.selected)
-        panel.selected =
-          refs[Math.max(0, Math.min(refs.length - 1, index + delta))] &&
-          referenceKey(refs[Math.max(0, Math.min(refs.length - 1, index + delta))]!)
-      }
-      if (text === '\r' || text === '\n') {
-        const reference = refs.find((r) => referenceKey(r) === panel.selected)
-        if (!reference)
-          this.model.feedback = 'Selected reference unavailable; press r to choose another'
-        else {
-          const publisher = this.model.record?.publisher ?? 'root'
-          const available = this.model.resolve(publisher, reference).available
-          this.#panels.pop()
-          if (reference.kind === 'artifact' && available) this.#push({ kind: 'preview', scroll: 0 })
-          else if (available) this.#panels = []
-          void this.model.activate(publisher, reference)
-        }
-      }
-    } else if (panel && 'scroll' in panel) {
-      if (
-        (panel.kind === 'attention' || panel.kind === 'diagnostics') &&
-        (text === '\u001b[C' || text === '\u001b[D')
-      ) {
-        const count =
-          panel.kind === 'attention'
-            ? this.model.attention.length
-            : this.model.journal.filter((entry) => entry.kind === 'diagnostic').length
-        panel.index =
-          (panel.index + (text === '\u001b[C' ? 1 : -1) + Math.max(1, count)) % Math.max(1, count)
-        panel.scroll = 0
-      } else if (delta || page)
-        panel.scroll = Math.max(0, Math.min(524288, panel.scroll + (page || delta)))
-      else if (text === '\u001b[H' || text === '\u001b[1~') panel.scroll = 0
-      if ((text === '\r' || text === '\n') && panel.kind === 'detail') {
-        if (this.model.disclosure()) this.model.toggleDisclosure()
-        this.#panels.pop()
-      } else if (text === 'r' && (panel.kind === 'detail' || panel.kind === 'preview'))
-        this.#chooseReference()
-    } else if (delta) {
-      this.model.moveRecord(delta)
-      this.model.local.anchor = undefined
-    } else if (page) {
-      this.model.local.scroll = Math.max(0, Math.min(8192, this.model.local.scroll + page))
-      this.model.local.anchor = undefined
-    } else if (text === '\u001b[H' || text === '\u001b[1~') {
-      this.model.moveRecord(-1000)
-      this.model.local.anchor = undefined
-    } else if (text === '\u001b[F' || text === '\u001b[4~') {
-      this.model.moveRecord(1000)
-      this.model.local.anchor = undefined
-    } else if (text === '\u001b[C' || text === '\u001b[D')
-      this.model.expandTree(text === '\u001b[C')
-    else if (text === 'c') this.model.cycleCollection()
-    else if (text === 's') this.model.sortRows()
-    else if (text === '/') {
-      if (this.model.requireCollection())
-        this.#push({
-          kind: 'filter',
-          draft: this.model.filter,
-          collection: this.model.collection!.id,
-        })
-    } else if (text === 'r') this.#chooseReference()
-    else if (text === '\r' || text === '\n') {
-      const record = this.model.record
-      if (record && privateDashboardDetailParts(this.model, record, true).length === 0) {
-        this.model.feedback = 'No additional detail was supplied for this entry.'
-      } else if (record) {
-        if (!this.model.disclosure()) this.model.toggleDisclosure()
-        this.#push({ kind: 'detail', key: record.key, signature: record.signature, scroll: 0 })
-      }
-    }
-    this.change()
-  }
-  #chooseReference(): void {
-    const refs = privateDashboardReferences(this.model.record)
-    this.#references = refs
-    this.#push({
-      kind: 'references',
-      selected: refs[0] && referenceKey(refs[0]),
-      origin: this.model.record?.key ?? '',
-    })
-  }
 }

@@ -88,6 +88,9 @@ bun install \
   --filter @jigging/flow-authoring \
   --filter @jigging/flow \
   --filter @jigging/user-updates \
+  --filter @jigging/display-model \
+  --filter @jigging/display-web \
+  --filter @jigging/display-tui \
   --ignore-scripts \
   --config=/dev/null \
   --cache-dir "$temporary/cache" \

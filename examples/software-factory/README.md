@@ -19,7 +19,7 @@ From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run
+jig run --display tui
 ```
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
@@ -50,14 +50,29 @@ For a settled unsuccessful proposal, inspect its command evidence and proposal
 patches; these are not accepted patches to apply. A healthy job's `review.patch`
 remains available even when the batch outcome is `blocked`.
 The factory identifies jobs by their optional `label` (or their `id`).
-Use `jig run --display dashboard` for a workspace that starts in **Activity**.
+Use `jig run --display tui` for a workspace that starts in **Activity**.
 **Jobs** contains goals, editable source files, reviewed approach and outcomes;
 **Checks** contains repository tests and independent acceptance cases;
-**Patches** contains checked candidates for human review. **Overview** shows
+**Patches** contains checked candidates for human review. **Execution** shows
 the actual calls. Select a record and press Enter for details; `!` opens a
 blocking cause, and `r` selects an evidence reference. Press `q` during work
 to continue in the ordinary transcript. The read-only completed inspector stays
 open until you close it, subject to any explicit enclosing command limit.
+Use `--display web` for the same semantic views in a browser. Open the private link
+printed after execution starts; **Delivered files** shows verified patch and goal
+contents. The standalone repair specialist offers **Repair** and **Checks** through its
+optional `updates` channel; the reusable router offers **Selection** through `progress`.
+The factory continues to use its private repair-phase protocol to relay current work,
+without forwarding a child's artifact namespace.
+
+Reopen the final evidence without starting work:
+
+```sh
+jig inspect --result ./factory-result --display web
+```
+
+Saved inspection shows recorded results, verified files and diagnostics. Packets do not retain the live domain views or invocation graph.
+
 During work it identifies the command slot or case being run, then reports the
 observed repository-command status and passing or mismatched acceptance cases.
 Collected command invocations and a procedural next step explain why it requests

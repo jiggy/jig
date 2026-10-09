@@ -47,45 +47,87 @@ obsolete repaints are superseded. Host stopping/terminal presentation fences lat
 Flow updates. Exact bounds, separate allocation policy and output failure remain
 governed by that profile and [channels](channels.md).
 
-Operator-only `--display auto|plain|dashboard` controls Run presentation. Auto
+Operator-only `--display auto|plain|tui|web` controls Run presentation. Auto
 uses a bounded noninteractive inline region on suitable stderr; it borrows no
 input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
-use nonanimated summaries. Explicit dashboard requires terminal stdin and stderr,
+use nonanimated summaries. Explicit TUI requires terminal stdin and stderr,
 independently of stdout; otherwise explain the plain fallback once. It owns one
 alternate screen only after trusted root execution admission crosses the dispatch
 boundary. Initial review, input, file, output and runtime prerequisite failures
-remain ordinary diagnostics. Entry does not depend on application views or updates. Explicit dashboard
+remain ordinary diagnostics. Entry does not depend on application views or updates. Explicit TUI
 with NO_COLOR keeps screen controls without color. JSON and
 effective reception retain their exact output and disable automatic Flow observation.
 No project entrypoint can choose display mode.
 
+Jig adapts accepted observations to readonly semantic snapshots from
+`@jigging/display-model`. The independent `@jigging/display-tui` and
+`@jigging/display-web` packages own presentation and local navigation. Jig retains
+admission, actual observed call attribution, captured evidence, terminal IO and
+restoration, transport, output accounting and Run lifecycle. A renderer receives
+bounded data and excerpt access, never host execution or filesystem authority.
+Ordinary Jig installation includes its presentation; Flow declarations remain
+display-neutral.
+
+Explicit web requires terminal stderr, independently of stdin, stdout, TERM and
+color support. Otherwise use ordinary plain presentation without exposing a
+private launch link in redirected output. It prepares its local listener before
+execution, then advertises a browser link only after trusted root dispatch and a
+readable initial snapshot. It never automatically launches a browser. JSON and
+effective reception take precedence before preparing a listener. Redirected
+Run stdout retains exact final JSON while terminal stderr can provide web
+inspection. The [web display contract](web-display.md) owns local access,
+transport bounds, browser navigation and presentation lifetime.
+
 The shell presents host execution, cleanup, delivery and complete known safe
-causes separately from attributed domain reports. Overview is the actual observed
+causes separately from attributed domain reports. Execution is the actual observed
 invocation tree; application views compose literal reports, facts, measured
 progress and typed collections. Calls returning, reported 100%, EOF and view
 status never imply domain success. Auto/plain commit complete errors and warnings
-to scrollback. Explicit dashboard retains them in bounded Activity and attention,
+to scrollback. Explicit TUI retains them in bounded Activity and attention,
 with full causes one action away from every view; leaving restores the screen and
 commits complete retained essential causes before final stdout. Sticky attention
 and visible incompleteness survive view retirement. Narrow layouts shrink
 workspace before hiding the cause and disclose clipping.
 
-The explicit workspace has stable Activity, Overview and attributed domain tabs,
-labelled collection cards, collapsed reports, record details, local filter/sort,
-scrolling and explicitly selected references. All valid block types are reachable
-in supplied order. Wide layouts project selected literal details beside the list;
-selection alone never activates a reference. The information hierarchy separates
-list identity and brief observations, selected additional context, and explicitly
-expanded evidence or invocation identity. Lists preserve declared column order;
-native collection cards show the first three fields and put remaining fields
-beside supplied row details. Fact entries disclose their fields on selection.
-Report teasers disclose remaining text and references; shortened teasers retain
-their complete source in detail. Entries with no additional context explain that
-fact instead of opening a duplicate detail panel. Full record expansion retains
-all supplied fields. Automatic call detail explains the observed lifecycle and
-shows a readable UTC observation time and known cause; reviewed slot and original
-operation identity belong to explicit expansion. No command, result, duration or
-domain verdict is invented from call metadata.
+The explicit workspace groups host Execution, Activity and Delivered files separately
+from every attributed application view. Saved inspection has exactly one Recorded
+result, Captured files and Diagnostics destination, supplied by the recorded host
+adapter. Author-supplied names never select host navigation. A navigation rail is
+available at 150 columns and 24 rows; smaller layouts retain the current-view trail.
+`v` opens a grouped chooser that reveals the selected attributed destination within
+the viewport. Tab/Shift-Tab cycle the same destinations. View selection preserves
+viewer-local filters, sorting and stable record identity.
+
+All valid block types are reachable in supplied order. Lists use dense rows and
+aligned declared columns, showing at most the first three fields; full expansion
+retains every supplied field. Automatic context requires at least 118 columns and
+24 rows and meaningful additional selected content: authored details, hidden fields,
+facts, remaining or clipped report text, captured content, or an observed call's
+known cause or strictly scoped related report. Generic lifecycle metadata alone
+never splits the Execution view. Local action feedback remains visible without
+opening a duplicate pane and without replacing sticky attention. Empty-detail
+requests explain that fact. Report clipping accounts for prefixes, display cells
+and encoded bytes; the complete retained source stays reachable through expansion.
+
+Selection alone never navigates a record/call reference. A selected entry with
+exactly one distinct typed artifact reference, considering all cells and supplied
+details, may peek its available immutable text read-only. Entries with multiple
+distinct references require explicit selection; field labels and project names
+cannot choose one. Delivered files remains reachable without an application view
+or automatic update reception. Explicit file selection shows content first, with
+size, provenance, availability and clipping as secondary metadata. Empty, non-text,
+unavailable and clipped text have distinct states. Expansion reuses the retained
+preview, adds space, scrolling and literal search of the retained excerpt, and
+never claims to search uncaptured bytes. Selection and capture generations fence
+late completion; busy selection retries only the latest identity.
+
+The hierarchy separates list identity and brief observations, selected additional
+context, and explicitly expanded evidence or invocation identity. Call details
+retain readable UTC observation time; reviewed slot and original operation identity
+belong to explicit expansion. Wide Execution rows may show common-scale intervals
+from first to latest actual observation. Invalid or reversed clocks have no span.
+These intervals are observations, never inferred execution duration, progress,
+commands, results or domain verdicts.
 
 Navigation, headings, declared labels, typed values, measured counts and host
 states have distinct foreground roles. Active calls use an accent, returned calls
@@ -107,8 +149,14 @@ severity remains unknown; text content never determines severity.
 References can resolve current same-publisher
 records, actual own calls and verified delivered files. Previews use bounded
 immutable capture, never mutable destination reads. Escape dismisses local help,
-filter, reference selection, attention, preview or detail before leaving. Live q,
-standalone Escape or input EOF
+filter, view/reference selection, attention, preview or detail first. Explicit typed
+record/call jumps retain at most 16 return origins with surface, stable record and
+scroll identity. Escape then returns through that history, skipping retired
+intermediate destinations in one action and repairing removed rows to a preceding
+survivor. If all origins retired, it remains in the current valid view with action
+feedback; a subsequent Escape performs normal exit. Return navigation checks any
+explicit enclosing lifetime before mutation. Tab and chooser destination selection
+clear return history. Live q, standalone Escape without a panel/history, or input EOF
 restores input and continues inline, without re-entering later. Live Ctrl-C uses
 existing cancellation and cleanup. After all execution, cleanup and delivery
 settle, an inspector still open shows literal settled facts and read-only results;
@@ -119,7 +167,7 @@ No Flow or channel remains alive for inspection. Inspection has no built-in idle
 or absolute expiry; it remains open until the operator leaves, input/output fails
 or an external interruption closes it. Explicit inherited enclosing command
 constraints still apply, and no input or repaint extends them. Eligible interactive
-effective dashboard commands omit the default enclosing presentation lifetime,
+effective TUI commands omit the default enclosing presentation lifetime,
 while setup, Run execution, cancellation and cleanup keep their own bounds.
 Execution elapsed time freezes at settlement. An expiring explicit presentation
 constraint leaves live execution running through its ordinary owner; it never
@@ -141,7 +189,7 @@ with ended/incomplete context and exit promptly.
    separately. Active elapsed time belongs to the current stage. In animated
    terminals, completed timed stages retain their duration as secondary text.
    Ordinary acquisition has one active line with elapsed time; running work can use the
-   bounded inline dashboard above. Explicit dashboard retains stages inside its
+   bounded inline dashboard above. Explicit TUI retains stages inside its
    Activity view. Preserve completed stages; never mark a failed or merely
    departed stage complete. Update waiting time in place, not by appending
    unchanged messages. Report the known wait reason; never invent percentages,
@@ -291,7 +339,7 @@ with ended/incomplete context and exit promptly.
    Redirected streams contain no terminal escapes or animation; failures and
    consequential notices remain readable. `NO_COLOR` (including an empty value)
    and `TERM=dumb` select plain automatic presentation without animation; an
-   explicitly selected eligible dashboard with NO_COLOR uses screen controls
+   explicitly selected eligible TUI with NO_COLOR uses screen controls
    without SGR styling. Plain terminal
    progress reports stage changes once. Do not require Unicode, a pager, cursor
    hiding, an alternate screen, or interactivity for ordinary output. Explicit
@@ -467,11 +515,11 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Redirected output or `--json` is JSON, never styling.
 
-`jig inspect --result <directory> [--display plain|dashboard] [--json]` reads a
+`jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,
 reading operator configuration or credentials, acquiring execution authority,
 or contacting a provider. It rejects target and verification arguments. Plain
-is the default; JSON or redirected stdout takes precedence over dashboard.
+is the default; JSON or redirected stdout takes precedence over either inspector.
 Saved inspection displays fixed Recorded result, Files and Diagnostics views.
 Recorded result separates bounded selectable fields, including ordinary output
 members, from their expanded literal values. No application field name receives
@@ -490,7 +538,7 @@ applied. Refuse links, multiple-link files, special files, traversal, duplicate
 manifest paths and out-of-profile sizes. Capture admits at most 16 MiB of JSON
 value plus the publisher's single framing LF, 64 manifest files and 16 MiB
 aggregate file bytes, within ten seconds. File previews use already verified
-immutable captures, with at most one 64 KiB UTF-8 preview; they never reopen a
+immutable captures, with at most one active 64 KiB UTF-8 preview; they never reopen a
 mutable path. One owner releases descriptors and captured buffers on every exit.
 Partial file verification preserves the valid report and already verified
 captures while disclosing unavailable evidence. It never invents replacement JSON.
@@ -504,6 +552,10 @@ record. Terminal text is escaped literal data. Saved inspection remains open unt
 subject to explicit inherited presentation constraints and input/output failure
 or external interruption. It acquires no execution lifetime and has no built-in
 idle or absolute expiry on any supported host.
+Web preparation/activation follows valid report decoding and bounded capture;
+invalid reports stay plain. Partial capture may open with a valid report and
+explicit unavailable files. Close inspection releases presentation globally and
+prints the ordinary recorded report; browser disconnection does not close it.
 
 The CLI's shared presentation and progress modules own human formatting;
 command branches supply facts. Installed-launcher errors follow the same

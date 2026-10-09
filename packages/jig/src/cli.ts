@@ -4,6 +4,7 @@ import { lstat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
+import type { WebAssets } from '@jigging/display-model'
 import type { Reference } from '@jigging/user-updates'
 import manifest from '../package.json' with { type: 'json' }
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
@@ -31,6 +32,12 @@ import {
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
 import { importContract } from './internal/contract-import.js'
+import {
+  PRIVATE_INSPECTION_COMPLETION_MS,
+  type PrivateDeliveryInspectionCapture,
+  privateBoundInspection,
+  privateCaptureDeliveryInspection,
+} from './internal/delivery-inspection.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -146,7 +153,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --result DIRECTORY [--display plain|dashboard] [--json]
+       jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -158,7 +165,7 @@ Visible edits, launch readiness and remote provider availability are not checked
 
   --json     Emit JSON even in a terminal (redirected output is always JSON)
   --result DIRECTORY  Inspect a saved packet without approval or new execution
-  --display MODE      For saved results: plain (default) or dashboard
+  --display MODE      For saved results: plain (default), tui or web
 
 Saved results are local recorded claims. Files are captured once and checked
 against the recorded manifest; matching hashes do not authenticate the report.
@@ -171,7 +178,8 @@ Examples:
   jig inspect
   jig inspect flow:flows/hello
   jig inspect binding:repair --json
-  jig inspect --result ./result-packet --display dashboard
+  jig inspect --result ./result-packet --display tui
+  jig inspect --result ./result-packet --display web
 
 ${VERIFICATION_HELP}`,
   init: `Usage: jig init [--bare] <directory> [--agent [codex|claude|pi]]
@@ -230,7 +238,7 @@ Selection never approves changed source.
   --out DIR          Save a result packet to a new directory outside input roots
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
-  --display MODE     Select auto (default), plain, or a read-only dashboard
+  --display MODE     Select auto (default), plain, tui or web
   --timeout DURATION Set the execution deadline (default: 30s; maximum: 24h)
                      Units: ms, s, m, h. Cleanup still runs after the deadline.
 
@@ -238,11 +246,15 @@ Examples:
   jig run flow:flows/hello --input '"Ada"'
   jig run binding:repair --input @issue.json --attach source=./src --out ./review
   jig run binding:worker --receive progress --timeout 2m
+  jig run binding:factory --display web
 
 Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work.
 Terminal stdout shows readable results and live channel text. Redirect stdout or
 use --json for JSON (NDJSON with --receive). Diagnostics and status use stderr.
 Scripts should check the result and exit status.
+Web prints a private local browser link on terminal stderr after work starts.
+Close inspection leaves running work alone; settled inspection has no idle expiry.
+--json and --receive take precedence. --updates off suppresses automatic Flow views.
 
 ${VERIFICATION_HELP}`,
 } as const
@@ -274,6 +286,7 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
+  readonly webAssets?: WebAssets
   readonly presentationDeadline?: number | undefined
   readonly dashboardInputStream?: typeof process.stdin
   readonly standardContractDirectory?: string
@@ -325,17 +338,24 @@ export async function main(
 ): Promise<number> {
   const runtime = cliRuntime(options)
   let code: number
+  let presentationCloseFailed = false
   try {
     code = await executeCommand(arguments_, options, runtime)
   } finally {
-    runtime.progress.close()
+    try {
+      await runtime.progress.closeWorkspace()
+    } catch {
+      presentationCloseFailed = true
+    } finally {
+      runtime.progress.close()
+    }
   }
   try {
     await runtime.progress.flush()
   } catch {
     return privateCliSavedResultInspection(arguments_) ? (runtime.signal?.aborted ? 2 : 1) : 2
   }
-  return code
+  return presentationCloseFailed ? (privateCliSavedResultInspection(arguments_) ? 1 : 2) : code
 }
 
 async function executeCommand(
@@ -638,7 +658,7 @@ function parseInspect(arguments_: readonly string[]) {
   let json = false
   let verification: string | undefined
   let resultDirectory: string | undefined
-  let display: 'plain' | 'dashboard' | undefined
+  let display: 'plain' | 'tui' | 'web' | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
     if (value === '--result') {
@@ -650,8 +670,8 @@ function parseInspect(arguments_: readonly string[]) {
     }
     if (value === '--display') {
       const next = arguments_[++index]
-      if (display !== undefined || (next !== 'plain' && next !== 'dashboard'))
-        usage('inspect', 'Saved-result --display accepts plain or dashboard once.')
+      if (display !== undefined || (next !== 'plain' && next !== 'tui' && next !== 'web'))
+        usage('inspect', 'Saved-result --display accepts plain, tui or web once.')
       display = next
       continue
     }
@@ -709,11 +729,12 @@ async function executeSavedResultInspect(
     if (parsed.json || !runtime.humanOutput) {
       await runtime.writeRecord(`${textDecoder.decode(canonicalJson(packet.record))}\n`)
     } else {
-      if (parsed.display === 'dashboard')
+      if (parsed.display === 'tui' || parsed.display === 'web')
         await runtime.progress.inspectSavedResult(
           packet,
           runtime.dashboardInput,
           runtime.dashboardInputStream,
+          parsed.display,
         )
       runtime.signal?.throwIfAborted()
       // Recorded text bypasses trusted host-command recognition and styling.
@@ -965,23 +986,37 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     startedAt: privatePresentationNow(),
   })
   const automaticPresentation = !parsed.json && parsed.receive.length === 0
-  const dashboardRequested = automaticPresentation && parsed.display === 'dashboard'
+  const dashboardRequested = automaticPresentation && parsed.display === 'tui'
+  const webRequested = automaticPresentation && parsed.display === 'web' && runtime.terminalError
+  const workspaceRequested = dashboardRequested || webRequested
   if (dashboardRequested)
-    await runtime.progress.prepareDashboard(runtime.dashboardInput, runtime.dashboardInputStream)
-  if (automaticPresentation && !dashboardRequested)
+    await runtime.progress.prepareTuiDisplay(runtime.dashboardInput, runtime.dashboardInputStream)
+  if (webRequested) {
+    try {
+      runtime.progress.prepareWeb()
+    } catch {
+      throw new CliDiagnostic(
+        'JIG_WEB_UNAVAILABLE',
+        'The local web display could not be prepared. Check this Jig installation and local listener availability, or use --display plain. No Flow was started.',
+        1,
+      )
+    }
+  }
+  if (automaticPresentation && !workspaceRequested)
     await runtime.progress.configureDisplay(
-      parsed.display,
+      parsed.display === 'web' ? 'plain' : parsed.display,
       runtime.dashboardInput,
       runtime.dashboardInputStream,
     )
   // Immutable delivery capture must be selected before publication, even though
   // the screen waits for trusted root dispatch rather than prerequisite checks.
   if (
-    dashboardRequested &&
+    (webRequested || dashboardRequested) &&
     runtime.terminalError &&
-    runtime.dashboardInput &&
-    typeof runtime.dashboardInputStream.setRawMode === 'function' &&
-    process.env.TERM !== 'dumb'
+    (webRequested ||
+      (runtime.dashboardInput &&
+        typeof runtime.dashboardInputStream.setRawMode === 'function' &&
+        process.env.TERM !== 'dumb'))
   )
     runtime.host.delivery?.enableInspection?.()
   runtime.progress.note(
@@ -1004,7 +1039,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         `  Output: ${asciiJsonString(resolve(runtime.currentDirectory, parsed.output))}`,
       )
     for (const name of parsed.receive) settings.push(`  Receive: ${asciiJsonString(name)}`)
-    runtime.progress.note(settings.join('\n'))
+    // Operator invocation paths belong to terminal setup, never browser snapshots.
+    runtime.progress.note(settings.join('\n'), false)
   }
   runtime.progress.stage('Reading selected inputs')
   const outputStop = new AbortController()
@@ -1041,13 +1077,17 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
-    ...(dashboardRequested
+    ...(workspaceRequested
       ? {
           dispatched: () => {
             // Root execution never waits on terminal setup. The CLI owns and
             // joins that setup before settlement or error presentation.
             dashboardEntry ??= runtime.progress
-              .configureDisplay('dashboard', runtime.dashboardInput, runtime.dashboardInputStream)
+              .configureDisplay(
+                webRequested ? 'web' : 'tui',
+                runtime.dashboardInput,
+                runtime.dashboardInputStream,
+              )
               .catch((error) => outputStop.abort(error))
           },
         }
@@ -1084,13 +1124,19 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         throw error
       }
     },
-    diagnostic(bytes, operations = []) {
+    diagnostic(bytes, operations = [], origin) {
       const decoded = diagnostics.record(bytes, operations)
+      const admission = {
+        provenance: 'host-observed' as const,
+        ...(origin === undefined ? {} : { emitter: origin.emitter }),
+        ...(origin?.call === undefined ? {} : origin.call),
+      }
       if (runtime.progress.workspaceActive) {
-        runtime.progress.diagnostic(decoded, operations)
+        runtime.progress.diagnostic(decoded, operations, false, admission)
         return
       }
-      if (dashboardRequested) runtime.progress.model.addDiagnostic(decoded, operations)
+      if (workspaceRequested)
+        runtime.progress.model.addDiagnostic(decoded, operations, false, admission)
       const source = JSON.stringify(operations)
       if (source !== diagnosticSource) {
         diagnosticSource = source
@@ -1113,7 +1159,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       if (!runtime.progress.workspaceUsed) presentation?.diagnostic(decoded, operations)
     },
   }
+  let terminalEmissionStarted = false
   const emitTerminal = async (record: JsonValue): Promise<void> => {
+    terminalEmissionStarted = true
     if (presentation) {
       await presentation.result(record)
       return
@@ -1167,6 +1215,41 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     parsed.output === undefined ? null : resolve(runtime.currentDirectory, parsed.output),
     runtime.host.delivery,
   )
+  let inspectionCapture: PrivateDeliveryInspectionCapture | undefined
+  let filesClosedEarly = false
+  let inspectionCompletionDeadline: number | undefined
+  let inspectionFilesClose: Promise<void> | undefined
+  let knownTerminal: JsonValue | undefined
+  let knownExecution: JsonValue | undefined
+  let knownDelivery: PrivateDeliveryReceipt | undefined
+  let inspectionFinalization: Promise<void> | undefined
+  const finalizeInspection = (receipt: PrivateDeliveryReceipt | undefined): Promise<void> => {
+    inspectionCompletionDeadline ??= Math.min(
+      privatePresentationNow() + PRIVATE_INSPECTION_COMPLETION_MS,
+      runtime.progress.lifetime.presentationDeadline ?? Infinity,
+    )
+    const bound = {
+      deadline: inspectionCompletionDeadline,
+    }
+    // Execution cancellation does not cancel spending file authority. This
+    // cleanup has its own finite deadline, including after a Run abort.
+    inspectionFinalization ??= (async () => {
+      try {
+        inspectionCapture = await privateCaptureDeliveryInspection(runtime.host.delivery, receipt, {
+          presentationDeadline: bound.deadline,
+        })
+      } finally {
+        try {
+          inspectionFilesClose ??= privateBoundInspection(files.close(), bound)
+          await inspectionFilesClose
+          filesClosedEarly = true
+        } finally {
+          capture.close()
+        }
+      }
+    })()
+    return inspectionFinalization
+  }
   try {
     if (parsed.output !== undefined) {
       // An explanatory check only: the delivery owner still revalidates and
@@ -1250,8 +1333,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         throw error
       status = settledRoot
     }
-    await dashboardEntry
     let record = publicTerminal(status.terminal)
+    knownTerminal = knownExecution = record
+    await dashboardEntry
     runtime.progress.stopUpdates()
     const runDiagnostics = diagnostics.snapshot()
     if (runDiagnostics.entries.length !== 0 || runDiagnostics.truncated)
@@ -1263,6 +1347,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         ...(record as Record<string, JsonValue>),
         cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' },
       }
+    knownTerminal = record
+    if (cleanupFailed) await runtime.progress.closeWorkspace().catch(() => undefined)
     let delivery: PrivateDeliveryReceipt | undefined
     if (parsed.output !== undefined) {
       record = {
@@ -1271,6 +1357,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         method: files.method ?? null,
         input: { digest: sha256(canonicalJson(input)), attachments: files.identity.attachments },
       } as unknown as JsonValue
+      knownTerminal = record
       try {
         runtime.progress.stage('Publishing the result packet')
         delivery = await runtime.host.delivery!.publish(
@@ -1283,6 +1370,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       } catch {
         delivery = { status: 'unknown', destination: files.identity.output!, code: 'CHANNEL_LOST' }
       }
+      knownDelivery = delivery
       if (delivery.status === 'written') runtime.progress.complete(true)
       record = {
         ...(record as Record<string, JsonValue>),
@@ -1291,23 +1379,65 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           ? {}
           : { checkpoint: runtime.host.delivery!.checkpoint }),
       } as unknown as JsonValue
+      knownTerminal = record
     }
     // Publication can itself be interrupted after the first record snapshot.
     if (runtime.signal?.aborted)
       record = { ...(record as Record<string, JsonValue>), command: { status: 'interrupted' } }
+    knownTerminal = record
     let encodedRecord: Uint8Array
-    const artifact =
-      delivery?.status === 'written' && runtime.host.delivery?.preview
-        ? {
-            resolve: (publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) =>
-              publisher === 'root' &&
-              files.outputAttachments.includes(ref.attachment) &&
-              delivery.files?.some((f) => f.path === ref.path)
-                ? ref.path
-                : undefined,
-            preview: (path: string) => runtime.host.delivery!.preview!(path),
-          }
-        : undefined
+    let inspectionFailed = false
+    if (dashboardEntry !== undefined) {
+      // The indefinite inspector receives only excerpts after the outer file
+      // owner ACKs irreversible retirement. Preserve the known terminal even
+      // when this separate command cleanup cannot be confirmed.
+      try {
+        await finalizeInspection(delivery)
+      } catch {
+        inspectionCapture?.close()
+        inspectionCapture = undefined
+        inspectionFailed = true
+        cleanupFailed = true
+        record = {
+          ...(record as Record<string, JsonValue>),
+          cleanup: (record as Record<string, JsonValue>).cleanup ?? {
+            status: 'failed',
+            code: 'INSPECTION_CLOSE_FAILED',
+          },
+        }
+        knownTerminal = record
+        await runtime.progress.closeWorkspace()
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_INSPECTION_CLEANUP_FAILED',
+            'Execution and packet delivery retain their reported results. File authority retirement could not be confirmed, so inspection was closed. Inspect effects before starting new work.',
+          ),
+        )
+      }
+    }
+    const artifact = inspectionCapture
+      ? {
+          resolve: (publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) =>
+            publisher === 'root' &&
+            files.outputAttachments.includes(ref.attachment) &&
+            inspectionCapture!.files.some((f) => f.path === ref.path && f.state !== 'unavailable')
+              ? ref.path
+              : undefined,
+          preview: async (path: string) => {
+            const preview = inspectionCapture!.preview(path)
+            return preview?.text === undefined
+              ? undefined
+              : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
+          },
+          capture: {
+            generation: inspectionCapture.generation,
+            sourcePublisher: 'root',
+            provenance: 'verified-delivery' as const,
+            phase: delivery?.status === 'written' ? ('ready' as const) : ('unavailable' as const),
+            files: inspectionCapture.files,
+          },
+        }
+      : undefined
     try {
       encodedRecord = canonicalJson(record)
     } catch {
@@ -1321,11 +1451,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
             'The expanded report exceeds JSON/0 limits. The execution terminal is preserved; inspect any result packet before starting new work.',
           ),
         )
-        await runtime.progress.settleDashboard(
+        await runtime.progress.settleDisplay(
           {
             ...(publicTerminal(status.terminal) as Record<string, JsonValue>),
-            ...(cleanupFailed
-              ? { cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } }
+            ...((record as Record<string, JsonValue>).cleanup !== undefined
+              ? { cleanup: (record as Record<string, JsonValue>).cleanup! }
               : {}),
             ...(delivery === undefined ? {} : { delivery }),
           } as JsonValue,
@@ -1342,7 +1472,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     const terminal = status.terminal
-    await runtime.progress.settleDashboard(decodeJson1(encodedRecord), artifact)
+    await runtime.progress.settleDisplay(decodeJson1(encodedRecord), artifact)
     await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded' && !presentation)
       runtime.progress.note(
@@ -1365,7 +1495,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           runDiagnostics.entries.some((entry) => entry.stderrBytes > 0),
         ),
       )
-    if (cleanupFailed) return 2
+    if (cleanupFailed || inspectionFailed) return 2
     if (delivery !== undefined && delivery.status !== 'written') {
       runtime.writeError(
         renderDiagnostic(
@@ -1380,12 +1510,65 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     if (runtime.signal?.aborted) return 2
     return status.terminal.status === 'succeeded' ? 0 : status.terminal.status === 'failed' ? 1 : 2
   } catch (error) {
-    await dashboardEntry
-    if (dashboardEntry !== undefined && !runtime.signal?.aborted) {
+    if (knownTerminal !== undefined) {
+      await runtime.progress.closeWorkspace().catch(() => undefined)
+      let retirementFailed = false
+      if (dashboardEntry !== undefined) {
+        try {
+          await finalizeInspection(knownDelivery)
+        } catch {
+          retirementFailed = true
+        }
+      }
+      if (!terminalEmissionStarted) {
+        const final = {
+          ...(knownTerminal as Record<string, JsonValue>),
+          cleanup: (knownTerminal as Record<string, JsonValue>).cleanup ?? {
+            status: 'failed',
+            code: retirementFailed ? 'INSPECTION_CLOSE_FAILED' : 'COMMAND_FINALIZATION_FAILED',
+          },
+        }
+        let retained: JsonValue
+        try {
+          retained = decodeJson1(canonicalJson(final))
+        } catch {
+          retained = knownExecution!
+        }
+        await emitTerminal(retained)
+      }
+      renderFailure(error, runtime)
+      return 2
+    }
+    await dashboardEntry?.catch(() => undefined)
+    if (dashboardEntry !== undefined) {
       // No terminal is invented when command observation failed after dispatch.
       // Owned project cleanup has already run through withProjectSession.
       const exitCode = renderFailure(error, runtime)
-      await runtime.progress.settleDashboard({
+      if (runtime.signal?.aborted || cleanupFailed)
+        await runtime.progress.closeWorkspace().catch(() => undefined)
+      try {
+        await finalizeInspection(undefined)
+      } catch {
+        await runtime.progress.closeWorkspace().catch(() => undefined)
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_INSPECTION_CLEANUP_FAILED',
+            'No execution result was confirmed, and file authority retirement could not be confirmed. Inspection was closed; inspect effects before starting new work.',
+          ),
+        )
+        return 2
+      }
+      if (cleanupFailed) {
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_RUN_CLEANUP_FAILED',
+            'The command could not confirm an execution result, and project cleanup could not be confirmed. Inspection was closed; inspect any result and effects before starting new work.',
+          ),
+        )
+        return 2
+      }
+      if (runtime.signal?.aborted) return 2
+      await runtime.progress.settleDisplay({
         status: 'unknown',
         message:
           'The command could not confirm an execution result. Inspect any result and effects before starting new work.',
@@ -1396,9 +1579,18 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     throw error
   } finally {
     try {
-      await files.close()
+      if (!filesClosedEarly) {
+        if (inspectionCompletionDeadline === undefined) await files.close()
+        else {
+          inspectionFilesClose ??= privateBoundInspection(files.close(), {
+            deadline: inspectionCompletionDeadline,
+          })
+          await inspectionFilesClose.catch(() => undefined)
+        }
+      }
     } finally {
       capture.close()
+      inspectionCapture?.close()
     }
   }
 }
@@ -1460,13 +1652,14 @@ function parseReview(
 export function privateCliCommandLifetimeMs(
   arguments_: readonly string[],
   interactiveDashboard = false,
+  terminalStderr = false,
 ): number | null {
   if (arguments_[0] !== 'run') return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   try {
     const parsed = parseRun(arguments_)
     if (
-      interactiveDashboard &&
-      parsed.display === 'dashboard' &&
+      ((interactiveDashboard && parsed.display === 'tui') ||
+        (terminalStderr && parsed.display === 'web')) &&
       !parsed.json &&
       parsed.receive.length === 0
     )
@@ -1612,7 +1805,10 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     () => process.stderr.columns ?? 80,
     (text) =>
       privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
-    { presentationDeadline: options.presentationDeadline },
+    {
+      presentationDeadline: options.presentationDeadline,
+      ...(options.webAssets === undefined ? {} : { webAssets: options.webAssets }),
+    },
   )
   return {
     ...(options.expectedAdmissionDigest === undefined

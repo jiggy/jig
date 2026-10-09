@@ -1,5 +1,7 @@
 import { checkAgentResult } from '@jigging/agent-method'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
+import type { UserUpdates } from '@jigging/user-updates'
+import { checksView, repairView } from './dashboard.ts'
 import { type Evaluation, evaluate } from './evidence.ts'
 import { candidate, digest, object, type Proposal, parseInput, parseProposal } from './policy.ts'
 import { observedChecks, quoted, type RepairPhase } from './progress.ts'
@@ -13,6 +15,7 @@ interface Attempt {
 export async function repair(
   run: Pick<RunContext, 'input' | 'signal' | 'call' | 'channels'> &
     Partial<Pick<RunContext, 'settings'>>,
+  updates?: UserUpdates,
 ): Promise<RunResult> {
   const progress = run.channels.progress
   if (progress && progress.direction !== 'send')
@@ -39,7 +42,7 @@ export async function repair(
     }
   }
   try {
-    return await repairWithProgress(run, publish)
+    return await repairWithProgress(run, publish, updates)
   } finally {
     if (progress?.direction === 'send') {
       try {
@@ -54,8 +57,13 @@ export async function repair(
 async function repairWithProgress(
   run: Pick<RunContext, 'input' | 'signal' | 'call'> & Partial<Pick<RunContext, 'settings'>>,
   publish: (phase: RepairPhase, attempt: number, detail?: string) => Promise<void>,
+  updates?: UserUpdates,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
+  const repairReport = updates?.view('repair', { title: 'Repair', landing: true })
+  const checks = updates?.view('checks', { title: 'Checks' })
+  repairReport?.update(repairView(input))
+  checks?.update(checksView())
   const settings = object(run.settings ?? {})
   if (
     Object.keys(settings).some((key) => key !== 'maxProposals') ||
@@ -76,6 +84,14 @@ async function repairWithProgress(
   const finish = async (outcome: string, reason: string): Promise<RunResult> => {
     run.signal.throwIfAborted()
     await publish('finished', attempts.length)
+    const reported = { outcome, output: { reason, ...evidence() } } as unknown as RunResult
+    if (outcome !== 'done')
+      updates?.notice(
+        `No passing patch: ${[...reason].slice(0, 512).join('')}${[...reason].length > 512 ? ' [excerpt; full cause in the result]' : ''}`,
+        'error',
+      )
+    repairReport?.update(repairView(input, reported))
+    checks?.update(checksView(reported, false, true))
     return {
       outcome,
       output: {
@@ -124,8 +140,12 @@ async function repairWithProgress(
     return evaluate(input, files, values)
   }
   try {
+    updates?.activity('repair', 'Running the unchanged checks to reproduce the defect')
     await publish('baseline', 0)
     baseline = await observe(input.files, 'baseline')
+    checks?.update(
+      checksView({ outcome: 'observing', output: evidence() } as unknown as RunResult, false, true),
+    )
     await publish('observed', 0, observedChecks(baseline, 0, maxProposals as number))
     if (baseline.acceptance.every((c) => c.passed))
       return await finish(
@@ -136,6 +156,7 @@ async function repairWithProgress(
       run.signal.throwIfAborted()
       stage = 'proposal'
       proposal = index + 1
+      updates?.activity('repair', `Requesting proposed fix ${index + 1} of ${maxProposals}`)
       await publish('proposal', index + 1)
       const response = await run.call({
         operationId: `patch-${index + 1}`,
@@ -201,8 +222,16 @@ async function repairWithProgress(
       const files = candidate(input, attempt.proposal)
       attempt.candidateDigest = digest(files)
       stage = 'check'
+      updates?.activity('repair', `Running fixed checks against proposal ${index + 1}`)
       await publish('check', index + 1)
       attempt.evaluation = await observe(files, `attempt-${index + 1}`)
+      checks?.update(
+        checksView(
+          { outcome: 'observing', output: evidence() } as unknown as RunResult,
+          false,
+          true,
+        ),
+      )
       await publish(
         'observed',
         index + 1,

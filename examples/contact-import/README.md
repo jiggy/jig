@@ -13,7 +13,7 @@ and [Agent configuration](https://jig.md/guide/agents) on a
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:code --input '{}' --attach source=fixtures/known --out preview-known
+jig run binding:code --input '{}' --attach source=fixtures/known --out preview-known --display tui
 ```
 
 The CSV parser is an ordinary declared dependency. The resolution flag permits
@@ -41,6 +41,22 @@ Code returns `needs_mapping`. The Agent is asked to interpret `Organisation`,
 Mixed recognizes the known format in code and invokes the Agent only for
 unfamiliar headings. Try `binding:mixed` with `fixtures/known` to take
 the direct code path. Every output destination must be new.
+
+## Follow the work
+
+**Mapping** shows the headings and proposed column indices. **Contacts** shows accepted
+preview records; **Rejected rows** explains exclusions. Lists show up to twelve records
+with explicit totals and marked text excerpts; the complete returned output and
+`preview.json` retain every record. Select the delivered preview reference to read its
+content. The mapper and converter also offer domain views when invoked independently.
+`needs_mapping` and rejected rows remain distinct from a completed import: no database
+is changed.
+
+Choose `--display web` instead of `--display tui` to use the same views in a
+browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 ## Follow the composition
 

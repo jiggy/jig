@@ -5,6 +5,9 @@ on:
     paths:
       - '.github/workflows/**'
       - 'packages/jig/**'
+      - 'packages/display-model/**'
+      - 'packages/display-web/**'
+      - 'packages/display-tui/**'
       - 'packages/agent-method/**'
       - 'packages/agent-acp/**'
       - 'packages/flow-authoring/**'

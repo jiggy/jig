@@ -1,6 +1,36 @@
 import { handle } from '@jigging/flow'
+import { withUserUpdates } from '@jigging/user-updates'
+import { assess } from './assess.ts'
+import { caseView, chargesView } from './dashboard.ts'
 
-await handle(async (run) => {
-  const { assess } = await import('./assess.ts')
-  return assess(run)
-})
+await handle((run) =>
+  withUserUpdates(run, 'progress', async (updates) => {
+    const input = run.input as unknown as Parameters<typeof caseView>[0]
+    const view = updates.view('case', { title: 'Case', landing: true })
+    const charges = updates.view('charges', { title: 'Charges' })
+    view.update(caseView(input, true))
+    charges.update(chargesView(input))
+    updates.activity('assessment', 'Interpreting the disputed charge')
+    try {
+      const result = await assess(run)
+      if (result.outcome !== 'done') {
+        const cause =
+          (result.output as { reason?: string } | undefined)?.reason ?? 'No reason supplied.'
+        updates.notice(
+          `Assessment ${result.outcome}: ${[...cause].slice(0, 512).join('')}${[...cause].length > 512 ? ' [excerpt; full cause in the result]' : ''}`,
+          'error',
+        )
+      }
+      view.update(caseView(input, true, result))
+      return result
+    } catch (error) {
+      updates.notice(
+        'Case handling failed. No credit has been issued; inspect the final diagnostic.',
+        'error',
+      )
+      throw error
+    } finally {
+      updates.clear('assessment')
+    }
+  }),
+)

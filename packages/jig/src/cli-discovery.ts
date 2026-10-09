@@ -126,7 +126,9 @@ export function completionScript(shell: string): string | undefined {
   elif [[ "$prev" == --updates && "$command" == run ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'off' -- "$cur")
   elif [[ "$prev" == --display && "$command" == inspect ]]; then
-    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'plain dashboard' -- "$cur")
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'plain tui web' -- "$cur")
+  elif [[ "$prev" == --display && "$command" == run ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'auto plain tui web' -- "$cur")
   elif [[ "$cur" == -* ]]; then
     local opts='--help'
     case "$command" in
@@ -163,7 +165,9 @@ _jig() {
   elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
     choices=(off)
   elif [[ "$words[CURRENT-1]" == --display && "$words[2]" == inspect ]]; then
-    choices=(plain dashboard)
+    choices=(plain tui web)
+  elif [[ "$words[CURRENT-1]" == --display && "$words[2]" == run ]]; then
+    choices=(auto plain tui web)
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
@@ -194,7 +198,8 @@ complete -c jig -n '__fish_seen_subcommand_from run inspect' -a '(jig completion
 complete -c jig -n '__fish_seen_subcommand_from run review inspect' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
-complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain dashboard'
+complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain tui web'
+complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'

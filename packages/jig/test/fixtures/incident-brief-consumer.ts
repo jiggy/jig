@@ -35,6 +35,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
   await mkdir(join(root, 'packages'))
   for (const [name, variable] of [
     ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
+    ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
     ['agent-method', 'AGENT_METHOD_PACKAGE_ARCHIVE'],
     ['agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'],
   ] as const) {
@@ -117,8 +118,6 @@ export async function qualifyIncidentBrief(): Promise<void> {
       },
       writeError(text: string) {
         stderr += text
-        if (text.includes('preparing one drafting handoff')) mark('handoff-requested')
-        if (text.includes('Predecessor settled')) mark('successor-requested')
       },
       host: {
         acquire: (directory, overrides) =>

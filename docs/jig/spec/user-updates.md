@@ -10,6 +10,13 @@ This profile adds no FLOW wire operation or execution authority. Exact identity,
 version and digest use existing [Channel Contract/0](https://flow.jig.md/spec/channel-contracts)
 rules. Identifier URLs are never runtime resolution.
 
+The same declarations serve terminal and local browser displays. Authors supply
+semantic reports, facts, measured progress, collections and typed references,
+without renderer components, markup, styles or execution-changing callbacks.
+Display adapters and their access/lifetime policy belong to the host's
+[CLI experience](cli-experience.md) and [web display](web-display.md) contracts;
+browser observation adds no operation or authority to this agreement.
+
 ## Message semantics
 
 All messages are closed JSON/0 objects. No canonical encoded item exceeds
@@ -272,32 +279,39 @@ returned, failed/refused and uncertain. Returned does not mean domain success.
 Overflow preserves represented nodes, saturated omission counts and explicit
 incompleteness. Root result, cleanup and delivery are independent host facts.
 
-Operator-only `--display auto|plain|dashboard` selects presentation; defaults
+Operator-only `--display auto|plain|tui|web` selects presentation; defaults
 never come from a project entrypoint. Auto uses bounded noninteractive inline
 output on suitable terminal stderr, without raw input or alternate screen.
 Plain, redirected stderr, NO_COLOR and TERM=dumb use nonanimated automatic output.
-Explicit dashboard requires terminal stdin/stderr and a suitable TERM; otherwise
+Explicit TUI requires terminal stdin/stderr and a suitable TERM; otherwise
 it explains a plain fallback once. NO_COLOR permits explicit screen control but
 disables SGR styling. `--json` and effective `--receive` retain their exact existing
 stdout semantics and disable automatic observation/dashboard; dashboard cannot override.
+Explicit web uses terminal stderr without requiring terminal stdin, owns a local
+authenticated browser inspector and preserves the same semantic declarations.
+Its separate access, bounds and lifetime are in [web display](web-display.md).
 
 ### Workspace and navigation
 
-After effective arguments and target selection, explicit dashboard waits for
+After effective arguments and target selection, explicit TUI waits for
 trusted root execution admission before owning one alternate screen on stderr.
 Initial review, input, files, output and runtime prerequisite failures remain
 ordinary diagnostics. Entry is independent of application views or update ports;
 early host stages, call observations and diagnostics stay in the retained model.
 Immutable delivery inspection is selected before capture/publication, without
 requiring the screen to be open. One fixed shell shows the actual target, host state,
-elapsed execution limit, stable Activity/Overview/attributed application tabs,
+elapsed execution limit, grouped Execution/Activity/Delivered files and attributed application views,
 attention and contextual help. Only the body scrolls. Activity is the fallback
 landing; the first eligible root landing hint may select a view before human
 navigation. Later updates never steal focus. Titles may change without reordering
-tabs or changing their identity. No mouse capture or terminal author callbacks.
+destinations or changing their identity. No mouse capture or terminal author callbacks.
 
-Collections use labelled record cards in the terminal panes; selection alone
-never opens references or full detail. Boolean/null cells remain literal, and
+Collections use dense aligned rows in the terminal panes; selection alone
+never navigates record/call references or opens full detail. A sole distinct
+typed artifact reference may peek available captured text without navigation or
+effects; ambiguous entries require explicit reference selection. The host's
+Delivered files surface exposes captured contents independently of supplied
+views. Boolean/null cells remain literal, and
 application status-looking text never receives a host success verdict. Omitted
 columns/counts are explicit. Enter opens complete escaped cells and supplied
 details in a bounded body panel. Reports and long summaries start collapsed.
@@ -310,11 +324,15 @@ surviving row identities; deletion chooses the nearest preceding surviving visib
 row, else first, else a selectable empty/no-match state. Local disclosure and text
 anchors reset when complete semantic report content (including references) or
 summary text changes. An ordinal is not a durable report identity. Unselected
-retirement preserves focus; selected retirement returns to Overview. Ended/frozen
+retirement preserves focus; selected retirement returns to Execution. Ended/frozen
 views retain ended/incomplete context and last-update information.
 
-Tab/Shift-Tab changes views and closes local panels. Arrows/j/k select body records;
-Enter opens/closes detail. Left/Right collapses/expands actual calls in Overview;
+The large-terminal navigation rail groups host and application destinations; `v`
+opens a viewport-aware chooser at every size. Tab/Shift-Tab changes views and closes
+local panels. Useful additional context appears on wide screens; generic call
+lifecycle alone does not open a pane. Action feedback remains visible independently
+of context and attention. Arrows/j/k select body records;
+Enter opens/closes detail. Left/Right collapses/expands actual calls in Execution;
 hidden descendants/issues are counted without inventing a node. `c` moves to the
 next supplied collection in block order, wrapping; from another block it chooses
 the next collection after it. Zero collections explains absence; one already
@@ -332,7 +350,11 @@ Default Enter never opens an unrelated file. `!` opens the winning full attentio
 cause from every view; Left/Right chooses other retained causes. `?` opens contextual
 help. Detail/preview/attention arrows and brackets/Page keys scroll without moving
 the underlying record. Escape dismisses one local help/reference/attention/preview/
-detail level before leaving; at most three overlay levels are retained. Home/End
+detail level first; at most three overlay levels are retained. Explicit record/call
+jumps also retain a bounded 16-origin return history. Escape returns to the nearest
+available origin, repairing removed record identity; if every origin retired it
+shows action feedback before a subsequent ordinary exit. Navigation checks the
+enclosing lifetime and Tab/chooser destination changes clear return history. Home/End
 select list ends. q leaves outside filter editing; Ctrl-C and input EOF/Ctrl-D are
 always authoritative.
 
@@ -373,7 +395,7 @@ incompleteness, Flow error, Flow warning; first accepted within priority wins wi
 additional count. View/source ending cannot erase admitted attention. Additional
 unretained causes are disclosed, never claimed present.
 
-Auto/plain commit complete essential notices outside redraw. Explicit dashboard
+Auto/plain commit complete essential notices outside redraw. Explicit TUI
 keeps them inside its workspace, then restores the original screen and commits
 complete retained essential causes in awaited batches of at most 32 KiB before
 final stdout. Admission is not successful output delivery. Closing fences callbacks,
@@ -395,7 +417,7 @@ with separate literal execution/application/cleanup/delivery facts. It owns no l
 Flow, channel or execution owner. Inspection has no built-in idle or absolute
 expiry. Any explicit inherited presentation constraint remains the minimum across
 enclosing owners and cannot be refreshed by input, repaint, resize, updates or
-preview completion. Eligible interactive effective dashboard commands omit only
+preview completion. Eligible interactive effective TUI commands omit only
 the default enclosing presentation lifetime; setup, Run execution, cancellation
 and cleanup retain their bounds. An expiring explicit presentation constraint
 continues live execution through its ordinary owner; no presentation path extends

@@ -44,3 +44,9 @@ both reproduced failure and a passing candidate. Passing finite checks does
 not establish general correctness. Cancellation, deadlines, uncertainty, and
 unavailable support propagate without correction or replay; earlier evidence
 is retained in operation details when a terminal remains deliverable.
+
+The optional `updates` channel uses the standard user-updates contract. **Repair and
+Checks** shows the goal and provisional baseline/proposal check reports. Jig renders
+these same semantic declarations in terminal and web dashboards. Views preserve literal
+outcomes and explicit excerpts; they do not execute actions or establish host success.
+The separate `progress` channel retains application-owned phase records for explicit consumers; it is not the semantic dashboard channel.

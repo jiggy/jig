@@ -31,16 +31,26 @@ operational baselines, and public-site assembly.
   Before local tests, resolve and verify the selected real Node 22+ executable,
   supplying compiler paths even when PATH uses a version-manager shim.
   Preserve distinct operator compiler overrides and exclude ambient credentials.
-  Package-local `jig::check` uses the same native pass after its build and tests.
+  Package-local `jig::check` runs Jig and display-package suites before the same
+  native pass.
 - `test-release.sh` includes the authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
   It also checks the shared Agent method and ordinary ACP package.
   Refuse missing Python build/test tools or separately installed Run/0 fixture
   dependencies before builds and long tests, with the existing setup commands.
-  It freezes complete SDK, HTTP Agent, ACP Agent and Jig archives under a
+  It freezes complete SDK, user-updates, HTTP Agent, ACP Agent, semantic model,
+  web/TUI renderer and Jig archives under a
   canonical temporary root through their package-owned
-  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE` and
-  `JIG_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes afterward.
+  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `USER_UPDATES_PACKAGE_ARCHIVE`,
+  `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE`,
+  `JIG_PACKAGE_ARCHIVE`, `DISPLAY_MODEL_PACKAGE_ARCHIVE`,
+  `DISPLAY_WEB_PACKAGE_ARCHIVE` and `DISPLAY_TUI_PACKAGE_ARCHIVE` to the relevant
+  tests, and verifies those bytes afterward. Standalone display consumers install
+  ordinary package closures without Jig; installed Jig composition remains a
+  separate gate. Model and browser consumers require the independently verified
+  absolute `FLOW_NODE` executable for their Node checks, as well as Bun.
+  Renderer packages are qualification inputs, not publication
+  candidates selected by the protected publisher.
   Hash verification uses the already-qualified Node executable on Linux and Mac.
   The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
   it maps applications' declared SDK/Agent dependencies to the exact frozen

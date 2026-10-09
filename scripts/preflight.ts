@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { arch, platform, release } from 'node:os'
 import { basename, isAbsolute, resolve } from 'node:path'
-import { discoverJigTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import { discoverHostTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
 
 const repository = resolve(import.meta.dir, '..')
 const timeoutMs = 10 * 60_000
@@ -215,7 +215,7 @@ async function main() {
       bunRevision: Bun.revision,
     })
   }
-  const files = mac ? nativeTestFiles(await discoverJigTests(repository)) : []
+  const files = mac ? nativeTestFiles(await discoverHostTests(repository)) : []
   if (mode === 'all') {
     for (const tool of ['just', 'node', 'jq']) {
       if (!Bun.which(tool))

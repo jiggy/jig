@@ -28,11 +28,22 @@ descriptors.
   Lists, selected context and explicitly expanded evidence have distinct roles;
   duplicate-only detail is unavailable. Color denotes declared syntax/navigation
   and host observations, never application success inferred from literal words.
+  Grouped host/application destinations and dense tables consume the shared
+  semantic display model. Conditional context, visible Action feedback, viewport-aware
+  view selection and bounded reference-return navigation preserve progressive disclosure.
+  Observation spans never infer execution durations or domain outcomes.
   Large blank panes preserve the frame budget and exit controls. Recorded results
   navigate ordinary fields without reconstructing domain views or privileging keys.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.
+- `web-display.md` owns the local browser display's access boundary, bounded
+  snapshots/streams, independent viewer navigation, confined immutable previews,
+  admission and finite authority retirement before indefinite inspection. It
+  adds no Flow author API or HTTP/execution SPI. Independently packaged browser
+  and terminal renderers consume bounded semantic snapshots; Jig owns transport,
+  authenticated evidence access and execution authority. CLI grammar and hierarchy
+  remain in `cli-experience.md`.
 - `user-updates.md` owns Jig's exact optional-port selection, separate CLI pool,
   bounded shared stderr presentation and qualification policy. The portable
   descriptor and scoped libraries belong to `packages/user-updates/` and

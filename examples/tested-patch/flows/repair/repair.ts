@@ -4,6 +4,8 @@ import {
   checkAgentResult,
 } from '@jigging/agent-method'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
+import type { UserUpdates } from '@jigging/user-updates'
+import { checksView, repairView } from './dashboard.ts'
 import { type Evaluation, evaluate } from './evidence.ts'
 import { candidate, digest, object, type Proposal, parseInput, parseProposal } from './policy.ts'
 
@@ -17,8 +19,13 @@ interface Attempt {
 export async function repair(
   run: Pick<RunContext, 'input' | 'signal' | 'channels' | 'call'> &
     Partial<Pick<RunContext, 'settings'>>,
+  updates?: UserUpdates,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
+  const repairReport = updates?.view('repair', { title: 'Repair', landing: true })
+  const checks = updates?.view('checks', { title: 'Checks' })
+  repairReport?.update(repairView(input))
+  checks?.update(checksView())
   const settings = object(run.settings ?? {})
   if (
     Object.keys(settings).some((key) => !['restoreCorrections', 'maxProposals'].includes(key)) ||
@@ -68,6 +75,14 @@ export async function repair(
   const finish = async (outcome: string, reason: string): Promise<RunResult> => {
     run.signal.throwIfAborted()
     await publish('finished', attempts.length)
+    const reported = { outcome, output: { reason, ...evidence() } } as unknown as RunResult
+    if (outcome !== 'done')
+      updates?.notice(
+        `No passing patch: ${[...reason].slice(0, 512).join('')}${[...reason].length > 512 ? ' [excerpt; full cause in the result]' : ''}`,
+        'error',
+      )
+    repairReport?.update(repairView(input, reported))
+    checks?.update(checksView(reported, false, true))
     if (progress) {
       try {
         await progress.close()
@@ -105,6 +120,7 @@ export async function repair(
       const observation = await run.call({
         operationId: `${id}-${index}`,
         slot: request.command,
+        intent: `${id === 'baseline' ? 'Baseline' : `Proposal ${id.split('-')[1]}`}: ${index === 0 ? 'repository tests' : `acceptance case ${input.cases[index - 1]!.id}`}`,
         input: { args: request.args, stdin: request.stdin, files },
       })
       if (observation.outcome !== 'done')
@@ -122,8 +138,12 @@ export async function repair(
     return evaluate(input, files, values)
   }
   try {
+    updates?.activity('repair', 'Running the unchanged checks to reproduce the defect')
     await publish('baseline', 0)
     baseline = await observe(input.files, 'baseline')
+    checks?.update(
+      checksView({ outcome: 'observing', output: evidence() } as unknown as RunResult, false, true),
+    )
     if (baseline.acceptance.every((c) => c.passed))
       return await finish(
         'blocked',
@@ -143,10 +163,12 @@ export async function repair(
             `Correction requires retained Agent state; retention was ${previousSession?.status === 'unavailable' ? previousSession.reason : 'not supplied'}.`,
           )
       }
+      updates?.activity('repair', `Requesting proposed fix ${index + 1} of ${maxProposals}`)
       await publish('proposal', index + 1)
       const response = await run.call({
         operationId: `patch-${index + 1}`,
         slot: 'agent',
+        intent: `Proposal ${index + 1}: request a repair`,
         input: {
           ...(session === undefined ? {} : { session }),
           instructions:
@@ -215,8 +237,16 @@ export async function repair(
       }
       const files = candidate(input, attempt.proposal)
       attempt.candidateDigest = digest(files)
+      updates?.activity('repair', `Running fixed checks against proposal ${index + 1}`)
       await publish('check', index + 1)
       attempt.evaluation = await observe(files, `attempt-${index + 1}`)
+      checks?.update(
+        checksView(
+          { outcome: 'observing', output: evidence() } as unknown as RunResult,
+          false,
+          true,
+        ),
+      )
       if (attempt.evaluation.accepted)
         return await finish(
           'done',

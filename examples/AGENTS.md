@@ -45,6 +45,13 @@ authored examples, not independent consumer evidence or promoted Starters.
   same dependency preparation as other consumers, not specially bundled
   application archives or per-Flow setup loops. Test unpublished SDK candidates
   separately from claims about registry availability.
+- Every implemented Flow offers optional domain views through the public
+  user-updates package and a complete copied offline descriptor. Keep projections
+  inside the owning package; no sibling Flow or host-private imports. Lists identify
+  work, selection adds context, and typed references lead to evidence. Bound complete
+  encoded items and disclose excerpts/totals; preserve full results. Reports remain
+  provisional until application checks accept them, and blocking failures must be
+  noticed while healthy work continues. TUI and web consume the same declarations.
 - Agents, models, credentials, and execution policy remain operator choices.
   Agent-using applications choose an ordinary provider by contract or exact slot;
   the operator declares its dependency and configures its resource grants.
@@ -79,7 +86,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Verification
 
-- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/incident-brief/test`
+- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/incident-brief/test examples/software-factory/test`
   after workspace setup. The release gate repeats these application checks
   against the freshly packed SDK.
 - Exercise package boundaries through an admitted Jig Run before claiming

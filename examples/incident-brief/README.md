@@ -12,7 +12,7 @@ the included Agent Binding and your native client as described in the
 
 ```sh
 jig review --allow-resolution-network
-jig run
+jig run --display tui
 ```
 
 Review prepares the declared package dependencies; no repository-private tools
@@ -45,8 +45,8 @@ reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
 The reviewed entrypoint in `jig.ts` selects the brief, input and three-minute
 deadline. Override an argument when needed, for example `jig run --input @my-incident.json`.
 Successful output contains a proposed brief, independent questions, actual
-conversation settlement and, when replaced, the exact handoff snapshot. Progress
-diagnostics identify each worker's requested turn, received answer, handoff
+conversation settlement and, when replaced, the exact handoff snapshot. Dashboard
+activity identifies each worker's requested turn, received answer, handoff
 preparation and actual predecessor settlement. A requested turn is not evidence
 of remote dispatch or completion; a deadline can still prevent the final packet.
 Inspect each branch's `outcome`: `blocked` retains available unsuccessful work
@@ -57,6 +57,22 @@ explanations; a root-level worker-call failure includes `message`. These disting
 lost connections, execution failures and incomplete application work without
 requiring private traces. A received answer still does not establish clean final
 settlement, and a deadline can prevent the packet from arriving at all.
+
+## Follow the work
+
+**Work** shows the requested incident task and both independent branches. **Brief** and
+**Review questions** contain the returned suggestions, turn counts and retained failure
+explanations. Each worker offers its own Draft or Review questions view and current
+activity. Activity reports requested turns and observed answers without echoing source
+context or private prompts. A branch failure is reported immediately while its healthy
+sibling continues. These suggestions still require human review; a completed call does
+not verify incident facts.
+
+Choose `--display web` instead of `--display tui` to use the same views in a
+browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 ## What triggers the handoff?
 

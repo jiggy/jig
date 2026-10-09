@@ -23,14 +23,45 @@ portable descriptor in libexec/contracts/user-updates/user-updates.json. The com
 is retained as libexec/contracts/user-updates/LICENSE and accompanies offline imported copies.
 Source is available in packages/user-updates at https://github.com/jiggy/jig.
 
-EXTERNAL DASHBOARD DEPENDENCIES — NOT BUNDLED
---------------------------------------------
+BUNDLED BROWSER RENDERER
+-----------------------
+
+Preact 11.0.1 is a build-only dependency of @jigging/display-web, bundled into
+its fixed browser assets embedded in libexec/installed-cli.js. The installed product resolves no Preact
+package and downloads no browser dependency.
+
+https://github.com/preactjs/preact
+
+The MIT License (MIT)
+
+Copyright (c) 2015-present Jason Miller
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+EXTERNAL TUI DEPENDENCIES — NOT BUNDLED
+--------------------------------------
 
 Jig declares required exact dependencies on @opentui/core 0.5.17 (MIT) and
 web-tree-sitter 0.25.10 (MIT). Package managers install their complete runtime
 closures, including OpenTUI's matching optional native platform package. These
 packages and their licenses are distributed separately from the Jig archive.
-OpenTUI is loaded only for explicit terminal dashboard presentation; no Flow or
+OpenTUI is loaded only for explicit terminal TUI presentation; no Flow or
 user-updates library adopts its types or widgets.
 
 https://github.com/anomalyco/opentui

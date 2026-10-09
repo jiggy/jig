@@ -12,10 +12,7 @@ import {
   sha256,
 } from './file-input.js'
 import { privateDomainDigest } from './identity.js'
-import {
-  parseRunCheckpointInput,
-  RUN_CHECKPOINT_CONTRACT_DIGEST,
-} from './private-run-checkpoint.js'
+import { parseRunCheckpointInput } from './private-run-checkpoint.js'
 
 export interface PrivateRunFileIdentity {
   readonly attachments: readonly {
@@ -131,6 +128,7 @@ export class PrivateRootRunFiles {
   readonly identity: PrivateRunFileIdentity
   #runId: string | undefined
   #output: PrivateExecutionOutput | undefined
+  #close: Promise<void> | undefined
   #checkpointBound = false
   #outputAttachments: readonly string[] = []
   #method:
@@ -164,6 +162,7 @@ export class PrivateRootRunFiles {
       Record<string, { readonly path: string; readonly access: 'read' | 'read-write' }>
     >
   } {
+    if (this.#close) throw new Error('Run file owner retired')
     if (
       (this.#runId !== undefined && this.#runId !== runId) ||
       !Buffer.from(canonicalJson(identity as unknown as JsonValue)).equals(
@@ -236,7 +235,7 @@ export class PrivateRootRunFiles {
     })
   }
   retainOutput(handle: PrivateExecutionOutput | undefined): void {
-    if (this.#output !== undefined) throw new Error('output already has an owner')
+    if (this.#close || this.#output !== undefined) throw new Error('output owner unavailable')
     this.#output = handle
   }
   get output(): PrivateExecutionOutput | undefined {
@@ -255,6 +254,7 @@ export class PrivateRootRunFiles {
     project: string,
     epoch: number,
   ): Promise<void> {
+    if (this.#close) throw new Error('Run file owner retired')
     if (
       !Object.values(request.slots).some(
         (route) => route.kind === 'native' && route.native === 'run-checkpoint',
@@ -284,12 +284,16 @@ export class PrivateRootRunFiles {
     this.#checkpointBound = true
   }
   async saveCheckpoint(value: unknown) {
+    if (this.#close) throw new Error('Run file owner retired')
     if (!this.#checkpointBound || this.delivery?.saveCheckpoint === undefined)
       throw new Error('checkpoint owner unavailable')
     return await this.delivery.saveCheckpoint(parseRunCheckpointInput(value))
   }
-  async close(): Promise<void> {
-    await closePrivateExecutionOutput(this.#output)
+  close(): Promise<void> {
+    if (this.#close) return this.#close
+    const output = this.#output
     this.#output = undefined
+    this.#close = closePrivateExecutionOutput(output)
+    return this.#close
   }
 }

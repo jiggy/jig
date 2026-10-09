@@ -66,7 +66,7 @@ in `result.json` when delivery succeeds.
 Diagnostics already printed live are counted in the final summary rather than
 printed again. A null checkpoint means no progress was retained and is omitted
 from the terminal view; the machine record keeps that exact value.
-In an explicit dashboard, diagnostic text retained in a collapsed Activity entry
+In an explicit TUI, diagnostic text retained in a collapsed Activity entry
 may not have been read. Its complete bounded final evidence remains visible.
 The [workspace controls](channels.md#observe-the-work) explain expandable reports,
 attributed causes and read-only result inspection. Closing that
@@ -81,7 +81,7 @@ carries diagnostics and, on a terminal, elapsed status and cancellation updates.
 Piped stdout remains machine-readable. Interactive terminals show one active
 status line and use color for headings and outcomes. Set `NO_COLOR=1` or
 `TERM=dumb` for plain output without animation; redirected streams are always
-plain. An explicitly selected eligible dashboard with NO_COLOR uses screen
+plain. An explicitly selected eligible TUI with NO_COLOR uses screen
 controls without color. Errors put the explanation and next action before the diagnostic code.
 The [CLI experience contract](../spec/cli-experience.md) defines these guarantees. Ctrl-C requests cancellation; wait for cleanup before starting new
 work. An interruption or uncertain result is not permission to blindly retry.
@@ -100,11 +100,12 @@ is an Agent answer or proof that the application achieved its objective.
 ### Reopen a saved result
 
 ```sh
-jig inspect --result ./result-packet --display dashboard
+jig inspect --result ./result-packet --display tui
+jig inspect --result ./result-packet --display web
 ```
 
 This opens **Recorded result**, **Files** and **Diagnostics** without starting a
-Run, reading project authority or contacting providers. Omit `--display dashboard`
+Run, reading project authority or contacting providers. Omit `--display`
 for a plain report. `--json` or redirected stdout returns the decoded report
 unchanged. The directory you select supplies the evidence; a recorded destination
 inside `result.json` does not redirect inspection elsewhere.
@@ -117,6 +118,11 @@ tabs and call history are not retained in current packets and are not reconstruc
 The inspector stays open until `q`, Escape or keyboard Ctrl-C, subject to any
 explicit enclosing command limit. Input/output failure or external interruption
 also closes it and releases its retained evidence.
+For web, open the private link printed on terminal stderr and choose **Close
+inspection** to leave. Browser disconnection does not cancel or close it.
+Selecting a captured file shows its contents; empty, non-text, unavailable and
+clipped files have distinct explanations. Expanded search covers the retained
+excerpt, not bytes outside it. Saved values keep their recorded provenance.
 
 Exit 0 means the saved report and files were read consistently, even if that report
 records a failed Run. Exit 1 means invalid or unavailable evidence, incomplete

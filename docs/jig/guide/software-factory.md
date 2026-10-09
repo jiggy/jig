@@ -48,13 +48,18 @@ The standard [user-updates contract](../contracts/user-updates.md) supplies thre
 factory views: **Jobs** shows requested goals, source scope, reviewed approach and
 outcomes; **Checks** shows repository tests and independent acceptance
 cases; **Patches** shows independently checked patch packets and evidence links.
-**Activity** follows current work and check reports. **Overview** shows the actual
+**Activity** follows current work and check reports. **Execution** shows the actual
 call tree, distinguishing baseline checks from checks of each proposed repair.
 Jobs pairs concise outcomes, verified checks and patch references with each job's
 goal and evidence. Wide terminals show the selected job's details beside the list.
 Blocking causes remain in the attention bar; press `!` to read the complete cause.
-Use `jig run --display dashboard` to switch views, select a job, inspect its
+Use `jig run --display tui` to switch views, select a job, inspect its
 details, and use `r` to select a verified file preview after packet delivery.
+Use `jig run --display web` to open the same Jobs, Checks and Patches views in a
+browser through the private link printed after execution starts. **Delivered
+files** lets you read each checked patch and its evidence once delivery is
+verified. A job with several evidence references offers an explicit choice;
+the display does not guess which file you meant. No Flow changes are required.
 Jobs includes the exact original request file; long displayed goals explicitly
 identify excerpts. Complete requests also remain in the supplied input and
 `result.json`.
@@ -70,7 +75,8 @@ causes, while full evidence remains in `result.json`.
 Reopen the saved evidence later without starting work:
 
 ```sh
-jig inspect --result ./factory-result --display dashboard
+jig inspect --result ./factory-result --display tui
+jig inspect --result ./factory-result --display web
 ```
 
 This shows the recorded result, verified saved files and diagnostics. Current
@@ -155,6 +161,11 @@ For example, a job may include `"method": "p1"` to require one proposal, or
 `"method": "p2"` to allow a checked correction. Unknown method IDs fail input
 validation before any Agent call. The final and checkpoint evidence records
 whether the choice was explicit or automatic and the exact selected slot.
+
+The standalone repair also publishes Repair and Checks on its optional `updates`
+channel; their reports remain provisional for a caller. The router publishes Selection
+on `progress`, showing task, eligible candidates and a validated choice or abstention.
+Both use the same portable profile as the factory’s views.
 
 The [Semantic Router source package](https://github.com/jiggy/jig/tree/main/examples/software-factory/flows/router)
 is independently reusable. It accepts only task text and a bounded candidate list,

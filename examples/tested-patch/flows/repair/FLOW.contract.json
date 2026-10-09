@@ -24,6 +24,12 @@
         "required": ["phase", "attempt"],
         "additionalProperties": false
       }
+    },
+    "updates": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/user-updates/user-updates.json"
     }
   }
 }

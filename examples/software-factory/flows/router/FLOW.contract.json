@@ -85,5 +85,13 @@
         }
       }
     }
+  },
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/user-updates/user-updates.json"
+    }
   }
 }

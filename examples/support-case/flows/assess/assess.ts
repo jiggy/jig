@@ -5,6 +5,7 @@ export async function assess(run: Pick<RunContext, 'input' | 'call'>): Promise<R
   const reply = await run.call({
     operationId: 'assess-charge',
     slot: 'agent',
+    intent: 'Propose the disputed charge and amount',
     input: {
       instructions:
         'Identify the charge this customer disputes and the requested credit in USD cents. ' +

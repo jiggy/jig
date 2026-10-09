@@ -113,28 +113,35 @@ project entrypoint; `--updates off` does not cancel that explicit choice. Multip
 canonical ports get one hint instead of a guess. Unsupported contracts remain
 ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
 
-Use `jig run --display dashboard` for a terminal workspace. **Activity** collects
+Use `jig run --display tui` for a terminal workspace. **Activity** collects
 current work and the newest notices first; setup stages expand from one entry.
-**Overview** shows actual calls, opening active or problematic branches and
+**Execution** shows actual calls, opening active or problematic branches and
 collapsing returned branches. You can expand them to see their calls.
 Your domain tabs retain their own records and evidence. Routine
 reports stay collapsed, while attributed causes remain visible across tabs. `!`
 opens their full explanation, `d` opens attributed diagnostic text, and `?` shows
 contextual help. Diagnostic text with no structured severity stays unclassified.
 
-Give each child call a short, descriptive `intent` in `run.call(...)`; Overview
+Give each child call a short, descriptive `intent` in `run.call(...)`; Execution
 uses that supplied label. Without it, the graph shows the reviewed slot name.
 Enter on a call shows its original operation ID and host lifecycle.
 
 The terminal renderer is included with Jig. Flows supply semantic reports, facts,
 counts and collections; they do not import a UI library or choose terminal widgets.
-Wide layouts show selected record details beside the list; narrower layouts use
-Enter for full detail. Tab changes views; arrows/j/k selects records. `c` selects
+The workspace groups execution, activity and files separately from your application's
+views. Large terminals show a navigation rail; `v` opens the complete view chooser
+at any size. Compact tables keep records together. A context pane appears on wide
+screens only when it adds information; Enter expands full details. Tab changes
+views; arrows/j/k select records. `c` selects
 a collection; `/` edits its filter and `s` changes sorting. Filter text is literal:
 Enter applies it and Escape discards the draft. `r` explicitly selects a reference;
 Enter then opens the chosen record, call or verified immutable file preview.
-Brackets/Page keys scroll details. Escape returns from a local panel before
-leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
+When the selected entry has one distinct artifact reference, its available
+content is previewed directly. Multiple references still require a choice.
+**Delivered files** lists captured evidence independently of application views;
+select a file to read its text or patch. Size and capture limits stay secondary.
+Brackets/Page keys scroll details. Escape returns from a local panel, then a
+record/call reference jump, before leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
 and waits for cleanup. After execution, cleanup and delivery settle, result
 inspection is read-only and stays open until q, Escape or keyboard Ctrl-C, subject
 to any explicit enclosing command limit. Initial input, review, file and runtime
@@ -145,10 +152,26 @@ retained essential causes before the final result.
 `--receive` keeps exact existing output and takes precedence over the dashboard.
 The workspace needs terminal input/stderr and at least 18 columns/4 rows;
 smaller terminals release to plain output. Normal panes need 50 columns/14 rows.
-Explicit dashboard with NO_COLOR uses screen controls without color. Activity is
+Explicit TUI with NO_COLOR uses screen controls without color. Activity is
 bounded session history; omission is disclosed, and result evidence remains separate.
 Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
 after the dashboard closes, without starting another Run.
+
+Use `jig run --display web` for the same semantic views in a browser. Jig prints
+a private local link after execution starts; open that link yourself. Each tab
+keeps its own selection, filters and expanded evidence. **Activity**, **Execution**,
+domain views, diagnostics and delivered file contents remain available after
+settlement until you choose **Close inspection**. That action closes all viewers
+of this command; during execution, work continues in the ordinary transcript.
+Closing a browser tab alone does not close inspection or cancel work. Terminal
+q/Escape also leaves when Jig owns terminal input; live Ctrl-C still cancels work.
+
+Web needs terminal stderr but accepts piped stdin and redirected Run stdout.
+`--json` and `--receive` keep their ordinary machine behavior and take precedence.
+`--updates off` leaves host observations and files available without receiving
+application views. Reload by opening the original terminal link; the browser
+does not retain its private access capability in storage. Keep the link private.
+See the [local access and lifetime contract](../spec/web-display.md).
 
 ## Give a Flow its own workspace
 

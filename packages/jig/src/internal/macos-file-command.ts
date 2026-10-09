@@ -3,6 +3,8 @@ import { mkdtemp, open, rmdir } from 'node:fs/promises'
 import type { Socket } from 'node:net'
 import { join } from 'node:path'
 import { capturePrivateTransferredOutput, type PrivateCapturedOutput } from './captured-output.js'
+import { PRIVATE_INSPECTION_COMPLETION_MS, privateBoundInspection } from './delivery-inspection.js'
+import type { PrivateDeliveryInspectionOptions } from './file-delivery.js'
 import { privateMacosStatAt, privateMacosUnlinkAt } from './macos-descriptor-files.js'
 import {
   createPrivateMacosDescriptorReceiver,
@@ -12,6 +14,7 @@ import {
   privateMacosCurrentProcessIdentity,
   privateMacosPeerIdentity,
 } from './macos-process-controls.js'
+import { privatePresentationNow } from './root-run-timeout-policy.js'
 
 type Peer = Readonly<{ pid: number; version: number }>
 
@@ -39,7 +42,7 @@ export async function createPrivateMacosFileCommand() {
   let roots: Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>> | undefined
   let output: Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>> | undefined
   let control: { dev: bigint; ino: bigint } | undefined
-  let closed = false
+  let closing: Promise<void> | undefined
   const verifyParent = () => {
     const held = fstatSync(parent.fd, { bigint: true }),
       visible = lstatSync(directory, { bigint: true })
@@ -65,17 +68,20 @@ export async function createPrivateMacosFileCommand() {
       throw new Error('native file owner socket changed')
     return info
   }
-  const close = async () => {
-    if (closed) return
-    closed = true
-    const failures: unknown[] = []
-    for (const receiver of [roots, output]) {
-      try {
-        await receiver?.close()
-      } catch (error) {
-        failures.push(error)
-      }
-    }
+  const closeOwned = async (options: PrivateDeliveryInspectionOptions) => {
+    const receivers = [roots, output]
+    roots = undefined
+    output = undefined
+    // Consume both receiver references before yielding. One stalled close must
+    // neither retain the other endpoint nor refresh the completion allowance.
+    const closed = await Promise.allSettled(
+      receivers.map((receiver) =>
+        privateBoundInspection(receiver?.close() ?? Promise.resolve(), options),
+      ),
+    )
+    const failures: unknown[] = closed
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason)
     try {
       verifyParent()
       if (control !== undefined) {
@@ -86,16 +92,24 @@ export async function createPrivateMacosFileCommand() {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         }
       }
-      if (!failures.length) await rmdir(directory)
+      if (!failures.length) await privateBoundInspection(rmdir(directory), options)
     } catch (error) {
       failures.push(error)
     }
     try {
-      await parent.close()
+      await privateBoundInspection(parent.close(), options)
     } catch (error) {
       failures.push(error)
     }
     if (failures.length) throw new AggregateError(failures, 'native file owner cleanup failed')
+  }
+  const close = (
+    options: PrivateDeliveryInspectionOptions = {
+      deadline: privatePresentationNow() + PRIVATE_INSPECTION_COMPLETION_MS,
+    },
+  ) => {
+    closing ??= closeOwned(options)
+    return closing
   }
   try {
     roots = await createPrivateMacosDescriptorReceiver(directory, 'roots')
@@ -118,6 +132,7 @@ export async function createPrivateMacosFileCommand() {
         signal: AbortSignal,
         work: (roots: readonly number[]) => Promise<T>,
       ): Promise<T> {
+        if (closing) throw new Error('native file owner retired')
         if (!Number.isSafeInteger(count) || count < 0 || count > 8)
           throw new TypeError('invalid native input root count')
         if (!count) return work([])
@@ -140,6 +155,7 @@ export async function createPrivateMacosFileCommand() {
         signal: AbortSignal,
         work: (output: PrivateCapturedOutput) => Promise<T>,
       ): Promise<T> {
+        if (closing) throw new Error('native file owner retired')
         const bundle = await output!.receive(peer, 5000, signal)
         let capture: PrivateCapturedOutput | undefined
         try {
