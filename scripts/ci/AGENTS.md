@@ -2,11 +2,56 @@
 
 ## Purpose
 
-Owns quick CI checks, disposable Linux proof-host provisioning and rootless Mac
-host qualification. Host preparation never becomes a consumer requirement.
+Owns conservative dependency selection, immutable candidate provenance, observed
+CI evidence and release readiness, plus disposable Linux and native Mac proof.
+Host preparation never becomes a consumer requirement.
 
 ## Ownership
 
+- `affected-manifest.json` declares component edges, executable input ownership,
+  complete target inventories, runtime profiles and the narrow PR exclusion policy.
+  `affected-plan.mjs` records verified base, PR head and tested merge state, old/new
+  graphs and inventories, change endpoints, decisions and omission reasons. Unknown
+  inputs select full work. Newly discovered unassigned tests prevent qualification.
+  Shadow mode executes every target while retaining proposed exclusions; only
+  public site assets and isolated Python source/tests may omit unrelated PR work.
+  Bundled Jig browser assets and executable guides remain full inputs.
+  The reviewed audit policy selects active PR heads whose domain-separated
+  SHA-256 hash falls in bucket zero modulo five for full fresh execution. Seed
+  only from the verified PR head so all scopes and reruns agree; preserve
+  proposed exclusions for comparison. No invocation may suppress that audit.
+- `affected-gate.mjs` independently reconstructs that plan from Git and current
+  policy, then requires selected execution or the exact authorized omission.
+  Its CI entrypoint binds the checkout, event/base/PR identity and mode/full
+  policy to trusted workflow inputs; retained plan fields cannot redefine them.
+  `job-evidence.mjs` counts completed reports, built pages or verified distributions;
+  it checks source/profile identity, complete profiles, nonempty execution and
+  explicit archive/residue proof. Status alone cannot establish a pass. Retain
+  skipped identities and authorize only the owning profile's reviewed expectations
+  and exact command-specific partition filter; a new skip must not disappear into
+  an aggregate count. Native prerequisites and installed startup must execute.
+- `build-candidates.mjs` archives clean tracked source and freezes all five npm
+  archives on qualified native Linux x64 Bun 1.3.3/Just 1.43.1 using normal workspace
+  resolution and package-owned packing. Preserve generated resolution, actual
+  tool identities, inventories and hashes. Build-only receipts carry pending
+  qualification; expensive consumer tests run after artifact retention.
+  `qualify-candidate.mjs` verifies the immutable bundle before and after fresh
+  FLOW/Agent/Jig installed obligations, without rebuilding release archives.
+- `candidate-provenance.mjs` validates exact source, producer, build profile,
+  archive contents, resolution and hashes, and writes qualification receipts.
+  `candidate-transfer.mjs` checks GitHub repository/workflow/event/head identity,
+  current run attempt, immutable artifact ID/digest and expiry before safely
+  extracting the bundle. PR head metadata differs from its tested merge source.
+  Non-PR audits may acquire trusted main push/schedule/manual producers; release
+  readiness and native Linux lineage require full main-push producers. Missing
+  current-attempt artifacts never fall back to older candidates.
+- `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and
+  native obligations after completion events. Qualification receipts bind the
+  original CI candidate; native receipts additionally bind the exact full Linux
+  receipt. Early native input receipts route pending/failing descendants but
+  cannot qualify them. FLOW readiness remains independent of host failures.
+  Snapshots bind successful runs/jobs/attempts and artifact identities so the
+  isolated trusted publisher can revalidate after queueing and before mutation.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
@@ -19,6 +64,9 @@ host qualification. Host preparation never becomes a consumer requirement.
   portion of the same complete suite: three Intel or two Apple Silicon shards.
   Shard zero runs native prerequisites and the final shard runs installed
   consumer and genuine-client checks on each architecture.
+  Hosted qualification consumes `JIG_CI_CANDIDATE_DIRECTORY` after verifying
+  provenance and copies its exact archives; ordinary platform source builds
+  remain separate. Full self-hosted local mode uses the owning local packers.
 - `macos-host-test-shards.mjs` discovers every Jig test file. Eight native
   prerequisite files run once in the dedicated containment step on shard zero;
   every other file enters hosted qualification. The root Agent lifecycle and
@@ -59,6 +107,19 @@ host qualification. Host preparation never becomes a consumer requirement.
 
 ## Local Contracts
 
+- Keep selected tests fresh. Do not reuse passing results, cold consumer
+  installations, native containment, cleanup or live client qualification.
+  Main, manual and weekly audits select complete coverage. Keep default shadow
+  mode until representative same-revision full audits and adversarial fixtures
+  support each prospective omission. An unresolved reproducible missed failure
+  disables the affected exclusion; the full override remains immediately available.
+- Canonical artifacts use `candidates-SHA-rRUN-aATTEMPT`; host shard evidence and
+  qualification artifacts also include run and attempt. Every host shard compares
+  the canonical candidate metadata and unchanged archives after execution. Full
+  aggregates require all current-attempt shards. Qualification artifacts contain
+  root `QUALIFICATION.json`; early native lineage uses root `INPUTS.json`.
+  Expired artifacts require a new candidate and fresh requalification. Never mix
+  an old native or host receipt with a rebuilt candidate from the same source.
 - Mac qualification runs unprivileged without host provisioning. Require all
   three genuine native client paths for full qualification and the installed
   consumer shard; missing prerequisites fail explicitly. Claude and Pi must
@@ -83,6 +144,12 @@ host qualification. Host preparation never becomes a consumer requirement.
 
 ## Verification
 
+- `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for renames,
+  deletions, discovery, shared inputs, merge state and forged omissions; archive/API
+  fixtures cover source/run/attempt/profile/digest drift, forks, expiry, reruns,
+  descendant SHA drift and failed host gates beside independent FLOW readiness.
+- Inspect every workflow's permissions, executable modes, profile inventory,
+  attempt-specific artifact flow and final gate when changing these interfaces.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive

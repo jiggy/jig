@@ -38,15 +38,19 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   its bounded mode-0600 profile artifacts for seven days; it performs no model
   calls and does not establish a performance claim. Its 60-minute shard allows
   the 30-minute profile command budget to finish before mandatory cleanup.
-- CI freezes npm and Python candidates while source gates run. The protected
-  publication workflows download those exact successful push-run artifacts;
-  they do not rebuild or accept artifacts from a different CI run.
+- CI freezes one canonical five-package npm bundle and checked Python
+  distributions before installed qualification. Source, Linux, hosted Mac and
+  native Agent consumers use the same npm bytes while rebuilding their platform's
+  source workspace separately. Protected publishers download the exact original
+  CI artifact by immutable artifact ID; they never rebuild a release.
 - CI reports quick development/release checks and site builds independently
   of the longer source suite. Candidate jobs retain their archives, then check
   exact public registry bytes read-only so a reused version fails before merge.
   This does not replace publication's complete group preflight and rechecks.
-  Preserve the existing `test` check as a fail-closed aggregate of quick, site
-  and source jobs; skipped or cancelled inputs cannot produce a successful check.
+  Preserve `test` as a fail-closed aggregate of the independently reconstructed
+  plan and observed execution. Selected jobs must finish successfully with
+  nonempty proof and complete profiles; only reconstructed policy omissions may
+  skip jobs. Main, manual and weekly audit events always select full coverage.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
   dependency order. FLOW publishes after its successful main-push CI run;
   the Agent/Jig group additionally requires same-revision host and native gates.
@@ -62,9 +66,26 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   SDK npm publication and source tagging are independent of those Jig gates;
   Python also uses its own CI-qualified artifacts. Each group preflights its own
   archives before mutation. A host failure cannot block FLOW publication.
-- Keep path filters synchronized with every real workflow input.
-- Jig's Linux conformance PR filter includes root license, pricing, mapping,
-  and retained license texts. Jig GitHub release notes link the matching tagged
+- CI, Linux and hosted Mac always plan each PR; runner allocation follows the
+  repository-owned conservative policy instead of workflow path filters.
+  `JIG_CI_SELECTION_MODE` defaults to `shadow`: proposed exclusions are retained
+  while every existing target executes freshly. `active` allows only public site
+  assets and isolated Python implementation/tests; Python retains the full source
+  gate. Shared, unknown, build, harness, contract, license, pricing and bundled
+  web changes select full work. `JIG_CI_FORCE_FULL=true` overrides exclusions.
+  Active PR selection deterministically samples about 20% of PR head revisions
+  for full fresh execution. CI and both host workflows use the same verified
+  PR head and reviewed hash policy, retaining the narrower proposal for audit
+  comparison; reruns and unrelated merge-base advances cannot change sampling.
+  Keep shadow mode until representative same-revision audits and seeded failures
+  show no missed regression, including resolution of relevant known failures.
+  Before activating exclusions, require `test`, `affected-linux` and
+  `affected-macos` in merge policy. The existing full Linux and architecture
+  checks remain complete release evidence and never claim an omitted full pass.
+  Sampled PR and weekly Sunday full audits supplement full main checks; include
+  their cost when measuring savings. Do not cache passing results or
+  native/consumer execution.
+- Jig GitHub release notes link the matching tagged
   source archive and build instructions; npm remains the runnable distribution.
 - Python publication qualifies the exact retained wheel/sdist on its supported
   interpreter/OS matrix. Read-only jobs prepare and verify registry bytes; the
@@ -84,7 +105,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.
 - Preserve zero-residue checks around provisioned Jig host tests.
-- Build Linux host archives once, then run the complete suite in independent
+- Acquire the original canonical CI bundle once, then run the complete Linux suite in independent
   shards on separately provisioned hosts. Every shard rechecks the frozen
   archive hashes, performs zero-residue verification, and contributes to the
   aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
@@ -115,8 +136,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
 - Host conformance includes Agent method and contract-authoring source changes.
-  Freeze the built SDK, HTTP Agent, ACP Agent and Jig archives once through their owning
-  packers. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
+  Consume the built SDK, HTTP Agent, ACP Agent, user-updates and Jig archives from
+  the canonical producer. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
   archives to installed Markdown tests across the provisioned host boundary;
   verify the same archive hashes afterward. Jig's packer supplies the complete
   private authoring closure. Agent source rebuilds use ordinary declared
@@ -149,8 +170,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   complete successful JUnit reports from every selected shard; prerequisite
   success alone is insufficient. Their retained summaries separate executed
   cases from filtered/platform/opt-in skips, and runner wait from job execution.
-  Only these read-only aggregate jobs receive `actions: read` to retrieve timing
-  for the current run attempt; unavailable timing cannot qualify or reject proof.
+  Read-only acquisition and aggregate jobs receive `actions: read` to verify
+  provenance or retrieve current-attempt timing; unavailable timing cannot
+  qualify or reject proof.
   Hosted setup installs no privileged helper
   and uses no model credentials. Each shard retains per-test timing evidence;
   optional manual dispatch profiles installed startup on both architectures
@@ -160,10 +182,23 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   startup reports. Declare Intel shards first, with installed-consumer work
   first; declaration order is not runner priority. Fail fast
   after a shard fails; cancelled shards cannot qualify.
-  Run automatically for PRs changing host/build/test inputs and every main push;
-  public-guide-only PRs do not allocate the Mac matrix. Manual dispatch remains available
+  Plan every PR and run every main push and weekly full audit. Conservative
+  exclusions allocate fewer runners only after shadow validation. Manual dispatch remains available
   for diagnostics. Cancel superseded PR/feature runs, but retain main-push
   qualification. PR results do not qualify a different merged revision.
+- Release completion events from CI, Linux, hosted Mac and native Agent workflows
+  each run a short read-only readiness check. Duplicate and out-of-order events
+  converge; manual reconciliation accepts a full main-push source revision.
+  FLOW uses complete CI evidence independently of host readiness. Agent/Jig also
+  require all current-attempt Linux shards, both Mac architectures and all three
+  native clients against the same canonical candidate and verified Linux lineage.
+  Native descendant workflow SHA is metadata, not the tested source revision.
+  Missing, expired, stale, failed or cancelled evidence cannot authorize release.
+  Full reruns regenerate every required current-attempt proof; partial reruns
+  cannot inherit old shards or rebuilt candidates. Publication revalidates
+  readiness after approvals and queueing and before registry mutations. FLOW
+  and host mutation queues are independent; waiting for host qualification holds
+  no runner or registry mutation lock.
 
 ## Verification
 

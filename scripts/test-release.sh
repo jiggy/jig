@@ -62,6 +62,13 @@ just flow::build
 just authoring::test
 just jig::build
 
+# CI supplies the candidate bytes that installed matrices and publication use.
+# Source workspace builds remain independent ordinary declared dependencies.
+if [ -n "${CI_CANDIDATE_BUNDLE:-}" ]; then
+  "$FLOW_NODE" scripts/ci/candidate-provenance.mjs verify "$CI_CANDIDATE_BUNDLE" \
+    --source "$(git rev-parse HEAD)" >/dev/null
+fi
+
 # Installed artifact checks require canonical archive paths, including Mac's
 # temporary-directory aliases.
 temporary_parent=$(CDPATH= cd -- "${TMPDIR:-/tmp}" && pwd -P)
@@ -72,27 +79,33 @@ trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 # before their versions reach the registry. Only disposable copies' declared
 # dependencies change; Flow source and repository manifests do not.
 mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/user-updates" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/jig"
-bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts/flow-sdk"
+if [ -n "${CI_CANDIDATE_BUNDLE:-}" ]; then
+  for package in flow-sdk user-updates agent-method agent-acp jig; do
+    cp "$CI_CANDIDATE_BUNDLE/$package/"*.tgz "$release_tmp/artifacts/$package/"
+  done
+else
+  bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts/flow-sdk"
+  bun pm pack --cwd packages/user-updates --ignore-scripts --destination "$release_tmp/artifacts/user-updates"
+  bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$release_tmp/artifacts/agent-method"
+  bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$release_tmp/artifacts/agent-acp"
+  bun packages/jig/scripts/pack.ts --destination "$release_tmp/artifacts/jig"
+fi
 set -- "$release_tmp"/artifacts/flow-sdk/*.tgz
 test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
 FLOW_SDK_PACKAGE_ARCHIVE=$sdk_archive
 export FLOW_SDK_PACKAGE_ARCHIVE
-bun pm pack --cwd packages/user-updates --ignore-scripts --destination "$release_tmp/artifacts/user-updates"
 set -- "$release_tmp"/artifacts/user-updates/*.tgz
 test "$#" -eq 1 && test -f "$1"
 USER_UPDATES_PACKAGE_ARCHIVE=$1
 export USER_UPDATES_PACKAGE_ARCHIVE
-bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$release_tmp/artifacts/agent-method"
 set -- "$release_tmp"/artifacts/agent-method/*.tgz
 test "$#" -eq 1 && test -f "$1"
 AGENT_METHOD_PACKAGE_ARCHIVE=$1
 export AGENT_METHOD_PACKAGE_ARCHIVE
-bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$release_tmp/artifacts/agent-acp"
 set -- "$release_tmp"/artifacts/agent-acp/*.tgz
 test "$#" -eq 1 && test -f "$1"
 AGENT_ACP_PACKAGE_ARCHIVE=$1
-bun packages/jig/scripts/pack.ts --destination "$release_tmp/artifacts/jig"
 set -- "$release_tmp"/artifacts/jig/*.tgz
 test "$#" -eq 1 && test -f "$1"
 JIG_PACKAGE_ARCHIVE=$1
@@ -165,10 +178,15 @@ for application in tested-patch software-factory request-triage support-case con
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
+if [ -n "${JIG_CI_SOURCE_JUNIT:-}" ]; then
+  set -- "$@" --reporter=junit "--reporter-outfile=$JIG_CI_SOURCE_JUNIT"
+fi
 bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/user-updates packages/jig conformance/run-0 "$@"
-bun packages/flow-sdk/test/package-smoke.ts
+if [ -z "${CI_CANDIDATE_BUNDLE:-}" ]; then
+  bun packages/flow-sdk/test/package-smoke.ts
+  bun packages/jig/test/package-smoke.ts
+fi
 bun packages/user-updates/test/package-smoke.ts
-bun packages/jig/test/package-smoke.ts
 
 PYTHONDONTWRITEBYTECODE=1 \
 PYTHONPATH=packages/jiggy-flow/src \
@@ -180,15 +198,21 @@ PYTHONDONTWRITEBYTECODE=1 \
     -s conformance/run-0/python-peer -p 'test_*.py' -v
 
 # Both installed Python distributions run the SDK suite and typed consumer.
-"$python_bin" scripts/build-python-sdk.py "$release_tmp/python-dist"
+python_dist=${CI_PYTHON_DISTRIBUTIONS:-"$release_tmp/python-dist"}
+python_updates_dist=${CI_PYTHON_UPDATES_DISTRIBUTIONS:-"$release_tmp/python-updates-dist"}
+if [ -z "${CI_PYTHON_DISTRIBUTIONS:-}" ]; then
+  "$python_bin" scripts/build-python-sdk.py "$python_dist"
+fi
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-user-updates/src \
   "$python_bin" -m unittest discover -s packages/jiggy-user-updates/tests -p 'test_*.py' -v
 PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-user-updates/src \
   "$python_bin" -m mypy --strict packages/jiggy-user-updates/src/jiggy/user_updates
-"$python_bin" -m build --outdir "$release_tmp/python-updates-dist" packages/jiggy-user-updates
-"$python_bin" -m twine check --strict "$release_tmp"/python-updates-dist/*
-"$python_bin" packages/jiggy-user-updates/tests/package_smoke.py \
-  "$release_tmp"/python-updates-dist/*.whl "$release_tmp"/python-updates-dist/*.tar.gz "$release_tmp"/python-dist/*.whl
+if [ -z "${CI_PYTHON_UPDATES_DISTRIBUTIONS:-}" ]; then
+  "$python_bin" -m build --outdir "$python_updates_dist" packages/jiggy-user-updates
+  "$python_bin" -m twine check --strict "$python_updates_dist"/*
+  "$python_bin" packages/jiggy-user-updates/tests/package_smoke.py \
+    "$python_updates_dist"/*.whl "$python_updates_dist"/*.tar.gz "$python_dist"/*.whl
+fi
 "$python_bin" -m unittest discover -s scripts -p 'test_pypi_release.py' -v
 
 archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"

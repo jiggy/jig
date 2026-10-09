@@ -72,6 +72,68 @@ jobs:
           JIG_CI_BUN: ${{ steps.setup-bun.outputs.bun-path }}
         run: printf 'JIG_CI_BUN=%s\n' "$JIG_CI_BUN" >> "$GITHUB_ENV"
 
+      - name: Acquire the canonical candidate and exact Linux lineage
+        id: host-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          arguments=(acquire-linux "$RUNNER_TEMP/linux-host-artifacts"
+            --source "$SOURCE_REVISION"
+            --qualification-output "$RUNNER_TEMP/linux-qualification"
+            --github-output "$GITHUB_OUTPUT")
+          if [[ -n "$TRIGGER_RUN_ID" ]]; then arguments+=(--linux-run "$TRIGGER_RUN_ID"); fi
+          node scripts/ci/candidate-transfer.mjs "${arguments[@]}"
+
+      - name: Identify and verify the frozen archives
+        id: archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
+          node scripts/ci/candidate-provenance.mjs verify "$artifact_directory" --source "$SOURCE_REVISION"
+          (
+            cd "$artifact_directory"
+            sha256sum --check SHA256SUMS
+          )
+          one_archive() {
+            local -a archives
+            mapfile -t archives < <(find "$1" -maxdepth 1 -type f -name '*.tgz' -print)
+            if [[ ${#archives[@]} -ne 1 ]]; then
+              echo "expected exactly one archive in $1" >&2
+              return 1
+            fi
+            readlink -f "${archives[0]}"
+          }
+          {
+            printf 'USER_UPDATES_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/user-updates")"
+            printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
+            printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
+            printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
+            printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/jig")"
+            printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
+          } >> "$GITHUB_ENV"
+          printf 'ready=true\n' >> "$GITHUB_OUTPUT"
+
+      - name: Record inert native input lineage before qualification
+        env:
+          NATIVE_CLIENT: ${{ matrix.client }}
+        run: |
+          mkdir "$RUNNER_TEMP/native-inputs"
+          node scripts/ci/candidate-provenance.mjs inputs "$RUNNER_TEMP/linux-host-artifacts" \
+            "$RUNNER_TEMP/native-inputs/INPUTS.json" --kind native --profile "$NATIVE_CLIENT" \
+            --upstream-receipt "$RUNNER_TEMP/linux-qualification/QUALIFICATION.json"
+
+      - name: Retain input identity for failed or pending native runs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-inputs-${{ matrix.client }}-${{ env.SOURCE_REVISION }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-inputs
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Provision the disposable rootless host
         id: host
         run: |
@@ -88,64 +150,6 @@ jobs:
 
       - name: Build source-test workspace packages
         run: just --justfile packages/jig/justfile build
-
-      - name: Find successful Linux host run for this source
-        id: host-run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "$TRIGGER_RUN_ID" ]]; then
-            host_run_id=$TRIGGER_RUN_ID
-          else
-            host_run_id=$(gh api --method GET -f per_page=100 \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/linux-host-conformance.yml/runs" |
-              jq -r --arg revision "$SOURCE_REVISION" \
-                '[.workflow_runs[] | select(.head_sha == $revision and .head_branch == "main" and .conclusion == "success" and .event == "push")] | sort_by(.created_at) | last | .id // empty')
-            if [[ -z "$host_run_id" ]]; then
-              echo "No successful main-push Linux host run exists for $SOURCE_REVISION" >&2
-              exit 1
-            fi
-          fi
-          printf 'run_id=%s\n' "$host_run_id" >> "$GITHUB_OUTPUT"
-
-      - name: Download exact Linux host archives
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: linux-host-artifacts-${{ env.SOURCE_REVISION }}
-          path: ${{ runner.temp }}/linux-host-artifacts
-          github-token: ${{ github.token }}
-          run-id: ${{ steps.host-run.outputs.run_id }}
-
-      - name: Identify and verify the frozen archives
-        id: archives
-        shell: bash
-        run: |
-          set -euo pipefail
-          artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
-          (
-            cd "$artifact_directory"
-            sha256sum --check SHA256SUMS
-          )
-          one_archive() {
-            local -a archives
-            mapfile -t archives < <(find "$1" -maxdepth 1 -type f -name '*.tgz' -print)
-            if [[ ${#archives[@]} -ne 1 ]]; then
-              echo "expected exactly one archive in $1" >&2
-              return 1
-            fi
-            readlink -f "${archives[0]}"
-          }
-          {
-            printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
-            printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
-            printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
-            printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/jig")"
-            printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
-          } >> "$GITHUB_ENV"
-          printf 'ready=true\n' >> "$GITHUB_OUTPUT"
 
       - name: Install current native Codex
         if: matrix.client == 'codex'
@@ -270,6 +274,7 @@ jobs:
             "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
             "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
             "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
+            "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" \
             "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
             "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
             "JIG_NATIVE_API_MODEL=$JIG_NATIVE_API_MODEL" \
@@ -282,8 +287,27 @@ jobs:
 
       - name: Verify the tested archives are unchanged
         if: always() && steps.archives.outputs.ready == 'true'
-        run: cd "$JIG_CI_ARCHIVE_DIRECTORY" && sha256sum --check SHA256SUMS
+        run: |
+          node scripts/ci/candidate-provenance.mjs verify "$JIG_CI_ARCHIVE_DIRECTORY" --source "$SOURCE_REVISION"
+          cd "$JIG_CI_ARCHIVE_DIRECTORY" && sha256sum --check SHA256SUMS
 
       - name: Require zero host residue
         if: always() && steps.host.outputs.ready == 'true'
         run: scripts/ci/provision-github-rootless-host.sh assert-clean
+
+      - name: Record successful exact-candidate native qualification
+        env:
+          NATIVE_CLIENT: ${{ matrix.client }}
+        run: |
+          mkdir "$RUNNER_TEMP/native-qualification"
+          node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/linux-host-artifacts" \
+            "$RUNNER_TEMP/native-qualification/QUALIFICATION.json" --kind native --profile "$NATIVE_CLIENT" \
+            --upstream-receipt "$RUNNER_TEMP/linux-qualification/QUALIFICATION.json"
+
+      - name: Retain complete native qualification lineage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-qualification-${{ matrix.client }}-${{ env.SOURCE_REVISION }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-qualification
+          retention-days: 7
+          if-no-files-found: error

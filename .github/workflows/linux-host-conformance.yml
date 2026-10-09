@@ -1,156 +1,169 @@
-name: Linux host conformance
-
-on:
+# Plan before runner allocation; shadow mode preserves complete qualification.
+name: "Linux host conformance"
+"on":
   workflow_dispatch:
     inputs:
       include_startup_profile:
-        description: Run the bounded five-trial installed startup diagnostic after one warm-up.
+        description: "Run the bounded five-trial installed startup diagnostic after one warm-up."
         required: false
-        type: boolean
+        type: "boolean"
         default: false
-  pull_request:
-    paths:
-      - ".github/workflows/linux-host-conformance.yml"
-      - "packages/jig/**"
-      - "packages/agent-method/**"
-      - "packages/agent-acp/**"
-      - "packages/flow-authoring/**"
-      - "packages/flow-sdk/**"
-      - "packages/user-updates/**"
-      - "docs/jig/spec/**"
-      - "examples/tested-patch/**"
-      - "examples/software-factory/**"
-      - "package.json"
-      - "LICENSE.md"
-      - "PRICING.md"
-      - "LICENSES.md"
-      - "LICENSES/**"
-      - "RELEASING.md"
-      - "scripts/build-jig-candidate.sh"
-      - "scripts/ci/provision-github-rootless-host.sh"
-      - "scripts/test-installed-hostile-baseline.ts"
-      - "scripts/test-operational-baseline.ts"
-      - "scripts/operational-baseline-checks.ts"
-      - "scripts/profile-installed-startup.ts"
+  pull_request: null
   push:
     branches:
-      - main
-
+      - "main"
+  schedule:
+    -
+      cron: "16 3 * * 0"
 permissions:
-  contents: read
-
+  contents: "read"
 concurrency:
-  group: linux-host-conformance-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
+  group: "linux-host-conformance-${{ github.event_name == 'pull_request' && github.ref || github.sha }}"
+  cancel-in-progress: "${{ github.event_name == 'pull_request' }}"
 jobs:
-  host-artifacts:
-    name: Freeze Linux host artifacts
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+  plan:
+    name: "Plan affected work"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 5
+    outputs:
+      quick: "${{ steps.plan.outputs.quick }}"
+      sites: "${{ steps.plan.outputs.sites }}"
+      source: "${{ steps.plan.outputs.source }}"
+      python: "${{ steps.plan.outputs.python }}"
+      candidates: "${{ steps.plan.outputs.candidates }}"
+      linux: "${{ steps.plan.outputs.linux }}"
+      macos: "${{ steps.plan.outputs.macos }}"
+      npm_matrix: "${{ steps.plan.outputs.npm_matrix }}"
+      classification: "${{ steps.plan.outputs.classification }}"
+      mode: "${{ steps.plan.outputs.mode }}"
+      plan_digest: "${{ steps.plan.outputs.plan_digest }}"
     steps:
-      - name: Check out the exact source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         with:
           persist-credentials: false
-
-      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+          fetch-depth: 0
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
         with:
-          just-version: '1.43.1'
-
-      - name: Install exact Bun build tool
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.3.3
-
-      - name: Install Jig, Agent method, and FLOW build dependencies
-        run: >-
-          bun install --ignore-scripts --filter @jigging/jig
-          --filter @jigging/agent-method --filter @jigging/flow-authoring
-          --filter @jigging/agent-acp
-          --filter @jigging/flow --filter @jigging/user-updates
-
-      - name: Build and freeze archives once
-        shell: bash
+          node-version: "24"
+      -
+        name: "Compute conservative dependency plan"
+        id: "plan"
+        env:
+          BASE: "${{ github.event.pull_request.base.sha || github.event.before || '' }}"
+          MODE: "${{ vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
+          FORCE: "${{ vars.JIG_CI_FORCE_FULL || 'false' }}"
+          PR_HEAD: "${{ github.event.pull_request.head.sha || '' }}"
         run: |
-          set -euo pipefail
-          just --justfile packages/jig/justfile build
-          artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
-          mkdir "$artifact_directory"
-          mkdir "$artifact_directory/user-updates" "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
-          bun pm pack --cwd packages/user-updates --ignore-scripts --destination "$artifact_directory/user-updates"
-          bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$artifact_directory/flow-sdk"
-          bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$artifact_directory/agent-method"
-          bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$artifact_directory/agent-acp"
-          bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
-          (
-            cd "$artifact_directory"
-            sha256sum user-updates/*.tgz flow-sdk/*.tgz agent-method/*.tgz agent-acp/*.tgz jig/*.tgz > SHA256SUMS
-          )
-
-      - name: Retain exact Linux host artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          set -eu
+          set -- --head "$GITHUB_SHA" --event "$GITHUB_EVENT_NAME" --mode "$MODE" --output "$RUNNER_TEMP/plan.json" --github-output "$GITHUB_OUTPUT"
+          if [ -n "$BASE" ]; then set -- "$@" --base "$BASE"; fi
+          if [ -n "$PR_HEAD" ]; then set -- "$@" --pr-head "$PR_HEAD"; fi
+          if [ "$FORCE" = true ]; then set -- "$@" --force-full; fi
+          node scripts/ci/affected-plan.mjs "$@" > "$RUNNER_TEMP/plan-display.json"
+      -
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
-          name: linux-host-artifacts-${{ github.sha }}
-          path: ${{ runner.temp }}/linux-host-artifacts
-          if-no-files-found: error
+          name: "linux-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/plan.json"
           retention-days: 7
-
+          if-no-files-found: "error"
+          overwrite: true
+  host-artifacts:
+    name: "Acquire canonical linux host artifacts"
+    needs: "plan"
+    if: "${{ needs.plan.outputs.linux == 'true' }}"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 10
+    permissions:
+      contents: "read"
+      actions: "read"
+    steps:
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        with:
+          persist-credentials: false
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        with:
+          node-version: "24"
+      -
+        name: "Acquire the exact canonical CI candidates"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: "node scripts/ci/candidate-transfer.mjs acquire \"$RUNNER_TEMP/linux-host-artifacts\" --source \"$GITHUB_SHA\" --timeout-seconds 300"
+      -
+        name: "Retain exact linux host artifacts"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/linux-host-artifacts"
+          retention-days: 7
+          if-no-files-found: "error"
   host-suite:
-    name: Linux host — ${{ matrix.suite }}
-    needs: host-artifacts
-    runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || 20 }}
+    name: "Linux host — ${{ matrix.suite }}"
+    needs:
+      - "plan"
+      - "host-artifacts"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: "${{ matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || 20 }}"
     strategy:
       fail-fast: false
       matrix:
-        suite: [agent-lifecycle, delegated-authority, package-lifecycle, installed-evidence]
+        suite:
+          - "agent-lifecycle"
+          - "delegated-authority"
+          - "package-lifecycle"
+          - "installed-evidence"
     steps:
-      - name: Check out the exact source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      -
+        name: "Check out the exact source"
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         with:
           persist-credentials: false
-
-      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
         with:
-          just-version: '1.43.1'
-
-      - name: Install exact Bun test tool
-        id: setup-bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+          node-version: "24"
+      -
+        uses: "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b"
         with:
-          bun-version: 1.3.3
-
-      - name: Retain the exact Bun executable
+          just-version: "1.43.1"
+      -
+        name: "Install exact Bun test tool"
+        id: "setup-bun"
+        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
+        with:
+          bun-version: "1.3.3"
+      -
+        name: "Retain the exact Bun executable"
         env:
-          JIG_CI_BUN: ${{ steps.setup-bun.outputs.bun-path }}
-        run: printf 'JIG_CI_BUN=%s\n' "$JIG_CI_BUN" >> "$GITHUB_ENV"
-
-      - name: Provision and preflight the ephemeral host
-        id: host
+          JIG_CI_BUN: "${{ steps.setup-bun.outputs.bun-path }}"
+        run: "printf 'JIG_CI_BUN=%s\\n' \"$JIG_CI_BUN\" >> \"$GITHUB_ENV\""
+      -
+        name: "Provision and preflight the ephemeral host"
+        id: "host"
         run: |
           scripts/ci/provision-github-rootless-host.sh provision
           printf 'ready=true\n' >> "$GITHUB_OUTPUT"
-
-      - name: Install host-test dependencies
-        run: >-
-          bun install --ignore-scripts --filter @jigging/jig
-          --filter @jigging/agent-method --filter @jigging/flow-authoring
-          --filter @jigging/agent-acp
-          --filter @jigging/flow --filter @jigging/user-updates
-
-      - name: Build source-test workspace packages
-        run: just --justfile packages/jig/justfile build
-
-      - name: Download the frozen archives
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      -
+        name: "Install host-test dependencies"
+        run: "bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/flow-authoring --filter @jigging/agent-acp --filter @jigging/flow --filter @jigging/user-updates"
+      -
+        name: "Build source-test workspace packages"
+        run: "just --justfile packages/jig/justfile build"
+      -
+        name: "Download the frozen archives"
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
-          name: linux-host-artifacts-${{ github.sha }}
-          path: ${{ runner.temp }}/linux-host-artifacts
-
-      - name: Identify and verify the frozen archives
-        shell: bash
+          name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/linux-host-artifacts"
+      -
+        name: "Identify and verify the frozen archives"
+        shell: "bash"
         run: |
+          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/linux-host-artifacts" --source "$GITHUB_SHA"
           set -euo pipefail
           artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
           (
@@ -175,145 +188,187 @@ jobs:
             printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
           } >> "$GITHUB_ENV"
 
-      - name: Prove transient delegation and lifetime fencing
-        if: matrix.suite == 'agent-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/linux-rootless-delegation-hostile.test.ts
-          --timeout 30000
+          cp "$RUNNER_TEMP/linux-host-artifacts/CANDIDATE.json" "$RUNNER_TEMP/CANDIDATE.json"
+          cp "$RUNNER_TEMP/linux-host-artifacts/ARTIFACT.json" "$RUNNER_TEMP/ARTIFACT.json"
 
-      - name: Prove the rootless Run envelope
-        if: matrix.suite == 'agent-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/linux-rootless-run.test.ts
-          --timeout 30000
+          mkdir "$RUNNER_TEMP/linux-command-evidence"
+          printf '%s\n' '{"schemaVersion":1,"commands":[]}' > "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+      -
+        name: "Prove transient delegation and lifetime fencing"
+        if: "matrix.suite == 'agent-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test packages/jig/test/linux-rootless-delegation-hostile.test.ts --timeout 30000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-0.txt"
 
-      - name: Prove the Agent lifecycle and ordinary method composition
-        if: matrix.suite == 'agent-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE"
-          "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts
-          --timeout 180000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-0.txt\",\"files\":[\"packages/jig/test/linux-rootless-delegation-hostile.test.ts\"]}"
+      -
+        name: "Prove the rootless Run envelope"
+        if: "matrix.suite == 'agent-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test packages/jig/test/linux-rootless-run.test.ts --timeout 30000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-1.txt"
 
-      - name: Prove the finite foreground product path
-        if: matrix.suite == 'delegated-authority'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/private-foreground.test.ts
-          --timeout 30000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-1.txt\",\"files\":[\"packages/jig/test/linux-rootless-run.test.ts\"]}"
+      -
+        name: "Prove the Agent lifecycle and ordinary method composition"
+        if: "matrix.suite == 'agent-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts --timeout 180000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-2.txt"
 
-      - name: Prove contained project commands
-        if: matrix.suite == 'delegated-authority'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/project-command-lifecycle.test.ts
-          --timeout 180000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-2.txt\",\"files\":[\"packages/jig/test/root-agent-run-lifecycle.test.ts\"]}"
+      -
+        name: "Prove the finite foreground product path"
+        if: "matrix.suite == 'delegated-authority'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test packages/jig/test/private-foreground.test.ts --timeout 30000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-3.txt"
 
-      - name: Prove delegated HTTP authority and coordinator-loss cleanup
-        if: matrix.suite == 'delegated-authority'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/http-request-lifecycle.test.ts
-          --timeout 240000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-3.txt\",\"files\":[\"packages/jig/test/private-foreground.test.ts\"]}"
+      -
+        name: "Prove contained project commands"
+        if: "matrix.suite == 'delegated-authority'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test packages/jig/test/project-command-lifecycle.test.ts --timeout 180000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-4.txt"
 
-      - name: Prove contained native preparation
-        if: matrix.suite == 'package-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/bun-native-preparation.test.ts
-          packages/jig/test/project-author-evaluator.test.ts
-          --timeout 120000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-4.txt\",\"files\":[\"packages/jig/test/project-command-lifecycle.test.ts\"]}"
+      -
+        name: "Prove delegated HTTP authority and coordinator-loss cleanup"
+        if: "matrix.suite == 'delegated-authority'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test packages/jig/test/http-request-lifecycle.test.ts --timeout 240000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-5.txt"
 
-      - name: Prove retained progress and coordinator-loss delivery
-        if: matrix.suite == 'package-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "$JIG_CI_BUN" test packages/jig/test/run-checkpoint-lifecycle.test.ts
-          --timeout 90000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-5.txt\",\"files\":[\"packages/jig/test/http-request-lifecycle.test.ts\"]}"
+      -
+        name: "Prove contained native preparation"
+        if: "matrix.suite == 'package-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test packages/jig/test/bun-native-preparation.test.ts packages/jig/test/project-author-evaluator.test.ts --timeout 120000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-6.txt"
 
-      - name: Prove packed source edits reuse dependencies without reusing authority
-        if: matrix.suite == 'package-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
-          -t '^packed project dependencies ' --timeout 600000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-6.txt\",\"files\":[\"packages/jig/test/bun-native-preparation.test.ts\",\"packages/jig/test/project-author-evaluator.test.ts\"]}"
+      -
+        name: "Prove retained progress and coordinator-loss delivery"
+        if: "matrix.suite == 'package-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test packages/jig/test/run-checkpoint-lifecycle.test.ts --timeout 90000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-7.txt"
 
-      - name: Prove ordinary ACP Agent progress and cancellation
-        if: matrix.suite == 'package-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-delegated
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" test packages/jig/test/finite-acp-lifecycle.test.ts
-          --timeout 180000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-7.txt\",\"files\":[\"packages/jig/test/run-checkpoint-lifecycle.test.ts\"]}"
+      -
+        name: "Prove packed source edits reuse dependencies without reusing authority"
+        if: "matrix.suite == 'package-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts -t '^packed project dependencies ' --timeout 600000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-8.txt"
 
-      - name: Prove installed Markdown and exact typed calls
-        if: matrix.suite == 'package-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
-          "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" test packages/jig/test/markdown-worker.test.ts
-          --timeout 120000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-8.txt\",\"files\":[\"packages/jig/test/package-provider-host.test.ts\"],\"filter\":{\"file\":\"packages/jig/test/package-provider-host.test.ts\",\"pattern\":\"^packed project dependencies \"}}"
+      -
+        name: "Prove ordinary ACP Agent progress and cancellation"
+        if: "matrix.suite == 'package-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-delegated env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_CI_BUN" test packages/jig/test/finite-acp-lifecycle.test.ts --timeout 180000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-9.txt"
 
-      - name: Prove installed workspace dependency admission and execution
-        if: matrix.suite == 'package-lifecycle'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
-          -t '^(?!packed project dependencies )'
-          --timeout 180000
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-9.txt\",\"files\":[\"packages/jig/test/finite-acp-lifecycle.test.ts\"]}"
+      -
+        name: "Prove installed Markdown and exact typed calls"
+        if: "matrix.suite == 'package-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "$JIG_CI_BUN" test packages/jig/test/markdown-worker.test.ts --timeout 120000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-10.txt"
 
-      - name: Prove complete packed CLI composition
-        if: matrix.suite == 'installed-evidence'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env JIG_LINUX_ROOTLESS_HOSTILE=1
-          "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
-          "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE"
-          "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE"
-          "JIG_AUTHORING_NODE_PATH=$(command -v node)"
-          "JIG_NPM=$(command -v npm)"
-          "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" packages/jig/test/package-smoke.ts
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-10.txt\",\"files\":[\"packages/jig/test/markdown-worker.test.ts\"]}"
+      -
+        name: "Prove installed workspace dependency admission and execution"
+        if: "matrix.suite == 'package-lifecycle'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts -t '^(?!packed project dependencies )' --timeout 180000 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-11.txt"
 
-      - name: Run Operational Baseline/1 against the packed archive
-        id: operational
-        if: matrix.suite == 'installed-evidence'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env TMPDIR=/tmp "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" scripts/test-operational-baseline.ts
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-11.txt\",\"files\":[\"packages/jig/test/package-provider-host.test.ts\"],\"filter\":{\"file\":\"packages/jig/test/package-provider-host.test.ts\",\"pattern\":\"^(?!packed project dependencies )\"}}"
+      -
+        name: "Prove complete packed CLI composition"
+        if: "matrix.suite == 'installed-evidence'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "JIG_AUTHORING_NODE_PATH=$(command -v node)" "JIG_NPM=$(command -v npm)" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "$JIG_CI_BUN" packages/jig/test/package-smoke.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-12.txt"
 
-      - name: Attack the packed CLI inside the proved envelope
-        if: matrix.suite == 'installed-evidence'
-        run: >-
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
-          env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
-          "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts
+          printf 'CI installed script complete: %s\n' 'packages/jig/test/package-smoke.ts' >> "$RUNNER_TEMP/linux-command-evidence/command-12.txt"
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-12.txt\",\"files\":[\"packages/jig/test/package-smoke.ts\"],\"commandKind\":\"installed-script\"}"
+      -
+        name: "Run Operational Baseline/1 against the packed archive"
+        id: "operational"
+        if: "matrix.suite == 'installed-evidence'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" TMPDIR=/tmp "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-operational-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-13.txt"
 
-      - name: Profile installed startup with a deterministic conversation
-        id: startup-profile
-        if: matrix.suite == 'installed-evidence' && inputs.include_startup_profile
+          printf 'CI installed script complete: %s\n' 'scripts/test-operational-baseline.ts' >> "$RUNNER_TEMP/linux-command-evidence/command-13.txt"
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-13.txt\",\"files\":[\"scripts/test-operational-baseline.ts\"],\"commandKind\":\"installed-script\"}"
+      -
+        name: "Attack the packed CLI inside the proved envelope"
+        if: "matrix.suite == 'installed-evidence'"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
+
+          printf 'CI installed script complete: %s\n' 'scripts/test-installed-hostile-baseline.ts' >> "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
+          node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+        shell: "bash"
+        env:
+          JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-14.txt\",\"files\":[\"scripts/test-installed-hostile-baseline.ts\"],\"commandKind\":\"installed-script\"}"
+      -
+        name: "Profile installed startup with a deterministic conversation"
+        id: "startup-profile"
+        if: "matrix.suite == 'installed-evidence' && inputs.include_startup_profile"
         continue-on-error: true
         env:
-          JIG_STARTUP_PROFILE_DIRECTORY: ${{ runner.temp }}/jig-startup-profile
+          JIG_STARTUP_PROFILE_DIRECTORY: "${{ runner.temp }}/jig-startup-profile"
         run: |
           test "$(uname -m)" = x86_64
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host \
@@ -325,47 +380,208 @@ jobs:
               "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
               "JIG_STARTUP_PROFILE_DIRECTORY=$JIG_STARTUP_PROFILE_DIRECTORY" \
               "$JIG_CI_BUN" scripts/profile-installed-startup.ts
-
-      - name: Verify the tested archives are unchanged
-        if: always()
-        run: cd "$JIG_CI_ARCHIVE_DIRECTORY" && sha256sum --check SHA256SUMS
-
-      - name: Require zero host residue
-        if: always() && steps.host.outputs.ready == 'true'
-        run: scripts/ci/provision-github-rootless-host.sh assert-clean
-
-      - name: Retain startup profile, including failed trials
-        if: ${{ always() && matrix.suite == 'installed-evidence' && inputs.include_startup_profile }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      -
+        name: "Verify the tested archives are unchanged"
+        if: "always()"
+        run: |
+          set -eu
+          cd "$JIG_CI_ARCHIVE_DIRECTORY" && sha256sum --check SHA256SUMS
+          node "$GITHUB_WORKSPACE/scripts/ci/candidate-provenance.mjs" verify "$JIG_CI_ARCHIVE_DIRECTORY" --source "$GITHUB_SHA"
+          cmp "$RUNNER_TEMP/CANDIDATE.json" "$JIG_CI_ARCHIVE_DIRECTORY/CANDIDATE.json"
+          cmp "$RUNNER_TEMP/ARTIFACT.json" "$JIG_CI_ARCHIVE_DIRECTORY/ARTIFACT.json"
+      -
+        name: "Require zero host residue"
+        if: "always() && steps.host.outputs.ready == 'true'"
+        run: "scripts/ci/provision-github-rootless-host.sh assert-clean"
+      -
+        name: "Record complete shard proof"
+        env:
+          SUITE: "${{ matrix.suite }}"
+        run: "printf '%s %s %s %s\\n' \"$GITHUB_SHA\" \"$SUITE\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" > \"$RUNNER_TEMP/linux-shard.complete\""
+      -
+        name: "Retain this attempt's executed host evidence"
+        if: "always()"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
-          name: startup-profile-${{ github.sha }}
-          path: ${{ runner.temp }}/jig-startup-profile
-          if-no-files-found: ignore
+          name: "linux-shard-${{ matrix.suite }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: |
+            ${{ runner.temp }}/linux-command-evidence
+            ${{ runner.temp }}/linux-shard.complete
+            ${{ runner.temp }}/CANDIDATE.json
+            ${{ runner.temp }}/ARTIFACT.json
           retention-days: 7
-
-      - name: Retain failed operational command transcripts
-        if: ${{ always() && matrix.suite == 'installed-evidence' && (steps.operational.outcome == 'failure' || steps.operational.outcome == 'cancelled') }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          if-no-files-found: "error"
+      -
+        name: "Retain startup profile, including failed trials"
+        if: "${{ always() && matrix.suite == 'installed-evidence' && inputs.include_startup_profile }}"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
-          name: operational-baseline-failure-${{ github.sha }}
-          path: /tmp/jig-operational-baseline-*/command-*.json
-          if-no-files-found: ignore
+          name: "startup-profile-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/jig-startup-profile"
+          if-no-files-found: "ignore"
           retention-days: 7
-
+      -
+        name: "Retain failed operational command transcripts"
+        if: "${{ always() && matrix.suite == 'installed-evidence' && (steps.operational.outcome == 'failure' || steps.operational.outcome == 'cancelled') }}"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "operational-baseline-failure-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "/tmp/jig-operational-baseline-*/command-*.json"
+          if-no-files-found: "ignore"
+          retention-days: 7
+    if: "${{ needs.plan.outputs.linux == 'true' }}"
   rootless-linux:
-    name: rootless-linux
-    if: always()
-    needs: [host-artifacts, host-suite]
-    runs-on: ubuntu-24.04
+    name: "rootless-linux"
+    if: "${{ always() && needs.plan.result == 'success' && needs.plan.outputs.linux == 'true' }}"
+    needs:
+      - "plan"
+      - "host-artifacts"
+      - "host-suite"
+    runs-on: "ubuntu-24.04"
     timeout-minutes: 5
     steps:
-      - name: Require every Linux host shard
+      -
+        name: "Require every Linux host shard"
         env:
-          ARTIFACT_RESULT: ${{ needs.host-artifacts.result }}
-          SUITE_RESULT: ${{ needs.host-suite.result }}
+          ARTIFACT_RESULT: "${{ needs.host-artifacts.result }}"
+          SUITE_RESULT: "${{ needs.host-suite.result }}"
         run: |
           set -eu
           if [ "$ARTIFACT_RESULT" != success ] || [ "$SUITE_RESULT" != success ]; then
             echo "Linux host conformance requires successful artifacts and every suite; artifacts=$ARTIFACT_RESULT suites=$SUITE_RESULT" >&2
             exit 1
           fi
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        with:
+          persist-credentials: false
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        with:
+          node-version: "24"
+      -
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "linux-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/affected-plan"
+      -
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/linux-host-artifacts"
+      -
+        name: "Download every current-attempt host shard"
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          pattern: "linux-shard-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/linux-evidence"
+          merge-multiple: false
+      -
+        name: "Require exact complete shard evidence and retain observed cases"
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          sha, run, attempt = (os.environ[key] for key in ("GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"))
+          commands = []
+          expected_commands = json.loads(os.environ["EXPECTED_COMMANDS"])
+          for suite in ("agent-lifecycle", "delegated-authority", "package-lifecycle", "installed-evidence"):
+              directory = root / "linux-evidence" / f"linux-shard-{suite}-{sha}-r{run}-a{attempt}"
+              marker = directory / "linux-shard.complete"
+              if marker.is_symlink() or marker.read_text().strip() != f"{sha} {suite} {run} {attempt}":
+                  raise ValueError("missing or stale complete Linux shard proof")
+              for filename in ("CANDIDATE.json", "ARTIFACT.json"):
+                  retained, canonical = directory / filename, root / "linux-host-artifacts" / filename
+                  if retained.is_symlink() or retained.read_bytes() != canonical.read_bytes():
+                      raise ValueError("Linux shard used a different canonical candidate")
+              manifest = json.loads((directory / "linux-command-evidence" / "manifest.json").read_text())
+              if manifest.get("schemaVersion") != 1 or manifest.get("commands") != expected_commands[suite]:
+                  raise ValueError("incomplete or changed Linux command proof")
+              for command in manifest["commands"]:
+                  transcript = Path(command["transcript"])
+                  if transcript.is_absolute() or len(transcript.parts) != 1 or transcript.name in (".", ".."):
+                      raise ValueError("unsafe Linux command transcript")
+                  retained = directory / "linux-command-evidence" / transcript
+                  if retained.is_symlink() or not retained.is_file() or not retained.read_text().strip():
+                      raise ValueError("missing Linux command execution transcript")
+                  commands.append({**command, "transcript": str(retained.relative_to(root / "linux-evidence"))})
+          (root / "linux-evidence" / "manifest.json").write_text(json.dumps({"schemaVersion": 1, "commands": commands}))
+          PY
+          mkdir "$RUNNER_TEMP/linux-qualification"
+          node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/linux-host-artifacts" "$RUNNER_TEMP/linux-qualification/QUALIFICATION.json" --kind linux
+          node scripts/ci/job-evidence.mjs --plan "$RUNNER_TEMP/affected-plan/plan.json" --id linux --transcript-manifest "$RUNNER_TEMP/linux-evidence/manifest.json" --skip-policy host-partitions-and-platform --artifacts --residue --output "$RUNNER_TEMP/linux-observed.json"
+        env:
+          EXPECTED_COMMANDS: "{\"agent-lifecycle\":[{\"transcript\":\"command-0.txt\",\"files\":[\"packages/jig/test/linux-rootless-delegation-hostile.test.ts\"]},{\"transcript\":\"command-1.txt\",\"files\":[\"packages/jig/test/linux-rootless-run.test.ts\"]},{\"transcript\":\"command-2.txt\",\"files\":[\"packages/jig/test/root-agent-run-lifecycle.test.ts\"]}],\"delegated-authority\":[{\"transcript\":\"command-3.txt\",\"files\":[\"packages/jig/test/private-foreground.test.ts\"]},{\"transcript\":\"command-4.txt\",\"files\":[\"packages/jig/test/project-command-lifecycle.test.ts\"]},{\"transcript\":\"command-5.txt\",\"files\":[\"packages/jig/test/http-request-lifecycle.test.ts\"]}],\"package-lifecycle\":[{\"transcript\":\"command-6.txt\",\"files\":[\"packages/jig/test/bun-native-preparation.test.ts\",\"packages/jig/test/project-author-evaluator.test.ts\"]},{\"transcript\":\"command-7.txt\",\"files\":[\"packages/jig/test/run-checkpoint-lifecycle.test.ts\"]},{\"transcript\":\"command-8.txt\",\"files\":[\"packages/jig/test/package-provider-host.test.ts\"],\"filter\":{\"file\":\"packages/jig/test/package-provider-host.test.ts\",\"pattern\":\"^packed project dependencies \"}},{\"transcript\":\"command-9.txt\",\"files\":[\"packages/jig/test/finite-acp-lifecycle.test.ts\"]},{\"transcript\":\"command-10.txt\",\"files\":[\"packages/jig/test/markdown-worker.test.ts\"]},{\"transcript\":\"command-11.txt\",\"files\":[\"packages/jig/test/package-provider-host.test.ts\"],\"filter\":{\"file\":\"packages/jig/test/package-provider-host.test.ts\",\"pattern\":\"^(?!packed project dependencies )\"}}],\"installed-evidence\":[{\"transcript\":\"command-12.txt\",\"files\":[\"packages/jig/test/package-smoke.ts\"],\"commandKind\":\"installed-script\"},{\"transcript\":\"command-13.txt\",\"files\":[\"scripts/test-operational-baseline.ts\"],\"commandKind\":\"installed-script\"},{\"transcript\":\"command-14.txt\",\"files\":[\"scripts/test-installed-hostile-baseline.ts\"],\"commandKind\":\"installed-script\"}]}"
+      -
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "linux-qualification-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/linux-qualification"
+          retention-days: 7
+          if-no-files-found: "error"
+      -
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "linux-observed-full-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/linux-observed.json"
+          retention-days: 7
+          if-no-files-found: "error"
+  affected-linux:
+    name: "affected-linux"
+    if: "always()"
+    needs:
+      - "plan"
+      - "rootless-linux"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 5
+    steps:
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        with:
+          node-version: "24"
+      -
+        name: "Require the source plan"
+        env:
+          PLAN_RESULT: "${{ needs.plan.result }}"
+        run: "test \"$PLAN_RESULT\" = success"
+      -
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "linux-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/affected-plan"
+      -
+        name: "Download observed execution evidence"
+        if: "${{ needs.plan.outputs.linux == 'true' }}"
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          pattern: "linux-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/observed-evidence"
+          merge-multiple: false
+      -
+        name: "Reconcile selected work and explicit policy omissions"
+        env:
+          JOB_RESULTS: "${{ toJSON(needs) }}"
+          MODE: "${{ vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
+          FORCE: "${{ vars.JIG_CI_FORCE_FULL || 'false' }}"
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/observed-evidence"
+          node -e 'const fs=require("node:fs"); const jobs=JSON.parse(process.env.JOB_RESULTS); fs.writeFileSync(process.argv[1], JSON.stringify({linux:jobs["rootless-linux"].result}));' "$RUNNER_TEMP/host-job-results.json"
+          node scripts/ci/job-evidence.mjs --plan "$RUNNER_TEMP/affected-plan/plan.json" --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-job-results.json" --scope linux --output "$RUNNER_TEMP/host-evidence.json"
+          node scripts/ci/affected-gate.mjs --plan "$RUNNER_TEMP/affected-plan/plan.json" --evidence "$RUNNER_TEMP/host-evidence.json" --scope linux > "$RUNNER_TEMP/affected-report.json"
+      -
+        name: "Retain affected-work reconciliation"
+        if: "always()"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "linux-affected-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/affected-report.json"
+          retention-days: 7
+          if-no-files-found: "ignore"

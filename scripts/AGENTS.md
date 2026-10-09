@@ -37,9 +37,10 @@ operational baselines, and public-site assembly.
   It also checks the shared Agent method and ordinary ACP package.
   Refuse missing Python build/test tools or separately installed Run/0 fixture
   dependencies before builds and long tests, with the existing setup commands.
-  It freezes complete SDK, HTTP Agent, ACP Agent and Jig archives under a
-  canonical temporary root through their package-owned
-  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE` and
+  CI supplies the verified canonical five-package bundle through
+  `CI_CANDIDATE_BUNDLE`; local runs freeze archives through the owning packers.
+  Source workspace builds remain separate from installed archive proof.
+  It passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE` and
   `JIG_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes afterward.
   Hash verification uses the already-qualified Node executable on Linux and Mac.
   The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
@@ -65,19 +66,15 @@ operational baselines, and public-site assembly.
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed; residue or
   removal failures never replace the original failure or establish success.
-- `require-linux-host-conformance.sh` owns the bounded, read-only check that an
-  exact publication revision passed the complete Linux host workflow.
-- `require-macos-host-conformance.sh` owns the bounded, read-only check that an
-  exact publication revision passed the complete hosted Intel and Apple Silicon
-  Mac workflow.
-- `require-native-agent-api-qualification.sh` owns the bounded, read-only check
-  that the exact main-push revision passed the separate live ACP client check
-  before Agent/Jig npm publication; a manually dispatched check qualifies only
-  when it ran on `main` at that same revision.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
   requires clean Git source and records exact revision and artifact hashes. It
   uses one fixed archive timestamp so shallow CI checkouts and full-history
-  checkouts produce the same bytes for unchanged package source.
+  checkouts produce the same bytes for unchanged package source. CI uses
+  `--build-only` to freeze checked distributions before the fresh installed
+  interpreter/OS matrix. Its receipt explicitly marks qualification pending;
+  build success alone cannot authorize publication. Source release tests consume
+  the retained SDK and user-updates distributions when supplied, while keeping
+  source, protocol, typing and release reconciliation tests.
 - `build-agent-candidate.ts` builds ordinary HTTP/ACP Agent packages from clean
   archived source with normal Bun packing, then checks exact installed bytes
   and records inventory, revision and hashes. It grants no native or model work.
@@ -87,7 +84,8 @@ operational baselines, and public-site assembly.
   original staging inode, never another builder's output.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
-- `ci/` owns disposable CI-host provisioning.
+- `ci/` owns dependency planning, canonical candidate provenance and transfer,
+  observed execution evidence, release readiness, and disposable CI-host proof.
 - `generate-unicode-normalization.py` verifies the exact Unicode 15.1 source
   digests before generating Jig's canonical normalization tables and official
   conformance vectors. It makes no network requests or contract-version changes.
@@ -152,11 +150,9 @@ operational baselines, and public-site assembly.
 - `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
   shell against controlled registry responses without credentials, including
   independent FLOW publication and host-group preflight refusal.
-- Validate the Host Conformance authorization script with `shellcheck` and
-  success plus fail-closed API fixtures.
-- Test the native Agent API publication gate with exact-revision success,
-  failure, and no-match API fixtures; it must not accept a qualification for
-  another source revision.
+- `node --test scripts/ci/*.test.mjs` checks conservative selection, artifact
+  and run/attempt lineage, fresh qualification, and fail-closed release readiness
+  using disposable Git repositories, archives and controlled API responses.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
   missing-build, mismatched-version, matching-version, and PATH behavior.
 - `bun test scripts/new-worktree.test.ts` uses disposable Git repositories to
@@ -179,5 +175,5 @@ operational baselines, and public-site assembly.
 
 ## Child DOX Index
 
-- [ci/AGENTS.md](ci/AGENTS.md) — Disposable Linux proof-host provisioning,
-  rootless Mac candidate qualification, frozen archives, and residue checks.
+- [ci/AGENTS.md](ci/AGENTS.md) — Conservative CI planning, canonical candidates,
+  release readiness, observed proof, disposable Linux hosts and native Macs.
