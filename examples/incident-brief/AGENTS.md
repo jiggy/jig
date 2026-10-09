@@ -21,18 +21,23 @@ or newer instructions. Keep the reviewer advancing independently.
   `test/` owns deterministic application checks.
   The README teaches ordinary project execution and reusing its complete Agent
   boundary through offline package-selected import, without installer paths.
-- `jig.ts` owns the reviewed default brief invocation with its input and deadline.
+- `jig.ts` owns the reviewed default brief invocation with its input, fresh output prefix and deadline.
   Worker user-updates activities expose static application phases, not model text or native
   dispatch claims; they remain distinct from the final settlement packet.
   Unsuccessful packets retain bounded public SDK error messages beside their
   codes, never arbitrary exception text; missing causes remain explicit.
 
 - `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
-  grants/agent.json --client CLIENT` edits this source before separate review.
+  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
+  may offer a separately confirmed named-grant correction; manual JSON editing
+  remains available. Every source correction requires fresh review and approval.
   Keep client choices explicit; no installed-client fallback.
 
 ## Local Contracts
+
+- `jig.ts` owns the complete default invocation: `binding:brief --input @input.json --out-new brief-result --timeout 3m`. Ordinary
+  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+  Explicit targets bypass defaults; display choices remain operator options.
 
 - Context and file contents are explicit data, never live filesystem access.
   Later instruction revisions are unique and increasing. Summaries cannot

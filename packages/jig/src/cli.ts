@@ -21,6 +21,7 @@ import {
   privateCliDiagnostic as renderDiagnostic,
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
+import { guidedReviewAgentSetup } from './cli-review-agent-setup.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
@@ -47,6 +48,11 @@ import {
 } from './internal/file-input.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { privateProfileSpan } from './internal/private-profile.js'
+import type { PrivateAgentReadinessReport } from './internal/review-agent-setup.js'
+import {
+  PrivateReviewGrantEditError,
+  publishReviewGrantEdit,
+} from './internal/review-grant-edit.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
@@ -58,11 +64,11 @@ import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
+import { expandPrivateCliFreshOutput } from './private-cli-fresh-output.js'
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
 import { flowSelector } from './project/package-selector.js'
-import { ProjectAgentError, selectProjectAgent } from './project-agent.js'
 import {
   createFlow,
   createProject,
@@ -86,7 +92,6 @@ const HELP = `Jig runs reusable methods with powers you approve.
 Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
-  jig agent --grant FILE --client CLIENT  Edit a named Agent grant before review
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
@@ -107,23 +112,6 @@ Command options and examples:
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
-  agent: `Usage: jig agent --grant FILE --client codex|claude|pi [--model MODEL | --default-model]
-
-Edit one existing named ACP JSON grant in the current directory. FILE is a
-project-relative path ending in <name>.json, for example grants/agent.json.
-The command preserves turn and session policy. Switching clients with a pinned
-model requires --model or --default-model. --default-model removes the grant's
-model pin; operator configuration still supplies the effective model.
-Codex session retention must be removed deliberately before choosing another client.
-
-Example:
-  $ jig agent --grant grants/agent.json --client codex
-  $ jig review
-
-No project code is evaluated, client installed, dependency resolved, authority
-approved or Flow started. Only the selected file changes; jig.ts must include it.
-Avoid editing it concurrently. A failed publication may already have changed
-the source; its diagnostic identifies that uncertainty.`,
   new: `Usage: jig new <name> [--use <slot=jig:name|slot=descriptor.json|slot=npm:package>]...
 
 Create flows/<name> in the current Jig project. Names use lowercase letters,
@@ -238,6 +226,9 @@ Examples:
 Resolution can contact dependency-selected public or private-network services
 before graph validation. Requests cannot be undone by declining approval.
 --yes alone does not approve new resource authority or resolution networking.
+Interactive review can offer an explicit edit of a missing client's named grant.
+It recaptures those source changes before asking for separate execution approval.
+Noninteractive review never edits grants or chooses a substitute client.
 Supplied locks stay frozen; stale locks must be updated explicitly.
 
 ${VERIFICATION_HELP}`,
@@ -249,12 +240,14 @@ Omit the target to use the approved project entrypoint and its default arguments
 Your options override its defaults. An explicit target uses no entrypoint defaults.
 Without an entrypoint, terminals offer a chooser and scripts require a target.
 Selection never approves changed source.
+Unavailable alternatives remain unavailable until a new review approves them.
 
   --json             Emit exact JSON/NDJSON even in a terminal
   --input JSON|@FILE  Supply JSON inline or from a file (default: {})
   --attach NAME=DIR   Capture a declared read attachment; repeat for each name
   --select NAME=FILE  Select a relative file within an attachment; repeat as needed
-  --out DIR          Save a result packet to a new directory outside input roots
+  --out DIR          Save a result packet to this exact new directory
+  --out-new PREFIX   Choose a fresh result directory for every run
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
   --display MODE     Select auto (default), plain, tui or web
@@ -265,7 +258,8 @@ Examples:
   jig run flow:flows/hello --input '"Ada"'
   jig run binding:repair --input @issue.json --attach source=./src --out ./review
   jig run binding:worker --receive progress --timeout 2m
-  jig run binding:factory --display web
+  With a reviewed project entrypoint:
+  jig run --display web
 
 Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work.
 Terminal stdout shows readable results and live channel text. Redirect stdout or
@@ -296,6 +290,7 @@ export interface PrivateCliCommandHost {
       readonly onResolution?: (packagePath: string) => void
       readonly onNotice?: (text: string) => void
       readonly onStage?: (stage: string) => void
+      readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
       readonly generateContracts?: boolean
       readonly onGeneration?: (packagePath: string, files: readonly string[]) => void
     },
@@ -405,7 +400,6 @@ async function executeCommand(
       runtime.expectedAdmissionDigest = prepared.admissionDigest
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
-    if (arguments_[0] === 'agent') return await executeAgent(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
@@ -438,14 +432,11 @@ export async function privateCliPrepareArguments(
   arguments_: readonly string[],
   options: PrivateCliOptions = {},
 ): Promise<{ arguments: readonly string[]; admissionDigest?: string } | { exitCode: number }> {
-  if (
-    arguments_[0] !== 'run' ||
-    isHelpRequest(arguments_) ||
-    (arguments_[1] !== undefined && !arguments_[1].startsWith('-'))
-  )
-    return { arguments: arguments_ }
+  if (arguments_[0] !== 'run' || isHelpRequest(arguments_)) return { arguments: arguments_ }
   const runtime = cliRuntime(options)
   try {
+    if (arguments_[1] !== undefined && !arguments_[1].startsWith('-'))
+      return { arguments: expandPrivateCliFreshOutput(arguments_, runtime.currentDirectory) }
     // The placeholder is only syntax validation; it is never dispatched.
     parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)], true)
     let admissionDigest: string | undefined
@@ -473,14 +464,24 @@ export async function privateCliPrepareArguments(
         arguments_.slice(1),
         runtime.currentDirectory,
       )
-      return { arguments: effective, ...(admissionDigest === undefined ? {} : { admissionDigest }) }
+      return {
+        arguments: expandPrivateCliFreshOutput(effective, runtime.currentDirectory),
+        ...(admissionDigest === undefined ? {} : { admissionDigest }),
+      }
     }
     parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)])
-    const targets = approvedTargets(snapshot)
+    const targets = approvedTargets(snapshot, true)
+    const unavailable = approvedTargets(snapshot).filter(({ available }) => !available)
+    if (unavailable.length)
+      runtime.writeError(
+        `Unavailable alternatives: ${unavailable.map(({ target }) => asciiJsonString(target)).join(', ')}. Correct their reported setup and review again.\n\n  $ jig review\n\n`,
+      )
     if (targets.length === 0)
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',
-        'No approved targets. Review your project first. No Flow was started.\n\n  $ jig review',
+        unavailable.length
+          ? 'No reviewed targets can run with this configuration. No Flow was started. Correct the reported setup, then review again:\n\n  $ jig review'
+          : 'No approved targets. Review your project first. No Flow was started.\n\n  $ jig review',
         1,
       )
     if (!runtime.interactive)
@@ -506,7 +507,10 @@ export async function privateCliPrepareArguments(
     const target = targets[index]
     if (target === undefined) usage('run', 'Choose a listed target number. No Flow was started.')
     return {
-      arguments: ['run', target.target, ...arguments_.slice(1)],
+      arguments: expandPrivateCliFreshOutput(
+        ['run', target.target, ...arguments_.slice(1)],
+        runtime.currentDirectory,
+      ),
       ...(admissionDigest === undefined ? {} : { admissionDigest }),
     }
   } catch (error) {
@@ -527,7 +531,10 @@ async function executeCompletion(
   if (arguments_[1] === 'targets' && arguments_.length <= 3) {
     const prefix = arguments_[2] ?? ''
     try {
-      const targets = approvedTargets(await inspectPrivateApprovedProject(runtime.currentDirectory))
+      const targets = approvedTargets(
+        await inspectPrivateApprovedProject(runtime.currentDirectory),
+        true,
+      )
       await runtime.writeRecord(
         targets
           .filter(({ target }) => target.startsWith(prefix))
@@ -837,54 +844,6 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   return 0
 }
 
-async function executeAgent(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  const values = new Map<string, string>()
-  let defaultModel = false
-  for (let index = 1; index < arguments_.length; index++) {
-    const flag = arguments_[index]!
-    if (flag === '--default-model' && !defaultModel) defaultModel = true
-    else if (['--grant', '--client', '--model'].includes(flag) && !values.has(flag)) {
-      const value = arguments_[++index]
-      if (value === undefined || value.startsWith('-'))
-        usage('agent', `Supply a value for ${flag}.`)
-      values.set(flag, value)
-    } else usage('agent', 'Use one --grant and --client, with optional --model or --default-model.')
-  }
-  const file = values.get('--grant'),
-    client = values.get('--client')
-  if (
-    file === undefined ||
-    !['codex', 'claude', 'pi'].includes(client ?? '') ||
-    (defaultModel && values.has('--model'))
-  )
-    usage(
-      'agent',
-      'Choose --grant FILE and --client codex|claude|pi; --model and --default-model are alternatives.',
-    )
-  try {
-    const result = await selectProjectAgent(
-      runtime.currentDirectory,
-      file,
-      {
-        client: client as ProjectInitAgent,
-        ...(values.has('--model') ? { model: values.get('--model')! } : {}),
-        ...(defaultModel ? { defaultModel: true } : {}),
-      },
-      runtime.signal,
-    )
-    runtime.writeOutput(
-      `${result.changed ? 'Updated' : 'Unchanged'} Agent grant ${asciiJsonString(result.path)}.\n\n  Client: ${result.previous.client} -> ${result.next.client}.\n  Model pin: ${asciiJsonString(result.previous.model ?? '(none)')} -> ${asciiJsonString(result.next.model ?? '(none)')}.\n  Turn and session policy preserved.\n\nReview the project to adopt this file's selection:\n\n  $ jig review\n\nIf dependency preparation needs network access, review will explain --allow-resolution-network.\nNo execution approved or Flow started.\n`,
-    )
-    return 0
-  } catch (error) {
-    if (!(error instanceof ProjectAgentError)) throw error
-    runtime.writeError(
-      renderDiagnostic(error.code, error.message, 'Agent grant could not be updated'),
-    )
-    return error.kind === 'invalid' ? 1 : 2
-  }
-}
-
 async function executeInit(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   let bare = false
   let destination: string | undefined
@@ -959,88 +918,150 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
   runtime.progress.note(
     `Reviewing ${asciiJsonString(basename(resolve(runtime.currentDirectory, parsed.project)))}`,
   )
-  const result = await withProjectSession(
-    parsed.project,
-    runtime,
-    async (session) => {
-      const plan = await privateProfileSpan('project-planning', () =>
-        session.plan({ lockMode: 'update' }),
-      )
-      runtime.progress.complete(true)
-      if (plan.state === 'unchanged') return 0
-
-      runtime.writeOutput(
-        `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
-      )
-      if (parsed.yes && plan.review.authorityChanges && !parsed.allowAuthorityChanges)
-        throw new CliDiagnostic(
-          'JIG_AUTHORITY_APPROVAL_REQUIRED',
-          'New or changed resource grants need explicit approval. Review the delegation changes, then use interactive review or add --allow-authority-changes to --yes.',
-          2,
+  const seenIssues = new Set<string>()
+  for (let correction = 0; correction <= 8; correction++) {
+    let readiness: PrivateAgentReadinessReport | undefined
+    const result = await withProjectSession(
+      parsed.project,
+      runtime,
+      async (session) => {
+        const plan = await privateProfileSpan('project-planning', () =>
+          session.plan({ lockMode: 'update' }),
         )
-      if (!parsed.yes) {
-        if (!runtime.interactive) {
-          throw new CliDiagnostic(
-            'JIG_APPROVAL_REQUIRED',
-            'Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).',
-            2,
-          )
-        }
-        runtime.progress.note('Waiting for your approval. No Flow has been started.')
-        const accepted = await runtime.confirm(
-          'Approve this exact revision for execution? [y/N] ',
-          runtime.signal,
+        runtime.progress.complete(true)
+        const setup = await guidedReviewAgentSetup(
+          readiness,
+          {
+            interactive: runtime.interactive,
+            yes: parsed.yes,
+            ...(runtime.signal === undefined ? {} : { signal: runtime.signal }),
+            write: runtime.writeError,
+            answer: runtime.answer,
+            confirm: runtime.confirm,
+          },
+          seenIssues,
         )
-        if (!accepted) {
+        if (setup.kind === 'edit') return setup
+        if (setup.kind === 'cancel') {
           runtime.writeError(
-            renderDiagnostic(
-              'JIG_CHANGES_DECLINED',
-              'The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.',
-            ),
+            'Review cancelled. Previous approval is unchanged. No Flow was started.\n',
           )
           return 1
         }
-      }
+        if (plan.state === 'unchanged') return 0
 
-      runtime.signal?.throwIfAborted()
-      runtime.progress.stage('Recording approval for the reviewed revision')
-      await session.apply({
-        planDigest: plan.planDigest,
-        allowAuthorityChanges: !parsed.yes || parsed.allowAuthorityChanges,
-      })
-      runtime.progress.complete()
-      return 0
-    },
-    {
-      ...(parsed.allowResolutionNetwork
-        ? {
-            allowResolutionNetwork: true,
-            onResolution: () => {
-              if (resolutionNoticeShown) return
-              resolutionNoticeShown = true
-              runtime.writeNotice(
-                'Warning: Dependency network access allowed\n\n  Scope: Dependency preparation across this review; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n',
-              )
-            },
+        runtime.writeOutput(
+          `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
+        )
+        if (parsed.yes && plan.review.authorityChanges && !parsed.allowAuthorityChanges)
+          throw new CliDiagnostic(
+            'JIG_AUTHORITY_APPROVAL_REQUIRED',
+            'New or changed resource grants need explicit approval. Review the delegation changes, then use interactive review or add --allow-authority-changes to --yes.',
+            2,
+          )
+        if (!parsed.yes) {
+          if (!runtime.interactive) {
+            throw new CliDiagnostic(
+              'JIG_APPROVAL_REQUIRED',
+              'Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).',
+              2,
+            )
           }
-        : {}),
-      ...(parsed.generate
-        ? {
-            generateContracts: true,
-            onGeneration: (path: string, files: readonly string[]) =>
-              runtime.writeNotice(
-                `Generating ${asciiJsonString(path)}: ${files.map(asciiJsonString).join(', ')}. These writes do not approve execution.\n`,
+          runtime.progress.note('Waiting for your approval. No Flow has been started.')
+          const accepted = await runtime.confirm(
+            'Approve this exact revision for execution? [y/N] ',
+            runtime.signal,
+          )
+          if (!accepted) {
+            runtime.writeError(
+              renderDiagnostic(
+                'JIG_CHANGES_DECLINED',
+                'The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.',
               ),
+            )
+            return 1
           }
-        : {}),
-    },
-  )
-  runtime.signal?.throwIfAborted()
-  if (result === 0)
-    runtime.writeOutput(
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next, choose or run an approved target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
+        }
+
+        runtime.signal?.throwIfAborted()
+        runtime.progress.stage('Recording approval for the reviewed revision')
+        await session.apply({
+          planDigest: plan.planDigest,
+          allowAuthorityChanges: !parsed.yes || parsed.allowAuthorityChanges,
+        })
+        runtime.progress.complete()
+        return 0
+      },
+      {
+        onAgentReadiness: (report) => {
+          readiness = report
+        },
+        ...(parsed.allowResolutionNetwork
+          ? {
+              allowResolutionNetwork: true,
+              onResolution: () => {
+                if (resolutionNoticeShown) return
+                resolutionNoticeShown = true
+                runtime.writeNotice(
+                  'Warning: Dependency network access allowed\n\n  Scope: Dependency preparation across this review; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n',
+                )
+              },
+            }
+          : {}),
+        ...(parsed.generate
+          ? {
+              generateContracts: true,
+              onGeneration: (path: string, files: readonly string[]) =>
+                runtime.writeNotice(
+                  `Generating ${asciiJsonString(path)}: ${files.map(asciiJsonString).join(', ')}. These writes do not approve execution.\n`,
+                ),
+            }
+          : {}),
+      },
     )
-  return result
+    runtime.signal?.throwIfAborted()
+    if (typeof result !== 'number') {
+      if (correction === 8)
+        throw new CliDiagnostic(
+          'JIG_REVIEW_SETUP_LIMIT',
+          'Review reached its client-correction limit. Edit the named JSON grant directly and review again. No execution was approved or Flow started.',
+          2,
+        )
+      try {
+        await publishReviewGrantEdit(
+          resolve(runtime.currentDirectory, parsed.project),
+          result.proposal,
+          runtime.signal,
+        )
+        runtime.writeError(
+          'Agent grant updated. Capturing the project again before execution approval. No Flow was started.\n',
+        )
+      } catch (error) {
+        if (!(error instanceof PrivateReviewGrantEditError)) throw error
+        if (error.code === 'REVIEW_GRANT_CHANGED' && !error.published) {
+          runtime.writeError(
+            'The grant changed while you were choosing. Capturing the current source again; no source was overwritten.\n',
+          )
+          continue
+        }
+        throw new CliDiagnostic(error.code, error.message, 2)
+      }
+      continue
+    }
+    if (result === 0) {
+      const ready = readiness?.readyTargets
+      const unavailable = readiness?.unavailableTargets ?? 0
+      runtime.writeOutput(
+        ready === 0
+          ? 'Review recorded\n\n  No targets can run with this reviewed configuration. No Flow was started.\n  Repair the reported Agent setup or edit its selected grant, then review again:\n\n  $ jig review\n'
+          : readiness?.entrypoint?.state === 'unavailable'
+            ? `Review recorded\n\n  ${ready} targets ready; ${unavailable} unavailable. No Flow was started.\n  The application's default target is unavailable. Correct its reported setup and review again, or inspect the ready alternatives:\n\n  $ jig inspect\n\n  $ jig review\n`
+            : `Project ready\n\n  The exact reviewed revision is approved. No Flow was started.${unavailable ? `\n  ${ready} targets ready; ${unavailable} unavailable. Unavailable alternatives require a new review after correction.` : ''}\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n`,
+      )
+    }
+    return result
+  }
+  throw new Error('review correction loop did not settle')
 }
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
@@ -1090,6 +1111,12 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   runtime.progress.note(
     `Running ${asciiJsonString(parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`)}`,
   )
+  if (parsed.output !== undefined)
+    runtime.progress.notice(
+      `  Output: ${asciiJsonString(resolve(runtime.currentDirectory, parsed.output))}\n`,
+      'info',
+      false,
+    )
   if (runtime.expectedAdmissionDigest !== undefined) {
     const settings = [`  Timeout: ${parsed.timeoutMs / 1000}s`]
     if (parsed.inputFile !== undefined)
@@ -1102,10 +1129,6 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       )
       for (const path of attachment.select) settings.push(`    Select: ${asciiJsonString(path)}`)
     }
-    if (parsed.output !== undefined)
-      settings.push(
-        `  Output: ${asciiJsonString(resolve(runtime.currentDirectory, parsed.output))}`,
-      )
     for (const name of parsed.receive) settings.push(`  Receive: ${asciiJsonString(name)}`)
     // Operator invocation paths belong to terminal setup, never browser snapshots.
     runtime.progress.note(settings.join('\n'), false)
@@ -1131,6 +1154,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   const submissionId = runtime.createSubmissionId()
   let settledRoot: Extract<RootRunStatus, { state: 'terminal' }> | undefined
   const diagnostics = new PrivateRunDiagnostics()
+  let rootDispatched = false
   let dashboardEntry: Promise<void> | undefined
   let cleanupFailed = false
   let diagnosticSource = '[]'
@@ -1145,21 +1169,18 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
-    ...(workspaceRequested
-      ? {
-          dispatched: () => {
-            // Root execution never waits on terminal setup. The CLI owns and
-            // joins that setup before settlement or error presentation.
-            dashboardEntry ??= runtime.progress
-              .configureDisplay(
-                webRequested ? 'web' : 'tui',
-                runtime.dashboardInput,
-                runtime.dashboardInputStream,
-              )
-              .catch((error) => outputStop.abort(error))
-          },
-        }
-      : {}),
+    dispatched: () => {
+      rootDispatched = true
+      if (!workspaceRequested) return
+      // Root execution never waits on terminal setup. The CLI joins it before settlement.
+      dashboardEntry ??= runtime.progress
+        .configureDisplay(
+          webRequested ? 'web' : 'tui',
+          runtime.dashboardInput,
+          runtime.dashboardInputStream,
+        )
+        .catch((error) => outputStop.abort(error))
+    },
     ...(!parsed.json && parsed.receive.length === 0
       ? {
           call: (event: import('./cli-run-model.js').PrivateCallEvent) =>
@@ -1365,7 +1386,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         runtime.currentDirectory,
         runtime,
         async (session) => {
-          runtime.progress.stage('Submitting the reviewed target')
+          runtime.progress.stage('Checking invocation inputs and admitting the reviewed target')
           const receipt = await session.rootAdministration.startRun({
             submissionId,
             target: parsed.target,
@@ -1561,6 +1582,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           terminal,
           parsed.target,
           runDiagnostics.entries.some((entry) => entry.stderrBytes > 0),
+          rootDispatched,
         ),
       )
     if (cleanupFailed || inspectionFailed) return 2
@@ -2225,7 +2247,10 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       runtime.writeError(
         renderDiagnostic(
           'JIG_RUN_FILES_INVALID',
-          'supply exactly the unbound read attachments with --attach and the required writable destination with --out; captured Binding attachments cannot be overridden. Combined inputs must fit the 64-file/8-MiB limit',
+          renderFileMappingGuidance(
+            (error.details as Record<string, JsonValue>).fileMapping,
+            (error.details as Record<string, JsonValue>).fileLimitExceeded === true,
+          ),
         ),
       )
       return 1
@@ -2241,6 +2266,69 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     ),
   )
   return 2
+}
+
+function renderFileMappingGuidance(
+  value: JsonValue | undefined,
+  fileLimitExceeded: boolean,
+): string {
+  const mapping =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, JsonValue>)
+      : {}
+  const names = (key: string): string[] =>
+    Array.isArray(mapping[key])
+      ? (mapping[key] as JsonValue[])
+          .slice(0, 8)
+          .filter(
+            (name): name is string =>
+              typeof name === 'string' &&
+              /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) &&
+              name.length <= 64,
+          )
+      : []
+  const missing = names('missingReads'),
+    unknown = names('unknownNames'),
+    bound = names('boundOverrides'),
+    writable = names('missingWritableDestination')
+  const lines = ['Invocation files do not match this reviewed target. No Flow was started.']
+  if (missing.length)
+    lines.push(`Missing read attachments: ${missing.map(asciiJsonString).join(', ')}.`)
+  if (unknown.length)
+    lines.push(`Remove undeclared attachment mappings: ${unknown.map(asciiJsonString).join(', ')}.`)
+  if (bound.length)
+    lines.push(
+      `Remove overrides of review-pinned attachments: ${bound.map(asciiJsonString).join(', ')}.`,
+    )
+  if (writable.length)
+    lines.push(
+      `Supply a result destination for writable attachments: ${writable.map(asciiJsonString).join(', ')}.`,
+    )
+  if (!missing.length && !unknown.length && !bound.length && !writable.length)
+    lines.push(
+      fileLimitExceeded
+        ? 'Combined input attachments exceed the 64-file/8-MiB limit. Reduce the supplied files.'
+        : 'Supply exactly the declared unbound read attachments and the required output destination; captured Binding attachments cannot be overridden.',
+    )
+  if (missing.length || writable.length) {
+    const flags = missing.map((name) => `--attach ${shellWord(`${name}=./${name}-input`)}`)
+    if (writable.length) flags.push('--out-new ./result-packet')
+    lines.push(
+      '',
+      'Template: replace the target and input directories; retain your other required input/options:',
+      '',
+      `  $ jig run <target> ${flags.join(' ')}`,
+    )
+  }
+  lines.push(
+    '',
+    'Inspect the approved interface and complete invocation template:',
+    '',
+    '  $ jig inspect <target>',
+    '',
+    'A bare jig run uses the approved entrypoint defaults when the project supplies them.',
+  )
+  return lines.join('\n')
 }
 
 function projectError(code: ProjectAdministrationError['code']): {
@@ -2315,6 +2403,7 @@ function renderRunFailure(
   terminal: Exclude<RootRunTerminal, { readonly status: 'succeeded' }>,
   target: RunTargetRef,
   hasRunDiagnostics = false,
+  rootDispatched = true,
 ): string {
   if (terminal.code === 'PROTOCOL_ERROR')
     return renderDiagnostic(
@@ -2328,6 +2417,40 @@ function renderRunFailure(
     !Array.isArray(terminal.details)
       ? (terminal.details as Record<string, JsonValue>)
       : undefined
+  if (
+    !rootDispatched &&
+    terminal.code === 'UNAVAILABLE' &&
+    details?.code === 'RUN_TARGET_UNAVAILABLE'
+  ) {
+    const availability =
+      details.availability &&
+      typeof details.availability === 'object' &&
+      !Array.isArray(details.availability)
+        ? (details.availability as Record<string, JsonValue>)
+        : {}
+    const cause =
+      availability.cause &&
+      typeof availability.cause === 'object' &&
+      !Array.isArray(availability.cause)
+        ? (availability.cause as Record<string, JsonValue>)
+        : {}
+    const diagnostic = typeof cause.diagnostic === 'string' ? cause.diagnostic : ''
+    const blocked =
+      cause.target && typeof cause.target === 'object' && !Array.isArray(cause.target)
+        ? (cause.target as Record<string, JsonValue>)
+        : {}
+    const child =
+      blocked.kind === 'binding' && typeof blocked.id === 'string'
+        ? `binding:${blocked.id}`
+        : blocked.kind === 'flow' && typeof blocked.path === 'string'
+          ? flowSelector(blocked.path)
+          : undefined
+    return renderDiagnostic(
+      'RUN_TARGET_UNAVAILABLE',
+      `This target was approved as unavailable. No Flow was started.${ACP_SETUP_CAUSES[diagnostic] ? `\nCause: ${ACP_SETUP_CAUSES[diagnostic]}\n\n${ACP_SETUP_HINTS[diagnostic]}` : child ? `\nRequired target ${asciiJsonString(child)} is unavailable. Inspect its retained cause:\n\n  $ jig inspect ${shellWord(child)}` : '\nRequired execution support was unavailable during review.'}\n\nAfter correcting the reported setup or selected grant, review again:\n\n  $ jig review`,
+      'Target unavailable',
+    )
+  }
   if (terminal.code === 'REVIEW_REQUIRED')
     return renderDiagnostic(
       'REVIEW_REQUIRED',
@@ -2400,7 +2523,7 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
       ? '\n  Agent selection: the resource grant at this Binding slot.'
       : ''
   const alternative = selection
-    ? '\n\n  Use another installed client\n    Set client to codex, claude, or pi in the ACP grant selected by this slot (the inline Binding value or its named grant file). Check its model and client-specific fields. For a named grant, use this template (replace GRANT_FILE with its project-relative JSON file and choose your client):\n\n  $ jig agent --grant GRANT_FILE --client codex\n  $ jig review'
+    ? '\n\n  Use another installed client\n    Edit client in the ACP grant selected by this slot (its inline Binding value or named JSON file), choosing codex, claude, or pi. Check model and client-specific policy, then review the change:\n\n  $ jig review'
     : ''
   return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }

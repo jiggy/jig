@@ -1003,10 +1003,11 @@ export class PrivateCliProgress {
   }
 
   /** A complete notice preserves the known active stage and its heartbeat. */
-  notice(value: string, importance: 'info' | 'warning' | 'error' = 'info'): void {
-    this.#observeHost(() => {
-      this.model.addHostEntry(`notice:${++this.#hostEntry}`, value, importance)
-    })
+  notice(value: string, importance: 'info' | 'warning' | 'error' = 'info', retain = true): void {
+    if (retain)
+      this.#observeHost(() => {
+        this.model.addHostEntry(`notice:${++this.#hostEntry}`, value, importance)
+      })
     if (this.workspaceActive) {
       if (importance !== 'info') this.model.addAttention('Jig', value, 4, false)
       this.#flowChanged()

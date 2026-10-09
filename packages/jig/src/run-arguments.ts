@@ -9,6 +9,8 @@ import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import { npmPackageName } from './project/package-selector.js'
 
 const textEncoder = new TextEncoder()
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Fresh destination names must reject controls.
+const OUTPUT_PREFIX_CONTROLS = /[\x00-\x1f\x7f]/
 
 export function parseRun(
   arguments_: readonly string[],
@@ -19,6 +21,7 @@ export function parseRun(
   readonly inputFile?: string
   readonly attachments: readonly { name: string; directory: string; select: readonly string[] }[]
   readonly output?: string
+  readonly outputPrefix?: string
   readonly timeoutMs: number
   readonly receive: readonly string[]
   readonly json: boolean
@@ -30,7 +33,7 @@ export function parseRun(
     usage('run', 'Choose a target, for example flow:flows/hello or binding:repair.')
   const target = parseTarget(arguments_[1]!)
   let input: JsonValue = {}
-  let inputFile: string | undefined, output: string | undefined
+  let inputFile: string | undefined, output: string | undefined, outputPrefix: string | undefined
   const attachments = new Map<string, string>(),
     selectors = new Map<string, string[]>()
   let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
@@ -58,6 +61,7 @@ export function parseRun(
         '--attach',
         '--select',
         '--out',
+        '--out-new',
         '--receive',
         '--timeout',
         '--verification',
@@ -67,7 +71,7 @@ export function parseRun(
     )
       usage(
         'run',
-        `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.${spellingHint(option!, ['--input', '--attach', '--select', '--out', '--receive', '--timeout', '--verification', '--json'])}`,
+        `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.${spellingHint(option!, ['--input', '--attach', '--select', '--out', '--out-new', '--receive', '--timeout', '--verification', '--json'])}`,
       )
     if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
     if (option === '--display') {
@@ -127,8 +131,28 @@ export function parseRun(
       timeoutMs = parseRunTimeout(value)
       continue
     }
-    if (option === '--out' && output === undefined) {
-      output = value
+    if (option === '--out' || option === '--out-new') {
+      if (output !== undefined || outputPrefix !== undefined)
+        usage('run', 'Supply either --out DIR or --out-new PREFIX once.')
+      if (option === '--out') output = value
+      else {
+        const leaf = value.split('/').at(-1) ?? ''
+        if (
+          !leaf ||
+          leaf === '.' ||
+          leaf === '..' ||
+          value.includes('\\') ||
+          OUTPUT_PREFIX_CONTROLS.test(value) ||
+          new TextDecoder('utf-8', { fatal: true }).decode(textEncoder.encode(value)) !== value ||
+          textEncoder.encode(leaf).byteLength + 33 > 255
+        )
+          throw new CliDiagnostic(
+            'JIG_RUN_FILES_INVALID',
+            '--out-new requires a nonempty file-name prefix without a trailing slash or controls, leaving room for its random suffix. No Flow was started.',
+            1,
+          )
+        outputPrefix = value
+      }
       continue
     }
     if (option === '--attach' || option === '--select') {
@@ -180,6 +204,7 @@ export function parseRun(
     })),
     ...(inputFile === undefined ? {} : { inputFile }),
     ...(output === undefined ? {} : { output }),
+    ...(outputPrefix === undefined ? {} : { outputPrefix }),
   }
 }
 

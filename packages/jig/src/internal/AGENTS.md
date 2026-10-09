@@ -522,6 +522,18 @@ child calls, project commands, delegated HTTP, and Agent providers.
   neither mounts files nor replaces launch-time validation.
   Cache selected configurations by client and granted model together; a grant
   model does not change authentication mode or mutate the operator snapshot.
+- `project-resource-qualification.ts` qualifies exact selected ACP grants before
+  avoidable execution preparation, then propagates refusal through captured Flow
+  routes. It never chooses a substitute. `resource-qualification-evidence.ts`
+  binds closed client/slot causes to exact requests, policies and unavailable
+  child dispositions; admission checks the witness and refuses ready parents of
+  unavailable children. A closed display diagnostic is not expected-refusal
+  provenance: direct known predicates may mark it, wrappers default to fatal.
+  Abort, corruption, arbitrary I/O, owner faults and unconfirmed cleanup cannot
+  become per-target availability. The private `review-agent-setup.ts` report
+  carries at most 1 MiB of captured authoring context, including named-grant
+  original bytes and complete direct recipients. Overflow disables editing;
+  public Plans and inspection never carry these private source handles.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
   corrective hints. Preserve known failures through planning and CLI rendering;
   raw exceptions, private paths and credentials never become recovery text.
@@ -586,6 +598,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Command reports retain aggregate-bounded diagnostics with host-assigned call
   paths, independently of root-process stderr. Settled root notifications let
   interrupted commands report known terminals without reopening closed authority.
+- Read-only target inspection projects `boundReadAttachments` as retained names
+  only, so invocation templates omit captured reads without reopening live
+  Binding paths or exposing private file projection handles.
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
@@ -900,6 +915,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   artifacts. Before package code starts, the trusted inner launcher rechecks
   every projected file's byte count and digest against the admitted identity.
   Child and Agent contexts receive no attachment or destination authority.
+  The admitted-interface mapping check precedes root allocation. Its closed
+  failure projects only bounded declared/supplied names for missing reads,
+  invalid mappings, bound overrides and missing writable destinations; combined
+  retained/per-run file-limit evidence remains separately typed. Never infer
+  paths, source freshness or no-dispatch evidence from arbitrary errors.
 - Reviewed Binding read selections reuse the bounded file capture controls and
   retained artifact store. Bind source, manifest and tree identity to the exact
   configuration; revalidate at admission and project retained bytes at execution,

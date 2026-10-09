@@ -253,6 +253,9 @@ async function runWithEnvironment(
                   ? {}
                   : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
                 ...(options?.onStage === undefined ? {} : { onStage: options.onStage }),
+                ...(options?.onAgentReadiness === undefined
+                  ? {}
+                  : { onAgentReadiness: options.onAgentReadiness }),
                 ...(options?.generateContracts ? { generateContracts: true } : {}),
                 ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
                 ...(options?.runTimeoutMs === undefined

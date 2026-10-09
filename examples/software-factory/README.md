@@ -10,9 +10,11 @@ whether to apply, merge, or release any patch.
 
 ## Run the supplied issue set
 
-Run `bun install` in this project, select and authenticate an Agent in
-`grants/agent.json` (or run `jig agent --grant grants/agent.json --client codex`
-before review), then inspect `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
+With Jig installed on a [supported host](https://jig.md/guide/), configure and
+authenticate a native client through [Choose an Agent](https://jig.md/guide/agents).
+Interactive review can offer a separately confirmed client correction in
+`grants/agent.json` when the selected executable is missing; manual JSON editing
+also requires renewed review. Inspect `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
 the two named case files under `flows/factory/`. The supplied Binding uses
 native ACP Codex. For an HTTP Agent route instead, follow the package and
 Binding setup in the [Agent method guide](../../docs/jig/guide/agent-method.md).
@@ -20,21 +22,22 @@ From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run --display tui
+jig run
 ```
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
-`fixtures` source tree, an eight-minute deadline, and `factory-result` for output.
-For another batch or a repeat Run, override the input and choose a new output:
+`fixtures` source tree, an eight-minute deadline, and a fresh `factory-result`
+output prefix. Jig reports the actual destination. Repeat `jig run` to keep each
+packet; for another batch, override the input:
 
 ```sh
-jig run --input @batch.json --out factory-result-2
+jig run --input @another-batch.json
 ```
 
 Existing results are never overwritten. Explicitly naming a target bypasses
 entrypoint defaults; supply that invocation's arguments in full.
 
-Open `factory-result/files/summary.txt`, then inspect each job directory and
+Open `files/summary.txt` inside the reported destination, then inspect each job directory and
 `result.json`. A job receives `review.patch` only after its original reproduced
 the issue and its candidate passed both the fixed repository command and every
 independent case. An unsuccessful peer remains explicit and does not erase a
@@ -69,10 +72,10 @@ without forwarding a child's artifact namespace.
 Reopen the final evidence without starting work:
 
 ```sh
-jig inspect --result ./factory-result --display web
+jig inspect --result DESTINATION --display web
 ```
 
-Saved inspection shows recorded results, verified files and diagnostics. Packets do not retain the live domain views or invocation graph.
+`DESTINATION` above is the actual packet directory reported by Jig. Saved inspection shows recorded results, verified files and diagnostics. Packets do not retain the live domain views or invocation graph.
 
 During work it identifies the command slot or case being run, then reports the
 observed repository-command status and passing or mismatched acceptance cases.

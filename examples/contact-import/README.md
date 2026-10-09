@@ -7,33 +7,38 @@ The importer calls the same mapping slot in all three configurations.
 
 ## Try it
 
-Complete [workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
-and [Agent configuration](https://jig.md/guide/agents) on a
-[supported host](https://jig.md/guide/). From this directory:
+With Jig installed on a [supported host](https://jig.md/guide/), run from this
+directory. The default known-format preview uses code and needs no Agent:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:code --input '{}' --attach source=fixtures/known --out preview-known --display tui
+jig run
 ```
 
 The CSV parser is an ordinary declared dependency. The resolution flag permits
 fresh dependency resolution during this review; inspect and approve the result.
-The project includes an ordinary Agent dependency and `grants/agent.json`, selected
-by `bindings/model.ts`. Choose your client before review, for example
-`jig agent --grant grants/agent.json --client codex`. Review that configuration
-even when this particular run uses only code. The known-format path makes no Agent calls.
+The reviewed entrypoint supplies the fixture, read attachment, one-minute deadline
+and fresh `preview-known` output prefix. Jig reports the actual destination;
+repeat `jig run` to receive another packet without replacing earlier results.
 
-Open `preview-known/files/preview.json`. Ada and Mei have accepted contact
+Open `files/preview.json` inside the reported destination. Ada and Mei have accepted contact
 records. Grace's invalid email appears in `rejected`, with CSV record number 3.
-`preview-known/result.json` contains the execution result. These are synthetic
+`result.json` in that destination contains the execution result. These are synthetic
 contacts, and no database records are created.
+
+To use the Agent or mixed variants, configure a supported native client through
+[Choose an Agent](https://jig.md/guide/agents). Their shared `grants/agent.json`
+is selected by `bindings/model.ts`. Interactive review can offer a confirmed
+client correction when the selected executable is missing; manual grant edits
+also require review. Unavailable Agent routes do not block the code preview.
+Mixed still requires its Agent route even when a particular input takes its code branch.
 
 Now use different headings and a different column order:
 
 ```sh
-jig run binding:code --input '{}' --attach source=fixtures/unfamiliar --out preview-unknown
-jig run binding:agent --input '{}' --attach source=fixtures/unfamiliar --out preview-agent --timeout 2m
-jig run binding:mixed --input '{}' --attach source=fixtures/unfamiliar --out preview-mixed --timeout 2m
+jig run binding:code --input '{}' --attach source=fixtures/unfamiliar --out-new preview-unknown
+jig run binding:agent --input '{}' --attach source=fixtures/unfamiliar --out-new preview-agent --timeout 2m
+jig run binding:mixed --input '{}' --attach source=fixtures/unfamiliar --out-new preview-mixed --timeout 2m
 ```
 
 Code returns `needs_mapping`. The Agent is asked to interpret `Organisation`,
@@ -41,7 +46,8 @@ Code returns `needs_mapping`. The Agent is asked to interpret `Organisation`,
 `{"name":2,"email":1,"organization":0}`. Its answer may differ or it may abstain.
 Mixed recognizes the known format in code and invokes the Agent only for
 unfamiliar headings. Try `binding:mixed` with `fixtures/known` to take
-the direct code path. Every output destination must be new.
+the direct code path. `--out-new` selects a fresh destination each time; a fixed
+`--out DIR` still requires a new directory.
 
 ## Follow the work
 
@@ -53,8 +59,8 @@ content. The mapper and converter also offer domain views when invoked independe
 `needs_mapping` and rejected rows remain distinct from a completed import: no database
 is changed.
 
-Choose `--display web` instead of `--display tui` to use the same views in a
-browser. Open the private link printed after execution starts. The completed inspector
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain
 available.
@@ -97,7 +103,7 @@ Inspect the mapping and preview before using them.
 `fixtures/malformed` has duplicate headings and fails before calling a mapper:
 
 ```sh
-jig run binding:code --input '{}' --attach source=fixtures/malformed --out preview-malformed
+jig run binding:code --input '{}' --attach source=fixtures/malformed --out-new preview-malformed
 ```
 
 ## Know what the result means

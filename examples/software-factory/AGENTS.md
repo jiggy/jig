@@ -35,7 +35,7 @@ patch authority and every merge decision stays with a person.
 - `bindings/` composes one-proposal and checked-correction configurations of
   that specialist with one ordinary Agent and fixed Bun test/CLI grants.
 - `jig.ts` declares the project entrypoint with the factory target, batch/source
-  defaults, output destination and deadline. Ordinary `jig run` exercises the
+  defaults, fresh output prefix and deadline. Ordinary `jig run` exercises the
   public host defaults; repeat Runs choose a new output without overwriting.
 - `batch.json` and the named case files own the selected issues and acceptance
   policy. `fixtures/` owns the synthetic comparison projects.
@@ -46,8 +46,9 @@ patch authority and every merge decision stays with a person.
 - `test/` owns deterministic batch, failure-isolation, and recovery checks.
 
 - `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
-  grants/agent.json --client CLIENT` edits this source before separate review.
+  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
+  may offer a separately confirmed named-grant correction; manual JSON editing
+  remains available. Every source correction requires fresh review and approval.
   Keep client choices explicit; no installed-client fallback.
 
 ## Local Contracts

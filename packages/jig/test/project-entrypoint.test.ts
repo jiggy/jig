@@ -63,6 +63,10 @@ for (const source of [
   'binding:factory --attach source=.jig',
   'binding:factory --attach source=../outside',
   'binding:factory --out .jig/results',
+  'binding:factory --out-new .jig/results',
+  'binding:factory --out-new results/',
+  'binding:factory --out-new /absolute',
+  'binding:factory --out result --out-new result',
   'binding:factory --input @file | cat',
   'binding:factory && anything',
   'binding:factory --input $(anything)',
@@ -162,6 +166,37 @@ test('file defaults are references, with fresh input capture deferred until invo
       ),
     ).inputFile,
   ).toBe('new.json')
+})
+
+test('fixed and fresh outputs form one override group with paths resolved by origin', () => {
+  expect(
+    parseRun(resolveProjectEntrypoint('binding:factory --out-new results', [], '/project')),
+  ).toMatchObject({ outputPrefix: '/project/results' })
+  expect(
+    parseRun(
+      resolveProjectEntrypoint(
+        'binding:factory --out-new results',
+        ['--out', 'chosen'],
+        '/project',
+      ),
+    ),
+  ).toMatchObject({ output: 'chosen' })
+  expect(
+    parseRun(
+      resolveProjectEntrypoint(
+        'binding:factory --out results',
+        ['--out-new', '../chosen'],
+        '/project',
+      ),
+    ),
+  ).toMatchObject({ outputPrefix: '../chosen' })
+  expect(() =>
+    resolveProjectEntrypoint(
+      'binding:factory --out-new results',
+      ['--out', 'chosen', '--out-new', 'other'],
+      '/project',
+    ),
+  ).toThrow('Supply either --out DIR or --out-new PREFIX once.')
 })
 
 test('explicit selections replace the selection set and can use a default attachment', () => {

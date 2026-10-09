@@ -9,7 +9,7 @@ descriptors.
 
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
   It also owns final failure ordering, concise human packet summaries, Agent
-  setup cause/selection locations, inert named ACP grant edits, compact inline
+  setup cause/selection locations, guided separately confirmed named ACP grant corrections, compact inline
   work projection/root-summary deduplication, and one dependency-network notice per review.
   Schema authoring recovery identifies the required dialect and supported
   vocabulary without exposing rejected values or private compiler diagnostics.
@@ -69,7 +69,7 @@ descriptors.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient
   identity and explicit authority approval through the existing plan.
 - `project-sdk.md` and `project-policy.md` own the approved string `entrypoint`,
-  shared Run grammar, per-option overrides and per-invocation job capture, alongside
+  shared Run grammar, fixed/fresh output option-group overrides and per-invocation job capture, alongside
   contract-keyed `defaultProviders`,
   sole-match review-time resolution and declared `npm:` package targets.
   Selected feature requirements qualify package support before execution;

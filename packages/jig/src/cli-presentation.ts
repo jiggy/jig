@@ -93,7 +93,7 @@ function commandText(line: string): string {
   // limited to explicit flags, placeholders, selectors and shell-quoted words;
   // prose after the command is never turned into a command argument.
   return line.replace(
-    /`[^`]*`|(?<![\w./:])jig (?:init|new|agent|review|run|inspect|completion|import-contract|<command>)(?: (?:--[a-z][a-z-]*|<[^>\n]+>|'(?:[^']|'"'"')*'|(?:binding|flow|npm):[^\s,;().]+))*/g,
+    /`[^`]*`|(?<![\w./:])jig (?:init|new|review|run|inspect|completion|import-contract|<command>)(?: (?:--[a-z][a-z-]*|<[^>\n]+>|'(?:[^']|'"'"')*'|(?:binding|flow|npm):[^\s,;().]+))*/g,
     (command) => (command.startsWith('`') ? command : `\`${command}\``),
   )
 }

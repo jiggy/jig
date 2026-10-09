@@ -72,23 +72,28 @@ it does not require the caller to manage an Agent conversation.
 
 ## Run all three
 
-Follow [installation and supported-host setup](./index.md), then prepare the
-checkout using [workspace setup](./dependencies.md#local-workspace-packages).
-Check the [Agent](./agents.md) selected in `grants/agent.json` before review.
-The example declares the ordinary ACP package and selects Claude Code; install and
-authenticate Claude Code or use `jig agent --grant grants/agent.json --client codex`
-to choose another installed client before review. Its contract-keyed project default
-supplies that Agent to the Agent and mixed classifiers.
-The checked-in example includes those packages even when you select the code
-Binding; the code classifier itself makes no Agent call.
-
-From `examples/request-triage`:
+Follow [installation and supported-host setup](./index.md), then run from a copy
+of the example directory. The default code classifier needs no Agent:
 
 ```sh
-jig review
-jig run binding:intake --input @fixtures/labeled.json --display tui
-jig run binding:agent --input @fixtures/labeled.json --timeout 2m
-jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
+jig review --allow-resolution-network
+jig run
+```
+
+Review prepares the ordinary declared dependencies. The reviewed entrypoint
+supplies the labeled fixture, a one-minute deadline and fresh `triage-result`
+output prefix. Read `result.json` in the destination reported by Jig. Repeated
+Runs keep earlier evidence.
+
+For the Agent and mixed classifiers, configure a supported [Agent](./agents.md)
+and the included `grants/agent.json`, which shows Claude Code as an example choice.
+Interactive review can offer a separately confirmed correction when its executable
+is missing; manual JSON edits require renewed review. Missing Agent support leaves
+the code target usable, while both intelligent routes need a fresh ready review.
+
+```sh
+jig run binding:agent --input @fixtures/labeled.json --out-new triage-agent --timeout 2m
+jig run binding:mixed --input @fixtures/labeled.json --out-new triage-mixed --timeout 2m
 ```
 
 Inspect the source and review, then approve before running. Noninteractive

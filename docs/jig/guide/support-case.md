@@ -15,18 +15,22 @@ intelligent method, it can evaluate that method's contribution before proceeding
 
 ## Run a case
 
-Complete [workspace setup](./dependencies.md#local-workspace-packages) on a
-[supported host](./index.md#supported-host). The included `grants/agent.json`
-selects Codex as an editable example choice; use
-`jig agent --grant grants/agent.json --client codex` before review to choose your installed
-Codex, Claude Code, or Pi and complete its [configuration](./agents.md#local-clients).
-The included dependency and `jig.ts` default supply that Agent to the assessor.
+Install Jig on a [supported host](./index.md#supported-host) and configure a
+supported [native client](./agents.md#local-clients). The included
+`grants/agent.json` selects Codex as an editable example choice. Interactive review
+can offer a separately confirmed client correction when that executable is missing;
+manual JSON edits also require review. The included ordinary dependency and
+`jig.ts` default supply that Agent to the assessor.
 From `examples/support-case`, inspect the two Flows and their policy, then run:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:support --input @fixtures/duplicate.json --timeout 2m --display tui
+jig run
 ```
+
+The entrypoint supplies the fixture, two-minute deadline and fresh `support-result`
+output prefix. Jig reports the destination holding `result.json`; repeating the
+command preserves earlier packets.
 
 The fixture supplies two settled USD 24 payments for the same invoice. The
 customer names the second charge, `ch-102`. When the Agent identifies that

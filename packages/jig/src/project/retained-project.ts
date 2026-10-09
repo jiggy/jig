@@ -72,6 +72,9 @@ export interface PrivateRetainedPackageProject {
   readonly bindingSource: readonly DeclarationSourceObservation[]
   readonly grantSource: readonly DeclarationSourceObservation[]
   readonly grants: Readonly<Record<string, GrantPolicy>>
+  readonly grantFiles: Readonly<
+    Record<string, { readonly path: string; readonly bytes: Uint8Array }>
+  >
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly RetainedBindingDeclaration[]
   readonly linked: PackageProjectValue
@@ -283,6 +286,7 @@ export async function retainOpenedPackageProject(
       bindingSource: bindingSource.observations,
       grantSource: grantSource.observations,
       grants: grantSource.grants,
+      grantFiles: grantSource.files,
       flows: retainedFlows,
       bindings: Object.freeze(bindings),
       linked,

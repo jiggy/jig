@@ -10,18 +10,29 @@ same intake Flow with different classifiers. The caller always invokes its
 | `agent` | Ask one operator-selected Agent | Interpret the message |
 | `mixed` | Recognize prefixes, then ask an Agent when absent | Interpret the message |
 
-After [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages),
-check the [Agent configuration](../../docs/jig/guide/agents.md) in
-`grants/agent.json`. This example selects Claude Code; configure it or choose
-your installed client before review with `jig agent --grant grants/agent.json --client codex`. The project default supplies that Agent
-to both intelligent classifiers. Run from this directory on a
-[supported host](../../docs/jig/guide/index.md#supported-host):
+With Jig installed on a [supported host](https://jig.md/guide/), run from this
+directory. The default code classifier needs no Agent:
 
 ```sh
-jig review
-jig run binding:intake --input @fixtures/labeled.json --display tui
-jig run binding:agent --input @fixtures/labeled.json --timeout 2m
-jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
+jig review --allow-resolution-network
+jig run
+```
+
+Review prepares the ordinary declared dependencies. Inspect and approve its exact
+proposal. The entrypoint selects `fixtures/labeled.json`, a one-minute deadline
+and a fresh `triage-result` output prefix. Open `result.json` inside the destination
+reported by Jig. Repeating `jig run` preserves earlier packets.
+
+For the Agent and mixed routes, follow [Choose an Agent](https://jig.md/guide/agents)
+and configure `grants/agent.json`, which selects Claude Code as an example choice.
+Interactive review can offer a separately confirmed client correction when its
+executable is missing; manual edits require renewed review. The shared project
+route supplies that Agent to both intelligent classifiers. Missing Agent support
+leaves the code route usable; the other routes require a fresh ready review.
+
+```sh
+jig run binding:agent --input @fixtures/labeled.json --out-new triage-agent --timeout 2m
+jig run binding:mixed --input @fixtures/labeled.json --out-new triage-mixed --timeout 2m
 ```
 
 Inspect and approve the review before running. All three use the same caller
@@ -45,8 +56,8 @@ suggested queue. Each classifier offers the same view when called independently.
 **Execution** follows the actual classifier and Agent calls; `manual` remains a valid
 suggestion, with no business action dispatched.
 
-Choose `--display web` instead of `--display tui` to use the same views in a
-browser. Open the private link printed after execution starts. The completed inspector
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain
 available.

@@ -9,26 +9,23 @@ stays unchanged.
 
 Install Jig on a [supported host](https://jig.md/guide/).
 
-The application declares pinned ordinary FLOW and ACP Agent packages. Download
-this directory, install its dependencies with lifecycle scripts disabled, and
-keep the resulting lock so review uses the same resolved packages:
-
-```sh
-bun install --ignore-scripts
-```
-
-Select your native client in `grants/agent.json`; it shows Pi as an example.
-For Codex, run `jig agent --grant grants/agent.json --client codex` before review.
-Claude Code is also supported through the same grant. Follow
+The application declares pinned ordinary FLOW and ACP Agent packages; review
+prepares their execution dependencies. Download this directory and follow
 [Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
-Then inspect `issue.json`,
+`grants/agent.json` shows Pi as an example. Interactive review can offer a separately
+confirmed client correction when that executable is missing; manual JSON edits
+also require fresh review. Then inspect `issue.json`,
 `bindings/specialist.ts`, and `flows/project/logs-cases.json`.
 From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m --display tui
+jig run
 ```
+
+The reviewed entrypoint supplies the issue, read-only fixture, five-minute deadline
+and fresh `repair-result` output prefix. Jig reports the actual destination;
+repeat `jig run` to keep every packet. Explicit targets bypass those defaults.
 
 Add `--receive progress` to see the repair specialist's phase and attempt
 while the Run is active. Redirected stdout then uses NDJSON records; only the
@@ -40,7 +37,7 @@ specialist’s separate closed phase records for explicit channel consumers. Nei
 establishes acceptance.
 
 The synthetic fixture is an HTTP log reporter with defects in parsing and
-aggregation. Open `repair-result/files/summary.txt`. A passing repair produces
+aggregation. Open `files/summary.txt` inside the reported destination. A passing repair produces
 `review.patch`; valid unsuccessful proposals remain `proposal-N.patch`.
 `result.json` records candidate identities, command output and termination,
 and independent acceptance results. Review the patch before applying it.
@@ -55,8 +52,8 @@ retained proposals; only an accepted candidate earns `review.patch`. Selecting a
 delivered file shows its content. The reusable specialist offers Repair and Checks
 without claiming that its caller has accepted a patch.
 
-Choose `--display web` instead of `--display tui` to use the same views in a
-browser. Open the private link printed after execution starts. The completed inspector
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain
 available.

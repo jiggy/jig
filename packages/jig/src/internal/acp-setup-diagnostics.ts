@@ -1,3 +1,14 @@
+const expectedRefusals = new WeakSet<Error>()
+
+/** Mark only a directly observed, closed configuration predicate. */
+export function markExpectedAcpRefusal<T extends Error>(error: T): T {
+  expectedRefusals.add(error)
+  return error
+}
+export function isExpectedAcpRefusal(error: unknown): boolean {
+  return error instanceof Error && expectedRefusals.has(error)
+}
+
 type Client = 'codex' | 'claude' | 'pi'
 export type AcpSetupStage =
   | 'executable'
@@ -21,7 +32,7 @@ export class PrivateAcpSetupError extends Error {
 /** Validate the effective model, without changing how authentication is selected. */
 export function configuredAcpModel(value: string | undefined): string | undefined {
   if (value !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(value))
-    throw new PrivateAcpSetupError('model')
+    throw markExpectedAcpRefusal(new PrivateAcpSetupError('model'))
   return value
 }
 

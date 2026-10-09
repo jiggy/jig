@@ -2656,6 +2656,79 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
+  test('inspection exposes retained availability separately from approval freshness and refuses its root before dispatch', async () => {
+    const fixture = await createFixture('unavailable')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      const store = join(fixture.root, '.jig/private-package-store')
+      await rename(fixture.store, store)
+      const list = await inspectPrivateApprovedProject(fixture.root)
+      expect(list).toMatchObject({
+        state: 'unchecked',
+        targets: [
+          {
+            target: 'flow:flows/run',
+            availability: {
+              state: 'unavailable',
+              code: 'RUNTIME_UNAVAILABLE',
+              evidenceDigests: [digest('runtime-unavailable')],
+            },
+          },
+        ],
+      })
+      expect(await inspectPrivateApprovedProject(fixture.root, 'flow:flows/run')).toMatchObject({
+        state: 'unchecked',
+        availability: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
+      })
+      expect(
+        await inspectPrivateApprovedProject(
+          fixture.root,
+          'flow:flows/run',
+          async () => 'environment-matches',
+        ),
+      ).toMatchObject({
+        state: 'environment-matches',
+        availability: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
+      })
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const refused = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: store,
+        submissionId: 'retained-unavailable',
+        target: { kind: 'flow', path: 'flows/run' },
+        input: { value: 'unused' },
+        deadlineUnixMs: Date.now() + 60_000,
+      })
+      expect(refused.run).toMatchObject({
+        state: 'terminal',
+        terminal: {
+          status: 'failed',
+          code: 'UNAVAILABLE',
+          details: {
+            code: 'RUN_TARGET_UNAVAILABLE',
+            availability: {
+              state: 'unavailable',
+              code: 'RUNTIME_UNAVAILABLE',
+              evidenceDigests: [digest('runtime-unavailable')],
+            },
+          },
+        },
+      })
+      expect(
+        await listPrivateRootExecutionWork({
+          coordinator,
+          projectRoot: fixture.root,
+          epoch: 'current',
+        }),
+      ).toEqual([])
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('missing root targets suggest only admitted targets without dispatch', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined

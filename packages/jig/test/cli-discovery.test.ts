@@ -62,6 +62,26 @@ test('selection without an approved entrypoint never guesses and validates optio
   }
 })
 
+test('explicit argument preparation renders usage failures before the installed host is acquired', async () => {
+  for (const [args, exitCode, code] of [
+    [['run', 'binding:work', '--out-new', 'bad/'], 1, 'JIG_RUN_FILES_INVALID'],
+    [['run', 'binding:work', '--out', 'fixed', '--out-new', 'fresh'], 2, 'JIG_USAGE'],
+    [['run', 'binding:work', '--unknown'], 2, 'JIG_USAGE'],
+    [['run', 'bad-target'], 1, 'JIG_RUN_TARGET_INVALID'],
+  ] as const) {
+    let diagnostic = ''
+    expect(
+      await privateCliPrepareArguments(args, {
+        writeError: (text) => {
+          diagnostic += text
+        },
+      }),
+    ).toEqual({ exitCode })
+    expect(diagnostic).toContain(code as string)
+    expect(diagnostic).not.toContain('at expandPrivateCliFreshOutput')
+  }
+})
+
 test('inspection gives honest templates, required files and channels, not guessed values', () => {
   const guide = invocationGuide({
     target: 'binding:repair',
@@ -143,6 +163,51 @@ _jig
   ).toBe(0)
   expect(output).toBe(completionScript('bash')!)
   expect(privateCliRequiresHost(['completion', 'targets'])).toBe(false)
+})
+
+test('target discovery distinguishes unavailable alternatives from ready choices', () => {
+  const snapshot = {
+    targets: [
+      { target: 'binding:code', availability: { state: 'ready' } },
+      {
+        target: 'binding:model',
+        availability: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
+      },
+    ],
+  }
+  expect(approvedTargets(snapshot, true).map(({ target }) => target)).toEqual(['binding:code'])
+  expect(approvedTargets(snapshot).map(({ target, available }) => [target, available])).toEqual([
+    ['binding:code', true],
+    ['binding:model', false],
+  ])
+  expect(invocationGuide(snapshot)).toContain('unavailable')
+  const unavailableDefault = invocationGuide({
+    ...snapshot,
+    entrypoint: 'binding:model --timeout 1m',
+  })
+  expect(unavailableDefault).toContain('default target is unavailable')
+  expect(unavailableDefault).not.toContain('Start this application')
+  expect(
+    invocationGuide({
+      targets: [{ target: 'flow:flows/work', availability: { state: 'unavailable' } }],
+      entrypoint: 'flow:./flows/work',
+    }),
+  ).toContain('default target is unavailable')
+  expect(
+    invocationGuide({ target: 'binding:model', availability: { state: 'unavailable' } }),
+  ).toContain('$ jig review')
+})
+
+test('inspection templates omit read attachments already captured by the Binding', () => {
+  const guide = invocationGuide({
+    target: 'binding:work',
+    attachments: { source: 'read', rules: 'read', files: 'read-write' },
+    boundReadAttachments: ['rules'],
+  })
+  expect(guide).toContain("--attach 'source=./source-input'")
+  expect(guide).not.toContain("--attach 'rules=")
+  expect(guide).toContain('already supplied: "rules"')
+  expect(guide).toContain('--out ./result-packet')
 })
 
 test('new writes ordinary source, inherits the project SDK and never evaluates authoring', async () => {

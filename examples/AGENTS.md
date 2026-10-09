@@ -55,8 +55,10 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Agents, models, credentials, and execution policy remain operator choices.
   Agent-using applications choose an ordinary provider by contract or exact slot;
   the operator declares its dependency and configures its resource grants. ACP
-  selections live in discovered named JSON grants so the ordinary `jig agent`
-  command can edit the explicit client before review without TypeScript edits.
+  selections live in discovered named JSON grants. Interactive review can offer
+  a separately confirmed correction; source edits never authorize execution.
+  Every example supplies a complete reviewed entrypoint and fresh evidence
+  prefix so ordinary `jig run` works repeatedly without overwriting results.
   `tested-patch` includes its `npm:` ACP dependency and editable Agent Binding.
   Do not add a source wrapper or repository-only route around that package.
 - Label synthetic evidence and keep it distinct from claims about real users.

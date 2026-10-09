@@ -1,7 +1,6 @@
 import { types as utilTypes } from 'node:util'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
-import { validateChildGraph } from '../project/slot-graph.js'
 import {
   type PrivateActivationRequest,
   type PrivateResolutionUnavailableCode,
@@ -13,6 +12,7 @@ import {
   type PrivateRetainedPackageProject,
   requirePrivateRetainedPackageProject,
 } from '../project/retained-project.js'
+import { validateChildGraph } from '../project/slot-graph.js'
 import { privateActivationTargetKey } from './activation-planning.js'
 import {
   normalizePrivateBunExecutionArtifact,
@@ -29,6 +29,11 @@ import {
   type PrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from './project-local-lock.js'
+import {
+  assertPrivateResourceQualification,
+  normalizePrivateRuntimeReadinessCause,
+  type PrivateRuntimeReadinessCause,
+} from './resource-qualification-evidence.js'
 
 const KIND_V5 = 'private-activation-candidate/5'
 const PLAN_V2_KIND = 'private-activation-plan/2'
@@ -57,6 +62,7 @@ export interface PrivateActivationCandidateTarget {
     | {
         readonly state: 'unavailable'
         readonly code: PrivateResolutionUnavailableCode
+        readonly cause?: PrivateRuntimeReadinessCause
         readonly evidenceDigests: readonly string[]
       }
 }
@@ -164,6 +170,7 @@ export function createPrivateActivationCandidateV5(
     )
       throw new TypeError('feature refusal has no retained declaration evidence')
   }
+  assertPrivateResourceQualification(resolution.targets)
   const recipeValues = readPrivateActivationRecipeValues(recipeValue, resolution.targets.length)
   const recipes = recipeValues.map(requirePrivateActivationRecipe)
   const recipeByRequest = new Map<string, PrivateActivationRecipe>()
@@ -598,6 +605,7 @@ function normalizeCandidateTargets(
     lock,
   )
   for (const target of targets) requireRequestLockProjection(target.request, lock)
+  assertPrivateResourceQualification(targets)
   return Object.freeze(targets)
 }
 
@@ -808,7 +816,14 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
   }
   const disposition = exactObject(
     value.disposition,
-    ['state', 'code', 'evidenceDigests'],
+    [
+      'state',
+      'code',
+      'evidenceDigests',
+      ...(Object.hasOwn(plainObject(value.disposition, 'target disposition'), 'cause')
+        ? ['cause']
+        : []),
+    ],
     'target disposition',
   )
   if (disposition.state !== 'unavailable') {
@@ -817,6 +832,8 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
   if (!isUnavailableCode(disposition.code)) {
     throw new TypeError('target disposition has an invalid unavailable code')
   }
+  if (Object.hasOwn(disposition, 'cause') && disposition.code !== 'RUNTIME_UNAVAILABLE')
+    throw new TypeError('only runtime refusal may retain a readiness cause')
   const evidence = ordinaryArray(disposition.evidenceDigests, MAX_EVIDENCE, 'target evidence')
     .map((digest) => requireDigest(digest, 'target evidence'))
     .sort()
@@ -831,6 +848,9 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
     disposition: Object.freeze({
       state: 'unavailable' as const,
       code: disposition.code,
+      ...(Object.hasOwn(disposition, 'cause')
+        ? { cause: normalizePrivateRuntimeReadinessCause(disposition.cause) }
+        : {}),
       evidenceDigests: Object.freeze(evidence),
     }),
   })

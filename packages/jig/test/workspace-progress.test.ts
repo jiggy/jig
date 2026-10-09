@@ -46,6 +46,25 @@ const entered = '\u001b[?1049h'
 const restored = '\u001b[?1049l'
 const pause = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
 const priorTerm = process.env.TERM
+
+test('operator-only notices reach stderr without entering browser observation data', async () => {
+  const chunks: string[] = []
+  const progress = new PrivateCliProgress(
+    false,
+    (text) => {
+      chunks.push(text)
+    },
+    undefined,
+  )
+  try {
+    progress.notice('Output: "/private/operator/evidence"\n', 'info', false)
+    await progress.flush()
+    expect(chunks.join('')).toContain('/private/operator/evidence')
+    expect(progress.model.journal).toEqual([])
+  } finally {
+    progress.close()
+  }
+})
 beforeAll(() => {
   process.env.TERM = 'xterm-256color'
 })
@@ -226,7 +245,7 @@ test('trusted root dispatch opens short no-view Runs and updates-off; machine mo
             rootAdministration: {
               async startRun() {
                 timeline.push('DISPATCH')
-                expect(Boolean(options.channelOutput.dispatched)).toBe(!machine)
+                expect(Boolean(options.channelOutput.dispatched)).toBe(true)
                 options.channelOutput.dispatched?.()
                 return { runId: 'sha256:' + 'a'.repeat(64) }
               },

@@ -707,7 +707,7 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['review', '--details', '--yes'], invocation.options)).toBe(0)
     expect(invocation.output).toBe(
-      'complete policy\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next, choose or run an approved target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
+      'complete policy\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
     )
     expect(events).toContain(`apply:${digest}`)
   })
@@ -884,6 +884,41 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('No Flow was started')
     expect(invocation.error).not.toContain('$ jig review')
     expect(invocation.output).toContain('"details"')
+  })
+
+  test('a dispatched Flow cannot impersonate retained target unavailability', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'UNAVAILABLE',
+      message: 'application report',
+      details: {
+        code: 'RUN_TARGET_UNAVAILABLE',
+        availability: { cause: { diagnostic: 'PROJECT_ACP_PI_EXECUTABLE' } },
+      },
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(
+      {
+        async acquire(_project, options) {
+          const session = fakeSession([], { terminal })
+          return {
+            ...session,
+            rootAdministration: {
+              ...session.rootAdministration,
+              async startRun(request) {
+                options?.channelOutput?.dispatched?.()
+                return session.rootAdministration.startRun(request)
+              },
+            },
+          }
+        },
+      },
+      { terminalOutput: true },
+    )
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+    expect(invocation.error).not.toContain('No Flow was started')
+    expect(invocation.error).not.toContain('approved as unavailable')
+    expect(invocation.error).toContain('application report')
   })
 
   test.each(['UNAVAILABLE', 'EXECUTION_FAILED'] as const)(
@@ -1073,7 +1108,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review'], invocation.options)).toBe(0)
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(invocation.output).toBe(
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next, choose or run an approved target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
+      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
     )
     expect(invocation.error).toBe('')
   })
@@ -1097,7 +1132,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review', 'workspace', '--yes'], invocation.options)).toBe(0)
     expect(events).toEqual(['acquire:workspace', 'plan:update', `apply:${digest}`, 'close'])
     expect(invocation.output).toBe(
-      'review project changes\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next, choose or run an approved target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
+      'review project changes\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
     )
     expect(invocation.output).not.toContain(digest)
     expect(invocation.output).not.toContain('admission')
@@ -1905,8 +1940,72 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
     expect(invocation.output).toBe('')
-    expect(invocation.error).toContain('supply exactly')
+    expect(invocation.error).toContain('Supply exactly')
+    expect(invocation.error).toContain('No Flow was started.')
+    expect(invocation.error).toContain('$ jig inspect <target>')
     expect(invocation.error).not.toContain('private message')
+  })
+
+  test('fresh output reports its chosen destination on stderr even when delivery prerequisites refuse', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-cli-output-notice-'))
+    try {
+      for (const terminalOutput of [true, false]) {
+        const invocation = commandInvocation(
+          fakeHost(
+            fakeSession([], {
+              captureRequest() {
+                throw new RootAdministrationError('INVALID_REQUEST', 'private message', {
+                  code: 'RUN_ATTACHMENTS_INVALID',
+                })
+              },
+            }),
+            [],
+          ),
+          { currentDirectory: root, terminalOutput, terminalError: false },
+        )
+        expect(
+          await main(
+            ['run', 'binding:work', '--out-new', 'evidence', '--display', 'plain'],
+            invocation.options,
+          ),
+        ).toBe(2)
+        expect(invocation.error).toMatch(/Output: ".*\/evidence-[0-9a-f]{32}"/)
+        expect(invocation.output).toBe('')
+        expect(await readdir(root)).toEqual([])
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('file mapping refusal names missing inputs and a template before dispatch', async () => {
+    const invocation = commandInvocation(
+      fakeHost(
+        fakeSession([], {
+          captureRequest() {
+            throw new RootAdministrationError('INVALID_REQUEST', 'private message', {
+              code: 'RUN_ATTACHMENTS_INVALID',
+              fileMapping: {
+                missingReads: ['source', 'reference'],
+                unknownNames: ['typo'],
+                boundOverrides: ['rules'],
+                missingWritableDestination: ['deliverables'],
+              },
+            })
+          },
+        }),
+        [],
+      ),
+    )
+    expect(await main(['run', 'binding:work', '--display', 'plain'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('No Flow was started.')
+    for (const name of ['source', 'reference', 'typo', 'rules', 'deliverables'])
+      expect(invocation.error).toContain(`"${name}"`)
+    expect(invocation.error).toContain('--out-new ./result-packet')
+    expect(invocation.error).toContain('template')
+    expect(invocation.error).not.toContain('private message')
+    expect(invocation.error).not.toContain('Submitting')
   })
 
   test.each(['ADMISSION_MISSING', 'STALE_PLAN'])(
@@ -2704,8 +2803,8 @@ describe('finite Jig project commands', () => {
       expect(invocation.error).toContain('/slots/native')
       expect(invocation.error).toContain('Agent selection:')
       expect(invocation.error).toContain('Use another installed client')
-      expect(invocation.error).toContain('Set client to codex, claude, or pi')
-      expect(invocation.error).toContain('inline Binding value or its named grant file')
+      expect(invocation.error).toContain('choosing codex, claude, or pi')
+      expect(invocation.error).toContain('inline Binding value or named JSON file')
       expect(invocation.error).toContain('$ jig review')
       if (code === 'PROJECT_ACP_CODEX_EXECUTABLE') {
         expect(invocation.error).toContain('no usable executable was found')
@@ -2891,113 +2990,4 @@ describe('finite Jig project commands', () => {
       },
     }
   }
-})
-
-describe('Agent grant authoring command', () => {
-  test('edits a named file without evaluating source or changing approval', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-agent-cli-'))
-    let output = '',
-      error = ''
-    try {
-      await mkdir(join(root, 'grants'))
-      await writeFile(
-        join(root, 'grants/agent.json'),
-        '{"kind":"acp","client":"pi","maxTurns":2}\n',
-      )
-      await writeFile(join(root, 'jig.ts'), 'throw new Error("must not evaluate")\n')
-      await writeFile(join(root, 'jig.lock'), 'retained approval fixture\n')
-      const args = ['agent', '--grant', 'grants/agent.json', '--client', 'codex']
-      expect(privateCliRequiresHost(args)).toBeFalse()
-      const options: PrivateCliOptions = {
-        currentDirectory: root,
-        host: {
-          acquire: async () => {
-            throw new Error('must not acquire')
-          },
-        },
-        writeOutput: (text) => {
-          output += text
-        },
-        writeError: (text) => {
-          error += text
-        },
-      }
-      expect(await main(args, options)).toBe(0)
-      expect(error).toBe('')
-      expect(await Bun.file(join(root, 'grants/agent.json')).json()).toEqual({
-        kind: 'acp',
-        client: 'codex',
-        maxTurns: 2,
-      })
-      expect(await readFile(join(root, 'jig.lock'), 'utf8')).toBe('retained approval fixture\n')
-      expect(output).toContain('Updated Agent grant "grants/agent.json"')
-      expect(output).toContain('pi -> codex')
-      expect(output).toContain('$ jig review')
-      expect(output).toContain('No execution approved or Flow started')
-      const before = await readFile(join(root, 'grants/agent.json'))
-      expect(await main(args, options)).toBe(0)
-      expect(await readFile(join(root, 'grants/agent.json'))).toEqual(before)
-      expect(output).toContain('Unchanged Agent grant')
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  test.each(
-    [
-      ['agent'],
-      ['agent', '--client', 'codex'],
-      ['agent', '--grant', 'grants/agent.json', '--client', 'other'],
-      ['agent', '--grant', '--client', 'codex'],
-      ['agent', '--grant', 'grants/agent.json', '--client', 'codex', '--client', 'pi'],
-      [
-        'agent',
-        '--grant',
-        'grants/agent.json',
-        '--client',
-        'codex',
-        '--model',
-        'model',
-        '--default-model',
-      ],
-    ].map((args) => [args]),
-  )('rejects invalid grammar before source access: %j', async (args) => {
-    let error = ''
-    expect(
-      await main(args, {
-        currentDirectory: '/absent',
-        writeError: (text) => {
-          error += text
-        },
-      }),
-    ).toBe(2)
-    expect(error).toContain('JIG_USAGE')
-    expect(error).toContain('$ jig agent --help')
-  })
-
-  test('help and completion expose named client selection', async () => {
-    let output = ''
-    expect(
-      await main(['agent', '--help'], {
-        writeOutput: (text) => {
-          output += text
-        },
-      }),
-    ).toBe(0)
-    expect(output).toContain('--default-model')
-    expect(output).toContain('operator configuration')
-    for (const shell of ['bash', 'zsh', 'fish']) {
-      output = ''
-      expect(
-        await main(['completion', shell], {
-          writeOutput: (text) => {
-            output += text
-          },
-        }),
-      ).toBe(0)
-      expect(output).toContain('agent')
-      expect(output).toContain('default-model')
-      expect(output).toContain('codex claude pi')
-    }
-  })
 })

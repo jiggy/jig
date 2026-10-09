@@ -1,56 +1,47 @@
 import { randomBytes } from 'node:crypto'
 import { type BigIntStats, constants } from 'node:fs'
-import type { FileHandle } from 'node:fs/promises'
+import { type FileHandle, lstat } from 'node:fs/promises'
+import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
+import { type AcpGrant, grantName, normalizeGrant } from '../project/grants.js'
+import { isProtectedProjectPath, normalizeProjectPath } from '../project/paths.js'
+import { openPrivateProjectRoot, type PrivateProjectRoot } from '../project/root.js'
 import {
   openPrivateChild,
   privateChildLocation,
   renamePrivateFile,
   statPrivateChild,
   unlinkPrivateFile,
-} from './internal/descriptor-files.js'
-import { canonicalJson, decodeJson1, type JsonValue } from './json.js'
-import { type AcpGrant, grantName, normalizeGrant } from './project/grants.js'
-import { isProtectedProjectPath, normalizeProjectPath } from './project/paths.js'
-import { openPrivateProjectRoot, type PrivateProjectRoot } from './project/root.js'
+} from './descriptor-files.js'
 
 const MAXIMUM_BYTES = 32_768
 
-export interface ProjectAgentSelection {
-  readonly client: AcpGrant['client']
-  readonly model?: string
-  /** Remove the grant pin; effective defaults remain operator-owned. */
-  readonly defaultModel?: boolean
+/** One consented review correction; source provenance is captured before the prompt. */
+export interface PrivateReviewGrantEdit {
+  readonly path: string
+  readonly expectedBytes: Uint8Array
+  readonly projectIdentity: { readonly device: string; readonly inode: string }
+  readonly previous: AcpGrant
+  readonly proposed: AcpGrant
 }
 
-export type ProjectAgentErrorCode =
-  | 'JIG_AGENT_INVALID'
-  | 'JIG_AGENT_MISSING'
-  | 'JIG_AGENT_UNSAFE'
-  | 'JIG_AGENT_MODEL_REQUIRED'
-  | 'JIG_AGENT_RETENTION'
-  | 'JIG_AGENT_CHANGED'
-  | 'JIG_AGENT_CANCELLED'
-  | 'JIG_AGENT_UNAVAILABLE'
-  | 'JIG_AGENT_CLEANUP_FAILED'
-  | 'JIG_AGENT_PUBLISHED_UNCERTAIN'
+export type PrivateReviewGrantEditCode =
+  | 'REVIEW_GRANT_INVALID'
+  | 'REVIEW_GRANT_UNSAFE'
+  | 'REVIEW_GRANT_CHANGED'
+  | 'REVIEW_GRANT_CANCELLED'
+  | 'REVIEW_GRANT_UNAVAILABLE'
+  | 'REVIEW_GRANT_CLEANUP_FAILED'
+  | 'REVIEW_GRANT_PUBLISHED_UNCERTAIN'
 
-export class ProjectAgentError extends Error {
+export class PrivateReviewGrantEditError extends Error {
   constructor(
-    readonly kind: 'invalid' | 'unavailable',
-    readonly code: ProjectAgentErrorCode,
+    readonly code: PrivateReviewGrantEditCode,
     message: string,
     readonly published = false,
   ) {
     super(message)
-    this.name = 'ProjectAgentError'
+    this.name = 'PrivateReviewGrantEditError'
   }
-}
-
-export interface ProjectAgentResult {
-  readonly path: string
-  readonly previous: AcpGrant
-  readonly next: AcpGrant
-  readonly changed: boolean
 }
 
 interface OpenedEntry {
@@ -61,7 +52,7 @@ interface OpenedEntry {
 }
 
 /** @internal Narrow deterministic fault injection; never a package export. */
-export interface ProjectAgentTestHooks {
+export interface PrivateReviewGrantEditTestHooks {
   readonly checkpoint?: (
     phase: 'opened' | 'staged' | 'before-publish' | 'published' | 'cleanup',
     state: { readonly path: string; readonly stageName?: string },
@@ -72,16 +63,20 @@ export interface ProjectAgentTestHooks {
   readonly unlink?: typeof unlinkPrivateFile
 }
 
-/** Edit one explicit inert grant. No project evaluation, runtime selection or admission. */
-export async function selectProjectAgent(
+/** Publish only the source correction consented during review, after its session closes. */
+export async function publishReviewGrantEdit(
   project: string,
-  selectedPath: string,
-  selection: ProjectAgentSelection,
+  correction: PrivateReviewGrantEdit,
   signal?: AbortSignal,
-  testing: ProjectAgentTestHooks = {},
-): Promise<ProjectAgentResult> {
-  const path = selectionPath(selectedPath)
-  validateSelection(selection)
+  testing: PrivateReviewGrantEditTestHooks = {},
+): Promise<{ readonly path: string; readonly changed: boolean }> {
+  const path = selectionPath(correction.path)
+  const {
+    previous,
+    proposed: next,
+    expectedBytes,
+    projectIdentity,
+  } = validateCorrection(correction)
   let root: PrivateProjectRoot | undefined
   const ancestors: OpenedEntry[] = []
   let original: OpenedEntry | undefined
@@ -89,11 +84,16 @@ export async function selectProjectAgent(
   let stageHandle: FileHandle | undefined
   let stageName: string | undefined
   let publicationAttempted = false
-  let result: ProjectAgentResult | undefined
-  let failure: ProjectAgentError | undefined
+  let result: { readonly path: string; readonly changed: boolean } | undefined
+  let failure: PrivateReviewGrantEditError | undefined
   try {
     checkCancellation(signal)
     root = await openPrivateProjectRoot(project)
+    if (
+      String(root.information.dev) !== projectIdentity.device ||
+      String(root.information.ino) !== projectIdentity.inode
+    )
+      changed()
     let parent = root.handle
     const names = path.split('/')
     for (const name of names.slice(0, -1)) {
@@ -104,26 +104,31 @@ export async function selectProjectAgent(
     }
     const originalName = names.at(-1)
     if (originalName === undefined)
-      invalid('JIG_AGENT_INVALID', 'Select an existing ACP JSON grant.')
+      invalid('REVIEW_GRANT_INVALID', 'Select an existing ACP JSON grant.')
     original = await openEntry(parent, originalName, false)
     const baseline = await readBounded(original)
-    const previous = parsePolicy(baseline)
-    const next = proposedPolicy(previous, selection)
+    if (
+      !baseline.equals(expectedBytes) ||
+      !Buffer.from(canonicalJson(parsePolicy(baseline) as unknown as JsonValue)).equals(
+        Buffer.from(canonicalJson(previous as unknown as JsonValue)),
+      )
+    )
+      changed()
     const proposed = Buffer.from(`${JSON.stringify(next, null, 2)}\n`)
     if (proposed.byteLength > MAXIMUM_BYTES)
-      invalid('JIG_AGENT_INVALID', 'The proposed grant exceeds 32 KiB.')
-    const changed = !Buffer.from(canonicalJson(previous as unknown as JsonValue)).equals(
+      invalid('REVIEW_GRANT_INVALID', 'The proposed grant exceeds 32 KiB.')
+    const sourceDiffers = !Buffer.from(canonicalJson(previous as unknown as JsonValue)).equals(
       Buffer.from(canonicalJson(next as unknown as JsonValue)),
     )
     await testing.checkpoint?.('opened', { path })
     checkCancellation(signal)
-    if (!changed) {
+    if (!sourceDiffers) {
       await verifySource(root, ancestors, original, baseline)
       checkCancellation(signal)
-      result = Object.freeze({ path, previous, next, changed: false })
+      result = Object.freeze({ path, changed: false })
     } else {
       for (let attempt = 0; attempt < 8; attempt++) {
-        const name = `.jig-agent-${randomBytes(16).toString('hex')}.tmp`
+        const name = `.jig-review-grant-${randomBytes(16).toString('hex')}.tmp`
         try {
           const handle = await openPrivateChild(
             parent,
@@ -168,21 +173,19 @@ export async function selectProjectAgent(
       await (testing.syncParent ?? ((directory) => directory.sync()))(parent)
       await verifyDirectories(root, ancestors)
       await verifyStaged(staged, original.name, proposed, original.information.mode)
-      result = Object.freeze({ path, previous, next, changed: true })
+      result = Object.freeze({ path, changed: true })
     }
   } catch (error) {
     failure = publicationAttempted
-      ? new ProjectAgentError(
-          'unavailable',
-          'JIG_AGENT_PUBLISHED_UNCERTAIN',
+      ? new PrivateReviewGrantEditError(
+          'REVIEW_GRANT_PUBLISHED_UNCERTAIN',
           'The grant may already have changed. Inspect the selected source file before retrying; review is still required.',
           true,
         )
-      : error instanceof ProjectAgentError
+      : error instanceof PrivateReviewGrantEditError
         ? error
-        : new ProjectAgentError(
-            'unavailable',
-            'JIG_AGENT_UNAVAILABLE',
+        : new PrivateReviewGrantEditError(
+            'REVIEW_GRANT_UNAVAILABLE',
             'The grant could not be edited. Check the selected file and directory access; source publication was not attempted.',
           )
   } finally {
@@ -214,9 +217,8 @@ export async function selectProjectAgent(
       }
     }
     if (cleanupFailed) {
-      failure = new ProjectAgentError(
-        'unavailable',
-        'JIG_AGENT_CLEANUP_FAILED',
+      failure = new PrivateReviewGrantEditError(
+        'REVIEW_GRANT_CLEANUP_FAILED',
         `Grant editing cleanup did not complete. Inspect the selected directory before retrying.${publicationAttempted ? ' The grant may already have changed; review is still required.' : ' Source publication was not attempted.'}`,
         publicationAttempted,
       )
@@ -224,9 +226,8 @@ export async function selectProjectAgent(
   }
   if (failure !== undefined) throw failure
   if (result === undefined)
-    throw new ProjectAgentError(
-      'unavailable',
-      'JIG_AGENT_UNAVAILABLE',
+    throw new PrivateReviewGrantEditError(
+      'REVIEW_GRANT_UNAVAILABLE',
       'The grant edit could not be confirmed.',
     )
   return result
@@ -237,7 +238,7 @@ async function cleanupStage(
   parent: FileHandle,
   path: string,
   stageName: string,
-  testing: ProjectAgentTestHooks,
+  testing: PrivateReviewGrantEditTestHooks,
 ): Promise<void> {
   await testing.checkpoint?.('cleanup', { path, stageName })
   const leaf = await statPrivateChild(parent, stageName).catch((error: unknown) => {
@@ -260,33 +261,49 @@ function selectionPath(value: string): string {
     return path
   } catch {
     return invalid(
-      'JIG_AGENT_INVALID',
+      'REVIEW_GRANT_INVALID',
       'Select a project-relative <LocalName>.json grant outside protected .jig state, without traversal.',
     )
   }
 }
 
-function validateSelection(value: ProjectAgentSelection): void {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    Object.keys(value).some((key) => !['client', 'model', 'defaultModel'].includes(key)) ||
-    !['codex', 'claude', 'pi'].includes(value.client) ||
-    (value.defaultModel !== undefined && typeof value.defaultModel !== 'boolean') ||
-    (value.model !== undefined && value.defaultModel === true)
-  )
-    invalid(
-      'JIG_AGENT_INVALID',
-      'Select codex, claude or pi and at most one model pin or default-model reset.',
-    )
+function validateCorrection(value: PrivateReviewGrantEdit): PrivateReviewGrantEdit {
   try {
-    normalizeGrant({
-      kind: 'acp',
-      client: value.client,
-      ...(value.model === undefined ? {} : { model: value.model }),
-    })
+    if (
+      !(value.expectedBytes instanceof Uint8Array) ||
+      value.expectedBytes.byteLength > MAXIMUM_BYTES ||
+      !/^[0-9]{1,30}$/.test(value.projectIdentity.device) ||
+      !/^[0-9]{1,30}$/.test(value.projectIdentity.inode)
+    )
+      throw new Error('invalid capture')
+    const previous = normalizeGrant(value.previous)
+    const proposed = normalizeGrant(value.proposed)
+    if (
+      previous.kind !== 'acp' ||
+      proposed.kind !== 'acp' ||
+      previous.maxTurns !== proposed.maxTurns ||
+      (previous.retainSessions !== true && proposed.retainSessions === true)
+    )
+      throw new Error('unsupported policy change')
+    const captured = parsePolicy(value.expectedBytes)
+    if (
+      !Buffer.from(canonicalJson(captured as unknown as JsonValue)).equals(
+        Buffer.from(canonicalJson(previous as unknown as JsonValue)),
+      )
+    )
+      throw new Error('capture policy mismatch')
+    return {
+      path: value.path,
+      expectedBytes: Uint8Array.from(value.expectedBytes),
+      projectIdentity: { ...value.projectIdentity },
+      previous,
+      proposed,
+    }
   } catch {
-    invalid('JIG_AGENT_INVALID', 'Supply a valid ACP model identifier.')
+    return invalid(
+      'REVIEW_GRANT_INVALID',
+      'The review correction must match its bounded captured ACP source and preserve the turn policy.',
+    )
   }
 }
 
@@ -297,35 +314,10 @@ function parsePolicy(bytes: Uint8Array): AcpGrant {
     return policy
   } catch {
     return invalid(
-      'JIG_AGENT_INVALID',
+      'REVIEW_GRANT_INVALID',
       'The selected file must contain a valid, closed ACP JSON grant. Malformed or duplicate members are refused.',
     )
   }
-}
-
-function proposedPolicy(previous: AcpGrant, selection: ProjectAgentSelection): AcpGrant {
-  if (previous.retainSessions === true && selection.client !== 'codex')
-    invalid(
-      'JIG_AGENT_RETENTION',
-      'This grant retains Codex sessions. Change that policy explicitly before selecting another client; retention was not removed.',
-    )
-  if (
-    previous.client !== selection.client &&
-    previous.model !== undefined &&
-    selection.model === undefined &&
-    selection.defaultModel !== true
-  )
-    invalid(
-      'JIG_AGENT_MODEL_REQUIRED',
-      'Switching clients with a pinned model requires an explicit replacement model or --default-model reset.',
-    )
-  const { model: previousModel, ...policy } = previous
-  const model = selection.defaultModel === true ? undefined : (selection.model ?? previousModel)
-  return normalizeGrant({
-    ...policy,
-    client: selection.client,
-    ...(model === undefined ? {} : { model }),
-  }) as AcpGrant
 }
 
 async function openEntry(
@@ -339,8 +331,8 @@ async function openEntry(
   } catch (error) {
     if (errorCode(error) === 'ENOENT')
       invalid(
-        'JIG_AGENT_MISSING',
-        'The selected grant or one of its parent directories is missing.',
+        'REVIEW_GRANT_CHANGED',
+        'The captured grant or one of its parent directories is no longer present. Capture a fresh review before editing.',
       )
     throw error
   }
@@ -367,16 +359,16 @@ async function openEntry(
 function requireEntry(information: BigIntStats, directory: boolean): void {
   if (directory ? !information.isDirectory() : !information.isFile() || information.nlink !== 1n)
     invalid(
-      'JIG_AGENT_UNSAFE',
+      'REVIEW_GRANT_UNSAFE',
       'Grant paths must use real directories and a singly linked regular file; links and special files are refused.',
     )
 }
 
-async function readBounded(entry: OpenedEntry): Promise<Buffer> {
+async function readBounded(entry: OpenedEntry, source = true): Promise<Buffer> {
   const before = await entry.handle.stat({ bigint: true })
   requireEntry(before, false)
   if (before.size > BigInt(MAXIMUM_BYTES))
-    invalid('JIG_AGENT_INVALID', 'The selected grant exceeds 32 KiB.')
+    invalid('REVIEW_GRANT_INVALID', 'The selected grant exceeds 32 KiB.')
   const bytes = Buffer.alloc(MAXIMUM_BYTES + 1)
   let length = 0
   while (length < bytes.length) {
@@ -384,8 +376,14 @@ async function readBounded(entry: OpenedEntry): Promise<Buffer> {
     if (result.bytesRead === 0) break
     length += result.bytesRead
   }
-  if (length > MAXIMUM_BYTES) invalid('JIG_AGENT_INVALID', 'The selected grant exceeds 32 KiB.')
-  if (signature(before) !== signature(await entry.handle.stat({ bigint: true }))) changed()
+  if (length > MAXIMUM_BYTES) invalid('REVIEW_GRANT_INVALID', 'The selected grant exceeds 32 KiB.')
+  if (signature(before) !== signature(await entry.handle.stat({ bigint: true }))) {
+    if (source) changed()
+    invalid(
+      'REVIEW_GRANT_UNSAFE',
+      'The owned staging file changed; source publication cannot proceed.',
+    )
+  }
   return bytes.subarray(0, length)
 }
 
@@ -393,11 +391,14 @@ async function verifyDirectories(
   root: PrivateProjectRoot,
   ancestors: readonly OpenedEntry[],
 ): Promise<void> {
+  let pathname: BigIntStats
   try {
-    await root.verify()
-  } catch {
-    changed()
+    pathname = await lstat(root.requestedPath, { bigint: true })
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(errorCode(error) ?? '')) changed()
+    throw error
   }
+  if (!pathname.isDirectory() || !sameIdentity(pathname, root.information)) changed()
   const currentRoot = await root.handle.stat({ bigint: true })
   if (
     !currentRoot.isDirectory() ||
@@ -447,7 +448,7 @@ async function verifyStaged(
   proposed: Buffer,
   originalMode: bigint,
 ): Promise<void> {
-  const leaf = await currentEntry(staged.parent, name)
+  const leaf = await currentEntry(staged.parent, name, false)
   const owned = await staged.handle.stat({ bigint: true })
   requireEntry(leaf, false)
   requireEntry(owned, false)
@@ -456,17 +457,30 @@ async function verifyStaged(
     !sameIdentity(owned, staged.information) ||
     signature(leaf) !== signature(owned) ||
     (owned.mode & 0o7777n) !== (originalMode & 0o7777n) ||
-    !proposed.equals(await readBounded(staged))
+    !proposed.equals(await readBounded(staged, false))
   )
-    changed()
-  if (signature(await currentEntry(staged.parent, name)) !== signature(owned)) changed()
+    invalid(
+      'REVIEW_GRANT_UNSAFE',
+      'The owned staging file changed; source publication cannot proceed.',
+    )
+  if (signature(await currentEntry(staged.parent, name, false)) !== signature(owned))
+    invalid(
+      'REVIEW_GRANT_UNSAFE',
+      'The owned staging file changed; source publication cannot proceed.',
+    )
 }
 
-async function currentEntry(parent: FileHandle, name: string): Promise<BigIntStats> {
+async function currentEntry(parent: FileHandle, name: string, source = true): Promise<BigIntStats> {
   try {
     return await statPrivateChild(parent, name)
   } catch (error) {
-    if (['ENOENT', 'ELOOP', 'ENOTDIR'].includes(errorCode(error) ?? '')) changed()
+    if (['ENOENT', 'ELOOP', 'ENOTDIR'].includes(errorCode(error) ?? '')) {
+      if (source) changed()
+      invalid(
+        'REVIEW_GRANT_UNSAFE',
+        'The owned staging file changed; source publication cannot proceed.',
+      )
+    }
     throw error
   }
 }
@@ -489,22 +503,21 @@ function signature(value: BigIntStats): string {
 
 function checkCancellation(signal?: AbortSignal): void {
   if (signal?.aborted)
-    throw new ProjectAgentError(
-      'unavailable',
-      'JIG_AGENT_CANCELLED',
+    throw new PrivateReviewGrantEditError(
+      'REVIEW_GRANT_CANCELLED',
       'Grant editing was cancelled before source publication.',
     )
 }
 
 function changed(): never {
   return invalid(
-    'JIG_AGENT_CHANGED',
+    'REVIEW_GRANT_CHANGED',
     'The selected source, parent directory or staged file changed during editing. Inspect it before retrying.',
   )
 }
 
-function invalid(code: ProjectAgentErrorCode, message: string): never {
-  throw new ProjectAgentError('invalid', code, message)
+function invalid(code: PrivateReviewGrantEditCode, message: string): never {
+  throw new PrivateReviewGrantEditError(code, message)
 }
 
 function errorCode(error: unknown): string | undefined {

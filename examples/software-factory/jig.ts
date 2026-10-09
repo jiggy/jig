@@ -2,7 +2,7 @@ import { defineJig, discover } from '@jigging/jig'
 
 export default defineJig({
   entrypoint:
-    'binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m',
+    'binding:factory --input @batch.json --attach source=fixtures --out-new factory-result --timeout 8m',
   flows: discover('flows'),
   bindings: discover('bindings'),
   grants: discover('grants'),

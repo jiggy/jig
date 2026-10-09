@@ -4,19 +4,21 @@ An Agent interprets a customer's request. Code checks account records and
 credit policy, then returns a decision another application can consume.
 A persuasive answer cannot raise the credit limit or create a duplicate payment.
 
-The included `grants/agent.json` selects Codex as an example choice. Choose
-`codex`, `claude`, or `pi` with `jig agent --grant grants/agent.json --client codex`
-before review, and complete its
-[Agent configuration](../../docs/jig/guide/agents.md#local-clients).
-`jig.ts` routes the assessor's Agent slot to this configured Binding.
-
-After [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages),
-run here on a [supported host](../../docs/jig/guide/index.md#supported-host):
+With Jig installed on a [supported host](https://jig.md/guide/), configure and
+authenticate a supported client through [Choose an Agent](https://jig.md/guide/agents).
+The included `grants/agent.json` selects Codex as an example choice. Interactive
+review can offer a separately confirmed client correction when the executable
+is missing; you can also edit the JSON file and review again.
+`jig.ts` routes the assessor's Agent slot to this configured Binding. Run here:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:support --input @fixtures/duplicate.json --timeout 2m --display tui
+jig run
 ```
+
+The reviewed entrypoint supplies the duplicate-charge fixture, two-minute deadline
+and fresh `support-result` output prefix. Jig reports the destination containing
+`result.json`; repeating `jig run` preserves earlier evidence.
 
 For the intended assessment (`ch-102`, 2400 cents), `done` returns
 `disposition: "credit_eligible"` and `credit: {chargeId: "ch-102", amountCents: 2400}`.
@@ -51,8 +53,8 @@ This policy does not prove that the Agent identified the customer's intent corre
 lists explicitly show their retained excerpt. The assessor's own Case view stops at a
 proposal. An eligible decision never claims that a credit was issued.
 
-Choose `--display web` instead of `--display tui` to use the same views in a
-browser. Open the private link printed after execution starts. The completed inspector
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain
 available.

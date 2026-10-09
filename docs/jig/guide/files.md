@@ -90,6 +90,14 @@ restrict a tool to particular arguments. See the
 
 ## Receive one packet
 
+Use `--out-new PREFIX` when each invocation should keep its own evidence, for
+example `--out-new ./review`. Jig adds a random suffix once before command
+reexecution and reports the exact destination. It creates no reservation;
+ordinary destination checks and no-replace publication still apply. Choose either
+`--out-new` or a fixed `--out`, never both. An explicit output choice replaces
+the entrypoint's output default. The chosen name remains identical through all
+command owners, and a refusal does not automatically retry completed work.
+
 A root Flow may declare one writable attachment. It begins empty and is
 limited to 16 MiB. Jig supplies its contained path and collects files only
 after execution is fenced and the result accepted. A Flow with no writable

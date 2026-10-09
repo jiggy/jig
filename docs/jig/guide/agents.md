@@ -231,29 +231,40 @@ prompts. One-shot calls require neither change.
 
 ## Switching
 
-You do not need to install the client selected by an example if you already
-have another supported client. The supplied examples keep their selection in
-`grants/agent.json`. Choose your installed client, then review the change:
+You can keep the client selected by an example or choose a supported client you
+already use. The supplied examples keep their selection in `grants/agent.json`.
+Start with ordinary review:
 
 ```sh
-jig agent --grant grants/agent.json --client codex
 jig review
 ```
 
-Choose `claude` or `pi` instead when appropriate. This edits one existing JSON
-file; it evaluates no project code and installs, approves or starts nothing.
-The project must include that file in its grant selection. Review still checks
-the chosen installation and asks for changed authority before adopting it.
+When the selected executable is missing, interactive review can offer another
+discovered supported client. It shows the named file, every directly affected
+Binding/slot, model choice, turn limit and session-retention policy before asking
+for separate permission to write source. Discovery does not start clients or
+prove that authentication and native execution are ready. Other setup failures
+show their specific repair guidance.
 
-The command preserves turn limits and session policy. When switching a grant
-with a pinned model, supply `--model MODEL` or `--default-model` explicitly.
-The latter removes the grant pin; operator configuration still supplies the model.
-Codex-only `retainSessions: true` must be removed deliberately before choosing
-another client. Avoid editing the file concurrently with this command.
+Keeping the selection leaves its dependent targets unavailable while unrelated
+code targets can be approved. Even a mixed route requires its Agent to be ready:
+review admits a complete method, rather than guessing which branch an input takes.
+Installing the client later requires a fresh review. An unavailable default
+entrypoint explains the cause and directs you to review, without choosing a
+replacement. Noninteractive review and `--yes` never edit source or pick a client.
 
-For another project, open the Binding named in the diagnostic and find its
-`native` slot. A named selector points to the project's selected JSON grant;
-pass that file to `--grant`. For an inline ACP grant, edit its ordinary source:
+A correction preserves turn limits. A cross-client model pin requires explicit
+replacement or a deliberate client-default choice. Codex-only `retainSessions`
+requires explicit removal before selecting another client. Review closes its
+captured owners before publishing the JSON correction, then captures fresh
+source and requests normal approval. Source-write consent is not Run approval.
+Cancellation leaves prior approval intact; an already consented source edit
+remains visible. Avoid concurrent edits; atomic replacement is not filesystem
+compare-and-swap, and publication uncertainty ends that correction without approval.
+
+You can always edit ordinary source manually. Open the Binding named in the
+diagnostic and find its `native` slot. A named selector identifies a selected
+JSON grant; edit that file. For an inline grant, edit its ordinary source:
 
 ```ts
 slots: { native: { kind: 'acp', client: 'codex' } },

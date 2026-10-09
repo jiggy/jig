@@ -1,9 +1,12 @@
 import { types as utilTypes } from 'node:util'
-
-import { privateDomainDigest } from './identity.js'
 import type { JsonValue } from '../json.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { normalizeProjectPath } from '../project/paths.js'
+import { privateDomainDigest } from './identity.js'
+import {
+  normalizePrivateRuntimeReadinessCause,
+  type PrivateRuntimeReadinessCause,
+} from './resource-qualification-evidence.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -58,6 +61,7 @@ export type PrivateActivationPlanningDisposition =
   | {
       readonly state: 'unavailable'
       readonly code: PrivateActivationUnavailableCode
+      readonly cause?: PrivateRuntimeReadinessCause
       readonly evidenceDigests: readonly string[]
     }
 
@@ -72,6 +76,7 @@ export interface PrivateActivationPlanningEntryInput {
     | {
         readonly state: 'unavailable'
         readonly code: PrivateActivationUnavailableCode
+        readonly cause?: PrivateRuntimeReadinessCause
         readonly evidenceDigests: readonly string[]
       }
 }
@@ -247,12 +252,21 @@ function normalizeEntry(input: unknown, index: number): PrivateActivationPlannin
   } else if (state === 'unavailable') {
     const value = readClosedRecord(
       root.disposition,
-      ['state', 'code', 'evidenceDigests'],
+      [
+        'state',
+        'code',
+        'evidenceDigests',
+        ...(Object.hasOwn(requirePlainRecord(root.disposition, 'activation disposition'), 'cause')
+          ? ['cause']
+          : []),
+      ],
       `activation disposition ${targetKey(target)}`,
     )
     if (!isUnavailableCode(value.code)) {
       throw new TypeError(`invalid activation unavailability code for ${targetKey(target)}`)
     }
+    if (Object.hasOwn(value, 'cause') && value.code !== 'RUNTIME_UNAVAILABLE')
+      throw new TypeError('only runtime refusal may retain a readiness cause')
     const rawEvidence = readBoundedArray(
       value.evidenceDigests,
       MAX_EVIDENCE_PER_ENTRY,
@@ -272,6 +286,9 @@ function normalizeEntry(input: unknown, index: number): PrivateActivationPlannin
     disposition = Object.freeze({
       state: 'unavailable' as const,
       code: value.code,
+      ...(Object.hasOwn(value, 'cause')
+        ? { cause: normalizePrivateRuntimeReadinessCause(value.cause) }
+        : {}),
       evidenceDigests: Object.freeze(evidenceDigests),
     })
   } else {

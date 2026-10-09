@@ -183,6 +183,12 @@ admitted FLOW packages.
   reports Jig runtime verification, operator resource configuration, and
   project-state recovery separately. Capturing configuration does not verify a
   native client; only targets selecting an ACP grant trigger that verification.
+  Expected trusted setup refusals retain unavailable exact targets and their
+  selected dependents; unrelated ready routes remain usable. Error display codes
+  alone cannot classify arbitrary integrity, I/O, cancellation or cleanup faults.
+  Inspection discloses retained availability separately from environment freshness;
+  chooser selects ready routes only. Installing a client requires renewed review
+  before an unavailable retained route can run.
   Review also separates source capture, per-package dependency capture,
   preparation/reuse and review retention, with stage-local timing. Prepared
   workspace artifact reuse stays within the approving Jig project.
@@ -208,7 +214,12 @@ admitted FLOW packages.
 - Project `entrypoint` is a target plus optional Run-argument string, retained
   in semantic identity, lock, review and inspection. `run-arguments.ts` owns shared
   CLI validation; `project/entrypoint.ts` owns bounded shell-free tokenization,
-  project-relative defaults and explicit-option overrides. Explicit targets
+  project-relative defaults and explicit-option overrides. `--out-new PREFIX` and
+  `--out DIR` form one output option group; the CLI chooses a fresh sibling name
+  once before owner/delegation reexecution, then ordinary no-replace delivery
+  remains authoritative. Report the exact destination on stderr for explicit
+  and default invocations, including redirected stdout; keep operator paths
+  out of browser observation snapshots. Explicit targets
   bypass defaults. Job files are captured per Run; Binding resources stay pinned.
   Resolve before delivery/delegation and carry the selected admission through
   reexecution to the submission compare-and-set. Operator verification and
@@ -229,11 +240,13 @@ admitted FLOW packages.
   `docs/jig/spec/project-policy.md`.
 - Binding slots select inline HTTP, command or finite ACP grants, or optional
   named JSON policies.
-  `src/project-agent.ts` owns inert editing of one explicitly selected existing
-  ACP JSON grant. It evaluates no project code and cannot change approval or
-  execution. Preserve turn/session policy, require explicit cross-client model
-  treatment, fence observed source/staging changes and report publication
-  uncertainty. Atomic rename is not filesystem compare-and-swap.
+  `src/cli-review-agent-setup.ts` owns guided review interaction; the private
+  `src/internal/review-grant-edit.ts` publishes only a separately consented
+  correction of the captured named JSON policy after session closure. Recapture
+  precedes separate execution approval. Preserve turns, require explicit model
+  and incompatible retention treatment, fence observed source/staging changes,
+  and stop on cleanup/publication uncertainty. Atomic rename is not filesystem
+  compare-and-swap. Manual JSON editing remains the ordinary authoring path.
   An ACP grant may pin a recipient-specific model; this changes approval and
   runtime identity without changing operator authentication or client selection.
   `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
@@ -455,10 +468,10 @@ receipt, transport, lifetime, terminal restoration, JSON and immutable-capture
 proof. Frozen standalone package consumers and frozen
 installed Jig runs are distinct gates; source mocks and design approval qualify
 neither installed behavior nor newcomer usability.
-`test/project-agent.test.ts` checks inert grant editing, policy preservation,
-descriptor fences and publication/cleanup failures. `test/cli.test.ts` covers
-grammar and starter wiring. Installed package smoke repeats grant editing with
-an unevaluable project and unavailable native renderer, preserving approval bytes.
+`test/cli-review-agent-setup.test.ts` and `test/review-grant-edit.test.ts`
+check explicit correction consent, shared recipients, preserved policy, captured
+root/file fences and publication/cleanup uncertainty. CLI integration checks session
+closure before publication, fresh capture and distinct execution approval.
 `inspect --result` bypasses project/environment acquisition and reads only the
 selected descriptor-confined packet. Its fixed views label all evidence recorded,
 never reconstruct live views or authority, and preserve exact decoded JSON.

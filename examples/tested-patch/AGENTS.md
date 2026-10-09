@@ -16,11 +16,16 @@ only after executed checks and independent acceptance.
 - `test/` owns deterministic application checks. The public guide owns the walkthrough.
 
 - `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
-  grants/agent.json --client CLIENT` edits this source before separate review.
+  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
+  may offer a separately confirmed named-grant correction; manual JSON editing
+  remains available. Every source correction requires fresh review and approval.
   Keep client choices explicit; no installed-client fallback.
 
 ## Local Contracts
+
+- `jig.ts` owns the complete default invocation: `binding:repair --input @issue.json --attach source=fixtures/log-report --out-new repair-result --timeout 5m`. Ordinary
+  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+  Explicit targets bypass defaults; display choices remain operator options.
 
 - Complexity cap: one issue, one specialist, one final patch/evidence result.
   Batch scheduling, resident monitoring, recording, and checkpoints are outside

@@ -17,11 +17,16 @@ one method contract, using a suggested support queue as the bounded result.
 - The [public guide](../../docs/jig/guide/request-triage.md) owns the walkthrough.
 
 - `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
-  grants/agent.json --client CLIENT` edits this source before separate review.
+  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
+  may offer a separately confirmed named-grant correction; manual JSON editing
+  remains available. Every source correction requires fresh review and approval.
   Keep client choices explicit; no installed-client fallback.
 
 ## Local Contracts
+
+- `jig.ts` owns the complete default invocation: `binding:intake --input @fixtures/labeled.json --out-new triage-result --timeout 1m`. Ordinary
+  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+  Explicit targets bypass defaults; display choices remain operator options.
 
 - `done` returns a suggested `billing`, `technical`, or `manual` queue. Manual
   classification is a valid suggestion. No variant dispatches a business action.

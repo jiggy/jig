@@ -21,7 +21,11 @@ import {
 import type { PrivateFileLocation } from './descriptor-files.js'
 import { privateProfileSpan } from './private-profile.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
-import type { PrivateRootRunFiles } from './root-run-files.js'
+import {
+  PrivateRootFileInputLimitError,
+  PrivateRootFileMappingError,
+  type PrivateRootRunFiles,
+} from './root-run-files.js'
 import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
 
 export interface PrivateRootAdministrationController {
@@ -473,6 +477,17 @@ function administrationError(error: unknown, operation: string): RootAdministrat
       case 'RUN_ATTACHMENTS_INVALID':
         return new RootAdministrationError('INVALID_REQUEST', 'root file mappings are invalid', {
           code: 'RUN_ATTACHMENTS_INVALID',
+          ...(error instanceof PrivateRootFileInputLimitError ? { fileLimitExceeded: true } : {}),
+          ...(error instanceof PrivateRootFileMappingError
+            ? {
+                fileMapping: {
+                  missingReads: [...error.fileMapping.missingReads],
+                  unknownNames: [...error.fileMapping.unknownNames],
+                  boundOverrides: [...error.fileMapping.boundOverrides],
+                  missingWritableDestination: [...error.fileMapping.missingWritableDestination],
+                },
+              }
+            : {}),
         })
       case 'SUBMISSION_CONFLICT':
         return new RootAdministrationError('SUBMISSION_CONFLICT', error.message)

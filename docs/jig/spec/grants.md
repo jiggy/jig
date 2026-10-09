@@ -80,12 +80,15 @@ and 1 MiB total. Files must be singly linked. Each Binding permits at most eight
 slots of each resource kind within its 256-slot bound. Multiple slots do not
 increase concurrent effect capacity, root reservations or deadlines.
 
-`jig agent --grant grants/agent.json --client codex` edits an existing named ACP
-policy without loading project code. It preserves turn/session limits and requires
-explicit model replacement or pin removal when changing a pinned client. The
-[CLI contract](cli-experience.md#editing-an-agent-grant) defines authoring, publication
-and failure bounds. Editing source never updates an admitted generation; review
-must separately adopt the policy.
+Edit a named ACP JSON policy directly when choosing another client. Interactive
+review can offer a correction for a missing selected executable when another
+supported installation is detected. It names the exact captured file, proposed
+policy and affected recipients before separate source-write consent. The source
+owner closes the current session, fences the captured file, publishes the inert
+correction, and recaptures before separate execution approval. Noninteractive
+review never writes a selection or silently substitutes a provider. The
+[CLI contract](cli-experience.md#agent-setup-during-review) owns the interaction,
+publication limits and uncertainty. An edit never changes an admitted generation.
 
 ## Review and admission
 
@@ -120,8 +123,10 @@ another admission. Source edits are not live revocation. Cancel existing work
 to settle its owned effects; already accepted remote effects cannot be undone.
 The operator environment supplies secret bytes when the host command starts.
 Secrets never enter Binding values, lock files, admission records, Flow input
-or public review. Missing selected credentials make that target unavailable;
-rotating secret bytes alone does not change public policy identity.
+or public review. Missing selected credentials prevent use of that resource;
+rotating secret bytes alone does not change public policy identity. ACP
+authentication or installation faults whose expected-refusal provenance is not
+established fail review, rather than retaining optional target unavailability.
 
 FLOW's interface remains `run.call`: grant storage, approval and enforcement
 are Jig responsibilities. This profile does not add arbitrary process grants,

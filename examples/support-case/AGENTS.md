@@ -18,11 +18,16 @@ credit eligibility and customer-facing claims.
   in `docs/jig/guide/support-case.md`.
 
 - `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
-  grants/agent.json --client CLIENT` edits this source before separate review.
+  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
+  may offer a separately confirmed named-grant correction; manual JSON editing
+  remains available. Every source correction requires fresh review and approval.
   Keep client choices explicit; no installed-client fallback.
 
 ## Local Contracts
+
+- `jig.ts` owns the complete default invocation: `binding:support --input @fixtures/duplicate.json --out-new support-result --timeout 2m`. Ordinary
+  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+  Explicit targets bypass defaults; display choices remain operator options.
 
 - Account facts come from the authenticated application caller, never customer
   text. Charges have unique IDs, are chronological, and use USD cents.

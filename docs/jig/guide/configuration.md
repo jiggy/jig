@@ -49,7 +49,7 @@ Give your application a starting point in `jig.ts` by copying the part of a
 working command after `jig run`:
 
 ```ts
-entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m",
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out-new factory-result --timeout 8m",
 ```
 
 A target alone, such as `entrypoint: "binding:factory"`, is also valid. After
@@ -63,8 +63,12 @@ review. Changing the entrypoint itself does. Use quotes around arguments contain
 spaces. Jig parses arguments without shell execution or variable expansion.
 `jig inspect` shows the approved entrypoint.
 
-A fixed output directory must not already exist. Choose a new `--out` for the
-next Run; Jig never replaces an earlier result. See the
+`--out-new PREFIX` gives each Run a fresh packet directory and reports its actual
+name. Project prefixes are project-relative; explicit prefixes are caller-relative.
+Either `--out-new` or `--out` replaces the default output choice. A fixed `--out`
+directory must not already exist; Jig never replaces an earlier result. Prefixes
+need an existing supported parent outside input roots, just like fixed outputs.
+See the
 [complete argument and override rules](../spec/project-sdk.md#project-entrypoint).
 
 ## Startup verification

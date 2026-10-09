@@ -99,8 +99,11 @@ offline. For example, `jig new worker --use agent=jig:agent-run` copies the comp
 Agent agreement and declares the collaborator slot. Importing preserves exact
 descriptors and licenses as local snapshots; implementations and grants remain
 separately selected and reviewed. Channel agreements belong under `channels`.
-Interactive `jig run` can offer an explicit choice of approved targets;
-scripts must name a target. Shell completion also reads only approved targets.
+Interactive `jig run` can offer an explicit choice of ready approved targets;
+scripts must name a target when no entrypoint is declared. An unavailable
+Agent disables only targets that depend on it; unrelated code methods can
+still be reviewed and run. Inspection includes unavailable targets and their
+retained cause. Shell completion offers ready approved targets.
 A Binding can pin a declared read attachment with
 `attachments: { reference: './resources/reference' }`. Review captures and
 identifies its files; Runs use those approved bytes without repeating `--attach`
@@ -119,12 +122,14 @@ review does not compile; already-generated contracts need no compiler runtime.
 Declare a project starting point using familiar Run arguments in `jig.ts`:
 
 ```ts
-entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m",
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out-new factory-result --timeout 8m",
 ```
 
 After review, `jig run` uses that entrypoint. Explicit options override defaults;
 an explicit target bypasses them. Declaration paths are project-relative and job
-files are captured when invoked. Existing output destinations are never replaced.
+files are captured when invoked. `--out-new PREFIX` chooses a fresh result
+directory for each invocation, so repeated runs preserve earlier evidence.
+Use `--out DIR` for an exact destination; existing destinations are never replaced.
 A target-only string is valid too. See [project entrypoints](https://jig.md/guide/configuration#project-entrypoint).
 
 `inspect` lists approved targets or shows a target's retained interface without
@@ -160,6 +165,11 @@ Native Codex, Claude Code, and Pi clients selected by ACP grants are discovered 
 specific installation. Review shows the resolved executable; project-local
 binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/guide/agents)
 for supported installations and authentication.
+Edit the selected named JSON grant to change its `client`. Interactive review
+can offer to update that file when a required executable is missing and another
+supported client is detected. It shows affected slots and policy before source
+consent, captures the changed project again, and asks separately for execution
+approval. `--yes` and noninteractive review never change client selection.
 
 ## Guides
 

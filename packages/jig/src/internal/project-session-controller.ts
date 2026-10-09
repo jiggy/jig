@@ -13,6 +13,7 @@ import { RootAdministrationError, type RootRunTerminal } from '../administration
 import { CheckError } from '../diagnostics.js'
 import { validateJson1 } from '../json.js'
 import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
+import type { AcpGrant } from '../project/grants.js'
 import {
   buildPrivateActivationRequests,
   resolveRetainedPackageProjectObservation,
@@ -82,9 +83,14 @@ import { privateProjectFeatureFailures } from './project-feature-qualification.j
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
 import { renderPrivateProjectPlanReview } from './project-plan-review.js'
 import {
+  privateAgentReadinessReport,
+  qualifyPrivateProjectAcpResources,
+} from './project-resource-qualification.js'
+import {
   openPrivateProjectSessionOwner,
   type PrivateProjectSessionOwner,
 } from './project-session-owner.js'
+import type { PrivateAgentReadinessReport } from './review-agent-setup.js'
 import {
   attachPrivateRootAdministrationController,
   type PrivateRootAdministrationController,
@@ -107,6 +113,10 @@ export interface PrivateProjectSessionHost {
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
+  readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
+  readonly detectAgentAlternatives?: (
+    selected: readonly AcpGrant['client'][],
+  ) => Promise<readonly AcpGrant['client'][]>
   readonly onStage?: (stage: string) => void
   readonly onResolution?: (packagePath: string) => void
   readonly generateContracts?: boolean
@@ -446,13 +456,47 @@ function createSession(
         }
         const recipes: PrivateDirectRunRecipe[] = []
         const featureFailures = privateProjectFeatureFailures(aggregate.linked)
+        const resourceFailures = await qualifyPrivateProjectAcpResources({
+          requests,
+          resources: host.acpResources,
+          installedSupport: host.installedBunSupport,
+          featureFailures,
+          signal: budget.signal,
+          declarationFor: (request) => {
+            const id = request.target.kind === 'binding' ? request.target.id : undefined
+            return id === undefined
+              ? `${request.packagePath}/${request.entrypoint.path}`
+              : aggregate.bindings.find((binding) => binding.id === id)!.sourcePath
+          },
+        })
+        if (host.onAgentReadiness) {
+          const missing = [...resourceFailures.values()].flatMap(({ cause }) =>
+            cause.kind === 'acp' && cause.diagnostic.endsWith('_EXECUTABLE') ? [cause.client] : [],
+          )
+          const alternatives =
+            missing.length === 0 ? [] : ((await host.detectAgentAlternatives?.(missing)) ?? [])
+          budget.signal.throwIfAborted()
+          host.onAgentReadiness(
+            await privateAgentReadinessReport({
+              aggregate,
+              requests,
+              failures: resourceFailures,
+              featureFailures,
+              alternatives,
+            }),
+          )
+        }
         for (const request of requests) {
           const packageLabel = JSON.stringify(request.packagePath).replace(
             /[\u007f-\uffff]/g,
             (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
           )
           budget.signal.throwIfAborted()
-          if (featureFailures.has(privateActivationTargetKey(request.target))) continue
+          if (
+            featureFailures.has(privateActivationTargetKey(request.target)) ||
+            resourceFailures.has(privateActivationTargetKey(request.target))
+          )
+            continue
           if (request.mode !== 'run') {
             throw new ProjectAdministrationError(
               'UNAVAILABLE',
@@ -637,17 +681,19 @@ function createSession(
         }
         const planning = createPrivateActivationPlanningObservation({
           policyDigest: privateDomainDigest('JIG-Private-Project-Session-Policy/1', {
-            targetPolicy: 'exact-targets-with-feature-qualification',
+            targetPolicy: 'exact-targets-with-feature-and-resource-qualification',
           }),
           mechanismDigest:
             recipes[0]?.mechanismDigest ?? (await host.backend.inspectSupport()).digest,
           entries: requests.map((request) => {
             const failure = featureFailures.get(privateActivationTargetKey(request.target))
+            const resourceFailure = resourceFailures.get(privateActivationTargetKey(request.target))
             return {
               target: request.target,
               requestDigest: request.digest,
               disposition:
-                failure === undefined
+                resourceFailure ??
+                (failure === undefined
                   ? {
                       state: 'planned' as const,
                       observation: recipes.find(
@@ -658,7 +704,7 @@ function createSession(
                       state: 'unavailable' as const,
                       code: 'FEATURE_UNAVAILABLE' as const,
                       evidenceDigests: [failure],
-                    },
+                    }),
             }
           }),
         })

@@ -188,6 +188,20 @@ An explicit override must be an
 absolute executable file and does not fall back to `PATH`. Change the resource
 grant if you intended to use another client, then review again.
 
+Known expected setup refusals leave only dependent targets unavailable. Unrelated
+code targets can still be approved; a mixed route requiring that Agent remains
+unavailable even if one input would avoid it. Review reports ready and unavailable
+counts; a zero-ready review does not claim the project can run. Installing a client
+later needs a new review before its route is executable. An unavailable entrypoint
+never falls back to another target.
+
+Interactive review can offer another discovered client when the selected executable
+is missing, followed by a separate confirmation showing the file, all direct
+recipients and complete changed policy. Other setup issues receive repair guidance.
+Manual edits remain available. `--yes` and noninteractive review never write grants.
+After a confirmed source change, fresh capture and ordinary approval follow;
+uncertain publication or cleanup ends correction without approval.
+
 `--allow-resolution-network` produces one warning covering dependency preparation
 for the entire review. Per-package progress still identifies which package is
 being prepared. This permission gives Runs no network access.

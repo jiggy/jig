@@ -160,6 +160,18 @@ A Flow is a direct Run target only when it:
 
 Direct eligibility is structural. Host execution support is planned
 separately, so an eligible target can still be unavailable on this host.
+A recognized ACP prerequisite refusal makes its selected target unavailable and
+propagates through the exact selected Flow routes, including mixed implementations
+whose particular input might avoid the Agent branch. Unrelated targets remain
+eligible for approval and execution. There is no alternate-client fallback.
+Refusal retains a closed client/slot cause bound to the captured request and
+policy, or an exact selected dependency cause bound to that child's retained
+refusal. Admission validates this evidence and cannot admit a ready parent of an
+unavailable child. Arbitrary errors, interrupted qualification, integrity faults
+and unconfirmed cleanup fail planning rather than becoming optional availability.
+Installing a missing client does not change a retained unavailable target; a new
+exact review must qualify and approve it.
+
 An unsatisfied requirement, including an incompatible ordinary default, removes
 the automatic direct target; the package can still be configured through a
 valid explicit Binding. A direct Flow may call other reviewed Flow or Binding
@@ -892,8 +904,16 @@ host-only code. Neither the refusal nor subsequent review replays the failed Run
 ### Root file Runs
 
 The installed command accepts `--input JSON|@FILE`, repeated `--attach NAME=DIR`
-and `--select NAME=FILE`, and one `--out DIR`. Parsing performs no file reads;
-acquisition happens once, preserving caller-relative paths through reexecution.
+and `--select NAME=FILE`, and one of `--out DIR` or `--out-new PREFIX`.
+Parsing performs no file reads; acquisition happens once, preserving
+caller-relative paths through reexecution. Fresh output chooses
+`PREFIX-<32 lowercase hexadecimal characters>` from 128 random bits once before
+file ownership or host-delegation reexecution, then carries that exact absolute
+`--out` intent. A project entrypoint prefix is project-relative; an explicit
+prefix is caller-relative. Either explicit output option replaces either
+entrypoint output default. Empty/trailing-empty leaf prefixes, controls,
+malformed Unicode, and overlong resulting names or paths refuse before dispatch.
+Selection neither reserves a directory nor grants filesystem authority.
 An ordinary quoted JSON string beginning with `@` is still an inline value.
 
 Every declared read attachment not supplied by the selected Binding requires
@@ -901,7 +921,13 @@ exactly one mapping. Selectors name
 exact regular files relative to that root; without selectors Jig enumerates
 its bounded tree. Unknown or duplicate mappings/selectors fail before dispatch.
 Review requires no invocation paths. The declared writable attachment requires
-`--out`; with no writable attachment, `--out` publishes only the host record.
+an output option; with no writable attachment, an output option publishes only
+the host record. The authoritative admitted-interface check precedes root Run
+allocation. A closed bounded failure identifies missing unbound reads, names
+that cannot map an unbound read, attempted bound overrides, and writable names
+missing a destination. Combined retained and per-run file limits remain
+independently enforced. Diagnostics contain declared/supplied attachment names
+and fixed text, never guessed fixture paths or source freshness.
 
 Capture preserves binary and empty file bytes, omits empty directories, and
 rejects symlinks, multiply linked files, special files, traversal, malformed
@@ -953,6 +979,10 @@ state. A separate command owner owns destination staging before allocation,
 survives coordinator failure, and removes unpublished staging without another
 invocation. Output storage, its bounded read buffer, and destination copies
 remain bounded after the Run execution owner is removed; see the security ceilings.
+The same checks apply to a fresh destination. A collision or invalid parent,
+protected path or input-root overlap refuses before dispatch. There is no
+automatic name retry after work starts. Human output reports the selected
+destination; machine output retains the existing `delivery.destination` field.
 
 Publication uses one no-replace atomic directory rename. Directories have mode
 `0700`, files `0600`; empty directories and source permissions are not preserved.

@@ -1,7 +1,7 @@
 import { constants } from 'node:fs'
 import { access, lstat, open, readlink, realpath } from 'node:fs/promises'
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { markExpectedAcpRefusal, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import { resolvePrivateCodexInstallation } from './codex-installation.js'
 
 type NativeClient = 'codex' | 'claude' | 'pi' | 'bwrap'
@@ -25,8 +25,14 @@ export async function resolvePrivateNativeAgentExecutable(
   const project = resolve(projectDirectory)
   try {
     if (selected !== undefined) {
-      if (!isAbsolute(selected) || selected.includes('\0')) throw new Error('invalid override')
-      return await selectExecutable(client, await executable(selected), voltaHome, project)
+      if (!isAbsolute(selected) || selected.includes('\0'))
+        throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client))
+      return await selectExecutable(
+        client,
+        await selectedExecutable(selected, client),
+        voltaHome,
+        project,
+      )
     }
 
     const outside = await privateNativeAgentSupportResolver(project)
@@ -43,10 +49,14 @@ export async function resolvePrivateNativeAgentExecutable(
       }
     }
   } catch (error) {
-    if (error instanceof PrivateAcpSetupError) throw error
+    if (
+      error instanceof PrivateAcpSetupError ||
+      error instanceof PrivateNativeAgentExecutableUnavailableError
+    )
+      throw error
     throw new PrivateNativeAgentExecutableUnavailableError(client)
   }
-  throw new PrivateNativeAgentExecutableUnavailableError(client)
+  throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client))
 }
 
 /** Apply the same project exclusion to implicit installation dependencies. */
@@ -157,4 +167,17 @@ function inside(root: string, path: string): boolean {
 
 function absent(error: unknown): boolean {
   return ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')
+}
+
+function expectedExecutableObservation(error: unknown): boolean {
+  return ['ENOENT', 'ENOTDIR', 'EACCES'].includes((error as NodeJS.ErrnoException)?.code ?? '')
+}
+
+async function selectedExecutable(path: string, client: NativeClient): Promise<string> {
+  try {
+    return await executable(path)
+  } catch (error) {
+    if (!expectedExecutableObservation(error)) throw error
+    throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client))
+  }
 }

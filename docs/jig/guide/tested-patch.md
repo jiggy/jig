@@ -19,20 +19,20 @@ The example declares the ordinary ACP Agent dependency and includes
 choice, not a Jig preference. The `defaultProviders` map selects that Binding
 for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/project/logs-cases.json`.
-Download the example directory, then install its pinned public dependencies
-without lifecycle scripts:
-
-```sh
-bun install --ignore-scripts
-```
-
-Keep the resulting lock so later reviews use the same resolution. Run from the
-example directory:
+Download the example directory. Review prepares its ordinary declared dependencies;
+the resolution flag permits dependency-selected network requests before approval.
+When the selected client executable is missing, interactive review can offer a
+separately confirmed source correction. Manual grant edits also require renewed
+review. Run from the example directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m --display tui
+jig run
 ```
+
+The entrypoint supplies `issue.json`, the read-only fixture, a five-minute deadline
+and fresh `repair-result` output prefix. Open `result.json` in the destination
+reported by Jig; repeating `jig run` preserves earlier evidence.
 
 The optional `updates` channel carries the semantic views; the independent `progress`
 channel retains closed phase records. Add `--receive progress` to observe the current
@@ -42,7 +42,7 @@ NDJSON. A phase message reports activity; the terminal record and command
 evidence establish the result. Progress is transient and does not preserve
 partial patches.
 
-Open `repair-result/files/summary.txt`. A `review.patch` appears beside it
+Open `files/summary.txt` inside the reported destination. A `review.patch` appears beside it
 only when the repair passed the checks. The destination must be new and
 outside the selected source. Candidate commands do not install dependencies.
 

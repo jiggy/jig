@@ -21,11 +21,12 @@ below. Neither establishes general repair reliability or comparative advantage.
 
 ## Run the supplied batch
 
-In a copy of the example, run `bun install`, inspect `batch.json`, the Agent,
-single-pass and checked-correction Bindings, and the two named case files.
-Choose your installed client in `grants/agent.json` before review with
-`jig agent --grant grants/agent.json --client codex`. The supplied grant selects native
-Codex through ACP. To use an HTTP Agent method instead, follow the package and
+In a copy of the example, inspect `batch.json`, the Agent, single-pass and
+checked-correction Bindings, and the two named case files. Configure a supported
+client through [Choose an Agent](./agents.md). The supplied `grants/agent.json`
+selects native Codex through ACP as an example choice. Interactive review can offer
+a separately confirmed correction when its executable is missing; manual JSON edits
+also require renewed review. Review prepares the ordinary declared dependencies. To use an HTTP Agent method instead, follow the package and
 Binding setup in [Reuse the Agent method](agent-method.md#invoke-the-ordinary-flow),
 including its optional [OpenAI-compatible gateway route](agent-method.md#use-an-openai-compatible-gateway).
 Then authenticate the selected Agent:
@@ -36,11 +37,12 @@ jig run
 ```
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
-`fixtures` source tree, an eight-minute deadline, and `factory-result` for output.
-For another batch or a repeat Run, override the input and choose a new output:
+`fixtures` source tree, an eight-minute deadline, and fresh `factory-result`
+output prefix. Jig reports the actual destination. Repeat `jig run` to keep each
+packet; for another batch, override its input:
 
 ```sh
-jig run --input @batch.json --out factory-result-2
+jig run --input @another-batch.json
 ```
 
 Existing results are never overwritten. Explicitly naming a target bypasses
@@ -77,11 +79,12 @@ causes, while full evidence remains in `result.json`.
 Reopen the saved evidence later without starting work:
 
 ```sh
-jig inspect --result ./factory-result --display tui
-jig inspect --result ./factory-result --display web
+jig inspect --result DESTINATION --display tui
+jig inspect --result DESTINATION --display web
 ```
 
-This shows the recorded result, verified saved files and diagnostics. Current
+Replace `DESTINATION` with the packet directory reported by Jig. This shows the
+recorded result, verified saved files and diagnostics. Current
 packets do not retain the live factory tabs or call graph.
 Add `--receive progress --json` for explicit machine records, or
 `--updates off` to disable automatic observation. Rapid phase replacements and
@@ -103,7 +106,7 @@ materialization stops before worker dispatch.
 
 ## Review the packet
 
-Start with `factory-result/files/summary.txt`, then inspect each job directory
+Start with `<reported destination>/files/summary.txt`, then inspect each job directory
 and the host-owned `result.json`.
 
 - `review.patch` means that job reproduced its defect and the final candidate

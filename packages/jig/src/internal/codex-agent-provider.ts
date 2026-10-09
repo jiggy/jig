@@ -7,7 +7,13 @@ import {
   type PrivateAcpAgentProvider,
   type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
-import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import {
+  checkAcpSetup,
+  configuredAcpModel,
+  isExpectedAcpRefusal,
+  markExpectedAcpRefusal,
+  PrivateAcpSetupError,
+} from './acp-setup-diagnostics.js'
 import { privateMacosKernelPlatform } from './macos-process-controls.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
@@ -106,7 +112,10 @@ export async function openPrivateCodexAgentProvider(
     )
   } catch (error) {
     if (error instanceof PrivateAcpSetupError) throw error
-    throw new PrivateCodexExecutableUnavailableError('the native Codex executable is unavailable')
+    const refusal = new PrivateCodexExecutableUnavailableError(
+      'the native Codex executable is unavailable',
+    )
+    throw isExpectedAcpRefusal(error) ? markExpectedAcpRefusal(refusal) : refusal
   }
   let runtime: Awaited<ReturnType<typeof inspectPrivateNativeAgentRuntime>>
   try {

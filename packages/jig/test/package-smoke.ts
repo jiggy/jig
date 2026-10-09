@@ -250,35 +250,6 @@ console.log(path);
   await rename(rendererDirectory, hiddenRenderer)
   try {
     assert.match((await run([command, '--help'], consumer)).stdout, /Jig runs reusable methods/)
-    // Source selection needs neither the native renderer nor an evaluable project.
-    const grantProject = join(consumer, 'grant-authoring')
-    await run([command, 'init', grantProject, '--bare', '--agent', 'pi'], consumer)
-    const grantFile = join(grantProject, 'grants/agent.json')
-    assert.deepEqual(JSON.parse(await readFile(grantFile, 'utf8')), { kind: 'acp', client: 'pi' })
-    assert.match(await readFile(join(grantProject, 'bindings/agent.ts'), 'utf8'), /grant:agent/)
-    assert.match(await readFile(join(grantProject, 'jig.ts'), 'utf8'), /grants: discover/)
-    await writeFile(join(grantProject, 'jig.ts'), 'throw new Error("Must not evaluate");\n')
-    const approval = Buffer.from('Retained approval must remain byte-identical.\n')
-    await writeFile(join(grantProject, 'jig.lock'), approval)
-    await writeFile(
-      grantFile,
-      '{"kind":"acp","client":"pi","model":"fixture-model","maxTurns":2}\n',
-    )
-    const edited = await run(
-      [command, 'agent', '--grant', 'grants/agent.json', '--client', 'codex', '--default-model'],
-      grantProject,
-    )
-    assert.deepEqual(JSON.parse(await readFile(grantFile, 'utf8')), {
-      kind: 'acp',
-      client: 'codex',
-      maxTurns: 2,
-    })
-    assert.match(edited.stdout, /pi.*codex/)
-    assert.match(edited.stdout, /jig review/)
-    assert.deepEqual(await readFile(join(grantProject, 'jig.lock')), approval)
-    const selected = await readFile(grantFile)
-    await run([command, 'agent', '--grant', 'grants/agent.json', '--client', 'codex'], grantProject)
-    assert.deepEqual(await readFile(grantFile), selected)
     const authoringCheck = join(consumer, 'authoring-without-renderer.mjs')
     await writeFile(
       authoringCheck,

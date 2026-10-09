@@ -6,7 +6,11 @@ import {
   privateAcpAgentRuntime,
   requirePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
-import { acpSetupCode, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import {
+  acpSetupCode,
+  isExpectedAcpRefusal,
+  PrivateAcpSetupError,
+} from './acp-setup-diagnostics.js'
 import { openPrivateClaudeAgentProvider } from './claude-agent-provider.js'
 import {
   openPrivateCodexAgentProvider,
@@ -39,6 +43,7 @@ export type PrivateAcpClientOpener = (
 
 export class PrivateAcpResourceUnavailableError extends Error {
   readonly code: string
+  readonly expected: boolean
   constructor(
     readonly slot: string,
     client: AcpGrant['client'],
@@ -59,6 +64,7 @@ export class PrivateAcpResourceUnavailableError extends Error {
               : error instanceof PrivateCodexRuntimeUnavailableError
                 ? 'installation'
                 : undefined
+    this.expected = isExpectedAcpRefusal(error)
     this.code = stage === undefined ? 'PROJECT_ACP_UNAVAILABLE' : acpSetupCode(client, stage)
   }
 }

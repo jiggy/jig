@@ -392,7 +392,7 @@ bypasses them. Show the selected target and effective file paths and duration
 before work, without printing input contents. Review shows entrypoint additions,
 changes and removal; inspection includes the approved declaration.
 
-Without an entrypoint, interactive `jig run` presents numbered approved targets
+Without an entrypoint, interactive `jig run` presents numbered ready approved targets
 and their retained descriptions before execution acquisition. Empty input
 cancels; noninteractive invocation requires an exact target. Selection does not
 approve visible edits or bypass Run validation. Approval changing between
@@ -401,7 +401,14 @@ selection and submission refuses the invocation with `RUN_APPROVAL_CHANGED`.
 `jig completion bash|zsh|fish` prints shell integration. Its dynamic
 `jig completion targets [prefix]` lookup reads only approved selectors, without
 environment checks, source evaluation, state writes, or provider requests.
-It emits one selector per line; unavailable state yields no suggestions.
+It emits one ready selector per line; unavailable targets yield no suggestions.
+
+Target inspection includes `boundReadAttachments`, the names of reads already
+captured by that Binding. Invocation templates omit those names and explain
+that they cannot be overridden; they supply only unbound reads. Inspection
+separates approval freshness from retained target availability. An unavailable
+default is identified using its normalized selector and is never presented as
+a ready bare invocation.
 
 Human inspection supplies invocation guidance from the retained interface:
 required fields, file placeholders, and channel requirements. Input examples
@@ -501,27 +508,72 @@ does not inspect or install a client, copy authentication, resolve dependencies,
 or approve authority. `--bare` omits the greeting, not the explicitly requested
 Agent configuration. Existing destinations are never overwritten.
 
-### Editing an Agent grant
+### Guided Agent setup during review
 
-`jig agent --grant FILE --client codex|claude|pi [--model MODEL | --default-model]`
-edits one existing project-relative `<LocalName>.json` ACP grant. It neither evaluates
-`jig.ts`, discovers project membership or native installations, installs dependencies,
-changes approval nor starts work. The source file must be selected by the project
-before review can adopt it. Preserve turn and session policy. A cross-client change
-with a model pin requires explicit replacement or removal; `--default-model` removes
-that pin without overriding operator model configuration. Incompatible Codex retention
-is refused rather than silently removed. A no-op leaves source bytes untouched.
+Known expected native-client setup refusals make only their selected target
+routes unavailable; unrelated targets can remain ready. Availability follows
+the actual reviewed graph, including mixed methods which might avoid an Agent
+for a particular input. Installation or credentials never break provider ties.
+Arbitrary failures, cancellation, corrupt support and cleanup uncertainty remain
+fatal. Inspection and unchanged reviews disclose retained availability separately
+from environment freshness. Installing a client does not activate an unavailable
+approval: a fresh exact review is required. An unavailable entrypoint gives its
+retained cause, says no Flow started and directs to `jig review`, without fallback.
+A zero-ready review says no targets can run; a mixed review reports both counts.
 
-Refuse protected state, unsafe paths, links, multiple links, special files and invalid
-or oversized JSON. Publication preserves permission mode bits, but does not copy
-ownership, ACLs or extended attributes. It rechecks observed
-root, ancestor, original and staged identities/content. Replacement is atomic but
-not filesystem compare-and-swap; avoid concurrent editing. Cleanup skips observed
-staging substitutions. Noncooperating check/rename and check/unlink races remain
-possible. A failure after publication explicitly identifies possibly changed source;
-never roll back over unfamiliar content. Success names the file, previous/new client
-and model pin, and gives a standalone `jig review` command. Explain dependency-network
-consent separately when needed. Existing admitted generations are unchanged.
+Interactive review may offer an authoring correction before separate approval.
+Only a known missing executable offers another discovered supported client;
+other setup failures give targeted repair guidance. Discovery executes no
+launcher and does not establish native launch readiness. Named JSON grants
+remain ordinary editable source. Inline grants give their exact location and
+manual-edit guidance. `--yes` and noninteractive review never edit source or
+select a substitute. Keep-selection and cancel preserve the authored choice.
+
+Before writing, show the named file, all affected direct Binding/slot recipients,
+proposed client, model pin/default, turn limit and session-retention policy;
+require separate source-write confirmation. A shared grant's complete affected
+set must be accessible before consent. Exceeding the bounded setup report
+disables guided editing and gives manual-edit guidance. Preserve `maxTurns`.
+Cross-client model pins require explicit replacement or explicit client-default
+selection; incompatible Codex retention requires explicit removal or keeping
+Codex. Never infer models or credentials silently.
+
+Close the captured review owners before opening the narrow file-publication
+owner. Refuse protected state, unsafe paths, links, multiple links, special
+files and invalid or oversized JSON. Publication preserves permission mode bits,
+but does not copy ownership, ACLs or extended attributes. Recheck captured
+original bytes, held ancestor identity and exclusively staged bytes before
+atomic replacement. Atomic rename is not filesystem compare-and-swap;
+noncooperating final-check/rename and check/unlink races remain. Observed
+prepublication changes refuse overwrite and require fresh capture. A possibly
+published failure reports possibly changed source, never rolls back unfamiliar
+bytes, and ends correction without recapture or approval. Cleanup uncertainty
+also ends correction. After confirmed publication, recapture in the same
+invocation and request normal exact approval. Source consent never approves
+execution; cancellation preserves prior approval and already consented writes.
+Prompt identical issues once unless the captured grant changes. At eight
+correction rounds, stop with manual-edit guidance.
+
+### Invocation files and fresh evidence
+
+`--out-new PREFIX` selects one absolute destination with a 128-bit random
+hexadecimal suffix before file ownership or host-delegation reexecution. Its
+selected path survives every subsequent owner. It is mutually exclusive with
+`--out DIR`; either explicit output option replaces either entrypoint default.
+Project prefixes resolve from the project, explicit prefixes from the caller.
+Empty final components and overlong resulting names or paths refuse before
+dispatch. Selection reserves nothing. Ordinary anchored-parent validation,
+input-root/protected-path exclusion and no-replace publication remain required;
+there is no retry after work. Show the actual destination on stderr and preserve
+the existing machine delivery record.
+
+Initial file-mapping refusal identifies the missing unbound read names, invalid
+mapping names, bound overrides and writable names needing a destination. Say
+no Flow started. If no known fixture/schema path is available, give a clearly
+labeled command template using those declared names. Do not reopen live source
+or invent file paths. Checking invocation inputs and admitting the reviewed
+target precedes workspace entry; invalid input, review, runtime or file
+prerequisites remain in ordinary output before TUI or browser launch.
 
 `jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
 current project's last locally approved snapshot. Without a target it lists

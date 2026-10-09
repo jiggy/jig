@@ -12,7 +12,7 @@ the included `grants/agent.json` and your native client as described in the
 
 ```sh
 jig review --allow-resolution-network
-jig run --display tui --out brief-result
+jig run
 ```
 
 Review prepares the declared package dependencies; no repository-private tools
@@ -42,13 +42,13 @@ Jig alpha supplies this importer.
 
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
-Use `jig agent --grant grants/agent.json --client codex` before review to choose
-your installed client while preserving its two-turn allowance. Choose a new
-`--out` destination for repeat runs, such as `brief-result-2`. Full branch answers
-and conversation evidence remain in `result.json`; concise answer excerpts are
-shown when a packet was written. Without `--out`, the complete result is printed.
-The reviewed entrypoint in `jig.ts` selects the brief, input and three-minute
-deadline. Override an argument when needed, for example `jig run --input @my-incident.json`.
+Interactive review can offer a separately confirmed correction to `grants/agent.json`
+when its selected executable is missing, preserving the two-turn allowance; you
+can also edit the JSON file and review again. The reviewed entrypoint in `jig.ts`
+selects the brief, input, three-minute deadline and fresh `brief-result` output
+prefix. Repeating `jig run` preserves earlier packets. Open `result.json` inside
+the destination reported by Jig for full branch answers and conversation evidence;
+concise answer excerpts are shown when a packet was written. Override an argument when needed, for example `jig run --input @my-incident.json`.
 Successful output contains a proposed brief, independent questions, actual
 conversation settlement and, when replaced, the exact handoff snapshot. Dashboard
 activity identifies each worker's requested turn, received answer, handoff
@@ -73,8 +73,8 @@ context or private prompts. A branch failure is reported immediately while its h
 sibling continues. These suggestions still require human review; a completed call does
 not verify incident facts.
 
-Choose `--display web` instead of `--display tui` to use the same views in a
-browser. Open the private link printed after execution starts. The completed inspector
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain
 available.

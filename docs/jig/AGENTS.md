@@ -22,7 +22,8 @@ use-case and orchestration hypotheses.
 - `guide/agents.md` owns ordinary Agent Flow selection, explicit operator
   resource configuration, host-specific installation/helper recovery, and
   current adapter limitations. Setup guidance distinguishes review-only
-  prerequisite checks from uncertain native Run failures.
+  prerequisite checks, per-target availability and separately confirmed guided
+  named-grant correction from uncertain native Run failures.
   Codex installation guidance covers static npm/Volta native selection and
   defers its exact metadata bounds and exclusions to `spec/finite-acp.md`.
   Keep installed-client session qualification limits distinct from successful
@@ -43,7 +44,8 @@ use-case and orchestration hypotheses.
   with execution policy and `SECURITY.md`; never imply fast skips Flow approval
   or sandbox enforcement.
 - `guide/files.md` explains per-run files and review-pinned Binding resources,
-  their shared read attachment interface, retention and root-only limits.
+  their shared read attachment interface, fresh output prefixes, actionable
+  admitted file mappings, retention and root-only limits.
 - `guide/agent-method.md` explains the reusable method's pure library and
   published ordinary Agent Run artifact, reviewed-source adoption, explicit
   caller context and independent consumer result validation.
