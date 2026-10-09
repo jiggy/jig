@@ -23,6 +23,20 @@ const linuxProfile = 'ubuntu-24.04/x64/bun-1.3.3/rootless'
 const inputFile = 'packages/jig/test/file-input.test.ts'
 const providerFile = 'packages/jig/test/package-provider-host.test.ts'
 const rootFile = 'packages/jig/test/root-agent-run-lifecycle.test.ts'
+const parameterizedCases = [
+  {
+    file: 'packages/jig/test/project-author-evaluator.test.ts',
+    classname: 'finite isolated author declaration batches',
+    name: 'blocking guest execution is fenced at the entry deadline (batch: %s)',
+    line: '97',
+  },
+  {
+    file: 'packages/jig/test/bun-native-preparation.test.ts',
+    classname: 'private contained Bun dependency preparation',
+    name: 'recovers preparation after coordinator loss (resolve=%s)',
+    line: '336',
+  },
+]
 function git(root, args) {
   return execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
@@ -114,6 +128,91 @@ test('new file, unresolved revision, missing name, traversal and repeat identiti
       /Unknown/,
     )
   }))
+
+test('frozen skipped test.each registrations retain identical reporter names with a reviewed cap', () =>
+  fixture(
+    parameterizedCases.map((item) => item.file),
+    (f) => {
+      // Captured Bun JUnit reports use literal placeholders even though each
+      // declaration registers false and true; their line attributes also match.
+      const cases = parameterizedCases.flatMap((item) => [item, { ...item }])
+      const proof = authorize(f, cases)
+      assert.equal(proof.observedSkipped, 4)
+      assert.deepEqual(
+        proof.skippedCases.map((item) => item.line),
+        ['97', '97', '336', '336'],
+      )
+      assert.equal(proof.skippedCaseDigest, skippedCaseDigest(proof.skippedCases))
+      assert.deepEqual(authorize(f, proof.skippedCases), proof)
+      for (const item of parameterizedCases) {
+        assert.throws(() => authorize(f, [item, item, item]), /multiplicity/)
+        for (const forged of [
+          { ...item, line: String(Number(item.line) + 1) },
+          { ...item, line: undefined },
+        ])
+          assert.throws(() => authorize(f, [item, forged]))
+        for (const forged of [
+          { ...item, classname: `${item.classname} neighboring suite` },
+          { ...item, name: `${item.name} neighboring case` },
+        ])
+          assert.throws(() => authorize(f, [forged, forged]), /multiplicity/)
+        // Neither an invented ordinal nor a claimed count changes the cap.
+        assert.throws(
+          () =>
+            authorize(f, [
+              item,
+              { ...item, occurrence: 2 },
+              { ...item, occurrence: 3, maxOccurrences: 100 },
+            ]),
+          /multiplicity/,
+        )
+      }
+    },
+  ))
+
+test('reporter line changes cannot create extra identities for ordinary reviewed skips', () =>
+  fixture([inputFile], (f) => {
+    assert.throws(
+      () =>
+        authorize(f, [
+          { ...macInputCase, line: '110' },
+          { ...macInputCase, line: '111' },
+        ]),
+      /multiplicity/,
+    )
+    assert.throws(() => authorize(f, [{ ...macInputCase, line: 'not-a-line' }]), /source line/)
+  }))
+
+test('parameterized allowances remain frozen to their source and owning host policy', () =>
+  fixture(
+    parameterizedCases.map((item) => item.file),
+    (f) => {
+      const [author, preparation] = parameterizedCases
+      for (const architecture of ['x64', 'arm64']) {
+        const extra = {
+          targetId: `macos-${architecture}`,
+          profile: `macos-24G830/${architecture}/bun-1.4.2`,
+          skipPolicy: 'host-partitions-and-platform',
+        }
+        assert.equal(authorize(f, [preparation, preparation], extra).observedSkipped, 2)
+        assert.throws(() => authorize(f, [author, author], extra), /Unexpected skipped/)
+        assert.throws(() => authorize(f, [preparation, preparation, preparation], extra))
+        assert.throws(() =>
+          authorize(f, [{ ...preparation, commandKind: 'native-prerequisites' }], extra),
+        )
+      }
+      assert.throws(() =>
+        authorize(f, [preparation], {
+          targetId: 'linux',
+          profile: linuxProfile,
+          skipPolicy: 'host-partitions-and-platform',
+        }),
+      )
+      write(f.root, preparation.file, `${readFileSync(join(f.root, preparation.file), 'utf8')}\n`)
+      f.source = commit(f.root)
+      assert.throws(() => authorize(f, [preparation, preparation]), /Changed or unavailable/)
+    },
+  ))
 
 test('the same platform case is forbidden in prerequisite and installed-startup proof', () =>
   fixture([inputFile], (f) => {
@@ -281,10 +380,18 @@ test('completed installed CLI transcripts do not invent passing test counts', ()
   assert.throws(() => parseBunTranscript('complete\n', { files: [] }), /owning command files/)
 })
 
-const xml = (file, name, child = '', classname = '') =>
-  `<testsuites><testsuite><testcase file="${file}" classname="${classname}" name="${name}" line="1">${child}</testcase></testsuite></testsuites>`
-function hostFixture(f) {
-  const files = [...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile].sort()
+const xmlAttribute = (value) =>
+  value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
+const xml = (file, name, child = '', classname = '', line = '1') =>
+  `<testsuites><testsuite><testcase file="${file}" classname="${xmlAttribute(classname)}" name="${xmlAttribute(name)}" line="${line}">${child}</testcase></testsuite></testsuites>`
+function hostFixture(f, additionalFiles = []) {
+  const files = [
+    ...NATIVE_PREREQUISITE_TESTS,
+    rootFile,
+    providerFile,
+    inputFile,
+    ...additionalFiles,
+  ].sort()
   const architecture = 'arm64'
   const shards = planMacHostTests(files, architecture)
   const evidenceDirectory = join(f.root, 'evidence')
@@ -347,6 +454,44 @@ function hostFixture(f) {
     shards,
   }
 }
+function groupReportPath(options, source, file) {
+  const shard = options.shards.find((entry) => entry.groups.some((group) => group.file === file))
+  const group = shard.groups.findIndex((entry) => entry.file === file)
+  return join(
+    options.evidenceDirectory,
+    `macos-prerequisites-arm64-${shard.index}-${source}`,
+    `shard-${shard.index}-group-${group}.xml`,
+  )
+}
+
+// Actual Bun1.4.2 JUnit labels for the four wide/little combinations and the
+// boolean universal pair retain their literal placeholders and declaration lines.
+const metadataFile = 'packages/jig/test/macos-agent-runtime.test.ts'
+const metadataCases = [
+  {
+    name: 'reads universal metadata (wide=%s little=%s)',
+    classname: 'bounded static Mach-O metadata',
+    line: '51',
+    count: 4,
+  },
+  {
+    name: 'accepts baseline LIB64 metadata (universal=%s)',
+    classname: 'bounded static Mach-O metadata',
+    line: '77',
+    count: 2,
+  },
+]
+function metadataReport(counts = [4, 2], lines = ['51', '77']) {
+  return (
+    '<testsuites>' +
+    metadataCases
+      .map((item, index) =>
+        xml(metadataFile, item.name, '', item.classname, lines[index]).repeat(counts[index]),
+      )
+      .join('') +
+    '</testsuites>'
+  )
+}
 
 test('Mac reading reconstructs source membership and all current revision command reports', () =>
   fixture([...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile], (f) => {
@@ -365,6 +510,143 @@ test('Mac reading reconstructs source membership and all current revision comman
     writeFileSync(join(dir, 'test-plan.json'), JSON.stringify(plan))
     assert.throws(() => readMacSkippedCases(options), /exact source inventory/)
   }))
+
+test('Mac owning JUnit keeps the real identical parameterized skip attributes for independent authorization', () => {
+  const item = parameterizedCases[1]
+  return fixture(
+    [...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile, item.file],
+    (f) => {
+      const options = hostFixture(f, [item.file])
+      const shard = options.shards.find((entry) =>
+        entry.groups.some((group) => group.file === item.file),
+      )
+      const group = shard.groups.findIndex((entry) => entry.file === item.file)
+      const path = join(
+        options.evidenceDirectory,
+        `macos-prerequisites-arm64-${shard.index}-${f.source}`,
+        `shard-${shard.index}-group-${group}.xml`,
+      )
+      const report = xml(item.file, item.name, '<skipped/>', item.classname, item.line)
+      writeFileSync(path, `<testsuites>${report}${report}</testsuites>`)
+      const result = readMacSkippedCases(options)
+      assert.equal(result.skipped, 2)
+      assert.deepEqual(
+        result.skippedCases.map((entry) => entry.line),
+        ['336', '336'],
+      )
+      assert.equal(
+        authorize(f, result.skippedCases, {
+          targetId: 'macos-arm64',
+          profile: 'macos-24G830/arm64/bun-1.4.2',
+          skipPolicy: 'host-partitions-and-platform',
+        }).observedSkipped,
+        2,
+      )
+      writeFileSync(path, `<testsuites>${report}${report}${report}</testsuites>`)
+      assert.throws(() =>
+        authorize(f, readMacSkippedCases(options).skippedCases, {
+          targetId: 'macos-arm64',
+          profile: 'macos-24G830/arm64/bun-1.4.2',
+          skipPolicy: 'host-partitions-and-platform',
+        }),
+      )
+    },
+  )
+})
+
+test('Mac ordinary parameterized reports count every declared execution without deduplicating names', () =>
+  fixture(
+    [
+      ...NATIVE_PREREQUISITE_TESTS,
+      rootFile,
+      providerFile,
+      inputFile,
+      metadataFile,
+      parameterizedCases[0].file,
+    ],
+    (f) => {
+      const author = parameterizedCases[0]
+      const options = hostFixture(f, [metadataFile, author.file])
+      writeFileSync(groupReportPath(options, f.source, metadataFile), metadataReport())
+      writeFileSync(
+        groupReportPath(options, f.source, author.file),
+        `<testsuites>${xml(author.file, author.name, '', author.classname, author.line).repeat(2)}</testsuites>`,
+      )
+      const result = readMacSkippedCases(options)
+      assert.equal(result.skipped, 0)
+      assert.equal(
+        result.count,
+        options.shards.reduce((sum, shard) => sum + shard.groups.length, 0) +
+          NATIVE_PREREQUISITE_TESTS.length +
+          1 +
+          5 +
+          1,
+      )
+    },
+  ))
+
+test('Mac parameterized reports reject extra, missing, relined or invented executions', () =>
+  fixture([...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile, metadataFile], (f) => {
+    const options = hostFixture(f, [metadataFile])
+    const path = groupReportPath(options, f.source, metadataFile)
+    const valid = metadataReport()
+    for (const invalid of [
+      metadataReport([5, 2]),
+      metadataReport([3, 2]),
+      metadataReport([0, 2]),
+      metadataReport([4, 2], ['52', '77']),
+      valid.replace('line="51"', 'line="99"'),
+      valid.replaceAll('wide=%s little=%s', 'wide=%s little=%s neighboring case'),
+    ]) {
+      writeFileSync(path, invalid)
+      assert.throws(() => readMacSkippedCases(options))
+    }
+    writeFileSync(path, valid)
+    write(f.root, metadataFile, `${readFileSync(join(f.root, metadataFile), 'utf8')}\n`)
+    f.source = commit(f.root)
+    const changed = hostFixture(f, [metadataFile])
+    writeFileSync(groupReportPath(changed, f.source, metadataFile), valid)
+    assert.throws(() => readMacSkippedCases(changed), /Changed or unavailable.*multiplicity source/)
+  }))
+
+test('ordinary duplicate pass names do not gain identity from supplied lines', () =>
+  fixture([...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile], (f) => {
+    const options = hostFixture(f)
+    const path = groupReportPath(options, f.source, inputFile)
+    writeFileSync(
+      path,
+      `<testsuites>${xml(inputFile, 'portable case', '', '', '1')}${xml(inputFile, 'portable case', '', '', '2')}</testsuites>`,
+    )
+    assert.throws(() => readMacSkippedCases(options), /exceeds.*multiplicity/)
+  }))
+
+test('Mac passed-case allowances cannot authorize a repeated owning command or native prerequisite', () => {
+  const startupFile = 'packages/jig/test/native-agent-startup.test.ts'
+  return fixture(
+    [...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile, startupFile],
+    (f) => {
+      const options = hostFixture(f, [startupFile])
+      const path = groupReportPath(options, f.source, startupFile)
+      writeFileSync(path, xml(startupFile, 'native installed client', '', '', '99'))
+      assert.throws(() => readMacSkippedCases(options), /across owning commands/)
+      writeFileSync(path, xml(startupFile, 'portable case'))
+      const nativePath = join(
+        options.evidenceDirectory,
+        `macos-prerequisites-arm64-0-${f.source}`,
+        'native-tests.xml',
+      )
+      const first = NATIVE_PREREQUISITE_TESTS[0]
+      writeFileSync(
+        nativePath,
+        '<testsuites>' +
+          NATIVE_PREREQUISITE_TESTS.map((file) => xml(file, 'native prerequisite')).join('') +
+          xml(first, 'native prerequisite', '', '', '99') +
+          '</testsuites>',
+      )
+      assert.throws(() => readMacSkippedCases(options), /exceeds.*multiplicity/)
+    },
+  )
+})
 
 test('Mac native-startup skips, stale shard markers and missing owning reports never qualify', () =>
   fixture([...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile], (f) => {

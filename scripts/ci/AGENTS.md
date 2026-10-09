@@ -30,6 +30,13 @@ Host preparation never becomes a consumer requirement.
   skipped identities and authorize only the owning profile's reviewed expectations
   and exact command-specific partition filter; a new skip must not disappear into
   an aggregate count. Native prerequisites and installed startup must execute.
+  Bun can emit identical labels for distinct parameterized registrations.
+  Repeated skipped labels require exact frozen declaration identity and reviewed
+  multiplicity; ordinary Mac executed groups require the complete reviewed
+  registration count within one owning report. Retain every case and reject
+  extra records, altered identities and repetition across owning commands.
+  Native prerequisite and installed-startup reports retain strict single-instance
+  identity rules. Reporter-supplied lines or ordinals cannot create new identities.
 - `build-candidates.mjs` archives clean tracked source and freezes all five npm
   archives on qualified native Linux x64 Bun 1.3.3/Just 1.43.1 using normal workspace
   resolution and package-owned packing. Preserve generated resolution, actual
