@@ -231,7 +231,7 @@ jobs:
       -
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
-          name: "python-candidate-${{ github.sha }}"
+          name: "python-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/python-dist"
           retention-days: 7
           if-no-files-found: "error"
@@ -239,7 +239,7 @@ jobs:
       -
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
-          name: "python-user-updates-candidate-${{ github.sha }}"
+          name: "python-user-updates-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/python-updates-dist"
           retention-days: 7
           if-no-files-found: "error"
@@ -315,14 +315,14 @@ jobs:
       -
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
-          name: "python-candidate-${{ github.sha }}"
+          name: "python-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "python-dist"
       -
         run: "python -m pip install mypy==1.18.2"
       -
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
-          name: "python-user-updates-candidate-${{ github.sha }}"
+          name: "python-user-updates-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "python-updates-dist"
       -
         name: "Test installed wheel and sdist"
@@ -404,12 +404,12 @@ jobs:
       -
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
-          name: "python-candidate-${{ github.sha }}"
+          name: "python-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/python-dist"
       -
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
-          name: "python-user-updates-candidate-${{ github.sha }}"
+          name: "python-user-updates-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/python-updates-dist"
       -
         name: "Run source, conformance, and package gates"

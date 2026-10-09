@@ -250,9 +250,22 @@ test('Python publication reuses the exact CI-qualified candidate', async () => {
     const download = job.steps.find((step: any) =>
       step.uses?.startsWith('actions/download-artifact'),
     )
-    expect(download.with.name).toBe('python-candidate-${{ env.SOURCE_REVISION }}')
+    expect(download.with['artifact-ids']).toBe(
+      '${{ needs.authorize.outputs.candidate_artifact_id }}',
+    )
+    expect(download.with.name).toBeUndefined()
+    expect(download.with['merge-multiple']).toBeTrue()
     expect(download.with['run-id']).toBe('${{ github.event.workflow_run.id }}')
     expect(download.with['github-token']).toBe('${{ github.token }}')
+  }
+  for (const id of ['python-build', 'python-installed', 'source-tests']) {
+    const candidates = ci.jobs[id].steps.filter((step: any) =>
+      step.with?.name?.startsWith('python-'),
+    )
+    expect(candidates).toHaveLength(2)
+    for (const step of candidates) {
+      expect(step.with.name).toContain('-r${{ github.run_id }}-a${{ github.run_attempt }}')
+    }
   }
 })
 

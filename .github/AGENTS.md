@@ -91,6 +91,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   interpreter/OS matrix. Read-only jobs prepare and verify registry bytes; the
   isolated OIDC publisher executes no repository code. Duplicate-upload skipping
   never substitutes for digest verification.
+  CI SDK and user-updates artifacts include source, producer run and attempt.
+  A short Python-only readiness check binds all six installed profiles, source
+  execution and the final CI gate to the successful current main-push attempt,
+  original SDK artifact ID/digest and source-bound distribution receipt. Prepare
+  and post-publication verification retrieve that immutable SDK artifact;
+  the checkout-free publisher revalidates the snapshot after approvals/queueing
+  and checks each pending archive against the original receipt before mutation.
+  A delayed success event cannot authorize an unfinished or failed rerun.
 - CI separately freezes the experimental Python user-updates wheel/sdist and
   checks them against the same SDK wheel on the interpreter/OS matrix. These
   artifacts are qualification inputs, not added publication candidates. Host
@@ -208,6 +216,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   host-only cases and incomplete Mac shard assignment before host qualification.
 - `bun test scripts/npm-publish.test.ts` exercises the publisher's actual shell
   with controlled registry responses, including reverse completion and retries.
+- `node --test scripts/ci/python-readiness.test.mjs scripts/ci/python-publish.test.mjs`
+  exercises current-attempt Python authorization and the actual protected
+  publisher's inert validation code without registry mutations.
 
 ## Child DOX Index
 
