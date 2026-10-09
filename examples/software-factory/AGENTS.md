@@ -142,13 +142,17 @@ optional observation delivery.
 - Jig's `package-provider-host.test.ts` also runs this application through the
   installed CLI with a deterministic Flow Agent peer. It verifies reviewed
   repair-dependency imports, live worker reports and checkpoint delivery after
-  the editable repair source is removed, all three final views for blocked and
-  independently checked repairs, closed explicit reception, and delivered patch
-  references. Automatic plain display verifies independently complete result and
-  delivered-file evidence, with either complete ended summaries or precisely
-  marked incomplete LAGGED observation. A separate small installed consumer
-  requires three clean-ended automatic views and truthful producer-loss display;
-  bounded receiver loss is exercised through the actual observer separately.
+  the editable repair source is removed, complete results and verified delivered
+  files for blocked and independently checked repairs. Explicit reception checks
+  exact contiguous NDJSON and every observed payload; clean reception requires
+  all three final views and checked patch references, while failed/LAGGED retains
+  only its actual prefix. Automatic plain display requires either all three
+  completed summaries or precisely marked incomplete LAGGED observation, and
+  independently verifies its own result and files. A separate small installed
+  consumer requires three clean-ended views through both automatic and explicit
+  reception, plus truthful producer-loss handling. Deterministic batch tests
+  require the actual factory publisher's final Jobs, Checks and Patches offers;
+  portable observer tests cover receiver loss and retained-model settlement.
   These checks make no live Agent claim or optional-delivery guarantee.
 - The release gate repeats deterministic application tests against packed SDK
   candidates. Jig's private repair-batch host fixture exercises the same

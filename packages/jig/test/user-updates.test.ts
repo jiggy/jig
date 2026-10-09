@@ -682,3 +682,67 @@ test('automatic channel observer freezes accepted views after declared loss and 
     }
   }
 })
+
+test('frozen views retain the newest accepted snapshot while warning delivery suppresses live printing', async () => {
+  const warningWriting = deferred()
+  const releaseWarning = deferred()
+  let transcript = ''
+  const presenter = new PrivateCliProgress(
+    true,
+    (text) => {
+      transcript += text
+      if (text.includes('A warning is being written')) {
+        warningWriting.resolve()
+        return releaseWarning.promise
+      }
+    },
+    undefined,
+    false,
+  )
+  const source = presenter.observe('progress', true)
+  const loss =
+    "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)"
+  try {
+    expect(
+      source.accept({
+        kind: 'view',
+        id: 'jobs',
+        title: 'Jobs',
+        summary: 'Initial accepted snapshot',
+        sections: [],
+      }),
+    ).toBe(true)
+    await presenter.flush()
+    expect(transcript).toContain('  Flow: Jobs\n    Initial accepted snapshot\n')
+    expect(
+      source.accept({ kind: 'notice', severity: 'warning', text: 'A warning is being written' }),
+    ).toBe(true)
+    await warningWriting.promise
+    expect(
+      source.accept({
+        kind: 'view',
+        id: 'jobs',
+        title: 'Jobs',
+        summary: 'Newest accepted snapshot',
+        sections: [],
+      }),
+    ).toBe(true)
+    expect(transcript).not.toContain('Newest accepted snapshot')
+    expect([...presenter.model.views.values()].map((view) => view.value.summary)).toEqual([
+      'Newest accepted snapshot',
+    ])
+    source.retire(loss)
+    expect([...presenter.model.views.values()].map((view) => view.ended)).toEqual([loss])
+    releaseWarning.resolve()
+    await presenter.settleDashboard({ status: 'succeeded', outcome: 'done' })
+    expect(transcript).not.toContain('  Flow: Jobs\n    Newest accepted snapshot\n')
+    expect(transcript).toContain(`  Flow / Jobs (${loss}):\n    Newest accepted snapshot\n`)
+    expect(transcript).not.toContain(`  Flow / Jobs (${loss}):\n    Initial accepted snapshot\n`)
+    expect(presenter.model.workspace.facts?.execution).toBe('succeeded')
+    expect(presenter.model.workspace.facts?.application).toBe('"done"')
+  } finally {
+    releaseWarning.resolve()
+    await presenter.flush()
+    presenter.close()
+  }
+}, 5_000)
