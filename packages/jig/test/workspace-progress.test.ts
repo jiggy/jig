@@ -235,7 +235,7 @@ test('trusted root dispatch opens short no-view Runs and updates-off; machine mo
   }
 })
 
-test('post-dispatch observation failure keeps read-only evidence and cleanup uncertainty until exit', async () => {
+test('post-dispatch observation failure keeps inspection only after confirmed project cleanup', async () => {
   for (const closeFails of [false, true]) {
     const input = new Input()
     let stderr = '',
@@ -275,7 +275,7 @@ test('post-dispatch observation failure keeps read-only evidence and cleanup unc
           settled = true
           expect(closed).toBe(1)
           expect(text).toContain('execution: unknown')
-          expect(text).toContain(closeFails ? 'cleanup: unconfirmed' : 'cleanup: complete')
+          expect(text).toContain('cleanup: complete')
           expect(stdout).toBe('')
           queueMicrotask(() => input.emit('data', Buffer.from('q')))
         }
@@ -291,11 +291,14 @@ test('post-dispatch observation failure keeps read-only evidence and cleanup unc
       },
     })
     expect(code).toBe(2)
-    expect(settled).toBeTrue()
+    expect(settled).toBe(!closeFails)
     expect(stdout).toBe('')
-    expect(stderr.slice(stderr.indexOf(entered), stderr.indexOf(restored))).toContain(
-      'EARLY_RETAINED_DIAGNOSTIC',
-    )
+    expect(stderr).toContain('EARLY_RETAINED_DIAGNOSTIC')
+    if (closeFails) expect(stderr).toContain('JIG_RUN_CLEANUP_FAILED')
+    else
+      expect(stderr.slice(stderr.indexOf(entered), stderr.indexOf(restored))).toContain(
+        'EARLY_RETAINED_DIAGNOSTIC',
+      )
     expect(stderr).not.toContain('private observation failure')
     expect(stderr).not.toContain('private close failure')
     expect(input.isRaw).toBeFalse()
@@ -332,6 +335,9 @@ test('immutable inspection is enabled before delivery preparation and delayed sc
             async publish() {
               expect(inspection).toBeTrue()
               return { status: 'written', destination: join(root, 'result'), files: [] }
+            },
+            async retire() {
+              expect(inspection).toBeTrue()
             },
           },
           async acquire(_project: string, options: any) {

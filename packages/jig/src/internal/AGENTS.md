@@ -52,6 +52,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   commands omit only the default command envelope; finite explicit constraints
   and bounded setup, Run, cancellation and cleanup owners remain enforced. The
   scalar only constrains presentation; it never grants execution authority.
+  Eligible web inspection also omits the default presentation envelope. Its
+  outer file owner seeds one completion budget before joining pending work:
+  twenty seconds for authenticated retirement or uncapped inspector exit,
+  preserving the inbound inherited minimum captured before generating the
+  child's presentation deadline. A local presentation deadline leaves its
+  closing reserve available to owner cleanup. Legacy finite-envelope exit retains its
+  existing sixty-second settlement allowance. Memoize task/publication joins
+  and cleanup failure; no finally path may wait outside that allowance or reset
+  it. A stalled publication fences fallback and still attempts independent
+  endpoint/descriptor release. Confirm retirement before indefinite inspection.
 - Admission storage uses the closed native descriptor operations while SQLite
   retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
   Darwin resolves system ancestor aliases only for SQLite's visible filename;
@@ -151,6 +161,32 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Recheck the selected parent and exact staging identity before exclusive
   publication; a moved parent cannot redirect writes or cleanup. Invalid final
   files retain the known execution terminal and never authorize replay.
+  Its memoized close joins original prepare/publication, consumes held references
+  before cleanup and closes the destination parent even if staging cleanup fails.
+  The same failure remains observable on racing or repeated close; never retry
+  a recycled descriptor. `RootRunFiles` similarly consumes output once and fences
+  further projection, checkpoint and retention after close begins.
+- `delivery-inspection.ts` transfers only verified receipt-selected excerpts to
+  a pure presentation map before indefinite live-result inspection. One total
+  20-second completion bound includes serial previews, retirement ACK and spent
+  channel completion, clamped by the inherited presentation deadline. At most
+  the first ten seconds are for previews; tighter constraints reserve half the
+  remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 64 KiB
+  each and 4 MiB aggregate text, with distinct empty/non-text/unavailable/clipped
+  metadata. Late or failed previews stay unavailable; they do not retract a
+  known publication. The map never reopens a destination or invokes file RPC.
+  Capture/retirement errors are closed command-cleanup failures, separate from
+  known execution and delivery facts; callers must not fabricate unknown work.
+  Authenticated `file-command.ts` retirement irreversibly fences every authority
+  verb and checkpoint recovery/fallback, including no-publication. Join original
+  operations, then close checkpoint, project read descriptor, delivery owner and
+  native endpoints through one failure-preserving close. Begin listener shutdown
+  without awaiting the ACK socket's own close cycle. ACK follows authoritative
+  release only; the client disarms disconnect cancellation only on that timely
+  ACK, then joins spent-channel completion under the same bound. Silence, loss,
+  late ACK and mere close never establish retirement. Completed bounded close
+  promises remain completed during operator-controlled inspection; later exit
+  must not reapply their already elapsed transfer deadline.
 - `saved-result.ts` captures operator-selected local result packets for
   `inspect --result`, without a project, approval, provider, verification setting
   or execution owner. Recorded facts and diagnostic paths are unauthenticated
@@ -181,6 +217,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   messages carry counts and inert manifests, never PID/FD claims as authority.
   Keep command cancellation, settlement grace and final escalation unchanged.
   Remove only exact private endpoints after the coordinator and publication settle.
+  Native endpoint close is memoized and consumes receiver references before
+  cleanup; racing paths join its actual completion and retain its failure.
   Reconstruct transferred output into a fresh immutable backing only after
   authenticating the live received bundle and validating its complete bounded
   manifest, anonymous-file identity, offsets and hashes. Include empty-directory
@@ -1099,6 +1137,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   forged/closed snapshots, cancelled retention, collisions, parent replacement
   and complete staging cleanup. Independent command transport cases additionally
   require their platform's qualified process ownership and descriptor transfer.
+  `delivery-inspection.test.ts` covers serial excerpt/aggregate limits, inherited
+  deadline minima and preview cutoff, empty/no-publication retirement, pure map
+  release, pending operation joins, ACK loss/late completion, expected versus
+  accidental disconnect, and memoized descriptor-close failure with private
+  streams/clocks. These portable cases do not establish actual native peer
+  authentication, endpoint release, parent recovery fencing or installed browser
+  composition; those remain platform/installed qualification gates.
   `execution-output.test.ts` verifies fencing/release/cleanup order, capture
   refusal, missing collectors and cleanup failure. Native guardian input evidence
   exercises that same retention path after image removal. Session collectors

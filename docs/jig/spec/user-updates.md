@@ -10,6 +10,13 @@ This profile adds no FLOW wire operation or execution authority. Exact identity,
 version and digest use existing [Channel Contract/0](https://flow.jig.md/spec/channel-contracts)
 rules. Identifier URLs are never runtime resolution.
 
+The same declarations serve terminal and local browser displays. Authors supply
+semantic reports, facts, measured progress, collections and typed references,
+without renderer components, markup, styles or execution-changing callbacks.
+Display adapters and their access/lifetime policy belong to the host's
+[CLI experience](cli-experience.md) and [web display](web-display.md) contracts;
+browser observation adds no operation or authority to this agreement.
+
 ## Message semantics
 
 All messages are closed JSON/0 objects. No canonical encoded item exceeds
@@ -272,7 +279,7 @@ returned, failed/refused and uncertain. Returned does not mean domain success.
 Overflow preserves represented nodes, saturated omission counts and explicit
 incompleteness. Root result, cleanup and delivery are independent host facts.
 
-Operator-only `--display auto|plain|dashboard` selects presentation; defaults
+Operator-only `--display auto|plain|dashboard|web` selects presentation; defaults
 never come from a project entrypoint. Auto uses bounded noninteractive inline
 output on suitable terminal stderr, without raw input or alternate screen.
 Plain, redirected stderr, NO_COLOR and TERM=dumb use nonanimated automatic output.
@@ -280,6 +287,9 @@ Explicit dashboard requires terminal stdin/stderr and a suitable TERM; otherwise
 it explains a plain fallback once. NO_COLOR permits explicit screen control but
 disables SGR styling. `--json` and effective `--receive` retain their exact existing
 stdout semantics and disable automatic observation/dashboard; dashboard cannot override.
+Explicit web uses terminal stderr without requiring terminal stdin, owns a local
+authenticated browser inspector and preserves the same semantic declarations.
+Its separate access, bounds and lifetime are in [web display](web-display.md).
 
 ### Workspace and navigation
 
@@ -297,7 +307,11 @@ navigation. Later updates never steal focus. Titles may change without reorderin
 tabs or changing their identity. No mouse capture or terminal author callbacks.
 
 Collections use labelled record cards in the terminal panes; selection alone
-never opens references or full detail. Boolean/null cells remain literal, and
+never navigates record/call references or opens full detail. A sole distinct
+typed artifact reference may peek available captured text without navigation or
+effects; ambiguous entries require explicit reference selection. The host's
+Delivered files surface exposes captured contents independently of supplied
+views. Boolean/null cells remain literal, and
 application status-looking text never receives a host success verdict. Omitted
 columns/counts are explicit. Enter opens complete escaped cells and supplied
 details in a bounded body panel. Reports and long summaries start collapsed.

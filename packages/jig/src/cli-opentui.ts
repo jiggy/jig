@@ -12,6 +12,7 @@ import {
   type PrivateDashboardState,
   privateDashboardDetailParts,
   privateDashboardFrame,
+  privateDashboardPreviewState,
   privateDashboardReferences,
 } from './cli-dashboard.js'
 import { privateCliSyntaxHex } from './cli-presentation.js'
@@ -25,6 +26,7 @@ import {
   privateTerminalWidth,
   privateTruncateUpdate,
   privateUpdateText,
+  privateWrappedUpdate,
 } from './private-terminal-text.js'
 
 type Core = typeof import('@opentui/core')
@@ -314,7 +316,41 @@ export class PrivateOpenTuiDashboard {
       else this.#text(parent, part.text, part.kind === 'note' ? 'muted' : 'normal')
     }
   }
+  #capturedContent(parent: BoxRenderable): void {
+    const p = process.env.JIG_THEME === 'one-light' ? palettes.light : palettes.dark
+    this.#text(parent, this.model.previewTitle ?? 'Immutable captured content', 'accent', true)
+    if (!this.model.preview || !this.model.preview.text)
+      this.#text(parent, privateDashboardPreviewState(this.model))
+    else {
+      const text = this.model.preview.text
+      if (text.startsWith('diff --git ') || text.startsWith('--- ')) {
+        const content = new this.core.StyledText([])
+        const lines = text.match(/[^\n]*\n|[^\n]+$/g) ?? []
+        for (const line of lines.slice(0, 256)) {
+          const role =
+            line.startsWith('+') && !line.startsWith('+++')
+              ? p.success
+              : line.startsWith('-') && !line.startsWith('---')
+                ? p.error
+                : line.startsWith('@@')
+                  ? p.accent
+                  : p.fg
+          content.chunks.push(this.core.fg(role)(safe(line)))
+        }
+        if (lines.length > 256)
+          content.chunks.push(this.core.fg(p.fg)(safe(lines.slice(256).join(''))))
+        this.#text(parent, content)
+      } else this.#text(parent, text)
+    }
+    this.#text(
+      parent,
+      `${this.model.artifactCapture.provenance === 'recorded-capture' ? 'Recorded capture' : 'Verified delivery'}${this.model.preview ? ` · ${this.model.preview.bytes} bytes${this.model.preview.clipped ? ' · excerpt clipped at 64 KiB' : ''}` : ''}`,
+      'muted',
+    )
+  }
   #record(record: PrivateWorkspaceRecord): string {
+    if (record.file)
+      return `${record.file.path}\n${record.file.state} · ${record.file.bytes} bytes${record.file.clipped ? ' · clipped excerpt' : ''}`
     if (record.row && record.collection) {
       return record.collection.columns
         .slice(0, 3)
@@ -405,6 +441,7 @@ export class PrivateOpenTuiDashboard {
     color: boolean,
   ): Promise<{ text: string; references: readonly Reference[]; scroll: number }> {
     if (this.#closed) return { text: '', references: [], scroll: 0 }
+    this.model.peekSelectedArtifact()
     const model = this.model,
       panel = state.panels.at(-1),
       p = process.env.JIG_THEME === 'one-light' ? palettes.light : palettes.dark
@@ -470,6 +507,7 @@ export class PrivateOpenTuiDashboard {
         : [
             { key: 'activity', title: 'Activity' },
             { key: 'overview', title: 'Overview' },
+            { key: 'files', title: 'Delivered files' },
           ]),
       ...[...model.views.values()].map((v) => ({
         key: v.key,
@@ -515,12 +553,12 @@ export class PrivateOpenTuiDashboard {
       panel || !wide
         ? width - (width < 50 ? 0 : 4)
         : Math.max(1, width - 6 - Math.floor((width - 6) * 0.43))
-    this.#list.title = ` ${one(model.selected?.value.title ?? (model.surface === 'overview' ? 'Execution graph' : 'Activity'))} `
+    this.#list.title = ` ${one(model.selected?.value.title ?? (model.surface === 'overview' ? 'Execution graph' : model.surface === 'files' ? 'Delivered files' : 'Activity'))} `
     this.#detail.title = ` ${panel ? (panel.kind === 'preview' ? 'Immutable captured preview' : panel.kind) : 'Selected detail'}${!panel || panel.kind === 'detail' ? ` · ${privateTruncateUpdate(one(model.record ? (this.#record(model.record).split('\n')[0] ?? '') : ''), 64)}` : ''} `
     const records = model.records(),
       labels = records.map((record) => this.#record(record)),
       detail = model.record
-        ? privateDashboardDetailParts(model, model.record, true)
+        ? privateDashboardDetailParts(model, model.record, true, false)
         : [{ kind: 'note' as const, text: model.context }]
     const signature = JSON.stringify([
       model.surface,
@@ -533,19 +571,39 @@ export class PrivateOpenTuiDashboard {
       model.record?.key,
       panel,
       model.preview,
+      model.previewState,
+      model.previewTitle,
       model.feedback,
       width,
       height,
     ])
     if (signature !== this.#signature) {
       this.#signature = signature
-      this.#detailScrollTarget = panel?.kind === 'detail' ? panel.scroll : 0
+      this.#detailScrollTarget =
+        panel?.kind === 'preview' && panel.matchOffset !== undefined
+          ? [
+              ...privateWrappedUpdate(
+                model.preview?.text.slice(0, panel.matchOffset) ?? '',
+                Math.max(1, Number(this.#detail.width) - 4),
+              ),
+            ].length
+          : panel?.kind === 'detail' || panel?.kind === 'preview'
+            ? panel.scroll
+            : 0
       for (const parent of [this.#list, this.#detail])
         for (const child of parent.getChildren()) child.destroyRecursively()
       if (panel) {
         // The bounded literal projection also serves compact accessible text and
         // all navigation overlays. OpenTUI owns the pane geometry and scrolling.
-        if (panel.kind === 'detail' && model.record) {
+        if (panel.kind === 'preview') {
+          this.#capturedContent(this.#detail)
+          if (model.record && !model.record.file)
+            this.#parts(
+              this.#detail,
+              privateDashboardDetailParts(model, model.record, true, false),
+              model.record.publisher ?? 'root',
+            )
+        } else if (panel.kind === 'detail' && model.record) {
           this.#parts(
             this.#detail,
             privateDashboardDetailParts(model, model.record),
@@ -602,16 +660,20 @@ export class PrivateOpenTuiDashboard {
             this.#reveal = `record-${index}`
         }
         this.#selection = `${model.surface}:${model.record?.key}`
-        this.#parts(this.#detail, detail, model.record?.publisher ?? 'root')
+        const refs = privateDashboardReferences(model.record)
+        if (model.previewState && refs.length === 1 && refs[0]?.kind === 'artifact') {
+          this.#capturedContent(this.#detail)
+          this.#parts(this.#detail, detail, model.record?.publisher ?? 'root')
+        } else this.#parts(this.#detail, detail, model.record?.publisher ?? 'root')
         if (model.feedback) this.#text(this.#detail, model.feedback, 'muted')
       }
     }
     const exit = `q ${settled ? 'close' : 'inline'} · Ctrl-C ${settled ? 'close' : 'stop'}`
     this.#footer.content =
-      panel?.kind === 'filter'
+      panel?.kind === 'filter' || panel?.kind === 'preview-search'
         ? `Enter apply · Esc cancel · Ctrl-D leave · Ctrl-C ${settled ? 'close' : 'stop'}`
         : panel
-          ? `${exit} · Esc back · ${panel.kind === 'references' ? 'Enter open · ' : ''}↑↓ scroll`
+          ? `${exit} · Esc back · ${panel.kind === 'references' ? 'Enter open · ' : panel.kind === 'preview' ? '/ excerpt search · ' : ''}↑↓ scroll`
           : width < 90
             ? `${exit} · ! cause · Tab · ↑↓ · Enter · r refs · d diag · ? help`
             : `${exit} · ! cause · Tab views · ↑↓ select · Enter detail · r references · d diagnostics · ? help`
@@ -623,7 +685,12 @@ export class PrivateOpenTuiDashboard {
     return {
       text: this.#capture(color),
       references: privateDashboardReferences(model.record),
-      scroll: panel ? scroll : Math.floor(this.#list.scrollTop),
+      scroll:
+        panel?.kind === 'preview' || panel?.kind === 'detail'
+          ? Math.floor(this.#detail.scrollTop)
+          : panel
+            ? scroll
+            : Math.floor(this.#list.scrollTop),
     }
   }
   close(): void {

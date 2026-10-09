@@ -6,6 +6,7 @@ import {
   privateCliSecondary,
   privateCliStyleEnabled,
 } from './cli-presentation.js'
+import type { PrivateArtifactCapture } from './cli-run-model.js'
 import {
   type PrivateAttention,
   type PrivateCallEvent,
@@ -21,6 +22,10 @@ import {
   privateTruncateUpdate,
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-user-updates.js'
+import { PrivateWebDisplay } from './cli-web.js'
+import { type PrivateWebAssets, privateWebAssets } from './cli-web-assets.js'
+import { PrivateWebInput } from './cli-web-input.js'
+import { PrivateWebProjection } from './cli-web-snapshot.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
@@ -35,6 +40,7 @@ export interface PrivateProgressLifetime {
   readonly presentationDeadline?: number | undefined
   readonly clock?: () => number
   readonly rows?: () => number
+  readonly webAssets?: PrivateWebAssets
 }
 
 const SCREEN_ENTER = '\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J'
@@ -48,6 +54,10 @@ export class PrivateCliProgress {
   #dashboard: PrivateDashboardInput | undefined
   #nativeDashboard: PrivateOpenTuiDashboard | undefined
   #dashboardCore: Awaited<ReturnType<typeof privatePrepareOpenTui>> | undefined
+  #web: PrivateWebDisplay | undefined
+  #webInput: PrivateWebInput | undefined
+  #webClose: Promise<void> | undefined
+  #webAdvertised = false
   #screen: 'ordinary' | 'entering' | 'live' | 'closing' = 'ordinary'
   #workspaceUsed = false
   #screenEntered = false
@@ -58,6 +68,7 @@ export class PrivateCliProgress {
   #exitMessage: string | undefined
   #deadlineTimer: ReturnType<typeof setTimeout> | undefined
   #hostEntry = 0
+  #hostMutation = false
   #paintedRows = 0
   #reportedViews = false
   #callTranscriptStopped = false
@@ -92,6 +103,7 @@ export class PrivateCliProgress {
     this.model,
   )
   readonly #abort = () => {
+    if (this.#web) void this.#closeWeb()
     if (this.#settled) {
       this.#dashboard?.leave()
       return
@@ -118,7 +130,9 @@ export class PrivateCliProgress {
     readonly lifetime: PrivateProgressLifetime = {},
   ) {
     this.model.workspace.startedAt = this.#now()
-    this.model.onChange = () => this.#flowChanged()
+    this.model.onChange = () => {
+      if (!this.#hostMutation) this.#flowChanged()
+    }
   }
 
   get animation(): boolean {
@@ -128,10 +142,18 @@ export class PrivateCliProgress {
     return this.#workspaceUsed
   }
   get workspaceActive(): boolean {
-    return this.#screen === 'entering' || this.#screen === 'live'
+    return this.#screen === 'entering' || this.#screen === 'live' || this.#web?.active === true
   }
   #now(): number {
     return (this.lifetime.clock ?? privatePresentationNow)()
+  }
+  #observeHost(work: () => void): void {
+    this.#hostMutation = true
+    try {
+      work()
+    } finally {
+      this.#hostMutation = false
+    }
   }
   #attach(): void {
     if (this.#attached) return
@@ -152,12 +174,122 @@ export class PrivateCliProgress {
     )
       this.#dashboardCore ??= await privatePrepareOpenTui()
   }
+  /** Bind/asset readiness precedes dispatch; no link or Run data is exposed yet. */
+  prepareWeb(): void {
+    if (!this.enabled || this.#web || this.#left) return
+    const projection = new PrivateWebProjection(this.model)
+    this.#web = PrivateWebDisplay.prepare({
+      assets: this.lifetime.webAssets ?? privateWebAssets,
+      projection,
+      subscribe: (listener) => this.model.subscribeSemantic(listener),
+      onFailure: () => {
+        this.#exitMessage = 'Web display unavailable; work continues in ordinary display.\n'
+        this.model.setIncomplete('Browser observation stopped; inspect the final result')
+        this.model.addAttention(
+          'Jig',
+          'Browser observation could not be maintained. Inspect the final result for the execution outcome.',
+          3,
+          false,
+        )
+      },
+      onClose: () => {
+        this.#left = true
+        this.#webInput?.restore()
+        clearTimeout(this.#deadlineTimer)
+        this.#deadlineTimer = undefined
+        const message =
+          this.#exitMessage ??
+          (this.#webAdvertised &&
+          !this.#settled &&
+          !this.#cancelled &&
+          !this.#closingCommand &&
+          !this.signal?.aborted
+            ? 'Web inspection closed; work continues in ordinary display.\n'
+            : undefined)
+        this.#exitMessage = undefined
+        if (message && !this.#outputFailed) this.notice(message)
+        this.#commitCauses()
+      },
+    })
+  }
+  async #closeWeb(): Promise<void> {
+    const web = this.#web
+    this.#webInput?.restore()
+    if (!web) return
+    this.#webClose ??= web.close().finally(() => {
+      if (this.#web === web) this.#web = undefined
+    })
+    await this.#webClose
+  }
   async configureDisplay(
-    display: 'auto' | 'plain' | 'dashboard',
+    display: 'auto' | 'plain' | 'dashboard' | 'web',
     usableInput: boolean,
     input = process.stdin,
   ): Promise<void> {
     this.#plain = display === 'plain'
+    if (display === 'web') {
+      if (this.#left) return
+      if (!this.enabled) {
+        this.#plain = true
+        return
+      }
+      if (!this.#withinCommandDeadline() || this.signal?.aborted) {
+        await this.#closeWeb()
+        return
+      }
+      try {
+        this.prepareWeb()
+        const web = this.#web!
+        await this.#drainWrites()
+        if (this.#left || this.signal?.aborted || !this.#withinCommandDeadline()) {
+          await this.#closeWeb()
+          return
+        }
+        this.#requestErase()
+        await this.#drainWrites()
+        if (this.#left || this.signal?.aborted || !this.#withinCommandDeadline()) {
+          await this.#closeWeb()
+          return
+        }
+        web.activate()
+        if (!web.active) {
+          await this.#closeWeb()
+          throw new Error('Web display activation failed')
+        }
+        this.#workspaceUsed = true
+        this.#attach()
+        this.#webInput = new PrivateWebInput(
+          input,
+          () => {
+            void this.#closeWeb()
+          },
+          () => process.emit('SIGINT'),
+        )
+        if (this.#settled) this.#webInput.markSettled()
+        const controls = usableInput && this.#webInput.start()
+        // Capability publication bypasses all model journals and diagnostics.
+        const text = `Web display: ${web.launchUrl}\n${controls ? 'q or Escape closes inspection; Ctrl-C cancels running work.\n' : 'Use Close inspection in the browser; terminal signals retain normal cancellation.\n'}`
+        this.#enqueue({
+          bytes: Buffer.byteLength(text),
+          transient: false,
+          dispatch: async () => {
+            if (!web.active || this.#left || this.signal?.aborted || !this.#withinCommandDeadline())
+              return
+            await this.write(text)
+            if (web.active && !this.#left && !this.signal?.aborted && this.#withinCommandDeadline())
+              this.#webAdvertised = true
+          },
+        })
+        await this.#drainWrites()
+        this.#armDeadline()
+      } catch (error) {
+        await this.#closeWeb().catch(() => undefined)
+        if (this.#outputFailed) throw error
+        this.#plain = true
+        this.notice('Web display unavailable; work continues in ordinary display.\n')
+      }
+      return
+    }
     if (display === 'dashboard') {
       if (this.#left) return
       if (
@@ -258,12 +390,18 @@ export class PrivateCliProgress {
     }
   }
   #commitCauses(): void {
-    if (this.#committingCauses || this.#outputFailed || this.#screen !== 'ordinary') return
+    if (
+      this.#committingCauses ||
+      this.#outputFailed ||
+      this.workspaceActive ||
+      this.#screen !== 'ordinary'
+    )
+      return
     if (!this.model.attention.some((cause) => !cause.committed)) return
     this.#committingCauses = true
     this.#causeTask = Promise.resolve()
       .then(async () => {
-        while (this.#screen === 'ordinary') {
+        while (this.#screen === 'ordinary' && !this.workspaceActive) {
           const causes = this.model.attention.filter((cause) => !cause.committed)
           if (!causes.length) break
           let batch = '',
@@ -323,13 +461,14 @@ export class PrivateCliProgress {
     clearTimeout(this.#deadlineTimer)
     this.#deadlineTimer = undefined
     const deadline = this.lifetime.presentationDeadline
-    if (deadline === undefined || !this.#dashboard?.active) return
+    if (deadline === undefined || !this.workspaceActive) return
     const remaining = deadline - this.#now()
     if (remaining <= 0) {
       this.#exitMessage = this.#settled
         ? 'Results settled; command lifetime limits dashboard inspection. Inspect the result and any written output packet.\n'
         : 'Command lifetime limits the dashboard; work continues in ordinary display.\n'
-      this.#dashboard.leave()
+      this.#dashboard?.leave()
+      if (this.#web) void this.#closeWeb()
       return
     }
     this.#deadlineTimer = setTimeout(
@@ -338,6 +477,7 @@ export class PrivateCliProgress {
           ? 'Results settled; command lifetime limits dashboard inspection. Inspect the result and any written output packet.\n'
           : 'Command lifetime limits the dashboard; work continues in ordinary display.\n'
         this.#dashboard?.leave()
+        if (this.#web) void this.#closeWeb()
       },
       Math.min(remaining, 2_147_483_647),
     )
@@ -352,37 +492,66 @@ export class PrivateCliProgress {
     packet: PrivateSavedResult,
     usableInput: boolean,
     input = process.stdin,
+    display: 'dashboard' | 'web' = 'dashboard',
   ): Promise<void> {
     this.#settled = true
-    this.model.workspace.recorded = true
-    this.model.configureWorkspace({ target: packet.directory, startedAt: this.#now() })
-    this.model.context =
-      'Recorded local claims; file consistency does not authenticate this report. Live views and history were not retained.'
-    const r = packet.record
-    const delivery = r.delivery as Record<string, JsonValue> | undefined
-    this.model.setWorkspaceFacts({
-      execution: String(r.status),
-      application: JSON.stringify(r.outcome ?? null),
-      cleanup: r.cleanup ? 'reported unconfirmed' : 'no failure recorded',
-      delivery: String(delivery?.status ?? 'not recorded'),
-      completeness: packet.complete
-        ? 'files match the recorded manifest'
-        : 'file verification incomplete',
+    const previews = new Map(packet.files.map((file) => [file.path, packet.preview(file.path)]))
+    this.model.transaction(() => {
+      this.model.configureWorkspace({
+        target: display === 'web' ? 'Saved result packet' : packet.directory,
+        startedAt: this.#now(),
+        recorded: true,
+      })
+      this.model.setContext(
+        'Recorded local claims; file consistency does not authenticate this report. Live views and history were not retained.',
+      )
+      const r = packet.record
+      const delivery = r.delivery as Record<string, JsonValue> | undefined
+      this.model.setWorkspaceFacts({
+        execution: String(r.status),
+        application: JSON.stringify(r.outcome ?? null),
+        cleanup: r.cleanup ? 'reported unconfirmed' : 'no failure recorded',
+        delivery: String(delivery?.status ?? 'not recorded'),
+        completeness: packet.complete
+          ? 'files match the recorded manifest'
+          : 'file verification incomplete',
+      })
+      for (const view of privateSavedResultViews(packet))
+        this.model.acceptView('saved-result', view)
+      this.model.select(JSON.stringify(['saved-result', 'recorded-result']))
+      this.model.setArtifacts(
+        (publisher, ref) =>
+          publisher === 'saved-result' &&
+          ref.attachment === 'packet' &&
+          packet.files.some((file) => file.available && file.path === ref.path)
+            ? ref.path
+            : undefined,
+        async (path) => previews.get(path),
+      )
+      this.model.setArtifactCapture({
+        generation: 'saved-capture',
+        sourcePublisher: 'saved-result',
+        provenance: 'recorded-capture',
+        phase: 'ready',
+        files: packet.files.map((file) => ({
+          path: file.path,
+          bytes: file.bytes,
+          state: !file.available
+            ? 'unavailable'
+            : previews.get(file.path) === undefined
+              ? 'non-text'
+              : file.bytes === 0
+                ? 'empty'
+                : 'text',
+          clipped: previews.get(file.path)?.clipped ?? false,
+        })),
+      })
+      this.model.workspace.now = this.#now()
+      this.model.setWorkspacePhase('settled')
     })
-    for (const view of privateSavedResultViews(packet)) this.model.acceptView('saved-result', view)
-    this.model.select(JSON.stringify(['saved-result', 'recorded-result']))
-    this.model.setArtifacts(
-      (publisher, ref) =>
-        publisher === 'saved-result' &&
-        ref.attachment === 'packet' &&
-        packet.files.some((file) => file.available && file.path === ref.path)
-          ? ref.path
-          : undefined,
-      async (path) => packet.preview(path),
-    )
-    this.model.workspace.now = this.#now()
-    this.model.setWorkspacePhase('settled')
-    await this.configureDisplay('dashboard', usableInput, input)
+    if (display === 'web') this.prepareWeb()
+    await this.configureDisplay(display, usableInput, input)
+    if (this.#web?.active) await this.#web.closed()
     if (this.#dashboard?.active) {
       this.#armDeadline()
       this.#write()
@@ -447,13 +616,24 @@ export class PrivateCliProgress {
 
   /** Input restoration is synchronous; terminal restoration remains in the one writer. */
   async closeWorkspace(): Promise<void> {
+    let failure: unknown
+    try {
+      await this.#closeWeb()
+    } catch (error) {
+      failure = error
+    }
     this.#dashboard?.leave()
     if (this.#screen !== 'ordinary') this.#leaveWorkspace()
-    await this.#workspaceClose
+    try {
+      await this.#workspaceClose
+    } catch (error) {
+      failure ??= error
+    }
+    if (failure !== undefined) throw failure
     if (this.#outputFailed) throw this.#outputFailure
   }
   #unavailable(text: string): void {
-    this.model.incomplete = 'Live observation is incomplete; inspect the final result'
+    this.model.setIncomplete('Live observation is incomplete; inspect the final result')
     if (this.#unavailableReported) return
     this.#unavailableReported = true
     this.model.addAttention('Jig', text, 3, false)
@@ -467,46 +647,60 @@ export class PrivateCliProgress {
         ref: Extract<Reference, { kind: 'artifact' }>,
       ) => string | undefined
       preview: (path: string) => Promise<PrivatePreview | undefined>
+      capture?: PrivateArtifactCapture
     },
   ): Promise<void> {
     this.#settled = true
     this.#dashboard?.markSettled()
-    this.stopUpdates()
+    this.#webInput?.markSettled()
     const r = record as Record<string, JsonValue>
     const result = r.result as Record<string, JsonValue> | undefined
     const delivery = r.delivery as Record<string, JsonValue> | undefined
-    this.model.setWorkspaceFacts({
-      execution: String(r.status),
-      application: JSON.stringify(result?.outcome ?? r.outcome ?? null),
-      cleanup: r.cleanup ? 'unconfirmed' : 'complete',
-      delivery: String(delivery?.status ?? 'not requested'),
-      completeness:
-        this.model.incomplete ??
-        (Object.values(this.model.journalOmitted).some((count) => count > 0)
-          ? 'Activity history omitted'
-          : 'observation ended'),
+    this.model.transaction(() => {
+      this.stopUpdates()
+      this.model.setWorkspaceFacts({
+        execution: String(r.status),
+        application: JSON.stringify(result?.outcome ?? r.outcome ?? null),
+        cleanup: r.cleanup ? 'unconfirmed' : 'complete',
+        delivery: String(delivery?.status ?? 'not requested'),
+        completeness:
+          this.model.incomplete ??
+          (Object.values(this.model.journalOmitted).some((count) => count > 0)
+            ? 'Activity history omitted'
+            : 'observation ended'),
+      })
+      this.model.setContext(
+        `Settled · execution: ${String(r.status)} · application outcome: ${JSON.stringify(result?.outcome ?? r.outcome ?? null)} · cleanup: ${r.cleanup ? 'unconfirmed' : 'settled'} · delivery: ${String(delivery?.status ?? 'not requested')}`,
+      )
+      this.model.workspace.now = this.#now()
+      this.model.setWorkspacePhase('settled')
+      const causes = this.#workspaceUsed
+        ? [
+            ...(r.status !== 'succeeded' && typeof r.message === 'string' ? [r.message] : []),
+            ...(r.cleanup
+              ? ['Cleanup could not be confirmed; inspect effects before starting new work.']
+              : []),
+            ...(delivery && delivery.status !== 'written'
+              ? [
+                  'Result packet delivery was not confirmed; inspect the destination before starting new work.',
+                ]
+              : []),
+          ]
+        : []
+      for (const cause of causes) {
+        this.model.addAttention('Jig', cause, 4, false)
+      }
+      if (artifact) {
+        this.model.setArtifacts(artifact.resolve, artifact.preview)
+        if (artifact.capture) this.model.setArtifactCapture(artifact.capture)
+      }
     })
-    this.model.context = `Settled · execution: ${String(r.status)} · application outcome: ${JSON.stringify(result?.outcome ?? r.outcome ?? null)} · cleanup: ${r.cleanup ? 'unconfirmed' : 'settled'} · delivery: ${String(delivery?.status ?? 'not requested')}`
-    this.model.workspace.now = this.#now()
-    this.model.setWorkspacePhase('settled')
-    const causes = this.#workspaceUsed
-      ? [
-          ...(r.status !== 'succeeded' && typeof r.message === 'string' ? [r.message] : []),
-          ...(r.cleanup
-            ? ['Cleanup could not be confirmed; inspect effects before starting new work.']
-            : []),
-          ...(delivery && delivery.status !== 'written'
-            ? [
-                'Result packet delivery was not confirmed; inspect the destination before starting new work.',
-              ]
-            : []),
-        ]
-      : []
-    await this.flush()
-    for (const cause of causes) {
-      this.model.addAttention('Jig', cause, 4, false)
+    this.#web?.refreshNow()
+    if (!this.#cancelled && this.#web?.active) {
+      this.#armDeadline()
+      await this.flush()
+      await this.#web.closed()
     }
-    if (artifact) this.model.setArtifacts(artifact.resolve, artifact.preview)
     if (!this.#cancelled && this.#dashboard?.active) {
       const now = this.#now()
       this.model.workspace.now = now
@@ -701,6 +895,7 @@ export class PrivateCliProgress {
   #flowChanged(plain?: string, project: () => string | undefined = () => plain): boolean {
     this.#commitCauses()
     if (this.workspaceActive) plain = undefined
+    if (this.#web?.active) return true
     if (this.#screen === 'entering' || this.#screen === 'closing' || this.#committingCauses)
       return true
     if (!this.enabled) return plain === undefined ? true : this.#flowNotice(plain)
@@ -739,7 +934,7 @@ export class PrivateCliProgress {
     this.#stage = value
     this.#started = performance.now()
     this.model.workspace.stageStartedAt = this.#now()
-    if (this.workspaceActive) this.model.setHostStage(value, `stage:${++this.#hostEntry}`)
+    this.#observeHost(() => this.model.setHostStage(value, `stage:${++this.#hostEntry}`))
     if (this.signal?.aborted) this.#abort()
     else this.#write()
   }
@@ -760,9 +955,12 @@ export class PrivateCliProgress {
 
   /** A complete notice preserves the known active stage and its heartbeat. */
   notice(value: string, importance: 'info' | 'warning' | 'error' = 'info'): void {
-    if (this.workspaceActive) {
+    this.#observeHost(() => {
       this.model.addHostEntry(`notice:${++this.#hostEntry}`, value, importance)
+    })
+    if (this.workspaceActive) {
       if (importance !== 'info') this.model.addAttention('Jig', value, 4, false)
+      this.#flowChanged()
       return
     }
     value = this.hostFormat(value)
@@ -777,9 +975,14 @@ export class PrivateCliProgress {
     if (this.animation) this.#write()
   }
 
-  diagnostic(text: string, operations: readonly string[] = [], clipped = false): void {
+  diagnostic(
+    text: string,
+    operations: readonly string[] = [],
+    clipped = false,
+    admission: import('./cli-run-model.js').PrivateAdmission = { provenance: 'host-observed' },
+  ): void {
     if (this.workspaceActive) {
-      this.model.addDiagnostic(text, operations, clipped)
+      this.model.addDiagnostic(text, operations, clipped, admission)
       return
     }
     this.#flowNotice(text, false)
@@ -791,10 +994,13 @@ export class PrivateCliProgress {
       return
     }
     if (!this.#stage) return
+    const elapsed = timing ? ` (${((performance.now() - this.#started) / 1000).toFixed(1)}s)` : ''
+    this.#observeHost(() =>
+      this.model.setHostStage(`${this.#stage} — complete${elapsed}`, `stage:${this.#hostEntry}`),
+    )
     if (this.workspaceActive) {
-      const elapsed = timing ? ` (${((performance.now() - this.#started) / 1000).toFixed(1)}s)` : ''
-      this.model.setHostStage(`${this.#stage} — complete${elapsed}`, `stage:${this.#hostEntry}`)
       this.#stage = ''
+      this.#flowChanged()
       return
     }
     this.#requestErase()
@@ -806,9 +1012,13 @@ export class PrivateCliProgress {
     this.#stage = ''
   }
 
-  note(value: string): void {
+  note(value: string, retain = true): void {
+    if (retain)
+      this.#observeHost(() => {
+        this.model.addHostEntry(`note:${++this.#hostEntry}`, value)
+      })
     if (this.workspaceActive) {
-      this.model.addHostEntry(`note:${++this.#hostEntry}`, value)
+      this.#flowChanged()
       return
     }
     this.pause()
@@ -817,6 +1027,7 @@ export class PrivateCliProgress {
 
   close(): void {
     this.#closingCommand = true
+    void this.#closeWeb().catch(() => undefined)
     this.#dashboard?.leave()
     this.stopUpdates()
     this.pause()
@@ -833,6 +1044,7 @@ export class PrivateCliProgress {
   }
 
   #write(): void {
+    if (this.#web?.active) return
     if (this.#screen === 'entering' || this.#screen === 'closing' || this.#committingCauses) return
     if (!this.#stage && !this.#dashboard?.active) return
     if (!this.animation && !this.#dashboard?.active) {
@@ -857,6 +1069,7 @@ export class PrivateCliProgress {
   }
 
   #paint(): void | Promise<void> {
+    if (this.#web?.active) return
     this.#lastRefresh = performance.now()
     if (!this.#stage && !this.#dashboard?.active) return
     const columns = Math.max(1, Math.min(4096, this.columns()))

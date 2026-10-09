@@ -47,7 +47,7 @@ obsolete repaints are superseded. Host stopping/terminal presentation fences lat
 Flow updates. Exact bounds, separate allocation policy and output failure remain
 governed by that profile and [channels](channels.md).
 
-Operator-only `--display auto|plain|dashboard` controls Run presentation. Auto
+Operator-only `--display auto|plain|dashboard|web` controls Run presentation. Auto
 uses a bounded noninteractive inline region on suitable stderr; it borrows no
 input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
 use nonanimated summaries. Explicit dashboard requires terminal stdin and stderr,
@@ -58,6 +58,16 @@ remain ordinary diagnostics. Entry does not depend on application views or updat
 with NO_COLOR keeps screen controls without color. JSON and
 effective reception retain their exact output and disable automatic Flow observation.
 No project entrypoint can choose display mode.
+
+Explicit web requires terminal stderr, independently of stdin, stdout, TERM and
+color support. Otherwise use ordinary plain presentation without exposing a
+private launch link in redirected output. It prepares its local listener before
+execution, then advertises a browser link only after trusted root dispatch and a
+readable initial snapshot. It never automatically launches a browser. JSON and
+effective reception take precedence before preparing a listener. Redirected
+Run stdout retains exact final JSON while terminal stderr can provide web
+inspection. The [web display contract](web-display.md) owns local access,
+transport bounds, browser navigation and presentation lifetime.
 
 The shell presents host execution, cleanup, delivery and complete known safe
 causes separately from attributed domain reports. Overview is the actual observed
@@ -74,7 +84,16 @@ The explicit workspace has stable Activity, Overview and attributed domain tabs,
 labelled collection cards, collapsed reports, record details, local filter/sort,
 scrolling and explicitly selected references. All valid block types are reachable
 in supplied order. Wide layouts project selected literal details beside the list;
-selection alone never activates a reference. The information hierarchy separates
+selection alone never navigates a record/call reference. A selected entry with
+exactly one distinct typed artifact reference, considering all cells and supplied
+details, may peek its available immutable text read-only. Entries with multiple
+distinct references require explicit selection; field labels and project names
+cannot choose one. The host's Delivered files surface remains reachable without
+an application view or automatic update reception. Explicit file selection shows
+content first, with size, provenance, availability and clipping as secondary
+metadata. Empty, non-text, unavailable and clipped text have distinct states.
+Expansion adds space, scrolling and literal search of the retained excerpt;
+it never claims to search uncaptured bytes. The information hierarchy separates
 list identity and brief observations, selected additional context, and explicitly
 expanded evidence or invocation identity. Lists preserve declared column order;
 native collection cards show the first three fields and put remaining fields
@@ -467,11 +486,11 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Redirected output or `--json` is JSON, never styling.
 
-`jig inspect --result <directory> [--display plain|dashboard] [--json]` reads a
+`jig inspect --result <directory> [--display plain|dashboard|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,
 reading operator configuration or credentials, acquiring execution authority,
 or contacting a provider. It rejects target and verification arguments. Plain
-is the default; JSON or redirected stdout takes precedence over dashboard.
+is the default; JSON or redirected stdout takes precedence over either inspector.
 Saved inspection displays fixed Recorded result, Files and Diagnostics views.
 Recorded result separates bounded selectable fields, including ordinary output
 members, from their expanded literal values. No application field name receives
@@ -490,7 +509,7 @@ applied. Refuse links, multiple-link files, special files, traversal, duplicate
 manifest paths and out-of-profile sizes. Capture admits at most 16 MiB of JSON
 value plus the publisher's single framing LF, 64 manifest files and 16 MiB
 aggregate file bytes, within ten seconds. File previews use already verified
-immutable captures, with at most one 64 KiB UTF-8 preview; they never reopen a
+immutable captures, with at most one active 64 KiB UTF-8 preview; they never reopen a
 mutable path. One owner releases descriptors and captured buffers on every exit.
 Partial file verification preserves the valid report and already verified
 captures while disclosing unavailable evidence. It never invents replacement JSON.
@@ -504,6 +523,10 @@ record. Terminal text is escaped literal data. Saved inspection remains open unt
 subject to explicit inherited presentation constraints and input/output failure
 or external interruption. It acquires no execution lifetime and has no built-in
 idle or absolute expiry on any supported host.
+Web preparation/activation follows valid report decoding and bounded capture;
+invalid reports stay plain. Partial capture may open with a valid report and
+explicit unavailable files. Close inspection releases presentation globally and
+prints the ordinary recorded report; browser disconnection does not close it.
 
 The CLI's shared presentation and progress modules own human formatting;
 command branches supply facts. Installed-launcher errors follow the same

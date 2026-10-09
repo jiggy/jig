@@ -140,6 +140,7 @@ export class PrivateCliUserUpdates {
               value.severity === 'error' ? 2 : 1,
               false,
               this.color(),
+              { provenance: 'accepted-source', publisher },
             )
           ) {
             // The reserved host explanation is committed independently of a clipped sticky cause.

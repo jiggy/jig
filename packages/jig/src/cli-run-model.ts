@@ -1,6 +1,7 @@
 import {
   type Block,
   type Collection,
+  type DetailBlock,
   type NoticeSeverity,
   type Reference,
   type UserUpdate,
@@ -45,7 +46,26 @@ type Source = {
   landing?: string
   ended?: string
 }
+export type PrivateAdmission =
+  | { provenance: 'accepted-source'; publisher: string; operationId?: string }
+  | { provenance: 'host-observed'; emitter?: string; publisher?: string; operationId?: string }
+  | { provenance: 'recorded-claim' }
+export type PrivateArtifactFile = Readonly<{
+  path: string
+  bytes: number
+  state: 'text' | 'empty' | 'non-text' | 'unavailable'
+  clipped: boolean
+}>
+export type PrivateArtifactCapture = Readonly<{
+  generation: string
+  sourcePublisher: string
+  provenance: 'verified-delivery' | 'recorded-capture'
+  phase: 'pending' | 'ready' | 'unavailable'
+  files: readonly PrivateArtifactFile[]
+}>
 export type PrivateAttention = {
+  readonly admissionId: number
+  readonly admission: PrivateAdmission
   source: string
   text: string
   priority: number
@@ -57,6 +77,40 @@ export type PrivatePreview = { text: string; bytes: number; clipped: boolean }
 const key = (publisher: string, id: string) => JSON.stringify([publisher, id])
 export const privateRowRecordKey = (collection: string, row?: string) =>
   JSON.stringify(['collection', collection, row ?? null])
+export const privateReferenceKey = (ref: Reference): string =>
+  JSON.stringify(
+    ref.kind === 'call'
+      ? ['call', ref.operationId]
+      : ref.kind === 'record'
+        ? ['record', ref.viewId, ref.collectionId, ref.rowId]
+        : ['artifact', ref.attachment, ref.path],
+  )
+/** Includes hidden cells and supplied details, preserving exact typed identities. */
+export function privateRecordReferences(record: PrivateWorkspaceRecord | undefined): Reference[] {
+  const result: Reference[] = [],
+    seen = new Set<string>()
+  const add = (ref: Reference) => {
+    const identity = privateReferenceKey(ref)
+    if (!seen.has(identity)) {
+      seen.add(identity)
+      result.push(ref)
+    }
+  }
+  const block = (value: DetailBlock) => {
+    if (value.kind === 'report') for (const ref of value.references ?? []) add(ref)
+    if (value.kind === 'facts')
+      for (const item of value.items)
+        if (item.value !== null && typeof item.value === 'object') add(item.value)
+  }
+  if (record?.block) block(record.block)
+  if (record?.row) {
+    for (const value of Object.values(record.row.cells))
+      if (value !== null && typeof value === 'object') add(value)
+    for (const detail of record.row.details ?? []) block(detail)
+  }
+  if (record?.activity?.operationId) add({ kind: 'call', operationId: record.activity.operationId })
+  return result
+}
 function bound(value: string, maximum: number): string {
   const scalars = [...value]
   return scalars.length <= maximum
@@ -88,7 +142,8 @@ export type PrivateJournalEntry = {
   key: string
   source: string
   publisher?: string | undefined
-  importance: NoticeSeverity
+  importance: NoticeSeverity | 'unknown'
+  admission: PrivateAdmission
   text: string
   bytes: number
   sequence: number
@@ -117,6 +172,7 @@ export type PrivateWorkspaceRecord = {
     | 'journal'
     | 'setup'
     | 'call'
+    | 'file'
   signature: string
   publisher?: string | undefined
   text?: string
@@ -128,6 +184,7 @@ export type PrivateWorkspaceRecord = {
   journal?: PrivateJournalEntry
   journalGroup?: readonly PrivateJournalEntry[]
   call?: PrivateCallNode
+  file?: PrivateArtifactFile
   depth?: number
   hidden?: number
   issues?: number
@@ -190,6 +247,11 @@ export class PrivateRunModel {
   #locals = new Map<string, PrivateSurfaceState>()
   #treeExpanded = new Set<string>()
   #treeChoices = new Set<string>()
+  #semanticGeneration = 0
+  #semanticDepth = 0
+  #semanticDirty = false
+  #semanticListeners = new Set<(generation: number) => void>()
+  #attentionSequence = 0
   #journalSequence = 0
   #journalBytes = { flow: 0, host: 0, diagnostic: 0 }
   readonly journal: PrivateJournalEntry[] = []
@@ -205,6 +267,16 @@ export class PrivateRunModel {
     | undefined
   #preview: ((path: string) => Promise<PrivatePreview | undefined>) | undefined
   #previewBusy = false
+  #captureSequence = 0
+  #capture: PrivateArtifactCapture = {
+    generation: 'pending',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'pending',
+    files: [],
+  }
+  #peekSignature = ''
+  previewState: PrivateArtifactFile['state'] | 'pending' | 'loading' | undefined
   #closed = false
   #generation = 0
   omissions = 0
@@ -217,6 +289,60 @@ export class PrivateRunModel {
   selectionVersion = 0
   onChange: () => void = () => {}
 
+  get semanticGeneration(): number {
+    return this.#semanticGeneration
+  }
+  subscribeSemantic(listener: (generation: number) => void): () => void {
+    if (this.#closed) return () => {}
+    this.#semanticListeners.add(listener)
+    return () => {
+      this.#semanticListeners.delete(listener)
+    }
+  }
+  transaction<T>(mutation: () => T): T {
+    this.#semanticDepth++
+    try {
+      return mutation()
+    } finally {
+      this.#semanticDepth--
+      if (!this.#semanticDepth && this.#semanticDirty) {
+        this.#semanticDirty = false
+        const generation = ++this.#semanticGeneration
+        for (const listener of this.#semanticListeners) listener(generation)
+      }
+    }
+  }
+  #semantic(): void {
+    this.#semanticDirty = true
+    if (!this.#semanticDepth) this.transaction(() => {})
+  }
+  setContext(text: string): void {
+    if (text === this.context) return
+    this.context = text
+    this.#semantic()
+    this.onChange()
+  }
+  setIncomplete(text: string | undefined): void {
+    if (text === this.incomplete) return
+    this.incomplete = text
+    this.#semantic()
+    this.onChange()
+  }
+  get artifactCapture(): PrivateArtifactCapture {
+    return this.#capture
+  }
+  sourceParent(publisher: string): string | undefined {
+    return this.#parents.get(publisher)
+  }
+  peekSourceLabel(publisher: string): string {
+    if (this.workspace.recorded) return 'Recorded'
+    if (publisher === 'root') return 'Flow'
+    const parent = this.#parents.get(publisher),
+      label = this.#publisherLabels.get(publisher)
+    return parent === undefined
+      ? `Flow (separate invocation${label ? ` ${label}` : ''})`
+      : `Flow / ${this.calls.get(parent)?.slot ?? 'separate invocation'}${label ? ` (${label})` : ''}`
+  }
   get stopped(): boolean {
     return this.#stopped
   }
@@ -250,12 +376,18 @@ export class PrivateRunModel {
   get attentionBytes(): number {
     return this.#attentionBytes
   }
-  configureWorkspace(options: { target: string; limitMs?: number; startedAt?: number }): void {
+  configureWorkspace(options: {
+    target: string
+    limitMs?: number
+    startedAt?: number
+    recorded?: boolean
+  }): void {
     this.workspace = {
       ...this.workspace,
       ...options,
       startedAt: options.startedAt ?? privatePresentationNow(),
     }
+    this.#semantic()
     this.onChange()
   }
   get hostFactsText(): string {
@@ -266,6 +398,7 @@ export class PrivateRunModel {
   }
   setWorkspaceFacts(facts: PrivateWorkspaceFacts): void {
     this.workspace.facts = facts
+    this.#semantic()
     this.onChange()
   }
   setWorkspacePhase(phase: 'live' | 'settled'): void {
@@ -281,6 +414,7 @@ export class PrivateRunModel {
         this.local.record = records.find((record) => record.row)?.key ?? records[0]?.key
       }
     }
+    this.#semantic()
     this.onChange()
   }
   setHostStage(text: string, id = 'stage'): void {
@@ -290,14 +424,26 @@ export class PrivateRunModel {
   }
   addHostEntry(id: string, text: string, importance: NoticeSeverity = 'info'): boolean {
     return this.#journal(
-      { kind: 'host', key: `host:${id}`, source: 'Jig', text, importance },
+      {
+        kind: 'host',
+        key: `host:${id}`,
+        source: 'Jig',
+        text,
+        importance,
+        admission: { provenance: this.workspace.recorded ? 'recorded-claim' : 'host-observed' },
+      },
       Buffer.byteLength(privateUpdateText(text)),
       64,
       131072,
     )
   }
-  addDiagnostic(text: string, operationsPath: readonly string[] = [], clipped = false): boolean {
-    const identity = JSON.stringify(operationsPath)
+  addDiagnostic(
+    text: string,
+    operationsPath: readonly string[] = [],
+    clipped = false,
+    admission: PrivateAdmission = { provenance: 'host-observed' },
+  ): boolean {
+    const identity = JSON.stringify([admission, operationsPath])
     const old = this.journal.find(
       (e) => e.kind === 'diagnostic' && e.key === `diagnostic:${identity}`,
     )
@@ -308,7 +454,8 @@ export class PrivateRunModel {
         key: `diagnostic:${identity}`,
         source: 'Diagnostic',
         text: next,
-        importance: 'info',
+        importance: 'unknown',
+        admission,
         operationsPath: [...operationsPath],
         clipped: clipped || old?.clipped || false,
       },
@@ -332,6 +479,7 @@ export class PrivateRunModel {
         publisher,
         text,
         importance: severity,
+        admission: { provenance: 'accepted-source', publisher },
       },
       payloadBytes,
       128,
@@ -354,6 +502,7 @@ export class PrivateRunModel {
         Number.MAX_SAFE_INTEGER,
         this.journalOmitted[entry.kind] + 1,
       )
+      this.#semantic()
       this.onChange()
       return false
     }
@@ -361,6 +510,7 @@ export class PrivateRunModel {
     const value = { ...entry, sequence: old?.sequence ?? ++this.#journalSequence, bytes }
     if (old) this.journal[this.journal.indexOf(old)] = value
     else this.journal.push(value)
+    this.#semantic()
     this.onChange()
     return true
   }
@@ -382,6 +532,9 @@ export class PrivateRunModel {
       : `Flow / ${this.calls.get(parent)?.slot ?? 'separate invocation'}${label ? ` (${label})` : ''}`
   }
   observeCall(event: PrivateCallEvent): void {
+    this.transaction(() => this.#observeCall(event))
+  }
+  #observeCall(event: PrivateCallEvent): void {
     if (this.#stopped) return
     const identity = key(event.publisher, event.operationId)
     const old = this.calls.get(identity)
@@ -396,7 +549,11 @@ export class PrivateRunModel {
     const intent = event.intent === undefined ? old?.intent : bound(event.intent, 1024)
     const cause = event.cause === undefined ? undefined : bound(event.cause, 4096)
     if (cause && (event.state === 'failed' || event.state === 'uncertain'))
-      this.addAttention(this.sourceLabel(event.publisher), cause, 4, false)
+      this.addAttention(this.sourceLabel(event.publisher), cause, 4, false, false, {
+        provenance: 'host-observed',
+        publisher: event.publisher,
+        operationId: event.operationId,
+      })
     const node: PrivateCallNode = {
       key: identity,
       publisher: event.publisher,
@@ -405,6 +562,9 @@ export class PrivateRunModel {
       state: event.state,
       time: event.time,
       ...(parent === undefined ? {} : { parent }),
+      ...(event.childPublisher === undefined && old?.childPublisher === undefined
+        ? {}
+        : { childPublisher: (event.childPublisher ?? old?.childPublisher)! }),
       ...(intent === undefined ? {} : { intent }),
       ...(cause === undefined ? {} : { cause }),
     }
@@ -417,6 +577,7 @@ export class PrivateRunModel {
     ) {
       this.omissions = Math.min(Number.MAX_SAFE_INTEGER, this.omissions + 1)
       this.incomplete = 'Call tree incomplete: observation capacity reached'
+      this.#semantic()
       this.onChange()
       return
     }
@@ -433,6 +594,7 @@ export class PrivateRunModel {
     }
     if (event.childPublisher !== undefined && this.#parents.size < 256)
       this.#parents.set(event.childPublisher, identity)
+    this.#semantic()
     this.onChange()
   }
   #source(publisher: string): Source {
@@ -473,6 +635,7 @@ export class PrivateRunModel {
         this.#locals.delete(old.key)
         if (this.#surface === old.key) this.select(undefined)
       }
+      this.#semantic()
       this.onChange()
       return
     }
@@ -493,7 +656,8 @@ export class PrivateRunModel {
     // All identity and capacity checks precede mutation of the last complete snapshot.
     const previousRecords = this.records().map((r) => r.key)
     const previousSelected = this.record
-    const previousSemantic = previousSelected && JSON.stringify(previousSelected)
+    const previousSemantic =
+      previousSelected && JSON.stringify([previousSelected.key, previousSelected.signature])
     if (!claimed) {
       source.claims.add(value.id)
       this.#claims++
@@ -515,7 +679,10 @@ export class PrivateRunModel {
       this.#repairSelection([])
     } else if (this.#surface === view.key) {
       this.#repairSelection(previousRecords)
-      if (previousSemantic !== JSON.stringify(this.record)) {
+      if (
+        previousSemantic !==
+        (this.record && JSON.stringify([this.record.key, this.record.signature]))
+      ) {
         this.dismissPreview()
         if (this.record?.kind === 'summary' || this.record?.kind === 'report') {
           this.local.scroll = 0
@@ -523,6 +690,7 @@ export class PrivateRunModel {
         }
       }
     }
+    this.#semantic()
     this.onChange()
   }
   freeze(publisher: string, reason = 'Observation ended'): void {
@@ -530,18 +698,24 @@ export class PrivateRunModel {
       if (activity.publisher === publisher) this.activities.delete(identity)
     const source = this.#sources.get(publisher)
     if (!source || source.ended) {
+      this.#semantic()
       this.onChange()
       return
     }
     source.ended = reason
     for (const view of source.views.values()) view.ended = reason
+    this.#semantic()
     this.onChange()
   }
   stop(reason = 'Observation ended'): void {
+    this.transaction(() => this.#stop(reason))
+  }
+  #stop(reason: string): void {
     if (this.#stopped) return
     for (const publisher of this.#sources.keys()) this.freeze(publisher, reason)
     this.activities.clear()
     this.#stopped = true
+    this.#semantic()
     this.onChange()
   }
   activity(publisher: string, value: Extract<UserUpdate, { kind: 'activity' | 'clear' }>): void {
@@ -549,6 +723,7 @@ export class PrivateRunModel {
     if (value.kind === 'clear') this.activities.delete(key(publisher, value.id))
     else if (this.activities.has(key(publisher, value.id)) || this.activities.size < 16)
       this.activities.set(key(publisher, value.id), { publisher, value })
+    this.#semantic()
     this.onChange()
   }
   addAttention(
@@ -557,6 +732,7 @@ export class PrivateRunModel {
     priority: number,
     committed = false,
     color = false,
+    admission: PrivateAdmission = { provenance: 'host-observed' },
   ): boolean {
     const receipt = privateAttentionReceipt({ source, text, priority, color })
     const bytes = Buffer.byteLength(receipt)
@@ -579,13 +755,24 @@ export class PrivateRunModel {
     }
     if (count >= limit || retained + bytes > byteLimit) {
       this.incomplete = 'Additional reports unavailable: attention capacity reached'
+      this.#semantic()
       this.onChange()
       return false
     }
     if (removals.length) this.incomplete = 'Additional Flow reports unavailable'
     for (const index of removals) this.attention.splice(index, 1)
     this.#attentionBytes = retained + bytes
-    this.attention.push({ source, text, priority, committed, bytes, color })
+    this.attention.push({
+      admissionId: ++this.#attentionSequence,
+      admission,
+      source,
+      text,
+      priority,
+      committed,
+      bytes,
+      color,
+    })
+    this.#semantic()
     this.onChange()
     return true
   }
@@ -605,7 +792,7 @@ export class PrivateRunModel {
   surfaceKeys(): string[] {
     return this.workspace.recorded && this.views.size
       ? [...this.views.keys()]
-      : ['activity', 'overview', ...this.views.keys()]
+      : ['activity', 'overview', 'files', ...this.views.keys()]
   }
   collections(): Collection[] {
     return (
@@ -673,7 +860,7 @@ export class PrivateRunModel {
                 collection: block,
                 row,
                 section: section.title,
-                signature: '',
+                signature: JSON.stringify([block.columns, row]),
               })
           } else
             result.push({
@@ -687,6 +874,30 @@ export class PrivateRunModel {
         })
       })
       return result
+    }
+    if (this.#surface === 'files') {
+      const capture = this.#capture
+      return capture.files.length
+        ? capture.files.map((file) => ({
+            key: JSON.stringify(['captured-file', capture.generation, file.path]),
+            kind: 'file',
+            file,
+            text: file.path,
+            signature: JSON.stringify([capture.generation, file]),
+          }))
+        : [
+            {
+              key: 'capture-state',
+              kind: 'host',
+              text:
+                capture.phase === 'pending'
+                  ? 'Delivered files are pending'
+                  : capture.phase === 'unavailable'
+                    ? 'Immutable delivery capture is unavailable'
+                    : 'No files were delivered',
+              signature: capture.phase,
+            },
+          ]
     }
     if (this.#surface === 'activity') {
       const result: PrivateWorkspaceRecord[] =
@@ -780,12 +991,17 @@ export class PrivateRunModel {
   dismissPreview(): void {
     this.#generation++
     this.preview = undefined
+    this.previewState = undefined
     this.previewTitle = undefined
+    this.#peekSignature = ''
   }
   #invalidate(): void {
     this.#generation++
     this.selectionVersion++
     this.preview = undefined
+    this.previewState = undefined
+    this.previewTitle = undefined
+    this.#peekSignature = ''
     this.feedback = ''
   }
   #repairSelection(previous: string[]): void {
@@ -899,7 +1115,135 @@ export class PrivateRunModel {
   ): void {
     this.#artifact = resolve
     this.#preview = preview
+    this.dismissPreview()
+    this.#semantic()
     this.onChange()
+  }
+  setArtifactCapture(capture: PrivateArtifactCapture): void {
+    if (capture.files.length > 64 || !capture.generation || capture.generation.length > 256)
+      throw new TypeError('Invalid immutable capture inventory')
+    let bytes = 0
+    const paths = new Set<string>()
+    for (const file of capture.files) {
+      const parts = file.path.split('/')
+      if (
+        !file.path ||
+        Buffer.byteLength(file.path) > 512 ||
+        parts.length > 16 ||
+        parts.some((part) => !part || part === '.' || part === '..' || part === '.jig') ||
+        /[\\\p{Cc}]/u.test(file.path) ||
+        paths.has(file.path) ||
+        !Number.isSafeInteger(file.bytes) ||
+        file.bytes < 0 ||
+        !['text', 'empty', 'non-text', 'unavailable'].includes(file.state)
+      )
+        throw new TypeError('Invalid immutable capture inventory')
+      paths.add(file.path)
+      bytes += file.bytes
+    }
+    if (bytes > 16 * 1024 * 1024) throw new TypeError('Invalid immutable capture inventory')
+    this.#capture = Object.freeze({
+      ...capture,
+      generation: `${++this.#captureSequence}:${capture.generation}`,
+      files: Object.freeze(capture.files.map((file) => Object.freeze({ ...file }))),
+    })
+    this.dismissPreview()
+    this.#semantic()
+    this.onChange()
+  }
+  /** Supplier access is confined to this immutable manifest generation. */
+  async capturePreview(path: string, generation: string): Promise<PrivatePreview | undefined> {
+    const capture = this.#capture
+    if (
+      this.#closed ||
+      capture.generation !== generation ||
+      capture.phase !== 'ready' ||
+      !capture.files.some((file) => file.path === path && ['text', 'empty'].includes(file.state))
+    )
+      return undefined
+    const preview = await this.#preview?.(path)
+    return !this.#closed && this.#capture === capture ? preview : undefined
+  }
+  /** Called only by the explicit terminal inspector; web navigation is independent. */
+  peekSelectedArtifact(): void {
+    if (this.#closed || this.record?.file) return
+    const record = this.record,
+      references = privateRecordReferences(record)
+    const ref =
+      references.length === 1 && references[0]?.kind === 'artifact' ? references[0] : undefined
+    const signature = JSON.stringify([
+      this.surface,
+      record?.key,
+      record?.signature,
+      references,
+      this.#capture.generation,
+    ])
+    if (signature === this.#peekSignature) return
+    this.#peekSignature = signature
+    this.#generation++
+    this.preview = undefined
+    this.previewState = undefined
+    this.previewTitle = undefined
+    if (!ref) return
+    this.previewTitle = ref.path
+    const resolved = this.resolve(record?.publisher ?? 'root', ref)
+    if (!resolved.available) {
+      this.previewState = this.#capture.phase === 'pending' ? 'pending' : 'unavailable'
+      return
+    }
+    if (this.#previewBusy) {
+      this.#peekSignature = ''
+      return
+    }
+    void this.#loadPreview(resolved.target!, ref.path, true)
+  }
+  async activateFile(path: string): Promise<void> {
+    if (!this.#capture.files.some((file) => file.path === path)) return
+    this.#invalidate()
+    await this.#loadPreview(path, path, false)
+  }
+  async #loadPreview(path: string, title: string, auto: boolean): Promise<void> {
+    this.preview = undefined
+    this.previewTitle = title
+    const file = this.#capture.files.find((file) => file.path === path)
+    if (file && !['text', 'empty'].includes(file.state)) {
+      this.previewState = file.state
+      this.onChange()
+      return
+    }
+    if (this.#previewBusy) return
+    this.#previewBusy = true
+    this.previewState = 'loading'
+    this.feedback = `${title} — loading immutable preview`
+    const generation = this.#generation,
+      captureGeneration = this.#capture.generation
+    try {
+      const preview = await this.#preview?.(path)
+      if (
+        !this.#closed &&
+        generation === this.#generation &&
+        captureGeneration === this.#capture.generation
+      ) {
+        this.preview = preview
+        this.previewState = preview ? (preview.text ? 'text' : 'empty') : 'unavailable'
+        this.feedback = preview
+          ? `Immutable captured preview: ${title}`
+          : `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
+      }
+    } catch {
+      if (
+        !this.#closed &&
+        generation === this.#generation &&
+        captureGeneration === this.#capture.generation
+      ) {
+        this.previewState = 'unavailable'
+        this.feedback = `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
+      }
+    } finally {
+      this.#previewBusy = false
+      if (auto && !this.#closed && generation !== this.#generation) this.peekSelectedArtifact()
+      this.onChange()
+    }
   }
   resolve(
     publisher: string,
@@ -967,27 +1311,7 @@ export class PrivateRunModel {
         ancestor = this.calls.get(ancestor)?.parent
       }
       this.feedback = resolved.label
-    } else if (!this.#previewBusy) {
-      this.#previewBusy = true
-      this.preview = undefined
-      this.previewTitle = `${ref.attachment}:${ref.path}`
-      this.feedback = `${resolved.label} — loading preview`
-      const generation = this.#generation
-      try {
-        const preview = await this.#preview?.(resolved.target!)
-        if (!this.#closed && generation === this.#generation) {
-          this.preview = preview
-          this.feedback = resolved.label
-          if (!preview)
-            this.feedback = `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
-        }
-      } catch {
-        if (!this.#closed && generation === this.#generation)
-          this.feedback = `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
-      } finally {
-        this.#previewBusy = false
-      }
-    }
+    } else await this.#loadPreview(resolved.target!, `${ref.attachment}:${ref.path}`, false)
     this.onChange()
   }
   close(): void {
@@ -998,6 +1322,7 @@ export class PrivateRunModel {
     this.#locals.clear()
     this.#artifact = undefined
     this.#preview = undefined
+    this.#semanticListeners.clear()
     this.onChange = () => {}
   }
 }

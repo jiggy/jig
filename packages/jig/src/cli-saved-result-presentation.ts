@@ -209,9 +209,7 @@ export function privateSavedResultViews(packet: PrivateSavedResult): ViewItem[] 
                     path: name.clipped ? `${name.text} [clipped]` : name.text,
                     bytes: file.bytes,
                     captured: file.available ? 'Matches manifest' : 'Unavailable',
-                    preview: file.available
-                      ? { kind: 'artifact', attachment: 'packet', path: file.path }
-                      : null,
+                    preview: { kind: 'artifact', attachment: 'packet', path: file.path },
                   },
                 }
               }),

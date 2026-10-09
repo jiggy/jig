@@ -48,7 +48,7 @@ jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig inspect --result <directory> [--display plain|dashboard] [--json]
+jig inspect --result <directory> [--display plain|dashboard|web] [--json]
 jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
 jig import-contract --list
 jig completion <bash|zsh|fish>
@@ -72,6 +72,15 @@ for nonanimated summaries. `--json` and effective `--receive` preserve exact
 machine/channel output. Flow authors compose views through the portable
 [user-updates agreement](https://jig.md/guide/channels), without terminal code or
 host-specific domain adapters.
+
+`jig run --display web` publishes a private loopback browser link on terminal
+stderr after execution starts. It shows the same semantic views, actual calls,
+causes and delivered file contents with independent navigation in each tab.
+Close inspection or press q to leave; closing a tab does not cancel work or end
+inspection. There is no automatic inspection timeout. The web display needs no
+development server and initializes no native terminal renderer. `--json` and
+effective `--receive` take precedence; redirected Run stdout remains exact JSON.
+See [live progress and views](https://jig.md/guide/channels).
 
 The dashboard uses pinned OpenTUI Core, installed with Jig and loaded only for
 an eligible explicit dashboard. Missing native display support refuses before
@@ -124,6 +133,7 @@ launch readiness or remote availability; Run still revalidates before execution.
 
 `jig inspect --result ./result-packet --display dashboard` reopens saved result,
 file and diagnostic evidence without starting work or requiring a project.
+Use `--display web` for browser inspection instead.
 These are recorded local claims, not a new execution verdict. File previews use
 captured bytes checked against the packet manifest. See [results and recovery](https://jig.md/guide/results).
 

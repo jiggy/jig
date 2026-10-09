@@ -101,10 +101,11 @@ is an Agent answer or proof that the application achieved its objective.
 
 ```sh
 jig inspect --result ./result-packet --display dashboard
+jig inspect --result ./result-packet --display web
 ```
 
 This opens **Recorded result**, **Files** and **Diagnostics** without starting a
-Run, reading project authority or contacting providers. Omit `--display dashboard`
+Run, reading project authority or contacting providers. Omit `--display`
 for a plain report. `--json` or redirected stdout returns the decoded report
 unchanged. The directory you select supplies the evidence; a recorded destination
 inside `result.json` does not redirect inspection elsewhere.
@@ -117,6 +118,11 @@ tabs and call history are not retained in current packets and are not reconstruc
 The inspector stays open until `q`, Escape or keyboard Ctrl-C, subject to any
 explicit enclosing command limit. Input/output failure or external interruption
 also closes it and releases its retained evidence.
+For web, open the private link printed on terminal stderr and choose **Close
+inspection** to leave. Browser disconnection does not cancel or close it.
+Selecting a captured file shows its contents; empty, non-text, unavailable and
+clipped files have distinct explanations. Expanded search covers the retained
+excerpt, not bytes outside it. Saved values keep their recorded provenance.
 
 Exit 0 means the saved report and files were read consistently, even if that report
 records a failed Run. Exit 1 means invalid or unavailable evidence, incomplete

@@ -373,6 +373,31 @@ admitted FLOW packages.
 ## Verification
 
 Run presentation uses one bounded renderer-neutral model and one stderr writer.
+`src/cli-web.ts` owns the loopback HTTP presentation lifetime; explicit snapshots
+belong to `src/cli-web-snapshot.ts` and browser navigation stays per viewer. Read
+the current `docs/jig/spec/web-display.md` before changing this boundary. Prepare
+without advertising before admission, join trusted-dispatch activation and keep
+capability publication outside journals/diagnostics. Machine precedence decides
+before listener preparation. Bundle exact build-only Preact into fixed assets
+covered by installed CLI identity; web must not initialize the native TUI or
+resolve checkout-relative assets at runtime. Browser fetches use memory-only
+bearer authorization, exact parser-visible authority/origin checks and inert text.
+Keep failed projection's reserve independent; stale bodies disable references
+while current causes/Close remain available. After project/execution cleanup,
+transfer receipt-selected excerpts and irreversibly retire delivery authority
+under the one finite completion allowance, then close local input/output capture
+before indefinite inspection. Preserve known terminal/delivery on retirement
+failure and reuse bounded close promises; no finally path resets their deadline.
+`test/cli-web*.test.ts` owns socket, lifecycle, projection, browser-client,
+navigation and embedded-asset proof. Installed browser/native-host qualification
+is separate from source mocks or design-board approval.
+Initiate native forced connection cancellation before discarding response
+queues; the qualified Linux pin can retain graceful queues or reject premature
+stream errors. Join that cancellation after disposing subscriptions and buffers.
+Blocked-stream expiry stops sends and enables native idle cancellation, retaining
+its admission until native abort/cancel acknowledgment. The idle timer has coarse
+granularity. Inspector closure releases pending preview waiters without waiting
+for their suppliers; late bytes cannot restore closed presentation.
 `src/cli-opentui.ts` owns native terminal panes and cell drawing. OpenTUI Core
 and its Tree-sitter peer are required exact npm dependencies, external to the
 CLI bundle; only an eligible explicit dashboard lazily loads and verifies native
@@ -414,7 +439,7 @@ Inspection has no local idle or absolute expiry. q, contextual Escape and settle
 keyboard Ctrl-C close it; input/output loss and external interruption still close
 and restore it. Any explicit inherited presentation constraint remains a minimum
 across enclosing owners, with a 45-second closing reserve for finite command
-timers. Only an eligible interactive effective dashboard omits the default file
+timers. Only an eligible effective dashboard or web display omits the default file
 and delegation command envelope; machine modes and setup/cleanup owners retain
 their bounds. Run timeouts and explicit enforcement timers remain unchanged.
 Verify mixed-block traversal, draft filter/reference/attention modes, exact size
@@ -556,6 +581,8 @@ buffer release and output failure independently of recorded execution status.
 
 ## Child DOX Index
 
+- [src/web/AGENTS.md](src/web/AGENTS.md) — Bundled inert browser renderer,
+  bounded authenticated observation client and viewer-local navigation.
 - [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
   Mac pre-exec boundary; installed-platform promotion remains package-owned.
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,

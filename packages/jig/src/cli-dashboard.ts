@@ -5,6 +5,7 @@ import {
   type PrivateRunModel,
   type PrivateWorkspaceRecord,
   privateAttentionImportance,
+  privateRecordReferences,
 } from './cli-run-model.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import {
@@ -276,7 +277,8 @@ function privateTruncateStyled(text: string, width: number): string {
 
 export type PrivateDashboardPanel =
   | { kind: 'detail'; key: string; signature: string; scroll: number }
-  | { kind: 'preview'; scroll: number }
+  | { kind: 'preview'; scroll: number; query?: string; matchOffset?: number }
+  | { kind: 'preview-search'; draft: string; signature: string }
   | { kind: 'attention'; index: number; scroll: number }
   | { kind: 'diagnostics'; index: number; scroll: number }
   | { kind: 'references'; selected?: string | undefined; origin: string }
@@ -304,29 +306,9 @@ const displayCell = (model: PrivateRunModel, publisher: string, value: Value): s
 export function privateDashboardReferences(
   record: PrivateWorkspaceRecord | undefined,
 ): Reference[] {
-  const result: Reference[] = [],
-    seen = new Set<string>()
-  const add = (reference: Reference) => {
-    const key = referenceKey(reference)
-    if (seen.has(key)) return
-    seen.add(key)
-    result.push(reference)
-  }
-  const block = (block: DetailBlock) => {
-    if (block.kind === 'report') for (const reference of block.references ?? []) add(reference)
-    if (block.kind === 'facts')
-      for (const item of block.items)
-        if (item.value !== null && typeof item.value === 'object') add(item.value)
-  }
-  if (record?.block) block(record.block)
-  if (record?.row) {
-    for (const value of Object.values(record.row.cells))
-      if (value !== null && typeof value === 'object') add(value)
-    for (const detail of record.row.details ?? []) block(detail)
-  }
-  if (record?.activity?.operationId) add({ kind: 'call', operationId: record.activity.operationId })
-  return result
+  return privateRecordReferences(record)
 }
+
 function progressText(block: Extract<DetailBlock, { kind: 'progress' }>, width: number): string {
   const count = `${block.completed}${block.total === undefined ? '' : ` / ${block.total}`}${block.unit ? ` ${privateUpdateText(block.unit)}` : ''}`
   if (block.total && width >= 40) {
@@ -338,6 +320,17 @@ function progressText(block: Extract<DetailBlock, { kind: 'progress' }>, width: 
 }
 /** The list owns identity and a short observation; details add context or evidence.
  * Typed parts are private presentation data, not a new author-facing contract. */
+export function privateDashboardPreviewState(model: PrivateRunModel): string {
+  return model.previewState === 'empty'
+    ? 'This captured text file is empty.'
+    : model.previewState === 'non-text'
+      ? 'This captured file is not available as a UTF-8 text preview.'
+      : model.previewState === 'unavailable'
+        ? 'Immutable content is unavailable.'
+        : model.previewState === 'pending'
+          ? 'Delivery is pending; no captured bytes are available yet.'
+          : 'Loading immutable captured content…'
+}
 export type PrivateDashboardDetailPart =
   | { kind: 'heading' | 'text' | 'note' | 'value'; text: string }
   | { kind: 'field'; label: string; value: Value }
@@ -346,6 +339,7 @@ export function privateDashboardDetailParts(
   model: PrivateRunModel,
   record: PrivateWorkspaceRecord,
   preview = false,
+  includeArtifactContent = true,
 ): PrivateDashboardDetailPart[] {
   const parts: PrivateDashboardDetailPart[] = []
   const text = (value: string, kind: 'text' | 'note' | 'value' = 'text') => {
@@ -378,7 +372,34 @@ export function privateDashboardDetailParts(
         : value.slice(first.length).replace(/^\n/, ''),
     )
   }
-  if (record.text !== undefined && !record.journalGroup) remainder(record.text)
+  const artifact = privateDashboardReferences(record)
+  if (
+    includeArtifactContent &&
+    model.previewState &&
+    record.key === model.record?.key &&
+    (record.file || (artifact.length === 1 && artifact[0]?.kind === 'artifact'))
+  ) {
+    heading(model.previewTitle ?? 'Immutable captured content')
+    text(model.preview?.text ?? privateDashboardPreviewState(model))
+    text(
+      `${model.artifactCapture.provenance === 'recorded-capture' ? 'Recorded capture' : 'Verified delivery'}${model.preview ? ` · ${model.preview.bytes} bytes${model.preview.clipped ? ' · excerpt clipped at 64 KiB' : ''}` : ''}`,
+      'note',
+    )
+  }
+  if (record.file) {
+    heading(record.file.path)
+    field(
+      'Capture',
+      model.artifactCapture.provenance === 'recorded-capture'
+        ? 'Recorded capture'
+        : 'Verified delivery',
+    )
+    field('Bytes', record.file.bytes)
+    field('Content', record.file.state)
+    if (record.file.clipped) text('The retained excerpt is clipped.', 'note')
+    if (!model.previewState) text('Enter previews this immutable captured file.', 'note')
+  }
+  if (record.text !== undefined && !record.journalGroup && !record.file) remainder(record.text)
   if (record.journalGroup) {
     heading('Stage history')
     for (const entry of record.journalGroup) text(entry.text)
@@ -548,6 +569,7 @@ function tabs(model: PrivateRunModel, width: number): string {
       : [
           { key: 'activity', label: 'Activity' },
           { key: 'overview', label: 'Overview' },
+          { key: 'files', label: 'Delivered files' },
         ]),
     ...[...model.views.values()].map((v) => ({
       key: v.key,
@@ -584,6 +606,7 @@ export function privateDashboardFrame(
 ): PrivateDashboardFrame {
   if (width < 1 || height < 1) return { lines: [], references: [] }
   if (!inspecting) return privateInlineFrame(model, width, height, color, scroll, retainedAnchor)
+  model.peekSelectedArtifact()
   width = Math.max(1, Math.min(4096, Math.floor(width)))
   height = Math.max(1, Math.min(100, Math.floor(height)))
   const panels = state?.panels ?? [],
@@ -711,7 +734,7 @@ export function privateDashboardFrame(
   }
   if (!compact && lines.length < height - 2) add('─'.repeat(Math.min(width, 4096)), 'secondary')
   const footer = (
-    panel?.kind === 'filter'
+    panel?.kind === 'filter' || panel?.kind === 'preview-search'
       ? compact
         ? 'Enter set Esc undo'
         : 'Filter draft: Enter apply · Esc discard · Ctrl-C stop'
@@ -726,7 +749,7 @@ export function privateDashboardFrame(
               : panel?.kind === 'help'
                 ? 'Esc back · q continues inline · Ctrl-C stop (live)'
                 : panel?.kind === 'detail' || panel?.kind === 'preview'
-                  ? 'q continues inline · ↑/↓ scroll · r references · Esc back'
+                  ? 'q continues inline · ↑/↓ scroll · / excerpt search · r references · Esc back'
                   : compact
                     ? '! full cause · q continues inline · Ctrl-C stop'
                     : 'q continues inline · Tab · ↑↓ · Enter detail · r refs · ! cause · ? help'
@@ -758,7 +781,12 @@ export function privateDashboardFrame(
           panel.kind === 'references'
             ? references.findIndex((ref) => referenceKey(ref) === panel.selected)
             : -1
-      if (panel.kind === 'filter')
+      if (panel.kind === 'preview-search')
+        content = privateWrappedUpdate(
+          `Search retained excerpt\nDraft: ${panel.draft}\nLiteral text only; no files or earlier content are fetched.\nEnter searches; Escape discards.`,
+          width,
+        )
+      else if (panel.kind === 'filter')
         content = privateWrappedUpdate(
           `Filter supplied records\nDraft: ${panel.draft}\nApplied: ${model.filter || '(none)'}\nRows change only after Enter. Empty Enter clears.`,
           width,
@@ -767,7 +795,7 @@ export function privateDashboardFrame(
         content = privateWrappedUpdate(
           panels.at(-2)?.kind === 'filter'
             ? 'Filter editing\nPrintable text is literal, including q j k s r ! ?.\nEnter applies; Escape discards; Backspace/Delete removes the last scalar.\nTab and arrow controls do nothing. Ctrl-C stops live work; Ctrl-D leaves.'
-            : 'Workspace help\nTab / Shift-Tab: Activity, Overview and supplied views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: full detail; Escape returns one level. Wide screens show selected detail alongside the list.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause; d: attributed diagnostic reports; ?: this help.\nq: live continues inline; settled closes inspection. Ctrl-C: stop live work, close settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
+            : 'Workspace help\nTab / Shift-Tab: Activity, Overview, Delivered files and supplied views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: full detail or captured file; Escape returns one level. Wide screens show selected detail alongside the list.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause; d: attributed diagnostic reports; ?: this help.\nq: live continues inline; settled closes inspection. Ctrl-C: stop live work, close settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
           width,
         )
       else if (panel.kind === 'attention') {
@@ -788,7 +816,7 @@ export function privateDashboardFrame(
           : [diagnosticLoss || 'No captured diagnostic reports']
       } else if (panel.kind === 'preview')
         content = privateWrappedUpdate(
-          `Immutable ${model.workspace.recorded ? 'recorded-file' : 'delivered-file'} preview: ${model.previewTitle ?? 'verified capture'}${model.preview?.clipped ? ' [capture clipped at 64 KiB]' : ''}\n${model.preview?.text ?? (model.feedback || 'Loading preview')}`,
+          `Immutable ${model.workspace.recorded ? 'recorded-file' : 'delivered-file'} preview: ${model.previewTitle ?? 'verified capture'}${model.preview?.clipped ? ' [capture clipped at 64 KiB]' : ''}\n${model.preview?.text ?? privateDashboardPreviewState(model)}`,
           width,
         )
       else if (panel.kind === 'references')
@@ -804,7 +832,13 @@ export function privateDashboardFrame(
           ? privateDashboardDetailLines(model, record, width)
           : ['Selected record unavailable']
       }
-      const requested = 'scroll' in panel ? panel.scroll : 0
+      const requested =
+        panel.kind === 'preview' && panel.matchOffset !== undefined
+          ? [...privateWrappedUpdate(model.preview?.text.slice(0, panel.matchOffset) ?? '', width)]
+              .length
+          : 'scroll' in panel
+            ? panel.scroll
+            : 0
       // Retain only the visible page. Counting remaining lines is bounded by the
       // admitted text, while the frame buffer never grows with document length.
       let index = 0,
@@ -1145,6 +1179,17 @@ export class PrivateDashboardInput {
       this.#references = []
       this.#surface = this.model.surface
     }
+    const search = this.#panels.find((p) => p.kind === 'preview-search')
+    if (
+      search?.kind === 'preview-search' &&
+      search.signature !==
+        JSON.stringify([
+          this.model.previewTitle,
+          this.model.preview?.text,
+          this.model.artifactCapture.generation,
+        ])
+    )
+      this.#panels = this.#panels.filter((p) => p.kind !== 'preview-search')
     const detail = this.#panels.find((p) => p.kind === 'detail')
     if (detail?.kind === 'detail') {
       const record = this.model.record
@@ -1240,7 +1285,7 @@ export class PrivateDashboardInput {
       return
     }
     const panel = this.#panels.at(-1)
-    if (panel?.kind === 'filter') {
+    if (panel?.kind === 'filter' || panel?.kind === 'preview-search') {
       const accepted =
         ['\r', '\n', '\u001b', '\u007f', '\b', '\u001b[3~'].includes(text) ||
         ![...text].some((scalar) => /[\p{Cc}\p{Cf}]/u.test(scalar))
@@ -1250,8 +1295,26 @@ export class PrivateDashboardInput {
       }
       if (accepted) this.model.markNavigation()
       if (text === '\r' || text === '\n') {
-        this.model.filterRows(panel.draft)
-        this.#panels.pop()
+        if (panel.kind === 'filter') {
+          this.model.filterRows(panel.draft)
+          this.#panels.pop()
+        } else {
+          this.#panels.pop()
+          const preview = this.#panels.at(-1)
+          if (preview?.kind === 'preview') {
+            preview.query = panel.draft
+            const offset = panel.draft ? (this.model.preview?.text.indexOf(panel.draft) ?? -1) : -1
+            if (offset >= 0) {
+              preview.matchOffset = offset
+              this.model.feedback = 'Literal match in retained excerpt'
+            } else {
+              delete preview.matchOffset
+              this.model.feedback = panel.draft
+                ? 'No literal match in the retained excerpt'
+                : 'Excerpt search cleared'
+            }
+          }
+        }
       } else if (text === '\u001b') this.#panels.pop()
       else if (text === '\u007f' || text === '\b' || text === '\u001b[3~')
         panel.draft = [...panel.draft].slice(0, -1).join('')
@@ -1342,6 +1405,23 @@ export class PrivateDashboardInput {
       text === 'j' || text === '\u001b[B' ? 1 : text === 'k' || text === '\u001b[A' ? -1 : 0
     const page =
       text === ']' || text === '\u001b[6~' ? 3 : text === '[' || text === '\u001b[5~' ? -3 : 0
+    if (
+      text === '/' &&
+      (panel?.kind === 'preview' || (panel?.kind === 'detail' && this.model.preview))
+    ) {
+      if (panel.kind === 'detail') this.#push({ kind: 'preview', scroll: 0 })
+      this.#push({
+        kind: 'preview-search',
+        draft: '',
+        signature: JSON.stringify([
+          this.model.previewTitle,
+          this.model.preview?.text,
+          this.model.artifactCapture.generation,
+        ]),
+      })
+      this.change()
+      return
+    }
     if (panel?.kind === 'references') {
       const refs = this.#references.length
         ? this.#references
@@ -1377,9 +1457,10 @@ export class PrivateDashboardInput {
         panel.index =
           (panel.index + (text === '\u001b[C' ? 1 : -1) + Math.max(1, count)) % Math.max(1, count)
         panel.scroll = 0
-      } else if (delta || page)
+      } else if (delta || page) {
+        if (panel.kind === 'preview') delete panel.matchOffset
         panel.scroll = Math.max(0, Math.min(524288, panel.scroll + (page || delta)))
-      else if (text === '\u001b[H' || text === '\u001b[1~') panel.scroll = 0
+      } else if (text === '\u001b[H' || text === '\u001b[1~') panel.scroll = 0
       if ((text === '\r' || text === '\n') && panel.kind === 'detail') {
         if (this.model.disclosure()) this.model.toggleDisclosure()
         this.#panels.pop()
@@ -1411,7 +1492,10 @@ export class PrivateDashboardInput {
     } else if (text === 'r') this.#chooseReference()
     else if (text === '\r' || text === '\n') {
       const record = this.model.record
-      if (record && privateDashboardDetailParts(this.model, record, true).length === 0) {
+      if (record?.file) {
+        this.#push({ kind: 'preview', scroll: 0 })
+        void this.model.activateFile(record.file.path)
+      } else if (record && privateDashboardDetailParts(this.model, record, true).length === 0) {
         this.model.feedback = 'No additional detail was supplied for this entry.'
       } else if (record) {
         if (!this.model.disclosure()) this.model.toggleDisclosure()

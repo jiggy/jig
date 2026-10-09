@@ -1498,7 +1498,7 @@ test('settlement offers the landing result without moving an operator who has na
   expect(noHint.row?.id).toBe('a')
 })
 
-test('wide collections use spare width and show literal selected detail without activating files', () => {
+test('wide collections use spare width and peek a sole selected artifact with literal context', () => {
   const model = new PrivateRunModel()
   let activated = 0
   model.setArtifacts(
@@ -1562,7 +1562,7 @@ test('wide collections use spare width and show literal selected detail without 
   expect(wide).toContain('Selected detail')
   expect(wide).not.toContain('Outcome: Checked patch')
   expect(wide).not.toContain('1/1 supplied / 1 reported')
-  expect(activated).toBe(0)
+  expect(activated).toBe(1)
   expect(model.preview).toBeUndefined()
   const narrow = privateDashboardFrame(model, 80, 24, false, true).lines.join('\n')
   expect(narrow).not.toContain('Goal: reject')
@@ -1880,4 +1880,251 @@ test('entries with no extra detail explain that fact without opening a duplicate
   expect(model.feedback).toBe('No additional detail was supplied for this entry.')
   keys.leave()
   model.close()
+})
+
+test('sole distinct artifact peeking includes hidden/detail references and never activates ambiguous targets', async () => {
+  const model = new PrivateRunModel()
+  let requested = 0
+  const artifact: Reference = { kind: 'artifact', attachment: 'evidence', path: 'report.txt' }
+  const document = validateUserUpdate({
+    kind: 'view',
+    id: 'documents',
+    title: 'Documents',
+    summary: 'Supplied documents',
+    sections: [
+      {
+        blocks: [
+          {
+            kind: 'collection',
+            id: 'records',
+            title: 'Documents',
+            columns: [
+              { key: 'name', label: 'Document', type: 'text' },
+              { key: 'one', label: 'One', type: 'text' },
+              { key: 'two', label: 'Two', type: 'text' },
+              { key: 'file', label: 'Evidence', type: 'reference' },
+            ],
+            rows: [
+              {
+                id: 'a',
+                cells: { name: 'Agreement', one: 'Literal', two: 'Literal', file: artifact },
+                details: [
+                  { kind: 'report', text: 'Context remains reachable', references: [artifact] },
+                ],
+              },
+              {
+                id: 'b',
+                cells: { name: 'Ambiguous', one: '', two: '', file: artifact },
+                details: [
+                  {
+                    kind: 'facts',
+                    items: [{ label: 'Call', value: { kind: 'call', operationId: 'own' } }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }) as ViewItem
+  model.acceptView('root', document)
+  model.setArtifacts(
+    (_publisher, ref) => ref.path,
+    async () => {
+      requested++
+      return { text: 'Primary immutable content', bytes: 25, clipped: false }
+    },
+  )
+  model.setArtifactCapture({
+    generation: 'capture',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [{ path: 'report.txt', bytes: 25, state: 'text', clipped: false }],
+  })
+  model.select(JSON.stringify(['root', 'documents']))
+  model.selectRecord(privateRowRecordKey('records', 'a'))
+  model.peekSelectedArtifact()
+  await Promise.resolve()
+  expect(requested).toBe(1)
+  expect(model.preview?.text).toBe('Primary immutable content')
+  const parts = privateDashboardDetailParts(model, model.record!, true)
+  expect(parts[0]).toEqual({ kind: 'heading', text: 'report.txt' })
+  expect(parts[1]).toEqual({ kind: 'text', text: 'Primary immutable content' })
+  expect(parts).toContainEqual({ kind: 'text', text: 'Context remains reachable' })
+  model.acceptView('root', {
+    ...document,
+    sections: [
+      {
+        blocks: [
+          {
+            ...(document.sections[0]!.blocks[0] as import('@jigging/user-updates').Collection),
+            rows: [
+              document.sections[0]!.blocks[0].kind === 'collection'
+                ? document.sections[0]!.blocks[0].rows[0]!
+                : undefined!,
+              {
+                id: 'b',
+                cells: { name: 'Different unselected record', one: '', two: '', file: artifact },
+                details: [],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  })
+  model.peekSelectedArtifact()
+  await Promise.resolve()
+  expect(requested).toBe(1)
+  model.selectRecord(privateRowRecordKey('records', 'b'))
+  model.acceptView('root', document)
+  model.peekSelectedArtifact()
+  await Promise.resolve()
+  expect(requested).toBe(1)
+  expect(model.preview).toBeUndefined()
+})
+
+test('auto artifact peeks fence A to B to A and capture replacement without stale labels or bytes', async () => {
+  const model = new PrivateRunModel(),
+    pending: ((value: { text: string; bytes: number; clipped: boolean }) => void)[] = []
+  const document = validateUserUpdate({
+    kind: 'view',
+    id: 'reports',
+    title: 'Reports',
+    summary: 'Reports',
+    sections: [
+      {
+        blocks: ['a', 'b'].map((path) => ({
+          kind: 'report',
+          text: path,
+          references: [{ kind: 'artifact', attachment: 'evidence', path }],
+        })),
+      },
+    ],
+  }) as ViewItem
+  model.acceptView('root', document)
+  model.setArtifacts(
+    (_publisher, ref) => ref.path,
+    () => new Promise((resolve) => pending.push(resolve)),
+  )
+  const capture = {
+    generation: 'one',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery' as const,
+    phase: 'ready' as const,
+    files: ['a', 'b'].map((path) => ({ path, bytes: 1, state: 'text' as const, clipped: false })),
+  }
+  model.setArtifactCapture(capture)
+  model.select(JSON.stringify(['root', 'reports']))
+  model.selectRecord('block:0:0')
+  model.peekSelectedArtifact()
+  model.selectRecord('block:0:1')
+  model.peekSelectedArtifact()
+  model.selectRecord('block:0:0')
+  model.peekSelectedArtifact()
+  expect(pending).toHaveLength(1)
+  pending[0]!({ text: 'Old A', bytes: 5, clipped: false })
+  await Promise.resolve()
+  expect(model.preview).toBeUndefined()
+  expect(model.previewTitle).toBe('a')
+  expect(pending).toHaveLength(2)
+  model.setArtifactCapture({ ...capture, generation: 'two' })
+  pending[1]!({ text: 'Still old A', bytes: 11, clipped: false })
+  await Promise.resolve()
+  expect(model.preview).toBeUndefined()
+  expect(pending).toHaveLength(3)
+  pending[2]!({ text: 'Current A', bytes: 9, clipped: false })
+  await Promise.resolve()
+  expect(model.preview?.text).toBe('Current A')
+})
+
+test('host Delivered files is independent of views and only explicit inventory activation reads captured bytes', async () => {
+  const model = new PrivateRunModel(),
+    input = new Input()
+  let previews = 0
+  model.setArtifacts(
+    () => undefined,
+    async () => {
+      previews++
+      return { text: '', bytes: 0, clipped: false }
+    },
+  )
+  model.setArtifactCapture({
+    generation: 'inventory',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [
+      { path: 'empty.txt', bytes: 0, state: 'empty', clipped: false },
+      { path: 'binary', bytes: 5, state: 'non-text', clipped: false },
+    ],
+  })
+  model.select('files')
+  expect(model.views.size).toBe(0)
+  expect(model.records().map((record) => record.file?.path)).toEqual(['empty.txt', 'binary'])
+  model.peekSelectedArtifact()
+  expect(previews).toBe(0)
+  const keyboard = new PrivateDashboardInput(
+    model,
+    () => {},
+    () => {},
+    input as unknown as NodeJS.ReadStream,
+  )
+  keyboard.start()
+  input.emit('data', Buffer.from('\r'))
+  await Promise.resolve()
+  expect(previews).toBe(1)
+  expect(model.previewState).toBe('empty')
+  expect(keyboard.state.panels.at(-1)?.kind).toBe('preview')
+  input.emit('data', Buffer.from('\u001b'))
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  expect(keyboard.active).toBe(true)
+  expect(model.surface).toBe('files')
+  keyboard.leave()
+})
+
+test('expanded captured content has literal retained-excerpt search without another supplier operation', async () => {
+  const model = new PrivateRunModel(),
+    input = new Input()
+  let previews = 0
+  model.setArtifacts(
+    () => undefined,
+    async () => {
+      previews++
+      return { text: 'First line\nLiteral ../file?q=!\nLast line', bytes: 38, clipped: false }
+    },
+  )
+  model.setArtifactCapture({
+    generation: 'search',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [{ path: 'report.txt', bytes: 38, state: 'text', clipped: false }],
+  })
+  model.select('files')
+  const keyboard = new PrivateDashboardInput(
+    model,
+    () => {},
+    () => {},
+    input as unknown as NodeJS.ReadStream,
+  )
+  keyboard.start()
+  input.emit('data', Buffer.from('\r'))
+  await Promise.resolve()
+  input.emit('data', Buffer.from('/../file?q=!\r'))
+  expect(previews).toBe(1)
+  expect(keyboard.state.panels.at(-1)).toMatchObject({
+    kind: 'preview',
+    query: '../file?q=!',
+    matchOffset: 19,
+  })
+  expect(model.feedback).toBe('Literal match in retained excerpt')
+  const frame = privateDashboardFrame(model, 80, 24, false, true, 0, undefined, keyboard.state)
+  expect(frame.lines.join('\n')).toContain('Literal ../file?q=!')
+  input.emit('data', Buffer.from('/absent\r'))
+  expect(model.feedback).toBe('No literal match in the retained excerpt')
+  expect(previews).toBe(1)
+  keyboard.leave()
 })

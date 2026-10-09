@@ -397,3 +397,186 @@ test('multiline caller intent cannot replace or recolor the actual host call sta
     model.close()
   }
 })
+
+test('native content-first artifact peek keeps semantic context and literal diff whitespace', async () => {
+  const model = new PrivateRunModel()
+  const reference = { kind: 'artifact' as const, attachment: 'evidence', path: 'review.patch' }
+  model.acceptView('root', {
+    kind: 'view',
+    id: 'review',
+    title: 'Document review',
+    summary: 'Supplied evidence',
+    sections: [
+      {
+        blocks: [
+          {
+            kind: 'report',
+            text: 'Selected artifact\nSupplied context stays reachable',
+            references: [reference, reference],
+          },
+        ],
+      },
+    ],
+  })
+  model.select(JSON.stringify(['root', 'review']))
+  model.selectRecord('block:0:0')
+  let reads = 0
+  const text =
+    'diff --git a/source b/source\n--- a/source\n+++ b/source\n@@ -1 +1 @@\n-  old text\n+  new text\n context\n'
+  model.setArtifacts(
+    (_publisher, ref) => ref.path,
+    async () => {
+      reads++
+      return { text, bytes: Buffer.byteLength(text), clipped: false }
+    },
+  )
+  model.setArtifactCapture({
+    generation: 'capture',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [
+      { path: 'review.patch', bytes: Buffer.byteLength(text), state: 'text', clipped: false },
+    ],
+  })
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    140,
+    36,
+  )
+  try {
+    await dashboard.frame(140, 36, { panels: [] }, 0, false)
+    const frame = await dashboard.frame(140, 36, { panels: [] }, 0, false)
+    expect(reads).toBe(1)
+    expect(frame.text).toContain('review.patch')
+    expect(frame.text).toContain('-  old text')
+    expect(frame.text).toContain('+  new text')
+    expect(frame.text).toContain('Supplied context stays reachable')
+    expect(frame.text).toContain('Verified delivery')
+    expect(frame.text).not.toMatch(sgr)
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('native Delivered files works without views and distinguishes empty, non-text and unavailable captures', async () => {
+  const model = new PrivateRunModel()
+  let reads = 0
+  model.setArtifacts(
+    () => undefined,
+    async () => {
+      reads++
+      return { text: '', bytes: 0, clipped: false }
+    },
+  )
+  model.setArtifactCapture({
+    generation: 'inventory',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [
+      { path: 'empty.txt', bytes: 0, state: 'empty', clipped: false },
+      { path: 'binary', bytes: 4, state: 'non-text', clipped: false },
+      { path: 'missing', bytes: 4, state: 'unavailable', clipped: false },
+    ],
+  })
+  model.select('files')
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    80,
+    24,
+  )
+  try {
+    const inventory = await dashboard.frame(80, 24, { panels: [] }, 0, false)
+    expect(inventory.text).toContain('Delivered files')
+    expect(inventory.text).toContain('empty.txt')
+    expect(model.views.size).toBe(0)
+    expect(reads).toBe(0)
+    await model.activateFile('empty.txt')
+    const empty = await dashboard.frame(
+      80,
+      24,
+      { panels: [{ kind: 'preview', scroll: 0 }] },
+      0,
+      false,
+    )
+    expect(empty.text).toContain('captured text file is empty')
+    expect(empty.text).toContain('Esc back')
+    await model.activateFile('binary')
+    const binary = await dashboard.frame(
+      80,
+      24,
+      { panels: [{ kind: 'preview', scroll: 0 }] },
+      0,
+      false,
+    )
+    expect(binary.text).toContain('UTF-8 text preview')
+    await model.activateFile('missing')
+    const missing = await dashboard.frame(
+      80,
+      24,
+      { panels: [{ kind: 'preview', scroll: 0 }] },
+      0,
+      false,
+    )
+    expect(missing.text).toContain('Immutable content is unavailable')
+    expect(reads).toBe(1)
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('native captured-content scrolling and literal search reach the retained excerpt without new reads', async () => {
+  const model = new PrivateRunModel()
+  const text =
+    Array.from({ length: 60 }, (_, i) => `Literal line ${i}`).join('\n') +
+    '\nSearch target at the end'
+  let reads = 0
+  model.setArtifacts(
+    () => undefined,
+    async () => {
+      reads++
+      return { text, bytes: Buffer.byteLength(text), clipped: false }
+    },
+  )
+  model.setArtifactCapture({
+    generation: 'search',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [{ path: 'report.txt', bytes: Buffer.byteLength(text), state: 'text', clipped: false }],
+  })
+  model.select('files')
+  await model.activateFile('report.txt')
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    80,
+    24,
+  )
+  try {
+    await dashboard.frame(80, 24, { panels: [{ kind: 'preview', scroll: 0 }] }, 0, false)
+    const state = {
+      panels: [
+        {
+          kind: 'preview' as const,
+          scroll: 0,
+          query: 'Search target',
+          matchOffset: text.indexOf('Search target'),
+        },
+      ],
+    }
+    const first = await dashboard.frame(80, 24, state, 0, false)
+    const second = await dashboard.frame(80, 24, state, first.scroll, false)
+    expect(first.text + second.text).toContain('Search target at the end')
+    expect(reads).toBe(1)
+    expect(first.scroll).toBeGreaterThan(0)
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})

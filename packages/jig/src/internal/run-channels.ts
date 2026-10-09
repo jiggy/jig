@@ -21,6 +21,12 @@ import {
   type ResolvedChannelContract,
 } from '../run/channels.js'
 
+/** Actual host-owned stderr emitter and, when known, its invoking caller operation. */
+export type PrivateRunDiagnosticSource = Readonly<{
+  emitter: string
+  call?: Readonly<{ publisher: string; operationId: string }>
+}>
+
 /** Command-local presentation. Its callbacks confer no execution authority. */
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
@@ -32,9 +38,41 @@ export interface PrivateRunChannelOutput {
     ambiguous(ports: readonly string[]): void
   }
   record(value: JsonValue): Promise<void>
-  diagnostic(bytes: Uint8Array, operations?: readonly string[]): void
+  diagnostic(
+    bytes: Uint8Array,
+    operations?: readonly string[],
+    source?: PrivateRunDiagnosticSource,
+  ): void
   /** Command-local observation of an authoritative settled root, including during close. */
   terminal?(status: Extract<RootRunStatus, { state: 'terminal' }>): void
+}
+
+/** Bind process observations without treating stderr bytes as accepted semantic reports. */
+export function privateRunDiagnosticObserver(
+  input: Readonly<{
+    output: Pick<PrivateRunChannelOutput, 'diagnostic'>
+    emitter?: Pick<ChannelParticipant, 'id'>
+    call?: Readonly<{ caller: Pick<ChannelParticipant, 'id'>; operationId: string }>
+    operations?: readonly string[]
+  }>,
+): (bytes: Uint8Array) => void {
+  const source: PrivateRunDiagnosticSource | undefined =
+    input.emitter === undefined
+      ? undefined
+      : Object.freeze({
+          emitter: input.emitter.id,
+          ...(input.call === undefined
+            ? {}
+            : {
+                call: Object.freeze({
+                  publisher: input.call.caller.id,
+                  operationId: input.call.operationId,
+                }),
+              }),
+        })
+  const operations =
+    input.operations === undefined ? undefined : Object.freeze([...input.operations])
+  return (bytes) => input.output.diagnostic(bytes, operations, source)
 }
 
 export type PrivateChannelContractCache = Map<string, Promise<ResolvedChannelContract>>

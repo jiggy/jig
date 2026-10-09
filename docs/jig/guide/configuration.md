@@ -168,7 +168,7 @@ examples, and [execution policy](../spec/project-policy.md) for enforced limits.
 | `--input JSON` or `--input @FILE` | `run` | Supply JSON input; omitted input is `{}` |
 | `--timeout 2m` | `run` | Set the Run deadline within the supported limits |
 | `--receive CHANNEL` | `run` | Receive a declared output channel; see [live progress](./channels.md) |
-| `--display MODE` | `run` | Select auto inline, plain, or a read-only keyboard dashboard; operator-only |
+| `--display MODE` | `run` | Select auto inline, plain, keyboard dashboard, or local web inspection; operator-only |
 | `--json` | `run` | Emit machine-readable JSON or NDJSON even in a terminal; redirected stdout already uses this format |
 | `--details` | `review` | Include unchanged policy as context in the review diff |
 | `--yes` | `review` | Approve the displayed revision without an interactive prompt; does not grant resource-authority changes or resolution-network permission |

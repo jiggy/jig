@@ -23,7 +23,7 @@ export function parseRun(
   readonly receive: readonly string[]
   readonly json: boolean
   readonly updates: 'auto' | 'off'
-  readonly display: 'auto' | 'plain' | 'dashboard'
+  readonly display: 'auto' | 'plain' | 'dashboard' | 'web'
   readonly verification: string | undefined
 } {
   if (arguments_.length < 2)
@@ -37,7 +37,7 @@ export function parseRun(
   let json = false
   let updates: 'auto' | 'off' = 'auto'
   let sawUpdates = false
-  let display: 'auto' | 'plain' | 'dashboard' = 'auto'
+  let display: 'auto' | 'plain' | 'dashboard' | 'web' = 'auto'
   let sawDisplay = false
   let sawInput = false
   let sawTimeout = false
@@ -71,8 +71,8 @@ export function parseRun(
       )
     if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
     if (option === '--display') {
-      if (sawDisplay || !['auto', 'plain', 'dashboard'].includes(value))
-        usage('run', '--display accepts auto, plain or dashboard once.')
+      if (sawDisplay || !['auto', 'plain', 'dashboard', 'web'].includes(value))
+        usage('run', '--display accepts auto, plain, dashboard or web once.')
       sawDisplay = true
       display = value as typeof display
       continue

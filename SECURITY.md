@@ -114,6 +114,44 @@ must inspect captured behavior without importing candidate code.
 
 ## Supported trust boundary
 
+### Local browser inspection
+
+Operator-selected `--display web` runs a command-owned read-only HTTP display on
+numeric IPv4 loopback, after execution admission or valid saved-packet capture.
+It is separate from the outbound HTTP Request grant and gives Flows no network
+or browser authority. Fixed bundled assets render validated semantic declarations
+and host observations as inert text. They do not execute artifact HTML, SVG,
+scripts or Markdown HTML. Browser controls can close presentation, not approve,
+retry, cancel or apply work.
+
+A random session capability in the initial URL fragment authorizes observation,
+artifact and close requests. The browser removes the fragment and keeps the
+capability in memory, without cookies or storage; reloading requires the original
+terminal link. Possession delegates access to this command's observations and
+presentation closure. Never include that link in result packets, diagnostics,
+model journals or request logs. Exact parser-visible Host/Origin checks, present
+fetch-site checks, no permissive CORS and restrictive CSP supplement authorization;
+loopback binding alone is not access control. Native request parsing can normalize
+the original request target before the handler observes it.
+
+Artifact endpoints resolve only opaque identities in verified immutable captures,
+never arbitrary paths, project roots or mutable output destinations. Live
+inspection transfers bounded excerpts and retires delivery/checkpoint/native
+authority under one finite completion allowance before waiting indefinitely.
+Lost retirement acknowledgment or uncertain cleanup closes inspection and retains
+known execution/delivery facts with a separate command-cleanup failure. Saved
+inspection checks file consistency without authenticating recorded report claims.
+
+Application limits bound snapshots, client counts, stream queues and preview
+suppliers after native parsing. They do not enforce a hard process memory/socket
+quota on headers, ingress buffers or native copies before the handler. Local
+traffic can exhaust availability or lose the CLI coordinator; normal independent
+execution fencing and cleanup remain necessary. This boundary does not defend
+against a compromised operator account, browser or trusted runtime. See the
+[complete local display contract](docs/jig/spec/web-display.md).
+
+### Installation verification
+
 The operator controls installation change detection with
 `--verification cached|strict|fast` on review, Run and inspection. The argument
 overrides the `JIG_VERIFICATION` environment preference. The default, `cached`,

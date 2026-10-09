@@ -194,6 +194,7 @@ async function runWithEnvironment(
         process.stderr.isTTY === true &&
         typeof process.stdin.setRawMode === 'function' &&
         process.env.TERM !== 'dumb',
+      process.stderr.isTTY === true,
     )
     if (recovery === undefined && privateNeedsFileOwner(arguments_)) {
       return await privateOwnFileCommand(

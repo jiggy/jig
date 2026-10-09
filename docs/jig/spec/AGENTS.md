@@ -33,6 +33,11 @@ descriptors.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.
+- `web-display.md` owns the local browser display's access boundary, bounded
+  snapshots/streams, independent viewer navigation, confined immutable previews,
+  admission and finite authority retirement before indefinite inspection. It
+  adds no Flow author API or public renderer/HTTP SPI. CLI grammar and hierarchy
+  remain in `cli-experience.md`.
 - `user-updates.md` owns Jig's exact optional-port selection, separate CLI pool,
   bounded shared stderr presentation and qualification policy. The portable
   descriptor and scoped libraries belong to `packages/user-updates/` and

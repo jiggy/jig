@@ -55,6 +55,11 @@ goal and evidence. Wide terminals show the selected job's details beside the lis
 Blocking causes remain in the attention bar; press `!` to read the complete cause.
 Use `jig run --display dashboard` to switch views, select a job, inspect its
 details, and use `r` to select a verified file preview after packet delivery.
+Use `jig run --display web` to open the same Jobs, Checks and Patches views in a
+browser through the private link printed after execution starts. **Delivered
+files** lets you read each checked patch and its evidence once delivery is
+verified. A job with several evidence references offers an explicit choice;
+the display does not guess which file you meant. No Flow changes are required.
 Jobs includes the exact original request file; long displayed goals explicitly
 identify excerpts. Complete requests also remain in the supplied input and
 `result.json`.
@@ -71,6 +76,7 @@ Reopen the saved evidence later without starting work:
 
 ```sh
 jig inspect --result ./factory-result --display dashboard
+jig inspect --result ./factory-result --display web
 ```
 
 This shows the recorded result, verified saved files and diagnostics. Current
