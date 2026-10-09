@@ -29,7 +29,12 @@ export type PrivateCallEvent = Readonly<{
   cause?: string
   childPublisher?: string
 }>
-export type PrivateCallNode = PrivateCallEvent & { key: string; parent?: string; clipped?: true }
+export type PrivateCallNode = PrivateCallEvent & {
+  key: string
+  parent?: string
+  firstObservedAt: number
+  clipped?: true
+}
 export type PrivateView = {
   key: string
   publisher: string
@@ -561,6 +566,7 @@ export class PrivateRunModel {
       slot: bound(event.slot, 128),
       state: event.state,
       time: event.time,
+      firstObservedAt: old?.firstObservedAt ?? event.time,
       ...(parent === undefined ? {} : { parent }),
       ...(event.childPublisher === undefined && old?.childPublisher === undefined
         ? {}

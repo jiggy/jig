@@ -62,6 +62,7 @@ export type PrivateWebSnapshot = {
   omissions: { calls: number; journal: { flow: number; host: number; diagnostic: number } }
   views: {
     id: string
+    hostRole?: 'recorded-report' | 'recorded-files' | 'recorded-diagnostics'
     sourceId: string
     sourceLabel: string
     updatedAt: number
@@ -77,6 +78,7 @@ export type PrivateWebSnapshot = {
     slot: string
     intent?: string
     state: PrivateCallState
+    firstObservedAt: number
     observedAt: number
     cause?: string
   }[]
@@ -347,6 +349,17 @@ export class PrivateWebProjection {
     const model = this.model
     const views = [...model.views.values()].map((view) => ({
       id: this.#id('view', view.publisher, view.value.id),
+      ...(model.workspace.recorded && view.publisher === 'saved-result'
+        ? {
+            hostRole: (
+              {
+                'recorded-result': 'recorded-report',
+                files: 'recorded-files',
+                diagnostics: 'recorded-diagnostics',
+              } as const
+            )[view.value.id as 'recorded-result' | 'files' | 'diagnostics'],
+          }
+        : {}),
       sourceId: this.#source(view.publisher),
       sourceLabel: bounded(model.peekSourceLabel(view.publisher), 256).value,
       updatedAt: view.updated,
@@ -365,6 +378,7 @@ export class PrivateWebProjection {
       operationId: call.operationId,
       slot: call.slot,
       state: call.state,
+      firstObservedAt: call.firstObservedAt,
       observedAt: call.time,
       ...(call.intent === undefined ? {} : { intent: call.intent }),
       ...(call.cause === undefined ? {} : { cause: call.cause }),

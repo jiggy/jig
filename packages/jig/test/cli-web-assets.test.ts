@@ -25,6 +25,7 @@ test('browser build emits only fixed self-contained assets and erases server typ
   expect(browser).not.toContain('localStorage')
   expect(browser).not.toContain('sessionStorage')
   expect(browser).not.toContain('EventSource')
+  expect(browser).not.toMatch(/WebSocket|prepareInjection/)
   expect(browser).not.toContain('https://')
   expect(assets['/assets/app.css']!.body).not.toMatch(/@import|url\(/)
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))

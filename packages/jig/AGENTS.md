@@ -391,6 +391,9 @@ failure and reuse bounded close promises; no finally path resets their deadline.
 `test/cli-web*.test.ts` owns socket, lifecycle, projection, browser-client,
 navigation and embedded-asset proof. Installed browser/native-host qualification
 is separate from source mocks or design-board approval.
+Call nodes retain their first observed time under the existing metadata ceiling;
+web intervals show first-to-latest observation rather than execution duration.
+Routine snapshot synchronization stays quiet without relaxing freshness fences.
 Initiate native forced connection cancellation before discarding response
 queues; the qualified Linux pin can retain graceful queues or reject premature
 stream errors. Join that cancellation after disposing subscriptions and buffers.

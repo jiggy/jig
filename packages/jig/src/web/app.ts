@@ -18,8 +18,14 @@ import {
   privateBrowserResolve,
   privateBrowserRowKey,
   privateBrowserSurvivingSelection,
+  privateBrowserTabs,
   privateBrowserValue,
 } from './navigation.js'
+import {
+  privateBrowserCallSpans,
+  privateBrowserDuration,
+  privateBrowserObservationStatus,
+} from './observations.js'
 
 let capability = privateBrowserCapability(location.hash)
 let hasCapability = !!capability
@@ -36,6 +42,7 @@ let lastBodyRevision = 0
 let previousCallKeys: string[] = []
 const elapsedClock = new PrivateBrowserClock()
 let selectedCall: string | undefined
+let callFilter = ''
 let panel: 'attention' | 'diagnostics' | 'help' | undefined
 let panelOrigin: HTMLElement | undefined
 let announcement = ''
@@ -527,6 +534,13 @@ function ApplicationList(): ComponentChildren {
                     )
                   : null,
               ),
+              h(
+                'div',
+                { class: 'column-headings', 'aria-hidden': true },
+                record.collection.columns
+                  .slice(0, 3)
+                  .map((column) => h('span', { key: column.key }, literal(column.label))),
+              ),
             )
           : null
       return [
@@ -539,13 +553,25 @@ function ApplicationList(): ComponentChildren {
             h(
               'span',
               {},
-              h('strong', {}, literal(record.title)),
+              record.row ? null : h('strong', {}, literal(record.title)),
               h('span', { class: 'card-observation' }, recordTeaser(record)),
             ),
             () => select(record.key),
             {
-              class: `record ${state.selected === record.key ? 'selected' : ''}`,
+              class: `record ${record.row ? 'collection-row' : ''} ${state.selected === record.key ? 'selected' : ''}`,
               'aria-pressed': state.selected === record.key,
+              'aria-label':
+                record.row && record.collection
+                  ? privateBrowserLiteral(
+                      record.collection.columns
+                        .slice(0, 3)
+                        .map(
+                          (column) =>
+                            `${column.label}: ${privateBrowserValue(record.row!.cells[column.key] ?? null)}`,
+                        )
+                        .join('; '),
+                    )
+                  : undefined,
               'data-record': record.key,
               onKeyDown: recordKeyDown,
             },
@@ -850,6 +876,16 @@ function Files(): ComponentChildren {
       { class: 'records' },
       h('h2', {}, snapshot.mode === 'recorded-packet' ? 'Captured files' : 'Delivered files'),
       h('p', {}, 'Only immutable captured inventory is shown.'),
+      snapshot.mode === 'recorded-packet'
+        ? h(
+            'p',
+            { class: 'secondary' },
+            literal(
+              snapshot.views.find((view) => view.hostRole === 'recorded-files')?.value.summary ??
+                '',
+            ),
+          )
+        : null,
       capture.phase === 'pending'
         ? h('p', {}, 'Files are pending verified delivery. No paths are guessed.')
         : capture.phase === 'unavailable'
@@ -877,7 +913,7 @@ function Files(): ComponentChildren {
                   () => select(item.id),
                   {
                     key: item.id,
-                    class: `record ${state.selected === item.id ? 'selected' : ''}`,
+                    class: `record file-record ${state.selected === item.id ? 'selected' : ''}`,
                     'aria-pressed': state.selected === item.id,
                     'data-record': item.id,
                     onKeyDown: recordKeyDown,
@@ -1038,8 +1074,27 @@ function Overview(): ComponentChildren {
   const snapshot = client?.body
   if (!snapshot) return null
   const selected = snapshot.calls.find((call) => call.id === selectedCall)
+  const timeline = privateBrowserCallSpans(snapshot.calls)
+  const matches = new Set(
+    snapshot.calls
+      .filter((call) =>
+        privateBrowserLiteral(`${call.intent ?? ''} ${call.slot} ${call.state}`)
+          .toLowerCase()
+          .includes(callFilter.toLowerCase()),
+      )
+      .map((call) => call.id),
+  )
+  const included = new Set(matches)
+  for (const id of matches) {
+    let call = snapshot.calls.find((item) => item.id === id)
+    for (let depth = 0; call?.parentId && depth < 32; depth++) {
+      included.add(call.parentId)
+      call = snapshot.calls.find((item) => item.id === call!.parentId)
+    }
+  }
   const children = new Map<string | undefined, PrivateWebSnapshot['calls']>()
   for (const call of snapshot.calls) {
+    if (!included.has(call.id)) continue
     const parent = snapshot.calls.some((item) => item.id === call.parentId)
       ? call.parentId
       : undefined
@@ -1058,47 +1113,106 @@ function Overview(): ComponentChildren {
           { class: 'call-tree' },
           (children.get(parent) ?? []).map((call) => {
             const descendants = children.get(call.id) ?? []
-            const open = treeChoices.get(call.id) ?? problematic(call)
+            const open = !!callFilter || (treeChoices.get(call.id) ?? problematic(call))
             return h(
               'li',
               { key: call.id },
               h(
                 'div',
-                { class: `call-row call-${call.state}` },
-                descendants.length
-                  ? button(
-                      open ? '▾' : '▸',
-                      () => {
-                        humanNavigation = true
-                        treeChoices.set(call.id, !open)
-                        redraw()
-                      },
-                      {
-                        'aria-label': `${open ? 'Collapse' : 'Expand'} call branch`,
-                        'aria-expanded': open,
-                      },
-                    )
-                  : h('span', { class: 'tree-spacer' }),
-                button(
-                  h(
-                    'span',
-                    {},
-                    literal(teaser(call.intent ?? call.slot, 100)),
+                {
+                  class: `call-row depth-${depth} call-${call.state} ${selectedCall === call.id ? 'selected' : ''}`,
+                },
+                h(
+                  'div',
+                  { class: 'call-identity' },
+                  descendants.length
+                    ? button(
+                        open ? '▾' : '▸',
+                        () => {
+                          humanNavigation = true
+                          treeChoices.set(call.id, !open)
+                          redraw()
+                        },
+                        {
+                          'aria-label': `${open ? 'Collapse' : 'Expand'} call branch`,
+                          'aria-expanded': open,
+                          class: 'tree-toggle',
+                        },
+                      )
+                    : h('span', { class: 'tree-spacer' }),
+                  button(
                     h(
-                      'small',
+                      'span',
                       {},
-                      call.state === 'cancel-requested' ? 'Cancellation requested' : call.state,
+                      h(
+                        'span',
+                        { class: 'call-name' },
+                        literal(teaser(call.intent ?? call.slot, 100)),
+                      ),
+                      h(
+                        'small',
+                        { class: 'call-state' },
+                        call.state === 'cancel-requested' ? 'Cancellation requested' : call.state,
+                      ),
                     ),
+                    () => {
+                      humanNavigation = true
+                      selectCall(call.id)
+                    },
+                    {
+                      'aria-pressed': selectedCall === call.id,
+                      'data-call': call.id,
+                      onKeyDown: (event: KeyboardEvent) => {
+                        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+                        event.preventDefault()
+                        const buttons = [
+                          ...document.querySelectorAll<HTMLButtonElement>('[data-call]'),
+                        ]
+                        const index = buttons.indexOf(event.currentTarget as HTMLButtonElement)
+                        const next =
+                          event.key === 'Home'
+                            ? 0
+                            : event.key === 'End'
+                              ? buttons.length - 1
+                              : Math.max(
+                                  0,
+                                  Math.min(
+                                    buttons.length - 1,
+                                    index + (event.key === 'ArrowDown' ? 1 : -1),
+                                  ),
+                                )
+                        buttons[next]?.focus()
+                      },
+                    },
                   ),
-                  () => {
-                    humanNavigation = true
-                    selectCall(call.id)
-                  },
-                  {
-                    class: selectedCall === call.id ? 'selected' : '',
-                    'aria-pressed': selectedCall === call.id,
-                    'data-call': call.id,
-                  },
+                ),
+                h(
+                  'div',
+                  { class: 'call-span' },
+                  timeline.spans.has(call.id)
+                    ? h(
+                        'svg',
+                        {
+                          viewBox: '0 0 1000 24',
+                          preserveAspectRatio: 'none',
+                          'aria-hidden': true,
+                        },
+                        h('rect', {
+                          x: timeline.spans.get(call.id)!.x,
+                          y: 8,
+                          width: Math.max(2, timeline.spans.get(call.id)!.width),
+                          height: 8,
+                          rx: 3,
+                        }),
+                      )
+                    : null,
+                  h(
+                    'small',
+                    {},
+                    timeline.spans.has(call.id)
+                      ? privateBrowserDuration(timeline.spans.get(call.id)!.milliseconds)
+                      : 'Timing unavailable',
+                  ),
                 ),
               ),
               !open && descendants.length
@@ -1114,12 +1228,51 @@ function Overview(): ComponentChildren {
         )
   return h(
     'div',
-    { class: `workspace ${selected && currentLocal().detailOpen ? 'show-detail' : ''}` },
+    {
+      class: `workspace execution-workspace ${selected && currentLocal().detailOpen ? 'show-detail' : ''}`,
+    },
     h(
       'section',
       { class: 'records' },
-      h('h2', {}, 'Observed calls'),
-      h('p', { class: 'secondary' }, 'Calls from root · actual observed relationships only'),
+      h(
+        'div',
+        { class: 'view-heading' },
+        h('h2', {}, 'Execution'),
+        h('span', { class: 'secondary' }, `${snapshot.calls.length} observed calls`),
+      ),
+      h(
+        'p',
+        { class: 'secondary' },
+        'Actual call relationships · bars span first to latest host observation, not measured execution time.',
+      ),
+      h(
+        'div',
+        { class: 'graph-controls' },
+        h('input', {
+          'aria-label': 'Find observed calls',
+          placeholder: 'Find a call…',
+          value: callFilter,
+          onInput: (event: Event) => {
+            callFilter = (event.target as HTMLInputElement).value
+            humanNavigation = true
+            redraw()
+          },
+        }),
+        button('Expand all', () => {
+          for (const call of snapshot.calls) treeChoices.set(call.id, true)
+          redraw()
+        }),
+        button('Collapse all', () => {
+          for (const call of snapshot.calls) treeChoices.set(call.id, false)
+          redraw()
+        }),
+      ),
+      h(
+        'div',
+        { class: 'timeline-heading', 'aria-hidden': true },
+        h('span', {}, 'Call / observed state'),
+        h('span', {}, '0ms', h('span', {}, privateBrowserDuration(timeline.milliseconds))),
+      ),
       snapshot.calls.some(
         (call) => call.parentId && !snapshot.calls.some((parent) => parent.id === call.parentId),
       )
@@ -1129,7 +1282,13 @@ function Overview(): ComponentChildren {
             'Some observed parents are unavailable. Those calls appear at the outer level; their ancestry is incomplete.',
           )
         : null,
-      snapshot.calls.length ? nodes() : h('p', {}, 'No child calls have been observed.'),
+      included.size
+        ? nodes()
+        : h(
+            'p',
+            { class: 'empty-state' },
+            callFilter ? 'No calls match this filter.' : 'No child calls have been observed.',
+          ),
       snapshot.omissions.calls
         ? h(
             'p',
@@ -1156,7 +1315,22 @@ function Overview(): ComponentChildren {
             {},
             h('h2', {}, literal(selected.intent ?? selected.slot)),
             h('p', { class: `call-${selected.state}` }, `Observed state: ${selected.state}`),
-            h('p', {}, `Observed at ${new Date(selected.observedAt).toISOString()}`),
+            h(
+              'dl',
+              { class: 'fields' },
+              h(
+                'div',
+                { class: 'field' },
+                h('dt', {}, 'First observed'),
+                h('dd', {}, new Date(selected.firstObservedAt).toISOString()),
+              ),
+              h(
+                'div',
+                { class: 'field' },
+                h('dt', {}, 'Latest observation'),
+                h('dd', {}, new Date(selected.observedAt).toISOString()),
+              ),
+            ),
             selected.cause
               ? h('p', { class: 'report' }, literal(selected.cause))
               : h('p', { class: 'secondary' }, 'No additional safe cause was observed.'),
@@ -1167,6 +1341,41 @@ function Overview(): ComponentChildren {
                   'Returned describes execution observation, not application success.',
                 )
               : null,
+            h('h3', {}, 'Related reports'),
+            snapshot.journal.some(
+              (item) =>
+                item.attribution.provenance !== 'recorded-claim' &&
+                item.attribution.callId === selected.id,
+            )
+              ? snapshot.journal
+                  .filter(
+                    (item) =>
+                      item.attribution.provenance !== 'recorded-claim' &&
+                      item.attribution.callId === selected.id,
+                  )
+                  .map((item) =>
+                    h(
+                      'details',
+                      { key: item.id, class: 'related-report' },
+                      h('summary', {}, literal(teaser(item.text, 100))),
+                      h(
+                        'p',
+                        { class: 'source' },
+                        literal(item.attribution.sourceLabel),
+                        ' · ',
+                        provenance(item.attribution),
+                      ),
+                      h('p', { class: 'report' }, literal(item.text)),
+                      item.clipped
+                        ? h('p', { class: 'secondary' }, 'Retained report clipped.')
+                        : null,
+                    ),
+                  )
+              : h(
+                  'p',
+                  { class: 'secondary' },
+                  'No retained reports are associated with this call.',
+                ),
             h(
               'details',
               {},
@@ -1282,77 +1491,97 @@ function Panel({ current }: { current: PrivateWebSnapshotEnvelope }): ComponentC
 }
 
 function Tabs(): ComponentChildren {
-  const supplied = client?.body?.views ?? []
-  const tabs = [
-    { id: 'activity', title: 'Activity', source: '' },
-    { id: 'overview', title: 'Overview', source: '' },
-    ...supplied.map((item) => ({ id: item.id, title: item.value.title, source: item.sourceLabel })),
-  ]
-  const visible = tabs.slice(0, 7)
-  if (!visible.some((item) => item.id === viewId)) {
-    const selected = tabs.find((item) => item.id === viewId)
-    if (selected) visible[visible.length - 1] = selected
-  }
-  const focusId = visible.some((item) => item.id === viewId) ? viewId : visible[0]!.id
+  const tabs = privateBrowserTabs(client?.body, client?.current?.mode)
+  const focusId = tabs.some((item) => item.id === viewId) ? viewId : tabs[0]!.id
   return h(
-    'div',
+    'aside',
     { class: 'navigation' },
     h(
       'nav',
-      { role: 'tablist', 'aria-label': 'Run views' },
-      visible.map((tab) =>
-        button(
-          h(
-            'span',
-            {},
-            literal(tab.title),
-            tab.source ? h('small', {}, literal(tab.source)) : null,
-          ),
-          () => navigate(tab.id),
-          {
-            key: tab.id,
-            id: `tab-${tab.id}`,
-            role: 'tab',
-            'aria-selected': tab.id === viewId && !panel,
-            'aria-controls': 'view-panel',
-            tabIndex: tab.id === focusId ? 0 : -1,
-            onKeyDown: (event: KeyboardEvent) => {
-              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-              event.preventDefault()
-              const index = visible.findIndex((item) => item.id === tab.id)
-              const next =
-                event.key === 'Home'
-                  ? visible[0]!
-                  : event.key === 'End'
-                    ? visible[visible.length - 1]!
-                    : visible[
-                        (index + (event.key === 'ArrowRight' ? 1 : -1) + visible.length) %
-                          visible.length
-                      ]!
-              navigate(next.id)
-              document.getElementById(`tab-${next.id}`)?.focus()
+      { role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': 'Run views' },
+      tabs.map((tab, index) =>
+        h(
+          'div',
+          { key: tab.id },
+          index === 0
+            ? h('p', { class: 'nav-group', role: 'presentation' }, 'Run inspection')
+            : null,
+          tab.application && !tabs[index - 1]?.application
+            ? h('p', { class: 'nav-group', role: 'presentation' }, 'Application views')
+            : null,
+          button(
+            h(
+              'span',
+              { class: 'nav-entry' },
+              h('span', { class: 'nav-icon', 'aria-hidden': true }, tab.icon),
+              h(
+                'span',
+                {},
+                literal(tab.title),
+                tab.source ? h('small', {}, literal(tab.source)) : null,
+              ),
+            ),
+            () => navigate(tab.id),
+            {
+              id: `tab-${tab.id}`,
+              role: 'tab',
+              'aria-selected': tab.id === viewId && !panel,
+              'aria-controls': 'view-panel',
+              tabIndex: tab.id === focusId ? 0 : -1,
+              title: privateBrowserLiteral(`${tab.title}${tab.source ? ` · ${tab.source}` : ''}`),
+              onKeyDown: (event: KeyboardEvent) => {
+                if (
+                  !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
+                    event.key,
+                  )
+                )
+                  return
+                event.preventDefault()
+                const index = tabs.findIndex((item) => item.id === tab.id)
+                const next =
+                  event.key === 'Home'
+                    ? tabs[0]!
+                    : event.key === 'End'
+                      ? tabs[tabs.length - 1]!
+                      : tabs[
+                          (index +
+                            (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) +
+                            tabs.length) %
+                            tabs.length
+                        ]!
+                navigate(next.id)
+                document.getElementById(`tab-${next.id}`)?.focus()
+              },
             },
-          },
+          ),
         ),
       ),
     ),
     h(
-      'label',
-      { class: 'view-overflow' },
-      'All views',
+      'div',
+      { class: 'sidebar-tools' },
+      client?.current?.mode === 'recorded-packet' &&
+        client?.body?.views.some((view) => view.hostRole === 'recorded-diagnostics')
+        ? null
+        : button('Diagnostics', () => openPanel('diagnostics'), {
+            'aria-pressed': panel === 'diagnostics',
+          }),
+      button('Help & shortcuts', () => openPanel('help'), { 'aria-pressed': panel === 'help' }),
       h(
-        'select',
-        {
-          value: tabs.some((item) => item.id === viewId) ? viewId : '',
-          'aria-label': 'All retained views',
-          onChange: (event: Event) => navigate((event.target as HTMLSelectElement).value),
-        },
-        h('option', { value: '', disabled: true }, 'Choose view…'),
-        tabs.map((tab) =>
-          h(
-            'option',
-            { key: tab.id, value: tab.id },
-            privateBrowserLiteral(`${tab.title}${tab.source ? ` · ${tab.source}` : ''}`),
+        'label',
+        {},
+        'Appearance',
+        h(
+          'select',
+          {
+            value: document.documentElement.dataset.theme ?? 'system',
+            onChange: (event: Event) => {
+              document.documentElement.dataset.theme = (event.target as HTMLSelectElement).value
+              redraw()
+            },
+          },
+          ['system', 'light', 'dark', 'color-free'].map((theme) =>
+            h('option', { key: theme, value: theme }, theme),
           ),
         ),
       ),
@@ -1412,7 +1641,7 @@ function App(): ComponentChildren {
   const state = currentLocal()
   return h(
     'div',
-    {},
+    { class: 'inspector' },
     h(
       'header',
       { class: 'shell' },
@@ -1425,7 +1654,14 @@ function App(): ComponentChildren {
           current.mode === 'recorded-packet' ? 'JIG / RECORDED RESULT' : 'JIG / LOCAL RUN',
         ),
         h('h1', {}, literal(current.workspace.target)),
-        current.context ? h('p', { class: 'source' }, literal(current.context)) : null,
+        current.context
+          ? h(
+              'details',
+              { class: 'run-context' },
+              h('summary', {}, 'Observation context'),
+              h('p', { class: 'source' }, literal(current.context)),
+            )
+          : null,
         h(
           'p',
           { class: 'host-stage' },
@@ -1440,13 +1676,15 @@ function App(): ComponentChildren {
         'div',
         { class: 'shell-actions' },
         h('strong', {}, live ? 'Execution running' : 'Read-only inspection'),
-        h(
-          'span',
-          { class: 'secondary' },
-          `Elapsed ${Math.floor(seconds / 60)}m ${seconds % 60}s${current.workspace.limitMs === undefined ? '' : ` · limit ${Math.floor(current.workspace.limitMs / 1000)}s`}`,
-        ),
+        current.mode === 'recorded-packet'
+          ? null
+          : h(
+              'span',
+              { class: 'secondary' },
+              `Elapsed ${Math.floor(seconds / 60)}m ${seconds % 60}s${current.workspace.limitMs === undefined ? '' : ` · limit ${Math.floor(current.workspace.limitMs / 1000)}s`}`,
+            ),
         button(
-          closing ? 'Closing inspection…' : 'Close inspection for this command',
+          closing ? 'Closing…' : 'Close inspection',
           () => {
             closing = true
             redraw()
@@ -1458,7 +1696,11 @@ function App(): ComponentChildren {
               redraw()
             })
           },
-          { disabled: closing, class: 'close-inspection' },
+          {
+            disabled: closing,
+            class: 'close-inspection',
+            title: 'Closes inspection for this command and all viewers. Does not cancel execution.',
+          },
         ),
         h(
           'small',
@@ -1529,48 +1771,12 @@ function App(): ComponentChildren {
             { class: `attention ${winner.priority >= 4 ? 'host-failure' : ''}` },
           )
         : null,
-      h(
-        'div',
-        { class: 'inspection-controls' },
-        button('Diagnostics', () => openPanel('diagnostics')),
-        button(
-          current.mode === 'recorded-packet' ? 'Captured files' : 'Delivered files',
-          () => navigate('files'),
-          { 'aria-pressed': viewId === 'files' },
-        ),
-        button('Help', () => openPanel('help')),
-        h(
-          'label',
-          {},
-          'Theme',
-          h(
-            'select',
-            {
-              value: document.documentElement.dataset.theme ?? 'system',
-              onChange: (event: Event) => {
-                document.documentElement.dataset.theme = (event.target as HTMLSelectElement).value
-                redraw()
-              },
-            },
-            ['system', 'light', 'dark', 'color-free'].map((theme) =>
-              h('option', { key: theme, value: theme }, theme),
-            ),
-          ),
-        ),
-      ),
     ),
     client?.connection !== 'current'
       ? h(
           'p',
           { class: 'connection-note', role: 'status' },
           'Observation disconnected; retained data may be stale. References are disabled. Work is not restarted.',
-        )
-      : null,
-    client?.connection === 'current' && current.kind === 'snapshot' && !client.referencesEnabled
-      ? h(
-          'p',
-          { class: 'connection-note', role: 'status' },
-          'A newer committed observation is loading. References are disabled until a readable snapshot acknowledges it.',
         )
       : null,
     client?.bodyStale
@@ -1585,44 +1791,52 @@ function App(): ComponentChildren {
     current.kind === 'snapshot' && current.incomplete
       ? h('p', { class: 'connection-note' }, literal(current.incomplete))
       : null,
-    h(Tabs, {}),
-    feedback ? h('p', { class: 'feedback', role: 'status' }, feedback) : null,
     h(
-      'main',
-      {
-        id: 'view-panel',
-        role: panel || viewId === 'files' ? undefined : 'tabpanel',
-        'aria-labelledby': panel || viewId === 'files' ? undefined : `tab-${viewId}`,
-        'aria-label': panel
-          ? 'Inspection panel'
-          : viewId === 'files'
-            ? 'Delivered files'
-            : undefined,
-        class: state.expanded ? 'expanded-body' : '',
-      },
-      panel
-        ? h(Panel, { current })
-        : !client?.body
-          ? h(
-              'section',
-              { class: 'single' },
-              h('h2', {}, 'Body unavailable'),
-              h('p', {}, 'Use current attention and Diagnostics to inspect the known causes.'),
-            )
-          : viewId === 'activity'
-            ? h(Activity, {})
-            : viewId === 'overview'
-              ? h(Overview, {})
+      'div',
+      { class: 'run-layout' },
+      h(Tabs, {}),
+      h(
+        'div',
+        { class: 'run-content' },
+        feedback ? h('p', { class: 'feedback', role: 'status' }, feedback) : null,
+        h(
+          'main',
+          {
+            id: 'view-panel',
+            role: panel ? undefined : 'tabpanel',
+            'aria-labelledby': panel ? undefined : `tab-${viewId}`,
+            'aria-label': panel
+              ? 'Inspection panel'
               : viewId === 'files'
-                ? h(Files, {})
-                : h(
-                    'div',
-                    {
-                      class: `workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
-                    },
-                    h(ApplicationList, {}),
-                    h(SelectedDetail, {}),
-                  ),
+                ? 'Delivered files'
+                : undefined,
+            class: state.expanded ? 'expanded-body' : '',
+          },
+          panel
+            ? h(Panel, { current })
+            : !client?.body
+              ? h(
+                  'section',
+                  { class: 'single' },
+                  h('h2', {}, 'Body unavailable'),
+                  h('p', {}, 'Use current attention and Diagnostics to inspect the known causes.'),
+                )
+              : viewId === 'activity'
+                ? h(Activity, {})
+                : viewId === 'overview'
+                  ? h(Overview, {})
+                  : viewId === 'files'
+                    ? h(Files, {})
+                    : h(
+                        'div',
+                        {
+                          class: `workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+                        },
+                        h(ApplicationList, {}),
+                        h(SelectedDetail, {}),
+                      ),
+        ),
+      ),
     ),
     h(
       'footer',
@@ -1630,10 +1844,14 @@ function App(): ComponentChildren {
       h('span', {}, 'Closing this browser tab disconnects only this viewer.'),
       h(
         'span',
-        {},
-        client?.connection === 'current'
-          ? `Observation synchronized at ${new Date(client.synchronizedAt).toISOString()}`
-          : 'Observation stale',
+        {
+          class: `observation-status ${privateBrowserObservationStatus(client!).tone}`,
+          role: 'status',
+          title: client?.synchronizedAt
+            ? `Latest synchronized snapshot: ${new Date(client.synchronizedAt).toISOString()}. References require a current complete snapshot.`
+            : undefined,
+        },
+        privateBrowserObservationStatus(client!).label,
       ),
     ),
     h(

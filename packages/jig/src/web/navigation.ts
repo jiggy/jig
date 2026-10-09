@@ -34,6 +34,49 @@ export type PrivateBrowserReferenceTarget =
 export const privateBrowserRowKey = (collection: string, row?: string): string =>
   JSON.stringify(['row', collection, row ?? null])
 
+/** Saved adapters are host-owned. Authored IDs/titles never select host navigation. */
+export function privateBrowserTabs(
+  snapshot: PrivateWebSnapshot | undefined,
+  mode = snapshot?.mode ?? 'live-run',
+): {
+  id: string
+  title: string
+  source: string
+  icon: string
+  application?: boolean
+}[] {
+  const views = snapshot?.views ?? []
+  if (mode === 'recorded-packet') {
+    const report = views.find((view) => view.hostRole === 'recorded-report')
+    const diagnostics = views.find((view) => view.hostRole === 'recorded-diagnostics')
+    return [
+      ...(report ? [{ id: report.id, title: 'Recorded result', source: '', icon: '◈' }] : []),
+      { id: 'files', title: 'Captured files', source: '', icon: '▤' },
+      ...(diagnostics ? [{ id: diagnostics.id, title: 'Diagnostics', source: '', icon: '!' }] : []),
+      ...views
+        .filter((view) => !view.hostRole)
+        .map((view) => ({
+          id: view.id,
+          title: view.value.title,
+          source: view.sourceLabel,
+          icon: '◈',
+        })),
+    ]
+  }
+  return [
+    { id: 'overview', title: 'Execution', source: '', icon: '↳' },
+    { id: 'activity', title: 'Activity', source: '', icon: '≡' },
+    { id: 'files', title: 'Delivered files', source: '', icon: '▤' },
+    ...views.map((view) => ({
+      id: view.id,
+      title: view.value.title,
+      source: view.sourceLabel,
+      icon: '◈',
+      application: true,
+    })),
+  ]
+}
+
 export function privateBrowserLiteral(value: string): string {
   // Preserve line breaks/spacing, expose invisible controls/bidi overrides as data.
   return value.replace(

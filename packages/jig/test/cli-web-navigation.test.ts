@@ -12,6 +12,7 @@ import {
   privateBrowserRowKey,
   privateBrowserRows,
   privateBrowserSurvivingSelection,
+  privateBrowserTabs,
   privateBrowserValue,
 } from '../src/web/navigation.js'
 
@@ -80,6 +81,7 @@ function snapshot(): PrivateWebSnapshot {
         operationId: 'operation',
         slot: 'slot',
         state: 'returned',
+        firstObservedAt: 0,
         observedAt: 0,
       },
     ],
@@ -111,6 +113,27 @@ test('all supplied block kinds and rows remain reachable in order', () => {
   expect(privateBrowserValue(false)).toBe('false')
   expect(privateBrowserValue(null)).toBe('null')
   expect(privateBrowserValue('')).toBe('')
+})
+
+test('saved navigation exposes one report, file inventory and diagnostics without synthetic history', () => {
+  expect(privateBrowserTabs(undefined, 'recorded-packet').map((tab) => tab.id)).toEqual(['files'])
+  const data = snapshot()
+  data.views = [
+    { ...view, id: 'report', hostRole: 'recorded-report' },
+    { ...view, id: 'manifest', hostRole: 'recorded-files' },
+    { ...view, id: 'diagnostics', hostRole: 'recorded-diagnostics' },
+  ]
+  data.mode = 'recorded-packet'
+  expect(privateBrowserTabs(data).map((tab) => tab.id)).toEqual(['report', 'files', 'diagnostics'])
+  data.mode = 'live-run'
+  data.views = [{ ...view, value: { ...view.value, id: 'files', title: 'Files' } }]
+  expect(privateBrowserTabs(data).map((tab) => tab.id)).toEqual([
+    'overview',
+    'activity',
+    'files',
+    view.id,
+  ])
+  expect(privateBrowserTabs(data).at(-1)?.application).toBe(true)
 })
 
 test('peek counts hidden cells and detail references and deduplicates complete typed identities', () => {

@@ -25,6 +25,24 @@ const call = (publisher: string, operationId: string, childPublisher?: string) =
 })
 const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value))
 
+test('saved navigation roles require the recorded host adapter, never an authored ID or title', () => {
+  const model = new PrivateRunModel(),
+    projection = new PrivateWebProjection(model)
+  model.acceptView('root', view('files'))
+  model.acceptView('saved-result', view('diagnostics'))
+  expect(projection.capture(1).views.every((view) => view.hostRole === undefined)).toBe(true)
+  model.configureWorkspace({ recorded: true })
+  model.acceptView('saved-result', view('recorded-result'))
+  model.acceptView('saved-result', view('files'))
+  const result = projection.capture(2)
+  expect(result.views[0]!.hostRole).toBeUndefined()
+  expect(result.views.slice(1).map((view) => view.hostRole)).toEqual([
+    'recorded-diagnostics',
+    'recorded-report',
+    'recorded-files',
+  ])
+})
+
 test('semantic subscriptions exclude navigation, elapsed repaint and receipt commitment; transactions are atomic', () => {
   const model = new PrivateRunModel(),
     observations: unknown[] = []

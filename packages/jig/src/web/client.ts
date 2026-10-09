@@ -286,7 +286,9 @@ export class PrivateBrowserClient {
         if (value.kind === 'snapshot') this.body = value
       }
       if (value.revision < this.#highest) {
-        this.connection = 'disconnected'
+        // A readable response behind a notification is synchronization, not
+        // connection loss. Freshness still fences every reference/preview.
+        this.connection = 'current'
         this.#retryLater()
       } else {
         this.connection = 'current'
