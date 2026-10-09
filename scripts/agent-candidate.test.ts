@@ -470,94 +470,111 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   }
 })
 
-test('Linux aggregate requires every current-attempt command and matching candidate identity', async () => {
-  const workflow = Bun.YAML.parse(
-    await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
-  ) as any
-  const suites = workflow.jobs['host-suite']
-  const record = suites.steps.find((step: any) => step.name === 'Record complete shard proof').run
-  const proof = workflow.jobs['rootless-linux'].steps.find(
-    (step: any) => step.env?.EXPECTED_COMMANDS,
-  )
-  const commands = JSON.parse(proof.env.EXPECTED_COMMANDS)
-  commands['installed-evidence'].push(...linuxDisplayCommands(suites))
-  expect(Object.values(commands).flat()).toHaveLength(19)
-  const script = proof.run.split('\nmkdir "$RUNNER_TEMP/linux-qualification"')[0]
-  const directory = await mkdtemp(join(tmpdir(), 'linux-complete-evidence-'))
-  const sha = 'a'.repeat(40)
-  const env = {
-    ...process.env,
-    RUNNER_TEMP: directory,
-    GITHUB_SHA: sha,
-    GITHUB_RUN_ID: '41',
-    GITHUB_RUN_ATTEMPT: '2',
-    EXPECTED_COMMANDS: proof.env.EXPECTED_COMMANDS,
-  }
-  const shardDirectory = (suite: string) =>
-    join(directory, 'linux-evidence', `linux-shard-${suite}-${sha}-r41-a2`)
-  try {
-    await mkdir(join(directory, 'linux-host-artifacts'))
-    for (const filename of ['CANDIDATE.json', 'ARTIFACT.json'])
-      await writeFile(join(directory, 'linux-host-artifacts', filename), filename)
-    for (const suite of suites.strategy.matrix.suite) {
-      const shard = shardDirectory(suite)
-      await mkdir(join(shard, 'linux-command-evidence'), { recursive: true })
-      const marker = spawnSync('/bin/bash', ['-c', record], {
-        env: { ...env, RUNNER_TEMP: shard, SUITE: suite },
-        encoding: 'utf8',
-      })
-      expect(marker.status, marker.stderr).toBe(0)
-      expect(await Bun.file(join(shard, 'linux-shard.complete')).text()).toBe(
-        `${sha} ${suite} 41 2\n`,
-      )
+const linuxAggregateScenarios = [
+  { name: 'accepts all 19 current-attempt commands', kind: 'complete', command: undefined },
+  ...Array.from({ length: 7 }, (_, index) => ({
+    name: `refuses missing installed-evidence command ${index + 12}`,
+    kind: 'missing',
+    command: `command-${index + 12}.txt`,
+  })),
+  { name: 'refuses the old 15-command manifest', kind: 'legacy', command: undefined },
+  { name: 'refuses a stale-attempt shard', kind: 'stale', command: undefined },
+  { name: 'refuses different candidate bytes', kind: 'candidate', command: undefined },
+]
+for (const scenario of linuxAggregateScenarios) {
+  test(`Linux aggregate ${scenario.name}`, async () => {
+    const workflow = Bun.YAML.parse(
+      await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
+    ) as any
+    const suites = workflow.jobs['host-suite']
+    const record = suites.steps.find((step: any) => step.name === 'Record complete shard proof').run
+    const proof = workflow.jobs['rootless-linux'].steps.find(
+      (step: any) => step.env?.EXPECTED_COMMANDS,
+    )
+    const commands = JSON.parse(proof.env.EXPECTED_COMMANDS)
+    commands['installed-evidence'].push(...linuxDisplayCommands(suites))
+    expect(Object.values(commands).flat()).toHaveLength(19)
+    const script = proof.run.split('\nmkdir "$RUNNER_TEMP/linux-qualification"')[0]
+    const directory = await mkdtemp(join(tmpdir(), 'linux-complete-evidence-'))
+    const sha = 'a'.repeat(40)
+    const env = {
+      ...process.env,
+      RUNNER_TEMP: directory,
+      GITHUB_SHA: sha,
+      GITHUB_RUN_ID: '41',
+      GITHUB_RUN_ATTEMPT: '2',
+      EXPECTED_COMMANDS: proof.env.EXPECTED_COMMANDS,
+    }
+    const shardDirectory = (suite: string) =>
+      join(directory, 'linux-evidence', `linux-shard-${suite}-${sha}-r41-a2`)
+    try {
+      await mkdir(join(directory, 'linux-host-artifacts'))
       for (const filename of ['CANDIDATE.json', 'ARTIFACT.json'])
-        await copyFile(join(directory, 'linux-host-artifacts', filename), join(shard, filename))
-      await writeFile(
-        join(shard, 'linux-command-evidence/manifest.json'),
-        JSON.stringify({ schemaVersion: 1, commands: commands[suite] }),
-      )
-      for (const command of commands[suite])
-        await writeFile(join(shard, 'linux-command-evidence', command.transcript), '1 pass\n')
+        await writeFile(join(directory, 'linux-host-artifacts', filename), filename)
+      for (const suite of suites.strategy.matrix.suite) {
+        const shard = shardDirectory(suite)
+        await mkdir(join(shard, 'linux-command-evidence'), { recursive: true })
+        const marker = spawnSync('/bin/bash', ['-c', record], {
+          env: { ...env, RUNNER_TEMP: shard, SUITE: suite },
+          encoding: 'utf8',
+        })
+        expect(marker.status, marker.stderr).toBe(0)
+        expect(await Bun.file(join(shard, 'linux-shard.complete')).text()).toBe(
+          `${sha} ${suite} 41 2\n`,
+        )
+        for (const filename of ['CANDIDATE.json', 'ARTIFACT.json'])
+          await copyFile(join(directory, 'linux-host-artifacts', filename), join(shard, filename))
+        await writeFile(
+          join(shard, 'linux-command-evidence/manifest.json'),
+          JSON.stringify({ schemaVersion: 1, commands: commands[suite] }),
+        )
+        for (const command of commands[suite])
+          await writeFile(join(shard, 'linux-command-evidence', command.transcript), '1 pass\n')
+      }
+      if (scenario.command) {
+        const missing = join(
+          shardDirectory('installed-evidence'),
+          'linux-command-evidence/manifest.json',
+        )
+        await writeFile(
+          missing,
+          JSON.stringify({
+            schemaVersion: 1,
+            commands: commands['installed-evidence'].filter(
+              (command: any) => command.transcript !== scenario.command,
+            ),
+          }),
+        )
+      } else if (scenario.kind === 'legacy') {
+        await writeFile(
+          join(shardDirectory('installed-evidence'), 'linux-command-evidence/manifest.json'),
+          JSON.stringify({
+            schemaVersion: 1,
+            commands: commands['installed-evidence'].slice(0, 3),
+          }),
+        )
+      } else if (scenario.kind === 'stale') {
+        await writeFile(
+          join(shardDirectory('agent-lifecycle'), 'linux-shard.complete'),
+          `${sha} agent-lifecycle 41 1\n`,
+        )
+      } else if (scenario.kind === 'candidate') {
+        await writeFile(
+          join(shardDirectory('package-lifecycle'), 'CANDIDATE.json'),
+          'different candidate',
+        )
+      }
+      const result = spawnSync('/bin/bash', ['-c', script], { cwd: root, env, encoding: 'utf8' })
+      expect(result.status, result.stderr).toBe(scenario.kind === 'complete' ? 0 : 1)
+      if (scenario.kind === 'complete') {
+        const manifest = await Bun.file(join(directory, 'linux-evidence/manifest.json')).json()
+        expect(manifest.commands).toHaveLength(19)
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
     }
-    const run = () => spawnSync('/bin/bash', ['-c', script], { cwd: root, env, encoding: 'utf8' })
-    const complete = run()
-    expect(complete.status, complete.stderr).toBe(0)
-    const manifest = await Bun.file(join(directory, 'linux-evidence/manifest.json')).json()
-    expect(manifest.commands).toHaveLength(Object.values(commands).flat().length)
-    const missing = join(
-      shardDirectory('installed-evidence'),
-      'linux-command-evidence/manifest.json',
-    )
-    const original = await Bun.file(missing).text()
-    for (const removed of commands['installed-evidence']) {
-      await writeFile(
-        missing,
-        JSON.stringify({
-          schemaVersion: 1,
-          commands: commands['installed-evidence'].filter((command: any) => command !== removed),
-        }),
-      )
-      expect(run().status).toBe(1)
-    }
-    await writeFile(
-      missing,
-      JSON.stringify({ schemaVersion: 1, commands: commands['installed-evidence'].slice(0, 3) }),
-    )
-    expect(run().status).toBe(1)
-    await writeFile(missing, original)
-    const stale = join(shardDirectory('agent-lifecycle'), 'linux-shard.complete')
-    await writeFile(stale, `${sha} agent-lifecycle 41 1\n`)
-    expect(run().status).toBe(1)
-    await writeFile(stale, `${sha} agent-lifecycle 41 2\n`)
-    await writeFile(
-      join(shardDirectory('package-lifecycle'), 'CANDIDATE.json'),
-      'different candidate',
-    )
-    expect(run().status).toBe(1)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+  })
+}
 
 test('native API qualification is automatic, exact-revision, and scoped to supported clients', async () => {
   const host = Bun.YAML.parse(
