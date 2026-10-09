@@ -51,7 +51,11 @@ removes the old count. `clear(id)` removes the slot, with unknown IDs harmless.
 Progress counts may decrease or change units; 100%, clearing and EOF never mean
 execution success. Consumers must retire all a source's activities on every end.
 The exported `validateUserUpdate` returns an immutable snapshot for independent
-consumers and enforces semantic rules beyond the descriptor's schema.
+consumers and enforces semantic rules beyond the descriptor's schema. Browser
+consumers can import the same validator, portable message types, canonicalization
+and limits from `@jigging/user-updates/validation`. This entry uses standard
+JavaScript primitives and imports no publisher, FLOW runtime or Node APIs;
+contract identity and publication remain available from the main entry.
 
 The scope owns its sender exclusively: do not send, close, transfer or wrap that
 writer independently. Missing observation is allowed. Invalid offers throw even
@@ -97,7 +101,7 @@ jobs.update({
 })
 ```
 
-Jig's inline display shows the root's landing view. `jig run --display dashboard`
+Jig's inline display shows the root's landing view. `jig run --display tui`
 opens a keyboard inspector with multiple views, collections, filtering, sorting,
 row details and verified file previews. `--display plain` emits complete changed
 summaries. `--json` or effective `--receive` keeps existing exact output and

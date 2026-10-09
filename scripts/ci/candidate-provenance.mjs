@@ -9,6 +9,9 @@ export const PACKAGE_LAYOUT = Object.freeze({
   'user-updates': '@jigging/user-updates',
   'agent-method': '@jigging/agent-method',
   'agent-acp': '@jigging/agent-acp',
+  'display-model': '@jigging/display-model',
+  'display-web': '@jigging/display-web',
+  'display-tui': '@jigging/display-tui',
   jig: '@jigging/jig',
 })
 

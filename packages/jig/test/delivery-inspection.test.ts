@@ -438,14 +438,20 @@ test('command completion keeps retirement fenced after a stalled original public
     if (failures.length) throw new AggregateError(failures, 'unconfirmed authority release')
   })
   const retired = retirement.retire({ deadline })
-  await expect(retired).rejects.toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+  const failure = await retired.catch((error: unknown) => error)
+  // The close's own expired joins and the outer bound share one deadline.
+  // Either may report first; both must retain the deadline failure.
+  if (failure instanceof AggregateError) {
+    expect(failure.errors.length).toBeGreaterThan(0)
+    for (const error of failure.errors) expect(error).toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+  } else expect(failure).toMatchObject({ code: 'DEADLINE_EXCEEDED' })
   await expect(retirement.close()).rejects.toBeInstanceOf(AggregateError)
   expect(closes).toBe(2)
   expect(retirement.retiring).toBe(true)
   original.resolve()
   stalledClose.resolve()
   expect(retirement.retire(bound())).toBe(retired)
-  await expect(retired).rejects.toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+  await expect(retired).rejects.toBe(failure)
   expect(completion.start()).toBe(deadline)
 })
 

@@ -129,6 +129,36 @@ test('unavailable or malformed job timing does not grant or remove qualification
   })
 })
 
+test('standalone display reports count actual cases without skip credit and cannot be replaced by Jig reports', async () => {
+  await fixture('arm64', async (f) => {
+    const displayFiles = [
+      'packages/display-model/test/model.test.ts',
+      'packages/display-web/test/client.test.ts',
+      'packages/display-tui/test/native.test.ts',
+    ]
+    const plan = f.plans[0]
+    for (const file of displayFiles) plan.groups.push({ file, pattern: null })
+    await writeFile(resolve(f.directories[0], 'test-plan.json'), JSON.stringify(plan))
+    for (const [index, file] of displayFiles.entries())
+      await writeFile(
+        resolve(f.directories[0], `shard-0-group-${index + 1}.xml`),
+        junit(testcase(file, 'independent renderer case')),
+      )
+    const observed = await f.summarize()
+    assert.equal(observed.status, 0, observed.stderr)
+    assert.equal(observed.report.executed, f.count + NATIVE_PREREQUISITE_TESTS.length + 4)
+    assert.equal(observed.report.skipped_reports, f.count)
+    for (const [index, file] of displayFiles.entries()) {
+      const path = resolve(f.directories[0], `shard-0-group-${index + 1}.xml`)
+      await writeFile(path, junit(testcase('packages/jig/test/proof-0.test.ts', 'foreign proof')))
+      assert.equal((await f.summarize()).status, 1)
+      await rm(path)
+      assert.equal((await f.summarize()).status, 1)
+      await writeFile(path, junit(testcase(file, 'independent renderer case')))
+    }
+  })
+})
+
 test('the actual workflow summary step consumes exact shard evidence and refuses an incomplete run', async () => {
   await fixture('arm64', async (f) => {
     const parsed = spawnSync(

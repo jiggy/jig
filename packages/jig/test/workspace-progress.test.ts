@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RootAdministrationError } from '../src/administration/root.js'
 import { main, privateCliCommandLifetimeMs } from '../src/cli.js'
-import { PrivateCliProgress } from '../src/cli-progress.js'
+import { PrivateCliProgress, type PrivateProgressLifetime } from '../src/cli-progress.js'
 import { privateAttentionReceipt } from '../src/cli-run-model.js'
 import {
   PRIVATE_PRESENTATION_CLOSE_RESERVE_MS,
@@ -51,7 +51,7 @@ beforeAll(() => {
 })
 
 test('only effective interactive dashboard selection omits the default command envelope', () => {
-  const dashboard = ['run', 'flow:flows/work', '--display', 'dashboard']
+  const dashboard = ['run', 'flow:flows/work', '--display', 'tui']
   expect(privateCliCommandLifetimeMs(dashboard, true)).toBeNull()
   expect(privateCliCommandLifetimeMs([...dashboard, '--timeout', '1ms'], true)).toBeNull()
   expect(privateCliCommandLifetimeMs(dashboard, false)).toBe(330_000)
@@ -83,7 +83,7 @@ test('initial refusal never borrows stdin or writes alternate-screen controls', 
       let stderr = '',
         closed = 0
       const code = await main(
-        ['run', 'flow:flows/work', '--display', 'dashboard', ...(scenario.args ?? [])],
+        ['run', 'flow:flows/work', '--display', 'tui', ...(scenario.args ?? [])],
         {
           currentDirectory: root,
           interactive: true,
@@ -152,7 +152,7 @@ test('trusted root dispatch opens short no-view Runs and updates-off; machine mo
       closed = 0,
       settled = false
     const timeline: string[] = []
-    const code = await main(['run', 'flow:flows/work', '--display', 'dashboard', ...mode], {
+    const code = await main(['run', 'flow:flows/work', '--display', 'tui', ...mode], {
       currentDirectory: '/project',
       interactive: true,
       terminalError: true,
@@ -242,7 +242,7 @@ test('post-dispatch observation failure keeps inspection only after confirmed pr
       stdout = '',
       closed = 0,
       settled = false
-    const code = await main(['run', 'flow:flows/work', '--display', 'dashboard'], {
+    const code = await main(['run', 'flow:flows/work', '--display', 'tui'], {
       currentDirectory: '/project',
       interactive: true,
       terminalError: true,
@@ -314,75 +314,72 @@ test('immutable inspection is enabled before delivery preparation and delayed sc
       stderr = '',
       stdout = '',
       settled = false
-    const code = await main(
-      ['run', 'flow:flows/work', '--display', 'dashboard', '--out', 'result'],
-      {
-        currentDirectory: root,
-        interactive: true,
-        terminalError: true,
-        terminalOutput: false,
-        dashboardInputStream: input as any,
-        host: {
-          delivery: {
-            enableInspection() {
-              inspection = true
-              expect(stderr).not.toContain(entered)
-            },
-            async prepare() {
-              expect(inspection).toBeTrue()
-              expect(stderr).not.toContain(entered)
-            },
-            async publish() {
-              expect(inspection).toBeTrue()
-              return { status: 'written', destination: join(root, 'result'), files: [] }
-            },
-            async retire() {
-              expect(inspection).toBeTrue()
-            },
+    const code = await main(['run', 'flow:flows/work', '--display', 'tui', '--out', 'result'], {
+      currentDirectory: root,
+      interactive: true,
+      terminalError: true,
+      terminalOutput: false,
+      dashboardInputStream: input as any,
+      host: {
+        delivery: {
+          enableInspection() {
+            inspection = true
+            expect(stderr).not.toContain(entered)
           },
-          async acquire(_project: string, options: any) {
-            return {
-              rootAdministration: {
-                async startRun() {
-                  options.channelOutput.dispatched()
-                  return { runId: 'sha256:' + 'a'.repeat(64) }
-                },
-                async runStatus() {
-                  return {
-                    runId: 'sha256:' + 'a'.repeat(64),
-                    state: 'terminal',
-                    terminal: {
-                      status: 'succeeded',
-                      outcome: 'done',
-                      output: null,
-                      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
-                    },
-                  }
-                },
+          async prepare() {
+            expect(inspection).toBeTrue()
+            expect(stderr).not.toContain(entered)
+          },
+          async publish() {
+            expect(inspection).toBeTrue()
+            return { status: 'written', destination: join(root, 'result'), files: [] }
+          },
+          async retire() {
+            expect(inspection).toBeTrue()
+          },
+        },
+        async acquire(_project: string, options: any) {
+          return {
+            rootAdministration: {
+              async startRun() {
+                options.channelOutput.dispatched()
+                return { runId: 'sha256:' + 'a'.repeat(64) }
               },
-              async close() {},
-            }
-          },
-        } as any,
-        writeStderr: async (text) => {
-          stderr += text
-          if (!settled && text.includes('Settled')) {
-            settled = true
-            expect(text).toContain('Delivery written')
-            queueMicrotask(() => input.emit('data', Buffer.from('q')))
+              async runStatus() {
+                return {
+                  runId: 'sha256:' + 'a'.repeat(64),
+                  state: 'terminal',
+                  terminal: {
+                    status: 'succeeded',
+                    outcome: 'done',
+                    output: null,
+                    diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+                  },
+                }
+              },
+            },
+            async close() {},
           }
         },
-        writeError: (text) => {
-          stderr += text
-        },
-        writeOutput: (text) => {
-          stdout += text
-        },
-        writeRecord: async (text) => {
-          stdout += text
-        },
+      } as any,
+      writeStderr: async (text) => {
+        stderr += text
+        if (!settled && text.includes('Settled')) {
+          settled = true
+          expect(text).toContain('Delivery written')
+          queueMicrotask(() => input.emit('data', Buffer.from('q')))
+        }
       },
-    )
+      writeError: (text) => {
+        stderr += text
+      },
+      writeOutput: (text) => {
+        stdout += text
+      },
+      writeRecord: async (text) => {
+        stdout += text
+      },
+    })
     expect(code).toBe(0)
     expect(settled).toBeTrue()
     expect(JSON.parse(stdout).delivery.status).toBe('written')
@@ -404,7 +401,7 @@ test('an expanded-report failure keeps its known terminal open until the operato
     stdout = '',
     settled = false,
     closed = 0
-  const code = await main(['run', 'flow:flows/work', '--display', 'dashboard'], {
+  const code = await main(['run', 'flow:flows/work', '--display', 'tui'], {
     currentDirectory: '/project',
     interactive: true,
     terminalError: true,
@@ -468,6 +465,7 @@ function workspace(
     now?: () => number
     columns?: () => number
     rows?: () => number
+    createTui?: PrivateProgressLifetime['createTui']
   } = {},
 ) {
   const progress = new PrivateCliProgress(
@@ -481,6 +479,7 @@ function workspace(
       presentationDeadline: options.deadline,
       clock: options.now,
       rows: options.rows ?? (() => 24),
+      ...(options.createTui ? { createTui: options.createTui } : {}),
     },
   )
   progress.model.configureWorkspace({
@@ -565,14 +564,86 @@ console.log(JSON.stringify({ now: privatePresentationNow(), inherited: privatePr
 })
 
 describe('one command-owned workspace', () => {
+  test('closing during native construction disposes the late owner before any screen entry', async () => {
+    for (const reason of ['abort', 'close']) {
+      const input = new Input()
+      const controller = new AbortController()
+      let constructed!: () => void, release!: (display: any) => void
+      const constructing = new Promise<void>((resolve) => {
+        constructed = resolve
+      })
+      const native = new Promise<any>((resolve) => {
+        release = resolve
+      })
+      let text = '',
+        disposed = 0
+      const progress = workspace(
+        async (chunk) => {
+          text += chunk
+        },
+        {
+          signal: controller.signal,
+          createTui: async () => {
+            constructed()
+            return native
+          },
+        },
+      )
+      try {
+        const opening = progress.configureDisplay('tui', true, input as any)
+        await constructing
+        if (reason === 'abort') controller.abort()
+        else progress.close()
+        await progress.closeWorkspace()
+        release({
+          dispose: () => {
+            disposed++
+          },
+        })
+        await opening
+        await progress.flush()
+        expect(disposed).toBe(1)
+        expect(text).not.toContain(entered)
+        expect(text).not.toContain(restored)
+        expect(input.rawChanges).toEqual([])
+        expect(input.listenerCount('data')).toBe(0)
+        expect(progress.workspaceActive).toBeFalse()
+      } finally {
+        release({ dispose() {} })
+        progress.close()
+        await progress.flush()
+      }
+    }
+  })
+  test('an empty initial observation renders without a malformed snapshot warning', async () => {
+    const input = new Input()
+    let text = ''
+    const progress = workspace(
+      async (chunk) => {
+        text += chunk
+      },
+      { now: () => 100 },
+    )
+    try {
+      await progress.configureDisplay('tui', true, input as any)
+      await progress.flush()
+      expect(text).toContain('Waiting')
+      expect(text).not.toContain('malformed')
+      input.emit('data', Buffer.from('q'))
+      await progress.closeWorkspace()
+    } finally {
+      progress.close()
+      await progress.flush()
+    }
+  })
   test('settled inspection has no idle or absolute cap; an explicit command deadline remains fixed', async () => {
     for (const inherited of [undefined, 90_000]) {
       let now = 100
       const input = new Input()
       const progress = workspace(async () => {}, { now: () => now, deadline: inherited })
       try {
-        await progress.configureDisplay('dashboard', true, input as any)
-        const settling = progress.settleDashboard({
+        await progress.configureDisplay('tui', true, input as any)
+        const settling = progress.settleDisplay({
           status: 'succeeded',
           outcome: 'literal',
           output: null,
@@ -602,8 +673,8 @@ describe('one command-owned workspace', () => {
     const input = new Input()
     const progress = workspace(async () => {}, { now: () => now, deadline: 60_100 })
     try {
-      await progress.configureDisplay('dashboard', true, input as any)
-      const settling = progress.settleDashboard({
+      await progress.configureDisplay('tui', true, input as any)
+      const settling = progress.settleDisplay({
         status: 'succeeded',
         outcome: 'literal',
         output: null,
@@ -666,7 +737,7 @@ describe('one command-owned workspace', () => {
       false,
     )
     try {
-      await progress.configureDisplay('dashboard', true, input as any)
+      await progress.configureDisplay('tui', true, input as any)
       await progress.closeWorkspace()
       await progress.flush()
       expect(progress.workspaceActive).toBeFalse()
@@ -690,8 +761,8 @@ describe('one command-owned workspace', () => {
       },
       { deadline: 99, now: () => 100 },
     )
-    await progress.configureDisplay('dashboard', true, input as any)
-    await progress.settleDashboard({ status: 'succeeded', outcome: 'done', output: null })
+    await progress.configureDisplay('tui', true, input as any)
+    await progress.settleDisplay({ status: 'succeeded', outcome: 'done', output: null })
     expect(text).not.toContain(entered)
     expect(input.rawChanges).toEqual([])
     expect(progress.workspaceUsed).toBeFalse()
@@ -717,7 +788,7 @@ describe('one command-owned workspace', () => {
       },
       { signal: stop.signal },
     )
-    const opening = progress.configureDisplay('dashboard', true, input as any)
+    const opening = progress.configureDisplay('tui', true, input as any)
     await pause()
     stop.abort()
     expect(input.isRaw).toBeFalse()
@@ -742,7 +813,7 @@ describe('one command-owned workspace', () => {
       }
       process.on('SIGINT', interrupted)
       try {
-        await progress.configureDisplay('dashboard', true, input as any)
+        await progress.configureDisplay('tui', true, input as any)
         if (eof) input.emit('end')
         else input.emit('data', Buffer.from([3, 3, 3]))
         await progress.flush()
@@ -771,7 +842,7 @@ describe('one command-owned workspace', () => {
         })
       }
     })
-    const opening = progress.configureDisplay('dashboard', true, input as any)
+    const opening = progress.configureDisplay('tui', true, input as any)
     await pause()
     expect(chunks.join('')).toContain(entered)
     expect(input.isRaw).toBeFalse()
@@ -806,7 +877,7 @@ describe('one command-owned workspace', () => {
     expect(output).toContain('work continues')
     expect(output.split(restored)).toHaveLength(2)
     expect(output.slice(output.indexOf(restored))).not.toContain('routine Flow notice')
-    await progress.settleDashboard({ status: 'succeeded', outcome: 'done', output: null })
+    await progress.settleDisplay({ status: 'succeeded', outcome: 'done', output: null })
     expect(chunks.join('').split(entered)).toHaveLength(2)
     progress.close()
     await progress.flush()
@@ -818,7 +889,7 @@ describe('one command-owned workspace', () => {
     const progress = workspace((chunk) => {
       text += chunk
     })
-    await progress.configureDisplay('dashboard', true, input as any)
+    await progress.configureDisplay('tui', true, input as any)
     await progress.flush()
     expect(input.isRaw).toBeFalse()
     expect(input.isPaused()).toBeTrue()
@@ -837,7 +908,7 @@ describe('one command-owned workspace', () => {
     const progress = workspace((chunk) => {
       text += chunk
     })
-    await progress.configureDisplay('dashboard', true, input as any)
+    await progress.configureDisplay('tui', true, input as any)
     await progress.flush()
     expect(input.rawChanges).toEqual([])
     expect(input.listenerCount('data')).toBe(0)
@@ -857,7 +928,7 @@ describe('one command-owned workspace', () => {
       },
       { signal: stop.signal, now: () => now, deadline: 105 },
     )
-    await progress.configureDisplay('dashboard', true, input as any)
+    await progress.configureDisplay('tui', true, input as any)
     progress.stage('Work still owned by execution')
     now = 106
     await pause(10)
@@ -865,7 +936,7 @@ describe('one command-owned workspace', () => {
     expect(stop.signal.aborted).toBeFalse()
     expect(input.isRaw).toBeFalse()
     expect(text).toContain('work continues')
-    await progress.settleDashboard({ status: 'succeeded', outcome: 'done', output: null })
+    await progress.settleDisplay({ status: 'succeeded', outcome: 'done', output: null })
     expect(text.split(entered)).toHaveLength(2)
     progress.close()
     await progress.flush()
@@ -880,8 +951,8 @@ describe('one command-owned workspace', () => {
       },
       { signal: stop.signal, now: () => 100 },
     )
-    await progress.configureDisplay('dashboard', true, input as any)
-    const settling = progress.settleDashboard({
+    await progress.configureDisplay('tui', true, input as any)
+    const settling = progress.settleDisplay({
       status: 'succeeded',
       outcome: 'done',
       output: null,
@@ -915,9 +986,9 @@ describe('one command-owned workspace', () => {
       }
       process.on('SIGINT', interrupted)
       try {
-        await progress.configureDisplay('dashboard', true, input as any)
+        await progress.configureDisplay('tui', true, input as any)
         const record = { status: 'succeeded', outcome: 'frozen', output: null }
-        const settling = progress.settleDashboard(record)
+        const settling = progress.settleDisplay(record)
         await pause()
         if (external) stop.abort()
         else input.emit('data', Buffer.from([3, 3]))
@@ -940,7 +1011,7 @@ describe('one command-owned workspace', () => {
     const progress = workspace(async () => {
       if (fail) throw cause
     })
-    await progress.configureDisplay('dashboard', true, input as any)
+    await progress.configureDisplay('tui', true, input as any)
     progress.model.addAttention('Jig', 'required failure cause', 4, false)
     fail = true
     input.emit('data', Buffer.from('q'))
@@ -973,7 +1044,7 @@ describe('one command-owned workspace', () => {
       },
       { deadline, now: () => now },
     )
-    await progress.configureDisplay('dashboard', true, input as any)
+    await progress.configureDisplay('tui', true, input as any)
     for (let i = 0; i < 120; i++)
       progress.model.addAttention(`Flow ${i}`, '\u0001'.repeat(650) + ` tail ${i}`, 2, false)
     const hostPrefixBytes = Buffer.byteLength(
@@ -1013,7 +1084,7 @@ describe('one command-owned workspace', () => {
       },
       { columns: () => columns, rows: () => rows },
     )
-    await progress.configureDisplay('dashboard', true, input as any)
+    await progress.configureDisplay('tui', true, input as any)
     columns = 10
     rows = 1
     process.stderr.emit('resize')
@@ -1086,37 +1157,34 @@ test('fullscreen final reporting preserves full bounded diagnostics and frozen s
           }
         },
       }
-      const code = await main(
-        ['run', 'flow:flows/work', '--display', 'dashboard', '--timeout', '123s'],
-        {
-          host: host as any,
-          currentDirectory: '/project',
-          interactive: true,
-          terminalError: true,
-          terminalOutput: human,
-          dashboardInputStream: input as any,
-          signal: stop.signal,
-          writeStderr: async (text) => {
-            stderr += text
-            timeline.push(text)
-            if (!sent && text.includes('Settled')) {
-              sent = true
-              queueMicrotask(() => {
-                if (external) stop.abort()
-                else input.emit('data', Buffer.from([3]))
-              })
-            }
-          },
-          writeRecord: async (text) => {
-            stdout += text
-            timeline.push('STDOUT')
-          },
-          writeOutput: (text) => {
-            stdout += text
-            timeline.push('STDOUT')
-          },
+      const code = await main(['run', 'flow:flows/work', '--display', 'tui', '--timeout', '123s'], {
+        host: host as any,
+        currentDirectory: '/project',
+        interactive: true,
+        terminalError: true,
+        terminalOutput: human,
+        dashboardInputStream: input as any,
+        signal: stop.signal,
+        writeStderr: async (text) => {
+          stderr += text
+          timeline.push(text)
+          if (!sent && text.includes('Settled')) {
+            sent = true
+            queueMicrotask(() => {
+              if (external) stop.abort()
+              else input.emit('data', Buffer.from([3]))
+            })
+          }
         },
-      )
+        writeRecord: async (text) => {
+          stdout += text
+          timeline.push('STDOUT')
+        },
+        writeOutput: (text) => {
+          stdout += text
+          timeline.push('STDOUT')
+        },
+      })
       expect(sent).toBeTrue()
       expect(code).toBe(external ? 2 : 0)
       expect(input.isRaw).toBeFalse()

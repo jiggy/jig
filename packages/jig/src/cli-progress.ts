@@ -1,6 +1,10 @@
 import type { Reference } from '@jigging/user-updates'
-import { PrivateDashboardInput, privateDashboardFrame } from './cli-dashboard.js'
-import { PrivateOpenTuiDashboard, privatePrepareOpenTui } from './cli-opentui.js'
+import type { DisplaySnapshotEnvelope } from '@jigging/display-model'
+import { createTui, prepareTui, type TuiDisplay, type TuiTheme } from '@jigging/display-tui'
+import { createInlineDisplay, type InlineDisplay } from '@jigging/display-tui/inline'
+import { webAssets } from '@jigging/display-web/assets'
+import { PrivateTuiInput } from './cli-tui-input.js'
+import { CliDiagnostic } from './cli-usage.js'
 import {
   privateCliHeading,
   privateCliSecondary,
@@ -23,9 +27,9 @@ import {
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-user-updates.js'
 import { PrivateWebDisplay } from './cli-web.js'
-import { type PrivateWebAssets, privateWebAssets } from './cli-web-assets.js'
+import type { WebAssets } from '@jigging/display-model'
 import { PrivateWebInput } from './cli-web-input.js'
-import { PrivateWebProjection } from './cli-web-snapshot.js'
+import { PrivateDisplayProjection } from './cli-display-projection.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
@@ -40,7 +44,8 @@ export interface PrivateProgressLifetime {
   readonly presentationDeadline?: number | undefined
   readonly clock?: () => number
   readonly rows?: () => number
-  readonly webAssets?: PrivateWebAssets
+  readonly webAssets?: WebAssets
+  readonly createTui?: typeof createTui
 }
 
 const SCREEN_ENTER = '\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J'
@@ -51,9 +56,15 @@ const OUTPUT_JOB_BYTES = 32_768
 export class PrivateCliProgress {
   readonly model = new PrivateRunModel()
   #plain = false
-  #dashboard: PrivateDashboardInput | undefined
-  #nativeDashboard: PrivateOpenTuiDashboard | undefined
-  #dashboardCore: Awaited<ReturnType<typeof privatePrepareOpenTui>> | undefined
+  #dashboard: PrivateTuiInput | undefined
+  #nativeDashboard: TuiDisplay | undefined
+  #dashboardCore: Awaited<ReturnType<typeof prepareTui>> | undefined
+  readonly #projection = new PrivateDisplayProjection(this.model)
+  #inline: InlineDisplay | undefined
+  readonly #theme: TuiTheme =
+    process.env.JIG_THEME === 'one-light' || process.env.JIG_THEME === 'macchiato'
+      ? process.env.JIG_THEME
+      : 'one-dark'
   #web: PrivateWebDisplay | undefined
   #webInput: PrivateWebInput | undefined
   #webClose: Promise<void> | undefined
@@ -165,21 +176,29 @@ export class PrivateCliProgress {
       this.#timer.unref()
     }
   }
-  async prepareDashboard(usableInput: boolean, input = process.stdin): Promise<void> {
+  async prepareTuiDisplay(usableInput: boolean, input = process.stdin): Promise<void> {
     if (
       this.enabled &&
       usableInput &&
       typeof input.setRawMode === 'function' &&
       process.env.TERM !== 'dumb'
     )
-      this.#dashboardCore ??= await privatePrepareOpenTui()
+      try {
+        this.#dashboardCore ??= await prepareTui()
+      } catch {
+        throw new CliDiagnostic(
+          'JIG_TUI_UNAVAILABLE',
+          'The TUI renderer is missing or cannot load its native support. Restore the complete Jig installation, or run with --display plain. No Flow was started.',
+          1,
+        )
+      }
   }
   /** Bind/asset readiness precedes dispatch; no link or Run data is exposed yet. */
   prepareWeb(): void {
     if (!this.enabled || this.#web || this.#left) return
-    const projection = new PrivateWebProjection(this.model)
+    const projection = this.#projection
     this.#web = PrivateWebDisplay.prepare({
-      assets: this.lifetime.webAssets ?? privateWebAssets,
+      assets: this.lifetime.webAssets ?? webAssets,
       projection,
       subscribe: (listener) => this.model.subscribeSemantic(listener),
       onFailure: () => {
@@ -222,7 +241,7 @@ export class PrivateCliProgress {
     await this.#webClose
   }
   async configureDisplay(
-    display: 'auto' | 'plain' | 'dashboard' | 'web',
+    display: 'auto' | 'plain' | 'tui' | 'web',
     usableInput: boolean,
     input = process.stdin,
   ): Promise<void> {
@@ -290,7 +309,7 @@ export class PrivateCliProgress {
       }
       return
     }
-    if (display === 'dashboard') {
+    if (display === 'tui') {
       if (this.#left) return
       if (
         this.lifetime.presentationDeadline !== undefined &&
@@ -311,14 +330,15 @@ export class PrivateCliProgress {
           'Dashboard unavailable without terminal input and stderr; using plain display.\n',
         )
       } else {
-        if (!this.#dashboardCore) await this.prepareDashboard(usableInput, input)
-        this.#dashboard = new PrivateDashboardInput(
-          this.model,
-          () => this.#flowChanged(),
-          () => process.emit('SIGINT'),
+        if (!this.#dashboardCore) await this.prepareTuiDisplay(usableInput, input)
+        this.#dashboard = new PrivateTuiInput(
           input,
+          (bytes) => this.#nativeDashboard?.input(bytes),
           () => this.#leaveWorkspace(),
-          () => this.#withinCommandDeadline(),
+          () => {
+            if (!this.#settled) process.emit('SIGINT')
+          },
+          () => this.model.addAttention('Jig', 'Terminal input restoration unavailable', 4),
         )
         if (this.#settled) this.#dashboard.markSettled()
         try {
@@ -330,12 +350,29 @@ export class PrivateCliProgress {
             this.#dashboard.leave()
             return
           }
-          this.#nativeDashboard = await PrivateOpenTuiDashboard.create(
-            this.#dashboardCore!,
-            this.model,
-            this.columns(),
-            this.lifetime.rows?.() ?? process.stderr.rows ?? 24,
-          )
+          const inputOwner = this.#dashboard
+          const native = await (this.lifetime.createTui ?? createTui)(this.#dashboardCore!, {
+            snapshot: this.#displaySnapshot(),
+            theme: this.#theme,
+            preview: ({ artifactId, captureGeneration }) =>
+              this.#projection.preview(artifactId, captureGeneration),
+            onChange: () => this.#flowChanged(),
+            onAction: (action) => inputOwner.action(action),
+            interactionAllowed: () => this.#withinCommandDeadline(),
+          })
+          if (
+            this.#left ||
+            this.signal?.aborted ||
+            this.#outputFailed ||
+            this.#screen !== 'entering' ||
+            this.#dashboard !== inputOwner ||
+            !this.#withinCommandDeadline()
+          ) {
+            native.dispose()
+            inputOwner.leave()
+            return
+          }
+          this.#nativeDashboard = native
           this.#screenEntered = true
           this.#enqueue({
             bytes: Buffer.byteLength(SCREEN_ENTER),
@@ -427,7 +464,7 @@ export class PrivateCliProgress {
                 transient: false,
                 dispatch: async () => {
                   await this.write(text)
-                  for (const receipt of receipts) receipt.committed = true
+                  this.model.commitAttention(receipts)
                 },
               })
             )
@@ -492,7 +529,7 @@ export class PrivateCliProgress {
     packet: PrivateSavedResult,
     usableInput: boolean,
     input = process.stdin,
-    display: 'dashboard' | 'web' = 'dashboard',
+    display: 'tui' | 'web' = 'tui',
   ): Promise<void> {
     this.#settled = true
     const previews = new Map(packet.files.map((file) => [file.path, packet.preview(file.path)]))
@@ -518,7 +555,6 @@ export class PrivateCliProgress {
       })
       for (const view of privateSavedResultViews(packet))
         this.model.acceptView('saved-result', view)
-      this.model.select(JSON.stringify(['saved-result', 'recorded-result']))
       this.model.setArtifacts(
         (publisher, ref) =>
           publisher === 'saved-result' &&
@@ -577,7 +613,18 @@ export class PrivateCliProgress {
     this.#left = true
     if (this.#screen === 'ordinary' || this.#screen === 'closing') return
     this.#screen = 'closing'
-    this.#nativeDashboard?.close()
+    if (
+      this.#nativeDashboard &&
+      !this.#settled &&
+      !this.#cancelled &&
+      !this.#closingCommand &&
+      !this.#outputFailed &&
+      !this.signal?.aborted
+    ) {
+      this.#inline?.dispose()
+      this.#inline = this.#nativeDashboard.handoffInline()
+    }
+    this.#nativeDashboard?.dispose()
     this.#nativeDashboard = undefined
     this.#dropFrames()
     clearTimeout(this.#deadlineTimer)
@@ -639,7 +686,7 @@ export class PrivateCliProgress {
     this.model.addAttention('Jig', text, 3, false)
     this.#commitCauses()
   }
-  async settleDashboard(
+  async settleDisplay(
     record: JsonValue,
     artifact?: {
       resolve: (
@@ -1040,6 +1087,8 @@ export class PrivateCliProgress {
     this.signal?.removeEventListener('abort', this.#abort)
     process.stderr.removeListener('resize', this.#resize)
     this.#attached = false
+    this.#inline?.dispose()
+    this.#inline = undefined
     this.model.close()
   }
 
@@ -1068,6 +1117,16 @@ export class PrivateCliProgress {
     this.#enqueue({ bytes: 32_768, transient: true, dispatch: () => this.#paint() })
   }
 
+  #displaySnapshot(): DisplaySnapshotEnvelope {
+    this.model.workspace.now = this.#now()
+    const revision = this.model.semanticGeneration + 1
+    try {
+      return this.#projection.capture(revision)
+    } catch {
+      return this.#projection.incomplete(revision)
+    }
+  }
+
   #paint(): void | Promise<void> {
     if (this.#web?.active) return
     this.#lastRefresh = performance.now()
@@ -1085,21 +1144,21 @@ export class PrivateCliProgress {
     this.model.workspace.now = this.#now()
     if (this.#dashboard?.active && this.#nativeDashboard) {
       const owner = this.#nativeDashboard
-      return owner
-        .frame(columns, physicalRows, this.#dashboard.state, this.#dashboard.scroll, this.animation)
-        .then((frame) => {
-          if (this.#nativeDashboard !== owner || this.#screen !== 'live') return
-          this.#dashboard?.frame(frame.references, frame.scroll)
-          return this.write(frame.text)
-        })
+      owner.update(this.#displaySnapshot())
+      return owner.frame({ columns, rows: physicalRows, color: this.animation }).then((frame) => {
+        if (this.#nativeDashboard !== owner || this.#screen !== 'live') return
+        return this.write(frame.text)
+      })
     }
     if (this.model.calls.size || this.model.views.size || this.#dashboard?.active) {
-      const frame = privateDashboardFrame(
-        this.model,
+      const snapshot = this.#displaySnapshot()
+      this.#inline ??= createInlineDisplay({ snapshot, theme: this.#theme })
+      this.#inline.update(snapshot)
+      const frame = this.#inline.frame({
         columns,
-        Math.min(16, Math.max(3, physicalRows - 4)),
-        this.animation,
-      )
+        rows: Math.min(16, Math.max(3, physicalRows - 4)),
+        color: this.animation,
+      })
       const erase = this.#erase()
       this.#visible = true
       this.#paintedRows = frame.lines.length

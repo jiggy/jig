@@ -48,21 +48,23 @@ jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig inspect --result <directory> [--display plain|dashboard|web] [--json]
+jig inspect --result <directory> [--display plain|tui|web] [--json]
 jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
 jig import-contract --list
 jig completion <bash|zsh|fish>
 ```
 
 Runs show an inline invocation tree and optional application views on terminal
-stderr. `jig run --display dashboard` opens a terminal workspace with Activity,
-the actual call tree, domain tabs, record cards and expandable evidence once
+stderr. `jig run --display tui` opens a terminal workspace with Activity,
+Execution, application views, compact record tables and expandable evidence once
 root execution begins. Initial review, input, file and runtime refusals stay in
 ordinary output.
-Wide layouts show selected record details beside the list. Enter opens full
+Large layouts group views in a navigation rail; `v` opens all views at any size.
+Context appears beside the list when it adds information. Enter opens full
 details; `!` opens retained causes, `d` opens attributed diagnostics, and `?`
 explains the current keys.
-q leaves while work continues inline; Escape first dismisses a local panel.
+q leaves while work continues inline; Escape first dismisses a local panel, then
+returns from a record/call reference jump.
 Ctrl-C during work cancels and waits for cleanup. After work and delivery settle,
 Ctrl-C simply closes read-only result inspection. Inspection stays open until you
 leave, subject to any explicit enclosing command limit.
@@ -82,9 +84,9 @@ development server and initializes no native terminal renderer. `--json` and
 effective `--receive` take precedence; redirected Run stdout remains exact JSON.
 See [live progress and views](https://jig.md/guide/channels).
 
-The dashboard uses pinned OpenTUI Core, installed with Jig and loaded only for
-an eligible explicit dashboard. Missing native display support refuses before
-execution with `JIG_DASHBOARD_UNAVAILABLE`; restore the complete installation or
+The TUI uses pinned OpenTUI Core, installed with Jig and loaded only for
+an eligible explicit TUI. Missing native display support refuses before
+execution with `JIG_TUI_UNAVAILABLE`; restore the complete installation or
 select `--display plain`. Flows and the user-updates SDK do not depend on OpenTUI.
 
 `review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
@@ -131,7 +133,7 @@ It checks that approval against current local execution identities and reports
 changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
 
-`jig inspect --result ./result-packet --display dashboard` reopens saved result,
+`jig inspect --result ./result-packet --display tui` reopens saved result,
 file and diagnostic evidence without starting work or requiring a project.
 Use `--display web` for browser inspection instead.
 These are recorded local claims, not a new execution verdict. File previews use

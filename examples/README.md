@@ -29,7 +29,7 @@ Agent configuration, results, and integration.
 
 Each application publishes optional, display-neutral dashboards through the standard
 [user-updates contract](../docs/jig/contracts/user-updates.md). Add `--display
-dashboard` for terminal inspection or `--display web` for a private local browser
+tui` for terminal inspection or `--display web` for a private local browser
 display, using the invocation arguments in its README. The host supplies actual calls
 and blocking causes; application views explain the requested work and its evidence.
 
@@ -44,7 +44,7 @@ and blocking causes; application views explain the requested work and its eviden
 
 Select delivered file references to read content. Completed inspection remains open
 until explicit exit. Reopen a saved packet with `jig inspect --result DIRECTORY
---display web` or `--display dashboard`; saved packets contain recorded results, files
+--display web` or `--display tui`; saved packets contain recorded results, files
 and diagnostics, rather than retained live views. Dashboards are observations, never
 authority to issue a credit, import records, publish a brief or apply a patch.
 

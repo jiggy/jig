@@ -119,7 +119,7 @@ for the guarantees and limits.
 | Setting | Values and behavior |
 | --- | --- |
 | `JIG_THEME` | `one-dark` (default), `one-light`, or `macchiato`; unknown values use One Dark |
-| `NO_COLOR` | Any present value, including an empty value, disables colors and automatic inline animation; an explicitly selected dashboard keeps keyboard navigation and screen controls without color |
+| `NO_COLOR` | Any present value, including an empty value, disables colors and automatic inline animation; an explicitly selected TUI keeps keyboard navigation and screen controls without color |
 | `TERM=dumb` | Selects plain output without animation |
 | `COLORTERM` | `truecolor` or `24bit` enables truecolor accents; otherwise Jig uses 256-color accents when `TERM` contains `256color`, or basic terminal colors |
 
@@ -168,7 +168,7 @@ examples, and [execution policy](../spec/project-policy.md) for enforced limits.
 | `--input JSON` or `--input @FILE` | `run` | Supply JSON input; omitted input is `{}` |
 | `--timeout 2m` | `run` | Set the Run deadline within the supported limits |
 | `--receive CHANNEL` | `run` | Receive a declared output channel; see [live progress](./channels.md) |
-| `--display MODE` | `run` | Select auto inline, plain, keyboard dashboard, or local web inspection; operator-only |
+| `--display MODE` | `run` | Select `auto` inline, `plain`, keyboard `tui`, or local `web` inspection; operator-only |
 | `--json` | `run` | Emit machine-readable JSON or NDJSON even in a terminal; redirected stdout already uses this format |
 | `--details` | `review` | Include unchanged policy as context in the review diff |
 | `--yes` | `review` | Approve the displayed revision without an interactive prompt; does not grant resource-authority changes or resolution-network permission |

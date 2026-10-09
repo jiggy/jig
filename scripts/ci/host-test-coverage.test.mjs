@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
 import {
   commandsForShard,
-  discoverJigTests,
+  discoverHostTests,
+  HOST_TEST_DIRECTORIES,
+  isHostTestFile,
   MAC_HOST_SHARDS,
   macHostShardCount,
   NAMED_TEST_GROUPS,
@@ -16,8 +18,43 @@ import {
   ROOT_TEST,
 } from './macos-host-test-shards.mjs'
 
-test('every current Jig file and named partition enters Mac qualification exactly once', async () => {
-  const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
+test('filesystem discovery and Git inventory classification agree for nested display tests and inert nonowners', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'jig-host-discovery-'))
+  try {
+    const expected = []
+    for (const [index, directory] of HOST_TEST_DIRECTORIES.entries()) {
+      await mkdir(resolve(root, directory), { recursive: true })
+      const file = `${directory}/nested/future${['.test.ts', '_test.ts', '.spec.mjs', '_spec.tsx'][index]}`
+      await mkdir(resolve(root, directory, 'nested'))
+      await writeFile(resolve(root, file), 'test("future coverage",()=>{})')
+      expected.push(file)
+      for (const ignored of [
+        `${directory}/.private/hidden.test.ts`,
+        `${directory}/node_modules/dependency.test.ts`,
+        `${directory}/package-smoke.ts`,
+      ]) {
+        await mkdir(resolve(root, ignored, '..'), { recursive: true })
+        await writeFile(resolve(root, ignored), 'inert fixture')
+        assert.equal(isHostTestFile(ignored), false)
+      }
+      await symlink(resolve(root, file), resolve(root, directory, 'linked.test.ts'))
+    }
+    assert.deepEqual(await discoverHostTests(root), expected.sort())
+    assert.ok(expected.every(isHostTestFile))
+    assert.equal(isHostTestFile('packages/display-web/test-neighbor/foreign.test.ts'), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('every current Jig and display file and named partition enters Mac qualification exactly once', async () => {
+  const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
+  for (const packageName of ['display-model', 'display-web', 'display-tui']) {
+    assert.ok(
+      files.some((file) => file.startsWith(`packages/${packageName}/test/`)),
+      `${packageName} has no tests in the qualification inventory`,
+    )
+  }
   const shards = planMacHostTests(files, 'x64')
   assert.equal(shards.length, macHostShardCount('x64'))
   const groups = shards.flatMap((shard) => shard.groups)
@@ -39,7 +76,12 @@ test('every current Jig file and named partition enters Mac qualification exactl
       assert.equal(command[1], 'test')
       assert.ok(command.includes('--bail=1'))
       assert.ok(command.includes('--timeout'))
-      assert.equal(command.filter((part) => part.startsWith('./packages/jig/test/')).length, 1)
+      assert.equal(
+        command.filter((part) =>
+          /^\.\/packages\/(?:jig|display-(?:model|web|tui))\/test\//.test(part),
+        ).length,
+        1,
+      )
       assert.equal(command[2], `./${shard.groups[index].file}`)
       const pattern = shard.groups[index].pattern
       assert.equal(command.includes('--test-name-pattern'), pattern !== null)
@@ -57,13 +99,15 @@ test('every current Jig file and named partition enters Mac qualification exactl
   assert.ok(
     groups.some((group) => group.file === 'packages/jig/test/macos-guardian-storage.test.ts'),
   )
-  const future = 'packages/jig/test/future-host-proof.test.ts'
-  assert.equal(
-    planMacHostTests([...files, future], 'x64')
-      .flatMap((shard) => shard.groups)
-      .filter((group) => group.file === future).length,
-    1,
-  )
+  for (const packageName of ['jig', 'display-model', 'display-web', 'display-tui']) {
+    const future = `packages/${packageName}/test/future-host-proof.test.ts`
+    assert.equal(
+      planMacHostTests([...files, future], 'x64')
+        .flatMap((shard) => shard.groups)
+        .filter((group) => group.file === future).length,
+      1,
+    )
+  }
   assert.throws(() => planMacHostTests([...files, ROOT_TEST], 'x64'))
   for (const file of [ROOT_TEST, PACKAGE_TEST, ...NATIVE_PREREQUISITE_TESTS]) {
     assert.throws(() =>
@@ -116,7 +160,7 @@ test('named patterns partition current and future lifecycle, repair and package 
 })
 
 test('expensive host cases run before portable checks without dropping work', async () => {
-  const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
+  const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
   const shards = planMacHostTests(files, 'x64')
   assert.deepEqual(planMacHostTests([...files].reverse(), 'x64'), shards)
   for (const shard of shards) {
@@ -132,7 +176,7 @@ test('expensive host cases run before portable checks without dropping work', as
 })
 
 test('Mac scheduling balances observed slow files and work outside the file runner', async () => {
-  const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
+  const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
   // Retained Intel command/case timings from hosted run 37522229440,
   // independent of the planner's estimates.
   // Fixed costs include native prerequisites and genuine startup/installed
@@ -270,7 +314,7 @@ test('the Mac group runner preserves the first child failure and starts no later
     const lines = (await readFile(calls, 'utf8')).trim().split('\n')
     assert.equal(lines.length, 1)
     const first = commandsForShard(
-      planMacHostTests(await discoverJigTests(resolve(import.meta.dirname, '../..')), 'x64')[0],
+      planMacHostTests(await discoverHostTests(resolve(import.meta.dirname, '../..')), 'x64')[0],
       bun,
     )[0]
     assert.deepEqual(JSON.parse(lines[0]), [
@@ -296,7 +340,7 @@ test('the Mac group runner preserves the first child failure and starts no later
 })
 
 test('both architecture plans cover identical work within five runner slots', async () => {
-  const files = await discoverJigTests(resolve(import.meta.dirname, '../..'))
+  const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
   const plans = Object.keys(MAC_HOST_SHARDS).map((arch) => planMacHostTests(files, arch))
   assert.equal(plans.flat().length, 5)
   const membership = (plan) =>
@@ -338,7 +382,7 @@ test('installed startup reporting works with and without a timing directory on s
     const bun = resolve(root, 'bun')
     await writeFile(
       bun,
-      '#!/usr/bin/env node\nrequire("node:fs").writeFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP,expectation:process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION}));\n',
+      '#!/usr/bin/env node\nrequire("node:fs").appendFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP,expectation:process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION})+"\\n");\n',
       { mode: 0o700 },
     )
     for (const [directory, expectation] of [
@@ -347,6 +391,7 @@ test('installed startup reporting works with and without a timing directory on s
       ['', 'unsupported'],
       [root, 'unsupported'],
     ]) {
+      await writeFile(calls, '')
       const result = spawnSync(
         '/bin/bash',
         ['-c', `set -euo pipefail\n${source.slice(start, end)}`],
@@ -362,7 +407,9 @@ test('installed startup reporting works with and without a timing directory on s
         },
       )
       assert.equal(result.status, 0, result.stderr)
-      const call = JSON.parse(await readFile(calls, 'utf8'))
+      const recorded = (await readFile(calls, 'utf8')).trim().split('\n').map(JSON.parse)
+      const call = recorded[0]
+      assert.equal(recorded.length, 4)
       assert.equal(call.startup, '1')
       assert.equal(call.expectation, expectation)
       assert.deepEqual(call.args, [
@@ -374,6 +421,15 @@ test('installed startup reporting works with and without a timing directory on s
           ? ['--reporter=junit', `--reporter-outfile=${directory}/installed-startup.xml`]
           : []),
       ])
+      assert.deepEqual(
+        recorded.slice(1).map((entry) => entry.args),
+        [
+          ['packages/display-model/test/package-smoke.ts'],
+          ['packages/display-web/test/package-smoke.ts'],
+          ['packages/display-tui/test/package-smoke.ts'],
+        ],
+      )
+      assert.ok(recorded.slice(1).every((entry) => entry.startup === undefined))
     }
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -438,7 +494,7 @@ printf '%s\\n' "$codex_startup_expectation"
 
 test('every Linux hostile Jig test file enters provisioned host conformance', async () => {
   const root = resolve(import.meta.dirname, '../..')
-  const files = await discoverJigTests(root)
+  const files = await discoverHostTests(root)
   const workflow = await readFile(
     resolve(root, '.github/workflows/linux-host-conformance.yml'),
     'utf8',

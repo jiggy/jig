@@ -35,6 +35,12 @@ Notice severity is optional info/warning/error (absent means info). Preserve its
 exact snapshot and ordinary ordering/limits in both language packages. It is
 author-reported importance, not host status or a reliable diagnostic transport.
 
+The public `./validation` entry owns portable semantic validation, message types,
+canonical JSON and limits. Keep it free of publisher, FLOW runtime and Node API
+imports; `message.ts` owns descriptor-derived contract identity and reexports the
+same validator for existing main-entry callers. UTF-8 counting uses `TextEncoder`
+and must preserve the profile's byte accounting in both runtimes.
+
 ## Verification
 
 `just build`, `bun test`, packed Node consumer, and the matching Python publisher

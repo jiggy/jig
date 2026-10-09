@@ -445,6 +445,53 @@ test('Linux host inventory distinguishes hostile coverage and rejects an unassig
   )
 })
 
+test('Linux directory commands own every standalone display descendant while smoke scripts remain entrypoints', () => {
+  const f = fixture()
+  const displayFiles = [
+    'packages/display-model/test/model.test.ts',
+    'packages/display-web/test/client_test.ts',
+    'packages/display-tui/test/nested/native.spec.ts',
+  ]
+  for (const path of displayFiles) write(f.root, path, 'test("ordinary display proof",()=>{})\n')
+  for (const packageName of ['display-model', 'display-web', 'display-tui']) {
+    write(
+      f.root,
+      `packages/${packageName}/package.json`,
+      JSON.stringify({ name: `@jigging/${packageName}` }),
+    )
+    write(f.root, `packages/${packageName}/test/package-smoke.ts`, 'await testOrdinaryConsumer()')
+  }
+  const workflow =
+    'jobs:\n  proof:\n    steps:\n      - run: |\n          bun test packages/jig/test/lifecycle.test.ts\n          "$JIG_CI_BUN" test ./packages/display-model/test/ \\\n            packages/display-web/test packages/display-tui/test --timeout 420000\n'
+  write(f.root, '.github/workflows/linux-host-conformance.yml', workflow)
+  commit(f.root)
+  const selected = plan(f).targets.find((target) => target.id === 'linux').inventory
+  for (const path of displayFiles) assert.ok(selected.includes(path), `${path} lost ownership`)
+  for (const packageName of ['display-model', 'display-web', 'display-tui'])
+    assert.ok(selected.includes(`packages/${packageName}/test/package-smoke.ts`))
+  const future = 'packages/display-web/test/future/deeper.spec.mjs'
+  write(f.root, future, 'test("new renderer regression",()=>{})\n')
+  commit(f.root)
+  const current = plan(f)
+  assert.ok(current.targets.find((target) => target.id === 'linux').inventory.includes(future))
+  assert.ok(current.inventory.added.includes(future))
+  assert.equal(current.decisions.linux, true)
+  write(
+    f.root,
+    '.github/workflows/linux-host-conformance.yml',
+    'jobs:\n  proof:\n    steps:\n      - run: |\n          bun test packages/jig/test/lifecycle.test.ts\n          # bun test packages/display-model/test packages/display-web/test packages/display-tui/test\n          bun packages/display-web/test/package-smoke.ts\n          bun test packages/display-tui/test-neighbor\n',
+  )
+  commit(f.root)
+  const omittedPlan = plan(f)
+  const omitted = omittedPlan.targets.find((target) => target.id === 'linux').inventory
+  for (const path of [...displayFiles, future]) assert.ok(!omitted.includes(path))
+  assert.ok(
+    omittedPlan.policy.fallbackReasons.some((reason) =>
+      reason.includes('display host test absent from owning workflow'),
+    ),
+  )
+})
+
 test('a Python consumer outside conformance invalidates the isolation policy', () => {
   const f = fixture()
   write(

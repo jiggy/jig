@@ -12,7 +12,7 @@ the included Agent Binding and your native client as described in the
 
 ```sh
 jig review --allow-resolution-network
-jig run --display dashboard
+jig run --display tui
 ```
 
 Review prepares the declared package dependencies; no repository-private tools
@@ -68,7 +68,7 @@ context or private prompts. A branch failure is reported immediately while its h
 sibling continues. These suggestions still require human review; a completed call does
 not verify incident facts.
 
-Choose `--display web` instead of `--display dashboard` to use the same views in a
+Choose `--display web` instead of `--display tui` to use the same views in a
 browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain

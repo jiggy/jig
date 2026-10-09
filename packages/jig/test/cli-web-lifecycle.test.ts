@@ -6,10 +6,10 @@ import { join } from 'node:path'
 import { main, privateCliCommandLifetimeMs } from '../src/cli.js'
 import { PrivateCliProgress } from '../src/cli-progress.js'
 import { PrivateWebDisplay } from '../src/cli-web.js'
-import type { PrivateWebAssets } from '../src/cli-web-assets.js'
+import type { WebAssets } from '@jigging/display-model'
 import { PrivateWebInput } from '../src/cli-web-input.js'
 
-const assets: PrivateWebAssets = {
+const assets: WebAssets = {
   '/': { body: '<!doctype html><title>Test inspector</title>', contentType: 'text/html' },
   '/assets/app.js': { body: '/* inert test shell */', contentType: 'text/javascript' },
   '/assets/app.css': { body: 'body{}', contentType: 'text/css' },
@@ -338,15 +338,14 @@ test('live close preserves work; retirement and presentation failures preserve k
   for (const fault of ['none', 'retirement', 'presentation', 'project', 'project-presentation']) {
     const retirementFails = fault === 'retirement'
     const originalClose = PrivateWebDisplay.prototype.close
-    const mockedClose =
-      fault.includes('presentation')
-        ? spyOn(PrivateWebDisplay.prototype, 'close').mockImplementation(async function (
-            this: PrivateWebDisplay,
-          ) {
-            await originalClose.call(this)
-            throw new Error('private display close cause')
-          })
-        : undefined
+    const mockedClose = fault.includes('presentation')
+      ? spyOn(PrivateWebDisplay.prototype, 'close').mockImplementation(async function (
+          this: PrivateWebDisplay,
+        ) {
+          await originalClose.call(this)
+          throw new Error('private display close cause')
+        })
+      : undefined
     const root = await directory()
     let launch: string | undefined,
       stdout = '',

@@ -3,7 +3,7 @@
 ## Purpose
 
 Contains the independently built FLOW SDKs, reusable Agent methods, Jig host,
-and optional contract authoring toolchain.
+semantic display model and renderers, and optional contract authoring toolchain.
 
 ## Ownership
 
@@ -25,7 +25,8 @@ and optional contract authoring toolchain.
   and their Flows are workspace members. Examples pin matching SDK versions so
   Bun can substitute the local workspaces; application-only
   method packages may use `workspace:*` for explicit source composition.
-- Use the root Just modules (`just flow::build`, `just jig::build`) or run
+- Use the root Just modules (`just flow::build`, `just display_model::build`,
+  `just display_web::build`, `just display_tui::build`, `just jig::build`) or run
   package recipes locally. `pack` builds explicitly; manifests have no build
   or packing lifecycle scripts. Just is development tooling, not an installed
   Jig or FLOW dependency.
@@ -70,3 +71,9 @@ and optional contract authoring toolchain.
 - [jiggy-flow/AGENTS.md](jiggy-flow/AGENTS.md) — Independently released Python Run SDK/0 package.
 - [jig/AGENTS.md](jig/AGENTS.md) — Public Jig authoring package and installed
   secure host.
+- [display-model/AGENTS.md](display-model/AGENTS.md) — Readonly semantic snapshots
+  and pure display meaning, independent of Jig and renderer state.
+- [display-web/AGENTS.md](display-web/AGENTS.md) — Browser rendering, bounded
+  observation client, viewer navigation and fixed bundled assets.
+- [display-tui/AGENTS.md](display-tui/AGENTS.md) — Independent terminal and inline
+  rendering, viewer input/navigation, lazy native support and bounded frames.

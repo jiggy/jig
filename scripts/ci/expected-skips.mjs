@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import {
+  isHostTestFile,
   macHostShardCount,
   NAMED_TEST_GROUPS,
   NATIVE_PREREQUISITE_TESTS,
@@ -26,9 +27,11 @@ const linuxFilters = new Map([
 const policyProfiles = new Map(
   manifest.targets.filter((target) => target.skipPolicy).map((target) => [target.id, target]),
 )
-const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
 const installedScripts = new Set([
   'packages/jig/test/package-smoke.ts',
+  'packages/display-model/test/package-smoke.ts',
+  'packages/display-web/test/package-smoke.ts',
+  'packages/display-tui/test/package-smoke.ts',
   'scripts/test-operational-baseline.ts',
   'scripts/test-installed-hostile-baseline.ts',
 ])
@@ -358,7 +361,7 @@ export function readMacSkippedCases({
   const files = entries
     .filter((entry) => /^100(?:644|755) blob /.test(entry))
     .map((entry) => entry.slice(entry.indexOf('\t') + 1))
-    .filter((file) => file.startsWith('packages/jig/test/') && TEST_FILE.test(file))
+    .filter(isHostTestFile)
     .sort()
   const shards = planMacHostTests(files, architecture)
   const skippedCases = []

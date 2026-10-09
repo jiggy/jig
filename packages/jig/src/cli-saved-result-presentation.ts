@@ -2,7 +2,7 @@ import type { Block, Collection, DetailBlock, ViewItem } from '@jigging/user-upd
 import { privateCliValueFields } from './cli-value-presentation.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
-import { privateUpdateText } from './private-terminal-text.js'
+import { escapeTerminalText as privateUpdateText } from '@jigging/display-tui/text'
 
 function object(value: JsonValue | undefined): value is Record<string, JsonValue> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)

@@ -657,6 +657,36 @@ test('completed installed CLI transcripts do not invent passing test counts', ()
   assert.throws(() => parseBunTranscript('complete\n', { files: [] }), /owning command files/)
 })
 
+test('standalone display consumers require their own exact completion marker and never earn case credit', () => {
+  const paths = ['display-model', 'display-web', 'display-tui'].map(
+    (packageName) => `packages/${packageName}/test/package-smoke.ts`,
+  )
+  for (const file of paths) {
+    const options = { files: [file], commandKind: 'installed-script' }
+    const marker = `CI installed script complete: ${file}\n`
+    const observed = parseBunTranscript(`ordinary installed consumer passed\n${marker}`, options)
+    assert.equal(observed.count, 0)
+    assert.equal(observed.skipped, 0)
+    for (const text of [
+      'ordinary installed consumer passed\n',
+      marker + marker,
+      `CI installed script complete: ${paths.find((path) => path !== file)}\n`,
+      `(skip) native renderer\n${marker}`,
+      `FAILED (errors=1)\n${marker}`,
+      `1 pass\n0 fail\n${marker}`,
+    ])
+      assert.throws(() => parseBunTranscript(text, options))
+    assert.throws(() => parseBunTranscript(marker, { ...options, files: paths }))
+    assert.throws(() => parseBunTranscript(marker, { ...options, filter: { file, pattern: '.*' } }))
+    assert.throws(() =>
+      parseBunTranscript(marker, {
+        ...options,
+        files: [file.replace('package-smoke', 'future-smoke')],
+      }),
+    )
+  }
+})
+
 const xmlAttribute = (value) =>
   value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
 const xml = (file, name, child = '', classname = '', line = '1') =>
@@ -787,6 +817,44 @@ test('Mac reading reconstructs source membership and all current revision comman
     writeFileSync(join(dir, 'test-plan.json'), JSON.stringify(plan))
     assert.throws(() => readMacSkippedCases(options), /exact source inventory/)
   }))
+
+test('Mac proof owns all standalone display tests and future nested files in the exact Git inventory', () => {
+  const displayFiles = [
+    'packages/display-model/test/model.test.ts',
+    'packages/display-web/test/observations.test.ts',
+    'packages/display-tui/test/native.test.ts',
+  ]
+  return fixture(
+    [...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile, ...displayFiles],
+    (f) => {
+      const future = 'packages/display-model/test/nested/future.spec.ts'
+      write(f.root, future, 'test("future independent model case",()=>{})\n')
+      f.source = commit(f.root)
+      const additional = [...displayFiles, future]
+      const options = hostFixture(f, additional)
+      const proof = readMacSkippedCases(options)
+      assert.equal(proof.skipped, 0)
+      assert.equal(
+        proof.count,
+        options.shards.reduce((sum, shard) => sum + shard.groups.length, 0) +
+          NATIVE_PREREQUISITE_TESTS.length +
+          1,
+      )
+      for (const file of additional) {
+        const path = groupReportPath(options, f.source, file)
+        const original = readFileSync(path, 'utf8')
+        rmSync(path)
+        assert.throws(() => readMacSkippedCases(options))
+        writeFileSync(path, xml(inputFile, 'foreign Jig proof'))
+        assert.throws(() => readMacSkippedCases(options), /differs from its owning command/)
+        writeFileSync(path, original)
+      }
+      // A complete-looking legacy Jig-only plan cannot omit the new owners.
+      const legacy = hostFixture(f)
+      assert.throws(() => readMacSkippedCases(legacy), /exact source inventory/)
+    },
+  )
+})
 
 test('Mac owning JUnit keeps the real identical parameterized skip attributes for independent authorization', () => {
   const item = parameterizedCases[1]

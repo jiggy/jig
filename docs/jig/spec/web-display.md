@@ -12,8 +12,11 @@ One invoking CLI owns one read-only browser inspector for its finite Run or
 selected saved packet. The inspector renders the same validated semantic
 reports, facts, measured progress, collections, details and references as the
 terminal. Authors cannot supply browser components, HTML, CSS, scripts or
-execution-changing callbacks. The host owns the shell, actual observed call
-relationships, diagnostics, evidence access and lifetime.
+execution-changing callbacks. Jig supplies actual observed call relationships,
+diagnostics, authenticated evidence access and lifetime. The independent
+`@jigging/display-web` package owns the browser client, rendering, local navigation
+and fixed assets; it consumes `@jigging/display-model` snapshots without importing
+Jig. Its bounded display interface grants no HTTP server or execution authority.
 
 The display requires terminal stderr; stdin need not be a terminal. JSON and
 explicit channel reception win before server preparation. Run stdout may be
@@ -158,15 +161,32 @@ plain fallback. Expansion adds space, scrolling and search of retained text.
 Provide a compact host shell, visible focus, keyboard and pointer navigation,
 responsive layouts, readable selected context, view overflow navigation and
 text selection. All report/fact/progress/collection blocks remain reachable.
-Activity folds completed startup ceremony into history; Overview follows actual
+Wide navigation separates host inspection from attributed application views.
+Routine snapshot replacement uses a stable quiet synchronization indicator,
+while actual disconnection and incomplete observation remain explicit. References
+remain disabled until a current complete snapshot is acknowledged.
+Activity folds completed startup ceremony into history; Execution follows actual
 calls rather than inferring domain tasks. Domain views supply their goals and
 verification explanations. Color supplements explicit wording and must remain
 usable in light, dark, color-free and narrow presentations.
+
+The browser execution tree may show intervals from each call's first to latest
+actual host observation on a common scale. These are observation spans, including
+requested time when observed; they are not measured execution durations. Active
+bars end at the latest observed transition, without interpolating unseen work.
+Unknown or inconsistent clock evidence has no fabricated span. Filtering retains
+actual ancestors of matching calls. Call details may include retained reports
+associated by accepted-source or host-observed correspondence, never by matching
+names or diagnostic path strings.
 
 Saved packets contain no retained portable views or invocation history. Render
 only fixed recorded fields, captured files and recorded diagnostics, without
 reconstructing domain views or a graph from prose or familiar keys. Manifest
 consistency is not authentication of the report.
+Saved navigation provides one Recorded result, Captured files and Diagnostics
+surface. It shows no synthetic activity history or elapsed-run claim. Private
+host adapter roles distinguish these surfaces; authored IDs/titles never select
+host navigation. File-capture findings remain visible alongside the inventory.
 
 ## Lifetime and failure
 

@@ -121,13 +121,26 @@ async function fixture() {
   }
 }
 
-test('build-only producer freezes one workspace build, five archives and actual resolution without qualification', async () => {
+test('build-only producer freezes one workspace build, eight archives and actual resolution without qualification', async () => {
   const f = await fixture()
   try {
     const output = join(f.root, 'candidate')
     await buildCandidates(output, f)
     const receipt = await verifyCandidateBundle(output)
-    assert.equal(receipt.packages.length, 5)
+    assert.equal(receipt.packages.length, 8)
+    assert.deepEqual(
+      receipt.packages.map(({ kind }) => kind),
+      [
+        'flow-sdk',
+        'user-updates',
+        'agent-method',
+        'agent-acp',
+        'display-model',
+        'display-web',
+        'display-tui',
+        'jig',
+      ],
+    )
     assert.equal(receipt.buildProfile.revision, QUALIFIED_BUN.revision)
     assert.equal(
       await readFile(join(output, 'resolution/bun.lock'), 'utf8'),
@@ -138,7 +151,9 @@ test('build-only producer freezes one workspace build, five archives and actual 
         .length,
       1,
     )
-    assert.equal(f.calls.filter((call) => call.args.includes('--destination')).length, 5)
+    assert.equal(f.calls.filter((call) => call.args.includes('--destination')).length, 8)
+    const install = f.calls.find((call) => call.args[0] === 'install')
+    for (const name of Object.values(CANDIDATE_PACKAGES)) assert.ok(install.args.includes(name))
     assert.ok(
       !f.calls.some((call) => call.args.some((arg) => /package-smoke|baseline|^test$/.test(arg))),
     )
@@ -149,7 +164,7 @@ test('build-only producer freezes one workspace build, five archives and actual 
       assert.equal(record.sha256, entry.sha256)
     }
     assert.equal(execute('git', ['status', '--porcelain'], { cwd: f.repository }), '')
-    assert.equal((await readFile(join(output, 'SHA256SUMS'), 'utf8')).trim().split('\n').length, 5)
+    assert.equal((await readFile(join(output, 'SHA256SUMS'), 'utf8')).trim().split('\n').length, 8)
   } finally {
     await f.cleanup()
   }
@@ -344,6 +359,9 @@ test('Jig qualification retains portable smoke and both baselines, then refuses 
       /wrong Bun bytes/,
     )
     const expected = [
+      'packages/display-model/test/package-smoke.ts',
+      'packages/display-web/test/package-smoke.ts',
+      'packages/display-tui/test/package-smoke.ts',
       'packages/jig/test/package-smoke.ts',
       'scripts/test-operational-baseline.ts',
       'scripts/test-installed-hostile-baseline.ts',
@@ -356,9 +374,48 @@ test('Jig qualification retains portable smoke and both baselines, then refuses 
       assert.equal(call.options.env.JIG_LINUX_ROOTLESS_HOSTILE, '')
       assert.equal(call.options.env.JIG_MACOS_PROCESS_TEST, '')
       assert.ok(call.options.env.JIG_PACKAGE_ARCHIVE.startsWith(`${directory}/jig/`))
+      for (const [variable, kind] of [
+        ['DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-model'],
+        ['DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-web'],
+        ['DISPLAY_TUI_PACKAGE_ARCHIVE', 'display-tui'],
+      ]) {
+        const entry = JSON.parse(record).packages.find((item) => item.kind === kind)
+        assert.equal(call.options.env[variable], join(directory, entry.archive))
+      }
     }
     assert.equal(f.calls.filter((call) => call.args[0] === 'install').length, 1)
     assert.deepEqual(await readFile(join(directory, 'CANDIDATE.json')), record)
+  } finally {
+    await f.cleanup()
+  }
+})
+
+test('a failed standalone display consumer prevents Jig qualification without rebuilding frozen candidates', async () => {
+  const f = await fixture()
+  try {
+    const directory = join(f.root, 'candidate')
+    await buildCandidates(directory, f)
+    const record = await readFile(join(directory, 'CANDIDATE.json'))
+    for (const kind of ['display-model', 'display-web', 'display-tui']) {
+      f.calls.length = 0
+      const failing = `packages/${kind}/test/package-smoke.ts`
+      await assert.rejects(
+        qualifyCandidate('jig', directory, {
+          ...f,
+          run: (command, args, options) => {
+            if (args[0] === failing) throw new Error(`${kind} consumer failed`)
+            return f.run(command, args, options)
+          },
+        }),
+        new RegExp(`${kind} consumer failed`),
+      )
+      assert.ok(!f.calls.some((call) => call.args[0] === 'packages/jig/test/package-smoke.ts'))
+      assert.ok(
+        !f.calls.some((call) => call.args.includes('--destination') || call.args.includes('build')),
+      )
+      assert.deepEqual(await readFile(join(directory, 'CANDIDATE.json')), record)
+      await verifyCandidateBundle(directory)
+    }
   } finally {
     await f.cleanup()
   }
@@ -386,6 +443,7 @@ test('unqualified Just version refuses before candidate creation', async () => {
 })
 
 test('malformed qualification requests fail before running source or package commands', async () => {
-  await assert.rejects(qualifyCandidate('unknown', '/unused'), /flow\|agent\|acp\|jig/)
+  for (const kind of ['unknown', 'display-model', 'display-web', 'display-tui'])
+    await assert.rejects(qualifyCandidate(kind, '/unused'), /flow\|agent\|acp\|jig/)
   await assert.rejects(candidateTools({ env: { JIG_CI_BUN: 'relative' } }), /absolute executable/)
 })

@@ -34,7 +34,7 @@ Whole snapshots replace atomically. EOF freezes views with ended context, and
 retired IDs cannot revive. Applications keep essential evidence in results/files.
 
 Jig can display one exact optional port on stderr, using plain text when redirected.
-`jig run --display dashboard` supplies tabs, record details, filtering and previews;
+`jig run --display tui` supplies tabs, record details, filtering and previews;
 `--display plain` selects nonanimated summaries. Explicit `--receive`
 retains normal stdout channel records; `--json` and `--updates off` disable
 automatic display. See [user-updates policy](../spec/user-updates.md) for exact

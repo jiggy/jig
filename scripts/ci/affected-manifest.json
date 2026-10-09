@@ -11,6 +11,9 @@
     "packages/agent-acp/",
     "packages/flow-authoring/",
     "packages/user-updates/",
+    "packages/display-model/",
+    "packages/display-web/",
+    "packages/display-tui/",
     "packages/jig/",
     "packages/jiggy-flow/",
     "packages/jiggy-user-updates/",
@@ -120,6 +123,10 @@
         "packages/flow-sdk/",
         "packages/agent-method/",
         "packages/agent-acp/",
+        "packages/user-updates/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/",
         "packages/jig/"
       ],
       "entrypoints": ["scripts/ci/build-candidates.mjs", "scripts/ci/qualify-candidate.mjs"]
@@ -130,7 +137,12 @@
       "kind": "native-and-installed",
       "inventoryPolicy": "linux-host",
       "profiles": ["ubuntu-24.04/x64/bun-1.3.3/rootless"],
-      "inventoryRoots": ["packages/jig/"],
+      "inventoryRoots": [
+        "packages/jig/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/"
+      ],
       "entrypoints": [
         "scripts/ci/provision-github-rootless-host.sh",
         "scripts/test-operational-baseline.ts",
@@ -143,7 +155,12 @@
       "scope": "macos",
       "kind": "native-and-installed",
       "profiles": ["macos-24G830/x64/bun-1.4.2"],
-      "inventoryRoots": ["packages/jig/"],
+      "inventoryRoots": [
+        "packages/jig/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/"
+      ],
       "entrypoints": [
         "scripts/ci/qualify-macos-host.sh",
         "scripts/test-operational-baseline.ts",
@@ -156,7 +173,12 @@
       "scope": "macos",
       "kind": "native-and-installed",
       "profiles": ["macos-24G830/arm64/bun-1.4.2"],
-      "inventoryRoots": ["packages/jig/"],
+      "inventoryRoots": [
+        "packages/jig/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/"
+      ],
       "entrypoints": [
         "scripts/ci/qualify-macos-host.sh",
         "scripts/test-operational-baseline.ts",
@@ -639,36 +661,36 @@
     },
     {
       "file": "packages/jig/test/cli.test.ts",
-      "blob": "3adb1b72093c5e43371d3c9d84e305a1d4619543",
+      "blob": "85d879a9ed01f0bd7bc807020e509cd4a6eac5c3",
       "cases": [
         {
           "classname": "finite Jig project commands",
           "name": "resolution permission is separate from execution approval (yes=%s)",
-          "line": "1247",
+          "line": "1260",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "rejects vague, duplicate or misplaced contract generation: \"review\"",
-          "line": "1375",
+          "line": "1388",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "attributed live diagnostics are retained without human replay (human: %s)",
-          "line": "1598",
+          "line": "1611",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "a rejected live record closes work and reports cleanup failure: %s",
-          "line": "1673",
+          "line": "1686",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "interruption without a terminal preserves cleanup uncertainty (human: %s)",
-          "line": "2129",
+          "line": "2142",
           "occurrences": 2
         }
       ]

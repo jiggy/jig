@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { extname } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { HOST_TEST_DIRECTORIES, isHostTestFile } from './macos-host-test-shards.mjs'
 
 export const affectedManifest = JSON.parse(
   readFileSync(new URL('./affected-manifest.json', import.meta.url), 'utf8'),
@@ -227,11 +228,33 @@ function snapshot(cwd, sha, manifest) {
   const linuxWorkflow = '.github/workflows/linux-host-conformance.yml'
   if (files.some((file) => file.path === linuxWorkflow)) {
     const workflow = git(cwd, ['show', `${sha}:${linuxWorkflow}`])
-    linuxHostInventory = [
-      ...new Set(
-        workflow.match(/packages\/jig\/test\/[A-Za-z0-9_./-]+\.test\.[cm]?[jt]sx?/g) ?? [],
+    const selected = new Set(
+      (workflow.match(/packages\/[A-Za-z0-9_-]+\/test\/[A-Za-z0-9_./-]+/g) ?? []).filter(
+        isHostTestFile,
       ),
-    ].sort()
+    )
+    // A Bun directory invocation owns every discovered descendant, including
+    // future test files. Reconstruct from this source tree, not a fixed list.
+    const commands = workflow
+      .replace(/\\\r?\n[ \t]*/g, ' ')
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .flatMap((line) => [
+        ...line.matchAll(/(?:\bbun|"\$JIG_CI_BUN"|\$JIG_CI_BUN)[ \t]+test[ \t]+([^\n]+)/g),
+      ])
+    for (const command of commands) {
+      const arguments_ = command[1].split(/\s+/).map((argument) =>
+        argument
+          .replace(/^["']|["']$/g, '')
+          .replace(/^\.\//, '')
+          .replace(/\/$/, ''),
+      )
+      for (const directory of HOST_TEST_DIRECTORIES)
+        if (arguments_.includes(directory))
+          for (const path of inventory)
+            if (path.startsWith(`${directory}/`) && isHostTestFile(path)) selected.add(path)
+    }
+    linuxHostInventory = [...selected].sort()
     const marked = git(
       cwd,
       [
@@ -253,6 +276,13 @@ function snapshot(cwd, sha, manifest) {
     for (const path of marked)
       if (!linuxHostInventory.includes(path))
         coverageErrors.push(`Discovered Linux hostile test absent from owning workflow: ${path}`)
+    for (const path of inventory)
+      if (
+        path.startsWith('packages/display-') &&
+        isHostTestFile(path) &&
+        !linuxHostInventory.includes(path)
+      )
+        coverageErrors.push(`Discovered display host test absent from owning workflow: ${path}`)
     for (const path of linuxHostInventory)
       if (!inventory.includes(path))
         coverageErrors.push(`Linux host inventory references absent test: ${path}`)

@@ -1,0 +1,55 @@
+{
+  "name": "@jigging/display-tui",
+  "version": "0.1.0-alpha.1",
+  "description": "Independent semantic terminal and inline displays",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiggy/jig.git",
+    "directory": "packages/display-tui"
+  },
+  "homepage": "https://jig.md/",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./inline": {
+      "types": "./dist/inline.d.ts",
+      "import": "./dist/inline.js"
+    },
+    "./text": {
+      "types": "./dist/text.d.ts",
+      "import": "./dist/text.js"
+    },
+    "./style": {
+      "types": "./dist/style.d.ts",
+      "import": "./dist/style.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md",
+    "PRICING.md",
+    "LICENSES.md",
+    "LICENSES",
+    "THIRD_PARTY_NOTICES"
+  ],
+  "dependencies": {
+    "@jigging/display-model": "0.1.0-alpha.1",
+    "@jigging/user-updates": "0.1.0-alpha.1",
+    "@opentui/core": "0.5.17",
+    "web-tree-sitter": "0.25.10"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

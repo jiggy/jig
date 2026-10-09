@@ -31,7 +31,7 @@ example directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m --display dashboard
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m --display tui
 ```
 
 The optional `updates` channel carries the semantic views; the independent `progress`

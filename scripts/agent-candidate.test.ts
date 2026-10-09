@@ -8,6 +8,41 @@ import { join, resolve } from 'node:path'
 const root = resolve(import.meta.dir, '..')
 // Bun 1.3 parses YAML's unquoted `on` as a boolean; Bun 1.4 preserves its name.
 const workflowTriggers = (workflow: any) => workflow.on ?? workflow.true
+
+function linuxDisplayCommands(suites: any) {
+  const source = suites.steps.find((step: any) => step.name === 'Qualify standalone display source')
+  const inventoryEnd = source.run.indexOf('\n"$JIG_CI_BUN" test ')
+  expect(inventoryEnd).toBeGreaterThan(0)
+  const inventory = spawnSync(
+    '/bin/bash',
+    ['-c', `${source.run.slice(0, inventoryEnd)}\nprintf '%s' "$JIG_CI_COMMAND_CONTEXT"`],
+    { cwd: root, env: process.env, encoding: 'utf8' },
+  )
+  expect(inventory.status, inventory.stderr).toBe(0)
+  const sourceCommand = JSON.parse(inventory.stdout)
+  expect(sourceCommand.transcript).toBe('command-15.txt')
+  for (const kind of ['display-model', 'display-web', 'display-tui']) {
+    expect(
+      sourceCommand.files.some((file: string) => file.startsWith(`packages/${kind}/test/`)),
+    ).toBeTrue()
+  }
+  const installed = ['display-model', 'display-web', 'display-tui'].map((kind, index) => {
+    const step = suites.steps.find(
+      (step: any) => step.name === `Qualify standalone ${kind} frozen package`,
+    )
+    expect(step.if).toBe("matrix.suite == 'installed-evidence'")
+    const command = JSON.parse(step.env.JIG_CI_COMMAND_CONTEXT)
+    expect(command).toEqual({
+      transcript: `command-${index + 16}.txt`,
+      files: [`packages/${kind}/test/package-smoke.ts`],
+      commandKind: 'installed-script',
+    })
+    expect(step.run).toContain(`CI installed script complete: %s`)
+    expect(step.run).toContain(`'packages/${kind}/test/package-smoke.ts'`)
+    return command
+  })
+  return [sourceCommand, ...installed]
+}
 test('the source gate refuses missing prerequisites before starting builds', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'source-gate-preflight-'))
   const node = Bun.which('node')
@@ -400,21 +435,33 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   expect(affected.steps.some((step: any) => step.run?.includes('--scope linux'))).toBeTrue()
   const proof = aggregate.steps.find((step: any) => step.env?.EXPECTED_COMMANDS)
   const expectedCommands = JSON.parse(proof.env.EXPECTED_COMMANDS)
+  const displayCommands = linuxDisplayCommands(suites)
+  expectedCommands['installed-evidence'].push(...displayCommands)
   for (const suite of suites.strategy.matrix.suite) {
     const commands = suites.steps.filter(
       (step: any) => step.env?.JIG_CI_COMMAND_CONTEXT && step.if === `matrix.suite == '${suite}'`,
     )
     expect(commands.length).toBeGreaterThan(0)
-    expect(expectedCommands[suite]).toEqual(
-      commands.map((step: any) => JSON.parse(step.env.JIG_CI_COMMAND_CONTEXT)),
+    const observedCommands = commands.map((step: any) =>
+      JSON.parse(step.env.JIG_CI_COMMAND_CONTEXT),
     )
+    if (suite === 'installed-evidence') observedCommands.splice(3, 0, displayCommands[0])
+    expect(expectedCommands[suite]).toEqual(observedCommands)
     for (const command of commands) {
+      if (command.name.startsWith('Qualify standalone ')) {
+        expect(command.run).toContain('FLOW_NODE=$(command -v node)')
+        expect(command.run).toContain('set -euo pipefail')
+        continue
+      }
       for (const name of [
         'JIG_PACKAGE_ARCHIVE',
         'FLOW_SDK_PACKAGE_ARCHIVE',
         'USER_UPDATES_PACKAGE_ARCHIVE',
         'AGENT_METHOD_PACKAGE_ARCHIVE',
         'AGENT_ACP_PACKAGE_ARCHIVE',
+        'DISPLAY_MODEL_PACKAGE_ARCHIVE',
+        'DISPLAY_WEB_PACKAGE_ARCHIVE',
+        'DISPLAY_TUI_PACKAGE_ARCHIVE',
       ]) {
         expect(command.run).toContain(`"${name}=$${name}"`)
       }
@@ -433,6 +480,8 @@ test('Linux aggregate requires every current-attempt command and matching candid
     (step: any) => step.env?.EXPECTED_COMMANDS,
   )
   const commands = JSON.parse(proof.env.EXPECTED_COMMANDS)
+  commands['installed-evidence'].push(...linuxDisplayCommands(suites))
+  expect(Object.values(commands).flat()).toHaveLength(19)
   const script = proof.run.split('\nmkdir "$RUNNER_TEMP/linux-qualification"')[0]
   const directory = await mkdtemp(join(tmpdir(), 'linux-complete-evidence-'))
   const sha = 'a'.repeat(40)
@@ -480,9 +529,19 @@ test('Linux aggregate requires every current-attempt command and matching candid
       'linux-command-evidence/manifest.json',
     )
     const original = await Bun.file(missing).text()
+    for (const removed of commands['installed-evidence']) {
+      await writeFile(
+        missing,
+        JSON.stringify({
+          schemaVersion: 1,
+          commands: commands['installed-evidence'].filter((command: any) => command !== removed),
+        }),
+      )
+      expect(run().status).toBe(1)
+    }
     await writeFile(
       missing,
-      JSON.stringify({ schemaVersion: 1, commands: commands['installed-evidence'].slice(1) }),
+      JSON.stringify({ schemaVersion: 1, commands: commands['installed-evidence'].slice(0, 3) }),
     )
     expect(run().status).toBe(1)
     await writeFile(missing, original)
@@ -707,7 +766,7 @@ test('Mac qualification copies the supplied candidate bytes and refuses archive 
       import { join } from 'node:path'
       if (process.argv[2] === 'count') console.log(3)
       else if (process.argv[2] === 'run') {
-        const inputs = Object.entries({ 'flow-sdk':'FLOW_SDK_PACKAGE_ARCHIVE', 'user-updates':'USER_UPDATES_PACKAGE_ARCHIVE', 'agent-method':'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp':'AGENT_ACP_PACKAGE_ARCHIVE', jig:'JIG_PACKAGE_ARCHIVE' })
+        const inputs = Object.entries({ 'flow-sdk':'FLOW_SDK_PACKAGE_ARCHIVE', 'user-updates':'USER_UPDATES_PACKAGE_ARCHIVE', 'agent-method':'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp':'AGENT_ACP_PACKAGE_ARCHIVE', 'display-model':'DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-web':'DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-tui':'DISPLAY_TUI_PACKAGE_ARCHIVE', jig:'JIG_PACKAGE_ARCHIVE' })
         for (const [kind, variable] of inputs) {
           const copied = process.env[variable]
           if (!copied || copied.startsWith(process.env.JIG_CI_CANDIDATE_DIRECTORY)) throw Error('consumer must receive an isolated frozen copy')

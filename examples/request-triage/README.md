@@ -19,7 +19,7 @@ to both intelligent classifiers. Run from this directory on a
 
 ```sh
 jig review
-jig run binding:intake --input @fixtures/labeled.json --display dashboard
+jig run binding:intake --input @fixtures/labeled.json --display tui
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m
 jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
 ```
@@ -42,10 +42,10 @@ Its labels and Agent suggestions are untrusted input to any consequential policy
 
 The **Request** view shows the supplied message, the selected procedure and the
 suggested queue. Each classifier offers the same view when called independently.
-**Overview** follows the actual classifier and Agent calls; `manual` remains a valid
+**Execution** follows the actual classifier and Agent calls; `manual` remains a valid
 suggestion, with no business action dispatched.
 
-Choose `--display web` instead of `--display dashboard` to use the same views in a
+Choose `--display web` instead of `--display tui` to use the same views in a
 browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain

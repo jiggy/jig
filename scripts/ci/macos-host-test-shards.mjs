@@ -95,9 +95,28 @@ const WEIGHTS = new Map([
 // ARM's existing hint balances its faster source and installed work already.
 const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 500, arm64: 384 })
 const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
+export const HOST_TEST_DIRECTORIES = Object.freeze([
+  'packages/jig/test',
+  'packages/display-model/test',
+  'packages/display-web/test',
+  'packages/display-tui/test',
+])
 
-export async function discoverJigTests(root) {
-  const directory = join(root, 'packages/jig/test')
+// Match the filesystem walk when reconstructing the inventory from Git. Hidden
+// directories and dependency copies cannot become an additional owning command.
+export function isHostTestFile(file) {
+  return (
+    HOST_TEST_DIRECTORIES.some((directory) => file.startsWith(`${directory}/`)) &&
+    file.split('/').every((part) => !part.startsWith('.') && part !== 'node_modules') &&
+    TEST_FILE.test(file)
+  )
+}
+
+export async function discoverHostTests(root) {
+  return discoverTests(root, HOST_TEST_DIRECTORIES)
+}
+
+async function discoverTests(root, directories) {
   const found = []
   async function walk(parent) {
     for (const entry of await readdir(parent, { withFileTypes: true })) {
@@ -109,7 +128,7 @@ export async function discoverJigTests(root) {
       }
     }
   }
-  await walk(directory)
+  for (const directory of directories) await walk(join(root, directory))
   return found.sort()
 }
 
@@ -199,7 +218,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     )
     process.exit(2)
   }
-  const shards = planMacHostTests(await discoverJigTests(process.cwd()), architecture)
+  const shards = planMacHostTests(await discoverHostTests(process.cwd()), architecture)
   const shard = shards[index]
   const commands = commandsForShard(shard, process.env.JIG_CI_BUN || 'bun')
   const plan = {
@@ -235,7 +254,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           architecture,
           shard: index,
           group: commandIndex,
-          file: args.find((argument) => argument.startsWith('./packages/jig/test/')),
+          file: args.find((argument) =>
+            /^\.\/packages\/(?:jig|display-(?:model|web|tui))\/test\//.test(argument),
+          ),
           pattern: shard.groups[commandIndex].pattern,
           elapsedMs: Math.round(performance.now() - started),
           status: result.status,

@@ -1,0 +1,30 @@
+@default:
+    just --list
+
+@build: clean
+    just --justfile ../flow-sdk/justfile build
+    just --justfile ../user-updates/justfile build
+    bun node_modules/typescript/bin/tsc -p tsconfig.json
+    cp ../../LICENSE.md ../../PRICING.md ../../LICENSES.md .
+    mkdir -p LICENSES
+    cp ../../LICENSES/Apache-2.0.txt ../../LICENSES/CC-BY-4.0.txt ../../LICENSES/Community-Spec-1.0.md ../../LICENSES/MPL-2.0.txt LICENSES/
+
+clean:
+    #!/usr/bin/env bun
+    import { rm } from 'node:fs/promises';
+    for (const path of ['dist', 'LICENSE.md', 'PRICING.md', 'LICENSES.md', 'LICENSES']) {
+      await rm(path, { recursive: true, force: true });
+    }
+
+[positional-arguments]
+@test *args:
+    bun test "$@"
+
+check: build test
+
+[positional-arguments]
+@pack *args: build
+    bun pm pack --ignore-scripts "$@"
+
+@test-package:
+    bun test/package-smoke.ts

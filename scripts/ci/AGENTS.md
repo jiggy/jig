@@ -13,6 +13,10 @@ Host preparation never becomes a consumer requirement.
   `affected-plan.mjs` records verified base, PR head and tested merge state, old/new
   graphs and inventories, change endpoints, decisions and omission reasons. Unknown
   inputs select full work. Newly discovered unassigned tests prevent qualification.
+  Linux directory commands expand every tracked regular test in the shared Jig
+  and display roots; missing display ownership prevents qualification. Host
+  filesystem/Git reconstruction excludes hidden directories, dependency copies
+  and symlinks.
   Shadow mode executes every target while retaining proposed exclusions; only
   public site assets and isolated Python source/tests may omit unrelated PR work.
   Bundled Jig browser assets and executable guides remain full inputs.
@@ -47,13 +51,15 @@ Host preparation never becomes a consumer requirement.
   Mac permits only the thirteen frozen Linux foreground session case names,
   including the concrete strict/cached registrations. The four portable foreground
   cases remain mandatory; Linux permits only the exact Agent opt-in case to skip.
-- `build-candidates.mjs` archives clean tracked source and freezes all five npm
+- `build-candidates.mjs` archives clean tracked source and freezes all eight npm
   archives on qualified native Linux x64 Bun 1.3.3/Just 1.43.1 using normal workspace
   resolution and package-owned packing. Preserve generated resolution, actual
   tool identities, inventories and hashes. Build-only receipts carry pending
   qualification; expensive consumer tests run after artifact retention.
   `qualify-candidate.mjs` verifies the immutable bundle before and after fresh
-  FLOW/Agent/Jig installed obligations, without rebuilding release archives.
+  FLOW/Agent/standalone-display/Jig installed obligations, without rebuilding
+  release archives. Display packages qualify through Jig's gate; the four
+  protected publication selectors remain FLOW, HTTP Agent, ACP Agent and Jig.
 - `candidate-provenance.mjs` validates exact source, producer, build profile,
   archive contents, resolution and hashes, and writes qualification receipts.
   `candidate-transfer.mjs` checks GitHub repository/workflow/event/head identity,
@@ -79,10 +85,10 @@ Host preparation never becomes a consumer requirement.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
-  Intel/Apple Silicon 24G830 profiles and
-  Bun 1.4.2 and real Node 22+ preflight, frozen same-revision archives with
-  digest rechecks, an ordinary npm install on the native architecture,
-  sequential native tests, installed-consumer checks, and
+  Intel/Apple Silicon 24G830 profiles, Bun 1.4.2 and real Node 22+ preflight,
+  frozen same-revision host/model/renderer archives with digest rechecks,
+  an ordinary npm install on the native architecture,
+  sequential native tests, standalone display and installed-Jig consumers, and
   comparison of owned host residue before and after qualification. Its full
   mode remains the self-hosted entrypoint; hosted `--shard` runs one isolated
   portion of the same complete suite: three Intel or two Apple Silicon shards.
@@ -91,8 +97,8 @@ Host preparation never becomes a consumer requirement.
   Hosted qualification consumes `JIG_CI_CANDIDATE_DIRECTORY` after verifying
   provenance and copies its exact archives; ordinary platform source builds
   remain separate. Full self-hosted local mode uses the owning local packers.
-- `macos-host-test-shards.mjs` discovers every Jig test file. Eight native
-  prerequisite files run once in the dedicated containment step on shard zero;
+- `macos-host-test-shards.mjs` discovers every Jig and display-package test file.
+  Eight native prerequisite files run once in the dedicated containment step on shard zero;
   every other file enters hosted qualification. The root Agent lifecycle and
   package-provider host files use disjoint, exhaustive name partitions with
   catch-all coverage for future cases. All remaining files enter once. Schedule
@@ -177,7 +183,8 @@ Host preparation never becomes a consumer requirement.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
-  Mac file assignment, disjoint lifecycle and package name groups, balanced scheduling
+  Mac file assignment including each display package and future files, disjoint
+  lifecycle and package name groups, balanced scheduling
   of a representative observed workload including out-of-file costs, exact
   Codex startup/refusal host selection without running native clients, and that every
   Linux hostile test file enters provisioned host conformance.

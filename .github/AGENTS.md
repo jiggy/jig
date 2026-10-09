@@ -38,7 +38,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   its bounded mode-0600 profile artifacts for seven days; it performs no model
   calls and does not establish a performance claim. Its 60-minute shard allows
   the 30-minute profile command budget to finish before mandatory cleanup.
-- CI freezes one canonical five-package npm bundle and checked Python
+- CI freezes one canonical eight-package npm bundle and checked Python
   distributions before installed qualification. Source, Linux, hosted Mac and
   native Agent consumers use the same npm bytes while rebuilding their platform's
   source workspace separately. Protected publishers download the exact original
@@ -85,6 +85,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Sampled PR and weekly Sunday full audits supplement full main checks; include
   their cost when measuring savings. Do not cache passing results or
   native/consumer execution.
+- Model and web/TUI display packages enter dependency ownership, source and host
+  test inventories, and frozen standalone artifact gates. Their JavaScript/assets
+  are bundled into Jig; protected publisher package selection remains unchanged.
 - Jig GitHub release notes link the matching tagged
   source archive and build instructions; npm remains the runnable distribution.
 - Python publication qualifies the exact retained wheel/sdist on its supported
@@ -122,7 +125,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Markdown and public workspace-dependency proof. Its packed dependency-reuse
   case runs once in its dedicated step; the remaining provider cases use the
   complementary name pattern. Installed-evidence runs complete packed CLI
-  composition, operational and hostile baselines on a separate proof host.
+  composition, operational and hostile baselines on a separate proof host,
+  plus standalone display consumers against the frozen archives. Supply an
+  absolute `FLOW_NODE` for the model/browser consumers' independent Node checks.
   Pass the runner's absolute Node and npm executables to the packed smoke test
   because the acquisition host uses a fixed path that excludes runner tool-cache
   binaries. The trusted npm installation step uses the selected Node directory
@@ -144,8 +149,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
 - Host conformance includes Agent method and contract-authoring source changes.
-  Consume the built SDK, HTTP Agent, ACP Agent, user-updates and Jig archives from
-  the canonical producer. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
+  Consume the built SDK, HTTP Agent, ACP Agent, user-updates, display model/web/TUI
+  and Jig archives from the canonical producer. Pass `AGENT_METHOD_PACKAGE_ARCHIVE`
+  and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
   archives to installed Markdown tests across the provisioned host boundary;
   verify the same archive hashes afterward. Jig's packer supplies the complete
   private authoring closure. Agent source rebuilds use ordinary declared
@@ -165,7 +171,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `max-parallel: 5`; actual runner availability still determines start times.
   Each isolated shard checks the exact kernel/build, native Bun,
   process prerequisites, ordinary build, frozen archive identity and ownership
-  residue. The deterministic test plan covers every discovered Jig test file;
+  residue. The deterministic test plan covers every discovered Jig and display test file;
   it partitions the long root Agent lifecycle and package-provider files by
   disjoint, exhaustive name groups and balances them with all other files.
   Tests run in fresh, sequential per-group Bun processes inside each host.

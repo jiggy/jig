@@ -4,6 +4,7 @@ import { lstat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
+import type { WebAssets } from '@jigging/display-model'
 import type { Reference } from '@jigging/user-updates'
 import manifest from '../package.json' with { type: 'json' }
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
@@ -24,7 +25,6 @@ import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
-import type { PrivateWebAssets } from './cli-web-assets.js'
 import { CheckError } from './diagnostics.js'
 import { ACP_SETUP_CAUSES, ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
 import {
@@ -153,7 +153,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --result DIRECTORY [--display plain|dashboard|web] [--json]
+       jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -165,7 +165,7 @@ Visible edits, launch readiness and remote provider availability are not checked
 
   --json     Emit JSON even in a terminal (redirected output is always JSON)
   --result DIRECTORY  Inspect a saved packet without approval or new execution
-  --display MODE      For saved results: plain (default), dashboard or web
+  --display MODE      For saved results: plain (default), tui or web
 
 Saved results are local recorded claims. Files are captured once and checked
 against the recorded manifest; matching hashes do not authenticate the report.
@@ -178,7 +178,7 @@ Examples:
   jig inspect
   jig inspect flow:flows/hello
   jig inspect binding:repair --json
-  jig inspect --result ./result-packet --display dashboard
+  jig inspect --result ./result-packet --display tui
   jig inspect --result ./result-packet --display web
 
 ${VERIFICATION_HELP}`,
@@ -238,7 +238,7 @@ Selection never approves changed source.
   --out DIR          Save a result packet to a new directory outside input roots
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
-  --display MODE     Select auto (default), plain, dashboard or web
+  --display MODE     Select auto (default), plain, tui or web
   --timeout DURATION Set the execution deadline (default: 30s; maximum: 24h)
                      Units: ms, s, m, h. Cleanup still runs after the deadline.
 
@@ -286,7 +286,7 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
-  readonly webAssets?: PrivateWebAssets
+  readonly webAssets?: WebAssets
   readonly presentationDeadline?: number | undefined
   readonly dashboardInputStream?: typeof process.stdin
   readonly standardContractDirectory?: string
@@ -658,7 +658,7 @@ function parseInspect(arguments_: readonly string[]) {
   let json = false
   let verification: string | undefined
   let resultDirectory: string | undefined
-  let display: 'plain' | 'dashboard' | 'web' | undefined
+  let display: 'plain' | 'tui' | 'web' | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
     if (value === '--result') {
@@ -670,8 +670,8 @@ function parseInspect(arguments_: readonly string[]) {
     }
     if (value === '--display') {
       const next = arguments_[++index]
-      if (display !== undefined || (next !== 'plain' && next !== 'dashboard' && next !== 'web'))
-        usage('inspect', 'Saved-result --display accepts plain, dashboard or web once.')
+      if (display !== undefined || (next !== 'plain' && next !== 'tui' && next !== 'web'))
+        usage('inspect', 'Saved-result --display accepts plain, tui or web once.')
       display = next
       continue
     }
@@ -729,7 +729,7 @@ async function executeSavedResultInspect(
     if (parsed.json || !runtime.humanOutput) {
       await runtime.writeRecord(`${textDecoder.decode(canonicalJson(packet.record))}\n`)
     } else {
-      if (parsed.display === 'dashboard' || parsed.display === 'web')
+      if (parsed.display === 'tui' || parsed.display === 'web')
         await runtime.progress.inspectSavedResult(
           packet,
           runtime.dashboardInput,
@@ -986,11 +986,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     startedAt: privatePresentationNow(),
   })
   const automaticPresentation = !parsed.json && parsed.receive.length === 0
-  const dashboardRequested = automaticPresentation && parsed.display === 'dashboard'
+  const dashboardRequested = automaticPresentation && parsed.display === 'tui'
   const webRequested = automaticPresentation && parsed.display === 'web' && runtime.terminalError
   const workspaceRequested = dashboardRequested || webRequested
   if (dashboardRequested)
-    await runtime.progress.prepareDashboard(runtime.dashboardInput, runtime.dashboardInputStream)
+    await runtime.progress.prepareTuiDisplay(runtime.dashboardInput, runtime.dashboardInputStream)
   if (webRequested) {
     try {
       runtime.progress.prepareWeb()
@@ -1084,7 +1084,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
             // joins that setup before settlement or error presentation.
             dashboardEntry ??= runtime.progress
               .configureDisplay(
-                webRequested ? 'web' : 'dashboard',
+                webRequested ? 'web' : 'tui',
                 runtime.dashboardInput,
                 runtime.dashboardInputStream,
               )
@@ -1451,7 +1451,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
             'The expanded report exceeds JSON/0 limits. The execution terminal is preserved; inspect any result packet before starting new work.',
           ),
         )
-        await runtime.progress.settleDashboard(
+        await runtime.progress.settleDisplay(
           {
             ...(publicTerminal(status.terminal) as Record<string, JsonValue>),
             ...((record as Record<string, JsonValue>).cleanup !== undefined
@@ -1472,7 +1472,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     const terminal = status.terminal
-    await runtime.progress.settleDashboard(decodeJson1(encodedRecord), artifact)
+    await runtime.progress.settleDisplay(decodeJson1(encodedRecord), artifact)
     await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded' && !presentation)
       runtime.progress.note(
@@ -1568,7 +1568,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         return 2
       }
       if (runtime.signal?.aborted) return 2
-      await runtime.progress.settleDashboard({
+      await runtime.progress.settleDisplay({
         status: 'unknown',
         message:
           'The command could not confirm an execution result. Inspect any result and effects before starting new work.',
@@ -1658,7 +1658,7 @@ export function privateCliCommandLifetimeMs(
   try {
     const parsed = parseRun(arguments_)
     if (
-      ((interactiveDashboard && parsed.display === 'dashboard') ||
+      ((interactiveDashboard && parsed.display === 'tui') ||
         (terminalStderr && parsed.display === 'web')) &&
       !parsed.json &&
       parsed.receive.length === 0

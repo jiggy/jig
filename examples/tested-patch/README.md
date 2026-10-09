@@ -26,7 +26,7 @@ From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m --display dashboard
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m --display tui
 ```
 
 Add `--receive progress` to see the repair specialist's phase and attempt
@@ -54,7 +54,7 @@ retained proposals; only an accepted candidate earns `review.patch`. Selecting a
 delivered file shows its content. The reusable specialist offers Repair and Checks
 without claiming that its caller has accepted a patch.
 
-Choose `--display web` instead of `--display dashboard` to use the same views in a
+Choose `--display web` instead of `--display tui` to use the same views in a
 browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain

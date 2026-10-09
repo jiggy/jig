@@ -318,6 +318,72 @@ test('candidate execution requires the exact source, package profile and complet
   }
 })
 
+test('Jig candidate evidence requires all three standalone display consumers and existing installed obligations', async (t) => {
+  const f = await fixture(t)
+  const gates = [
+    'display-model-package-smoke',
+    'display-web-package-smoke',
+    'display-tui-package-smoke',
+    'package-smoke',
+    'operational-baseline-1',
+    'installed-hostile-baseline',
+    'npm-local-install-help',
+    'npm-global-install-help',
+  ]
+  const good = { schemaVersion: 1, commit: source, package: '@jigging/jig', gates }
+  const qualification = await f.put('jig-candidate.json', good)
+  assert.deepEqual(await observedCount({ qualification, source, profiles: ['jig'] }), {
+    count: 8,
+    skipped: 0,
+    basis: 'qualified-artifacts',
+  })
+  const jig = target('npm-candidate', ['jig'])
+  const planPath = await f.put('plan.json', plan([jig]))
+  const output = join(f.root, 'evidence/jig.json')
+  await mkdir(dirname(output))
+  await writeJobEvidence({
+    planPath,
+    id: jig.id,
+    output,
+    qualification,
+    profile: 'jig',
+    artifacts: true,
+  })
+  const evidence = await f.json('evidence/jig.json')
+  assert.equal(evidence.source, source)
+  assert.equal(evidence.planDigest, 'plan-identity')
+  assert.equal(evidence.results[0].executedCount, 8)
+  assert.deepEqual(evidence.results[0].profiles, ['jig'])
+  assert.equal(evidence.results[0].artifactsVerified, true)
+  const resultsPath = await f.put('statuses.json', { [jig.id]: 'success' })
+  await collectJobEvidence({
+    planPath,
+    directory: dirname(output),
+    resultsPath,
+    output: join(f.root, 'collected.json'),
+  })
+  assert.deepEqual(await f.json('collected.json'), {
+    ...evidence,
+    results: [{ ...evidence.results[0], residueVerified: false }],
+  })
+
+  const refused = [
+    gates.slice(3),
+    ...gates.map((_, index) => gates.filter((__, candidate) => candidate !== index)),
+    [...gates, gates[0]],
+    [gates[0], gates[0], ...gates.slice(2)],
+    [...gates].reverse(),
+    [...gates, 'display-unknown-package-smoke'],
+  ]
+  for (const omittedOrRepeated of refused) {
+    await f.put('jig-candidate.json', { ...good, gates: omittedOrRepeated })
+    await assert.rejects(
+      () => observedCount({ qualification, source, profiles: ['jig'] }),
+      /Incomplete candidate profile obligations/,
+    )
+  }
+})
+
 test('Mac summary needs qualified true, matching source/architecture, and actual owning JUnit evidence', async (t) => {
   const f = await fixture(t)
   const good = {

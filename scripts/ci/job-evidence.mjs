@@ -184,6 +184,9 @@ export async function observedCount({
       agent: ['npm-install-import', 'installed-flow-invalid-input'],
       acp: ['npm-install-import', 'installed-flow-invalid-input'],
       jig: [
+        'display-model-package-smoke',
+        'display-web-package-smoke',
+        'display-tui-package-smoke',
         'package-smoke',
         'operational-baseline-1',
         'installed-hostile-baseline',

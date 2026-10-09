@@ -66,7 +66,7 @@ in `result.json` when delivery succeeds.
 Diagnostics already printed live are counted in the final summary rather than
 printed again. A null checkpoint means no progress was retained and is omitted
 from the terminal view; the machine record keeps that exact value.
-In an explicit dashboard, diagnostic text retained in a collapsed Activity entry
+In an explicit TUI, diagnostic text retained in a collapsed Activity entry
 may not have been read. Its complete bounded final evidence remains visible.
 The [workspace controls](channels.md#observe-the-work) explain expandable reports,
 attributed causes and read-only result inspection. Closing that
@@ -81,7 +81,7 @@ carries diagnostics and, on a terminal, elapsed status and cancellation updates.
 Piped stdout remains machine-readable. Interactive terminals show one active
 status line and use color for headings and outcomes. Set `NO_COLOR=1` or
 `TERM=dumb` for plain output without animation; redirected streams are always
-plain. An explicitly selected eligible dashboard with NO_COLOR uses screen
+plain. An explicitly selected eligible TUI with NO_COLOR uses screen
 controls without color. Errors put the explanation and next action before the diagnostic code.
 The [CLI experience contract](../spec/cli-experience.md) defines these guarantees. Ctrl-C requests cancellation; wait for cleanup before starting new
 work. An interruption or uncertain result is not permission to blindly retry.
@@ -100,7 +100,7 @@ is an Agent answer or proof that the application achieved its objective.
 ### Reopen a saved result
 
 ```sh
-jig inspect --result ./result-packet --display dashboard
+jig inspect --result ./result-packet --display tui
 jig inspect --result ./result-packet --display web
 ```
 

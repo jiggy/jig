@@ -111,6 +111,32 @@ Run/0. Jig should not fork its scheduler, subclass its elements, or put Jig
 domain state inside Sley objects. A Jig-specific graph layer is justified only
 by a real stored-graph consumer that direct Sley cannot express clearly.
 
+### Orthogonal components and explicit dependencies
+
+Give each component one cohesive responsibility and a small explicit interface.
+Changes to one mechanism should not require unrelated consumers to understand
+its implementation. Package separation earns its place through independent
+use, replacement, or verification; moving files alone does not remove coupling.
+
+- Keep dependency directions explicit and acyclic. Shared meaning belongs below
+  its consumers; a reusable component must not import its host's private source.
+- Pass the data and narrowly scoped effects a component needs. Do not pass a
+  coordinator, mutable global state, or an entire internal model for convenience.
+- Keep internal identities separate from supplied identifiers. A reusable
+  component must not depend on callers avoiding its private names.
+- Separate observations from decisions and presentation from execution authority.
+  A consumer interprets supplied facts without acquiring the producer's powers.
+- Keep side effects, resource limits, cancellation and cleanup with an explicit
+  owner. Inject bounded access rather than rediscovering ambient resources.
+- Compose packages through declared exports and ordinary dependencies. Avoid
+  sibling-source imports, build-output paths, duplicated contracts and hidden
+  initialization order that bypass the intended boundary.
+- Prove independence by building and testing components with representative
+  fixtures outside their host. Test the installed composition separately.
+- Extract only demonstrated common meaning. Preserve distinct implementations
+  where their responsibilities differ; do not replace coupling with a universal
+  framework or a proliferation of configuration and adapters.
+
 ### Capture, review, and admission
 
 These laws make the accepted work independent of later edits. The portable

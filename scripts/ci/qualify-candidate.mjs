@@ -88,6 +88,9 @@ export async function qualifyCandidate(
         ['USER_UPDATES_PACKAGE_ARCHIVE', 'user-updates'],
         ['AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-method'],
         ['AGENT_ACP_PACKAGE_ARCHIVE', 'agent-acp'],
+        ['DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-model'],
+        ['DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-web'],
+        ['DISPLAY_TUI_PACKAGE_ARCHIVE', 'display-tui'],
         ['JIG_PACKAGE_ARCHIVE', 'jig'],
       ].map(([variable, inputKind]) => {
         const input = bundle.packages.find((entry) => entry.kind === inputKind)
@@ -172,6 +175,10 @@ export async function qualifyCandidate(
       )
       gates.push('installed-flow-invalid-input')
     } else {
+      for (const displayKind of ['display-model', 'display-web', 'display-tui']) {
+        run(tools.bun, [`packages/${displayKind}/test/package-smoke.ts`], options)
+        gates.push(`${displayKind}-package-smoke`)
+      }
       run(tools.bun, ['packages/jig/test/package-smoke.ts'], options)
       gates.push('package-smoke')
       run(tools.bun, ['scripts/test-operational-baseline.ts'], options)
