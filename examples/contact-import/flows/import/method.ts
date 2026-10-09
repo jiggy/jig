@@ -1,8 +1,10 @@
 import { constants } from 'node:fs'
 import { open, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parse } from 'csv-parse/sync'
 import type { RunContext, RunResult } from '@jigging/flow'
+import type { UserUpdates } from '@jigging/user-updates'
+import { parse } from 'csv-parse/sync'
+import { contactsView, mappingView } from './dashboard.ts'
 
 export function parseContacts(bytes: Uint8Array): { headers: string[]; rows: string[][] } {
   if (bytes.length > 65536) throw new TypeError('CSV must fit within 64 KiB.')
@@ -33,7 +35,12 @@ export function parseContacts(bytes: Uint8Array): { headers: string[]; rows: str
 
 export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
+  updates?: UserUpdates,
 ): Promise<RunResult> {
+  const mappingReport = updates?.view('mapping', { title: 'Mapping', landing: true })
+  const acceptedReport = updates?.view('contacts', { title: 'Contacts' })
+  const rejectedReport = updates?.view('rejected', { title: 'Rejected rows' })
+  updates?.activity('import', 'Reading source/contacts.csv')
   const { source, preview } = run.attachments
   if (source?.access !== 'read' || preview?.access !== 'read-write')
     throw new TypeError('Supply source and preview attachments.')
@@ -52,29 +59,68 @@ export async function runMethod(
     await file.close()
   }
   const { headers, rows } = parseContacts(bytes)
+  mappingReport?.update(mappingView(headers, rows.length))
+  acceptedReport?.update(contactsView(undefined, true))
+  rejectedReport?.update(contactsView(undefined, false))
+  updates?.activity('import', 'Choosing contact columns from the captured headings')
   run.signal.throwIfAborted()
   const proposal = await run.call({
     operationId: 'map-columns',
     slot: 'mapper',
+    intent: 'Choose name, email and organization columns',
     input: { headers },
   })
   run.signal.throwIfAborted()
-  if (proposal.outcome === 'blocked' || proposal.outcome === 'limit') return proposal
+  if (proposal.outcome === 'blocked' || proposal.outcome === 'limit') {
+    updates?.notice(
+      'Column mapping could not complete. No preview is ready; the result retains the reported cause.',
+      'error',
+    )
+    mappingReport?.update(mappingView(headers, rows.length, proposal))
+    acceptedReport?.update(contactsView(proposal, true))
+    rejectedReport?.update(contactsView(proposal, false))
+    return proposal
+  }
   if (proposal.outcome !== 'done') throw new TypeError('Unexpected mapping outcome.')
   const { mapping } = proposal.output as {
     mapping: null | { name: number; email: number; organization: number }
   }
+  updates?.activity('import', 'Checking selected columns and contact rows')
   const result = await run.call({
     operationId: 'convert-rows',
     slot: 'converter',
+    intent: 'Validate column selection and contact rows',
     input: { headers, rows, mapping },
   })
   run.signal.throwIfAborted()
-  if (result.outcome !== 'done') return result
+  if (result.outcome !== 'done') {
+    updates?.notice(
+      'Contact conversion could not complete. No preview is ready; inspect the retained result.',
+      'error',
+    )
+    mappingReport?.update(mappingView(headers, rows.length, result))
+    acceptedReport?.update(contactsView(result, true))
+    rejectedReport?.update(contactsView(result, false))
+    return result
+  }
   await writeFile(
     join(preview.path, 'preview.json'),
     JSON.stringify(result.output, null, 2) + '\n',
     { flag: 'wx' },
   )
+  const output = result.output as { status: string; rejected: unknown[] }
+  if (output.status === 'needs_mapping')
+    updates?.notice(
+      'Choose three distinct existing columns before a contact preview can be prepared.',
+      'warning',
+    )
+  else if (output.rejected.length)
+    updates?.notice(
+      `${output.rejected.length} records were excluded by the row checks. Review Rejected rows.`,
+      'warning',
+    )
+  mappingReport?.update(mappingView(headers, rows.length, result))
+  acceptedReport?.update(contactsView(result, true))
+  rejectedReport?.update(contactsView(result, false))
   return result
 }

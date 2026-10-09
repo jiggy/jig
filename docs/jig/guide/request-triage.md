@@ -1,6 +1,7 @@
 ---
 title: One caller, three implementations
-description: Run the same caller with a code classifier, an Agent classifier, and a method combining both. Learn the shared contract and the review boundary.
+description: Run the same caller with a code classifier, an Agent classifier, and a
+method combining both. Learn the shared contract and the review boundary.
 ---
 
 # One caller. Code, Agent, or both.
@@ -42,6 +43,7 @@ export async function triage(
   return run.call({
     operationId: 'classify-request',
     slot: 'classifier',
+    intent: 'Suggest a support queue',
     input: run.input,
   })
 }
@@ -83,7 +85,7 @@ From `examples/request-triage`:
 
 ```sh
 jig review
-jig run binding:intake --input @fixtures/labeled.json
+jig run binding:intake --input @fixtures/labeled.json --display dashboard
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m
 jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
 ```
@@ -101,6 +103,17 @@ Code and mixed return `done` with `{"queue":"billing"}`. The Agent is asked to
 suggest the same queue, but can choose differently or return `blocked` or
 `limit`. Inspect the method's outcome as well as the CLI's execution status.
 The page does not claim identical classification behavior.
+
+## Follow the work
+
+The **Request** view shows the supplied message, the selected procedure and the
+suggested queue. Each classifier offers the same view when called independently.
+**Overview** follows the actual classifier and Agent calls; `manual` remains a valid
+suggestion, with no business action dispatched.
+
+Use `--display web` for the same views through the private browser link printed after
+work starts. Completed inspection waits for explicit exit. The host’s graph and blocking
+causes remain separate from application reports; plain and JSON output remain available.
 
 ## Change the implementation, keep the caller
 

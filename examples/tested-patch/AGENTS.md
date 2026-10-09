@@ -18,7 +18,7 @@ only after executed checks and independent acceptance.
 ## Local Contracts
 
 - Complexity cap: one issue, one specialist, one final patch/evidence result.
-  Batch scheduling, monitoring, broadcasts, recording, and checkpoints are outside
+  Batch scheduling, resident monitoring, recording, and checkpoints are outside
   this example. A separate example must justify its own lesson before adding them.
 - The root alone receives read-only source and writable deliverables. Accept
   16 UTF-8 files totaling 64 KiB and at most eight existing editable JS/TS source paths.
@@ -52,6 +52,16 @@ only after executed checks and independent acceptance.
   propagate without retries. Final file delivery does not promise interruption recovery.
   Repair failure details keep method attempts alongside any supplied underlying
   `operationDetails`; neither establishes a successful check.
+
+- Package-local `dashboard.ts` projections offer Repair, Checks and root Evidence through the
+  optional canonical `updates` channel. FLOW entrypoints own scoped publishers,
+  activity and failure notices; pure methods retain their exact results and policy.
+  The existing user-updates profile serves terminal and web without display code.
+  Tests validate complete escaped items, provisional meanings and evidence links.
+- The root writes complete `goal.txt` only after returned evidence validates.
+  Its Checks verdicts are independent; worker Checks remain provisional and may
+  reference only their own calls. The private `progress` phase protocol remains
+  separate from the optional `updates` dashboard channel.
 
 ## Work Guidance
 

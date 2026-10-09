@@ -4,6 +4,7 @@ export async function triage(run: Pick<RunContext, 'input' | 'call'>): Promise<R
   return run.call({
     operationId: 'classify-request',
     slot: 'classifier',
+    intent: 'Suggest a support queue',
     input: run.input,
   })
 }

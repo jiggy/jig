@@ -296,7 +296,12 @@ test('constructs the repair application with unchanged sources and ordinary work
       expect(await Bun.file(join(copied, 'sdk/index.js')).exists()).toBe(false)
     }
     const lock = await readFile(join(root, 'bun.lock'), 'utf8')
-    for (const name of ['@jigging/flow', '@jigging/agent-method', '@jigging/agent-acp'])
+    for (const name of [
+      '@jigging/flow',
+      '@jigging/user-updates',
+      '@jigging/agent-method',
+      '@jigging/agent-acp',
+    ])
       expect(lock).toContain(`${name}@workspace:`)
     expect(lock).not.toContain('file:')
   } finally {
@@ -486,6 +491,9 @@ proofDescribe('contained repair file application', () => {
               delivery: { status: 'written' },
             })
             expect(await readFile(join(out, 'files/summary.txt'), 'utf8')).toContain('review-ready')
+            expect(await readFile(join(out, 'files/goal.txt'), 'utf8')).toBe(
+              JSON.parse(await readFile(join(project, 'issue.json'), 'utf8')).issue + '\n',
+            )
             expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
               '--- a/src/parse.ts',
             )
@@ -534,6 +542,7 @@ proofDescribe('contained repair file application', () => {
               unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false),
             ).toBe(true)
             expect((await readdir(join(failedOut, 'files'))).sort()).toEqual([
+              'goal.txt',
               'proposal-1.patch',
               'proposal-2.patch',
               'summary.txt',
@@ -2185,6 +2194,7 @@ async function writeRepairWorkspace(root: string, url: string, batch = false): P
   )
   for (const [name, variable] of [
     ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
+    ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
     ['agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'],
   ] as const) {
     const destination = join(root, 'packages', name)

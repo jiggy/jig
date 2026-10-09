@@ -120,6 +120,10 @@ retain the same cause in the ordinary result. Saved-evidence notices follow
 checkpoint acknowledgement. Severity never controls execution or guarantees
 optional observation delivery.
 
+- Standalone repair and router views use the same public profile: Repair/Checks
+  on `updates`, Selection on `progress`. Root Jobs/Checks/Patches retain their
+  independent acceptance and own-publisher reference boundaries.
+
 ## Work Guidance
 
 - Keep source capture, acceptance policy, evidence validation and patch export

@@ -19,7 +19,7 @@ to both intelligent classifiers. Run from this directory on a
 
 ```sh
 jig review
-jig run binding:intake --input @fixtures/labeled.json
+jig run binding:intake --input @fixtures/labeled.json --display dashboard
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m
 jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
 ```
@@ -37,6 +37,19 @@ it. Their result shapes match even when their judgments do not.
 `limit` return a reason. Execution errors propagate without automatic retry.
 The example sends no messages, issues no refunds, and performs no queue writes.
 Its labels and Agent suggestions are untrusted input to any consequential policy.
+
+## Follow the work
+
+The **Request** view shows the supplied message, the selected procedure and the
+suggested queue. Each classifier offers the same view when called independently.
+**Overview** follows the actual classifier and Agent calls; `manual` remains a valid
+suggestion, with no business action dispatched.
+
+Choose `--display web` instead of `--display dashboard` to use the same views in a
+browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 Read the [complete walkthrough](../../docs/jig/guide/request-triage.md) for the
 caller, contract, review boundary, and where application checks belong.

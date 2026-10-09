@@ -12,6 +12,12 @@
       "required": false,
       "delivery": "direct",
       "contract": "./contracts/revisions.json"
+    },
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/user-updates/user-updates.json"
     }
   },
   "outcomes": {

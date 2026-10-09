@@ -29,11 +29,17 @@ credit eligibility and customer-facing claims.
 - Each Flow is self-contained. `FLOW.contract.json` describes the shared boundary;
   code owns relational checks and semantic policy, not Jig.
 
+- Package-local `dashboard.ts` projections offer Case and Charges through the
+  optional canonical `progress` channel. FLOW entrypoints own scoped publishers,
+  activity and failure notices; pure methods retain their exact results and policy.
+  The existing user-updates profile serves terminal and web without display code.
+  Tests validate complete escaped items, provisional meanings and evidence links.
+
 ## Work Guidance
 
 - Complexity cap: one assessment plus one code-owned eligibility decision. Keep
   supplied records and final results; live billing, duplicate delivery, transaction
-  recovery, and streaming need their own teaching case.
+  recovery, and interactive update intake need their own teaching case.
 - Keep the two-method path readable. Add complexity only for a useful consumer task.
 - Do not equate an eligible charge with correct interpretation of customer intent,
   or deterministic adversarial tests with model injection resistance.

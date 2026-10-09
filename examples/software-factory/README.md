@@ -19,7 +19,7 @@ From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run
+jig run --display dashboard
 ```
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
@@ -58,6 +58,21 @@ the actual calls. Select a record and press Enter for details; `!` opens a
 blocking cause, and `r` selects an evidence reference. Press `q` during work
 to continue in the ordinary transcript. The read-only completed inspector stays
 open until you close it, subject to any explicit enclosing command limit.
+Use `--display web` for the same semantic views in a browser. Open the private link
+printed after execution starts; **Delivered files** shows verified patch and goal
+contents. The standalone repair specialist offers **Repair** and **Checks** through its
+optional `updates` channel; the reusable router offers **Selection** through `progress`.
+The factory continues to use its private repair-phase protocol to relay current work,
+without forwarding a child's artifact namespace.
+
+Reopen the final evidence without starting work:
+
+```sh
+jig inspect --result ./factory-result --display web
+```
+
+Saved inspection shows recorded results, verified files and diagnostics. Packets do not retain the live domain views or invocation graph.
+
 During work it identifies the command slot or case being run, then reports the
 observed repository-command status and passing or mismatched acceptance cases.
 Collected command invocations and a procedural next step explain why it requests

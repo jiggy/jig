@@ -27,6 +27,12 @@ one method contract, using a suggested support queue as the bounded result.
 - Operators choose Agents and powers. Changing a Binding or implementation
   requires review; the caller never chooses a new target at runtime.
 
+- Package-local `dashboard.ts` projections offer Request through the
+  optional canonical `progress` channel. FLOW entrypoints own scoped publishers,
+  activity and failure notices; pure methods retain their exact results and policy.
+  The existing user-updates profile serves terminal and web without display code.
+  Tests validate complete escaped items, provisional meanings and evidence links.
+
 ## Work Guidance
 
 - Complexity cap: one caller with three interchangeable implementations. Keep

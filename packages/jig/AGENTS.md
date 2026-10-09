@@ -557,7 +557,8 @@ buffer release and output failure independently of recorded execution status.
   The credential-free command environment retains `XDG_RUNTIME_DIR` and
   `DBUS_SESSION_BUS_ADDRESS` for the existing Linux user-service host.
 - Agent lifecycle suites accept `FLOW_SDK_PACKAGE_ARCHIVE`,
-  `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
+  `USER_UPDATES_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
+  `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
   rebuilding during execution. The native Codex immediate-interruption
   qualification separately installs the frozen Jig candidate and published

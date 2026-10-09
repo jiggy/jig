@@ -3,7 +3,9 @@ import { open, opendir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { RunContext, RunResult } from '@jigging/flow'
+import type { UserUpdates } from '@jigging/user-updates'
 import { type AcceptanceCase, loadChecks } from './checks.ts'
+import { checksView, evidenceView, repairView } from './dashboard.ts'
 
 function hash(text: string) {
   return `sha256:${new Bun.CryptoHasher('sha256').update(text).digest('hex')}`
@@ -234,6 +236,7 @@ export function inspect(input: Input, result: RunResult) {
 export function repairDeliverables(input: Input, result: RunResult): Record<string, string> {
   const summary = inspect(input, result)
   const files: Record<string, string> = {
+    'goal.txt': input.issue + '\n',
     'summary.txt': `${summary.ready ? 'review-ready' : 'unsuccessful'}\n${summary.reason}\n${summary.proposals.length} validated proposal(s). See result.json for command output, termination, and individual assertions.\n`,
   }
   for (const proposal of summary.proposals)
@@ -245,20 +248,42 @@ export async function writeRepairDeliverables(path: string, input: Input, result
   for (const [name, text] of Object.entries(repairDeliverables(input, result)))
     await writeFile(join(path, name), text, { flag: 'wx' })
 }
-export async function repairFiles(run: RunContext): Promise<RunResult> {
+export async function repairFiles(run: RunContext, updates?: UserUpdates): Promise<RunResult> {
+  const repairReport = updates?.view('repair', { title: 'Repair', landing: true })
+  const checks = updates?.view('checks', { title: 'Checks' })
+  const evidence = updates?.view('evidence', { title: 'Evidence' })
+  updates?.activity('repair', 'Capturing the source and fixed acceptance cases')
   const { source, deliverables } = run.attachments
   if (source?.access !== 'read' || deliverables?.access !== 'read-write')
     throw new TypeError('Supply source and deliverables attachments.')
   const input = await readRepairInput(run.input, source.path)
+  repairReport?.update(repairView(input, undefined, false, true))
+  checks?.update(checksView())
+  evidence?.update(evidenceView())
+  updates?.activity(
+    'repair',
+    'Requesting a repair against the captured source and unchanged checks',
+  )
   run.signal.throwIfAborted()
   const progress = run.channels.progress
   const result = await run.call({
     operationId: 'repair',
     slot: 'repair',
+    intent: 'Reproduce the defect and propose a checked repair',
     input,
     ...(progress === undefined ? {} : { channels: { progress } }),
   })
   run.signal.throwIfAborted()
+  updates?.activity('repair', 'Validating returned evidence before saving review files')
+  const files = repairDeliverables(input, result)
   await writeRepairDeliverables(deliverables.path, input, result)
+  if (result.outcome !== 'done')
+    updates?.notice(
+      'No checked patch is available. The result and summary retain the repair cause.',
+      'error',
+    )
+  repairReport?.update(repairView(input, result, true, true))
+  checks?.update(checksView(result, true))
+  evidence?.update(evidenceView(Object.keys(files)))
   return result
 }

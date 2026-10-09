@@ -206,3 +206,33 @@ test('a passing worker report stays provisional after independent evidence valid
   expect(row.details.at(-1).text).toContain(report)
   expect(JSON.stringify(row.details)).not.toContain('Passed; independently verified')
 })
+
+test('standalone repair and generic router publish ordinary bounded views without dispatch claims', async () => {
+  const { repairView, checksView: repairChecks } = await import('../flows/repair/dashboard.ts')
+  const { selectionView } = await import('../flows/router/dashboard.ts')
+  const { routingInput } = await import('../flows/router/decision.ts')
+  for (const view of [repairView(input), repairChecks()])
+    validateUserUpdate({ kind: 'view', id: 'standalone', title: 'Standalone', ...view })
+  const request = routingInput({
+    task: 'Choose a suitable prose method. ' + '\u0001'.repeat(1024),
+    candidates: Array.from({ length: 16 }, (_, index) => ({
+      id: `method-${index}`,
+      description: '\u0001'.repeat(192),
+    })),
+  })
+  const item = validateUserUpdate({
+    kind: 'view',
+    id: 'selection',
+    title: 'Selection',
+    ...selectionView(request, {
+      outcome: 'done',
+      output: { candidateId: null, reason: 'No suitable method.' },
+    }),
+  }) as any
+  expect(item.sections[0].blocks[1].rows).toHaveLength(8)
+  expect(item.sections[0].blocks[1].total).toBe(16)
+  expect(item.summary).toContain('No fallback or dispatch')
+  expect(item.sections[0].blocks[1].rows[0].details[0].text.length).toBeGreaterThan(
+    item.sections[0].blocks[1].rows[0].cells.description.length,
+  )
+})

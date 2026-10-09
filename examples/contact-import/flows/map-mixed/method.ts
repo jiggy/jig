@@ -18,6 +18,7 @@ export async function runMethod(run: Pick<RunContext, 'input' | 'call'>): Promis
   const result = (await run.call({
     operationId: 'map-headings',
     slot: 'agent',
+    intent: 'Propose contact column indices from headings',
     input: {
       instructions:
         'Map CSV headings to full contact name, email address, and organization. ' +

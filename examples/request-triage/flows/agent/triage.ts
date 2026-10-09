@@ -7,6 +7,7 @@ export async function triage(run: Pick<RunContext, 'input' | 'call'>): Promise<R
   const reply = await run.call({
     operationId: 'interpret-request',
     slot: 'agent',
+    intent: 'Interpret the support request',
     input: {
       instructions:
         'Suggest a support queue for the request below: billing for charges, invoices, ' +

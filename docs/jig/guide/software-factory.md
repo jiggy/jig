@@ -162,6 +162,11 @@ For example, a job may include `"method": "p1"` to require one proposal, or
 validation before any Agent call. The final and checkpoint evidence records
 whether the choice was explicit or automatic and the exact selected slot.
 
+The standalone repair also publishes Repair and Checks on its optional `updates`
+channel; their reports remain provisional for a caller. The router publishes Selection
+on `progress`, showing task, eligible candidates and a validated choice or abstention.
+Both use the same portable profile as the factory’s views.
+
 The [Semantic Router source package](https://github.com/jiggy/jig/tree/main/examples/software-factory/flows/router)
 is independently reusable. It accepts only task text and a bounded candidate list,
 uses the ordinary Agent contract, and returns a supplied ID with a reason or null
