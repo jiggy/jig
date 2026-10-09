@@ -4,12 +4,16 @@ An Agent interprets a customer's request. Code checks account records and
 credit policy, then returns a decision another application can consume.
 A persuasive answer cannot raise the credit limit or create a duplicate payment.
 
-After [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages)
-and [Agent configuration](../../docs/jig/guide/agents.md), run here on a
-[supported host](../../docs/jig/guide/index.md#supported-host):
+The included `bindings/agent.ts` selects Codex as an example choice. Set its
+`client` to `codex`, `claude`, or `pi` for your installed client and complete its
+[Agent configuration](../../docs/jig/guide/agents.md#local-clients).
+`jig.ts` routes the assessor's Agent slot to this configured Binding.
+
+After [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages),
+run here on a [supported host](../../docs/jig/guide/index.md#supported-host):
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run binding:support --input @fixtures/duplicate.json --timeout 2m --display tui
 ```
 

@@ -2036,6 +2036,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'select at most 256 npm Flow packages within the existing dependency preparation limits',
       PROJECT_BINDING_SLOT_MISSING:
         'a child slot references a target not selected by jig.ts; correct the slot or project membership',
+      PROJECT_BINDING_SLOT_NOT_DIRECT:
+        'the selected child Flow cannot run directly with its current slots or settings. Configure its required providers through defaultProviders in jig.ts, or select a Binding that supplies its slots and settings. Then run jig review. No Flow was started by this review.',
       PROJECT_GRANT_MISSING:
         'the slot names a grant not included by jig.ts; include grants: discover("./grants") and provide the matching <name>.json, or use an inline policy',
       PROJECT_GRANT_INVALID:
@@ -2329,7 +2331,10 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
     cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
       ? '\n  Agent selection: the resource grant at this Binding slot.'
       : ''
-  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
+  const alternative = selection
+    ? '\n\n  Use another installed client\n    Set client to codex, claude, or pi in the ACP grant selected by this slot (the inline Binding value or its named grant file). Check its model and client-specific fields, then review the changed selection:\n\n  $ jig review'
+    : ''
+  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }
 
 if (import.meta.main) {

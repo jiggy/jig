@@ -68,6 +68,8 @@ or newer instructions. Keep the reviewer advancing independently.
 - The root reports a branch failure before awaiting its healthy sibling.
   Views expose requested tasks and returned suggestions, not context file text,
   earlier private prompts, model reasoning or invented host lifecycle states.
+  Work rows declare each branch's call reference before dispatch; the host
+  resolves it only when that actual invocation is observed, including during work.
   The worker’s private revision `updates` channel remains distinct from `progress`.
 
 ## Work Guidance

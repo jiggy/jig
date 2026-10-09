@@ -63,7 +63,7 @@ export function workView(
                 cells: {
                   work: role === 'draft' ? 'Internal brief' : 'Independent review questions',
                   state: branch?.result?.outcome ?? branch?.failure ?? 'No settled result yet',
-                  call: branch ? { kind: 'call' as const, operationId: role } : null,
+                  call: { kind: 'call' as const, operationId: role },
                 },
                 details: [
                   {

@@ -2695,6 +2695,10 @@ describe('finite Jig project commands', () => {
       expect(invocation.error).toContain('bindings/agent.ts')
       expect(invocation.error).toContain('/slots/native')
       expect(invocation.error).toContain('Agent selection:')
+      expect(invocation.error).toContain('Use another installed client')
+      expect(invocation.error).toContain('Set client to codex, claude, or pi')
+      expect(invocation.error).toContain('inline Binding value or its named grant file')
+      expect(invocation.error).toContain('$ jig review')
       if (code === 'PROJECT_ACP_CODEX_EXECUTABLE') {
         expect(invocation.error).toContain('no usable executable was found')
         expect(invocation.error).toContain('Shell aliases and functions')
@@ -2747,6 +2751,25 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('missing Flow or Binding')
     expect(invocation.error).toContain('Provider selection does not create Bindings')
     expect(invocation.error).not.toContain('INTERNAL')
+  })
+
+  test('a child Flow with unresolved requirements explains how to supply its configuration', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private candidate text', {
+      code: 'PROJECT_BINDING_SLOT_NOT_DIRECT',
+      path: 'bindings/support.ts',
+      pointer: '/slots/assessment',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('the selected child Flow cannot run directly')
+    expect(invocation.error).toContain('defaultProviders in jig.ts')
+    expect(invocation.error).toContain('Binding that supplies its slots and settings')
+    expect(invocation.error).toContain('No Flow was started')
+    expect(invocation.error).not.toContain('private candidate text')
+    expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
   interface FakeSessionOptions {

@@ -45,7 +45,12 @@ test('bounded worker suggestions and causes stay separate from source context an
     ).summary,
   ).toContain('no publication has been authorized')
   const waiting = checked(workView(input))
-  expect(JSON.stringify(waiting)).not.toContain('"kind":"call"')
+  const branches = waiting.sections[0].blocks.find((block: any) => block.kind === 'collection')
+  expect(branches.rows.map((row: any) => row.cells.call)).toEqual([
+    { kind: 'call', operationId: 'draft' },
+    { kind: 'call', operationId: 'independent' },
+  ])
+  expect(branches.rows.every((row: any) => row.cells.state === 'No settled result yet')).toBeTrue()
   const failed = checked(
     workView(input, [
       { role: 'draft', failure: 'UNCERTAIN', message: 'Dispatch cannot be confirmed.' },

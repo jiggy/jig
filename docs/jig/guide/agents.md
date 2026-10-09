@@ -225,7 +225,32 @@ prompts. One-shot calls require neither change.
 
 ## Switching
 
-Choose the new Binding configuration or replace its Flow package, then run `jig review` again.
+You do not need to install the client selected by an example if you already
+have another supported client. Open the Binding named in the diagnostic and
+find its `native` slot. For an inline ACP grant, change only the explicit client
+selection, then check any model or client-specific fields:
+
+```ts
+slots: { native: { kind: 'acp', client: 'codex' } },
+```
+
+The client value can be `codex`, `claude`, or `pi`. For a slot such as
+`native: 'grant:agent'`, edit the corresponding `grants/agent.json` instead.
+Preserve the limits and required conversation features. Configure the chosen
+client's authentication using its profile, then review the changed selection:
+
+```sh
+jig review
+jig run
+```
+
+Use your project's target and input arguments if it has no entrypoint. Review
+checks the new local prerequisites and shows the selected runtime; it does not
+call a model. A missing installation is a prerequisite of the selected grant,
+not evidence that the application's Flow is invalid.
+
+Choose a different ordinary Agent package in its Binding when switching between
+native ACP and HTTP access.
 Client, endpoint, model, and executable changes affect the admitted execution
 identity. Use the same selection for the subsequent `jig run`; rotating only
 a credential does not require another review.

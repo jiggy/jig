@@ -461,6 +461,11 @@ Native Agent setup failures identify the selected client and a closed cause,
 separately from corrective guidance. Locate the selection at its captured Binding
 declaration and resource slot when known, instead of the provider's executable
 Flow file. Never expose private exception text or invent the source location.
+When that slot is known, explain how to select another supported client in its
+inline or named ACP grant and review the change, alongside repairing the selected
+client. Never select a fallback or approve a changed execution identity implicitly.
+An ineligible direct child Flow diagnostic explains that its slots or settings
+need configuration through project defaults or a selected Binding.
 
 After interruption, the command waits for owned cleanup and emits its observed
 authoritative terminal when available, with `command: {status: 'interrupted'}`

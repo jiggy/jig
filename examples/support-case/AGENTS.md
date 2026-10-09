@@ -10,6 +10,9 @@ credit eligibility and customer-facing claims.
 - `flows/assess/` owns one bounded interpretation and its closed proposal contract.
 - `flows/resolve/` owns account consistency checks, fixed duplicate-credit
   policy, and deterministic replies. `bindings/support.ts` selects its assessor.
+- `bindings/agent.ts` and the declared ACP dependency supply the assessor's
+  ordinary Agent implementation through `jig.ts`'s contract-keyed default.
+  The explicit client is editable operator configuration, not a Jig default.
 - `fixtures/` contains synthetic account records and customer requests.
 - `test/` owns deterministic application checks; the public walkthrough belongs
   in `docs/jig/guide/support-case.md`.

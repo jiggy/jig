@@ -356,6 +356,10 @@ admitted FLOW packages.
 - Agent selection belongs to ordinary dependencies, Bindings and resource grants,
   never inferred from credentials or a preferred vendor. Selection remains
   distinct from authority approval; the optional init picker only authors files.
+  Client prerequisite errors explain both repairing the selected installation
+  and editing the slot's inline or named ACP grant to use another supported client,
+  followed by renewed review. Unresolved child Flow errors explain its provider
+  or Binding configuration instead of reporting only a machine code.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
