@@ -113,14 +113,25 @@ test('explicit options replace complete defaults, with paths resolved by origin'
   expect(privateNeedsFileOwner(args)).toBe(true)
 })
 
-test('effective entrypoint reception retains the finite command envelope despite a dashboard option', () => {
+test('effective entrypoint reception retains the finite command envelope despite a tui option', () => {
   const args = resolveProjectEntrypoint(
     'binding:factory --receive progress --timeout 8m',
-    ['--display', 'dashboard'],
+    ['--display', 'tui'],
     '/project',
   )
-  expect(parseRun(args)).toMatchObject({ display: 'dashboard', receive: ['progress'] })
+  expect(parseRun(args)).toMatchObject({ display: 'tui', receive: ['progress'] })
   expect(privateCliCommandLifetimeMs(args, true)).toBe(780_000)
+})
+
+test('display modes are operator-only and the replaced dashboard value is refused', () => {
+  expect(parseRun(['run', 'binding:factory']).display).toBe('auto')
+  for (const display of ['auto', 'plain', 'tui', 'web']) {
+    expect(parseRun(['run', 'binding:factory', '--display', display]).display).toBe(display)
+    expect(() => parseProjectEntrypoint(`binding:factory --display ${display}`)).toThrow()
+  }
+  expect(() => parseRun(['run', 'binding:factory', '--display', 'dashboard'])).toThrow(
+    '--display accepts auto, plain, tui or web once.',
+  )
 })
 
 test('file defaults are references, with fresh input capture deferred until invocation', () => {

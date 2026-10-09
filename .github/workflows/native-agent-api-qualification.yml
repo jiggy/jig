@@ -85,6 +85,7 @@ jobs:
           --filter @jigging/agent-acp
           --filter @jigging/flow
           --filter @jigging/user-updates
+          --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui
 
       - name: Build source-test workspace packages
         run: just --justfile packages/jig/justfile build

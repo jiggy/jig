@@ -622,6 +622,20 @@ describe('finite Jig project commands', () => {
     ).toBe(privateCliCommandLifetimeMs(['run', 'flow:flows/hello', '--timeout', '2m']))
   })
 
+  test('Run and saved inspection refuse the replaced dashboard mode before acquiring a host', async () => {
+    for (const prefix of [
+      ['run', 'flow:flows/hello'],
+      ['inspect', '--result', './packet'],
+    ]) {
+      const args = [...prefix, '--display', 'dashboard']
+      const invocation = commandInvocation(unusedHost())
+      expect(await main(args, invocation.options)).toBe(2)
+      expect(invocation.error).toContain('JIG_USAGE')
+      expect(invocation.error).toContain('tui or web')
+      expect(privateCliRequiresHost(args)).toBe(false)
+    }
+  })
+
   test('version reports the package version without host acquisition', async () => {
     const manifest = await Bun.file(new URL('../package.json', import.meta.url)).json()
     const invocation = commandInvocation(unusedHost())

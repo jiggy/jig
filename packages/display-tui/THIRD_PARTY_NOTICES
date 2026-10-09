@@ -1,0 +1,18 @@
+EXTERNAL TERMINAL RENDERER DEPENDENCIES — NOT BUNDLED
+---------------------------------------------------
+
+This package declares required exact dependencies on @opentui/core 0.5.17 (MIT)
+and web-tree-sitter 0.25.10 (MIT). Package managers install their complete runtime
+closures, including OpenTUI's matching optional native platform package. These
+packages and their licenses are distributed separately from this archive.
+OpenTUI is initialized only by explicit prepareTui; portable user-updates and
+display-model meaning adopts neither its types nor widgets.
+
+https://github.com/anomalyco/opentui
+https://github.com/tree-sitter/tree-sitter
+
+PORTABLE USER UPDATES
+--------------------
+
+@jigging/user-updates is independently distributed under MPL-2.0. Its canonical
+portable meaning and license remain owned by that package.

@@ -12,6 +12,9 @@ on:
     paths:
       - ".github/workflows/linux-host-conformance.yml"
       - "packages/jig/**"
+      - "packages/display-model/**"
+      - "packages/display-web/**"
+      - "packages/display-tui/**"
       - "packages/agent-method/**"
       - "packages/agent-acp/**"
       - "packages/flow-authoring/**"
@@ -69,6 +72,7 @@ jobs:
           --filter @jigging/agent-method --filter @jigging/flow-authoring
           --filter @jigging/agent-acp
           --filter @jigging/flow --filter @jigging/user-updates
+          --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui
 
       - name: Build and freeze archives once
         shell: bash
@@ -77,15 +81,18 @@ jobs:
           just --justfile packages/jig/justfile build
           artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
           mkdir "$artifact_directory"
-          mkdir "$artifact_directory/user-updates" "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/jig"
+          mkdir "$artifact_directory/user-updates" "$artifact_directory/flow-sdk" "$artifact_directory/agent-method" "$artifact_directory/agent-acp" "$artifact_directory/display-model" "$artifact_directory/display-web" "$artifact_directory/display-tui" "$artifact_directory/jig"
           bun pm pack --cwd packages/user-updates --ignore-scripts --destination "$artifact_directory/user-updates"
           bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$artifact_directory/flow-sdk"
           bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$artifact_directory/agent-method"
           bun pm --cwd packages/agent-acp pack --ignore-scripts --destination "$artifact_directory/agent-acp"
+          for display_package in display-model display-web display-tui; do
+            bun pm pack --cwd "packages/$display_package" --ignore-scripts --destination "$artifact_directory/$display_package"
+          done
           bun packages/jig/scripts/pack.ts --destination "$artifact_directory/jig"
           (
             cd "$artifact_directory"
-            sha256sum user-updates/*.tgz flow-sdk/*.tgz agent-method/*.tgz agent-acp/*.tgz jig/*.tgz > SHA256SUMS
+            sha256sum user-updates/*.tgz flow-sdk/*.tgz agent-method/*.tgz agent-acp/*.tgz display-model/*.tgz display-web/*.tgz display-tui/*.tgz jig/*.tgz > SHA256SUMS
           )
 
       - name: Retain exact Linux host artifacts
@@ -138,6 +145,7 @@ jobs:
           --filter @jigging/agent-method --filter @jigging/flow-authoring
           --filter @jigging/agent-acp
           --filter @jigging/flow --filter @jigging/user-updates
+          --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui
 
       - name: Build source-test workspace packages
         run: just --justfile packages/jig/justfile build
@@ -171,6 +179,9 @@ jobs:
             printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
             printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
             printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
+            printf 'DISPLAY_MODEL_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-model")"
+            printf 'DISPLAY_WEB_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-web")"
+            printf 'DISPLAY_TUI_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-tui")"
             printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/jig")"
             printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
           } >> "$GITHUB_ENV"
@@ -279,6 +290,16 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/package-provider-host.test.ts
           -t '^(?!packed project dependencies )'
           --timeout 180000
+
+      - name: Qualify standalone display source and frozen packages
+        if: matrix.suite == 'installed-evidence'
+        run: |
+          FLOW_NODE=$(command -v node)
+          export FLOW_NODE
+          "$JIG_CI_BUN" test packages/display-model/test packages/display-web/test packages/display-tui/test --timeout 120000
+          "$JIG_CI_BUN" packages/display-model/test/package-smoke.ts
+          "$JIG_CI_BUN" packages/display-web/test/package-smoke.ts
+          "$JIG_CI_BUN" packages/display-tui/test/package-smoke.ts
 
       - name: Prove complete packed CLI composition
         if: matrix.suite == 'installed-evidence'

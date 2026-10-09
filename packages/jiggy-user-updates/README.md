@@ -87,7 +87,7 @@ References are closed record (`viewId`, `collectionId`, `rowId`), call
 `kind`. All resolve only in the actual publisher namespace. A missing target
 stays unavailable; previews require immutable verified delivery evidence.
 
-`jig run --display dashboard` opens the read-only keyboard inspector;
+`jig run --display tui` opens the read-only keyboard inspector;
 `--display plain` emits complete changed summaries. Automatic display yields to
 `--json` and effective `--receive`. Source EOF freezes views with ended context,
 while abnormal endings mark them incomplete. Domain statuses do not establish

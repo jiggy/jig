@@ -85,7 +85,7 @@ From `examples/request-triage`:
 
 ```sh
 jig review
-jig run binding:intake --input @fixtures/labeled.json --display dashboard
+jig run binding:intake --input @fixtures/labeled.json --display tui
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m
 jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
 ```

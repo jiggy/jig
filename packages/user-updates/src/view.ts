@@ -151,7 +151,7 @@ export function validateReference(input: unknown): Reference {
     const segments = path.split('/')
     if (
       !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(attachment) ||
-      Buffer.byteLength(path) > 512 ||
+      new TextEncoder().encode(path).byteLength > 512 ||
       segments.length > 16 ||
       segments.some((s) => !s || s === '.' || s === '..' || s === '.jig') ||
       /[\\\p{Cc}]/u.test(path)

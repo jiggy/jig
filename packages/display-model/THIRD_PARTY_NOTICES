@@ -1,0 +1,8 @@
+THIRD-PARTY MATERIAL USED BY DISPLAY-MODEL
+========================================
+
+@jigging/user-updates 0.1.0-alpha.1 is an exact external dependency under
+MPL-2.0. Its package supplies its license and source is available at
+https://github.com/jiggy/jig/tree/main/packages/user-updates.
+The display-model JavaScript does not bundle its external dependencies.
+The retained license texts under LICENSES accompany the root adoption scope.

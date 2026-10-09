@@ -84,13 +84,13 @@ finish() {
 }
 trap finish EXIT
 # Freeze all package inputs once; each consumer must use these same bytes.
-for package in flow-sdk user-updates agent-method agent-acp; do
+for package in flow-sdk user-updates agent-method agent-acp display-model display-web display-tui; do
   mkdir "$scratch/$package"
   bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
 done
 mkdir "$scratch/jig"
 (cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
-for package in flow-sdk user-updates agent-method agent-acp jig; do
+for package in flow-sdk user-updates agent-method agent-acp display-model display-web display-tui jig; do
   archives=("$scratch/$package/"*.tgz)
   if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
     echo "Expected one frozen $package archive" >&2
@@ -101,6 +101,9 @@ for package in flow-sdk user-updates agent-method agent-acp jig; do
     user-updates) export USER_UPDATES_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-method) export AGENT_METHOD_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-acp) export AGENT_ACP_PACKAGE_ARCHIVE="${archives[0]}" ;;
+    display-model) export DISPLAY_MODEL_PACKAGE_ARCHIVE="${archives[0]}" ;;
+    display-web) export DISPLAY_WEB_PACKAGE_ARCHIVE="${archives[0]}" ;;
+    display-tui) export DISPLAY_TUI_PACKAGE_ARCHIVE="${archives[0]}" ;;
     jig) export JIG_PACKAGE_ARCHIVE="${archives[0]}" ;;
   esac
 done
@@ -120,7 +123,7 @@ export JIG_MACOS_PROCESS_TEST=1
 if [[ "$mode" == shard ]]; then
   node scripts/ci/macos-host-test-shards.mjs run "$architecture" "$shard"
 else
-  bun test packages/jig/test --timeout 420000
+  bun test packages/jig/test packages/display-model/test packages/display-web/test packages/display-tui/test --timeout 420000
 fi
 if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   startup_options=(--timeout 120000)
@@ -131,6 +134,9 @@ if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   # other selected Mac hosts must prove explicit refusal, never skip the case.
   JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="$codex_startup_expectation" \
     bun test packages/jig/test/native-agent-startup.test.ts "${startup_options[@]}"
+  bun packages/display-model/test/package-smoke.ts
+  bun packages/display-web/test/package-smoke.ts
+  bun packages/display-tui/test/package-smoke.ts
   # Pack and install the result in a separate ordinary consumer, then use its CLI.
   bun packages/jig/test/package-smoke.ts
 fi

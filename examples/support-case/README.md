@@ -10,7 +10,7 @@ and [Agent configuration](../../docs/jig/guide/agents.md), run here on a
 
 ```sh
 jig review
-jig run binding:support --input @fixtures/duplicate.json --timeout 2m --display dashboard
+jig run binding:support --input @fixtures/duplicate.json --timeout 2m --display tui
 ```
 
 For the intended assessment (`ch-102`, 2400 cents), `done` returns
@@ -46,7 +46,7 @@ This policy does not prove that the Agent identified the customer's intent corre
 lists explicitly show their retained excerpt. The assessor's own Case view stops at a
 proposal. An eligible decision never claims that a credit was issued.
 
-Choose `--display web` instead of `--display dashboard` to use the same views in a
+Choose `--display web` instead of `--display tui` to use the same views in a
 browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain

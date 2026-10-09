@@ -71,7 +71,7 @@ trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 # Test authored applications against the exact local package candidates, including
 # before their versions reach the registry. Only disposable copies' declared
 # dependencies change; Flow source and repository manifests do not.
-mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/user-updates" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/jig"
+mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/user-updates" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/display-model" "$release_tmp/artifacts/display-web" "$release_tmp/artifacts/display-tui" "$release_tmp/artifacts/jig"
 bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts/flow-sdk"
 set -- "$release_tmp"/artifacts/flow-sdk/*.tgz
 test "$#" -eq 1 && test -f "$1"
@@ -83,6 +83,16 @@ set -- "$release_tmp"/artifacts/user-updates/*.tgz
 test "$#" -eq 1 && test -f "$1"
 USER_UPDATES_PACKAGE_ARCHIVE=$1
 export USER_UPDATES_PACKAGE_ARCHIVE
+for display_package in display-model display-web display-tui; do
+  bun pm pack --cwd "packages/$display_package" --ignore-scripts --destination "$release_tmp/artifacts/$display_package"
+  set -- "$release_tmp/artifacts/$display_package/"*.tgz
+  test "$#" -eq 1 && test -f "$1"
+  case "$display_package" in
+    display-model) DISPLAY_MODEL_PACKAGE_ARCHIVE=$1; export DISPLAY_MODEL_PACKAGE_ARCHIVE ;;
+    display-web) DISPLAY_WEB_PACKAGE_ARCHIVE=$1; export DISPLAY_WEB_PACKAGE_ARCHIVE ;;
+    display-tui) DISPLAY_TUI_PACKAGE_ARCHIVE=$1; export DISPLAY_TUI_PACKAGE_ARCHIVE ;;
+  esac
+done
 bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$release_tmp/artifacts/agent-method"
 set -- "$release_tmp"/artifacts/agent-method/*.tgz
 test "$#" -eq 1 && test -f "$1"
@@ -97,7 +107,7 @@ set -- "$release_tmp"/artifacts/jig/*.tgz
 test "$#" -eq 1 && test -f "$1"
 JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
-archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$DISPLAY_MODEL_PACKAGE_ARCHIVE" "$DISPLAY_WEB_PACKAGE_ARCHIVE" "$DISPLAY_TUI_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
 for application in tested-patch software-factory request-triage support-case contact-import incident-brief; do
   application_copy="$release_tmp/$application"
@@ -165,9 +175,12 @@ for application in tested-patch software-factory request-triage support-case con
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
-bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/user-updates packages/jig conformance/run-0 "$@"
+bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/user-updates packages/display-model packages/display-web packages/display-tui packages/jig conformance/run-0 "$@"
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/user-updates/test/package-smoke.ts
+bun packages/display-model/test/package-smoke.ts
+bun packages/display-web/test/package-smoke.ts
+bun packages/display-tui/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 
 PYTHONDONTWRITEBYTECODE=1 \
@@ -191,7 +204,7 @@ PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-user-updates/src \
   "$release_tmp"/python-updates-dist/*.whl "$release_tmp"/python-updates-dist/*.tar.gz "$release_tmp"/python-dist/*.whl
 "$python_bin" -m unittest discover -s scripts -p 'test_pypi_release.py' -v
 
-archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$USER_UPDATES_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$DISPLAY_MODEL_PACKAGE_ARCHIVE" "$DISPLAY_WEB_PACKAGE_ARCHIVE" "$DISPLAY_TUI_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"
 cmp "$release_tmp/archive-digests" "$release_tmp/verified-digests" || {
   echo "release tests changed the frozen package archives" >&2
   exit 1

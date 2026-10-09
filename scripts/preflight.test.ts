@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { discoverJigTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import { discoverHostTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
 import {
   compilerEnvironment,
   nativeTestFiles,
@@ -40,7 +40,7 @@ test('native preflight accepts only the existing unprivileged Mac qualification 
 })
 
 test('native inventory includes every discovered Mac file once, prerequisites first', async () => {
-  const files = await discoverJigTests(resolve(import.meta.dir, '..'))
+  const files = await discoverHostTests(resolve(import.meta.dir, '..'))
   const future = 'packages/jig/test/nested/macos-future.test.ts'
   const planned = nativeTestFiles([...files, future])
   expect(planned.slice(0, NATIVE_PREREQUISITE_TESTS.length)).toEqual(NATIVE_PREREQUISITE_TESTS)

@@ -13,7 +13,7 @@ and [Agent configuration](https://jig.md/guide/agents) on a
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:code --input '{}' --attach source=fixtures/known --out preview-known --display dashboard
+jig run binding:code --input '{}' --attach source=fixtures/known --out preview-known --display tui
 ```
 
 The CSV parser is an ordinary declared dependency. The resolution flag permits
@@ -52,7 +52,7 @@ content. The mapper and converter also offer domain views when invoked independe
 `needs_mapping` and rejected rows remain distinct from a completed import: no database
 is changed.
 
-Choose `--display web` instead of `--display dashboard` to use the same views in a
+Choose `--display web` instead of `--display tui` to use the same views in a
 browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.
 Blocking causes remain reachable from every view. Plain output and `--json` remain

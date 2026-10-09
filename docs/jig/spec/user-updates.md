@@ -279,11 +279,11 @@ returned, failed/refused and uncertain. Returned does not mean domain success.
 Overflow preserves represented nodes, saturated omission counts and explicit
 incompleteness. Root result, cleanup and delivery are independent host facts.
 
-Operator-only `--display auto|plain|dashboard|web` selects presentation; defaults
+Operator-only `--display auto|plain|tui|web` selects presentation; defaults
 never come from a project entrypoint. Auto uses bounded noninteractive inline
 output on suitable terminal stderr, without raw input or alternate screen.
 Plain, redirected stderr, NO_COLOR and TERM=dumb use nonanimated automatic output.
-Explicit dashboard requires terminal stdin/stderr and a suitable TERM; otherwise
+Explicit TUI requires terminal stdin/stderr and a suitable TERM; otherwise
 it explains a plain fallback once. NO_COLOR permits explicit screen control but
 disables SGR styling. `--json` and effective `--receive` retain their exact existing
 stdout semantics and disable automatic observation/dashboard; dashboard cannot override.
@@ -293,7 +293,7 @@ Its separate access, bounds and lifetime are in [web display](web-display.md).
 
 ### Workspace and navigation
 
-After effective arguments and target selection, explicit dashboard waits for
+After effective arguments and target selection, explicit TUI waits for
 trusted root execution admission before owning one alternate screen on stderr.
 Initial review, input, files, output and runtime prerequisite failures remain
 ordinary diagnostics. Entry is independent of application views or update ports;
@@ -395,7 +395,7 @@ incompleteness, Flow error, Flow warning; first accepted within priority wins wi
 additional count. View/source ending cannot erase admitted attention. Additional
 unretained causes are disclosed, never claimed present.
 
-Auto/plain commit complete essential notices outside redraw. Explicit dashboard
+Auto/plain commit complete essential notices outside redraw. Explicit TUI
 keeps them inside its workspace, then restores the original screen and commits
 complete retained essential causes in awaited batches of at most 32 KiB before
 final stdout. Admission is not successful output delivery. Closing fences callbacks,
@@ -417,7 +417,7 @@ with separate literal execution/application/cleanup/delivery facts. It owns no l
 Flow, channel or execution owner. Inspection has no built-in idle or absolute
 expiry. Any explicit inherited presentation constraint remains the minimum across
 enclosing owners and cannot be refreshed by input, repaint, resize, updates or
-preview completion. Eligible interactive effective dashboard commands omit only
+preview completion. Eligible interactive effective TUI commands omit only
 the default enclosing presentation lifetime; setup, Run execution, cancellation
 and cleanup retain their bounds. An expiring explicit presentation constraint
 continues live execution through its ordinary owner; no presentation path extends

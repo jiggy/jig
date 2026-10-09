@@ -4,8 +4,8 @@ import { PrivateRunModel } from '../src/cli-run-model.js'
 import {
   PRIVATE_WEB_INCOMPLETE_LIMIT,
   PRIVATE_WEB_SNAPSHOT_LIMIT,
-  PrivateWebProjection,
-} from '../src/cli-web-snapshot.js'
+  PrivateDisplayProjection,
+} from '../src/cli-display-projection.js'
 
 const view = (id = 'same', text = 'Literal report'): ViewItem =>
   validateUserUpdate({
@@ -27,7 +27,7 @@ const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value))
 
 test('saved navigation roles require the recorded host adapter, never an authored ID or title', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   model.acceptView('root', view('files'))
   model.acceptView('saved-result', view('diagnostics'))
   expect(projection.capture(1).views.every((view) => view.hostRole === undefined)).toBe(true)
@@ -43,7 +43,7 @@ test('saved navigation roles require the recorded host adapter, never an authore
   ])
 })
 
-test('semantic subscriptions exclude navigation, elapsed repaint and receipt commitment; transactions are atomic', () => {
+test('host semantic subscriptions exclude elapsed repaint and observe completed receipt commitments atomically', () => {
   const model = new PrivateRunModel(),
     observations: unknown[] = []
   const unsubscribe = model.subscribeSemantic((generation) =>
@@ -60,30 +60,28 @@ test('semantic subscriptions exclude navigation, elapsed repaint and receipt com
     model.acceptNotice('root', 'info', 'Working', 100)
   })
   expect(observations).toHaveLength(1)
-  model.select([...model.views.keys()][0])
-  model.selectRecord('block:0:0')
-  model.toggleDisclosure()
   model.workspace.now = 1000
   model.onChange()
   expect(observations).toHaveLength(1)
   model.observeCall({ ...call('root', 'own'), state: 'failed', cause: 'Full host cause' })
   expect(observations).toHaveLength(2)
   expect(observations[1]).toMatchObject({ calls: 1, causes: 1 })
-  model.attention[0]!.committed = true
-  model.onChange()
-  expect(observations).toHaveLength(2)
+  model.commitAttention([model.attention[0]!])
+  expect(observations).toHaveLength(3)
+  model.commitAttention([model.attention[0]!])
+  expect(observations).toHaveLength(3)
   model.acceptView('other', view())
   model.stop('Frozen')
   expect(observations.at(-1)).toMatchObject({ stopped: true })
-  expect(observations).toHaveLength(4)
+  expect(observations).toHaveLength(5)
   unsubscribe()
   model.setContext('Settled context')
-  expect(observations).toHaveLength(4)
+  expect(observations).toHaveLength(5)
 })
 
 test('accepted-source identities and actual call ancestry survive colliding labels/local IDs without exposing sideband', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model, new Uint8Array(32).fill(7))
+    projection = new PrivateDisplayProjection(model, new Uint8Array(32).fill(7))
   model.observeCall(call('root', 'worker', 'private-child-A'))
   model.observeCall(call('private-child-A', 'worker', 'private-grandchild'))
   for (const publisher of ['root', 'private-child-A', 'private-child-B']) {
@@ -123,7 +121,7 @@ test('accepted-source identities and actual call ancestry survive colliding labe
 
 test('omitted call ancestry stays unavailable; diagnostic paths never invent a source relationship', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   for (let i = 0; i < 256; i++) model.observeCall(call('root', `op-${i}`))
   model.observeCall(call('root', 'omitted', 'accepted-unknown-child'))
   model.addAttention('Same label', 'Retained error', 2, false, false, {
@@ -147,7 +145,7 @@ test('omitted call ancestry stays unavailable; diagnostic paths never invent a s
 
 test('diagnostic emitters retain actual host-observed source/call sideband despite matching display paths', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   model.observeCall(call('root', 'original', 'private-emitter'))
   model.acceptView('private-emitter', view())
   const admission = {
@@ -179,7 +177,7 @@ test('diagnostic emitters retain actual host-observed source/call sideband despi
 
 test('full view details and hidden references are retained; host inventory does not depend on application references', async () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   const ref = { kind: 'artifact' as const, attachment: 'deliverables', path: 'evidence.txt' }
   const v = validateUserUpdate({
     kind: 'view',
@@ -246,7 +244,7 @@ test('full view details and hidden references are retained; host inventory does 
 
 test('preview identity fences capture replacement and states stay distinct', async () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   let finish: ((value: { text: string; bytes: number; clipped: boolean }) => void) | undefined
   model.setArtifacts(
     () => 'same.txt',
@@ -286,7 +284,7 @@ test('preview identity fences capture replacement and states stay distinct', asy
 
 test('recorded large shell claims are bounded and are never promoted to host observations', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   model.configureWorkspace({ target: 'x'.repeat(1000000), recorded: true })
   model.setWorkspaceFacts({
     execution: 'succeeded',
@@ -311,7 +309,7 @@ test('recorded large shell claims are bounded and are never promoted to host obs
 
 test('maximum legal escaping fits complete and independent incomplete reserve, preserving every retained cause', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   const controls = '\u0000"\\😀'.repeat(1024)
   for (let source = 0; source < 4; source++)
     for (let id = 0; id < 4; id++) {
@@ -364,7 +362,7 @@ test('maximum legal escaping fits complete and independent incomplete reserve, p
 
 test('all diagnostic path wrappers fit complete reserve and independently clip only paths in fallback', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   for (let i = 0; i < 32; i++)
     model.addDiagnostic(
       '\u0000'.repeat(256),
@@ -393,7 +391,7 @@ test('all diagnostic path wrappers fit complete reserve and independently clip o
 
 test('attention admission IDs survive eviction and root own-call omission is explicit', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   for (let i = 0; i < 127; i++)
     model.addAttention('Flow', `Cause ${i}`, 2, false, false, {
       provenance: 'accepted-source',
@@ -416,7 +414,7 @@ test('attention admission IDs survive eviction and root own-call omission is exp
 
 test('an omitted own call never falls back to a different retained parent call', () => {
   const model = new PrivateRunModel(),
-    projection = new PrivateWebProjection(model)
+    projection = new PrivateDisplayProjection(model)
   model.observeCall(call('root', 'parent', 'child'))
   model.addAttention('Flow', 'Missing child operation cause', 2, false, false, {
     provenance: 'accepted-source',

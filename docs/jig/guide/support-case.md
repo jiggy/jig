@@ -21,7 +21,7 @@ From `examples/support-case`, inspect the two Flows and their policy, then run:
 
 ```sh
 jig review
-jig run binding:support --input @fixtures/duplicate.json --timeout 2m --display dashboard
+jig run binding:support --input @fixtures/duplicate.json --timeout 2m --display tui
 ```
 
 The fixture supplies two settled USD 24 payments for the same invoice. The

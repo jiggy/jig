@@ -1,0 +1,58 @@
+{
+  "name": "@jigging/display-web",
+  "version": "0.1.0-alpha.1",
+  "description": "Independent browser renderer for semantic display snapshots",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiggy/jig.git",
+    "directory": "packages/display-web"
+  },
+  "homepage": "https://jig.md/",
+  "bugs": {
+    "url": "https://github.com/jiggy/jig/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./assets": {
+      "types": "./dist/assets.d.ts",
+      "import": "./dist/assets.js"
+    }
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/client.js",
+    "dist/client.d.ts",
+    "dist/navigation.js",
+    "dist/navigation.d.ts",
+    "dist/observations.js",
+    "dist/observations.d.ts",
+    "dist/assets.js",
+    "dist/assets.d.ts",
+    "README.md",
+    "LICENSE.md",
+    "PRICING.md",
+    "LICENSES.md",
+    "LICENSES",
+    "THIRD_PARTY_NOTICES"
+  ],
+  "dependencies": {
+    "@jigging/user-updates": "0.1.0-alpha.1",
+    "@jigging/display-model": "0.1.0-alpha.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2",
+    "preact": "11.0.1"
+  }
+}

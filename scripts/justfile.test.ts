@@ -6,6 +6,8 @@ import { dirname, join, resolve } from 'node:path'
 const repository = resolve(import.meta.dir, '..')
 const just = Bun.which('just')
 if (!just) throw new Error('Install Just 1.43.1 or newer to test repository tasks')
+const COMMAND_TIMEOUT_MS = 10_000
+const INVENTORY_TIMEOUT_MS = 30_000
 const justfiles = [
   'justfile',
   'packages/flow-sdk/justfile',
@@ -15,6 +17,9 @@ const justfiles = [
   'packages/jiggy-flow/justfile',
   'packages/user-updates/justfile',
   'packages/jiggy-user-updates/justfile',
+  'packages/display-model/justfile',
+  'packages/display-web/justfile',
+  'packages/display-tui/justfile',
   'packages/jig/justfile',
   'site/justfile',
 ]
@@ -59,13 +64,17 @@ test('repository task manifests exclude scripts without constraining imported sk
   }
 })
 
-test('root and package justfiles parse on the supported task runner', async () => {
-  for (const path of justfiles) {
-    const result = await run(['--justfile', join(repository, path), '--summary'])
-    expect(result.code).toBe(0)
-    expect(result.stdout).toContain('build')
-  }
-})
+test(
+  'root and package justfiles parse on the supported task runner',
+  async () => {
+    for (const path of justfiles) {
+      const result = await run(['--justfile', join(repository, path), '--summary'])
+      expect(result.code).toBe(0)
+      expect(result.stdout).toContain('build')
+    }
+  },
+  INVENTORY_TIMEOUT_MS,
+)
 
 test('preflight is available from the root and package check includes native regression coverage', async () => {
   const root = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'preflight'])
@@ -73,7 +82,8 @@ test('preflight is available from the root and package check includes native reg
   expect(root.stderr).toContain('bun scripts/preflight.ts')
   const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::check'])
   expect(jig.code).toBe(0)
-  expect(jig.stderr.indexOf('--outfile=libexec/installed-cli.js')).toBeLessThan(
+  expect(jig.stderr.indexOf('bun scripts/build-cli.ts')).toBeGreaterThanOrEqual(0)
+  expect(jig.stderr.indexOf('bun scripts/build-cli.ts')).toBeLessThan(
     jig.stderr.indexOf('bun test'),
   )
   expect(jig.stderr.indexOf('bun test')).toBeLessThan(
@@ -81,47 +91,54 @@ test('preflight is available from the root and package check includes native reg
   )
 })
 
-test('module and root tasks preserve arguments and select their own working directory', async () => {
-  await withFixture(async (directory, environment) => {
-    const args = ['a path with spaces', '$(touch SHOULD_NOT_EXIST)', '; echo unsafe', '']
-    for (const [recipe, cwd, prefix] of [
-      ['jig::test', 'packages/jig', ['test']],
-      ['flow::test', 'packages/flow-sdk', ['test']],
-      [
-        'site::dev-flow',
-        'site',
-        ['node_modules/@rspress/core/bin/rspress.js', 'dev', '-c', 'flow/rspress.config.ts'],
-      ],
-      [
-        'site::dev-jig',
-        'site',
-        ['node_modules/@rspress/core/bin/rspress.js', 'dev', '-c', 'jig/rspress.config.ts'],
-      ],
-      [
-        'biome-check',
-        '',
+test(
+  'module and root tasks preserve arguments and select their own working directory',
+  async () => {
+    await withFixture(async (directory, environment) => {
+      const args = ['a path with spaces', '$(touch SHOULD_NOT_EXIST)', '; echo unsafe', '']
+      for (const [recipe, cwd, prefix] of [
+        ['jig::test', 'packages/jig', ['test']],
+        ['flow::test', 'packages/flow-sdk', ['test']],
+        ['display_model::test', 'packages/display-model', ['test']],
+        ['display_web::test', 'packages/display-web', ['test']],
+        ['display_tui::test', 'packages/display-tui', ['test']],
         [
-          'x',
-          '--no-install',
-          'biome',
-          'check',
-          '--files-ignore-unknown=true',
-          '--no-errors-on-unmatched',
+          'site::dev-flow',
+          'site',
+          ['node_modules/@rspress/core/bin/rspress.js', 'dev', '-c', 'flow/rspress.config.ts'],
         ],
-      ],
-    ] as const) {
-      const result = await run(
-        ['--justfile', join(directory, 'justfile'), recipe, ...args],
-        environment,
-      )
-      expect(result.code).toBe(0)
-      expect(JSON.parse(result.stdout)).toEqual({
-        cwd: join(directory, cwd),
-        args: [...prefix, ...args],
-      })
-    }
-  })
-})
+        [
+          'site::dev-jig',
+          'site',
+          ['node_modules/@rspress/core/bin/rspress.js', 'dev', '-c', 'jig/rspress.config.ts'],
+        ],
+        [
+          'biome-check',
+          '',
+          [
+            'x',
+            '--no-install',
+            'biome',
+            'check',
+            '--files-ignore-unknown=true',
+            '--no-errors-on-unmatched',
+          ],
+        ],
+      ] as const) {
+        const result = await run(
+          ['--justfile', join(directory, 'justfile'), recipe, ...args],
+          environment,
+        )
+        expect(result.code).toBe(0)
+        expect(JSON.parse(result.stdout)).toEqual({
+          cwd: join(directory, cwd),
+          args: [...prefix, ...args],
+        })
+      }
+    })
+  },
+  INVENTORY_TIMEOUT_MS,
+)
 
 test('Agent candidate task preserves explicit package and destination arguments', async () => {
   await withFixture(async (directory, environment) => {
@@ -206,7 +223,8 @@ test('packing explicitly builds first and preserves the destination argument', a
   expect(result.stderr.indexOf('bun scripts/native-support.mjs check')).toBeLessThan(
     result.stderr.indexOf('await rm'),
   )
-  expect(result.stderr.indexOf('--outfile=libexec/installed-cli.js')).toBeLessThan(
+  expect(result.stderr.indexOf('bun scripts/build-cli.ts')).toBeGreaterThanOrEqual(0)
+  expect(result.stderr.indexOf('bun scripts/build-cli.ts')).toBeLessThan(
     result.stderr.indexOf('bun scripts/pack.ts'),
   )
   expect(result.stderr).toContain('bun scripts/pack.ts "$@"')
@@ -245,6 +263,34 @@ test('ordinary Agent packing uses Bun after building, without a custom packer', 
     expect(result.stderr.indexOf('--outfile=dist/flow.js')).toBeLessThan(
       result.stderr.indexOf('bun pm pack'),
     )
+    expect(result.stderr).not.toContain('scripts/pack.ts')
+  }
+})
+
+test('display packing builds through owning recipes and Jig composes them in dependency order', async () => {
+  const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::build'])
+  expect(jig.code).toBe(0)
+  const model = jig.stderr.indexOf('just --justfile ../display-model/justfile build')
+  const web = jig.stderr.indexOf('just --justfile ../display-web/justfile build')
+  const tui = jig.stderr.indexOf('just --justfile ../display-tui/justfile build')
+  expect(model).toBeGreaterThanOrEqual(0)
+  expect(model).toBeLessThan(web)
+  expect(model).toBeLessThan(tui)
+  expect(Math.max(web, tui)).toBeLessThan(jig.stderr.indexOf('bun scripts/build-cli.ts'))
+  for (const recipe of ['display_model::pack', 'display_web::pack', 'display_tui::pack']) {
+    const result = await run([
+      '--justfile',
+      join(repository, 'justfile'),
+      '--dry-run',
+      recipe,
+      '--destination',
+      '/tmp/display artifacts',
+    ])
+    expect(result.code).toBe(0)
+    expect(result.stderr).toContain('bun pm pack --ignore-scripts "$@"')
+    const compile = result.stderr.indexOf('tsc -p tsconfig.json')
+    expect(compile).toBeGreaterThanOrEqual(0)
+    expect(compile).toBeLessThan(result.stderr.indexOf('bun pm pack'))
     expect(result.stderr).not.toContain('scripts/pack.ts')
   }
 })
@@ -313,10 +359,25 @@ async function run(args: string[], environment: NodeJS.ProcessEnv = process.env)
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const [code, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ])
-  return { code, stdout, stderr }
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    child.kill('SIGKILL')
+  }, COMMAND_TIMEOUT_MS)
+  try {
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    if (timedOut)
+      throw new Error(`Repository task command exceeded ${COMMAND_TIMEOUT_MS}ms: ${args.join(' ')}`)
+    return { code, stdout, stderr }
+  } finally {
+    clearTimeout(timer)
+    if (child.exitCode === null) {
+      child.kill('SIGKILL')
+      await child.exited
+    }
+  }
 }

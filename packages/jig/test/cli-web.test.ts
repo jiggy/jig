@@ -1,17 +1,18 @@
 import { afterEach, expect, test } from 'bun:test'
 import { connect } from 'node:net'
 import { PrivateWebDisplay } from '../src/cli-web.js'
-import type { PrivateWebSnapshot } from '../src/cli-web-snapshot.js'
+import type { DisplaySnapshot } from '@jigging/display-model'
 
 const displays: PrivateWebDisplay[] = []
 afterEach(async () => {
   await Promise.all(displays.splice(0).map((display) => display.close()))
 })
-function snapshot(revision: number): PrivateWebSnapshot {
+function snapshot(revision: number): DisplaySnapshot {
   return {
     kind: 'snapshot',
     revision,
     mode: 'live-run',
+    rootSourceId: 'root-source',
     workspace: { target: 'binding:fixture', phase: 'live', hostStage: 'Waiting', elapsedMs: 0 },
     context: 'Flow reports are provisional',
     omissions: { calls: 0, journal: { flow: 0, host: 0, diagnostic: 0 } },
@@ -74,6 +75,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
           kind: 'incomplete',
           revision,
           mode: value.mode,
+          rootSourceId: value.rootSourceId,
           reason,
           workspace: value.workspace,
           context: value.context,
@@ -84,6 +86,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
               attribution: { provenance: 'host-observed', sourceLabel: 'Jig' },
               priority: 4,
               text: 'Known cause',
+              transcriptCommitted: false,
             },
           ],
           diagnostics: [],

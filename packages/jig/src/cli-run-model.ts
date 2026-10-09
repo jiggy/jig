@@ -1,17 +1,15 @@
 import {
-  type Block,
   type Collection,
-  type DetailBlock,
   type NoticeSeverity,
   type Reference,
   type UserUpdate,
   VIEW_LIMITS,
   type ViewItem,
 } from '@jigging/user-updates'
-import { privateDisplayDestinations, privateRecordedViewRole } from './cli-display-semantics.js'
+import { attentionImportance as privateAttentionImportance } from '@jigging/display-model'
 import { privateCliHeading } from './cli-presentation.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
-import { privateUpdateText } from './private-terminal-text.js'
+import { escapeTerminalText as privateUpdateText } from '@jigging/display-tui/text'
 
 export type PrivateCallState =
   | 'requested'
@@ -81,42 +79,6 @@ export type PrivateAttention = {
 }
 export type PrivatePreview = { text: string; bytes: number; clipped: boolean }
 const key = (publisher: string, id: string) => JSON.stringify([publisher, id])
-export const privateRowRecordKey = (collection: string, row?: string) =>
-  JSON.stringify(['collection', collection, row ?? null])
-export const privateReferenceKey = (ref: Reference): string =>
-  JSON.stringify(
-    ref.kind === 'call'
-      ? ['call', ref.operationId]
-      : ref.kind === 'record'
-        ? ['record', ref.viewId, ref.collectionId, ref.rowId]
-        : ['artifact', ref.attachment, ref.path],
-  )
-/** Includes hidden cells and supplied details, preserving exact typed identities. */
-export function privateRecordReferences(record: PrivateWorkspaceRecord | undefined): Reference[] {
-  const result: Reference[] = [],
-    seen = new Set<string>()
-  const add = (ref: Reference) => {
-    const identity = privateReferenceKey(ref)
-    if (!seen.has(identity)) {
-      seen.add(identity)
-      result.push(ref)
-    }
-  }
-  const block = (value: DetailBlock) => {
-    if (value.kind === 'report') for (const ref of value.references ?? []) add(ref)
-    if (value.kind === 'facts')
-      for (const item of value.items)
-        if (item.value !== null && typeof item.value === 'object') add(item.value)
-  }
-  if (record?.block) block(record.block)
-  if (record?.row) {
-    for (const value of Object.values(record.row.cells))
-      if (value !== null && typeof value === 'object') add(value)
-    for (const detail of record.row.details ?? []) block(detail)
-  }
-  if (record?.activity?.operationId) add({ kind: 'call', operationId: record.activity.operationId })
-  return result
-}
 function bound(value: string, maximum: number): string {
   const scalars = [...value]
   return scalars.length <= maximum
@@ -156,56 +118,6 @@ export type PrivateJournalEntry = {
   operationsPath?: readonly string[]
   clipped?: boolean
 }
-export type PrivateSurfaceState = {
-  teaserWidth?: number
-  teaserBytes?: number
-  record?: string | undefined
-  filters: Map<string, string>
-  sorts: Map<string, { key: string; descending: boolean }>
-  expanded: Map<string, string>
-  scroll: number
-  anchor?: { key: string; offset: number } | undefined
-}
-export type PrivateWorkspaceRecord = {
-  key: string
-  kind:
-    | 'summary'
-    | 'report'
-    | 'facts'
-    | 'progress'
-    | 'row'
-    | 'empty'
-    | 'host'
-    | 'activity'
-    | 'journal'
-    | 'setup'
-    | 'call'
-    | 'file'
-  signature: string
-  publisher?: string | undefined
-  text?: string
-  section?: string | undefined
-  block?: Exclude<Block, Collection>
-  collection?: Collection
-  row?: Collection['rows'][number]
-  activity?: Extract<UserUpdate, { kind: 'activity' }>
-  journal?: PrivateJournalEntry
-  journalGroup?: readonly PrivateJournalEntry[]
-  call?: PrivateCallNode
-  file?: PrivateArtifactFile
-  depth?: number
-  hidden?: number
-  issues?: number
-}
-export function privateAttentionImportance(priority: number): string {
-  return priority >= 4
-    ? 'host failure / unconfirmed cleanup'
-    : priority === 3
-      ? 'observation incomplete'
-      : priority === 2
-        ? 'Flow-reported error'
-        : 'Flow-reported warning'
-}
 export function privateAttentionReceipt(
   report: Pick<PrivateAttention, 'source' | 'text' | 'priority'> & { readonly color?: boolean },
 ): string {
@@ -233,7 +145,7 @@ export function privateAttentionReceipt(
   )
 }
 
-/** One bounded renderer-neutral projection. No execution or file authority lives here. */
+/** Host-owned admission, observation budgets and immutable capture correspondence. */
 export class PrivateRunModel {
   readonly calls = new Map<string, PrivateCallNode>()
   readonly views = new Map<string, PrivateView>()
@@ -250,11 +162,6 @@ export class PrivateRunModel {
   #callBytes = 0
   #attentionBytes = 0
   #stopped = false
-  #surface = 'activity'
-  #chosen = false
-  #locals = new Map<string, PrivateSurfaceState>()
-  #treeExpanded = new Set<string>()
-  #treeChoices = new Set<string>()
   #semanticGeneration = 0
   #semanticDepth = 0
   #semanticDirty = false
@@ -274,7 +181,6 @@ export class PrivateRunModel {
     | ((publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) => string | undefined)
     | undefined
   #preview: ((path: string) => Promise<PrivatePreview | undefined>) | undefined
-  #previewBusy = false
   #captureSequence = 0
   #capture: PrivateArtifactCapture = {
     generation: 'pending',
@@ -283,18 +189,10 @@ export class PrivateRunModel {
     phase: 'pending',
     files: [],
   }
-  #peekSignature = ''
-  previewState: PrivateArtifactFile['state'] | 'pending' | 'loading' | undefined
   #closed = false
-  #generation = 0
   omissions = 0
   incomplete: string | undefined
   context = 'Running; application reports are provisional'
-  feedback = ''
-  preview: PrivatePreview | undefined
-  previewTitle: string | undefined
-  focusedCall: string | undefined
-  selectionVersion = 0
   onChange: () => void = () => {}
 
   get semanticGeneration(): number {
@@ -354,33 +252,6 @@ export class PrivateRunModel {
   get stopped(): boolean {
     return this.#stopped
   }
-  get surface(): string {
-    return this.#surface
-  }
-  get selected(): PrivateView | undefined {
-    return this.views.get(this.#surface)
-  }
-  get local(): PrivateSurfaceState {
-    let state = this.#locals.get(this.#surface)
-    if (!state) {
-      state = { filters: new Map(), sorts: new Map(), expanded: new Map(), scroll: 0 }
-      this.#locals.set(this.#surface, state)
-    }
-    return state
-  }
-  get record(): PrivateWorkspaceRecord | undefined {
-    const records = this.records()
-    return records.find((r) => r.key === this.local.record) ?? records[0]
-  }
-  get collection(): Collection | undefined {
-    return this.record?.collection
-  }
-  get row(): Collection['rows'][number] | undefined {
-    return this.record?.row
-  }
-  get filter(): string {
-    return this.collection ? (this.local.filters.get(this.collection.id) ?? '') : ''
-  }
   get attentionBytes(): number {
     return this.#attentionBytes
   }
@@ -398,12 +269,6 @@ export class PrivateRunModel {
     this.#semantic()
     this.onChange()
   }
-  get hostFactsText(): string {
-    const facts = this.workspace.facts
-    return facts
-      ? `Execution: ${facts.execution}\nApplication (literal outcome): ${facts.application}\nCleanup: ${facts.cleanup}\nDelivery: ${facts.delivery}\n${facts.completeness ?? ''}\n${this.context}`
-      : this.context
-  }
   setWorkspaceFacts(facts: PrivateWorkspaceFacts): void {
     this.workspace.facts = facts
     this.#semantic()
@@ -413,15 +278,6 @@ export class PrivateRunModel {
     if (phase === 'settled' && this.workspace.phase !== 'settled')
       this.workspace.settledAt = this.workspace.now ?? privatePresentationNow()
     this.workspace.phase = phase
-    if (phase === 'settled' && !this.#chosen) {
-      const rootViews = [...this.views.values()].filter((view) => view.publisher === 'root')
-      const landing = rootViews.find((view) => view.value.landing) ?? rootViews[0]
-      if (landing) {
-        this.#surface = landing.key
-        const records = this.records()
-        this.local.record = records.find((record) => record.row)?.key ?? records[0]?.key
-      }
-    }
     this.#semantic()
     this.onChange()
   }
@@ -592,15 +448,6 @@ export class PrivateRunModel {
     }
     this.#callBytes += bytes - prior
     this.calls.set(identity, node)
-    if (!this.#treeChoices.has(identity)) {
-      const descendants = this.descendants(identity)
-      if (
-        ['requested', 'active', 'cancel-requested', 'failed', 'uncertain'].includes(event.state) ||
-        descendants.some((node) => node.state !== 'returned')
-      )
-        this.#treeExpanded.add(identity)
-      else this.#treeExpanded.delete(identity)
-    }
     if (event.childPublisher !== undefined && this.#parents.size < 256)
       this.#parents.set(event.childPublisher, identity)
     this.#semantic()
@@ -641,8 +488,6 @@ export class PrivateRunModel {
         this.#bytes -= old.bytes
         source.views.delete(value.id)
         this.views.delete(old.key)
-        this.#locals.delete(old.key)
-        if (this.#surface === old.key) this.select(undefined)
       }
       this.#semantic()
       this.onChange()
@@ -663,18 +508,6 @@ export class PrivateRunModel {
     )
       throw new Error('Retained view capacity reached')
     // All identity and capacity checks precede mutation of the last complete snapshot.
-    const previousRecords = this.records().map((r) => r.key)
-    const retainedSurface = this.#surface
-    const inactiveKey = key(publisher, value.id)
-    let inactiveRecords: string[] | undefined
-    if (inactiveKey !== retainedSurface && this.#locals.has(inactiveKey)) {
-      this.#surface = inactiveKey
-      inactiveRecords = this.records().map((record) => record.key)
-      this.#surface = retainedSurface
-    }
-    const previousSelected = this.record
-    const previousSemantic =
-      previousSelected && JSON.stringify([previousSelected.key, previousSelected.signature])
     if (!claimed) {
       source.claims.add(value.id)
       this.#claims++
@@ -691,27 +524,6 @@ export class PrivateRunModel {
     this.#bytes += bytes - prior
     source.views.set(value.id, view)
     this.views.set(view.key, view)
-    if (inactiveRecords) {
-      this.#surface = view.key
-      this.#repairSelection(inactiveRecords, false)
-      this.#surface = retainedSurface
-    }
-    if (publisher === 'root' && value.landing && !this.#chosen && this.#surface === 'activity') {
-      this.#surface = view.key
-      this.#repairSelection([])
-    } else if (this.#surface === view.key) {
-      this.#repairSelection(previousRecords)
-      if (
-        previousSemantic !==
-        (this.record && JSON.stringify([this.record.key, this.record.signature]))
-      ) {
-        this.dismissPreview()
-        if (this.record?.kind === 'summary' || this.record?.kind === 'report') {
-          this.local.scroll = 0
-          this.local.anchor = undefined
-        }
-      }
-    }
     this.#semantic()
     this.onChange()
   }
@@ -798,347 +610,6 @@ export class PrivateRunModel {
     this.onChange()
     return true
   }
-  select(identity: string | undefined): void {
-    this.#invalidate()
-    this.#chosen = true
-    this.#surface = identity ?? 'overview'
-    this.focusedCall = undefined
-    this.#repairSelection([])
-    this.onChange()
-  }
-  cycleView(delta: number): void {
-    const keys = this.surfaceKeys()
-    const index = keys.indexOf(this.#surface)
-    this.select(keys[(index + delta + keys.length) % keys.length])
-  }
-  surfaceKeys(): string[] {
-    return this.destinations().map((entry) => entry.key)
-  }
-  destinations() {
-    return privateDisplayDestinations(
-      Boolean(this.workspace.recorded),
-      [...this.views.values()].map((view) => ({
-        key: view.key,
-        title: view.value.title,
-        source: this.peekSourceLabel(view.publisher),
-        role: privateRecordedViewRole(this.workspace.recorded, view.publisher, view.value.id),
-      })),
-    )
-  }
-  collections(): Collection[] {
-    return (
-      this.selected?.value.sections.flatMap((s) =>
-        s.blocks.filter((b): b is Collection => b.kind === 'collection'),
-      ) ?? []
-    )
-  }
-  visibleRows(collection = this.collection): Collection['rows'] {
-    if (!collection) return []
-    const filter = this.local.filters.get(collection.id) ?? ''
-    const rows = collection.rows.filter(
-      (r) =>
-        !filter ||
-        Object.values(r.cells).some((v) =>
-          JSON.stringify(v)?.toLocaleLowerCase().includes(filter.toLocaleLowerCase()),
-        ),
-    )
-    const sort = this.local.sorts.get(collection.id)
-    if (sort && !collection.columns.some((column) => column.key === sort.key))
-      this.local.sorts.delete(collection.id)
-    if (sort && collection.columns.some((column) => column.key === sort.key))
-      rows.sort((a, b) => {
-        const av = a.cells[sort.key],
-          bv = b.cells[sort.key]
-        const comparison =
-          typeof av === 'number' && typeof bv === 'number'
-            ? av - bv
-            : String(av).localeCompare(String(bv))
-        return (
-          (sort.descending ? -comparison : comparison) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-        )
-      })
-    return rows
-  }
-  records(): PrivateWorkspaceRecord[] {
-    const selected = this.selected
-    if (selected) {
-      const result: PrivateWorkspaceRecord[] = [
-        {
-          key: 'summary',
-          kind: 'summary',
-          publisher: selected.publisher,
-          text: selected.value.summary,
-          signature: JSON.stringify(selected.value.summary),
-        },
-      ]
-      selected.value.sections.forEach((section, si) => {
-        section.blocks.forEach((block, bi) => {
-          const position = `${si}:${bi}`
-          if (block.kind === 'collection') {
-            const rows = this.visibleRows(block)
-            if (!rows.length)
-              result.push({
-                key: privateRowRecordKey(block.id),
-                kind: 'empty',
-                publisher: selected.publisher,
-                collection: block,
-                section: section.title,
-                signature: '',
-              })
-            for (const row of rows)
-              result.push({
-                key: privateRowRecordKey(block.id, row.id),
-                kind: 'row',
-                publisher: selected.publisher,
-                collection: block,
-                row,
-                section: section.title,
-                signature: JSON.stringify([block.columns, row]),
-              })
-          } else
-            result.push({
-              key: `block:${position}`,
-              kind: block.kind,
-              publisher: selected.publisher,
-              block,
-              section: section.title,
-              signature: JSON.stringify(block),
-            })
-        })
-      })
-      return result
-    }
-    if (this.#surface === 'files') {
-      const capture = this.#capture
-      return capture.files.length
-        ? capture.files.map((file) => ({
-            key: JSON.stringify(['captured-file', capture.generation, file.path]),
-            kind: 'file',
-            file,
-            text: file.path,
-            signature: JSON.stringify([capture.generation, file]),
-          }))
-        : [
-            {
-              key: 'capture-state',
-              kind: 'host',
-              text:
-                capture.phase === 'pending'
-                  ? 'Delivered files are pending'
-                  : capture.phase === 'unavailable'
-                    ? 'Immutable delivery capture is unavailable'
-                    : 'No files were delivered',
-              signature: capture.phase,
-            },
-          ]
-    }
-    if (this.#surface === 'activity') {
-      const result: PrivateWorkspaceRecord[] =
-        this.workspace.phase === 'live'
-          ? [
-              {
-                key: 'current-host',
-                kind: 'host',
-                text: this.workspace.hostStage,
-                signature: '',
-              },
-            ]
-          : []
-      for (const [identity, activity] of this.activities)
-        result.push({
-          key: `activity:${identity}`,
-          kind: 'activity',
-          publisher: activity.publisher,
-          activity: activity.value,
-          signature: '',
-        })
-      const setup = this.journal.filter(
-        (entry) => entry.kind === 'host' && entry.importance === 'info',
-      )
-      for (const entry of [...this.journal].reverse()) {
-        if (entry.kind === 'host' && entry.importance === 'info') continue
-        result.push({
-          key: entry.key,
-          kind: 'journal',
-          journal: entry,
-          publisher: entry.publisher,
-          signature: '',
-        })
-      }
-      if (setup.length)
-        result.push({
-          key: 'setup',
-          kind: 'setup',
-          text: `Jig stages · ${setup.length} reports · Enter history`,
-          journalGroup: setup,
-          signature: '',
-        })
-      return result
-    }
-    const result: PrivateWorkspaceRecord[] = []
-    const visit = (parent: string | undefined, depth: number) => {
-      for (const node of this.calls.values()) {
-        if (node.parent !== parent) continue
-        const descendants = this.descendants(node.key)
-        result.push({
-          key: node.key,
-          kind: 'call',
-          call: node,
-          depth,
-          hidden: this.#treeExpanded.has(node.key) ? 0 : descendants.length,
-          issues: descendants.filter((n) => n.state === 'failed' || n.state === 'uncertain').length,
-          signature: '',
-        })
-        if (this.#treeExpanded.has(node.key) && depth < 32) visit(node.key, depth + 1)
-      }
-    }
-    visit(undefined, 0)
-    return result
-  }
-  descendants(identity: string): PrivateCallNode[] {
-    const result: PrivateCallNode[] = [],
-      pending = [identity]
-    while (pending.length && result.length < 256) {
-      const parent = pending.shift()
-      for (const n of this.calls.values())
-        if (n.parent === parent && !result.includes(n)) {
-          result.push(n)
-          pending.push(n.key)
-        }
-    }
-    return result
-  }
-  treeExpanded(identity: string): boolean {
-    return this.#treeExpanded.has(identity)
-  }
-  expandTree(expand: boolean): void {
-    const node = this.record?.call
-    if (!node) return
-    this.#treeChoices.add(node.key)
-    if (expand) this.#treeExpanded.add(node.key)
-    else if (this.#treeExpanded.has(node.key)) this.#treeExpanded.delete(node.key)
-    else if (node.parent) this.local.record = node.parent
-    this.#invalidate()
-    this.onChange()
-  }
-  dismissPreview(): void {
-    this.#generation++
-    this.preview = undefined
-    this.previewState = undefined
-    this.previewTitle = undefined
-    this.#peekSignature = ''
-  }
-  #invalidate(): void {
-    this.#generation++
-    this.selectionVersion++
-    this.preview = undefined
-    this.previewState = undefined
-    this.previewTitle = undefined
-    this.#peekSignature = ''
-    this.feedback = ''
-  }
-  #repairSelection(previous: string[], invalidate = true): void {
-    const records = this.records()
-    for (const [identity, signature] of this.local.expanded) {
-      if (!records.some((r) => r.key === identity && r.signature === signature))
-        this.local.expanded.delete(identity)
-    }
-    if (records.some((r) => r.key === this.local.record)) return
-    const identity = this.local.record
-    const index = previous.indexOf(identity ?? '')
-    let candidates = records
-    if (identity?.startsWith('["collection",')) {
-      const collection = (JSON.parse(identity) as string[])[1]
-      candidates = records.filter((r) => r.collection?.id === collection)
-    }
-    const prior = previous
-      .slice(0, Math.max(0, index))
-      .reverse()
-      .find((id) => candidates.some((r) => r.key === id))
-    if (invalidate) this.#invalidate()
-    this.local.record = prior ?? candidates[0]?.key ?? records[0]?.key
-  }
-  markNavigation(): void {
-    this.#chosen = true
-  }
-  selectRecord(identity: string): void {
-    this.#chosen = true
-    if (!this.records().some((r) => r.key === identity)) return
-    this.local.record = identity
-    this.local.scroll = 0
-    this.local.anchor = undefined
-    this.#invalidate()
-    this.onChange()
-  }
-  moveRecord(delta: number): void {
-    const records = this.records(),
-      index = records.findIndex((r) => r.key === this.record?.key)
-    const record = records[Math.max(0, Math.min(records.length - 1, index + delta))]
-    if (record) this.selectRecord(record.key)
-  }
-  moveRow(delta: number): void {
-    this.moveRecord(delta)
-  }
-  cycleCollection(): void {
-    const records = this.records(),
-      collections = this.collections(),
-      current = this.record
-    if (!collections.length) {
-      this.feedback = 'No collections in this view'
-      this.onChange()
-      return
-    }
-    if (collections.length === 1 && current?.collection) return
-    const currentIndex = current?.collection
-      ? collections.findIndex((c) => c.id === current.collection!.id)
-      : -1
-    const next =
-      currentIndex >= 0
-        ? collections[(currentIndex + 1) % collections.length]
-        : (records
-            .slice(records.findIndex((r) => r.key === current?.key) + 1)
-            .find((r) => r.collection)?.collection ?? collections[0])
-    const record = records.find((r) => r.collection?.id === next?.id)
-    if (record) this.selectRecord(record.key)
-  }
-  requireCollection(): boolean {
-    if (this.collection) return true
-    this.feedback = 'Select a collection; c moves to one'
-    this.onChange()
-    return false
-  }
-  filterRows(value: string): void {
-    if (!this.requireCollection()) return
-    const previous = this.records().map((r) => r.key)
-    this.local.filters.set(this.collection!.id, bound(value, 128))
-    this.#invalidate()
-    this.#repairSelection(previous)
-    this.onChange()
-  }
-  sortRows(): void {
-    if (!this.requireCollection()) return
-    const collection = this.collection!,
-      old = this.local.sorts.get(collection.id)
-    const index = collection.columns.findIndex((c) => c.key === old?.key)
-    if (index === collection.columns.length - 1) this.local.sorts.delete(collection.id)
-    else
-      this.local.sorts.set(collection.id, {
-        key: collection.columns[index + 1]!.key,
-        descending: false,
-      })
-    this.#invalidate()
-    this.onChange()
-  }
-  disclosure(record = this.record): boolean {
-    return !!record && this.local.expanded.get(record.key) === record.signature
-  }
-  toggleDisclosure(): void {
-    const record = this.record
-    if (!record) return
-    if (this.disclosure(record)) this.local.expanded.delete(record.key)
-    else this.local.expanded.set(record.key, record.signature)
-    this.onChange()
-  }
   setArtifacts(
     resolve: (
       publisher: string,
@@ -1148,7 +619,6 @@ export class PrivateRunModel {
   ): void {
     this.#artifact = resolve
     this.#preview = preview
-    this.dismissPreview()
     this.#semantic()
     this.onChange()
   }
@@ -1180,7 +650,6 @@ export class PrivateRunModel {
       generation: `${++this.#captureSequence}:${capture.generation}`,
       files: Object.freeze(capture.files.map((file) => Object.freeze({ ...file }))),
     })
-    this.dismissPreview()
     this.#semantic()
     this.onChange()
   }
@@ -1198,101 +667,6 @@ export class PrivateRunModel {
     return !this.#closed && this.#capture === capture ? preview : undefined
   }
   /** Called only by the explicit terminal inspector; web navigation is independent. */
-  peekSelectedArtifact(): void {
-    if (this.#closed) return
-    const record = this.record,
-      references = privateRecordReferences(record)
-    const ref =
-      references.length === 1 && references[0]?.kind === 'artifact' ? references[0] : undefined
-    const signature = JSON.stringify([
-      this.surface,
-      record?.key,
-      record?.signature,
-      references,
-      this.#capture.generation,
-    ])
-    if (signature === this.#peekSignature) return
-    this.#peekSignature = signature
-    if (record?.file && this.previewTitle === record.file.path && this.previewState) return
-    this.#generation++
-    this.preview = undefined
-    this.previewState = undefined
-    this.previewTitle = undefined
-    if (record?.file) {
-      this.previewTitle = record.file.path
-      if (this.#previewBusy) {
-        this.#peekSignature = ''
-        return
-      }
-      void this.#loadPreview(record.file.path, record.file.path, true)
-      return
-    }
-    if (!ref) return
-    this.previewTitle = ref.path
-    const resolved = this.resolve(record?.publisher ?? 'root', ref)
-    if (!resolved.available) {
-      this.previewState = this.#capture.phase === 'pending' ? 'pending' : 'unavailable'
-      return
-    }
-    if (this.#previewBusy) {
-      this.#peekSignature = ''
-      return
-    }
-    void this.#loadPreview(resolved.target!, ref.path, true)
-  }
-  async activateFile(path: string): Promise<void> {
-    if (!this.#capture.files.some((file) => file.path === path)) return
-    if (this.surface === 'files' && this.record?.file?.path !== path) {
-      const record = this.records().find((record) => record.file?.path === path)
-      if (record) this.selectRecord(record.key)
-    }
-    if (this.record?.file?.path === path && this.previewTitle === path && this.previewState) return
-    this.#invalidate()
-    await this.#loadPreview(path, path, false)
-  }
-  async #loadPreview(path: string, title: string, auto: boolean): Promise<void> {
-    this.preview = undefined
-    this.previewTitle = title
-    const file = this.#capture.files.find((file) => file.path === path)
-    if (file && !['text', 'empty'].includes(file.state)) {
-      this.previewState = file.state
-      this.onChange()
-      return
-    }
-    if (this.#previewBusy) return
-    this.#previewBusy = true
-    this.previewState = 'loading'
-    this.feedback = `${title} — loading immutable preview`
-    const generation = this.#generation,
-      captureGeneration = this.#capture.generation
-    try {
-      const preview = await this.#preview?.(path)
-      if (
-        !this.#closed &&
-        generation === this.#generation &&
-        captureGeneration === this.#capture.generation
-      ) {
-        this.preview = preview
-        this.previewState = preview ? (preview.text ? 'text' : 'empty') : 'unavailable'
-        this.feedback = preview
-          ? `Immutable captured preview: ${title}`
-          : `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
-      }
-    } catch {
-      if (
-        !this.#closed &&
-        generation === this.#generation &&
-        captureGeneration === this.#capture.generation
-      ) {
-        this.previewState = 'unavailable'
-        this.feedback = `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`
-      }
-    } finally {
-      this.#previewBusy = false
-      if (auto && !this.#closed && generation !== this.#generation) this.peekSelectedArtifact()
-      this.onChange()
-    }
-  }
   resolve(
     publisher: string,
     ref: Reference,
@@ -1326,48 +700,22 @@ export class PrivateRunModel {
             : 'Artifact unavailable; not present in verified delivered files',
         }
   }
-  async activate(publisher: string, ref: Reference): Promise<void> {
-    if (this.#closed) return
-    const resolved = this.resolve(publisher, ref)
-    if (ref.kind === 'artifact' && this.#previewBusy) {
-      this.feedback = 'A preview is loading; wait before opening another artifact'
-      this.onChange()
-      return
-    }
-    this.feedback = resolved.label
-    if (!resolved.available) {
-      this.onChange()
-      return
-    }
-    if (ref.kind === 'record') {
-      this.select(resolved.target)
-      const collection = this.collections().find((c) => c.id === ref.collectionId)
-      const hidden = !this.visibleRows(collection).some((r) => r.id === ref.rowId)
-      if (hidden) this.local.filters.delete(ref.collectionId)
-      this.local.record = privateRowRecordKey(ref.collectionId, ref.rowId)
-      this.local.scroll = 0
-      this.local.anchor = undefined
-      this.feedback =
-        resolved.label + (hidden ? ' (local filter cleared to show referenced record)' : '')
-    } else if (ref.kind === 'call') {
-      this.select(undefined)
-      this.focusedCall = resolved.target
-      this.local.record = resolved.target
-      let ancestor = this.calls.get(resolved.target!)?.parent
-      while (ancestor) {
-        this.#treeExpanded.add(ancestor)
-        ancestor = this.calls.get(ancestor)?.parent
+  commitAttention(reports: readonly PrivateAttention[]): void {
+    let changed = false
+    for (const report of reports) {
+      if (!report.committed && this.attention.includes(report)) {
+        report.committed = true
+        changed = true
       }
-      this.feedback = resolved.label
-    } else await this.#loadPreview(resolved.target!, `${ref.attachment}:${ref.path}`, false)
-    this.onChange()
+    }
+    if (changed) {
+      this.#semantic()
+      this.onChange()
+    }
   }
   close(): void {
     this.#closed = true
-    this.#generation++
     this.stop()
-    this.preview = undefined
-    this.#locals.clear()
     this.#artifact = undefined
     this.#preview = undefined
     this.#semanticListeners.clear()

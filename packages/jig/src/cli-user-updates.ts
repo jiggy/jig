@@ -8,12 +8,12 @@ import { PrivateRunModel } from './cli-run-model.js'
 import { canonicalJson, type JsonValue } from './json.js'
 
 export {
-  privateTerminalWidth,
-  privateTruncateUpdate,
-  privateUpdateText,
-} from './private-terminal-text.js'
+  terminalWidth as privateTerminalWidth,
+  truncateTerminalText as privateTruncateUpdate,
+  escapeTerminalText as privateUpdateText,
+} from '@jigging/display-tui/text'
 
-import { privateUpdateText } from './private-terminal-text.js'
+import { escapeTerminalText as privateUpdateText } from '@jigging/display-tui/text'
 
 type Activity = Extract<UserUpdate, { kind: 'activity' }>
 type Slot = { readonly attribution: string; value: Activity }
@@ -154,7 +154,6 @@ export class PrivateCliUserUpdates {
               ? this.changed()
               : this.notice(text))
           ) {
-            if (attention) attention.committed = false
             retire('Updates incomplete: presentation limit reached.')
             return false
           }

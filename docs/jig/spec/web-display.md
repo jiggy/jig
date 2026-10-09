@@ -12,8 +12,11 @@ One invoking CLI owns one read-only browser inspector for its finite Run or
 selected saved packet. The inspector renders the same validated semantic
 reports, facts, measured progress, collections, details and references as the
 terminal. Authors cannot supply browser components, HTML, CSS, scripts or
-execution-changing callbacks. The host owns the shell, actual observed call
-relationships, diagnostics, evidence access and lifetime.
+execution-changing callbacks. Jig supplies actual observed call relationships,
+diagnostics, authenticated evidence access and lifetime. The independent
+`@jigging/display-web` package owns the browser client, rendering, local navigation
+and fixed assets; it consumes `@jigging/display-model` snapshots without importing
+Jig. Its bounded display interface grants no HTTP server or execution authority.
 
 The display requires terminal stderr; stdin need not be a terminal. JSON and
 explicit channel reception win before server preparation. Run stdout may be

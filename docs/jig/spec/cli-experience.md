@@ -47,17 +47,26 @@ obsolete repaints are superseded. Host stopping/terminal presentation fences lat
 Flow updates. Exact bounds, separate allocation policy and output failure remain
 governed by that profile and [channels](channels.md).
 
-Operator-only `--display auto|plain|dashboard|web` controls Run presentation. Auto
+Operator-only `--display auto|plain|tui|web` controls Run presentation. Auto
 uses a bounded noninteractive inline region on suitable stderr; it borrows no
 input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
-use nonanimated summaries. Explicit dashboard requires terminal stdin and stderr,
+use nonanimated summaries. Explicit TUI requires terminal stdin and stderr,
 independently of stdout; otherwise explain the plain fallback once. It owns one
 alternate screen only after trusted root execution admission crosses the dispatch
 boundary. Initial review, input, file, output and runtime prerequisite failures
-remain ordinary diagnostics. Entry does not depend on application views or updates. Explicit dashboard
+remain ordinary diagnostics. Entry does not depend on application views or updates. Explicit TUI
 with NO_COLOR keeps screen controls without color. JSON and
 effective reception retain their exact output and disable automatic Flow observation.
 No project entrypoint can choose display mode.
+
+Jig adapts accepted observations to readonly semantic snapshots from
+`@jigging/display-model`. The independent `@jigging/display-tui` and
+`@jigging/display-web` packages own presentation and local navigation. Jig retains
+admission, actual observed call attribution, captured evidence, terminal IO and
+restoration, transport, output accounting and Run lifecycle. A renderer receives
+bounded data and excerpt access, never host execution or filesystem authority.
+Ordinary Jig installation includes its presentation; Flow declarations remain
+display-neutral.
 
 Explicit web requires terminal stderr, independently of stdin, stdout, TERM and
 color support. Otherwise use ordinary plain presentation without exposing a
@@ -74,7 +83,7 @@ causes separately from attributed domain reports. Execution is the actual observ
 invocation tree; application views compose literal reports, facts, measured
 progress and typed collections. Calls returning, reported 100%, EOF and view
 status never imply domain success. Auto/plain commit complete errors and warnings
-to scrollback. Explicit dashboard retains them in bounded Activity and attention,
+to scrollback. Explicit TUI retains them in bounded Activity and attention,
 with full causes one action away from every view; leaving restores the screen and
 commits complete retained essential causes before final stdout. Sticky attention
 and visible incompleteness survive view retirement. Narrow layouts shrink
@@ -158,7 +167,7 @@ No Flow or channel remains alive for inspection. Inspection has no built-in idle
 or absolute expiry; it remains open until the operator leaves, input/output fails
 or an external interruption closes it. Explicit inherited enclosing command
 constraints still apply, and no input or repaint extends them. Eligible interactive
-effective dashboard commands omit the default enclosing presentation lifetime,
+effective TUI commands omit the default enclosing presentation lifetime,
 while setup, Run execution, cancellation and cleanup keep their own bounds.
 Execution elapsed time freezes at settlement. An expiring explicit presentation
 constraint leaves live execution running through its ordinary owner; it never
@@ -180,7 +189,7 @@ with ended/incomplete context and exit promptly.
    separately. Active elapsed time belongs to the current stage. In animated
    terminals, completed timed stages retain their duration as secondary text.
    Ordinary acquisition has one active line with elapsed time; running work can use the
-   bounded inline dashboard above. Explicit dashboard retains stages inside its
+   bounded inline dashboard above. Explicit TUI retains stages inside its
    Activity view. Preserve completed stages; never mark a failed or merely
    departed stage complete. Update waiting time in place, not by appending
    unchanged messages. Report the known wait reason; never invent percentages,
@@ -330,7 +339,7 @@ with ended/incomplete context and exit promptly.
    Redirected streams contain no terminal escapes or animation; failures and
    consequential notices remain readable. `NO_COLOR` (including an empty value)
    and `TERM=dumb` select plain automatic presentation without animation; an
-   explicitly selected eligible dashboard with NO_COLOR uses screen controls
+   explicitly selected eligible TUI with NO_COLOR uses screen controls
    without SGR styling. Plain terminal
    progress reports stage changes once. Do not require Unicode, a pager, cursor
    hiding, an alternate screen, or interactivity for ordinary output. Explicit
@@ -506,7 +515,7 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Redirected output or `--json` is JSON, never styling.
 
-`jig inspect --result <directory> [--display plain|dashboard|web] [--json]` reads a
+`jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,
 reading operator configuration or credentials, acquiring execution authority,
 or contacting a provider. It rejects target and verification arguments. Plain

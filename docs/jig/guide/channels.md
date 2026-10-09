@@ -113,7 +113,7 @@ project entrypoint; `--updates off` does not cancel that explicit choice. Multip
 canonical ports get one hint instead of a guess. Unsupported contracts remain
 ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
 
-Use `jig run --display dashboard` for a terminal workspace. **Activity** collects
+Use `jig run --display tui` for a terminal workspace. **Activity** collects
 current work and the newest notices first; setup stages expand from one entry.
 **Execution** shows actual calls, opening active or problematic branches and
 collapsing returned branches. You can expand them to see their calls.
@@ -152,7 +152,7 @@ retained essential causes before the final result.
 `--receive` keeps exact existing output and takes precedence over the dashboard.
 The workspace needs terminal input/stderr and at least 18 columns/4 rows;
 smaller terminals release to plain output. Normal panes need 50 columns/14 rows.
-Explicit dashboard with NO_COLOR uses screen controls without color. Activity is
+Explicit TUI with NO_COLOR uses screen controls without color. Activity is
 bounded session history; omission is disclosed, and result evidence remains separate.
 Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
 after the dashboard closes, without starting another Run.

@@ -1,10 +1,10 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import type { PrivateWebAssets } from './cli-web-assets.js'
+import type { WebAssets } from '@jigging/display-model'
 import type {
-  PrivateWebIncompleteSnapshot,
-  PrivateWebPreviewReply,
-  PrivateWebSnapshotEnvelope,
-} from './cli-web-snapshot.js'
+  DisplayIncompleteSnapshot,
+  DisplayPreviewReply,
+  DisplaySnapshotEnvelope,
+} from '@jigging/display-model'
 
 const SNAPSHOT_BYTES = 8 * 1024 * 1024
 const INCOMPLETE_BYTES = 2 * 1024 * 1024
@@ -44,16 +44,16 @@ const policy = Object.freeze({
 })
 
 type Projection = {
-  capture(revision: number): PrivateWebSnapshotEnvelope
+  capture(revision: number): DisplaySnapshotEnvelope
   incomplete(
     revision: number,
     reason: string,
     lastCompleteRevision?: number,
-  ): PrivateWebIncompleteSnapshot
-  preview(id: string): Promise<PrivateWebPreviewReply | undefined>
+  ): DisplayIncompleteSnapshot
+  preview(id: string): Promise<DisplayPreviewReply | undefined>
 }
 export type PrivateWebDisplayOptions = {
-  assets: PrivateWebAssets
+  assets: WebAssets
   projection: Projection
   subscribe(listener: () => void): () => void
   onClose?: () => void
@@ -192,7 +192,7 @@ export class PrivateWebDisplay {
     this.#dirty = false
     const revision = this.#revision + 1
     try {
-      let value: PrivateWebSnapshotEnvelope
+      let value: DisplaySnapshotEnvelope
       let encoded: string
       try {
         value = this.options.projection.capture(revision)
@@ -343,7 +343,7 @@ export class PrivateWebDisplay {
     }
   }
 
-  #preview(id: string): Promise<PrivateWebPreviewReply | undefined> {
+  #preview(id: string): Promise<DisplayPreviewReply | undefined> {
     return new Promise((resolve, reject) => {
       let settled = false
       const finish = (work: () => void) => {

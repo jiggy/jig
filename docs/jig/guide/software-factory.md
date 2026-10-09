@@ -53,7 +53,7 @@ call tree, distinguishing baseline checks from checks of each proposed repair.
 Jobs pairs concise outcomes, verified checks and patch references with each job's
 goal and evidence. Wide terminals show the selected job's details beside the list.
 Blocking causes remain in the attention bar; press `!` to read the complete cause.
-Use `jig run --display dashboard` to switch views, select a job, inspect its
+Use `jig run --display tui` to switch views, select a job, inspect its
 details, and use `r` to select a verified file preview after packet delivery.
 Use `jig run --display web` to open the same Jobs, Checks and Patches views in a
 browser through the private link printed after execution starts. **Delivered
@@ -75,7 +75,7 @@ causes, while full evidence remains in `result.json`.
 Reopen the saved evidence later without starting work:
 
 ```sh
-jig inspect --result ./factory-result --display dashboard
+jig inspect --result ./factory-result --display tui
 jig inspect --result ./factory-result --display web
 ```
 

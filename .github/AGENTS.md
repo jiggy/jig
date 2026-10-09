@@ -63,6 +63,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Python also uses its own CI-qualified artifacts. Each group preflights its own
   archives before mutation. A host failure cannot block FLOW publication.
 - Keep path filters synchronized with every real workflow input.
+- Model and web/TUI display packages enter the Jig host filters, source-test
+  inventories and frozen standalone artifact gates. Their JavaScript/assets are
+  bundled into Jig; the protected publisher's package selection is unchanged.
 - Jig's Linux conformance PR filter includes root license, pricing, mapping,
   and retained license texts. Jig GitHub release notes link the matching tagged
   source archive and build instructions; npm remains the runnable distribution.
@@ -93,7 +96,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Markdown and public workspace-dependency proof. Its packed dependency-reuse
   case runs once in its dedicated step; the remaining provider cases use the
   complementary name pattern. Installed-evidence runs complete packed CLI
-  composition, operational and hostile baselines on a separate proof host.
+  composition, operational and hostile baselines on a separate proof host,
+  plus standalone display consumers against the frozen archives. Supply an
+  absolute `FLOW_NODE` for the model/browser consumers' independent Node checks.
   Pass the runner's absolute Node and npm executables to the packed smoke test
   because the acquisition host uses a fixed path that excludes runner tool-cache
   binaries. The trusted npm installation step uses the selected Node directory
@@ -115,7 +120,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
 - Host conformance includes Agent method and contract-authoring source changes.
-  Freeze the built SDK, HTTP Agent, ACP Agent and Jig archives once through their owning
+  Freeze the built SDK, user-updates, HTTP Agent, ACP Agent, display model/web/TUI
+  and Jig archives once through their owning
   packers. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
   archives to installed Markdown tests across the provisioned host boundary;
   verify the same archive hashes afterward. Jig's packer supplies the complete
@@ -136,7 +142,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `max-parallel: 5`; actual runner availability still determines start times.
   Each isolated shard checks the exact kernel/build, native Bun,
   process prerequisites, ordinary build, frozen archive identity and ownership
-  residue. The deterministic test plan covers every discovered Jig test file;
+  residue. The deterministic test plan covers every discovered Jig and display test file;
   it partitions the long root Agent lifecycle and package-provider files by
   disjoint, exhaustive name groups and balances them with all other files.
   Tests run in fresh, sequential per-group Bun processes inside each host.

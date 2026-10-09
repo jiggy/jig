@@ -256,6 +256,18 @@ console.log(path);
       "import { defineJig } from '@jigging/jig';\nconsole.log(typeof defineJig);\n",
     )
     assert.equal((await run([runtime, authoringCheck], consumer)).stdout, 'function\n')
+    const tuiRefusal = await run(
+      [
+        process.env.PYTHON ?? 'python3',
+        join(import.meta.dir, 'fixtures/installed-tui-refusal.py'),
+        command,
+      ],
+      consumer,
+      {},
+      45_000,
+    )
+    assert.equal(JSON.parse(tuiRefusal.stdout).passed, true)
+    assert.equal(tuiRefusal.stderr, '')
     // Saved inspection needs terminal stdout as well as terminal stderr. The
     // test-only PTY owner keeps the capability in memory and emits sanitized
     // evidence; no project, execution host or native renderer is involved.

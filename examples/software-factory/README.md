@@ -19,7 +19,7 @@ From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run --display dashboard
+jig run --display tui
 ```
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
@@ -50,7 +50,7 @@ For a settled unsuccessful proposal, inspect its command evidence and proposal
 patches; these are not accepted patches to apply. A healthy job's `review.patch`
 remains available even when the batch outcome is `blocked`.
 The factory identifies jobs by their optional `label` (or their `id`).
-Use `jig run --display dashboard` for a workspace that starts in **Activity**.
+Use `jig run --display tui` for a workspace that starts in **Activity**.
 **Jobs** contains goals, editable source files, reviewed approach and outcomes;
 **Checks** contains repository tests and independent acceptance cases;
 **Patches** contains checked candidates for human review. **Execution** shows
