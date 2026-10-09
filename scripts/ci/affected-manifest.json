@@ -577,7 +577,7 @@
   "macosExecutedCaseMultiplicities": [
     {
       "file": "packages/jig/test/user-updates.test.ts",
-      "blob": "8f81af36980b5284701de62f3d450108ca5f4e3d",
+      "blob": "c59608d2e6f122aa37cd84e15828f95a8337dfda",
       "cases": [
         {
           "classname": "",

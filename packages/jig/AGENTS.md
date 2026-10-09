@@ -540,7 +540,8 @@ buffer release and output failure independently of recorded execution status.
   alongside successful work and verified delivery. Deterministic application tests
   independently require the real factory publisher's completed Jobs, Checks and
   Patches offers. Portable channel tests exercise actual receiver overflow,
-  producer loss and retained-model settlement without disabling independent
+  producer loss and retained-model settlement through the shared display
+  settlement entrypoint without disabling independent
   application-channel delivery. Optional reception never guarantees clean closure
   for every heavy Run or changes its work outcome.
   The sequential host gate includes this consumer; it does not qualify model behavior.

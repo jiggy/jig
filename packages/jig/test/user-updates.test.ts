@@ -664,7 +664,7 @@ test('automatic channel observer freezes accepted views after declared loss and 
           "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)",
         )
       }
-      await presenter.settleDashboard({
+      await presenter.settleDisplay({
         status: 'succeeded',
         outcome: 'done',
         delivery: { status: 'written' },
@@ -734,7 +734,7 @@ test('frozen views retain the newest accepted snapshot while warning delivery su
     source.retire(loss)
     expect([...presenter.model.views.values()].map((view) => view.ended)).toEqual([loss])
     releaseWarning.resolve()
-    await presenter.settleDashboard({ status: 'succeeded', outcome: 'done' })
+    await presenter.settleDisplay({ status: 'succeeded', outcome: 'done' })
     expect(transcript).not.toContain('  Flow: Jobs\n    Newest accepted snapshot\n')
     expect(transcript).toContain(`  Flow / Jobs (${loss}):\n    Newest accepted snapshot\n`)
     expect(transcript).not.toContain(`  Flow / Jobs (${loss}):\n    Initial accepted snapshot\n`)
