@@ -1,3 +1,4 @@
+import { privateCallObservationSpans, privateDisplayDuration } from '../cli-display-semantics.js'
 import type { PrivateWebSnapshot } from '../cli-web-snapshot.js'
 import type { PrivateBrowserClient } from './client.js'
 
@@ -22,34 +23,9 @@ export function privateBrowserCallSpans(calls: PrivateWebSnapshot['calls']): {
   milliseconds: number
   spans: Map<string, { x: number; width: number; milliseconds: number }>
 } {
-  const valid = calls.filter(
-    (call) =>
-      Number.isFinite(call.firstObservedAt) &&
-      Number.isFinite(call.observedAt) &&
-      call.firstObservedAt >= 0 &&
-      call.observedAt >= call.firstObservedAt,
-  )
-  const first = Math.min(...valid.map((call) => call.firstObservedAt))
-  const last = Math.max(...valid.map((call) => call.observedAt))
-  const milliseconds = valid.length ? last - first : 0
-  const scale = Math.max(1, milliseconds)
-  return {
-    milliseconds,
-    spans: new Map(
-      valid.map((call) => [
-        call.id,
-        {
-          x: ((call.firstObservedAt - first) / scale) * 1000,
-          width: ((call.observedAt - call.firstObservedAt) / scale) * 1000,
-          milliseconds: call.observedAt - call.firstObservedAt,
-        },
-      ]),
-    ),
-  }
+  return privateCallObservationSpans(calls)
 }
 
 export function privateBrowserDuration(milliseconds: number): string {
-  if (milliseconds < 1000) return `${Math.round(milliseconds)}ms`
-  if (milliseconds < 60000) return `${(milliseconds / 1000).toFixed(1)}s`
-  return `${Math.floor(milliseconds / 60000)}m ${Math.floor((milliseconds % 60000) / 1000)}s`
+  return privateDisplayDuration(milliseconds)
 }

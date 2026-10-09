@@ -162,7 +162,7 @@ Wide navigation separates host inspection from attributed application views.
 Routine snapshot replacement uses a stable quiet synchronization indicator,
 while actual disconnection and incomplete observation remain explicit. References
 remain disabled until a current complete snapshot is acknowledged.
-Activity folds completed startup ceremony into history; Overview follows actual
+Activity folds completed startup ceremony into history; Execution follows actual
 calls rather than inferring domain tasks. Domain views supply their goals and
 verification explanations. Color supplements explicit wording and must remain
 usable in light, dark, color-free and narrow presentations.

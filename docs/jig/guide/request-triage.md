@@ -108,7 +108,7 @@ The page does not claim identical classification behavior.
 
 The **Request** view shows the supplied message, the selected procedure and the
 suggested queue. Each classifier offers the same view when called independently.
-**Overview** follows the actual classifier and Agent calls; `manual` remains a valid
+**Execution** follows the actual classifier and Agent calls; `manual` remains a valid
 suggestion, with no business action dispatched.
 
 Use `--display web` for the same views through the private browser link printed after

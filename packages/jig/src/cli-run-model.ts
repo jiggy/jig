@@ -8,6 +8,7 @@ import {
   VIEW_LIMITS,
   type ViewItem,
 } from '@jigging/user-updates'
+import { privateDisplayDestinations, privateRecordedViewRole } from './cli-display-semantics.js'
 import { privateCliHeading } from './cli-presentation.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import { privateUpdateText } from './private-terminal-text.js'
@@ -156,6 +157,8 @@ export type PrivateJournalEntry = {
   clipped?: boolean
 }
 export type PrivateSurfaceState = {
+  teaserWidth?: number
+  teaserBytes?: number
   record?: string | undefined
   filters: Map<string, string>
   sorts: Map<string, { key: string; descending: boolean }>
@@ -661,6 +664,14 @@ export class PrivateRunModel {
       throw new Error('Retained view capacity reached')
     // All identity and capacity checks precede mutation of the last complete snapshot.
     const previousRecords = this.records().map((r) => r.key)
+    const retainedSurface = this.#surface
+    const inactiveKey = key(publisher, value.id)
+    let inactiveRecords: string[] | undefined
+    if (inactiveKey !== retainedSurface && this.#locals.has(inactiveKey)) {
+      this.#surface = inactiveKey
+      inactiveRecords = this.records().map((record) => record.key)
+      this.#surface = retainedSurface
+    }
     const previousSelected = this.record
     const previousSemantic =
       previousSelected && JSON.stringify([previousSelected.key, previousSelected.signature])
@@ -680,6 +691,11 @@ export class PrivateRunModel {
     this.#bytes += bytes - prior
     source.views.set(value.id, view)
     this.views.set(view.key, view)
+    if (inactiveRecords) {
+      this.#surface = view.key
+      this.#repairSelection(inactiveRecords, false)
+      this.#surface = retainedSurface
+    }
     if (publisher === 'root' && value.landing && !this.#chosen && this.#surface === 'activity') {
       this.#surface = view.key
       this.#repairSelection([])
@@ -796,9 +812,18 @@ export class PrivateRunModel {
     this.select(keys[(index + delta + keys.length) % keys.length])
   }
   surfaceKeys(): string[] {
-    return this.workspace.recorded && this.views.size
-      ? [...this.views.keys()]
-      : ['activity', 'overview', 'files', ...this.views.keys()]
+    return this.destinations().map((entry) => entry.key)
+  }
+  destinations() {
+    return privateDisplayDestinations(
+      Boolean(this.workspace.recorded),
+      [...this.views.values()].map((view) => ({
+        key: view.key,
+        title: view.value.title,
+        source: this.peekSourceLabel(view.publisher),
+        role: privateRecordedViewRole(this.workspace.recorded, view.publisher, view.value.id),
+      })),
+    )
   }
   collections(): Collection[] {
     return (
@@ -818,7 +843,9 @@ export class PrivateRunModel {
         ),
     )
     const sort = this.local.sorts.get(collection.id)
-    if (sort)
+    if (sort && !collection.columns.some((column) => column.key === sort.key))
+      this.local.sorts.delete(collection.id)
+    if (sort && collection.columns.some((column) => column.key === sort.key))
       rows.sort((a, b) => {
         const av = a.cells[sort.key],
           bv = b.cells[sort.key]
@@ -1010,7 +1037,7 @@ export class PrivateRunModel {
     this.#peekSignature = ''
     this.feedback = ''
   }
-  #repairSelection(previous: string[]): void {
+  #repairSelection(previous: string[], invalidate = true): void {
     const records = this.records()
     for (const [identity, signature] of this.local.expanded) {
       if (!records.some((r) => r.key === identity && r.signature === signature))
@@ -1028,7 +1055,7 @@ export class PrivateRunModel {
       .slice(0, Math.max(0, index))
       .reverse()
       .find((id) => candidates.some((r) => r.key === id))
-    this.#invalidate()
+    if (invalidate) this.#invalidate()
     this.local.record = prior ?? candidates[0]?.key ?? records[0]?.key
   }
   markNavigation(): void {
@@ -1172,7 +1199,7 @@ export class PrivateRunModel {
   }
   /** Called only by the explicit terminal inspector; web navigation is independent. */
   peekSelectedArtifact(): void {
-    if (this.#closed || this.record?.file) return
+    if (this.#closed) return
     const record = this.record,
       references = privateRecordReferences(record)
     const ref =
@@ -1186,10 +1213,20 @@ export class PrivateRunModel {
     ])
     if (signature === this.#peekSignature) return
     this.#peekSignature = signature
+    if (record?.file && this.previewTitle === record.file.path && this.previewState) return
     this.#generation++
     this.preview = undefined
     this.previewState = undefined
     this.previewTitle = undefined
+    if (record?.file) {
+      this.previewTitle = record.file.path
+      if (this.#previewBusy) {
+        this.#peekSignature = ''
+        return
+      }
+      void this.#loadPreview(record.file.path, record.file.path, true)
+      return
+    }
     if (!ref) return
     this.previewTitle = ref.path
     const resolved = this.resolve(record?.publisher ?? 'root', ref)
@@ -1205,6 +1242,11 @@ export class PrivateRunModel {
   }
   async activateFile(path: string): Promise<void> {
     if (!this.#capture.files.some((file) => file.path === path)) return
+    if (this.surface === 'files' && this.record?.file?.path !== path) {
+      const record = this.records().find((record) => record.file?.path === path)
+      if (record) this.selectRecord(record.key)
+    }
+    if (this.record?.file?.path === path && this.previewTitle === path && this.previewState) return
     this.#invalidate()
     await this.#loadPreview(path, path, false)
   }

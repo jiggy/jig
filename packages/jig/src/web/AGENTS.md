@@ -10,10 +10,12 @@ semantic reports, facts, progress and collections.
 
 - `client.ts` owns bounded authenticated synchronization, connection generations,
   capability memory and preview requests.
-- `navigation.ts` owns viewer-local semantic selection/reference projection.
+- `navigation.ts` owns viewer-local semantic selection/reference projection;
+  grouped destinations use the shared private `../cli-display-semantics.ts` rules.
 - `observations.ts` projects quiet synchronization status and bounded call
   observation spans. Spans end at the latest actual observation, never an
-  invented execution duration or inferred application verdict.
+  invented execution duration or inferred application verdict. Interval arithmetic
+  and duration formatting share the same private owner as the terminal renderer.
 - `app.ts` owns native browser interaction and inert Preact rendering.
 - `app.css` and `index.html` are fixed host assets. The installed CLI build embeds
   them and the bundled browser code through `../cli-web-assets.ts`.

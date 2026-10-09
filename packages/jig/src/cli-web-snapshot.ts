@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto'
 import type { NoticeSeverity, UserUpdate, ViewItem } from '@jigging/user-updates'
+import { privateRecordedViewRole } from './cli-display-semantics.js'
 import {
   type PrivateAdmission,
   type PrivateCallState,
@@ -349,17 +350,16 @@ export class PrivateWebProjection {
     const model = this.model
     const views = [...model.views.values()].map((view) => ({
       id: this.#id('view', view.publisher, view.value.id),
-      ...(model.workspace.recorded && view.publisher === 'saved-result'
-        ? {
-            hostRole: (
-              {
-                'recorded-result': 'recorded-report',
-                files: 'recorded-files',
-                diagnostics: 'recorded-diagnostics',
-              } as const
-            )[view.value.id as 'recorded-result' | 'files' | 'diagnostics'],
-          }
-        : {}),
+      ...(privateRecordedViewRole(model.workspace.recorded, view.publisher, view.value.id) ===
+      undefined
+        ? {}
+        : {
+            hostRole: privateRecordedViewRole(
+              model.workspace.recorded,
+              view.publisher,
+              view.value.id,
+            )!,
+          }),
       sourceId: this.#source(view.publisher),
       sourceLabel: bounded(model.peekSourceLabel(view.publisher), 256).value,
       updatedAt: view.updated,

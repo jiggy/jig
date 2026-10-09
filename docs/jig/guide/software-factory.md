@@ -48,7 +48,7 @@ The standard [user-updates contract](../contracts/user-updates.md) supplies thre
 factory views: **Jobs** shows requested goals, source scope, reviewed approach and
 outcomes; **Checks** shows repository tests and independent acceptance
 cases; **Patches** shows independently checked patch packets and evidence links.
-**Activity** follows current work and check reports. **Overview** shows the actual
+**Activity** follows current work and check reports. **Execution** shows the actual
 call tree, distinguishing baseline checks from checks of each proposed repair.
 Jobs pairs concise outcomes, verified checks and patch references with each job's
 goal and evidence. Wide terminals show the selected job's details beside the list.

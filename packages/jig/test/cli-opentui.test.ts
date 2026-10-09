@@ -73,7 +73,7 @@ test('native panes render unrelated semantic records, selected detail, attributi
     expect(frame.text).toContain('Requested matters')
     expect(frame.text).toContain('MAT-042')
     expect(frame.text).toContain('Goal: Check the client-supplied documents.')
-    expect(frame.text).toContain('Selected detail')
+    expect(frame.text).toContain('Context')
     expect(frame.text).not.toMatch(sgr)
     expect((await dashboard.frame(140, 36, { panels: [] }, frame.scroll, false)).text).toBe('')
     model.moveRecord(1)
@@ -100,9 +100,9 @@ test('narrow view keeps the active tab reachable; detail, diagnostics and full c
   )
   try {
     let frame = await dashboard.frame(80, 24, { panels: [] }, 0, false)
-    expect(frame.text).toContain('[Flow: Document intake]')
+    expect(frame.text).toContain('Application · Flow › [Document intake]')
     expect(frame.text).toContain('Flow-reported error')
-    expect(frame.text).not.toContain('Selected detail')
+    expect(frame.text).not.toContain('Context')
     frame = await dashboard.frame(
       80,
       24,
@@ -494,7 +494,7 @@ test('native Delivered files works without views and distinguishes empty, non-te
     expect(inventory.text).toContain('Delivered files')
     expect(inventory.text).toContain('empty.txt')
     expect(model.views.size).toBe(0)
-    expect(reads).toBe(0)
+    expect(reads).toBe(1)
     await model.activateFile('empty.txt')
     const empty = await dashboard.frame(
       80,
@@ -575,6 +575,237 @@ test('native captured-content scrolling and literal search reach the retained ex
     expect(first.text + second.text).toContain('Search target at the end')
     expect(reads).toBe(1)
     expect(first.scroll).toBeGreaterThan(0)
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('workbench thresholds retain dense rows and literal selection, with context only when useful', async () => {
+  const model = scene()
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    80,
+    24,
+  )
+  try {
+    for (const [width, height] of [
+      [80, 24],
+      [117, 36],
+      [118, 23],
+      [118, 24],
+      [149, 36],
+      [150, 36],
+      [180, 48],
+    ]) {
+      const frame = await dashboard.frame(width!, height!, { panels: [] }, 0, false)
+      const lines = dashboard.renderer.currentRenderBuffer
+        .getSpanLines()
+        .map((line) => line.spans.map((span) => span.text).join(''))
+      expect(lines.some((line) => line.includes('› MAT-042'))).toBeTrue()
+      expect(
+        lines.some(
+          (line) => line.includes('MAT-042') && line.includes('Missing required instructions'),
+        ),
+      ).toBeTrue()
+      expect(
+        lines.some((line) => line.includes('MAT-043') && line.includes('Documents present')),
+      ).toBeTrue()
+      expect(
+        lines.filter((line) => line.includes('Matter') && line.includes('Completeness')),
+      ).toHaveLength(1)
+      expect(frame.text.includes('╭─ Context')).toBe(width! >= 118 && height! >= 24)
+      expect(frame.text.includes('Run workspace')).toBe(width! >= 150 && height! >= 24)
+      expect(frame.text).not.toMatch(sgr)
+      expect(Buffer.byteLength(frame.text)).toBeLessThanOrEqual(32768)
+    }
+    model.acceptView('root', {
+      kind: 'view',
+      id: 'brief',
+      title: 'Brief',
+      summary: 'A complete brief',
+      sections: [],
+    })
+    model.select(JSON.stringify(['root', 'brief']))
+    const frame = await dashboard.frame(180, 48, { panels: [] }, 0, false)
+    expect(frame.text).not.toContain('╭─ Context')
+    expect(frame.text).not.toContain('No additional detail')
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('actual invocation rows fit a small terminal; wide spans remain observations and ordinary lifecycle adds no pane', async () => {
+  const model = new PrivateRunModel()
+  for (let i = 0; i < 10; i++) {
+    model.observeCall({
+      publisher: 'root',
+      operationId: `check-${i}`,
+      slot: 'checker',
+      intent: `Document check ${i}`,
+      state: 'active',
+      time: 1000 + i * 100,
+    })
+    model.observeCall({
+      publisher: 'root',
+      operationId: `check-${i}`,
+      slot: 'checker',
+      state: 'returned',
+      time: 1500 + i * 100,
+    })
+  }
+  model.select('overview')
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    80,
+    24,
+  )
+  try {
+    const small = await dashboard.frame(80, 24, { panels: [] }, 0, false)
+    expect(small.text).toContain('Document check 0')
+    expect(small.text).toContain('Document check 9')
+    expect(small.text).not.toContain('╭─ Context')
+    const wide = await dashboard.frame(180, 48, { panels: [] }, 0, true)
+    expect(strip(wide.text)).toContain('common-scale observation spans')
+    expect(strip(wide.text)).toContain('500ms')
+    expect(strip(wide.text)).not.toContain('╭─ Context')
+    expect(strip(wide.text)).not.toContain('passed')
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('an ordinary three-column row can expand a clipped value without invented author detail', async () => {
+  const model = new PrivateRunModel()
+  const value = 'Long context ' + 'words '.repeat(30) + 'FINAL VALUE'
+  model.acceptView('root', {
+    kind: 'view',
+    id: 'records',
+    title: 'Records',
+    sections: [
+      {
+        blocks: [
+          {
+            kind: 'collection',
+            id: 'items',
+            title: 'Items',
+            columns: [
+              { key: 'id', label: 'ID', type: 'text' },
+              { key: 'context', label: 'Context', type: 'text' },
+              { key: 'type', label: 'Type', type: 'text' },
+            ],
+            rows: [{ id: 'a', cells: { id: 'a', context: value, type: 'Document' } }],
+          },
+        ],
+      },
+    ],
+  })
+  model.select(JSON.stringify(['root', 'records']))
+  model.cycleCollection()
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    80,
+    24,
+  )
+  try {
+    const frame = await dashboard.frame(80, 24, { panels: [] }, 0, false)
+    expect(frame.text).not.toContain('FINAL VALUE')
+    const record = model.record!
+    const expanded = await dashboard.frame(
+      80,
+      24,
+      { panels: [{ kind: 'detail', key: record.key, signature: record.signature, scroll: 0 }] },
+      0,
+      false,
+    )
+    expect(expanded.text).toContain('FINAL VALUE')
+    expect(expanded.text).toContain('Type')
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('native chooser reveals the last and first of every legal attributed destination', async () => {
+  const model = new PrivateRunModel()
+  for (let source = 0; source < 4; source++)
+    for (let id = 0; id < 8; id++)
+      model.acceptView(`publisher-${source}`, {
+        kind: 'view',
+        id: `view-${id}`,
+        title: `View ${source}-${id}`,
+        sections: [],
+      })
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    80,
+    24,
+  )
+  try {
+    const choices = model.destinations()
+    for (const [width, height] of [
+      [80, 24],
+      [150, 24],
+    ]) {
+      const last = await dashboard.frame(
+        width!,
+        height!,
+        { panels: [{ kind: 'views', selected: choices.at(-1)!.key }] },
+        0,
+        false,
+      )
+      expect(last.text).toContain(`› View 3-7 · ${choices.at(-1)!.source}`)
+      const first = await dashboard.frame(
+        width!,
+        height!,
+        { panels: [{ kind: 'views', selected: choices[0]!.key }] },
+        0,
+        false,
+      )
+      expect(first.text).toContain('› Execution')
+    }
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('local action feedback stays visible without context and alongside a sticky failure', async () => {
+  const model = new PrivateRunModel()
+  model.acceptView('root', {
+    kind: 'view',
+    id: 'brief',
+    title: 'Brief',
+    summary: 'A complete brief',
+    sections: [],
+  })
+  model.select(JSON.stringify(['root', 'brief']))
+  model.feedback = 'No additional detail was supplied for this entry.'
+  model.addAttention('Jig', 'A known blocking cause', 4, true)
+  const dashboard = await PrivateOpenTuiDashboard.create(
+    await privatePrepareOpenTui(),
+    model,
+    80,
+    24,
+  )
+  try {
+    for (const [width, height] of [
+      [80, 24],
+      [180, 48],
+    ]) {
+      const frame = await dashboard.frame(width!, height!, { panels: [] }, 0, false)
+      expect(frame.text).toContain('Action · No additional detail was supplied')
+      expect(frame.text).toContain('A known blocking cause')
+      expect(frame.text).not.toContain('╭─ Context')
+      expect(frame.text).toContain('q inline')
+      expect(frame.text).not.toMatch(sgr)
+    }
   } finally {
     dashboard.close()
     model.close()

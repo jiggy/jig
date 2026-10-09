@@ -285,8 +285,8 @@ admitted FLOW packages.
   Explicit dashboard instead owns one alternate screen after trusted root execution
   admission, keeping initial input/review/runtime refusals in ordinary output,
   retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
-  responsive selected-record details, labelled collection cards, collapsed detail,
-  newest-first Activity with expandable setup, actual collapsible Overview and contextual
+  responsive meaningful context, dense aligned collection rows, expanded evidence,
+  newest-first Activity with expandable setup, actual collapsible Execution and contextual
   keys serve progressive disclosure without terminal author callbacks. Attention
   remains attributed and reachable from every view. Diagnostic reports have a
   separate literal panel; unknown severity stays unknown. Freeze execution elapsed
@@ -414,11 +414,21 @@ Pane caches include resolved reference labels and selected details, so host call
 settlement and verified delivery refresh existing views without another Flow
 report. Unchanged captured cells do not produce another terminal frame.
 Lists own brief identity/observation; selected parts add context and evidence.
-Keep the typed detail projection shared with compact text. Native cards show
-three declared columns, with other fields and authored details reachable beside
-them; full expansion retains all fields. Facts expand into typed fields. Do not
-open duplicate panes for entries with no additional detail. Call previews explain
-lifecycle and readable UTC time; exact slot/operation identity requires expansion.
+Keep the typed detail projection shared with compact text. Native tables show
+up to three declared columns, with other fields and authored details in context; full expansion retains all fields. Facts expand into typed fields. Do not
+open duplicate panes for entries with no additional detail. Automatic call context requires a known cause or strictly scoped related report;
+expanded detail adds lifecycle, readable UTC time and exact slot/operation identity.
+`src/cli-display-semantics.ts` owns shared private destination roles/order and
+first-to-latest observation spans; browser and native adapters reuse them without
+sharing viewer navigation. No public renderer seam is exported. Native rail begins
+at 150x24; meaningful automatic context at 118x24. The v chooser reveals every
+selected destination at the actual viewport height. Action feedback remains visible
+without context, alongside sticky attention. Escape dismisses overlays, then uses
+an input-owned 16-origin reference return history with lifetime checks and stable
+identity repair; retired intermediates are skipped, entirely retired history leaves
+visible feedback before ordinary exit. Tab/chooser selection clears jump history.
+Report expansion accounts for prefix cell and byte clipping. Direct file selection
+peeks captured bytes; Enter reuses them and existing generation/close fences.
 Color navigation, labels, typed values and host states independently. Returned
 calls stay secondary, never green domain success. Recorded field navigation and
 lexical value colors remain literal local claims without privileged output keys.
@@ -456,6 +466,9 @@ resolver uses verified delivery and one immutable bounded capture, never mutable
 destination reads. Test redirected stdout, idle stdin, split/batched keys,
 post-settlement Ctrl-C, narrow/Unicode frames, reference/scroll identity and late
 preview settlement. `test/dashboard.test.ts` covers model/renderer/input bounds;
+`test/cli-workbench.test.ts` covers grouped navigation, current-reference validation,
+return repair/lifetime and clipping; `test/cli-opentui.test.ts` covers actual native
+chooser visibility, responsive dense tables, context, color-free selection and spans;
 installed factory and file-delivery tests cover composition and immutable capture.
 `inspect --result` bypasses project/environment acquisition and reads only the
 selected descriptor-confined packet. Its fixed views label all evidence recorded,

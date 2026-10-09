@@ -1,4 +1,5 @@
 import type { Block, Collection, DetailBlock, Reference, Value } from '@jigging/user-updates'
+import { privateDisplayDestinations } from '../cli-display-semantics.js'
 import type { PrivateWebSnapshot } from '../cli-web-snapshot.js'
 
 export type PrivateBrowserLocal = {
@@ -45,36 +46,21 @@ export function privateBrowserTabs(
   icon: string
   application?: boolean
 }[] {
-  const views = snapshot?.views ?? []
-  if (mode === 'recorded-packet') {
-    const report = views.find((view) => view.hostRole === 'recorded-report')
-    const diagnostics = views.find((view) => view.hostRole === 'recorded-diagnostics')
-    return [
-      ...(report ? [{ id: report.id, title: 'Recorded result', source: '', icon: '◈' }] : []),
-      { id: 'files', title: 'Captured files', source: '', icon: '▤' },
-      ...(diagnostics ? [{ id: diagnostics.id, title: 'Diagnostics', source: '', icon: '!' }] : []),
-      ...views
-        .filter((view) => !view.hostRole)
-        .map((view) => ({
-          id: view.id,
-          title: view.value.title,
-          source: view.sourceLabel,
-          icon: '◈',
-        })),
-    ]
-  }
-  return [
-    { id: 'overview', title: 'Execution', source: '', icon: '↳' },
-    { id: 'activity', title: 'Activity', source: '', icon: '≡' },
-    { id: 'files', title: 'Delivered files', source: '', icon: '▤' },
-    ...views.map((view) => ({
-      id: view.id,
+  return privateDisplayDestinations(
+    mode === 'recorded-packet',
+    (snapshot?.views ?? []).map((view) => ({
+      key: view.id,
       title: view.value.title,
       source: view.sourceLabel,
-      icon: '◈',
-      application: true,
+      role: view.hostRole,
     })),
-  ]
+  ).map(({ key, title, source, icon, group }) => ({
+    id: key,
+    title,
+    source,
+    icon,
+    ...(group === 'application' ? { application: true } : {}),
+  }))
 }
 
 export function privateBrowserLiteral(value: string): string {

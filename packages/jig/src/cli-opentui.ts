@@ -10,11 +10,15 @@ import type {
 import {
   type PrivateDashboardDetailPart,
   type PrivateDashboardState,
+  privateDashboardAligned,
   privateDashboardDetailParts,
   privateDashboardFrame,
+  privateDashboardHasContext,
   privateDashboardPreviewState,
   privateDashboardReferences,
+  privateDashboardTableColumns,
 } from './cli-dashboard.js'
+import { privateCallObservationSpans, privateDisplayDuration } from './cli-display-semantics.js'
 import { privateCliSyntaxHex } from './cli-presentation.js'
 import {
   type PrivateRunModel,
@@ -88,10 +92,12 @@ export class PrivateOpenTuiDashboard {
   readonly #shell: BoxRenderable
   readonly #list: ScrollBoxRenderable
   readonly #detail: ScrollBoxRenderable
+  readonly #navigation: ScrollBoxRenderable
   readonly #header: InstanceType<Core['TextRenderable']>
   readonly #status: InstanceType<Core['TextRenderable']>
   readonly #tabs: InstanceType<Core['TextRenderable']>
   readonly #attention: InstanceType<Core['TextRenderable']>
+  readonly #feedback: InstanceType<Core['TextRenderable']>
   readonly #footer: InstanceType<Core['TextRenderable']>
   readonly #body: BoxRenderable
   readonly #compact: InstanceType<Core['TextRenderable']>
@@ -99,6 +105,8 @@ export class PrivateOpenTuiDashboard {
   #lastFrame = ''
   #selection = ''
   #reveal: string | undefined
+  #revealNavigation: string | undefined
+  #revealDetail: string | undefined
   #detailScrollTarget: number | undefined
   #closed = false
   readonly #layout = () => {
@@ -111,6 +119,14 @@ export class PrivateOpenTuiDashboard {
       const reveal = this.#reveal
       this.#reveal = undefined
       this.#list.scrollChildIntoView(reveal)
+    }
+    if (this.#revealNavigation && !this.#closed) {
+      this.#navigation.scrollChildIntoView(this.#revealNavigation)
+      this.#revealNavigation = undefined
+    }
+    if (this.#revealDetail && !this.#closed) {
+      this.#detail.scrollChildIntoView(this.#revealDetail)
+      this.#revealDetail = undefined
     }
   }
   private constructor(
@@ -139,10 +155,9 @@ export class PrivateOpenTuiDashboard {
       attributes: core.TextAttributes.BOLD,
       truncate: true,
     })
-    this.#status = new core.TextRenderable(renderer, { height: 2, fg: p.muted, truncate: true })
+    this.#status = new core.TextRenderable(renderer, { height: 1, fg: p.muted, truncate: true })
     this.#tabs = new core.TextRenderable(renderer, {
-      height: 2,
-      paddingTop: 1,
+      height: 1,
       fg: p.accent,
       attributes: core.TextAttributes.BOLD,
       truncate: true,
@@ -150,12 +165,19 @@ export class PrivateOpenTuiDashboard {
     this.#attention = new core.TextRenderable(renderer, { height: 1, fg: p.muted, truncate: true })
     for (const item of [this.#header, this.#status, this.#tabs, this.#attention])
       this.#shell.add(item)
+    this.#feedback = new core.TextRenderable(renderer, {
+      height: 1,
+      fg: p.accent,
+      truncate: true,
+      visible: false,
+    })
+    this.#shell.add(this.#feedback)
     this.#body = new core.BoxRenderable(renderer, {
       width: '100%',
       flexGrow: 1,
       minHeight: 1,
       flexDirection: 'row',
-      gap: 2,
+      gap: 1,
       marginTop: 1,
     })
     this.#shell.add(this.#body)
@@ -171,10 +193,20 @@ export class PrivateOpenTuiDashboard {
       titleColor: p.muted,
       backgroundColor: p.panel,
       paddingX: 1,
-      paddingY: 1,
+      paddingY: 0,
     }
-    this.#list = new core.ScrollBoxRenderable(renderer, { ...options, width: '44%' })
-    this.#detail = new core.ScrollBoxRenderable(renderer, { ...options, width: '54%' })
+    this.#navigation = new core.ScrollBoxRenderable(renderer, {
+      ...options,
+      width: 22,
+      visible: false,
+    })
+    this.#list = new core.ScrollBoxRenderable(renderer, { ...options, width: '100%' })
+    this.#detail = new core.ScrollBoxRenderable(renderer, {
+      ...options,
+      width: '40%',
+      visible: false,
+    })
+    this.#body.add(this.#navigation)
     this.#body.add(this.#list)
     this.#body.add(this.#detail)
     this.#footer = new core.TextRenderable(renderer, {
@@ -348,84 +380,149 @@ export class PrivateOpenTuiDashboard {
       'muted',
     )
   }
-  #record(record: PrivateWorkspaceRecord): string {
-    if (record.file)
-      return `${record.file.path}\n${record.file.state} · ${record.file.bytes} bytes${record.file.clipped ? ' · clipped excerpt' : ''}`
-    if (record.row && record.collection) {
-      return record.collection.columns
-        .slice(0, 3)
-        .map((c) => {
-          const v = record.row!.cells[c.key] ?? null
-          return `${c.label}: ${v !== null && typeof v === 'object' ? this.model.resolve(record.publisher ?? 'root', v).label : String(v)}`
-        })
-        .join('\n')
-    }
-    if (record.call)
-      return `${'  '.repeat(Math.min(record.depth ?? 0, 12))}${this.model.descendants(record.call.key).length ? (this.model.treeExpanded(record.call.key) ? '▾' : '▸') : '·'} ${one(record.call.intent ?? record.call.slot)}\n${record.call.state}${record.hidden ? ` · ${record.hidden} calls collapsed${record.issues ? ` · ${record.issues} issues` : ''}` : ''}`
-    if (record.activity) return record.activity.label
-    if (record.journal)
-      return `${record.journal.source}${record.journal.kind === 'diagnostic' ? ' · importance unspecified' : record.journal.importance !== 'info' ? ` · reported ${record.journal.importance}` : ''}\n${privateTruncateUpdate(record.journal.text.split('\n')[0] ?? '', 120)}`
-    if (record.block?.kind === 'progress') {
-      const b = record.block
-      const size = 16,
-        filled = b.total ? Math.min(size, Math.floor((b.completed / b.total) * size)) : 0
-      return `${b.label}\n${b.total ? `${'━'.repeat(filled)}${'─'.repeat(size - filled)}  ` : ''}${b.completed}${b.total === undefined ? '' : ` / ${b.total}`}${b.unit ? ` ${b.unit}` : ''}`
-    }
-    if (record.block?.kind === 'facts') return `Facts · ${record.block.items.length} fields`
-    return privateTruncateUpdate(
-      (record.block?.kind === 'report' ? record.block.text : (record.text ?? '')).split('\n')[0] ??
-        '',
-      120,
+  #line(parent: BoxRenderable, content: string | StyledText, strong = false) {
+    const p = process.env.JIG_THEME === 'one-light' ? palettes.light : palettes.dark
+    parent.add(
+      new this.core.TextRenderable(this.renderer, {
+        content: typeof content === 'string' ? safe(content) : content,
+        fg: p.fg,
+        attributes: strong ? this.core.TextAttributes.BOLD : 0,
+        width: '100%',
+        height: 1,
+        truncate: true,
+        flexShrink: 0,
+      }),
     )
   }
-  #card(parent: BoxRenderable, record: PrivateWorkspaceRecord, label: string, selected: boolean) {
-    if (record.row && record.collection) {
-      for (const [index, c] of record.collection.columns.slice(0, 3).entries()) {
-        const value = record.row.cells[c.key] ?? null
-        const ref = value !== null && typeof value === 'object'
-        const text = ref ? this.model.resolve(record.publisher ?? 'root', value).label : value
-        this.#text(
-          parent,
-          index === 0
-            ? safe(String(text))
-            : this.#field(c.label, text as string | number | boolean | null, ref),
-          index === 0 ? 'accent' : 'normal',
-          index === 0,
+  #brief(record: PrivateWorkspaceRecord): string {
+    if (record.file) return record.file.path
+    if (record.row && record.collection)
+      return String(record.row.cells[record.collection.columns[0]!.key] ?? 'null')
+    if (record.call) return record.call.intent ?? record.call.slot
+    if (record.activity) return record.activity.label
+    if (record.journal) return record.journal.text.split('\n')[0] ?? ''
+    if (record.block?.kind === 'progress') return record.block.label
+    if (record.block?.kind === 'facts') return 'Facts'
+    return (
+      (record.block?.kind === 'report' ? record.block.text : (record.text ?? '')).split('\n')[0] ??
+      ''
+    )
+  }
+  #row(
+    parent: BoxRenderable,
+    record: PrivateWorkspaceRecord,
+    width: number,
+    table: ReturnType<typeof privateDashboardTableColumns> | undefined,
+    spans: ReturnType<typeof privateCallObservationSpans>['spans'],
+  ) {
+    const p = process.env.JIG_THEME === 'one-light' ? palettes.light : palettes.dark
+    const selected = this.model.record?.key === record.key
+    const line = new this.core.StyledText([])
+    const add = (text: string, color = p.fg, bold = false) =>
+      line.chunks.push(bold ? this.core.bold(this.core.fg(color)(text)) : this.core.fg(color)(text))
+    add(selected ? '› ' : '  ', selected ? p.accent : p.muted, selected)
+    if (record.row && table) {
+      table.columns.forEach((column, index) => {
+        if (index) add(' │ ', p.edge)
+        const value = record.row!.cells[column.key] ?? null
+        const reference = value !== null && typeof value === 'object'
+        const text = reference
+          ? this.model.resolve(record.publisher ?? 'root', value).label
+          : String(value)
+        add(
+          privateDashboardAligned(one(text), column.size, column.numeric),
+          reference || index === 0 ? p.accent : p.fg,
+          selected && index === 0,
+        )
+      })
+    } else if (record.call) {
+      const n = record.call
+      const indent = '  '.repeat(Math.min(record.depth ?? 0, 12))
+      const branch = this.model.descendants(n.key).length
+        ? this.model.treeExpanded(n.key)
+          ? '▾'
+          : '▸'
+        : '·'
+      const interval = spans.get(n.key)
+      const timeline = width >= 90 && interval
+      const suffix = record.hidden
+        ? ` +${record.hidden}${record.issues ? ` / ${record.issues} issues` : ''}`
+        : ''
+      const stateWidth = n.state.length + suffix.length
+      const titleWidth = Math.max(8, width - 4 - indent.length - stateWidth - (timeline ? 32 : 0))
+      add(indent + branch + ' ', p.muted)
+      add(
+        privateDashboardAligned(one(n.intent ?? n.slot), titleWidth),
+        selected ? p.accent : p.fg,
+        selected,
+      )
+      add('  ')
+      const tone =
+        n.state === 'failed'
+          ? p.error
+          : n.state === 'uncertain' || n.state === 'cancel-requested'
+            ? p.warning
+            : n.state === 'active' || n.state === 'requested'
+              ? p.accent
+              : p.muted
+      add(n.state, tone)
+      add(suffix, record.issues ? p.warning : p.muted)
+      if (timeline) {
+        const start = Math.min(15, Math.floor((interval.x * 16) / 1000))
+        const size = Math.max(1, Math.min(16 - start, Math.round((interval.width * 16) / 1000)))
+        add('  ' + ' '.repeat(start), p.muted)
+        add((interval.milliseconds ? '━' : '·').repeat(size), tone)
+        add(
+          ' '.repeat(16 - start - size) + ' ' + privateDisplayDuration(interval.milliseconds),
+          p.muted,
         )
       }
-    } else if (record.call) {
-      const [title, state] = label.split('\n')
-      this.#text(parent, title!, selected ? 'accent' : 'normal', selected)
-      this.#text(
-        parent,
-        state!,
-        record.call.state === 'failed'
-          ? 'error'
-          : record.call.state === 'uncertain' || record.call.state === 'cancel-requested'
-            ? 'warning'
-            : record.call.state === 'active'
-              ? 'accent'
-              : 'muted',
-        record.call.state === 'active',
+    } else if (record.file) {
+      const pathWidth = Math.max(8, width - 26)
+      add(
+        privateDashboardAligned(one(record.file.path), pathWidth),
+        selected ? p.accent : p.fg,
+        selected,
       )
+      add('  ' + record.file.state + (record.file.clipped ? ' · clipped' : ''), p.muted)
     } else if (record.block?.kind === 'progress') {
-      const [title, counts] = label.split('\n')
-      this.#text(parent, title!, 'accent', true)
-      this.#text(parent, counts!, 'accent')
-    } else {
-      const [title, ...body] = label.split('\n')
-      this.#text(
-        parent,
-        title!,
-        record.journal?.importance === 'error'
-          ? 'error'
-          : record.journal?.importance === 'warning'
-            ? 'warning'
-            : 'accent',
-        true,
+      const b = record.block
+      const count = `${b.completed}${b.total === undefined ? '' : ` / ${b.total}`}${b.unit ? ` ${one(b.unit)}` : ''}`
+      add(
+        privateTruncateUpdate(one(b.label), Math.max(8, width - count.length - 20)),
+        p.fg,
+        selected,
       )
-      if (body.length) this.#text(parent, body.join('\n'))
+      if (b.total) {
+        const filled = Math.min(12, Math.floor((b.completed / b.total) * 12))
+        add('  ' + '━'.repeat(filled) + '─'.repeat(12 - filled), p.accent)
+      }
+      add('  ' + count, p.accent)
+    } else {
+      const prefix = record.journal
+        ? `${one(record.journal.source)} · `
+        : record.activity
+          ? `${one(this.model.sourceLabel(record.publisher!))} · `
+          : ''
+      add(prefix, p.muted)
+      const tone =
+        record.journal?.importance === 'error'
+          ? p.error
+          : record.journal?.importance === 'warning'
+            ? p.warning
+            : selected
+              ? p.accent
+              : p.fg
+      let text = this.#brief(record)
+      if (record.block?.kind === 'facts')
+        text += ` · ${record.block.items.length} fields · Enter expand`
+      add(
+        privateTruncateUpdate(one(text), Math.max(1, width - 2 - privateTerminalWidth(prefix))),
+        tone,
+        selected,
+      )
     }
+    this.#line(parent, line)
   }
   #capture(color: boolean): string {
     const text = privateOpenTuiCells(this.renderer.currentRenderBuffer.getSpanLines(), color)
@@ -497,31 +594,27 @@ export class PrivateOpenTuiDashboard {
       Math.max(1, width - 4 - privateTerminalWidth(`Jig  ·    ·  ${phase}`)),
     )
     this.#header.content = `Jig  ·  ${target}  ·  ${phase}`
+    const application = facts
+      ? privateTruncateUpdate(one(facts.application), Math.max(8, Math.min(36, width - 60)))
+      : ''
+    const splitFacts = Boolean(
+      facts &&
+        privateTerminalWidth(
+          `${model.workspace.recorded ? 'Recorded ' : ''}Execution ${one(facts.execution)} · Application ${application} · Cleanup ${one(facts.cleanup)} · Delivery ${one(facts.delivery)}`,
+        ) >
+          width - 4,
+    )
+    this.#status.height = splitFacts ? 2 : 1
     this.#status.content = facts
       ? this.core
-          .t`${model.workspace.recorded ? 'Recorded ' : ''}${this.core.fg(model.workspace.recorded ? p.muted : facts.execution === 'succeeded' ? p.success : facts.execution === 'failed' ? p.error : p.warning)(`Execution ${one(facts.execution)}`)}  ·  Application ${one(facts.application)}\n${this.core.fg(model.workspace.recorded ? p.muted : facts.cleanup === 'complete' ? p.success : p.error)(`Cleanup ${one(facts.cleanup)}`)}  ·  ${this.core.fg(model.workspace.recorded ? p.muted : facts.delivery === 'written' ? p.success : facts.delivery === 'failed' ? p.error : p.muted)(`Delivery ${one(facts.delivery)}`)}`
-      : `elapsed ${elapsed}s  ·  execution limit ${model.workspace.limitMs === undefined ? 'unspecified' : `${Math.floor(model.workspace.limitMs / 1000)}s`}\nFlow reports are provisional`
-    const views = [
-      ...(model.workspace.recorded
-        ? []
-        : [
-            { key: 'activity', title: 'Activity' },
-            { key: 'overview', title: 'Overview' },
-            { key: 'files', title: 'Delivered files' },
-          ]),
-      ...[...model.views.values()].map((v) => ({
-        key: v.key,
-        title: `${model.workspace.recorded ? '' : `${model.sourceLabel(v.publisher)}: `}${v.value.title}`,
-      })),
-    ]
-    const allTabs = views
-      .map((v) => (v.key === model.surface ? `[${one(v.title)}]` : one(v.title)))
-      .join('   ')
-    const selectedTab = views.findIndex((v) => v.key === model.surface)
-    this.#tabs.content =
-      privateTerminalWidth(allTabs) <= width - 4
-        ? allTabs
-        : `${selectedTab + 1}/${views.length} [${one(views[selectedTab]?.title ?? 'Activity')}] · Tab views`
+          .t`${model.workspace.recorded ? 'Recorded ' : ''}${this.core.fg(model.workspace.recorded ? p.muted : facts.execution === 'succeeded' ? p.success : facts.execution === 'failed' ? p.error : p.warning)(`Execution ${one(facts.execution)}`)} · Application ${application}${splitFacts ? '\n' : ' · '}${this.core.fg(model.workspace.recorded ? p.muted : facts.cleanup === 'complete' ? p.success : p.error)(`Cleanup ${one(facts.cleanup)}`)} · ${this.core.fg(model.workspace.recorded ? p.muted : facts.delivery === 'written' ? p.success : facts.delivery === 'failed' ? p.error : p.muted)(`Delivery ${one(facts.delivery)}`)}`
+      : `elapsed ${elapsed}s · limit ${model.workspace.limitMs === undefined ? 'unspecified' : `${Math.floor(model.workspace.limitMs / 1000)}s`} · Application reports provisional`
+    const destinations = model.destinations()
+    const destination = destinations.find((entry) => entry.key === model.surface)
+    const rail = width >= 150 && height >= 24
+    this.#navigation.visible = rail
+    this.#navigation.title = model.workspace.recorded ? ' Saved packet ' : ' Run workspace '
+    this.#tabs.content = `${destination?.group === 'application' ? `Application · ${one(destination.source)} › ` : model.workspace.recorded ? 'Recorded › ' : 'Run › '}[${one(destination?.title ?? 'Activity')}] · v all views${rail ? '' : ' · Tab next'}`
     const sticky = model.sticky
     const omissions = Object.entries(model.journalOmitted)
       .filter(([, n]) => n)
@@ -545,25 +638,41 @@ export class PrivateOpenTuiDashboard {
         ? p.error
         : p.warning
       : p.muted
-    const wide = width >= 110 && height >= 20
+    this.#feedback.visible = Boolean(model.feedback)
+    this.#feedback.content = model.feedback ? `Action · ${one(model.feedback)}` : ''
+    const available = width - 4 - (rail ? 23 : 0)
+    model.local.teaserBytes = 4096
+    const selectedPrefix = model.record?.journal
+      ? `${one(model.record.journal.source)} · `
+      : model.record?.activity
+        ? `${one(model.sourceLabel(model.record.publisher!))} · `
+        : ''
+    const teaserWidth = (cells: number) =>
+      Math.max(1, cells - 6 - privateTerminalWidth(selectedPrefix))
+    model.local.teaserWidth = teaserWidth(available)
+    const wide = width >= 118 && height >= 24 && privateDashboardHasContext(model, model.record)
+    const detailWidth = Math.max(40, Math.floor(available * 0.42))
+    const listWidth = wide ? available - detailWidth - 1 : available
+    model.local.teaserWidth = teaserWidth(listWidth)
     this.#list.visible = !panel
-    this.#list.width = wide ? Math.floor((width - 6) * 0.43) : width - (width < 50 ? 0 : 4)
+    this.#list.width = listWidth
     this.#detail.visible = Boolean(panel || wide)
-    this.#detail.width =
-      panel || !wide
-        ? width - (width < 50 ? 0 : 4)
-        : Math.max(1, width - 6 - Math.floor((width - 6) * 0.43))
-    this.#list.title = ` ${one(model.selected?.value.title ?? (model.surface === 'overview' ? 'Execution graph' : model.surface === 'files' ? 'Delivered files' : 'Activity'))} `
-    this.#detail.title = ` ${panel ? (panel.kind === 'preview' ? 'Immutable captured preview' : panel.kind) : 'Selected detail'}${!panel || panel.kind === 'detail' ? ` · ${privateTruncateUpdate(one(model.record ? (this.#record(model.record).split('\n')[0] ?? '') : ''), 64)}` : ''} `
-    const records = model.records(),
-      labels = records.map((record) => this.#record(record)),
-      detail = model.record
-        ? privateDashboardDetailParts(model, model.record, true, false)
-        : [{ kind: 'note' as const, text: model.context }]
+    this.#detail.width = panel ? available : detailWidth
+    this.#list.title = ` ${one(destination?.title ?? 'Activity')} `
+    this.#detail.title = ` ${panel ? (panel.kind === 'preview' ? 'Captured evidence' : panel.kind) : 'Context'} `
+    const records = model.records()
+    const detail = model.record ? privateDashboardDetailParts(model, model.record, true, false) : []
+    const spans = privateCallObservationSpans(
+      [...model.calls.values()].map((call) => ({
+        id: call.key,
+        firstObservedAt: call.firstObservedAt,
+        observedAt: call.time,
+      })),
+    )
     const signature = JSON.stringify([
       model.surface,
       records,
-      labels,
+      destinations,
       detail,
       privateDashboardReferences(model.record).map(
         (ref) => model.resolve(model.record?.publisher ?? 'root', ref).label,
@@ -590,8 +699,46 @@ export class PrivateOpenTuiDashboard {
           : panel?.kind === 'detail' || panel?.kind === 'preview'
             ? panel.scroll
             : 0
-      for (const parent of [this.#list, this.#detail])
+      for (const parent of [this.#navigation, this.#list, this.#detail])
         for (const child of parent.getChildren()) child.destroyRecursively()
+      if (rail) {
+        let group = '',
+          source = ''
+        for (const [index, entry] of destinations.entries()) {
+          if (entry.group !== group) {
+            group = entry.group
+            this.#text(
+              this.#navigation,
+              group === 'application' ? '\nAPPLICATION' : group === 'recorded' ? 'RECORDED' : 'RUN',
+              'muted',
+              true,
+            )
+          }
+          if (entry.group === 'application' && entry.source !== source) {
+            source = entry.source
+            this.#line(this.#navigation, privateTruncateUpdate(one(source), 16))
+          }
+          const selected = entry.key === model.surface
+          const row = new this.core.BoxRenderable(this.renderer, {
+            id: `destination-${index}`,
+            width: '100%',
+            height: 1,
+            flexShrink: 0,
+            backgroundColor: selected ? p.select : p.panel,
+          })
+          this.#navigation.add(row)
+          this.#line(
+            row,
+            this.core.t`${this.core.fg(selected ? p.accent : p.muted)(
+              privateTruncateUpdate(
+                `${selected ? '›' : ' '} ${entry.icon} ${one(entry.title)}`,
+                18,
+              ),
+            )}`,
+          )
+          if (selected) this.#revealNavigation = `destination-${index}`
+        }
+      }
       if (panel) {
         // The bounded literal projection also serves compact accessible text and
         // all navigation overlays. OpenTUI owns the pane geometry and scrolling.
@@ -609,10 +756,38 @@ export class PrivateOpenTuiDashboard {
             privateDashboardDetailParts(model, model.record),
             model.record.publisher ?? 'root',
           )
+        } else if (panel.kind === 'views') {
+          let group = ''
+          for (const [index, entry] of destinations.entries()) {
+            if (entry.group !== group) {
+              group = entry.group
+              this.#text(
+                this.#detail,
+                group === 'application' ? 'APPLICATION' : group === 'recorded' ? 'RECORDED' : 'RUN',
+                'muted',
+                true,
+              )
+            }
+            const selected = entry.key === panel.selected
+            const row = new this.core.BoxRenderable(this.renderer, {
+              id: `view-choice-${index}`,
+              width: '100%',
+              flexShrink: 0,
+              backgroundColor: selected ? p.select : p.panel,
+            })
+            this.#detail.add(row)
+            this.#text(
+              row,
+              `${selected ? '›' : ' '} ${entry.title}${entry.source ? ` · ${entry.source}` : ''}`,
+              selected ? 'accent' : 'normal',
+              selected,
+            )
+            if (selected) this.#revealDetail = `view-choice-${index}`
+          }
         } else {
           const projection = privateDashboardFrame(
             model,
-            Math.max(18, width - 8),
+            Math.max(18, available - 4),
             100,
             false,
             true,
@@ -625,47 +800,112 @@ export class PrivateOpenTuiDashboard {
           this.#text(this.#detail, projection.lines.slice(start, -1).join('\n'))
         }
       } else {
+        if (model.surface === 'overview')
+          this.#text(
+            this.#list,
+            listWidth >= 94
+              ? 'Observed calls · common-scale observation spans'
+              : 'Observed calls · ← collapse · → expand',
+            'muted',
+          )
+        if (!records.length)
+          this.#text(
+            this.#list,
+            model.surface === 'overview'
+              ? 'Waiting for actual observed invocations'
+              : 'No retained entries',
+            'muted',
+          )
         let section = '',
-          collection = ''
+          collection = '',
+          activityGroup = ''
+        let table: ReturnType<typeof privateDashboardTableColumns> | undefined
         for (const [index, record] of records.entries()) {
+          if (model.surface === 'activity') {
+            const next =
+              record.kind === 'activity' || record.kind === 'host'
+                ? 'Current work'
+                : 'Recent activity'
+            if (next !== activityGroup) {
+              activityGroup = next
+              this.#text(this.#list, next, 'muted', true)
+            }
+          }
           if (record.section && record.section !== section) {
             section = record.section
-            this.#text(this.#list, section, 'muted', true)
+            this.#text(this.#list, '\n' + section, 'muted', true)
           }
           if (record.collection && collection !== record.collection.id) {
             collection = record.collection.id
+            const rows = model.visibleRows(record.collection)
+            table = privateDashboardTableColumns(
+              model,
+              record.publisher ?? 'root',
+              record.collection,
+              rows,
+              listWidth - 4,
+              3,
+            )
+            const filter = model.local.filters.get(collection)
+            const sort = model.local.sorts.get(collection)
             this.#text(
               this.#list,
-              `${record.collection.title} · ${model.visibleRows(record.collection).length} supplied${record.collection.total === undefined ? '' : ` / ${record.collection.total} reported`}`,
+              `${record.collection.title} · ${rows.length}${filter ? ` / ${record.collection.rows.length} · filtered` : ''}${record.collection.total === undefined || record.collection.total === record.collection.rows.length ? '' : ` / ${record.collection.total} reported`}${table.hidden ? ` · +${table.hidden} fields in detail` : ''}${sort ? ` · sort ${one(sort.key)}` : ''}`,
               'muted',
               true,
             )
+            this.#line(
+              this.#list,
+              this.core.t`${this.core.bold(
+                this.core.fg(p.label)(
+                  '  ' +
+                    table.columns
+                      .map((column) =>
+                        privateDashboardAligned(column.label, column.size, column.numeric),
+                      )
+                      .join(' │ '),
+                ),
+              )}`,
+            )
           }
           const selected = model.record?.key === record.key
-          const card = new this.core.BoxRenderable(this.renderer, {
+          const row = new this.core.BoxRenderable(this.renderer, {
             id: `record-${index}`,
             width: '100%',
-            paddingX: 1,
-            paddingY: record.row ? 1 : 0,
-            marginBottom: 1,
+            height: 1,
             flexShrink: 0,
             flexDirection: 'column',
-            border: ['left'],
-            borderColor: selected ? p.accent : p.edge,
             backgroundColor: selected ? p.select : p.panel,
           })
-          this.#list.add(card)
-          this.#card(card, record, labels[index]!, selected)
+          this.#list.add(row)
+          this.#row(row, record, listWidth - 4, record.collection ? table : undefined, spans.spans)
           if (selected && this.#selection !== `${model.surface}:${record.key}`)
             this.#reveal = `record-${index}`
         }
+        if (model.surface === 'overview' && model.omissions)
+          this.#text(this.#list, `${model.omissions} call observations omitted`, 'warning')
+        const omitted = Object.entries(model.journalOmitted)
+          .filter(([, count]) => count)
+          .map(([kind, count]) => `${count} ${kind}`)
+          .join(', ')
+        if (model.surface === 'activity' && omitted)
+          this.#text(this.#list, `History incomplete: ${omitted}`, 'warning')
+        if (model.surface === 'files' && model.workspace.recorded) {
+          const captured = [...model.views.values()].find(
+            (view) => view.publisher === 'saved-result' && view.value.id === 'files',
+          )
+          if (captured?.value.summary) this.#text(this.#list, captured.value.summary, 'muted')
+        }
         this.#selection = `${model.surface}:${model.record?.key}`
         const refs = privateDashboardReferences(model.record)
-        if (model.previewState && refs.length === 1 && refs[0]?.kind === 'artifact') {
+        if (
+          model.previewState &&
+          (model.record?.file || (refs.length === 1 && refs[0]?.kind === 'artifact'))
+        ) {
           this.#capturedContent(this.#detail)
-          this.#parts(this.#detail, detail, model.record?.publisher ?? 'root')
+          if (!model.record?.file)
+            this.#parts(this.#detail, detail, model.record?.publisher ?? 'root')
         } else this.#parts(this.#detail, detail, model.record?.publisher ?? 'root')
-        if (model.feedback) this.#text(this.#detail, model.feedback, 'muted')
       }
     }
     const exit = `q ${settled ? 'close' : 'inline'} · Ctrl-C ${settled ? 'close' : 'stop'}`
@@ -673,10 +913,10 @@ export class PrivateOpenTuiDashboard {
       panel?.kind === 'filter' || panel?.kind === 'preview-search'
         ? `Enter apply · Esc cancel · Ctrl-D leave · Ctrl-C ${settled ? 'close' : 'stop'}`
         : panel
-          ? `${exit} · Esc back · ${panel.kind === 'references' ? 'Enter open · ' : panel.kind === 'preview' ? '/ excerpt search · ' : ''}↑↓ scroll`
+          ? `${exit} · Esc back · ${panel.kind === 'views' || panel.kind === 'references' ? '↑↓ choose · Enter open' : panel.kind === 'preview' ? '/ excerpt search · ↑↓ scroll' : '↑↓ scroll'}`
           : width < 90
-            ? `${exit} · ! cause · Tab · ↑↓ · Enter · r refs · d diag · ? help`
-            : `${exit} · ! cause · Tab views · ↑↓ select · Enter detail · r references · d diagnostics · ? help`
+            ? `${exit} · ! cause · v views · ↑↓ · Enter · ? help`
+            : `${exit} · ! cause · Tab next · v views · ↑↓ select · Enter expand · r refs · ? help`
     // Overlay scrolling remains in the bounded input owner; list scrolling uses
     // native layout, with selected records revealed only after actual layout.
     if (!panel && this.#list.visible) this.#list.scrollTop = scroll

@@ -1378,7 +1378,7 @@ test('batched record-reference jumps clear originating detail before the first t
     expect(model.row?.id).toBe('beta')
     expect(keys.state.panels).toHaveLength(0)
     expect(frames.every((frame) => !frame.includes('Flow · detail'))).toBe(true)
-    expect(frames.at(-1)).toContain('[Flow: Records]')
+    expect(frames.at(-1)).toContain('Application › [Records]')
     expect(frames.at(-1)).toMatch(/\n> beta *\n/)
     input.emit('data', Buffer.from('\r'))
     expect(frames.at(-1)).toContain('Flow · detail')
@@ -1438,7 +1438,7 @@ test('detail scrolling beyond the end retains the final literal line and a finit
     panels: [{ kind: 'detail', key: record.key, signature: record.signature, scroll: 999 }],
   })
   expect(frame.lines.join('\n')).toContain('Last literal line')
-  expect(frame.scroll).toBe(1)
+  expect(frame.scroll).toBe(2)
 })
 
 test('Enter toggles the literal detail panel and keeps the same record', () => {
@@ -1720,7 +1720,7 @@ test('saved inspection exposes only recorded views and never promotes saved clai
   const model = new PrivateRunModel()
   model.configureWorkspace({ target: 'saved packet', startedAt: 1000, recorded: true })
   for (const [id, title] of [
-    ['result', 'Recorded result'],
+    ['recorded-result', 'Recorded result'],
     ['files', 'Files'],
     ['diagnostics', 'Diagnostics'],
   ]) {
@@ -1743,7 +1743,7 @@ test('saved inspection exposes only recorded views and never promotes saved clai
   const frame = privateDashboardFrame(model, 120, 45, true, true)
   const text = frame.lines.join('\n')
   expect(text).toContain('Saved result · read-only')
-  expect(text).toContain('[Recorded result] | Files | Diagnostics')
+  expect(text).toContain('[Recorded result] | Captured files | Diagnostics')
   expect(text).not.toContain('Activity | Overview')
   expect(text).not.toContain('Recorded: Recorded result')
   expect(text).not.toContain('elapsed')
@@ -2040,7 +2040,7 @@ test('auto artifact peeks fence A to B to A and capture replacement without stal
   expect(model.preview?.text).toBe('Current A')
 })
 
-test('host Delivered files is independent of views and only explicit inventory activation reads captured bytes', async () => {
+test('host Delivered files is independent of views and selection previews captured bytes', async () => {
   const model = new PrivateRunModel(),
     input = new Input()
   let previews = 0
@@ -2065,7 +2065,7 @@ test('host Delivered files is independent of views and only explicit inventory a
   expect(model.views.size).toBe(0)
   expect(model.records().map((record) => record.file?.path)).toEqual(['empty.txt', 'binary'])
   model.peekSelectedArtifact()
-  expect(previews).toBe(0)
+  expect(previews).toBe(1)
   const keyboard = new PrivateDashboardInput(
     model,
     () => {},

@@ -70,7 +70,7 @@ inspection. The [web display contract](web-display.md) owns local access,
 transport bounds, browser navigation and presentation lifetime.
 
 The shell presents host execution, cleanup, delivery and complete known safe
-causes separately from attributed domain reports. Overview is the actual observed
+causes separately from attributed domain reports. Execution is the actual observed
 invocation tree; application views compose literal reports, facts, measured
 progress and typed collections. Calls returning, reported 100%, EOF and view
 status never imply domain success. Auto/plain commit complete errors and warnings
@@ -80,31 +80,45 @@ commits complete retained essential causes before final stdout. Sticky attention
 and visible incompleteness survive view retirement. Narrow layouts shrink
 workspace before hiding the cause and disclose clipping.
 
-The explicit workspace has stable Activity, Overview and attributed domain tabs,
-labelled collection cards, collapsed reports, record details, local filter/sort,
-scrolling and explicitly selected references. All valid block types are reachable
-in supplied order. Wide layouts project selected literal details beside the list;
-selection alone never navigates a record/call reference. A selected entry with
+The explicit workspace groups host Execution, Activity and Delivered files separately
+from every attributed application view. Saved inspection has exactly one Recorded
+result, Captured files and Diagnostics destination, supplied by the recorded host
+adapter. Author-supplied names never select host navigation. A navigation rail is
+available at 150 columns and 24 rows; smaller layouts retain the current-view trail.
+`v` opens a grouped chooser that reveals the selected attributed destination within
+the viewport. Tab/Shift-Tab cycle the same destinations. View selection preserves
+viewer-local filters, sorting and stable record identity.
+
+All valid block types are reachable in supplied order. Lists use dense rows and
+aligned declared columns, showing at most the first three fields; full expansion
+retains every supplied field. Automatic context requires at least 118 columns and
+24 rows and meaningful additional selected content: authored details, hidden fields,
+facts, remaining or clipped report text, captured content, or an observed call's
+known cause or strictly scoped related report. Generic lifecycle metadata alone
+never splits the Execution view. Local action feedback remains visible without
+opening a duplicate pane and without replacing sticky attention. Empty-detail
+requests explain that fact. Report clipping accounts for prefixes, display cells
+and encoded bytes; the complete retained source stays reachable through expansion.
+
+Selection alone never navigates a record/call reference. A selected entry with
 exactly one distinct typed artifact reference, considering all cells and supplied
 details, may peek its available immutable text read-only. Entries with multiple
 distinct references require explicit selection; field labels and project names
-cannot choose one. The host's Delivered files surface remains reachable without
-an application view or automatic update reception. Explicit file selection shows
-content first, with size, provenance, availability and clipping as secondary
-metadata. Empty, non-text, unavailable and clipped text have distinct states.
-Expansion adds space, scrolling and literal search of the retained excerpt;
-it never claims to search uncaptured bytes. The information hierarchy separates
-list identity and brief observations, selected additional context, and explicitly
-expanded evidence or invocation identity. Lists preserve declared column order;
-native collection cards show the first three fields and put remaining fields
-beside supplied row details. Fact entries disclose their fields on selection.
-Report teasers disclose remaining text and references; shortened teasers retain
-their complete source in detail. Entries with no additional context explain that
-fact instead of opening a duplicate detail panel. Full record expansion retains
-all supplied fields. Automatic call detail explains the observed lifecycle and
-shows a readable UTC observation time and known cause; reviewed slot and original
-operation identity belong to explicit expansion. No command, result, duration or
-domain verdict is invented from call metadata.
+cannot choose one. Delivered files remains reachable without an application view
+or automatic update reception. Explicit file selection shows content first, with
+size, provenance, availability and clipping as secondary metadata. Empty, non-text,
+unavailable and clipped text have distinct states. Expansion reuses the retained
+preview, adds space, scrolling and literal search of the retained excerpt, and
+never claims to search uncaptured bytes. Selection and capture generations fence
+late completion; busy selection retries only the latest identity.
+
+The hierarchy separates list identity and brief observations, selected additional
+context, and explicitly expanded evidence or invocation identity. Call details
+retain readable UTC observation time; reviewed slot and original operation identity
+belong to explicit expansion. Wide Execution rows may show common-scale intervals
+from first to latest actual observation. Invalid or reversed clocks have no span.
+These intervals are observations, never inferred execution duration, progress,
+commands, results or domain verdicts.
 
 Navigation, headings, declared labels, typed values, measured counts and host
 states have distinct foreground roles. Active calls use an accent, returned calls
@@ -126,8 +140,14 @@ severity remains unknown; text content never determines severity.
 References can resolve current same-publisher
 records, actual own calls and verified delivered files. Previews use bounded
 immutable capture, never mutable destination reads. Escape dismisses local help,
-filter, reference selection, attention, preview or detail before leaving. Live q,
-standalone Escape or input EOF
+filter, view/reference selection, attention, preview or detail first. Explicit typed
+record/call jumps retain at most 16 return origins with surface, stable record and
+scroll identity. Escape then returns through that history, skipping retired
+intermediate destinations in one action and repairing removed rows to a preceding
+survivor. If all origins retired, it remains in the current valid view with action
+feedback; a subsequent Escape performs normal exit. Return navigation checks any
+explicit enclosing lifetime before mutation. Tab and chooser destination selection
+clear return history. Live q, standalone Escape without a panel/history, or input EOF
 restores input and continues inline, without re-entering later. Live Ctrl-C uses
 existing cancellation and cleanup. After all execution, cleanup and delivery
 settle, an inspector still open shows literal settled facts and read-only results;

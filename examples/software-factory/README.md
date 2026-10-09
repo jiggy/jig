@@ -53,7 +53,7 @@ The factory identifies jobs by their optional `label` (or their `id`).
 Use `jig run --display dashboard` for a workspace that starts in **Activity**.
 **Jobs** contains goals, editable source files, reviewed approach and outcomes;
 **Checks** contains repository tests and independent acceptance cases;
-**Patches** contains checked candidates for human review. **Overview** shows
+**Patches** contains checked candidates for human review. **Execution** shows
 the actual calls. Select a record and press Enter for details; `!` opens a
 blocking cause, and `r` selects an evidence reference. Press `q` during work
 to continue in the ordinary transcript. The read-only completed inspector stays
