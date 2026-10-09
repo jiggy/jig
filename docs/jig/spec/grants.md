@@ -80,6 +80,13 @@ and 1 MiB total. Files must be singly linked. Each Binding permits at most eight
 slots of each resource kind within its 256-slot bound. Multiple slots do not
 increase concurrent effect capacity, root reservations or deadlines.
 
+`jig agent --grant grants/agent.json --client codex` edits an existing named ACP
+policy without loading project code. It preserves turn/session limits and requires
+explicit model replacement or pin removal when changing a pinned client. The
+[CLI contract](cli-experience.md#editing-an-agent-grant) defines authoring, publication
+and failure bounds. Editing source never updates an admitted generation; review
+must separately adopt the policy.
+
 ## Review and admission
 
 `jig review` shows changes to recipients and effective policies, including

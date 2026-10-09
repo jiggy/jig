@@ -265,7 +265,7 @@ export async function createProject(
     }
     created.push({ kind: 'directory', path: target })
 
-    for (const name of ['flows', 'bindings'] as const) {
+    for (const name of ['flows', 'bindings', ...(agent === undefined ? [] : ['grants'])]) {
       const path = join(target, name)
       await fileSystem.mkdir(path)
       created.push({ kind: 'directory', path })
@@ -330,6 +330,7 @@ function renderJigModule(agent?: ProjectInitAgent): string {
     'export default defineJig({',
     '  flows: discover("./flows"),',
     '  bindings: discover("./bindings"),',
+    ...(agent === undefined ? [] : ['  grants: discover("./grants"),']),
     ...(agent === undefined
       ? []
       : ['  defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" },']),
@@ -351,19 +352,22 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
         '',
         'export default defineBinding({',
         '  package: "npm:@jigging/agent-acp",',
-        `  slots: { native: { kind: "acp", client: "${client}" } },`,
+        '  slots: { native: "grant:agent" },',
         '});',
         '',
       ].join('\n'),
     ],
+    ['grants/agent.json', `${JSON.stringify({ kind: 'acp', client }, null, 2)}\n`],
     [
       'README.md',
       [
         '# Your Jig project',
         '',
         `The ordinary Agent Flow uses your selected ${client} client. Its dependency is`,
-        'in `package.json`, its resource grant in `bindings/agent.ts`, and its project',
+        'in `package.json`, its resource grant in `grants/agent.json`, and its project',
         'selection in `jig.ts`. Change these ordinary files to adapt the selection.',
+        'Use `jig agent --grant grants/agent.json --client codex` to edit the grant',
+        '(choose codex, claude or pi), then review the changed source separately.',
         '',
         'Configure the native installation and operator authentication described in',
         'https://jig.md/guide/agents, then run:',

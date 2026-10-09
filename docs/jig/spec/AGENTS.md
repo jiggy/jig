@@ -9,7 +9,8 @@ descriptors.
 
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
   It also owns final failure ordering, concise human packet summaries, Agent
-  setup cause/selection locations, and one dependency-network notice per review.
+  setup cause/selection locations, inert named ACP grant edits, compact inline
+  work projection/root-summary deduplication, and one dependency-network notice per review.
   Schema authoring recovery identifies the required dialect and supported
   vocabulary without exposing rejected values or private compiler diagnostics.
   Command syntax accents omit Markdown delimiters; prompts wait for queued

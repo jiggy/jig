@@ -139,12 +139,13 @@ test('attention reserves host causes atomically within the aggregate byte ceilin
   expect(model.incomplete).toBeDefined()
 })
 
-test('final summaries settle all 32 retained views without overflowing an async writer', async () => {
+test('final compact summary retains all 32 views and drains only the selected root summary', async () => {
   let output = '',
     failure = false
   const progress = new PrivateCliProgress(
     false,
     async (text) => {
+      await Promise.resolve()
       output += text
     },
     undefined,
@@ -155,10 +156,25 @@ test('final summaries settle all 32 retained views without overflowing an async 
   })
   for (let source = 0; source < 4; source++)
     for (let id = 0; id < 8; id++)
-      progress.model.acceptView(`source:${source}`, { ...v(String(id)), landing: undefined } as any)
+      progress.model.acceptView(source === 0 ? 'root' : `source:${source}`, {
+        ...v(String(id)),
+        title: `View ${source}/${id}`,
+        landing: source === 0 && id === 3 ? true : undefined,
+        summary: `Retained summary ${source}/${id}`,
+      } as any)
+  const values = [...progress.model.views.values()].map((view) => view.value)
   await progress.settleDisplay({ status: 'succeeded', outcome: 'done', output: null })
   expect(failure).toBe(false)
-  expect(output.match(/observation ended/gi)).toHaveLength(32)
+  expect(progress.model.views.size).toBe(32)
+  expect([...progress.model.views.values()].map((view) => view.value)).toEqual(values)
+  expect(output).toContain('Flow / View 0/3: Observation ended')
+  expect(output).toContain('application reports remain provisional')
+  expect(output.match(/Retained summary/g)).toHaveLength(1)
+  expect(output).toContain('Retained summary 0/3')
+  expect(output.match(/observation ended/gi)).toHaveLength(1)
+  expect(output).not.toContain('View 1/')
+  expect(output).not.toContain('View 2/')
+  expect(output).not.toContain('View 3/')
   progress.close()
   await progress.flush()
 })

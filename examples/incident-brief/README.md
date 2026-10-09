@@ -7,12 +7,12 @@ Commentary refines the draft in its existing conversation. A separately supplied
 replacement of files or instructions triggers one handoff to a fresh conversation.
 
 Download this directory as an ordinary project. With Jig installed, configure
-the included Agent Binding and your native client as described in the
+the included `grants/agent.json` and your native client as described in the
 [conversation guide](https://jig.md/guide/conversations). From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run --display tui
+jig run --display tui --out brief-result
 ```
 
 Review prepares the declared package dependencies; no repository-private tools
@@ -42,6 +42,11 @@ Jig alpha supplies this importer.
 
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
+Use `jig agent --grant grants/agent.json --client codex` before review to choose
+your installed client while preserving its two-turn allowance. Choose a new
+`--out` destination for repeat runs, such as `brief-result-2`. Full branch answers
+and conversation evidence remain in `result.json`; concise answer excerpts are
+shown when a packet was written. Without `--out`, the complete result is printed.
 The reviewed entrypoint in `jig.ts` selects the brief, input and three-minute
 deadline. Override an argument when needed, for example `jig run --input @my-incident.json`.
 Successful output contains a proposed brief, independent questions, actual

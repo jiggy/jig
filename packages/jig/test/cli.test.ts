@@ -384,7 +384,14 @@ test.each(['codex', 'claude', 'pi'] as const)(
         dependencies: { '@jigging/agent-acp': manifest.version },
       })
       expect(await Bun.file(join(destination, 'bindings/agent.ts')).text()).toContain(
-        `slots: { native: { kind: "acp", client: "${client}" } }`,
+        'slots: { native: "grant:agent" }',
+      )
+      expect(await Bun.file(join(destination, 'grants/agent.json')).json()).toEqual({
+        kind: 'acp',
+        client,
+      })
+      expect(await Bun.file(join(destination, 'jig.ts')).text()).toContain(
+        'grants: discover("./grants")',
       )
       expect(await Bun.file(join(destination, 'jig.ts')).text()).toContain(
         'defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }',
@@ -427,9 +434,10 @@ test('interactive Agent selection is explicit and cancellation creates nothing',
       if (answer === 'pi') {
         expect(code).toBe(0)
         expect(await readdir(join(root, 'project/flows'))).toEqual([])
-        expect(await Bun.file(join(root, 'project/bindings/agent.ts')).text()).toContain(
-          'client: "pi"',
-        )
+        expect(await Bun.file(join(root, 'project/grants/agent.json')).json()).toEqual({
+          kind: 'acp',
+          client: 'pi',
+        })
       } else {
         expect(code).toBe(answer === '' ? 0 : 2)
         expect(await readdir(root)).toEqual([])
@@ -2883,4 +2891,113 @@ describe('finite Jig project commands', () => {
       },
     }
   }
+})
+
+describe('Agent grant authoring command', () => {
+  test('edits a named file without evaluating source or changing approval', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-agent-cli-'))
+    let output = '',
+      error = ''
+    try {
+      await mkdir(join(root, 'grants'))
+      await writeFile(
+        join(root, 'grants/agent.json'),
+        '{"kind":"acp","client":"pi","maxTurns":2}\n',
+      )
+      await writeFile(join(root, 'jig.ts'), 'throw new Error("must not evaluate")\n')
+      await writeFile(join(root, 'jig.lock'), 'retained approval fixture\n')
+      const args = ['agent', '--grant', 'grants/agent.json', '--client', 'codex']
+      expect(privateCliRequiresHost(args)).toBeFalse()
+      const options: PrivateCliOptions = {
+        currentDirectory: root,
+        host: {
+          acquire: async () => {
+            throw new Error('must not acquire')
+          },
+        },
+        writeOutput: (text) => {
+          output += text
+        },
+        writeError: (text) => {
+          error += text
+        },
+      }
+      expect(await main(args, options)).toBe(0)
+      expect(error).toBe('')
+      expect(await Bun.file(join(root, 'grants/agent.json')).json()).toEqual({
+        kind: 'acp',
+        client: 'codex',
+        maxTurns: 2,
+      })
+      expect(await readFile(join(root, 'jig.lock'), 'utf8')).toBe('retained approval fixture\n')
+      expect(output).toContain('Updated Agent grant "grants/agent.json"')
+      expect(output).toContain('pi -> codex')
+      expect(output).toContain('$ jig review')
+      expect(output).toContain('No execution approved or Flow started')
+      const before = await readFile(join(root, 'grants/agent.json'))
+      expect(await main(args, options)).toBe(0)
+      expect(await readFile(join(root, 'grants/agent.json'))).toEqual(before)
+      expect(output).toContain('Unchanged Agent grant')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test.each(
+    [
+      ['agent'],
+      ['agent', '--client', 'codex'],
+      ['agent', '--grant', 'grants/agent.json', '--client', 'other'],
+      ['agent', '--grant', '--client', 'codex'],
+      ['agent', '--grant', 'grants/agent.json', '--client', 'codex', '--client', 'pi'],
+      [
+        'agent',
+        '--grant',
+        'grants/agent.json',
+        '--client',
+        'codex',
+        '--model',
+        'model',
+        '--default-model',
+      ],
+    ].map((args) => [args]),
+  )('rejects invalid grammar before source access: %j', async (args) => {
+    let error = ''
+    expect(
+      await main(args, {
+        currentDirectory: '/absent',
+        writeError: (text) => {
+          error += text
+        },
+      }),
+    ).toBe(2)
+    expect(error).toContain('JIG_USAGE')
+    expect(error).toContain('$ jig agent --help')
+  })
+
+  test('help and completion expose named client selection', async () => {
+    let output = ''
+    expect(
+      await main(['agent', '--help'], {
+        writeOutput: (text) => {
+          output += text
+        },
+      }),
+    ).toBe(0)
+    expect(output).toContain('--default-model')
+    expect(output).toContain('operator configuration')
+    for (const shell of ['bash', 'zsh', 'fish']) {
+      output = ''
+      expect(
+        await main(['completion', shell], {
+          writeOutput: (text) => {
+            output += text
+          },
+        }),
+      ).toBe(0)
+      expect(output).toContain('agent')
+      expect(output).toContain('default-model')
+      expect(output).toContain('codex claude pi')
+    }
+  })
 })

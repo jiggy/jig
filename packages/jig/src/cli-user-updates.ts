@@ -8,9 +8,9 @@ import { PrivateRunModel } from './cli-run-model.js'
 import { canonicalJson, type JsonValue } from './json.js'
 
 export {
+  escapeTerminalText as privateUpdateText,
   terminalWidth as privateTerminalWidth,
   truncateTerminalText as privateTruncateUpdate,
-  escapeTerminalText as privateUpdateText,
 } from '@jigging/display-tui/text'
 
 import { escapeTerminalText as privateUpdateText } from '@jigging/display-tui/text'
@@ -36,6 +36,7 @@ export class PrivateCliUserUpdates {
   #bytes = 0
   #notices = 0
   #noticeBytes = 0
+  #rootPrinted: { key: string; title: string; summary: string } | undefined
   constructor(
     readonly notice: (text: string) => boolean,
     readonly changed: (plainText?: string, project?: () => string | undefined) => boolean,
@@ -52,15 +53,12 @@ export class PrivateCliUserUpdates {
       if (!source.active) return
       source.active = false
       this.#sources.delete(source)
-      const hadSlots = source.slots.size > 0
       for (const slot of source.slots.values()) this.#slots.delete(slot)
       source.slots.clear()
       for (const publisher of source.publishers)
         this.model.freeze(publisher, reason ?? 'Observation ended')
       if (!this.#stopped && reason) this.unavailable(`  ${attribution}: ${reason}\n`)
-      const ended =
-        hadSlots && !reason ? `  ${attribution}: Live activity updates ended.\n` : undefined
-      this.changed(ended, () => (this.#stopped ? undefined : ended))
+      this.changed()
     }
     return {
       retire,
@@ -84,10 +82,6 @@ export class PrivateCliUserUpdates {
           publisher === 'root' ? attribution : this.model.sourceLabel(publisher)
         const localId = 'id' in value ? JSON.stringify([publisher, value.id]) : ''
         if (value.kind === 'view' || value.kind === 'retire-view') {
-          const previous =
-            value.kind === 'view'
-              ? this.model.views.get(JSON.stringify([publisher, value.id]))?.value
-              : undefined
           try {
             this.model.acceptView(publisher, value)
           } catch (error) {
@@ -96,24 +90,24 @@ export class PrivateCliUserUpdates {
             )
             return false
           }
-          if (
-            value.kind === 'view' &&
-            (previous === undefined ||
-              previous.title !== value.title ||
-              previous.summary !== value.summary)
-          ) {
-            if (
-              !this.changed(
-                this.#message(
-                  localAttribution,
-                  `${privateUpdateText(value.title)}\n${privateUpdateText(value.summary)}`,
-                ),
-              )
-            ) {
-              retire('Updates incomplete: presentation limit reached.')
-              return false
-            }
+          const root = this.#rootView()
+          let purpose: string | undefined
+          if (publisher === 'root' && root && this.#rootPrinted === undefined) {
+            purpose = this.#message(
+              localAttribution,
+              `${privateUpdateText(root.value.title)}\n${privateUpdateText(root.value.summary)}`,
+            )
           }
+          if (!this.changed(purpose)) {
+            retire('Updates incomplete: presentation limit reached.')
+            return false
+          }
+          if (purpose !== undefined && root)
+            this.#rootPrinted = {
+              key: root.key,
+              title: root.value.title,
+              summary: root.value.summary,
+            }
         } else if (value.kind === 'notice') {
           this.#notices++
           const payloadBytes = canonicalJson(value as JsonValue).byteLength
@@ -232,6 +226,30 @@ export class PrivateCliUserUpdates {
 
   get labels(): readonly string[] {
     return [...this.#slots.values()].map((slot) => this.#label(slot))
+  }
+
+  #rootView() {
+    const roots = [...this.model.views.values()].filter((view) => view.publisher === 'root')
+    return roots.find((view) => view.value.landing) ?? roots[0]
+  }
+
+  /** Optional observations never replace the authoritative final Run result. */
+  finalSummary(): string | undefined {
+    const root = this.#rootView()
+    if (!root) return undefined
+    const changed =
+      this.#rootPrinted?.key !== root.key ||
+      this.#rootPrinted?.title !== root.value.title ||
+      this.#rootPrinted?.summary !== root.value.summary
+    const context = [
+      root.ended ?? 'Observation ended',
+      ...(this.model.incomplete ? [this.model.incomplete] : []),
+      'application reports remain provisional',
+    ].join('; ')
+    return this.#message(
+      `${this.model.sourceLabel(root.publisher)} / ${privateUpdateText(root.value.title)}`,
+      `${privateUpdateText(context)}${changed ? `\n${privateUpdateText(root.value.summary)}` : ''}`,
+    )
   }
 
   #label(slot: Slot): string {

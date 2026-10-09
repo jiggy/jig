@@ -17,8 +17,9 @@ keep the resulting lock so review uses the same resolved packages:
 bun install --ignore-scripts
 ```
 
-Select your native client in `bindings/agent.ts`; it shows Pi as an example,
-with Codex and Claude supported by the same interface. Follow
+Select your native client in `grants/agent.json`; it shows Pi as an example.
+For Codex, run `jig agent --grant grants/agent.json --client codex` before review.
+Claude Code is also supported through the same grant. Follow
 [Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
 Then inspect `issue.json`,
 `bindings/specialist.ts`, and `flows/project/logs-cases.json`.

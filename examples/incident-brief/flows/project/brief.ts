@@ -2,6 +2,25 @@ import { type JsonValue, OperationError, type RunContext, type RunResult } from 
 import type { UserUpdates } from '@jigging/user-updates'
 import { answerView, type Branch, workView } from './dashboard.ts'
 
+/** Short human answers sit beside, never replace, the exact branch evidence. */
+function answerExcerpt(branches: readonly Branch[], role: string, field: string): string {
+  const output = branches.find((branch) => branch.role === role)?.result?.output
+  const answer =
+    output !== null && typeof output === 'object' && !Array.isArray(output)
+      ? output[field]
+      : undefined
+  if (typeof answer !== 'string' || !answer)
+    return 'No complete suggestion returned. See the retained branch outcome and failure evidence.'
+  if (JSON.stringify(answer).length <= 800) return answer
+  const suffix = '\n[Excerpt; complete answer retained in nested evidence.]'
+  let text = ''
+  for (const character of answer) {
+    if (JSON.stringify(text + character + suffix).length > 800) break
+    text += character
+  }
+  return text + suffix
+}
+
 /** Two independent branches; no event race chooses a successor or grants power. */
 export async function brief(run: RunContext, updates?: UserUpdates): Promise<RunResult> {
   const { replacement, ...context } = run.input as Record<string, JsonValue>
@@ -37,6 +56,8 @@ export async function brief(run: RunContext, updates?: UserUpdates): Promise<Run
         role === 'draft'
           ? 'Drafting the internal incident brief'
           : 'Investigating independent review questions',
+        undefined,
+        { operationId: role },
       )
       try {
         const result = await run.call({
@@ -73,14 +94,16 @@ export async function brief(run: RunContext, updates?: UserUpdates): Promise<Run
   return {
     outcome: results.every((record) => record.result?.outcome === 'done') ? 'done' : 'blocked',
     output: {
+      brief: answerExcerpt(results, 'draft', 'brief'),
+      questions: answerExcerpt(results, 'independent', 'questions'),
+      purpose:
+        'Internal suggestions for human review, not verified facts or permission to publish.',
       results: results.map(
         (record): JsonValue =>
           record.result
             ? { role: record.role, result: { ...record.result } }
             : { role: record.role, failure: record.failure, message: record.message },
       ),
-      purpose:
-        'Internal suggestions for human review, not verified facts or permission to publish.',
     },
   }
 }

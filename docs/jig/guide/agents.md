@@ -105,15 +105,21 @@ import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
   package: 'npm:@jigging/agent-acp',
-  slots: { native: { kind: 'acp', client: 'codex' } }, // choose codex, claude, or pi
+  slots: { native: 'grant:agent' },
 })
+```
+
+Include `grants: discover('./grants')` in `jig.ts`, and create `grants/agent.json`:
+
+```json
+{ "kind": "acp", "client": "codex" }
 ```
 
 Use the same project default shown above. `client` is required; Codex is only
 the concrete choice in this example, not a product default or recommendation.
 The same grant shape accepts `claude` or `pi`; choose your installed client and
 consult its [configuration profile](../spec/finite-acp.md#native-client-profiles).
-The package has no second client selector. Add `model: 'your-model-id'` beside
+The package has no second client selector. Add `"model": "your-model-id"` beside
 `client` in the grant to select a model for that Binding; omission uses the
 operator environment or the client's documented default. Authentication stays
 with the operator. Review shows the exact grant, model and installation before
@@ -226,9 +232,28 @@ prompts. One-shot calls require neither change.
 ## Switching
 
 You do not need to install the client selected by an example if you already
-have another supported client. Open the Binding named in the diagnostic and
-find its `native` slot. For an inline ACP grant, change only the explicit client
-selection, then check any model or client-specific fields:
+have another supported client. The supplied examples keep their selection in
+`grants/agent.json`. Choose your installed client, then review the change:
+
+```sh
+jig agent --grant grants/agent.json --client codex
+jig review
+```
+
+Choose `claude` or `pi` instead when appropriate. This edits one existing JSON
+file; it evaluates no project code and installs, approves or starts nothing.
+The project must include that file in its grant selection. Review still checks
+the chosen installation and asks for changed authority before adopting it.
+
+The command preserves turn limits and session policy. When switching a grant
+with a pinned model, supply `--model MODEL` or `--default-model` explicitly.
+The latter removes the grant pin; operator configuration still supplies the model.
+Codex-only `retainSessions: true` must be removed deliberately before choosing
+another client. Avoid editing the file concurrently with this command.
+
+For another project, open the Binding named in the diagnostic and find its
+`native` slot. A named selector points to the project's selected JSON grant;
+pass that file to `--grant`. For an inline ACP grant, edit its ordinary source:
 
 ```ts
 slots: { native: { kind: 'acp', client: 'codex' } },

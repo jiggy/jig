@@ -17,6 +17,11 @@ credit eligibility and customer-facing claims.
 - `test/` owns deterministic application checks; the public walkthrough belongs
   in `docs/jig/guide/support-case.md`.
 
+- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
+  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
+  grants/agent.json --client CLIENT` edits this source before separate review.
+  Keep client choices explicit; no installed-client fallback.
+
 ## Local Contracts
 
 - Account facts come from the authenticated application caller, never customer

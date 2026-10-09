@@ -12,6 +12,11 @@ or both, then using ordinary code to produce a contact preview.
 - `flows/convert` owns mapping validity and row acceptance rules.
 - `bindings` selects methods; `fixtures` and `test` own synthetic demonstrations.
 
+- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
+  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
+  grants/agent.json --client CLIENT` edits this source before separate review.
+  Keep client choices explicit; no installed-client fallback.
+
 ## Local Contracts
 
 - Complexity cap: one CSV, one contact schema, column selection only, final preview.

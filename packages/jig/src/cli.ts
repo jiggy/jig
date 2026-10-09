@@ -62,6 +62,7 @@ import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
 import { flowSelector } from './project/package-selector.js'
+import { ProjectAgentError, selectProjectAgent } from './project-agent.js'
 import {
   createFlow,
   createProject,
@@ -85,6 +86,7 @@ const HELP = `Jig runs reusable methods with powers you approve.
 Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
+  jig agent --grant FILE --client CLIENT  Edit a named Agent grant before review
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
@@ -105,6 +107,23 @@ Command options and examples:
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
+  agent: `Usage: jig agent --grant FILE --client codex|claude|pi [--model MODEL | --default-model]
+
+Edit one existing named ACP JSON grant in the current directory. FILE is a
+project-relative path ending in <name>.json, for example grants/agent.json.
+The command preserves turn and session policy. Switching clients with a pinned
+model requires --model or --default-model. --default-model removes the grant's
+model pin; operator configuration still supplies the effective model.
+Codex session retention must be removed deliberately before choosing another client.
+
+Example:
+  $ jig agent --grant grants/agent.json --client codex
+  $ jig review
+
+No project code is evaluated, client installed, dependency resolved, authority
+approved or Flow started. Only the selected file changes; jig.ts must include it.
+Avoid editing it concurrently. A failed publication may already have changed
+the source; its diagnostic identifies that uncertainty.`,
   new: `Usage: jig new <name> [--use <slot=jig:name|slot=descriptor.json|slot=npm:package>]...
 
 Create flows/<name> in the current Jig project. Names use lowercase letters,
@@ -187,7 +206,7 @@ ${VERIFICATION_HELP}`,
 Create a new editable project and greeting Flow. No installation, network
 requests, approval, or execution happens during initialization.
 
-  --bare     Create only jig.ts and empty flows/ and bindings/ directories
+  --bare     Omit the greeting; an explicit --agent still creates its starter
 
 Example:
   $ jig init hello-jig
@@ -386,6 +405,7 @@ async function executeCommand(
       runtime.expectedAdmissionDigest = prepared.admissionDigest
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
+    if (arguments_[0] === 'agent') return await executeAgent(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
@@ -817,6 +837,54 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   return 0
 }
 
+async function executeAgent(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  const values = new Map<string, string>()
+  let defaultModel = false
+  for (let index = 1; index < arguments_.length; index++) {
+    const flag = arguments_[index]!
+    if (flag === '--default-model' && !defaultModel) defaultModel = true
+    else if (['--grant', '--client', '--model'].includes(flag) && !values.has(flag)) {
+      const value = arguments_[++index]
+      if (value === undefined || value.startsWith('-'))
+        usage('agent', `Supply a value for ${flag}.`)
+      values.set(flag, value)
+    } else usage('agent', 'Use one --grant and --client, with optional --model or --default-model.')
+  }
+  const file = values.get('--grant'),
+    client = values.get('--client')
+  if (
+    file === undefined ||
+    !['codex', 'claude', 'pi'].includes(client ?? '') ||
+    (defaultModel && values.has('--model'))
+  )
+    usage(
+      'agent',
+      'Choose --grant FILE and --client codex|claude|pi; --model and --default-model are alternatives.',
+    )
+  try {
+    const result = await selectProjectAgent(
+      runtime.currentDirectory,
+      file,
+      {
+        client: client as ProjectInitAgent,
+        ...(values.has('--model') ? { model: values.get('--model')! } : {}),
+        ...(defaultModel ? { defaultModel: true } : {}),
+      },
+      runtime.signal,
+    )
+    runtime.writeOutput(
+      `${result.changed ? 'Updated' : 'Unchanged'} Agent grant ${asciiJsonString(result.path)}.\n\n  Client: ${result.previous.client} -> ${result.next.client}.\n  Model pin: ${asciiJsonString(result.previous.model ?? '(none)')} -> ${asciiJsonString(result.next.model ?? '(none)')}.\n  Turn and session policy preserved.\n\nReview the project to adopt this file's selection:\n\n  $ jig review\n\nIf dependency preparation needs network access, review will explain --allow-resolution-network.\nNo execution approved or Flow started.\n`,
+    )
+    return 0
+  } catch (error) {
+    if (!(error instanceof ProjectAgentError)) throw error
+    runtime.writeError(
+      renderDiagnostic(error.code, error.message, 'Agent grant could not be updated'),
+    )
+    return error.kind === 'invalid' ? 1 : 2
+  }
+}
+
 async function executeInit(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   let bare = false
   let destination: string | undefined
@@ -860,7 +928,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     await createProject(resolve(runtime.currentDirectory, destination), undefined, bare, agent)
     runtime.writeOutput(
       agent !== undefined
-        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
+        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts and grants/agent.json for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
         : bare
           ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`
           : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
@@ -2332,7 +2400,7 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
       ? '\n  Agent selection: the resource grant at this Binding slot.'
       : ''
   const alternative = selection
-    ? '\n\n  Use another installed client\n    Set client to codex, claude, or pi in the ACP grant selected by this slot (the inline Binding value or its named grant file). Check its model and client-specific fields, then review the changed selection:\n\n  $ jig review'
+    ? '\n\n  Use another installed client\n    Set client to codex, claude, or pi in the ACP grant selected by this slot (the inline Binding value or its named grant file). Check its model and client-specific fields. For a named grant, use this template (replace GRANT_FILE with its project-relative JSON file and choose your client):\n\n  $ jig agent --grant GRANT_FILE --client codex\n  $ jig review'
     : ''
   return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }

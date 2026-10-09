@@ -600,6 +600,91 @@ test('root connects sibling endpoints and retains independent work after draft f
   })
 })
 
+test('root publishes scoped branch activity and bounded answer excerpts beside exact evidence', async () => {
+  const answers = {
+    draft: `Possible cause remains uncertain. ${'😀\n\u0001'.repeat(1000)}`,
+    independent: `Which measurement confirms recovery? ${'"\\\t'.repeat(1000)}`,
+  }
+  const activities: { id: string; options: { operationId: string } }[] = []
+  const cleared: string[] = []
+  const progress = {
+    view: (id: string, options: object) => ({
+      update: (snapshot: object) =>
+        validateUserUpdate({ kind: 'view', id, ...options, ...snapshot }),
+    }),
+    activity: (id: string, _label: string, _progress: unknown, options: { operationId: string }) =>
+      activities.push({ id, options }),
+    clear: (id: string) => cleared.push(id),
+    notice: () => {},
+  } as unknown as UserUpdates
+  const channel = pair()
+  const retained = {
+    draft: {
+      outcome: 'done',
+      output: { brief: answers.draft, revision: 2, evidence: { turns: 3 } },
+    },
+    independent: { outcome: 'done', output: { questions: answers.independent, requestedTurns: 2 } },
+  }
+  const run = {
+    input,
+    signal: new AbortController().signal,
+    channel: async () => channel,
+    call: async ({ operationId }: { operationId: keyof typeof retained }) => retained[operationId],
+  } as unknown as RunContext
+  const terminal = await brief(run, progress)
+  const output = terminal.output as {
+    brief: string
+    questions: string
+    purpose: string
+    results: { role: keyof typeof retained; result: RunResult }[]
+  }
+  expect(activities).toEqual([
+    { id: 'draft', options: { operationId: 'draft' } },
+    { id: 'independent', options: { operationId: 'independent' } },
+  ])
+  expect(cleared).toEqual(['draft', 'independent'])
+  expect(terminal.outcome).toBe('done')
+  expect(output.brief).toStartWith('Possible cause remains uncertain.')
+  expect(output.questions).toStartWith('Which measurement confirms recovery?')
+  for (const excerpt of [output.brief, output.questions]) {
+    expect(JSON.stringify(excerpt).length).toBeLessThanOrEqual(800)
+    expect(excerpt).toEndWith('[Excerpt; complete answer retained in nested evidence.]')
+    expect(excerpt).not.toContain('\ufffd')
+  }
+  expect(
+    JSON.stringify({ brief: output.brief, questions: output.questions, purpose: output.purpose })
+      .length,
+  ).toBeLessThanOrEqual(2048)
+  expect(output.results).toEqual([
+    { role: 'draft', result: retained.draft },
+    { role: 'independent', result: retained.independent },
+  ])
+})
+
+test('root short answers remain complete and missing answers point to retained outcome evidence', async () => {
+  const channel = pair()
+  const run = {
+    input,
+    signal: new AbortController().signal,
+    channel: async () => channel,
+    call: async ({ operationId }: { operationId: string }) =>
+      operationId === 'draft'
+        ? { outcome: 'done', output: { brief: 'Possible cause is still uncertain.' } }
+        : {
+            outcome: 'blocked',
+            output: { questions: '', failureDetails: [{ message: 'No answer was returned.' }] },
+          },
+  } as unknown as RunContext
+  const terminal = await brief(run)
+  expect(terminal.outcome).toBe('blocked')
+  expect(terminal.output).toMatchObject({
+    brief: 'Possible cause is still uncertain.',
+    questions:
+      'No complete suggestion returned. See the retained branch outcome and failure evidence.',
+  })
+  expect(JSON.stringify(terminal.output)).toContain('No answer was returned.')
+})
+
 test('the reviewer continues while drafting settles, without waiting for its successor', async () => {
   const channel = pair(),
     draft = fixture(channel),

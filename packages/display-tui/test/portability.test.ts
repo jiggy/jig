@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
-import { displayViewKey, type DisplaySnapshotEnvelope } from '@jigging/display-model'
+import { type DisplaySnapshotEnvelope, displayViewKey } from '@jigging/display-model'
 import { createTui, prepareTui } from '../src/index.js'
 import { createInlineDisplay } from '../src/inline.js'
-import { ViewerModel } from '../src/viewer-model.js'
 import { viewerDetailParts } from '../src/projection.js'
 import { terminalWidth } from '../src/text.js'
+import { ViewerModel } from '../src/viewer-model.js'
 import { snapshot } from './fixtures.js'
 
 function reports() {
@@ -290,8 +290,9 @@ test('handoff transfers chosen application state and fences native, input and pr
   expect(frame).toContain('local sort name')
   expect(frame).not.toContain('zoo')
   expect(frame).not.toContain('Late preview')
-  expect(frame.indexOf('Name: alpha')).toBeLessThan(frame.indexOf('Name: beta'))
-  expect(frame.indexOf('Name: beta')).toBeLessThan(frame.indexOf('Name: zebra'))
+  expect(frame).toContain('Name: zebra')
+  expect(frame).not.toContain('Name: alpha')
+  expect(frame).not.toContain('Name: beta')
   inline.update({ ...value, revision: 2, workspace: { ...value.workspace, elapsedMs: 500 } })
   expect(inline.frame({ columns: 120, rows: 24, color: false }).lines.join('\n')).toContain(
     'Chosen child',
@@ -544,6 +545,7 @@ test('public warnings and multiline titles remain inert physical lines in native
           expect(frame.lines.length).toBeLessThanOrEqual(viewport.rows)
           expect(Buffer.byteLength(frame.lines.join('\n'))).toBeLessThanOrEqual(32768)
           for (const line of frame.lines) {
+            // biome-ignore lint/suspicious/noControlCharactersInRegex: Plain frames must reject all terminal control bytes.
             expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
             expect(terminalWidth(line)).toBeLessThan(viewport.columns)
           }
@@ -557,8 +559,10 @@ test('public warnings and multiline titles remain inert physical lines in native
           const native = (await display.frame(viewport)).text
           expect(native).not.toContain('\u001b[777A')
           expect(native).not.toContain('\u001b]0;forged-title')
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: Native output must not contain bells or uncontrolled physical newlines.
           expect(native).not.toMatch(/[\u0007\r\n]/)
           expect(Buffer.byteLength(native)).toBeLessThanOrEqual(32768)
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: Inspect renderer-owned cursor escapes to enforce physical row limits.
           for (const position of native.matchAll(/\u001b\[(\d+);1H/g))
             expect(Number(position[1])).toBeLessThanOrEqual(viewport.rows)
           expect(native).toContain(replacement === 'complete' ? 'Incomplete' : 'Stale')
@@ -567,6 +571,7 @@ test('public warnings and multiline titles remain inert physical lines in native
         const transferred = display.handoffInline()!
         const lines = transferred.frame({ columns: 160, rows: 20, color: false }).lines
         expect(lines.join('\n')).toContain('Useful diagnosis')
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Transferred plain frames must contain no terminal control bytes.
         for (const line of lines) expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
         transferred.dispose()
       } finally {

@@ -1,11 +1,11 @@
-import { displayViewKey } from '@jigging/display-model'
 import { expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
+import { displayViewKey } from '@jigging/display-model'
 import { type Reference, type ViewItem, validateUserUpdate } from '@jigging/user-updates'
 import { viewerDetailParts, viewerFrame } from '../src/projection.js'
-import { FixtureModel, FixtureKeyboard, waitFor } from './fixtures.js'
-import { rowRecordKey, callRecordKey } from '../src/viewer-model.js'
-import { terminalWidth, escapeTerminalText, wrapTerminalText } from '../src/text.js'
+import { escapeTerminalText, terminalWidth, wrapTerminalText } from '../src/text.js'
+import { callRecordKey, rowRecordKey } from '../src/viewer-model.js'
+import { FixtureKeyboard, FixtureModel, waitFor } from './fixtures.js'
 
 const v = (id = 'jobs', rows = ['a', 'b', 'c']): ViewItem =>
   validateUserUpdate({
@@ -192,9 +192,7 @@ test('view and activity associations resolve dynamically while row focus and scr
   expect(viewerFrame(model, 80, 12, false, true).lines.join('\n')).toContain('> r25')
   model.select(undefined)
   model.activity('root', { kind: 'activity', id: 'work', label: 'Checking', operationId: 'repair' })
-  expect(viewerFrame(model, 80, 24).lines.join('\n')).toContain(
-    'Associated call: Checked repair: returned',
-  )
+  expect(viewerFrame(model, 80, 24).lines.join('\n')).toContain('Flow / Checked repair: Checking')
   model.stop()
   expect(model.activities.size).toBe(0)
 })

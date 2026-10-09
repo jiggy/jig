@@ -15,6 +15,11 @@ only after executed checks and independent acceptance.
 - `fixtures/log-report/` contains an intentionally defective CLI and its tests.
 - `test/` owns deterministic application checks. The public guide owns the walkthrough.
 
+- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
+  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
+  grants/agent.json --client CLIENT` edits this source before separate review.
+  Keep client choices explicit; no installed-client fallback.
+
 ## Local Contracts
 
 - Complexity cap: one issue, one specialist, one final patch/evidence result.
@@ -24,7 +29,7 @@ only after executed checks and independent acceptance.
   16 UTF-8 files totaling 64 KiB and at most eight existing editable JS/TS source paths.
 - The leaf takes JSON files and fixed cases. Its `agent` slot calls an ordinary
   Agent Flow; `tests` and `cli` use independently reviewed command grants.
-  Operator selection belongs in `bindings/agent.ts`; `jig.ts` supplies that
+  Operator selection belongs in `grants/agent.json`, selected by `bindings/agent.ts`; `jig.ts` supplies that
   contract-matched default. It receives no attachments.
 - Optional `restoreCorrections` requests Run-scoped native retention for one
   correction after checks, never overlapping Agent and command execution.

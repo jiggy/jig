@@ -15,7 +15,7 @@ See the [installation guide](./index.md) for supported hosts.
 ## Try it
 
 The example declares the ordinary ACP Agent dependency and includes
-`bindings/agent.ts`. [Choose your client](./agents.md) there; Pi is an example
+`grants/agent.json`. [Choose your client](./agents.md#switching) there; Pi is an example
 choice, not a Jig preference. The `defaultProviders` map selects that Binding
 for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/project/logs-cases.json`.
@@ -172,10 +172,10 @@ Add this to the repair specialist Binding in `bindings/specialist.ts`:
 settings: { restoreCorrections: true },
 ```
 
-In the selected Agent Binding, explicitly grant native retention:
+In `grants/agent.json`, explicitly grant native retention:
 
-```ts
-slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } },
+```json
+{ "kind": "acp", "client": "codex", "retainSessions": true }
 ```
 
 Review these changes before running. [Native restoration](conversations.md#restore-after-a-clean-close)

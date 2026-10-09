@@ -27,6 +27,11 @@ or newer instructions. Keep the reviewer advancing independently.
   Unsuccessful packets retain bounded public SDK error messages beside their
   codes, never arbitrary exception text; missing causes remain explicit.
 
+- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
+  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
+  grants/agent.json --client CLIENT` edits this source before separate review.
+  Keep client choices explicit; no installed-client fallback.
+
 ## Local Contracts
 
 - Context and file contents are explicit data, never live filesystem access.
@@ -68,7 +73,10 @@ or newer instructions. Keep the reviewer advancing independently.
 - The root reports a branch failure before awaiting its healthy sibling.
   Views expose requested tasks and returned suggestions, not context file text,
   earlier private prompts, model reasoning or invented host lifecycle states.
-  Work rows declare each branch's call reference before dispatch; the host
+  Root activities explicitly associate their own operation IDs. Concise top-level
+  brief/questions excerpts together fit the host scalar excerpt budget; original
+  answers and conversation evidence stay in nested results. Work rows declare
+  each branch's call reference before dispatch; the host
   resolves it only when that actual invocation is observed, including during work.
   The worker’s private revision `updates` channel remains distinct from `progress`.
 

@@ -1,6 +1,6 @@
 import { defineBinding } from '@jigging/jig'
-// Editable example selection, not a Jig default. Use a qualified native client.
+// Client and model selection live in grants/agent.json.
 export default defineBinding({
   package: 'npm:@jigging/agent-acp',
-  slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } },
+  slots: { native: 'grant:agent' },
 })

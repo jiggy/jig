@@ -1,22 +1,23 @@
-import type { Block, DetailBlock, Reference, Value } from '@jigging/user-updates'
 import type { DisplayFact } from '@jigging/display-model'
+import type { Block, DetailBlock, Reference, Value } from '@jigging/user-updates'
 import { heading, secondary, selection } from './style.js'
 import {
-  type ViewerModel,
-  type ViewerRecord,
-  type ViewerJournalEntry,
+  escapeTerminalText,
+  terminalWidth,
+  truncateTerminalText,
+  wrapTerminalText,
+} from './text.js'
+import {
   attentionImportance,
   observedTime,
   recordReferences,
+  type ViewerCall,
+  type ViewerJournalEntry,
+  type ViewerModel,
+  type ViewerRecord,
   viewerFactText,
   viewerFactTone,
 } from './viewer-model.js'
-import {
-  terminalWidth,
-  truncateTerminalText,
-  escapeTerminalText,
-  wrapTerminalText,
-} from './text.js'
 
 type ScrollAnchor = { key: string; offset: number }
 const diagnosticPath = (entry: ViewerJournalEntry): string => {
@@ -64,242 +65,312 @@ function wrap(text: string, width: number): string[] {
   return result
 }
 
-/** Portable blocks have no terminal-specific callbacks, styling or executable content. */
+/** A small observation surface, not an interactive view compressed into scrollback. */
 function privateInlineFrame(
   model: ViewerModel,
   width: number,
   height: number,
   color = false,
-  scroll = 0,
-  retainedAnchor?: ScrollAnchor,
+  _scroll = 0,
+  _retainedAnchor?: ScrollAnchor,
 ): ViewerFrame {
   width = Math.max(1, Math.min(4096, width - 1))
-  height = Math.max(3, Math.min(100, height))
-  const lines: string[] = [],
-    references: Reference[] = []
-  let anchor: number | undefined
-  const anchors: { key: string; line: number }[] = []
-  const add = (text: string) => lines.push(...wrap(text, width))
-  const ref = (publisher: string, r: Reference) => {
-    const resolved = model.resolve(publisher, r)
-    references.push(r)
-    return `[${references.length}] ${resolved.label}`
+  height = Math.max(1, Math.min(100, Math.floor(height)))
+  type Group = { lines: string[]; call?: boolean; activityOffsets?: number[]; progress?: boolean }
+  const groups: Group[] = []
+  const line = (text: string) =>
+    truncateTerminalText(escapeTerminalText(text).replaceAll('\n', '\\n'), width)
+  const excerpt = (text: string, maximum = 2): string[] => {
+    if (maximum < 1) return []
+    const lines = wrap(text, width)
+    if (lines.length <= maximum) return lines
+    const kept = lines.slice(0, maximum)
+    const marker = width >= 12 ? ' [excerpt]' : '…'
+    kept[maximum - 1] =
+      truncateTerminalText(kept[maximum - 1]!, Math.max(0, width - terminalWidth(marker))) + marker
+    return kept
   }
-  const value = (publisher: string, v: Value) =>
-    v !== null && typeof v === 'object' ? ref(publisher, v) : scalar(v)
-  const blocks = (publisher: string, bs: readonly (Block | DetailBlock)[]) => {
-    for (const b of bs)
-      switch (b.kind) {
-        case 'report':
-          add(b.text)
-          for (const r of b.references ?? []) add(ref(publisher, r))
-          break
-        case 'facts':
-          for (const f of b.items) add(`${f.label}: ${value(publisher, f.value)}`)
-          break
-        case 'progress': {
-          const counts = `${b.completed}${b.total === undefined ? '' : ` / ${b.total}`}${b.unit === undefined ? '' : ` ${b.unit}`}`
-          if (b.total && width >= 35) {
-            const cells = Math.max(4, Math.min(20, width - 25)),
-              filled = Math.floor((b.completed / b.total) * cells)
-            add(`${b.label}: [${'='.repeat(filled)}${' '.repeat(cells - filled)}] ${counts}`)
-          } else add(`${b.label}: ${counts}`)
-          break
-        }
-        case 'collection': {
-          const rows = model.visibleRows(b)
-          const filter = model.local.filters.get(b.id)
-          const sort = model.local.sorts.get(b.id)
-          add(
-            `${b.title} — ${rows.length}${filter ? ` of ${b.rows.length}` : ''} supplied${b.total === undefined ? '' : ` / ${b.total} reported`} records${filter ? ` · local filter ${filter}` : ''}${sort ? ` · local sort ${sort.key}` : ''}`,
-          )
-          if (!rows.length) add('No supplied records in this view')
-          for (const row of rows.slice(0, 4)) {
-            anchors.push({
-              key: JSON.stringify([model.selected?.key, b.id, row.id]),
-              line: lines.length,
-            })
-            add(
-              `  ${b.columns.map((c) => `${c.label}: ${value(publisher, row.cells[c.key] ?? null)}`).join(' | ')}`,
-            )
-            blocks(publisher, row.details ?? [])
-          }
-          if (rows.length > 4)
-            add(`${rows.length - 4} more supplied records; open terminal inspection for details`)
-          break
-        }
-      }
-  }
-  const selected = model.selected
-  const title = selected
-    ? `${model.sourceLabel(selected.publisher)} / ${selected.value.title}`
-    : 'Run overview'
-  lines.push(
-    heading(
-      truncateTerminalText(escapeTerminalText(title).replaceAll('\n', '\\n'), width),
-      'info',
-      color,
-    ),
-  )
-  const warning = model.observationWarning
-  const warningLine = warning && escapeTerminalText(warning).replaceAll('\n', '\\n')
-  const warningMarker =
-    warningLine &&
-    truncateTerminalText(
-      terminalWidth(warningLine) > width ? warningLine.split(' · ')[0]! : warningLine,
-      width,
-    )
-  if (warningMarker) lines.push(warningMarker)
-  if (warning && warningLine && warningMarker !== warningLine) add(warning)
-  if (model.workspace.facts) add(model.hostFactsText)
-  else add(model.context)
+  const add = (text: string, maximum = 1) => groups.push({ lines: excerpt(text, maximum) })
+  const critical: string[] = []
   const sticky = model.sticky
-  if (sticky && height <= 6) {
-    const cause = wrap(sticky.text, width)
-    const content = [
-      truncateTerminalText(
-        warningMarker ?? `Attention (${escapeTerminalText(sticky.source).replaceAll('\n', '\\n')})`,
-        width,
-      ),
-      ...cause.slice(0, height - 2),
-      truncateTerminalText(
-        sticky.committed
-          ? '[Full report in transcript]'
-          : '[Transcript incomplete; retained cause shown here]',
-        width,
-      ),
-    ]
-    return { lines: content, references: [] }
-  }
-  if (sticky) {
-    const cause = wrap(`Attention (${sticky.source}): ${sticky.text}`, width)
-    const room = Math.max(1, Math.min(5, Math.floor(height / 3)))
-    lines.push(...cause.slice(0, room))
-    if (cause.length > room)
-      add(
-        sticky.committed
-          ? '[Cause clipped; full report in transcript]'
-          : '[Cause clipped; transcript incomplete]',
-      )
-    if (model.attention.length > 1)
-      add(
-        `${model.attention.length - 1} additional reports${model.attention.some((a) => !a.committed) ? '; transcript incomplete' : ' in the transcript'}`,
-      )
-  }
-  const shellLength = lines.length
-  if (selected) {
-    if (selected.value.operationId)
-      add(
-        `Associated call: ${model.resolve(selected.publisher, { kind: 'call', operationId: selected.value.operationId }).label}`,
-      )
-    add(selected.value.summary)
-    if (selected.ended) add(`${selected.ended}; last update ${observedTime(selected.updated)}`)
-    for (const section of selected.value.sections) {
-      if (section.title) add(section.title)
-      blocks(selected.publisher, section.blocks)
-    }
-  } else {
-    const nodes = [...model.calls.values()]
-    const children = new Map<string | undefined, typeof nodes>()
-    for (const node of nodes) {
-      const parent =
-        node.parent !== undefined && model.calls.has(node.parent) ? node.parent : undefined
-      const list = children.get(parent) ?? []
-      list.push(node)
-      children.set(parent, list)
-    }
-    const draw = (parent: string | undefined, depth: number) => {
-      for (const n of children.get(parent) ?? []) {
-        anchors.push({ key: n.key, line: lines.length })
-        const status = {
-          requested: 'requested; not started',
-          active: 'running',
-          'cancel-requested': 'cancellation requested',
-          returned: 'returned',
-          failed: 'failed / refused',
-          uncertain: 'uncertain',
-        }[n.state]
-        if (model.focusedCall === n.key) anchor = lines.length
-        add(
-          `${model.focusedCall === n.key ? '> ' : ''}${'  '.repeat(depth)}${depth ? '└─ ' : '• '}${n.slot} — ${status}${n.intent ? `: ${n.intent}` : ''}`,
+  const cause = sticky
+    ? width < 45 && height >= 3 && terminalWidth(`! ${sticky.source}: ${sticky.text}`) > width
+      ? [line(`Attention: ${sticky.source}`), ...wrap(sticky.text, width)]
+      : wrap(
+          `${width < 45 ? `! ${sticky.source}:` : `Attention (${sticky.source}):`} ${sticky.text}`,
+          width,
         )
-        if (n.cause) add(`${'  '.repeat(depth + 1)}Cause: ${n.cause}`)
-        if (n.parent && !model.calls.has(n.parent))
-          add('Enclosing invocation unavailable; relationship incomplete')
-        if (depth < 32) draw(n.key, depth + 1)
-      }
-    }
-    if (!nodes.length) add('Waiting for observed calls or application views')
-    draw(undefined, 0)
-    if (model.omissions) add(`${model.omissions} call observations omitted`)
-    for (const { publisher, value: activity } of model.activities.values()) {
-      add(`${model.sourceLabel(publisher)}: ${activity.label}`)
-      if (activity.operationId)
-        add(
-          `Associated call: ${model.resolve(publisher, { kind: 'call', operationId: activity.operationId }).label}`,
-        )
-      if (activity.detail) add(activity.detail)
-    }
-  }
-  if (model.preview) {
-    add(
-      `Immutable ${model.workspace.recorded ? 'recorded-file' : 'delivered-file'} preview: ${model.previewTitle ?? 'verified capture'}${model.preview.clipped ? ' — clipped at 64 KiB' : ''}`,
+    : []
+  const warning = model.observationWarning ? wrap(model.observationWarning, width) : []
+  const omitted = model.omissions
+  const otherAttention = Math.max(0, model.attention.length - 1)
+  // Reserve independent attention and stale observation markers before expanding
+  // either reason. Narrow surfaces preserve their identity, not a copied report.
+  if (cause[0])
+    critical.push(
+      heading(
+        cause[0],
+        sticky!.priority === 2 || sticky!.priority >= 4 ? 'error' : 'warning',
+        color,
+      ),
     )
-    add(model.preview.text)
+  if (warning[0]) critical.push(warning[0])
+  if (omitted)
+    critical.push(
+      line(
+        width < 45
+          ? `Calls omitted: ${omitted}`
+          : `${omitted} call observations omitted by producer`,
+      ),
+    )
+  if (otherAttention)
+    critical.push(
+      line(
+        width < 45 ? `Attention +${otherAttention}` : `${otherAttention} other attention reports`,
+      ),
+    )
+  const criticalIdentities = critical.length
+  critical.push(...cause.slice(1, 3), ...warning.slice(1, 2))
+  const phase = model.workspace.phase === 'settled' ? 'Settled' : 'Running'
+  const elapsed = `${Math.floor(model.workspace.elapsedMs / 1000)}s`
+  groups.push({
+    lines: [
+      heading(
+        line(`${model.workspace.target} · ${phase} · ${elapsed} · ${model.workspace.hostStage}`),
+        'info',
+        color,
+      ),
+    ],
+  })
+  if (model.workspace.facts) {
+    const facts = model.workspace.facts
+    for (const [label, fact] of [
+      ['Execution', facts.execution],
+      ['Application', facts.application],
+      ['Cleanup', facts.cleanup],
+      ['Delivery', facts.delivery],
+      ...(facts.completeness ? [['Observation', facts.completeness] as const] : []),
+    ] as const)
+      add(viewerFactText(label, fact), 2)
+  } else add(model.context || model.workspace.hostStage)
+  const roots = [...model.views.values()].filter((view) => view.publisher === model.rootSourceId)
+  const root = roots.find((view) => view.value.landing) ?? roots[0]
+  if (root) {
+    add(`${model.sourceLabel(root.publisher)} / ${root.value.title}: ${root.value.summary}`, 2)
+    if (root.ended) add(`${root.ended}; last update ${observedTime(root.updated)}`)
   }
+
+  // Handoff retains focus and local choices; the inline excerpt never expands
+  // every supplied row's context or starts preview effects.
+  const selected = model.selected
+  const record = model.record
+  if (selected && (selected.key !== root?.key || record?.kind === 'row')) {
+    add(`Selected ${model.sourceLabel(selected.publisher)} / ${selected.value.title}`)
+    if (selected.key !== root?.key) add(selected.value.summary, 2)
+    if (record?.row && record.collection) {
+      const collection = record.collection
+      const choices = [
+        model.local.filters.has(collection.id)
+          ? `local filter ${model.local.filters.get(collection.id)}`
+          : '',
+        model.local.sorts.has(collection.id)
+          ? `local sort ${model.local.sorts.get(collection.id)!.key}`
+          : '',
+      ].filter(Boolean)
+      if (choices.length) add(choices.join(' · '))
+      add(
+        collection.columns
+          .slice(0, 3)
+          .map((column) => {
+            const value = record.row!.cells[column.key] ?? null
+            return `${column.label}: ${
+              value !== null && typeof value === 'object'
+                ? model.resolve(selected.publisher, value).label
+                : scalar(value)
+            }`
+          })
+          .join(' · '),
+        2,
+      )
+      const context = record.row.details?.find((block) => block.kind === 'report')
+      if (context?.kind === 'report') add(context.text, 2)
+    } else if (record?.block?.kind === 'report') add(record.block.text, 2)
+  }
+
+  const calls = [...model.calls.values()]
+  const branches = calls.filter((call) => !call.parent || !model.calls.has(call.parent))
+  // An issue below a collapsed branch remains visible without expanding a ledger.
+  const issues = calls.filter(
+    (call) => !branches.includes(call) && (call.state === 'failed' || call.state === 'uncertain'),
+  )
+  const candidates = [...branches, ...issues]
+  const ranked = candidates
+    .map((call, index) => ({ call, index }))
+    .sort(
+      (a, b) =>
+        Number(a.call.state === 'returned') - Number(b.call.state === 'returned') ||
+        a.index - b.index,
+    )
+    .map(({ call }) => call)
+  const callLabel = (call: ViewerCall): string => call.intent ?? call.slot
+  const state = (call: ViewerCall): string =>
+    ({
+      requested: 'requested; not started',
+      active: 'active',
+      'cancel-requested': 'cancellation requested',
+      returned: 'returned',
+      failed: 'failed / refused',
+      uncertain: 'uncertain',
+    })[call.state]
+  const activities = [...model.activities.values()]
+  const activityGroups = activities.slice(0, 4).map(({ publisher, value }) => {
+    const call =
+      value.operationId === undefined
+        ? undefined
+        : calls.find(
+            (call) => call.publisher === publisher && call.operationId === value.operationId,
+          )
+    const attribution = call
+      ? `${model.sourceLabel(publisher)} / ${callLabel(call)}`
+      : model.sourceLabel(publisher)
+    const progress = value.progress
+    const count = progress
+      ? ` (${progress.completed}${progress.total === undefined ? '' : ` / ${progress.total}`}${progress.unit === undefined ? '' : ` ${progress.unit}`})`
+      : ''
+    const lines = excerpt(`    ${attribution}: ${value.label}${count}`, 2)
+    if (!call) lines.push(line('    Call relationship unavailable'))
+    if (value.detail) lines.push(...excerpt(`    ${value.detail}`, 1))
+    return { call, lines }
+  })
+  const attached = new Set<(typeof activityGroups)[number]>()
+  for (const call of ranked.slice(0, 4)) {
+    const row = line(`  ${callLabel(call)} — ${state(call)}`)
+    const lines = [
+      call.state === 'failed'
+        ? heading(row, 'error', color)
+        : call.state === 'uncertain' || call.state === 'cancel-requested'
+          ? heading(row, 'warning', color)
+          : call.state === 'returned'
+            ? secondary(row, color)
+            : heading(row, 'info', color),
+    ]
+    const activityOffsets: number[] = []
+    for (const activity of activityGroups) {
+      if (!activity.call || attached.has(activity)) continue
+      let ancestor: ViewerCall | undefined = activity.call
+      let hops = 0
+      while (ancestor && ancestor.key !== call.key && hops++ < 32)
+        ancestor = ancestor.parent ? model.calls.get(ancestor.parent) : undefined
+      if (!ancestor || ancestor.key !== call.key) continue
+      attached.add(activity)
+      activityOffsets.push(lines.length)
+      lines.push(...activity.lines)
+    }
+    if (call.cause) lines.push(...excerpt(`    Cause: ${call.cause}`, 2))
+    if (call.parent && !model.calls.has(call.parent))
+      lines.push(line('    Enclosing invocation unavailable; relationship incomplete'))
+    groups.push({ lines, call: true, activityOffsets })
+  }
+  for (const activity of activityGroups)
+    if (!attached.has(activity) && !activity.call)
+      groups.push({ lines: activity.lines, activityOffsets: [0] })
+  const progress =
+    root?.value.sections.flatMap((section) =>
+      section.blocks.filter((block) => block.kind === 'progress'),
+    ) ?? []
+  for (const block of progress.slice(0, 2))
+    if (block.kind === 'progress')
+      groups.push({
+        lines: excerpt(
+          `${block.label}: ${block.completed}${block.total === undefined ? '' : ` / ${block.total}`}${block.unit === undefined ? '' : ` ${block.unit}`}`,
+          1,
+        ),
+        progress: true,
+      })
+  if (!root && !calls.length && !activities.length)
+    add(model.workspace.hostStage || 'Waiting for observed calls or application reports')
   if (model.feedback) add(model.feedback)
-  const footer = 'Read-only observations · open terminal inspection for details'
-  const footerLines = wrap(footer, width).slice(0, Math.max(1, Math.min(2, height - 2)))
-  const available = Math.max(1, height - footerLines.length)
-  let projection = lines
-  let offset = 0,
-    viewportAnchor: ScrollAnchor | undefined
-  if (lines.length > available) {
-    const requiredShell = model.observationWarning ? 2 : 1
-    const shell = lines.slice(0, Math.min(shellLength, Math.max(requiredShell, available - 2)))
-    const body = lines.slice(shellLength)
-    const bodyRoom = Math.max(1, available - shell.length - 1)
-    const follow =
-      anchor === undefined || anchor - shellLength < bodyRoom
-        ? 0
-        : Math.max(0, anchor - shellLength - Math.floor(bodyRoom / 3))
-    const retained =
-      retainedAnchor === undefined ? undefined : anchors.find((a) => a.key === retainedAnchor.key)
-    offset = Math.max(
-      0,
-      Math.min(
-        retained ? retained.line - shellLength + retainedAnchor!.offset : scroll || follow,
-        Math.max(0, body.length - bodyRoom),
-      ),
-    )
-    const first =
-      anchors.filter((a) => a.line <= offset + shellLength).at(-1) ??
-      anchors.find((a) => a.line >= offset + shellLength)
-    if (first) viewportAnchor = { key: first.key, offset: offset + shellLength - first.line }
-    projection = [
-      ...shell,
-      ...body.slice(offset, offset + Math.max(0, available - shell.length - 1)),
-      '[More content; full summaries and reports remain in the transcript]',
-    ]
+
+  const intrinsicallyHiddenCalls = Math.max(0, candidates.length - 4)
+  const intrinsicallyHiddenActivities = Math.max(0, activities.length - 4)
+  const nested = calls.length - candidates.length
+  const required = critical.length + groups.reduce((sum, group) => sum + group.lines.length, 0)
+  const criticalClipped = cause.length > 3 || warning.length > 2
+  const hasOverflow =
+    required > height ||
+    intrinsicallyHiddenCalls > 0 ||
+    intrinsicallyHiddenActivities > 0 ||
+    nested > 0 ||
+    omitted > 0 ||
+    progress.length > 2 ||
+    model.attention.length > 1 ||
+    criticalClipped
+  const footerRows = hasOverflow
+    ? Math.min(
+        Math.max(0, height - Math.max(1, criticalIdentities)),
+        width < 45 && candidates.length && activities.length ? 2 : 1,
+      )
+    : 0
+  const available = Math.max(0, height - footerRows)
+  const rendered = critical.slice(0, available)
+  let shownCalls = 0,
+    shownActivities = 0,
+    shownProgress = 0
+  for (const group of groups) {
+    if (rendered.length >= available) break
+    const room = available - rendered.length
+    rendered.push(...group.lines.slice(0, room))
+    if (group.call) shownCalls++
+    if (group.progress) shownProgress++
+    shownActivities += group.activityOffsets?.filter((offset) => offset < room).length ?? 0
   }
-  const rendered = [...projection.slice(0, available), ...footerLines].slice(0, height)
+  if (hasOverflow) {
+    const hiddenCalls = candidates.length - shownCalls
+    const hiddenActivities = activities.length - shownActivities
+    const hiddenProgress = progress.length - shownProgress
+    const disclosure = [
+      ...(hiddenCalls ? [`${hiddenCalls} branches/issues hidden`] : []),
+      ...(hiddenActivities ? [`${hiddenActivities} activities hidden`] : []),
+      ...(nested ? [`${nested} nested call observations`] : []),
+      ...(hiddenProgress ? [`${hiddenProgress} measured counts hidden`] : []),
+      ...(criticalClipped ? ['Attention/observation excerpt'] : []),
+      ...(required > height ? ['Live display excerpt'] : []),
+    ].join(' · ')
+    const narrow = [
+      ...(hiddenCalls ? [`${hiddenCalls} calls hidden`] : []),
+      ...(hiddenActivities ? [`${hiddenActivities} activities hidden`] : []),
+      ...(nested ? [`${nested} nested calls`] : []),
+      ...(hiddenProgress ? [`${hiddenProgress} counts hidden`] : []),
+      'Live excerpt',
+    ]
+    rendered.push(
+      ...(width < 45 ? narrow.slice(0, footerRows).map(line) : excerpt(disclosure, footerRows)),
+    )
+    if (rendered.length && (footerRows === 0 || (width < 45 && narrow.length > footerRows))) {
+      const last = rendered.length - 1
+      // A missing local footer is an excerpt, not producer loss. Retain the
+      // critical category/count and mark clipping within the same physical row.
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip only renderer-owned SGR before reserving the excerpt marker.
+      const plain = rendered[last]!.replaceAll(/\u001b\[[0-9;]*m/g, '')
+      rendered[last] = truncateTerminalText(plain, Math.max(0, width - 1)) + '…'
+    }
+  }
   let bytes = 0
   const bounded: string[] = []
-  for (const line of rendered) {
-    const n = Buffer.byteLength(line) + 1
+  for (const text of rendered) {
+    const n = Buffer.byteLength(text) + 1
     if (bytes + n > 32000) {
-      bounded.push('[Projection clipped; use the transcript]')
+      const marker = line('[Live display excerpt clipped]')
+      const markerBytes = Buffer.byteLength(marker) + 1
+      while (bounded.length && bytes + markerBytes > 32000)
+        bytes -= Buffer.byteLength(bounded.pop()!) + 1
+      bounded.push(marker)
       break
     }
-    bounded.push(line)
+    bounded.push(text)
     bytes += n
   }
-  return {
-    lines: bounded.map((line) => privateTruncateStyled(line, width)),
-    references,
-    scroll: offset,
-    ...(viewportAnchor ? { anchor: viewportAnchor } : {}),
-  }
+  return { lines: bounded, references: [] }
 }
 function privateTruncateStyled(text: string, width: number): string {
   // Styled headings are host-owned and short. Width measurements ignore escapes.

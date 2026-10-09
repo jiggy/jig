@@ -54,7 +54,9 @@ authored examples, not independent consumer evidence or promoted Starters.
   noticed while healthy work continues. TUI and web consume the same declarations.
 - Agents, models, credentials, and execution policy remain operator choices.
   Agent-using applications choose an ordinary provider by contract or exact slot;
-  the operator declares its dependency and configures its resource grants.
+  the operator declares its dependency and configures its resource grants. ACP
+  selections live in discovered named JSON grants so the ordinary `jig agent`
+  command can edit the explicit client before review without TypeScript edits.
   `tested-patch` includes its `npm:` ACP dependency and editable Agent Binding.
   Do not add a source wrapper or repository-only route around that package.
 - Label synthetic evidence and keep it distinct from claims about real users.

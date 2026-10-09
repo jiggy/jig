@@ -45,6 +45,11 @@ patch authority and every merge decision stays with a person.
   against the user-input validator.
 - `test/` owns deterministic batch, failure-isolation, and recovery checks.
 
+- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
+  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
+  grants/agent.json --client CLIENT` edits this source before separate review.
+  Keep client choices explicit; no installed-client fallback.
+
 ## Local Contracts
 
 - Complexity cap: one or two preselected jobs, at most two proposals per job,

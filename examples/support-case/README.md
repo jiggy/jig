@@ -4,8 +4,9 @@ An Agent interprets a customer's request. Code checks account records and
 credit policy, then returns a decision another application can consume.
 A persuasive answer cannot raise the credit limit or create a duplicate payment.
 
-The included `bindings/agent.ts` selects Codex as an example choice. Set its
-`client` to `codex`, `claude`, or `pi` for your installed client and complete its
+The included `grants/agent.json` selects Codex as an example choice. Choose
+`codex`, `claude`, or `pi` with `jig agent --grant grants/agent.json --client codex`
+before review, and complete its
 [Agent configuration](../../docs/jig/guide/agents.md#local-clients).
 `jig.ts` routes the assessor's Agent slot to this configured Binding.
 

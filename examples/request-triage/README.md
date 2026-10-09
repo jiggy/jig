@@ -12,8 +12,8 @@ same intake Flow with different classifiers. The caller always invokes its
 
 After [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages),
 check the [Agent configuration](../../docs/jig/guide/agents.md) in
-`bindings/model.ts`. This example selects Claude Code; install and authenticate it, or
-edit the grant to select your client. The project default supplies that Agent
+`grants/agent.json`. This example selects Claude Code; configure it or choose
+your installed client before review with `jig agent --grant grants/agent.json --client codex`. The project default supplies that Agent
 to both intelligent classifiers. Run from this directory on a
 [supported host](../../docs/jig/guide/index.md#supported-host):
 

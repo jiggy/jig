@@ -22,7 +22,9 @@ below. Neither establishes general repair reliability or comparative advantage.
 ## Run the supplied batch
 
 In a copy of the example, run `bun install`, inspect `batch.json`, the Agent,
-single-pass and checked-correction Bindings, and the two named case files. The supplied Binding selects native
+single-pass and checked-correction Bindings, and the two named case files.
+Choose your installed client in `grants/agent.json` before review with
+`jig agent --grant grants/agent.json --client codex`. The supplied grant selects native
 Codex through ACP. To use an HTTP Agent method instead, follow the package and
 Binding setup in [Reuse the Agent method](agent-method.md#invoke-the-ordinary-flow),
 including its optional [OpenAI-compatible gateway route](agent-method.md#use-an-openai-compatible-gateway).

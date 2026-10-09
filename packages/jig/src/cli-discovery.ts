@@ -105,10 +105,10 @@ export function invocationGuide(snapshot: JsonValue): string {
 
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
-  const commands = 'init new review run inspect completion import-contract'
+  const commands = 'init new agent review run inspect completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
-    '--help --input --attach --select --out --receive --updates --timeout --verification --json'
+    '--help --input --attach --select --out --receive --updates --timeout --verification --json --display'
   if (shell === 'bash')
     return `_jig() {
   local cur="\${COMP_WORDS[COMP_CWORD]}" command="\${COMP_WORDS[1]}" prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -121,6 +121,8 @@ export function completionScript(shell: string): string | undefined {
   local reply
   if (( COMP_CWORD == 1 )); then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
+  elif [[ "$prev" == --client && "$command" == agent ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'codex claude pi' -- "$cur")
   elif [[ "$prev" == --verification ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
   elif [[ "$prev" == --updates && "$command" == run ]]; then
@@ -136,6 +138,7 @@ export function completionScript(shell: string): string | undefined {
       review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification';;
       inspect) opts='--help --json --verification --result --display';;
       init) opts='--help --bare --agent';;
+      agent) opts='--help --grant --client --model --default-model';;
       import-contract) opts='--help --list';;
     esac
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W "$opts" -- "$cur")
@@ -160,6 +163,8 @@ _jig() {
   local -a choices
   if (( CURRENT == 2 )); then
     choices=(${commands} --help --version)
+  elif [[ "$words[CURRENT-1]" == --client && "$words[2]" == agent ]]; then
+    choices=(codex claude pi)
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
     choices=(cached strict fast)
   elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
@@ -174,6 +179,7 @@ _jig() {
       review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification);;
       inspect) choices=(--help --json --verification --result --display);;
       init) choices=(--help --bare --agent);;
+      agent) choices=(--help --grant --client --model --default-model);;
       import-contract) choices=(--help --list);;
       *) choices=(--help);;
     esac
@@ -201,6 +207,10 @@ complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
+complete -c jig -n '__fish_seen_subcommand_from agent' -l grant -r
+complete -c jig -n '__fish_seen_subcommand_from agent' -l client -r -a 'codex claude pi'
+complete -c jig -n '__fish_seen_subcommand_from agent' -l model -r
+complete -c jig -n '__fish_seen_subcommand_from agent' -l default-model
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}

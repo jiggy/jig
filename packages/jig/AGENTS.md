@@ -171,7 +171,7 @@ admitted FLOW packages.
   skeleton. Neither installs, networks, approves, or executes. Generated
   packages use the same dependency review as consumer-authored packages. The
   Optional `--agent` selection writes a declared ACP package dependency, visible
-  Binding grant and contract-keyed default. It chooses no client implicitly and
+  named JSON grant selected by a Binding and contract-keyed default. It chooses no client implicitly and
   does not inspect installations or authentication. Generated package versions
   are checked against their manifests. The greeting names the exact tested SDK version; its regression checks the SDK
   manifest so a moving npm tag cannot silently select a different wire contract.
@@ -229,6 +229,11 @@ admitted FLOW packages.
   `docs/jig/spec/project-policy.md`.
 - Binding slots select inline HTTP, command or finite ACP grants, or optional
   named JSON policies.
+  `src/project-agent.ts` owns inert editing of one explicitly selected existing
+  ACP JSON grant. It evaluates no project code and cannot change approval or
+  execution. Preserve turn/session policy, require explicit cross-client model
+  treatment, fence observed source/staging changes and report publication
+  uncertainty. Atomic rename is not filesystem compare-and-swap.
   An ACP grant may pin a recipient-specific model; this changes approval and
   runtime identity without changing operator authentication or client selection.
   `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
@@ -277,6 +282,10 @@ admitted FLOW packages.
   output, then check cancellation. The question and answer share one line without
   intervening stages or notices.
   Readiness status words carry green/amber emphasis without claiming execution.
+  Auto inline uses a compact root-summary/actual-branches/current-activity
+  projection with attention first and visible overflow. Plain selects root landing
+  or first retained root summary once and prints a changed summary at settlement,
+  preserving ended/incomplete context rather than replaying every view.
   In auto/plain, activity phase changes append separate attributed indented lines; only host
   waiting owns a transient line. Clear events silently retire their slots;
   printed phases remain history, and application notices own job outcomes.
@@ -446,6 +455,10 @@ receipt, transport, lifetime, terminal restoration, JSON and immutable-capture
 proof. Frozen standalone package consumers and frozen
 installed Jig runs are distinct gates; source mocks and design approval qualify
 neither installed behavior nor newcomer usability.
+`test/project-agent.test.ts` checks inert grant editing, policy preservation,
+descriptor fences and publication/cleanup failures. `test/cli.test.ts` covers
+grammar and starter wiring. Installed package smoke repeats grant editing with
+an unevaluable project and unavailable native renderer, preserving approval bytes.
 `inspect --result` bypasses project/environment acquisition and reads only the
 selected descriptor-confined packet. Its fixed views label all evidence recorded,
 never reconstruct live views or authority, and preserve exact decoded JSON.

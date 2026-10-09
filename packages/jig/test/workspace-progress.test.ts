@@ -64,6 +64,66 @@ test('only effective interactive dashboard selection omits the default command e
   expect(privateCliCommandLifetimeMs(['review'], true)).toBe(300_000)
 })
 
+test('plain purpose accepted during a delayed cause drain prints once after the complete cause', async () => {
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const chunks: string[] = []
+  let writes = 0,
+    inFlight = 0,
+    maximum = 0
+  const progress = new PrivateCliProgress(
+    true,
+    async (chunk) => {
+      writes++
+      inFlight++
+      maximum = Math.max(maximum, inFlight)
+      expect(Buffer.byteLength(chunk)).toBeLessThanOrEqual(32_768)
+      if (writes === 1) await pending
+      chunks.push(chunk)
+      inFlight--
+    },
+    undefined,
+    false,
+  )
+  try {
+    const source = progress.observe('progress', true)
+    source.accept({
+      kind: 'notice',
+      severity: 'error',
+      text: 'Complete blocking cause\nRetained explanation tail',
+    })
+    source.accept({
+      kind: 'view',
+      id: 'work',
+      title: 'Work',
+      summary: 'Prepare an internal incident brief for human review.',
+      landing: true,
+      sections: [],
+    })
+    source.accept({ kind: 'notice', text: 'Explicit operator-relevant notice' })
+    await pause()
+    expect(writes).toBe(1)
+    expect(chunks).toEqual([])
+    release()
+    source.retire()
+    await progress.settleDisplay({ status: 'succeeded', outcome: 'done', output: null })
+    const output = chunks.join('')
+    expect(output).toContain('Complete blocking cause\n    Retained explanation tail')
+    expect(output.split('Prepare an internal incident brief for human review.')).toHaveLength(2)
+    expect(output.indexOf('Retained explanation tail')).toBeLessThan(output.indexOf('Flow: Work'))
+    expect(output).toContain('Explicit operator-relevant notice')
+    expect(output).toContain('Observation ended')
+    expect(progress.model.attention.every((cause) => cause.committed)).toBeTrue()
+    expect(maximum).toBe(1)
+  } finally {
+    release()
+    progress.close()
+    await progress.flush()
+  }
+})
+
 test('initial refusal never borrows stdin or writes alternate-screen controls', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-workspace-prerequisites-'))
   try {

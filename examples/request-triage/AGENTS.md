@@ -8,13 +8,18 @@ one method contract, using a suggested support queue as the bounded result.
 ## Ownership
 
 - `flows/intake/` owns the unchanged caller; `bindings/` chooses its classifier.
-- `bindings/model.ts` selects the ordinary ACP Agent with an editable Claude Code grant;
+- `bindings/model.ts` selects the ordinary ACP Agent with the named editable Claude Code grant;
   the contract-keyed project default supplies it to Agent and mixed classifiers.
 - `flows/code/`, `flows/agent/`, and `flows/mixed/` independently implement the
   same input, result, and outcome contract. Each package remains self-contained.
 - `fixtures/` contains synthetic requests; `test/` checks application behavior
   with deterministic Agent substitutes.
 - The [public guide](../../docs/jig/guide/request-triage.md) owns the walkthrough.
+
+- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
+  by the ordinary Agent Binding and discovered in `jig.ts`. `jig agent --grant
+  grants/agent.json --client CLIENT` edits this source before separate review.
+  Keep client choices explicit; no installed-client fallback.
 
 ## Local Contracts
 

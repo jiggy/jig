@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { DisplaySnapshotEnvelope } from '@jigging/display-model'
-import { createTui, prepareTui, TuiSupportError, type TuiSupport } from '../src/index.js'
+import { createTui, prepareTui, type TuiSupport, TuiSupportError } from '../src/index.js'
 import { createInlineDisplay } from '../src/inline.js'
 import { ViewerModel } from '../src/viewer-model.js'
 import { snapshot } from './fixtures.js'
@@ -35,7 +35,7 @@ test('inline owns immutable observations, bounds frames and visibly rejects malf
   let frame = display.frame({ columns: 80, rows: 24, color: false }).lines.join('\n')
   expect(frame).toContain('Retained observation')
   expect(frame).not.toContain('Mutated after construction')
-  expect(frame).toContain('open terminal inspection')
+  expect(frame).not.toContain('open terminal inspection')
   display.update({ ...value, revision: 2, views: [{}] } as unknown as DisplaySnapshotEnvelope)
   frame = display.frame({ columns: 80, rows: 24, color: false }).lines.join('\n')
   expect(frame).toContain('malformed')

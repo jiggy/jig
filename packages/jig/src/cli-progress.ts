@@ -1,10 +1,9 @@
-import type { Reference } from '@jigging/user-updates'
-import type { DisplaySnapshotEnvelope } from '@jigging/display-model'
+import type { DisplaySnapshotEnvelope, WebAssets } from '@jigging/display-model'
 import { createTui, prepareTui, type TuiDisplay, type TuiTheme } from '@jigging/display-tui'
 import { createInlineDisplay, type InlineDisplay } from '@jigging/display-tui/inline'
 import { webAssets } from '@jigging/display-web/assets'
-import { PrivateTuiInput } from './cli-tui-input.js'
-import { CliDiagnostic } from './cli-usage.js'
+import type { Reference } from '@jigging/user-updates'
+import { PrivateDisplayProjection } from './cli-display-projection.js'
 import {
   privateCliHeading,
   privateCliSecondary,
@@ -19,6 +18,8 @@ import {
   privateAttentionReceipt,
 } from './cli-run-model.js'
 import { privateSavedResultViews } from './cli-saved-result-presentation.js'
+import { PrivateTuiInput } from './cli-tui-input.js'
+import { CliDiagnostic } from './cli-usage.js'
 import {
   PrivateCliUserUpdates,
   type PrivateUserUpdateSource,
@@ -27,9 +28,7 @@ import {
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-user-updates.js'
 import { PrivateWebDisplay } from './cli-web.js'
-import type { WebAssets } from '@jigging/display-model'
 import { PrivateWebInput } from './cli-web-input.js'
-import { PrivateDisplayProjection } from './cli-display-projection.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
@@ -37,6 +36,8 @@ import type { JsonValue } from './json.js'
 type WriteJob = {
   readonly bytes: number
   readonly transient: boolean
+  /** Essential cause receipts precede observations accepted during their drain. */
+  readonly afterCauses?: boolean
   readonly dispatch: () => void | Promise<void>
 }
 
@@ -414,10 +415,11 @@ export class PrivateCliProgress {
     if (
       !event.cause &&
       !this.animation &&
+      (event.publisher === 'root' || ['failed', 'uncertain'].includes(event.state)) &&
       (prior === undefined || ['returned', 'failed', 'uncertain'].includes(event.state))
     )
       accepted = this.#flowNotice(
-        `  Jig / ${privateUpdateTextForProgress(event.slot)}: ${event.state}${event.intent ? ` — ${privateUpdateTextForProgress(event.intent)}` : ''}\n`,
+        `  Jig / ${privateUpdateTextForProgress(event.intent ?? event.slot)}: ${event.state}\n`,
       )
     if (!accepted) {
       this.#callTranscriptStopped = true
@@ -491,6 +493,7 @@ export class PrivateCliProgress {
         this.#committingCauses = false
         this.#causeTask = undefined
         this.#flowChanged()
+        this.#dispatch()
       })
   }
 
@@ -762,13 +765,8 @@ export class PrivateCliProgress {
     if (!this.#workspaceUsed && !this.#reportedViews) {
       this.#reportedViews = true
       await this.flush()
-      for (const view of this.model.views.values()) {
-        this.#flowNotice(
-          `  ${this.model.sourceLabel(view.publisher)} / ${privateUpdateTextForProgress(view.value.title)} (${view.ended ?? 'observation ended'}):\n    ${privateUpdateTextForProgress(view.value.summary).replaceAll('\n', '\n    ')}\n`,
-          false,
-        )
-        await this.flush()
-      }
+      const summary = this.#updates.finalSummary()
+      if (summary !== undefined) this.#flowNotice(summary, false)
     }
     await this.flush()
   }
@@ -852,7 +850,9 @@ export class PrivateCliProgress {
 
   #dispatch(): void {
     if (this.#dispatching || this.#outputFailed) return
-    const job = this.#jobs.shift()
+    const index = this.#jobs.findIndex((job) => !this.#committingCauses || !job.afterCauses)
+    if (index < 0) return
+    const job = this.#jobs.splice(index, 1)[0]
     if (job === undefined) return
     this.#dispatching = true
     const finished = () => {
@@ -928,6 +928,7 @@ export class PrivateCliProgress {
       {
         bytes: Buffer.byteLength(text) + 5,
         transient: false,
+        afterCauses: this.#committingCauses,
         dispatch: () => {
           const erase = this.#erase()
           return this.write(erase + text)
@@ -943,14 +944,14 @@ export class PrivateCliProgress {
     this.#commitCauses()
     if (this.workspaceActive) plain = undefined
     if (this.#web?.active) return true
-    if (this.#screen === 'entering' || this.#screen === 'closing' || this.#committingCauses)
-      return true
+    if (this.#screen === 'entering' || this.#screen === 'closing') return true
     if (!this.enabled) return plain === undefined ? true : this.#flowNotice(plain)
     if (plain !== undefined && !this.#cancelled) {
       return this.#enqueue(
         {
           bytes: 32_768,
           transient: false,
+          afterCauses: this.#committingCauses,
           dispatch: () => {
             const latest = project()
             if (latest !== undefined && !this.#cancelled) {
@@ -962,6 +963,7 @@ export class PrivateCliProgress {
         true,
       )
     }
+    if (this.#committingCauses) return true
     if (!this.animation && !this.#dashboard?.active) return true
     if (this.#refresh !== undefined) return true
     const delay = Math.max(0, this.#lastRefresh + 200 - performance.now())
@@ -1150,7 +1152,12 @@ export class PrivateCliProgress {
         return this.write(frame.text)
       })
     }
-    if (this.model.calls.size || this.model.views.size || this.#dashboard?.active) {
+    if (
+      this.model.calls.size ||
+      this.model.views.size ||
+      this.model.activities.size ||
+      this.#dashboard?.active
+    ) {
       const snapshot = this.#displaySnapshot()
       this.#inline ??= createInlineDisplay({ snapshot, theme: this.#theme })
       this.#inline.update(snapshot)

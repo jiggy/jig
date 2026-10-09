@@ -154,7 +154,7 @@ const value = {
 const reservedIds=['files','overview','activity',JSON.stringify(['view','files'])];
 for(const [index,id] of reservedIds.entries()) value.views.push({id,sourceId:value.rootSourceId,sourceLabel:'Consumer method',updatedAt:100,value:{kind:'view',id:'portable-'+index,title:'Reserved application '+index,summary:'Reserved literal '+index,sections:[]}});
 const inline = createInlineDisplay({snapshot:value});
-assert(inline.frame({columns:100,rows:16,color:false}).lines.join('\\n').includes('CASE-17'));
+assert(inline.frame({columns:100,rows:16,color:false}).lines.join('\\n').includes('Review retained claims'));
 assert.equal(terminalWidth('A界'),3);
 assert.equal(escapeTerminalText(String.fromCharCode(27)+'[31m'),String.fromCharCode(92)+'u001b[31m');
 assert.equal(heading('Plain','info',false),'Plain');assert.match(syntaxHex('string','one-light'),/^[0-9a-f]{6}$/i);

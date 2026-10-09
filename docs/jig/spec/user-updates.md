@@ -426,8 +426,15 @@ q/Escape/keyboard Ctrl-C then closes without changing admitted outcome. External
 settled shutdown preserves frozen facts and the existing interrupted process status,
 without claiming execution cancellation. Every exit releases input/preview/screen.
 
-Auto/plain exit promptly and emit each retained latest attributed summary once
-with ended/incomplete context, then host result/evidence. A session that actually
+Auto/plain exit promptly. Select the current root landing view, otherwise its
+first retained view in accepted order. Print its initial summary once and its
+latest summary at settlement only when changed, retaining ended/incomplete context.
+Never resurrect retired views. Other complete views remain available to explicit
+inspectors; they are not repeated as placeholder progress. A compact inline region
+shows actual branches and attributed current activities, including activities with
+no call association, with attention-first space and explicit omission counts. It
+does not recursively dump row details. Then emit independent host result/evidence.
+A session that actually
 entered fullscreen omits that summary replay, retaining ordinary final result and
 essential causes. Dashboard diagnostic retention does not prove its full text was
 printed live; final bounded diagnostic evidence must remain visible. Applications

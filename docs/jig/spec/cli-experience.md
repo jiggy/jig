@@ -173,8 +173,21 @@ Execution elapsed time freezes at settlement. An expiring explicit presentation
 constraint leaves live execution running through its ordinary owner; it never
 extends an execution timer. Immutable delivery inspection is selected before
 capture/publication even though screen entry waits for dispatch. Every exit releases preview,
-input and presentation owners. Auto/plain emit the latest retained summaries
-with ended/incomplete context and exit promptly.
+input and presentation owners. Auto/plain emit one selected root summary with
+ended/incomplete context and exit promptly. Prefer the current root landing view,
+otherwise its first retained view in accepted order. Never resurrect retired
+views or repeat an unchanged summary merely because observation ended.
+
+The automatic inline region is a compact work projection, not a reduced interactive
+workspace. Show target, observed stage/time, the attributed root summary, up to four
+actual root branches and current activities. Call joins use publisher-scoped operation
+IDs only; activities without an association remain attributed and visible. Counts
+are measured reports, not inferred completion percentages. Reserve attention before
+ordinary work rows, disclose omitted branches/activities and retain a brief selected
+context after leaving TUI. Do not dump collection row details or every report here.
+Plain scrollback prints the initial root summary once, meaningful activity transitions,
+notices and causes, then a changed root summary at settlement. Other views remain
+available in TUI/web. Final evidence remains independent of optional updates.
 
 1. **Task first.** Identify the requested task and relevant project or target.
    Name stages in ordinary language. Internal lifecycle and implementation
@@ -481,12 +494,34 @@ Run deadline; forced termination still leaves unavailable evidence unavailable.
 ### Agent project initialization
 
 `jig init <directory> --agent codex|claude|pi` optionally authors a declared
-Agent dependency, `bindings/agent.ts` with its native grant, and a contract-keyed
+Agent dependency, `bindings/agent.ts` selecting `grants/agent.json`, and a contract-keyed
 default in `jig.ts`. Bare `--agent` asks for an explicit choice on a terminal;
 empty input cancels. Noninteractive use requires the client argument. Selection
 does not inspect or install a client, copy authentication, resolve dependencies,
 or approve authority. `--bare` omits the greeting, not the explicitly requested
 Agent configuration. Existing destinations are never overwritten.
+
+### Editing an Agent grant
+
+`jig agent --grant FILE --client codex|claude|pi [--model MODEL | --default-model]`
+edits one existing project-relative `<LocalName>.json` ACP grant. It neither evaluates
+`jig.ts`, discovers project membership or native installations, installs dependencies,
+changes approval nor starts work. The source file must be selected by the project
+before review can adopt it. Preserve turn and session policy. A cross-client change
+with a model pin requires explicit replacement or removal; `--default-model` removes
+that pin without overriding operator model configuration. Incompatible Codex retention
+is refused rather than silently removed. A no-op leaves source bytes untouched.
+
+Refuse protected state, unsafe paths, links, multiple links, special files and invalid
+or oversized JSON. Publication preserves permission mode bits, but does not copy
+ownership, ACLs or extended attributes. It rechecks observed
+root, ancestor, original and staged identities/content. Replacement is atomic but
+not filesystem compare-and-swap; avoid concurrent editing. Cleanup skips observed
+staging substitutions. Noncooperating check/rename and check/unlink races remain
+possible. A failure after publication explicitly identifies possibly changed source;
+never roll back over unfamiliar content. Success names the file, previous/new client
+and model pin, and gives a standalone `jig review` command. Explain dependency-network
+consent separately when needed. Existing admitted generations are unchanged.
 
 `jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
 current project's last locally approved snapshot. Without a target it lists

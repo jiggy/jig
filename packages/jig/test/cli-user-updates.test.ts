@@ -5,19 +5,117 @@ import { PrivateCliUserUpdates } from '../src/cli-user-updates.js'
 function observer() {
   const model = new PrivateRunModel(),
     printed: string[] = [],
+    changed: string[] = [],
     unavailable: string[] = []
   const updates = new PrivateCliUserUpdates(
     (text) => {
       printed.push(text)
       return true
     },
-    () => true,
+    (text) => {
+      if (text !== undefined) changed.push(text)
+      return true
+    },
     (text) => unavailable.push(text),
     () => false,
     model,
   )
-  return { model, updates, printed, unavailable }
+  return { model, updates, printed, changed, unavailable }
 }
+
+function view(id: string, title: string, summary: string, landing = false) {
+  return {
+    kind: 'view' as const,
+    id,
+    title,
+    summary,
+    ...(landing ? { landing: true } : {}),
+    sections: [],
+  }
+}
+
+test('plain purpose appears once and settlement adds only changed retained root meaning', () => {
+  const { updates, changed } = observer()
+  const source = updates.open('progress', true)
+  source.accept(view('child', 'Child placeholder', 'No answer yet'), 'separate-publisher')
+  expect(changed).toHaveLength(0)
+  source.accept(view('fallback', 'Work', 'Prepare the supplied internal brief'))
+  source.accept(view('answers', 'Answers', 'Suggestions are awaiting human review', true))
+  source.accept(view('child', 'Child placeholder', 'Still no answer'), 'separate-publisher')
+  expect(changed).toEqual(['  Flow: Work\n    Prepare the supplied internal brief\n'])
+  source.accept(view('answers', 'Answers', 'Both suggestions returned for human review', true))
+  source.retire()
+  const summary = updates.finalSummary()
+  expect(summary).toContain('Flow / Answers: Observation ended')
+  expect(summary).toContain('application reports remain provisional')
+  expect(summary).toContain('Both suggestions returned for human review')
+  expect(summary).not.toContain('No answer')
+  expect(summary).not.toContain('Prepare the supplied internal brief')
+})
+
+test('unchanged root summary is not repeated and clean EOF never invents an outcome', () => {
+  const { updates, changed } = observer()
+  const source = updates.open('progress', true)
+  source.accept(view('work', 'Work', 'Review the retained evidence', true))
+  source.accept(view('work', 'Work', 'Review the retained evidence', true))
+  source.retire()
+  const summary = updates.finalSummary()
+  expect(changed).toHaveLength(1)
+  expect(summary).toContain('Observation ended')
+  expect(summary).not.toContain('Review the retained evidence')
+  expect(summary).not.toMatch(/succeeded|completed|done/)
+})
+
+test('refused first purpose remains available in the frozen settlement excerpt', () => {
+  const model = new PrivateRunModel()
+  const updates = new PrivateCliUserUpdates(
+    () => true,
+    (text) => text === undefined,
+    () => {},
+    () => false,
+    model,
+  )
+  const source = updates.open('progress', true)
+  expect(
+    source.accept(view('work', 'Work', 'Purpose not accepted by the writer', true)),
+  ).toBeFalse()
+  const summary = updates.finalSummary()
+  expect(summary).toContain('Updates incomplete: presentation limit reached.')
+  expect(summary).toContain('Purpose not accepted by the writer')
+  expect(summary).toContain('application reports remain provisional')
+})
+
+test('root fallback keeps accepted order, retires without resurrection, and retains incomplete context', () => {
+  const { model, updates } = observer()
+  const source = updates.open('progress', true)
+  source.accept(view('first', 'First', 'Initial first purpose'))
+  source.accept(view('second', 'Second', 'Second retained purpose'))
+  source.accept(view('first', 'First', 'Updated first purpose'))
+  expect(updates.finalSummary()).toContain('Updated first purpose')
+  source.accept(view('landing', 'Preferred', 'Preferred purpose', true))
+  expect(updates.finalSummary()).toContain('Preferred purpose')
+  source.accept({ kind: 'retire-view', id: 'landing' })
+  expect(updates.finalSummary()).toContain('Updated first purpose')
+  expect(updates.finalSummary()).not.toContain('Preferred purpose')
+  source.accept({ kind: 'retire-view', id: 'first' })
+  model.incomplete = 'Some call observations were omitted.'
+  source.retire('Updates incomplete: channel lost.')
+  const summary = updates.finalSummary()
+  expect(summary).toContain('Flow / Second: Updates incomplete: channel lost.')
+  expect(summary).toContain('Some call observations were omitted.')
+  expect(summary).toContain('Second retained purpose')
+  expect(summary).not.toContain('Updated first purpose')
+})
+
+test('retired root views and child-only observations never become a final plain summary', () => {
+  const { updates } = observer()
+  const source = updates.open('progress', true)
+  source.accept(view('work', 'Work', 'Retired purpose', true))
+  source.accept(view('child', 'Child', 'Retained child report'), 'child')
+  source.accept({ kind: 'retire-view', id: 'work' })
+  source.retire()
+  expect(updates.finalSummary()).toBeUndefined()
+})
 
 test('accepted notices retain literal text and actual publisher without parsing relayed jobs', () => {
   const { model, updates, printed } = observer()

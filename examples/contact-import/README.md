@@ -18,8 +18,9 @@ jig run binding:code --input '{}' --attach source=fixtures/known --out preview-k
 
 The CSV parser is an ordinary declared dependency. The resolution flag permits
 fresh dependency resolution during this review; inspect and approve the result.
-The project includes an ordinary Agent dependency and `bindings/model.ts`, where
-you select the native client and grant its authority. Review that configuration
+The project includes an ordinary Agent dependency and `grants/agent.json`, selected
+by `bindings/model.ts`. Choose your client before review, for example
+`jig agent --grant grants/agent.json --client codex`. Review that configuration
 even when this particular run uses only code. The known-format path makes no Agent calls.
 
 Open `preview-known/files/preview.json`. Ada and Mei have accepted contact

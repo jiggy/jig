@@ -1,7 +1,7 @@
 import type { DisplaySnapshotEnvelope } from '@jigging/display-model'
+import { viewerFrame } from './projection.js'
 import type { InlineDisplay, TuiViewport } from './types.js'
 import type { ViewerModel } from './viewer-model.js'
-import { viewerFrame } from './projection.js'
 
 /** Transfer a private viewer; public inline declarations expose no adapter state. */
 export function createInlineOwner(model: ViewerModel): InlineDisplay {
@@ -12,7 +12,13 @@ export function createInlineOwner(model: ViewerModel): InlineDisplay {
       if (!disposed) model.update(snapshot)
     },
     frame(viewport: TuiViewport): { lines: string[] } {
-      if (disposed || !Number.isFinite(viewport.columns) || !Number.isFinite(viewport.rows))
+      if (
+        disposed ||
+        !Number.isFinite(viewport.columns) ||
+        !Number.isFinite(viewport.rows) ||
+        viewport.columns < 1 ||
+        viewport.rows < 1
+      )
         return { lines: [] }
       const frame = viewerFrame(
         model,

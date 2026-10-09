@@ -16,8 +16,9 @@ intelligent method, it can evaluate that method's contribution before proceeding
 ## Run a case
 
 Complete [workspace setup](./dependencies.md#local-workspace-packages) on a
-[supported host](./index.md#supported-host). The included `bindings/agent.ts`
-selects Codex as an editable example choice; change `client` for your installed
+[supported host](./index.md#supported-host). The included `grants/agent.json`
+selects Codex as an editable example choice; use
+`jig agent --grant grants/agent.json --client codex` before review to choose your installed
 Codex, Claude Code, or Pi and complete its [configuration](./agents.md#local-clients).
 The included dependency and `jig.ts` default supply that Agent to the assessor.
 From `examples/support-case`, inspect the two Flows and their policy, then run:

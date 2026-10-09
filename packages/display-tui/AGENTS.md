@@ -14,6 +14,10 @@ and portable user-updates data without a Jig host or execution owner.
 - `src/input.ts` decodes supplied bytes and owns bounded key/escape state.
 - `src/native.ts` owns private OpenTUI layout, memory cells and bounded encoding.
 - `src/projection.ts` owns hierarchy, detail and compact/inline projection.
+  Inline is a purpose/actual-branches/activity projection rather than recursively
+  dumping interactive sections and row details. Retain unassociated activities,
+  deterministic root-view fallback, attention-first bounds and visible overflow;
+  handoff retains brief selected context/filter without a second workspace.
 - `src/inline.ts`, `src/text.ts` and `src/style.ts` own non-native public exports.
 - `src/inline-owner.ts` owns private viewer transfer and inline lifetime.
 - Package tests own renderer/navigation/input/preview regressions. Jig owns its
