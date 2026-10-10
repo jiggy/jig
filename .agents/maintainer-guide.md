@@ -502,7 +502,8 @@ Begin design and delivery reviews with the whole consumer task: what useful
 work becomes possible, how the chosen boundaries serve it, and what the author
 and operator must understand or coordinate. Compare the strongest credible
 simpler baseline, including the total burden of learning, configuration,
-decisions and recovery. Assess architecture, UX and product impact before
+decisions and recovery, as well as internal dependencies, indirection, state
+and coordination. Assess architecture, UX and product impact before
 implementation defects and release checks; passing those checks does not
 establish a usable product. Distinguish current defects from supported limits
 and future opportunities rather than making every concern a new gate.
@@ -514,6 +515,23 @@ demonstrated consumer needs that generalize beyond one example. An optional
 control still adds vocabulary, discovery, documentation and interaction costs;
 hiding it from the ordinary path does not eliminate those costs. Public names
 should describe the consumer's intention, not an internal mechanism.
+
+Apply the same standard to internals. First ask whether the mechanism needs
+to exist. Prefer removing unnecessary work, reusing a fitting local pattern,
+or using standard-library and platform capabilities before writing new
+infrastructure. Use installed dependencies when they fit; do not add a package
+for a few clear lines. Keep native values intact unless a boundary requires
+conversion. Each wrapper, abstraction, duplicate representation, lifecycle owner
+or state transition must earn its place through a concrete responsibility or
+invariant and make the whole task easier to reason about. Anticipated reuse
+alone does not justify it.
+
+Choose the smallest complete, readable implementation, not minimum line count.
+Fix the cause at its responsible owner, inspect affected callers, complete the
+necessary changes to callers, fixtures, exports, documentation and checks, and
+delete obsolete paths. Preserve distinct responsibilities and required
+validation, error handling, accessibility and cleanup when simplifying; fewer
+files or shorter code do not justify weaker guarantees.
 
 Apply the doctrine's
 [progressive-disclosure obligation](doctrine/design-judgment.md#progressive-disclosure-is-a-design-obligation)

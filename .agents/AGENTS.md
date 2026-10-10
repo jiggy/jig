@@ -18,8 +18,8 @@ for external libraries.
 - `communication.md` owns positioning, narrative progression, vocabulary,
   and public editorial judgment, drawing on the audience and doctrine.
 - `maintainer-guide.md` introduces the engineering model, its governing
-  principles, operational invariants, minimalist public interfaces, holistic
-  product/UX review, and working method.
+  principles, operational invariants, simple implementations and public
+  interfaces, holistic product/UX review, and working method.
 - `coordination/` owns project coordination records. Its
   `ROADMAP.md` gives a compact, high-level view of outcome order and the next
   steps; its `inbox/` holds postponed tasks that have not yet been triaged.
