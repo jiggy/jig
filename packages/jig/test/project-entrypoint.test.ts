@@ -63,10 +63,6 @@ for (const source of [
   'binding:factory --attach source=.jig',
   'binding:factory --attach source=../outside',
   'binding:factory --out .jig/results',
-  'binding:factory --out-new .jig/results',
-  'binding:factory --out-new results/',
-  'binding:factory --out-new /absolute',
-  'binding:factory --out result --out-new result',
   'binding:factory --input @file | cat',
   'binding:factory && anything',
   'binding:factory --input $(anything)',
@@ -168,35 +164,25 @@ test('file defaults are references, with fresh input capture deferred until invo
   ).toBe('new.json')
 })
 
-test('fixed and fresh outputs form one override group with paths resolved by origin', () => {
+test('explicit output replaces its authored default, with paths resolved by origin', () => {
   expect(
-    parseRun(resolveProjectEntrypoint('binding:factory --out-new results', [], '/project')),
-  ).toMatchObject({ outputPrefix: '/project/results' })
+    parseRun(resolveProjectEntrypoint('binding:factory --out results', [], '/project')),
+  ).toMatchObject({ output: '/project/results' })
   expect(
     parseRun(
-      resolveProjectEntrypoint(
-        'binding:factory --out-new results',
-        ['--out', 'chosen'],
-        '/project',
-      ),
+      resolveProjectEntrypoint('binding:factory --out results', ['--out', 'chosen'], '/project'),
     ),
   ).toMatchObject({ output: 'chosen' })
   expect(
-    parseRun(
-      resolveProjectEntrypoint(
-        'binding:factory --out results',
-        ['--out-new', '../chosen'],
-        '/project',
-      ),
-    ),
-  ).toMatchObject({ outputPrefix: '../chosen' })
+    parseRun(resolveProjectEntrypoint('binding:factory', [], '/project')).output,
+  ).toBeUndefined()
   expect(() =>
     resolveProjectEntrypoint(
-      'binding:factory --out-new results',
-      ['--out', 'chosen', '--out-new', 'other'],
+      'binding:factory --out results',
+      ['--out', 'chosen', '--out', 'other'],
       '/project',
     ),
-  ).toThrow('Supply either --out DIR or --out-new PREFIX once.')
+  ).toThrow('--out may only be supplied once.')
 })
 
 test('explicit selections replace the selection set and can use a default attachment', () => {

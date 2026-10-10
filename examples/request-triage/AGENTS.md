@@ -24,8 +24,10 @@ one method contract, using a suggested support queue as the bounded result.
 
 ## Local Contracts
 
-- `jig.ts` owns the complete default invocation: `binding:intake --input @fixtures/labeled.json --out-new triage-result --timeout 1m`. Ordinary
-  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+- `jig.ts` owns the complete default invocation: `binding:intake --input @fixtures/labeled.json --timeout 1m`. Ordinary
+  `jig run` uses reviewed defaults and returns its result on stdout without a
+  packet. The README and guide offer optional `--out` to save the record in a
+  new retained destination; they never promise an automatic `result.json`.
   Explicit targets bypass defaults; display choices remain operator options.
 
 - `done` returns a suggested `billing`, `technical`, or `manual` queue. Manual

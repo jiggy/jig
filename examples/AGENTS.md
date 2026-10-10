@@ -57,8 +57,11 @@ authored examples, not independent consumer evidence or promoted Starters.
   the operator declares its dependency and configures its resource grants. ACP
   selections live in discovered named JSON grants. Interactive review can offer
   a separately confirmed correction; source edits never authorize execution.
-  Every example supplies a complete reviewed entrypoint and fresh evidence
-  prefix so ordinary `jig run` works repeatedly without overwriting results.
+  Every example supplies a complete reviewed entrypoint without output naming.
+  Writable targets receive fresh temporary packets through ordinary host defaults;
+  result-only targets return stdout unless the operator chooses `--out`.
+  First-run guidance explains that operating-system cleanup may remove temporary
+  packets and `--out` selects a new retained location without overwriting results.
   `tested-patch` includes its `npm:` ACP dependency and editable Agent Binding.
   Do not add a source wrapper or repository-only route around that package.
 - Label synthetic evidence and keep it distinct from claims about real users.

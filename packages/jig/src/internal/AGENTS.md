@@ -1026,8 +1026,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `installation-verification.ts` owns command-scoped operator policy and the
   bounded installation cache. The installed CLI resolves `--verification` over
   `JIG_VERIFICATION`, falling back to cached, before opening the command scope.
-  Pass prepared command arguments and their selected admission through file-owner
-  and delegation reexecution. Root submission rejects changed approval before
+  Pass prepared command arguments, the private preparation-complete marker and
+  their optional selected admission through file-owner and delegation reexecution.
+  The retained inspection callback exposes only owned canonical writable-target
+  selectors with that same admission, without public DTOs or package recapture.
+  Select omitted writable output once under the canonical OS-temporary parent
+  before file-owner selection; preserve no-output/unreviewed decisions too.
+  Keep anchored exclusions, publication and packet retention with the delivery owner.
+  Root submission rejects changed approval before
   allocation; the private admission marker can only constrain, never grant, execution.
   Entrypoint defaults and interactive target choices survive reexecution; preserve the effective verification policy through delegation,
   file delivery and recovery. Strict

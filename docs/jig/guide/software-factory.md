@@ -37,9 +37,12 @@ jig run
 ```
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
-`fixtures` source tree, an eight-minute deadline, and fresh `factory-result`
-output prefix. Jig reports the actual destination. Repeat `jig run` to keep each
-packet; for another batch, override its input:
+`fixtures` source tree and an eight-minute deadline. Jig chooses a fresh packet
+directory in operating-system temporary storage for its writable deliverables
+and reports it on stderr. Repeating `jig run` leaves earlier packets intact, but
+the operating system may clear temporary storage. Use `jig run --out ./factory-result`
+to choose a retained location that does not already exist. For another batch,
+override its input:
 
 ```sh
 jig run --input @another-batch.json

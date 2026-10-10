@@ -28,9 +28,11 @@ jig review --allow-resolution-network
 jig run
 ```
 
-The entrypoint supplies the fixture, two-minute deadline and fresh `support-result`
-output prefix. Jig reports the destination holding `result.json`; repeating the
-command preserves earlier packets.
+The entrypoint supplies the fixture and two-minute deadline. This result-only
+target returns its decision on stdout without creating a packet directory.
+Add `--json` for the complete machine record, or use `jig run --out ./support-result`
+to save `result.json` in a retained location. The directory must not already
+exist; Jig never overwrites an earlier result.
 
 The fixture supplies two settled USD 24 payments for the same invoice. The
 customer names the second charge, `ch-102`. When the Agent identifies that

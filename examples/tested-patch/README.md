@@ -23,9 +23,13 @@ jig review --allow-resolution-network
 jig run
 ```
 
-The reviewed entrypoint supplies the issue, read-only fixture, five-minute deadline
-and fresh `repair-result` output prefix. Jig reports the actual destination;
-repeat `jig run` to keep every packet. Explicit targets bypass those defaults.
+The reviewed entrypoint supplies the issue, read-only fixture and five-minute deadline.
+Jig chooses a fresh packet directory in operating-system temporary storage for
+its writable deliverables and reports it on stderr. Repeating `jig run` leaves
+earlier packets intact, but the operating system may clear temporary storage.
+Use `jig run --out ./repair-result` to choose a retained location that does not
+already exist; Jig never overwrites a packet. Explicit targets bypass the
+entrypoint defaults.
 
 Add `--receive progress` to see the repair specialist's phase and attempt
 while the Run is active. Redirected stdout then uses NDJSON records; only the
@@ -76,7 +80,7 @@ The method accepts 16 UTF-8 files totaling 64 KiB and eight editable source path
 Its leaf receives JSON and uses Agent and Project Command capabilities, with no
 attachments or child Flows. Source selection and delivery belong to the root.
 
-The output destination must be new. Ctrl-C cancels owned work. This example
+An explicit `--out` destination must be new. Ctrl-C cancels owned work. This example
 publishes patches only at completion; an interrupted Run does not preserve
 partial patches. Optional progress is transient.
 Selected source reaches the configured provider.

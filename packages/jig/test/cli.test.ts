@@ -662,7 +662,13 @@ describe('finite Jig project commands', () => {
     const directory = await mkdtemp(join(tmpdir(), 'jig-unreviewed-entrypoint-'))
     try {
       const invocation = commandInvocation(unusedHost())
-      expect(await main(['run'], { ...invocation.options, currentDirectory: directory })).toBe(1)
+      expect(
+        await main(['run'], {
+          ...invocation.options,
+          currentDirectory: directory,
+          runArgumentsPrepared: false,
+        }),
+      ).toBe(1)
       expect(invocation.error).toContain('No approved targets')
       expect(invocation.error).toContain('jig review')
     } finally {
@@ -1946,7 +1952,7 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('private message')
   })
 
-  test('fresh output reports its chosen destination on stderr even when delivery prerequisites refuse', async () => {
+  test('output reports its destination on stderr even when delivery prerequisites refuse', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-cli-output-notice-'))
     try {
       for (const terminalOutput of [true, false]) {
@@ -1965,11 +1971,11 @@ describe('finite Jig project commands', () => {
         )
         expect(
           await main(
-            ['run', 'binding:work', '--out-new', 'evidence', '--display', 'plain'],
+            ['run', 'binding:work', '--out', 'evidence', '--display', 'plain'],
             invocation.options,
           ),
         ).toBe(2)
-        expect(invocation.error).toMatch(/Output: ".*\/evidence-[0-9a-f]{32}"/)
+        expect(invocation.error).toContain(`Output: "${root}/evidence"`)
         expect(invocation.output).toBe('')
         expect(await readdir(root)).toEqual([])
       }
@@ -2002,7 +2008,7 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('No Flow was started.')
     for (const name of ['source', 'reference', 'typo', 'rules', 'deliverables'])
       expect(invocation.error).toContain(`"${name}"`)
-    expect(invocation.error).toContain('--out-new ./result-packet')
+    expect(invocation.error).toContain('--out ./result-packet')
     expect(invocation.error).toContain('template')
     expect(invocation.error).not.toContain('private message')
     expect(invocation.error).not.toContain('Submitting')
@@ -2025,7 +2031,7 @@ describe('finite Jig project commands', () => {
       expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(2)
       expect(invocation.output).toBe('')
       expect(invocation.error).toBe(
-        `Error: Command could not finish\n\n  the project has no usable reviewed revision; complete jig review before running\n\n  Diagnostic code: ${code}\n`,
+        `Error: Command could not finish\n\n  The project has no usable reviewed revision. No Flow was started. Complete jig review before running.\n\n  Diagnostic code: ${code}\n`,
       )
     },
   )
@@ -2971,6 +2977,8 @@ describe('finite Jig project commands', () => {
     const options: PrivateCliOptions = {
       host,
       currentDirectory: '/project',
+      // The fake host models the inner installed command after argument ownership.
+      runArgumentsPrepared: true,
       interactive: false,
       ...extra,
       writeOutput: (text) => {

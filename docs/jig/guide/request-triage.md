@@ -81,9 +81,11 @@ jig run
 ```
 
 Review prepares the ordinary declared dependencies. The reviewed entrypoint
-supplies the labeled fixture, a one-minute deadline and fresh `triage-result`
-output prefix. Read `result.json` in the destination reported by Jig. Repeated
-Runs keep earlier evidence.
+supplies the labeled fixture and a one-minute deadline. These result-only targets
+return the queue suggestion on stdout without creating a packet directory.
+Add `--json` for the complete machine record, or use `jig run --out ./triage-result`
+to save `result.json` in a retained location. The directory must not already
+exist; Jig never overwrites an earlier result.
 
 For the Agent and mixed classifiers, configure a supported [Agent](./agents.md)
 and the included `grants/agent.json`, which shows Claude Code as an example choice.
@@ -92,8 +94,8 @@ is missing; manual JSON edits require renewed review. Missing Agent support leav
 the code target usable, while both intelligent routes need a fresh ready review.
 
 ```sh
-jig run binding:agent --input @fixtures/labeled.json --out-new triage-agent --timeout 2m
-jig run binding:mixed --input @fixtures/labeled.json --out-new triage-mixed --timeout 2m
+jig run binding:agent --input @fixtures/labeled.json --timeout 2m
+jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
 ```
 
 Inspect the source and review, then approve before running. Noninteractive

@@ -82,28 +82,31 @@ async function runPrivateInstalledCli(
   arguments_: readonly string[] = process.argv.slice(2),
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
-  const prepared = await privateCliPrepareArguments(
-    arguments_,
-    signal === undefined ? {} : { signal },
-  )
-  if ('exitCode' in prepared) return exit(prepared.exitCode)
-  arguments_ = prepared.arguments
-  if (privateCliSavedResultInspection(arguments_)) return runWithEnvironment(arguments_, {}, signal)
-  if (prepared.admissionDigest !== undefined)
-    process.env.JIG_PRIVATE_RUN_ADMISSION = prepared.admissionDigest
-  const expectedAdmissionDigest = process.env.JIG_PRIVATE_RUN_ADMISSION
+  const preparedMarker = process.env.JIG_PRIVATE_RUN_PREPARED
+  const selectedAdmission = process.env.JIG_PRIVATE_RUN_ADMISSION
   if (
-    expectedAdmissionDigest !== undefined &&
-    !/^sha256:[a-f0-9]{64}$/.test(expectedAdmissionDigest)
+    (preparedMarker !== undefined && preparedMarker !== '1') ||
+    (selectedAdmission !== undefined && !/^sha256:[a-f0-9]{64}$/.test(selectedAdmission))
   ) {
     process.stderr.write(
       privateCliStderrDiagnostic(
         'JIG_COMMAND_UNAVAILABLE',
-        'The retained Run selection is invalid. Start a fresh jig run command.',
+        'The retained Run selection is invalid. No Flow was started. Start a fresh jig run command.',
       ),
     )
     return exit(2)
   }
+  const prepared = await privateCliPrepareArguments(arguments_, {
+    runArgumentsPrepared: preparedMarker === '1',
+    ...(selectedAdmission === undefined ? {} : { expectedAdmissionDigest: selectedAdmission }),
+    ...(signal === undefined ? {} : { signal }),
+  })
+  if ('exitCode' in prepared) return exit(prepared.exitCode)
+  arguments_ = prepared.arguments
+  if (privateCliSavedResultInspection(arguments_)) return runWithEnvironment(arguments_, {}, signal)
+  if (arguments_[0] === 'run') process.env.JIG_PRIVATE_RUN_PREPARED = '1'
+  if (selectedAdmission === undefined && prepared.admissionDigest !== undefined)
+    process.env.JIG_PRIVATE_RUN_ADMISSION = prepared.admissionDigest
   let verification: string | undefined
   try {
     verification = privateCliVerification(arguments_)
@@ -285,6 +288,7 @@ async function runWithEnvironment(
         return exit(
           await main(arguments_, {
             host,
+            runArgumentsPrepared: process.env.JIG_PRIVATE_RUN_PREPARED === '1',
             presentationDeadline: privatePresentationDeadline(process.env),
             ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined
               ? {}

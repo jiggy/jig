@@ -3447,7 +3447,7 @@ export async function inspectPrivateApprovedProject(
   selector?: string,
   checkEnvironment?: PrivateInspectionEnvironmentCheck,
   describeTargets = false,
-  onAdmission?: (digest: string) => void,
+  onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -3554,7 +3554,18 @@ export async function inspectPrivateApprovedProject(
       })
     }
     const state = inspectionState(states)
-    onAdmission?.(receipt.admissionDigest)
+    onAdmission?.(
+      receipt.admissionDigest,
+      Object.freeze(
+        targets.flatMap((target, index) =>
+          Object.values(candidate.candidate.targets[index]!.request.attachments).includes(
+            'read-write',
+          )
+            ? [target.target]
+            : [],
+        ),
+      ),
+    )
     const entrypoint =
       candidate.lock.entrypoint === undefined ? {} : { entrypoint: candidate.lock.entrypoint }
     let result: JsonValue = {

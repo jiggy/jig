@@ -70,6 +70,7 @@ import { attachPrivateRootAdministrationController } from '../src/internal/root-
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
 import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
+import { parseRun } from '../src/run-arguments.js'
 
 const TABLES = [
   'admission_head',
@@ -767,6 +768,134 @@ describe.serial('direct alpha activation store', () => {
       scenario === 'pending' ? 75_000 : 60_000,
     )
   }
+  test.each(['ready', 'unavailable'] as const)(
+    'omitted writable output selects one temporary packet from the retained %s interface',
+    async (state) => {
+      const original = await createFixture(state, 'flow:flows/run', { deliverables: 'read-write' })
+      const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+      try {
+        const approved = await admit(original)
+        await rename(original.store, fixture.store)
+        let inventory: readonly string[] = []
+        await inspectPrivateApprovedProject(
+          fixture.root,
+          undefined,
+          undefined,
+          false,
+          (digest, writable) => {
+            expect(digest).toBe(approved)
+            inventory = writable
+          },
+        )
+        expect(inventory).toEqual(['flow:flows/run'])
+        expect(Object.isFrozen(inventory)).toBe(true)
+        const defaults = await privateCliPrepareArguments(['run'], {
+          currentDirectory: fixture.root,
+        })
+        // Explicit output lookup uses retained request modes, without package recapture.
+        await rm(fixture.store, { recursive: true })
+        const explicit = await privateCliPrepareArguments(['run', 'flow:./flows/run'], {
+          currentDirectory: fixture.root,
+        })
+        if ('exitCode' in defaults || 'exitCode' in explicit) throw new Error('selection refused')
+        const first = parseRun(defaults.arguments).output!,
+          second = parseRun(explicit.arguments).output!
+        expect(dirname(first)).toBe(realpathSync(tmpdir()))
+        expect(basename(first)).toMatch(/^jig-result-[a-f0-9]{32}$/)
+        expect(second).not.toBe(first)
+        expect(defaults.admissionDigest).toBe(approved)
+        expect(explicit.admissionDigest).toBe(approved)
+        await expect(stat(first)).rejects.toMatchObject({ code: 'ENOENT' })
+        expect(
+          await privateCliPrepareArguments(defaults.arguments, {
+            currentDirectory: fixture.root,
+            runArgumentsPrepared: true,
+            expectedAdmissionDigest: approved,
+          }),
+        ).toEqual({ arguments: defaults.arguments })
+        const chosen = ['run', 'flow:flows/run', '--out', './chosen']
+        expect(
+          await privateCliPrepareArguments(chosen, { currentDirectory: fixture.root }),
+        ).toEqual({
+          arguments: chosen,
+        })
+        const unknown = ['run', 'binding:missing']
+        expect(
+          await privateCliPrepareArguments(unknown, { currentDirectory: fixture.root }),
+        ).toEqual({
+          arguments: unknown,
+          admissionDigest: approved,
+        })
+      } finally {
+        await fixture.dispose()
+      }
+    },
+  )
+
+  test('a completed no-output decision survives later approval without a late file owner', async () => {
+    const original = await createFixture('ready', undefined, { deliverables: 'read-write' })
+    const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+    try {
+      const args = ['run', 'flow:flows/run']
+      expect(await privateCliPrepareArguments(args, { currentDirectory: fixture.root })).toEqual({
+        arguments: args,
+      })
+      await admit(original)
+      await rename(original.store, fixture.store)
+      expect(
+        await privateCliPrepareArguments(args, {
+          currentDirectory: fixture.root,
+          runArgumentsPrepared: true,
+        }),
+      ).toEqual({ arguments: args })
+      expect(
+        await privateCliPrepareArguments(['run'], {
+          currentDirectory: fixture.root,
+          runArgumentsPrepared: true,
+          writeError: () => {},
+        }),
+      ).toEqual({ exitCode: 2 })
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test.each(['ready', 'unavailable'] as const)(
+    'an inaccessible temporary parent refuses before dispatch for a retained %s writable target',
+    async (state) => {
+      const original = await createFixture(state, undefined, { deliverables: 'read-write' })
+      const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+      const prior = process.env.TMPDIR
+      try {
+        await admit(original)
+        await rename(original.store, fixture.store)
+        process.env.TMPDIR = join(fixture.root, 'missing-temp')
+        let diagnostic = ''
+        expect(
+          await privateCliPrepareArguments(['run', 'flow:flows/run'], {
+            currentDirectory: fixture.root,
+            writeError: (text) => {
+              diagnostic += text
+            },
+          }),
+        ).toEqual({ exitCode: 1 })
+        expect(diagnostic).toContain('Temporary output storage is unavailable')
+        expect(diagnostic).toContain('No Flow was started')
+        expect(diagnostic).toContain('Add --out ./result-packet to the same invocation')
+        const fallback = ['run', 'flow:flows/run', '--out', 'chosen']
+        expect(
+          await privateCliPrepareArguments(fallback, { currentDirectory: fixture.root }),
+        ).toEqual({
+          arguments: fallback,
+        })
+      } finally {
+        if (prior === undefined) delete process.env.TMPDIR
+        else process.env.TMPDIR = prior
+        await fixture.dispose()
+      }
+    },
+  )
+
   test('entrypoint selection uses approval, survives explicit overrides, and refuses a newer admission', async () => {
     const original = await createFixture('ready', 'flow:flows/run --input @job.json --timeout 8m')
     let coordinator: PrivateProjectCoordinator | undefined
@@ -800,6 +929,7 @@ describe.serial('direct alpha activation store', () => {
       const direct = ['run', 'flow:flows/run', '--input', '{"value":"direct"}']
       expect(await privateCliPrepareArguments(direct, { currentDirectory: fixture.root })).toEqual({
         arguments: direct,
+        admissionDigest: approved,
       })
       const newer = insertCandidate(fixture, 'entrypoint-race', false)
       const next = requireAdmission(
@@ -812,6 +942,13 @@ describe.serial('direct alpha activation store', () => {
           }),
         ),
       )
+      expect(
+        await privateCliPrepareArguments(direct, {
+          currentDirectory: fixture.root,
+          runArgumentsPrepared: true,
+          expectedAdmissionDigest: approved,
+        }),
+      ).toEqual({ arguments: direct })
       coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
       await expect(
         submitPrivateRootRun({
@@ -3207,6 +3344,7 @@ async function createEmptyFixture(): Promise<EmptyFixture> {
 async function createFixture(
   disposition: 'ready' | 'unavailable' = 'unavailable',
   entrypoint?: string,
+  attachments: Readonly<Record<string, 'read' | 'read-write'>> = {},
 ): Promise<Fixture> {
   const empty = await createEmptyFixture()
   const flowSource = join(empty.base, 'run-flow')
@@ -3223,6 +3361,7 @@ async function createFixture(
       join(flowSource, 'FLOW.contract.json'),
       JSON.stringify({
         $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+        ...(Object.keys(attachments).length ? { attachments } : {}),
         input: {
           type: 'object',
           properties: {
@@ -3258,7 +3397,7 @@ async function createFixture(
       package: flow,
       entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
       settings: {},
-      attachments: {},
+      attachments,
     })
     const targets = [
       {

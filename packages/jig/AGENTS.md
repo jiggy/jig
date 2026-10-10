@@ -214,10 +214,15 @@ admitted FLOW packages.
 - Project `entrypoint` is a target plus optional Run-argument string, retained
   in semantic identity, lock, review and inspection. `run-arguments.ts` owns shared
   CLI validation; `project/entrypoint.ts` owns bounded shell-free tokenization,
-  project-relative defaults and explicit-option overrides. `--out-new PREFIX` and
-  `--out DIR` form one output option group; the CLI chooses a fresh sibling name
-  once before owner/delegation reexecution, then ordinary no-replace delivery
-  remains authoritative. Report the exact destination on stderr for explicit
+  project-relative defaults and explicit-option overrides. Omitted `--out` for
+  an approved writable target selects one fresh OS-temporary packet destination
+  before owner/delegation reexecution; result-only omission stays stdout-only.
+  Use the read-only retained inventory and admission digest from the same snapshot,
+  never source evaluation or example heuristics. A private preparation-complete
+  marker preserves both output and no-output decisions through all installed
+  owners and main; existing approval pins cannot be replaced. Ordinary anchored
+  validation and no-replace delivery remain authoritative. Published temporary
+  packets survive command/inspection exit, subject to OS cleanup. Report the exact destination on stderr for explicit
   and default invocations, including redirected stdout; keep operator paths
   out of browser observation snapshots. Explicit targets
   bypass defaults. Job files are captured per Run; Binding resources stay pinned.

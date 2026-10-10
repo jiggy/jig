@@ -35,8 +35,10 @@ patch authority and every merge decision stays with a person.
 - `bindings/` composes one-proposal and checked-correction configurations of
   that specialist with one ordinary Agent and fixed Bun test/CLI grants.
 - `jig.ts` declares the project entrypoint with the factory target, batch/source
-  defaults, fresh output prefix and deadline. Ordinary `jig run` exercises the
-  public host defaults; repeat Runs choose a new output without overwriting.
+  defaults and deadline. Ordinary `jig run` exercises the public host defaults;
+  its writable deliverables receive a fresh temporary packet without overwriting.
+  The README and guide explain temporary cleanup and optional retained `--out`
+  destinations.
 - `batch.json` and the named case files own the selected issues and acceptance
   policy. `fixtures/` owns the synthetic comparison projects.
   The shipped batch selects `method` explicitly to avoid unnecessary model routing;

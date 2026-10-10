@@ -21,6 +21,14 @@ arguments. Without an entrypoint, terminals offer a numbered chooser and scripts
 must supply a target. Press Enter to cancel the chooser. Both paths run the
 approved revision, not unreviewed edits.
 
+Targets declaring writable deliverables receive a fresh packet destination in
+operating-system temporary storage when `--out` is omitted. Jig reports the path
+on stderr, including in machine-output mode. Temporary packets remain after exit,
+but the operating system may clear them. Use `--out DIRECTORY` for a chosen
+retained location that does not already exist; Jig never overwrites a packet.
+Result-only targets return stdout without creating a packet by default, and can
+use `--out` to save their execution record too.
+
 Use `jig inspect` to list targets in the last approved revision. Use
 `jig inspect binding:repair` (or an exact `flow:` target) to read its invocation
 contract, settings schema, configured settings, resolved slots, resource grants,
@@ -171,9 +179,10 @@ provider response while the Flow's own result contract is unchanged.
 
 Execution completion is different from task success: a method can execute
 correctly and return an application outcome such as `blocked`. Inspect the
-outcome, output, and exit status. With `--out`, also inspect the separate
-delivery status. Existing output directories are never replaced; choose a new
-destination for another Run.
+outcome, output, and exit status. When a packet destination is selected, also
+inspect the separate delivery status. Existing output directories are never
+replaced. An explicit `--out` must name a new destination for another Run;
+omitted output on a writable target selects a fresh temporary destination.
 
 ### Agent setup failures during review
 

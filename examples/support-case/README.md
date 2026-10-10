@@ -16,9 +16,11 @@ jig review --allow-resolution-network
 jig run
 ```
 
-The reviewed entrypoint supplies the duplicate-charge fixture, two-minute deadline
-and fresh `support-result` output prefix. Jig reports the destination containing
-`result.json`; repeating `jig run` preserves earlier evidence.
+The reviewed entrypoint supplies the duplicate-charge fixture and two-minute deadline.
+This result-only Flow returns its decision on stdout; no packet directory is
+created by default. Add `--json` for the complete machine record, or use
+`jig run --out ./support-result` to save `result.json` in a retained location.
+That directory must not already exist; Jig never overwrites an earlier result.
 
 For the intended assessment (`ch-102`, 2400 cents), `done` returns
 `disposition: "credit_eligible"` and `credit: {chargeId: "ch-102", amountCents: 2400}`.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { randomBytes } from 'node:crypto'
-import { lstat } from 'node:fs/promises'
+import { lstat, realpath } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -64,7 +65,6 @@ import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
-import { expandPrivateCliFreshOutput } from './private-cli-fresh-output.js'
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
@@ -246,8 +246,7 @@ Unavailable alternatives remain unavailable until a new review approves them.
   --input JSON|@FILE  Supply JSON inline or from a file (default: {})
   --attach NAME=DIR   Capture a declared read attachment; repeat for each name
   --select NAME=FILE  Select a relative file within an attachment; repeat as needed
-  --out DIR          Save a result packet to this exact new directory
-  --out-new PREFIX   Choose a fresh result directory for every run
+  --out DIR          Choose a new result directory (file outputs default to temp)
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
   --display MODE     Select auto (default), plain, tui or web
@@ -265,6 +264,8 @@ Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work
 Terminal stdout shows readable results and live channel text. Redirect stdout or
 use --json for JSON (NDJSON with --receive). Diagnostics and status use stderr.
 Scripts should check the result and exit status.
+File outputs default to a fresh temporary packet; Jig reports its path on stderr.
+Temporary storage may be cleared. Use --out DIR to keep a packet in a chosen location.
 Web prints a private local browser link on terminal stderr after work starts.
 Close inspection leaves running work alone; settled inspection has no idle expiry.
 --json and --receive take precedence. --updates off suppresses automatic Flow views.
@@ -306,6 +307,8 @@ export interface PrivateCliOptions {
   readonly standardContractDirectory?: string
   readonly expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
+  /** Installed owner handoff only; never changes root admission authority. */
+  readonly runArgumentsPrepared?: boolean
   readonly host?: PrivateCliCommandHost
   readonly currentDirectory?: string
   readonly signal?: AbortSignal
@@ -396,7 +399,7 @@ async function executeCommand(
     const prepared = await privateCliPrepareArguments(arguments_, options)
     if ('exitCode' in prepared) return prepared.exitCode
     arguments_ = prepared.arguments
-    if (prepared.admissionDigest !== undefined)
+    if (runtime.expectedAdmissionDigest === undefined && prepared.admissionDigest !== undefined)
       runtime.expectedAdmissionDigest = prepared.admissionDigest
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
@@ -427,7 +430,7 @@ async function executeCommand(
   }
 }
 
-/** Resolve approved entrypoint or interactive selection before host acquisition. */
+/** Resolve reviewed invocation and output once, before host/command-owner acquisition. */
 export async function privateCliPrepareArguments(
   arguments_: readonly string[],
   options: PrivateCliOptions = {},
@@ -435,20 +438,32 @@ export async function privateCliPrepareArguments(
   if (arguments_[0] !== 'run' || isHelpRequest(arguments_)) return { arguments: arguments_ }
   const runtime = cliRuntime(options)
   try {
-    if (arguments_[1] !== undefined && !arguments_[1].startsWith('-'))
-      return { arguments: expandPrivateCliFreshOutput(arguments_, runtime.currentDirectory) }
+    const explicit = arguments_[1] !== undefined && !arguments_[1].startsWith('-')
+    if (options.runArgumentsPrepared) {
+      if (!explicit)
+        throw new CliDiagnostic(
+          'JIG_COMMAND_UNAVAILABLE',
+          'The retained Run selection is invalid. No Flow was started. Start a fresh jig run command.',
+          2,
+        )
+      parseRun(arguments_)
+      return { arguments: arguments_ }
+    }
+    if (explicit && parseRun(arguments_).output !== undefined) return { arguments: arguments_ }
     // The placeholder is only syntax validation; it is never dispatched.
-    parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)], true)
+    if (!explicit) parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)], true)
     let admissionDigest: string | undefined
+    let writableTargets: readonly string[] = []
     let snapshot: Record<string, JsonValue>
     try {
       snapshot = (await inspectPrivateApprovedProject(
         runtime.currentDirectory,
         undefined,
         undefined,
-        true,
-        (digest) => {
+        !explicit,
+        (digest, writable) => {
           admissionDigest = digest
+          writableTargets = writable
         },
       )) as Record<string, JsonValue>
     } catch {
@@ -458,16 +473,43 @@ export async function privateCliPrepareArguments(
         2,
       )
     }
+    const prepare = async (effective: readonly string[]) => {
+      const parsed = parseRun(effective)
+      const selector =
+        parsed.target.kind === 'flow'
+          ? flowSelector(parsed.target.path)
+          : `binding:${parsed.target.id}`
+      let prepared = effective
+      if (parsed.output === undefined && writableTargets.includes(selector)) {
+        let destination: string
+        try {
+          const parent = await realpath(tmpdir())
+          if (!(await lstat(parent)).isDirectory())
+            throw new Error('temporary parent is not a directory')
+          destination = resolve(parent, `jig-result-${randomBytes(16).toString('hex')}`)
+          if (Buffer.byteLength(destination) > 4096) throw new Error('output path limit')
+        } catch {
+          throw new CliDiagnostic(
+            'JIG_RUN_FILES_INVALID',
+            'Temporary output storage is unavailable. No Flow was started. Add --out ./result-packet to the same invocation, preserving its target and inputs. Choose a new directory with an existing supported parent.',
+            1,
+          )
+        }
+        prepared = [...effective, '--out', destination]
+      }
+      return {
+        arguments: prepared,
+        ...(admissionDigest === undefined ? {} : { admissionDigest }),
+      }
+    }
+    if (explicit) return await prepare(arguments_)
     if (typeof snapshot.entrypoint === 'string') {
       const effective = resolveProjectEntrypoint(
         snapshot.entrypoint,
         arguments_.slice(1),
         runtime.currentDirectory,
       )
-      return {
-        arguments: expandPrivateCliFreshOutput(effective, runtime.currentDirectory),
-        ...(admissionDigest === undefined ? {} : { admissionDigest }),
-      }
+      return await prepare(effective)
     }
     parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)])
     const targets = approvedTargets(snapshot, true)
@@ -506,13 +548,7 @@ export async function privateCliPrepareArguments(
     const index = /^[1-9][0-9]*$/.test(answer) ? Number(answer) - 1 : -1
     const target = targets[index]
     if (target === undefined) usage('run', 'Choose a listed target number. No Flow was started.')
-    return {
-      arguments: expandPrivateCliFreshOutput(
-        ['run', target.target, ...arguments_.slice(1)],
-        runtime.currentDirectory,
-      ),
-      ...(admissionDigest === undefined ? {} : { admissionDigest }),
-    }
+    return await prepare(['run', target.target, ...arguments_.slice(1)])
   } catch (error) {
     if (runtime.signal?.aborted) {
       runtime.writeError('Target selection cancelled. No Flow was started.\n')
@@ -1374,7 +1410,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       } catch {
         throw new CliDiagnostic(
           'JIG_OUTPUT_INVALID',
-          '--out requires a new destination outside input roots and protected state, beneath an existing supported directory',
+          '--out requires a new destination outside input roots and protected state, beneath an existing supported directory. No Flow was started.',
           1,
         )
       }
@@ -2233,7 +2269,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       runtime.writeError(
         renderDiagnostic(
           String((error.details as Record<string, JsonValue>).code),
-          'the project has no usable reviewed revision; complete jig review before running',
+          'The project has no usable reviewed revision. No Flow was started. Complete jig review before running.',
         ),
       )
       return 2
@@ -2312,7 +2348,7 @@ function renderFileMappingGuidance(
     )
   if (missing.length || writable.length) {
     const flags = missing.map((name) => `--attach ${shellWord(`${name}=./${name}-input`)}`)
-    if (writable.length) flags.push('--out-new ./result-packet')
+    if (writable.length) flags.push('--out ./result-packet')
     lines.push(
       '',
       'Template: replace the target and input directories; retain your other required input/options:',

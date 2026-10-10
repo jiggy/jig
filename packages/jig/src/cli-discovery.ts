@@ -96,16 +96,17 @@ export function invocationGuide(snapshot: JsonValue): string {
   for (const [name, mode] of Object.entries(record(item.attachments))) {
     if (mode === 'read' && !boundReads.includes(name))
       command.push('--attach', cliShellWord(`${name}=./${name}-input`))
-    else if (mode === 'read-write') command.push('--out ./result-packet')
   }
+  if (Object.values(record(item.attachments)).includes('read-write'))
+    lines.push(
+      '  File outputs: Jig saves a fresh temporary packet and reports its path. Temporary storage may be cleared; use --out DIR to keep a packet in a chosen new directory outside input roots.',
+    )
   if (boundReads.length > 0)
     lines.push(
       `  Reviewed read attachments are already supplied: ${boundReads.map((name) => JSON.stringify(name)).join(', ')}. Do not override them.`,
     )
   if (Object.keys(record(item.attachments)).length > 0)
-    lines.push(
-      '  File paths below are placeholders. Choose input directories and a new output destination outside them.',
-    )
+    lines.push('  Input paths below are placeholders. Choose the directories to share.')
   const outputs = Object.entries(record(record(item.contract).channels)).filter(
     ([, value]) => record(value).direction === 'send',
   )
@@ -142,7 +143,7 @@ export function completionScript(shell: string): string | undefined {
   const commands = 'init new review run inspect completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
-    '--help --input --attach --select --out --out-new --receive --updates --timeout --verification --json --display'
+    '--help --input --attach --select --out --receive --updates --timeout --verification --json --display'
   if (shell === 'bash')
     return `_jig() {
   local cur="\${COMP_WORDS[COMP_CWORD]}" command="\${COMP_WORDS[1]}" prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -237,7 +238,7 @@ complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plai
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
-${['input', 'attach', 'select', 'out', 'out-new', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
+${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
 ${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'generate-contracts'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from review' -l ${flag}`).join('\n')}
 `
   return undefined

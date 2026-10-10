@@ -44,8 +44,9 @@ use-case and orchestration hypotheses.
   with execution policy and `SECURITY.md`; never imply fast skips Flow approval
   or sandbox enforcement.
 - `guide/files.md` explains per-run files and review-pinned Binding resources,
-  their shared read attachment interface, fresh output prefixes, actionable
-  admitted file mappings, retention and root-only limits.
+  their shared read attachment interface, automatic temporary packets for
+  writable targets, stdout-only result targets, explicit retained destinations,
+  actionable admitted file mappings, retention and root-only limits.
 - `guide/agent-method.md` explains the reusable method's pure library and
   published ordinary Agent Run artifact, reviewed-source adoption, explicit
   caller context and independent consumer result validation.
@@ -71,11 +72,13 @@ use-case and orchestration hypotheses.
   execution boundary, and ends at a first run with visible prerequisites.
 - `guide/request-triage.md` owns the one-caller, three-implementation walkthrough:
   code, Agent, and mixed classifiers share a result contract; changed targets
-  need review, and suggestions never authorize business actions.
+  need review, and suggestions never authorize business actions. Its result-only
+  targets return stdout; optional `--out` saves their record without overwrite.
 
 - `guide/support-case.md` follows request triage with a useful policy decision:
   an Agent proposes a disputed charge, code checks supplied account records,
-  and the caller receives eligibility rather than a payment authorization.
+  and the caller receives eligibility rather than a payment authorization. Its
+  result-only target returns stdout unless the operator chooses `--out`.
 - `guide/tested-patch.md` teaches reproduced failure, proposal, independent
   checks, and final patch evidence for one issue and one specialist.
 - `guide/software-factory.md` teaches exact selection between reviewed
@@ -148,6 +151,10 @@ use-case and orchestration hypotheses.
 - Keep introductory guides focused on the first useful result. Put optional
   tuning, environment variables, cache internals, and configuration tradeoffs
   in `guide/configuration.md`, reachable through Reference navigation and links.
+- First-run file guidance explains that operating-system cleanup may remove
+  automatic temporary packets. `--out` chooses a new retained location without
+  overwriting an earlier result; result-only examples do not promise a packet
+  when output is omitted.
 
 - Use `sh` fences for shell commands; reserve `console` for transcripts with
   prompts and output, so command examples receive syntax highlighting.

@@ -493,8 +493,8 @@ and exit 2. Execution status remains unchanged if completion won the race.
 Cleanup failure is reported separately. A missing terminal, coordinator loss,
 or broken output stream cannot be replaced with a fabricated terminal; consumers
 must still handle incomplete output. No reporting path replays execution.
-With `--out`, confirmed settlement after interruption may publish the terminal
-record and an already accepted checkpoint. It never exports unfinished final
+With a packet destination, confirmed settlement after interruption may publish
+the terminal record and an already accepted checkpoint. It never exports unfinished final
 Flow files. The trusted command's bounded settlement wait does not extend the
 Run deadline; forced termination still leaves unavailable evidence unavailable.
 
@@ -556,16 +556,24 @@ correction rounds, stop with manual-edit guidance.
 
 ### Invocation files and fresh evidence
 
-`--out-new PREFIX` selects one absolute destination with a 128-bit random
-hexadecimal suffix before file ownership or host-delegation reexecution. Its
-selected path survives every subsequent owner. It is mutually exclusive with
-`--out DIR`; either explicit output option replaces either entrypoint default.
-Project prefixes resolve from the project, explicit prefixes from the caller.
-Empty final components and overlong resulting names or paths refuse before
-dispatch. Selection reserves nothing. Ordinary anchored-parent validation,
-input-root/protected-path exclusion and no-replace publication remain required;
-there is no retry after work. Show the actual destination on stderr and preserve
-the existing machine delivery record.
+When an effective invocation omits `--out`, a retained approved target declaring
+a read-write attachment receives a fresh packet destination in canonical
+operating-system temporary storage. Result-only targets stay stdout-only;
+unknown targets and unreviewed projects follow ordinary refusal handling without
+fabricated file requirements. Select the destination before file ownership or
+host-delegation reexecution and preserve both output and no-output decisions
+through every subsequent owner under the same retained admission.
+An explicit `--out DIR` replaces an entrypoint output default and retains exact
+destination semantics. Selection reserves nothing. Ordinary anchored-parent
+validation, input-root/protected-path exclusion and no-replace publication remain
+required, including for a known unavailable writable target. Invalid temporary
+parents refuse before dispatch with actionable `--out` guidance; there is no
+fallback or retry after work. Show the actual destination on stderr in human and
+machine modes. Preserve JSON/NDJSON framing, existing delivery fields and the
+terminal record's equality with saved `result.json` when a packet is written.
+Explain on the first-run path that operating-system cleanup may remove temporary
+packets. `--out` chooses a retained location; an existing destination is never
+overwritten.
 
 Initial file-mapping refusal identifies the missing unbound read names, invalid
 mapping names, bound overrides and writable names needing a destination. Say

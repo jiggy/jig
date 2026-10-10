@@ -64,8 +64,7 @@ test('selection without an approved entrypoint never guesses and validates optio
 
 test('explicit argument preparation renders usage failures before the installed host is acquired', async () => {
   for (const [args, exitCode, code] of [
-    [['run', 'binding:work', '--out-new', 'bad/'], 1, 'JIG_RUN_FILES_INVALID'],
-    [['run', 'binding:work', '--out', 'fixed', '--out-new', 'fresh'], 2, 'JIG_USAGE'],
+    [['run', 'binding:work', '--out', 'fixed', '--out', 'other'], 2, 'JIG_USAGE'],
     [['run', 'binding:work', '--unknown'], 2, 'JIG_USAGE'],
     [['run', 'bad-target'], 1, 'JIG_RUN_TARGET_INVALID'],
   ] as const) {
@@ -78,7 +77,7 @@ test('explicit argument preparation renders usage failures before the installed 
       }),
     ).toEqual({ exitCode })
     expect(diagnostic).toContain(code as string)
-    expect(diagnostic).not.toContain('at expandPrivateCliFreshOutput')
+    expect(diagnostic).not.toContain('at privateCliPrepareArguments')
   }
 })
 
@@ -100,8 +99,10 @@ test('inspection gives honest templates, required files and channels, not guesse
   expect(guide).toContain('"attempts" (optional): "integer"')
   expect(guide).toContain('template')
   expect(guide).toContain(
-    "jig run 'binding:repair' --input @input.json --attach 'source=./source-input' --out ./result-packet",
+    "jig run 'binding:repair' --input @input.json --attach 'source=./source-input'",
   )
+  expect(guide).toContain('fresh temporary packet')
+  expect(guide).toContain('use --out DIR')
   expect(guide).toContain('"progress" (optional)')
   expect(guide).not.toContain('--input \'{"issue"')
   expect(cliShellWord("flow:flows/it's a test")).toBe("'flow:flows/it'\\''s a test'")
@@ -207,7 +208,7 @@ test('inspection templates omit read attachments already captured by the Binding
   expect(guide).toContain("--attach 'source=./source-input'")
   expect(guide).not.toContain("--attach 'rules=")
   expect(guide).toContain('already supplied: "rules"')
-  expect(guide).toContain('--out ./result-packet')
+  expect(guide).toContain('use --out DIR')
 })
 
 test('new writes ordinary source, inherits the project SDK and never evaluates authoring', async () => {

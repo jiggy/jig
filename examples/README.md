@@ -27,6 +27,13 @@ and follow the selected example's README on a
 The [documentation](../docs/jig/guide/overview.md) explains installation,
 Agent configuration, results, and integration.
 
+Request triage, support case and incident brief return their results on stdout
+without creating a packet by default. The file-producing examples receive fresh packet directories
+in operating-system temporary storage; Jig reports each destination on stderr.
+The operating system may clear that storage. Use `jig run --out DIRECTORY` for a
+chosen retained location. The directory must be new; existing results are never
+overwritten.
+
 Each application publishes optional, display-neutral dashboards through the standard
 [user-updates contract](../docs/jig/contracts/user-updates.md). Add `--display
 tui` for terminal inspection or `--display web` for a private local browser

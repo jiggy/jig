@@ -75,7 +75,7 @@ entrypoint: "binding:factory",
 ```
 
 ```ts
-entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out-new factory-result --timeout 8m",
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --timeout 8m",
 ```
 
 The string is bounded to 16,384 characters and 512 argument words. Jig tokenizes
@@ -88,7 +88,7 @@ removed. Unclosed quotes, unfinished escapes, NUL and unquoted shell operators
 Quoted values are literal: no environment, tilde, wildcard or command expansion.
 TypeScript string escaping still applies before this argument parsing.
 
-Allowed options are `--input`, `--attach`, `--select`, `--out`, `--out-new`, `--receive` and
+Allowed options are `--input`, `--attach`, `--select`, `--out`, `--receive` and
 `--timeout`, with the ordinary Run grammar. Operator controls such as
 `--verification` and `--json` remain CLI options. Review validates the target,
 supplied inline input, unbound read-attachment names and outgoing channel names.
@@ -101,27 +101,29 @@ Explicit options replace corresponding defaults: `--input` replaces the entire
 JSON value or file reference, `--receive` replaces the channel set, and file
 mappings replace by attachment name. `--select` replaces that attachment's whole
 selection set. Replacing `--attach` clears its default selections unless explicit
-selections are also supplied. `--out` and `--out-new` form one output option group:
-either explicit option replaces either default. They are mutually exclusive;
-duplicates within either source remain
-errors. An explicit target bypasses all entrypoint defaults, even when it names
+selections are also supplied. An explicit `--out` replaces the declared output
+destination; duplicates within either source remain errors. An explicit target
+bypasses all entrypoint defaults, even when it names
 the same target. Without an entrypoint, terminals offer a chooser and scripts
 require an exact target. An invalid or unavailable entrypoint never falls back.
 
 Declaration paths resolve from the project; explicit CLI paths resolve from the
 calling directory. Job file contents are captured at invocation, while Binding
 attachments remain review-pinned and cannot be overridden. Existing output
-paths are never overwritten: a fixed `--out` needs a new destination on repeat
-Runs. `--out-new PREFIX` chooses one absolute sibling destination named
-`PREFIX-<32 lowercase hexadecimal characters>` from 128 random bits before
-command-owner reexecution. Declaration prefixes are project-relative; explicit
-prefixes are caller-relative. The prefix must have a nonempty final component
-and leave room for the suffix within the destination's path and filename bounds.
-Selection creates no reservation or file authority. Ordinary anchored-parent,
+paths are never overwritten: `--out DIR` needs a new destination on repeat Runs.
+When the effective invocation omits `--out`, a retained approved target declaring
+a read-write attachment receives a fresh packet destination in canonical
+operating-system temporary storage. Result-only targets remain stdout-only.
+Unknown targets and unreviewed projects receive no invented file requirements.
+Destination selection precedes command-owner reexecution and stays unchanged
+through submission, including the decision to omit output. Selection creates no
+reservation or file authority. Ordinary anchored-parent, protected-path,
 input-root exclusion and no-replace publication checks remain authoritative;
-collision or invalid destination refuses before dispatch without retrying work.
-Jig reports the chosen destination, including the existing machine
-`delivery.destination` field. Entry point changes are reviewed and retained with the exact project
+a collision or invalid destination refuses before dispatch without retrying work.
+Jig reports the actual destination on stderr and in the existing machine
+`delivery.destination` field. Temporary packets remain after command exit, but
+the operating system may clear them. Use `--out` for a chosen retained location.
+Entry point changes are reviewed and retained with the exact project
 revision. `jig inspect` exposes that approved string; unreviewed edits do not
 change execution. Selection and submission must use the same admission.
 

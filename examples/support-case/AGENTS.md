@@ -25,8 +25,10 @@ credit eligibility and customer-facing claims.
 
 ## Local Contracts
 
-- `jig.ts` owns the complete default invocation: `binding:support --input @fixtures/duplicate.json --out-new support-result --timeout 2m`. Ordinary
-  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+- `jig.ts` owns the complete default invocation: `binding:support --input @fixtures/duplicate.json --timeout 2m`. Ordinary
+  `jig run` uses reviewed defaults and returns its result on stdout without a
+  packet. The README and guide offer optional `--out` to save the record in a
+  new retained destination; they never promise an automatic `result.json`.
   Explicit targets bypass defaults; display choices remain operator options.
 
 - Account facts come from the authenticated application caller, never customer

@@ -69,7 +69,9 @@ descriptors.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient
   identity and explicit authority approval through the existing plan.
 - `project-sdk.md` and `project-policy.md` own the approved string `entrypoint`,
-  shared Run grammar, fixed/fresh output option-group overrides and per-invocation job capture, alongside
+  shared Run grammar, exact `--out` overrides, automatic temporary packets for
+  retained writable targets, stdout-only result targets and stable output/no-output
+  selection through command ownership, per-invocation job capture,
   contract-keyed `defaultProviders`,
   sole-match review-time resolution and declared `npm:` package targets.
   Selected feature requirements qualify package support before execution;

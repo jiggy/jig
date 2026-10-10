@@ -23,8 +23,10 @@ only after executed checks and independent acceptance.
 
 ## Local Contracts
 
-- `jig.ts` owns the complete default invocation: `binding:repair --input @issue.json --attach source=fixtures/log-report --out-new repair-result --timeout 5m`. Ordinary
-  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+- `jig.ts` owns the complete default invocation: `binding:repair --input @issue.json --attach source=fixtures/log-report --timeout 5m`. Ordinary
+  `jig run` uses reviewed defaults and receives a fresh temporary packet for its
+  writable deliverables. The README and guide explain temporary cleanup and
+  optional retained `--out` destinations without overwrite behavior.
   Explicit targets bypass defaults; display choices remain operator options.
 
 - Complexity cap: one issue, one specialist, one final patch/evidence result.

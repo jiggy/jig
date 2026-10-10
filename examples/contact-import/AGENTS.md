@@ -20,8 +20,10 @@ or both, then using ordinary code to produce a contact preview.
 
 ## Local Contracts
 
-- `jig.ts` owns the complete default invocation: `binding:code --input '{}' --attach source=fixtures/known --out-new preview-known --timeout 1m`. Ordinary
-  `jig run` uses reviewed defaults and chooses one fresh evidence destination.
+- `jig.ts` owns the complete default invocation: `binding:code --input '{}' --attach source=fixtures/known --timeout 1m`. Ordinary
+  `jig run` uses reviewed defaults and receives a fresh temporary packet for its
+  writable preview. The README explains temporary cleanup and optional retained
+  `--out` destinations without overwrite behavior.
   Explicit targets bypass defaults; display choices remain operator options.
 
 - Complexity cap: one CSV, one contact schema, column selection only, final preview.

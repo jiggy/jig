@@ -233,6 +233,7 @@ test('trusted root dispatch opens short no-view Runs and updates-off; machine mo
     const timeline: string[] = []
     const code = await main(['run', 'flow:flows/work', '--display', 'tui', ...mode], {
       currentDirectory: '/project',
+      runArgumentsPrepared: true,
       interactive: true,
       terminalError: true,
       terminalOutput: false,
@@ -323,6 +324,7 @@ test('post-dispatch observation failure keeps inspection only after confirmed pr
       settled = false
     const code = await main(['run', 'flow:flows/work', '--display', 'tui'], {
       currentDirectory: '/project',
+      runArgumentsPrepared: true,
       interactive: true,
       terminalError: true,
       terminalOutput: false,
@@ -482,6 +484,7 @@ test('an expanded-report failure keeps its known terminal open until the operato
     closed = 0
   const code = await main(['run', 'flow:flows/work', '--display', 'tui'], {
     currentDirectory: '/project',
+    runArgumentsPrepared: true,
     interactive: true,
     terminalError: true,
     terminalOutput: false,
@@ -1239,6 +1242,7 @@ test('fullscreen final reporting preserves full bounded diagnostics and frozen s
       const code = await main(['run', 'flow:flows/work', '--display', 'tui', '--timeout', '123s'], {
         host: host as any,
         currentDirectory: '/project',
+        runArgumentsPrepared: true,
         interactive: true,
         terminalError: true,
         terminalOutput: human,

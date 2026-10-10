@@ -45,10 +45,12 @@ reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
 Interactive review can offer a separately confirmed correction to `grants/agent.json`
 when its selected executable is missing, preserving the two-turn allowance; you
 can also edit the JSON file and review again. The reviewed entrypoint in `jig.ts`
-selects the brief, input, three-minute deadline and fresh `brief-result` output
-prefix. Repeating `jig run` preserves earlier packets. Open `result.json` inside
-the destination reported by Jig for full branch answers and conversation evidence;
-concise answer excerpts are shown when a packet was written. Override an argument when needed, for example `jig run --input @my-incident.json`.
+selects the brief, input and three-minute deadline. This result-only example
+returns its report on stdout; it does not create a file packet by default.
+Use `jig run --out ./brief-result` to save the report in a new directory;
+Jig never overwrites a packet. Open `result.json` there for full branch answers
+and conversation evidence; concise answer excerpts are shown when a packet was written.
+Override an argument when needed, for example `jig run --input @my-incident.json`.
 Successful output contains a proposed brief, independent questions, actual
 conversation settlement and, when replaced, the exact handoff snapshot. Dashboard
 activity identifies each worker's requested turn, received answer, handoff

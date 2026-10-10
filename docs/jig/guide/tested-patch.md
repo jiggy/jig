@@ -30,9 +30,12 @@ jig review --allow-resolution-network
 jig run
 ```
 
-The entrypoint supplies `issue.json`, the read-only fixture, a five-minute deadline
-and fresh `repair-result` output prefix. Open `result.json` in the destination
-reported by Jig; repeating `jig run` preserves earlier evidence.
+The entrypoint supplies `issue.json`, the read-only fixture and a five-minute deadline.
+Its writable deliverables receive a fresh packet directory in operating-system
+temporary storage, reported on stderr. Repeating `jig run` leaves earlier packets
+intact, but the operating system may clear temporary storage. Use
+`jig run --out ./repair-result` for a retained location that does not already
+exist; Jig never overwrites a packet. Open `result.json` in the reported destination.
 
 The optional `updates` channel carries the semantic views; the independent `progress`
 channel retains closed phase records. Add `--receive progress` to observe the current

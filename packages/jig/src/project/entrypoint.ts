@@ -3,15 +3,7 @@ import type { InvocationOperationDescriptor } from '../invocation-contract.js'
 import { parseRun } from '../run-arguments.js'
 import { isProtectedProjectPath, normalizeProjectPath } from './paths.js'
 
-const OPTIONS = new Set([
-  '--input',
-  '--attach',
-  '--select',
-  '--out',
-  '--out-new',
-  '--receive',
-  '--timeout',
-])
+const OPTIONS = new Set(['--input', '--attach', '--select', '--out', '--receive', '--timeout'])
 
 /** Argument quoting only. This never invokes a shell or expands values. */
 export function entrypointWords(value: unknown): string[] {
@@ -62,13 +54,12 @@ export function parseProjectEntrypoint(value: unknown): ReturnType<typeof parseR
   for (let index = 1; index < words.length; index += 2)
     if (!OPTIONS.has(words[index]!))
       throw new TypeError(
-        'entrypoint accepts only --input, --attach, --select, --out, --out-new, --receive and --timeout',
+        'entrypoint accepts only --input, --attach, --select, --out, --receive and --timeout',
       )
   const parsed = parseRun(['run', ...words])
   for (const path of [
     parsed.inputFile,
     parsed.output,
-    parsed.outputPrefix,
     ...parsed.attachments.map((item) => item.directory),
   ]) {
     if (path === undefined) continue
@@ -118,8 +109,7 @@ export function resolveProjectEntrypoint(
       if (!explicitGroups.has(key)) {
         if (option === '--input' && argument?.startsWith('@'))
           argument = `@${resolve(projectDirectory, argument.slice(1))}`
-        else if (option === '--out' || option === '--out-new')
-          argument = resolve(projectDirectory, argument!)
+        else if (option === '--out') argument = resolve(projectDirectory, argument!)
         else if (option === '--attach') {
           const equals = argument!.indexOf('=')
           argument = `${argument!.slice(0, equals)}=${resolve(projectDirectory, argument!.slice(equals + 1))}`
@@ -141,9 +131,7 @@ function groups(args: readonly string[]): Map<string, [string, string | undefine
     const key =
       option === '--attach' || option === '--select'
         ? `${option}:${argument?.split('=', 1)[0]}`
-        : option === '--out' || option === '--out-new'
-          ? '--output'
-          : option
+        : option
     const entries = grouped.get(key) ?? []
     entries.push([option, argument])
     grouped.set(key, entries)

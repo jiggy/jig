@@ -500,10 +500,20 @@ belong only in [`suspended-experiments.md`](suspended-experiments.md).
 
 Begin design and delivery reviews with the whole consumer task: what useful
 work becomes possible, how the chosen boundaries serve it, and what the author
-and operator must understand or coordinate. Assess architecture, UX and product
-impact before implementation defects and release checks; passing those checks
-does not establish a usable product. Distinguish current defects from supported
-limits and future opportunities rather than making every concern a new gate.
+and operator must understand or coordinate. Compare the strongest credible
+simpler baseline, including the total burden of learning, configuration,
+decisions and recovery. Assess architecture, UX and product impact before
+implementation defects and release checks; passing those checks does not
+establish a usable product. Distinguish current defects from supported limits
+and future opportunities rather than making every concern a new gate.
+
+Prefer ordinary data, sensible defaults and corrections at the existing
+responsible owner before adding a public command, flag, configuration option
+or extension point. Each new public concept must earn its place through
+demonstrated consumer needs that generalize beyond one example. An optional
+control still adds vocabulary, discovery, documentation and interaction costs;
+hiding it from the ordinary path does not eliminate those costs. Public names
+should describe the consumer's intention, not an internal mechanism.
 
 Apply the doctrine's
 [progressive-disclosure obligation](doctrine/design-judgment.md#progressive-disclosure-is-a-design-obligation)
@@ -511,7 +521,10 @@ to the before-and-after public usage. Identify configuration, duplicated
 declarations and lifecycle code added or removed, not just API names. Prefer
 reusable coordination at its responsible layer over boilerplate in every caller.
 Check the ordinary path as well as advanced failure handling; simplification
-must preserve authority, truthful results and settlement.
+must preserve authority, truthful results and settlement. Preserve those
+invariants, not every existing implementation constraint: revise the mechanism
+when it can uphold the same promise with less user burden. Do not make users
+manage another concept merely to accommodate the current implementation.
 
 Before a checkpoint, identify the user-visible outcome, smallest observable
 proof, missing seam, public vocabulary, exclusions, and stop condition.

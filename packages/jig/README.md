@@ -122,14 +122,16 @@ review does not compile; already-generated contracts need no compiler runtime.
 Declare a project starting point using familiar Run arguments in `jig.ts`:
 
 ```ts
-entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out-new factory-result --timeout 8m",
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --timeout 8m",
 ```
 
 After review, `jig run` uses that entrypoint. Explicit options override defaults;
 an explicit target bypasses them. Declaration paths are project-relative and job
-files are captured when invoked. `--out-new PREFIX` chooses a fresh result
-directory for each invocation, so repeated runs preserve earlier evidence.
-Use `--out DIR` for an exact destination; existing destinations are never replaced.
+files are captured when invoked. Targets with file outputs receive a fresh
+temporary packet when output is omitted; Jig reports its path. Packets survive
+command exit, but the operating system may clear temporary storage. Use `--out DIR`
+to keep a packet in a chosen location; existing destinations are never replaced.
+Targets without file outputs return their result on stdout unless output is selected.
 A target-only string is valid too. See [project entrypoints](https://jig.md/guide/configuration#project-entrypoint).
 
 `inspect` lists approved targets or shows a target's retained interface without
