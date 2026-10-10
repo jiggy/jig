@@ -53,6 +53,16 @@ if [[ "$mode" != shard || "$shard" == "$installed_shard" ]]; then
     fi
   done
 fi
+source_revision=$(git rev-parse HEAD)
+candidate_receipt=''
+if [[ -n "${JIG_CI_CANDIDATE_DIRECTORY:-}" ]]; then
+  if [[ "$JIG_CI_CANDIDATE_DIRECTORY" != /* || ! -d "$JIG_CI_CANDIDATE_DIRECTORY" ]]; then
+    echo 'Configure an absolute canonical candidate directory before qualification.' >&2
+    exit 2
+  fi
+  candidate_receipt=$("$JIG_AUTHORING_NODE_PATH" scripts/ci/candidate-provenance.mjs verify \
+    "$JIG_CI_CANDIDATE_DIRECTORY" --source "$source_revision")
+fi
 if [[ "$mode" == preflight ]]; then exit 0; fi
 # Host qualification has no live API phase.
 unset OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY PI_API_KEY
@@ -70,6 +80,14 @@ snapshot > "$scratch/before"
 finish() {
   status=$?
   if [[ -f "$scratch/SHA256SUMS" ]] && ! shasum -a 256 --check "$scratch/SHA256SUMS"; then status=1; fi
+  if [[ -n "$candidate_receipt" ]]; then
+    current_receipt=''
+    if ! current_receipt=$("$JIG_AUTHORING_NODE_PATH" scripts/ci/candidate-provenance.mjs verify \
+      "$JIG_CI_CANDIDATE_DIRECTORY" --source "$source_revision") || [[ "$current_receipt" != "$candidate_receipt" ]]; then
+      echo 'The canonical candidate changed during Mac qualification.' >&2
+      status=1
+    fi
+  fi
   snapshot > "$scratch/after"
   if ! diff -u "$scratch/before" "$scratch/after"; then
     echo 'Mac qualification changed host ownership residue; preserve evidence and investigate.' >&2
@@ -83,13 +101,26 @@ finish() {
   exit "$status"
 }
 trap finish EXIT
-# Freeze all package inputs once; each consumer must use these same bytes.
-for package in flow-sdk user-updates agent-method agent-acp display-model display-web display-tui; do
-  mkdir "$scratch/$package"
-  bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
-done
-mkdir "$scratch/jig"
-(cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
+# Hosted qualification receives the canonical publication bytes. The standalone
+# full-host entrypoint still freezes its own selected source once.
+if [[ -n "$candidate_receipt" ]]; then
+  for package in flow-sdk user-updates agent-method agent-acp display-model display-web display-tui jig; do
+    archives=("$JIG_CI_CANDIDATE_DIRECTORY/$package/"*.tgz)
+    if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" || -L "${archives[0]}" ]]; then
+      echo "Expected one canonical $package archive" >&2
+      exit 1
+    fi
+    mkdir "$scratch/$package"
+    cp "${archives[0]}" "$scratch/$package/"
+  done
+else
+  for package in flow-sdk user-updates agent-method agent-acp display-model display-web display-tui; do
+    mkdir "$scratch/$package"
+    bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
+  done
+  mkdir "$scratch/jig"
+  (cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
+fi
 for package in flow-sdk user-updates agent-method agent-acp display-model display-web display-tui jig; do
   archives=("$scratch/$package/"*.tgz)
   if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then

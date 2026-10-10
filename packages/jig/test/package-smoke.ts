@@ -601,7 +601,24 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     )
     assert.notEqual(scratchGreeting, greeting)
     await writeFile(greetingPath, scratchGreeting)
-    await run([command, 'review', '--allow-resolution-network', '--yes'], project, {}, 120_000)
+    const evidenceDirectory = process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY
+    if (evidenceDirectory) assert(isAbsolute(evidenceDirectory))
+    // One cold review owns this exclusive, bounded trace of fixed phase names
+    // and timings. Do not inherit it across other CLI commands in this consumer.
+    const reviewEnvironment = evidenceDirectory
+      ? {
+          JIG_PRIVATE_PROFILE_FILE: join(
+            evidenceDirectory,
+            'installed-greeting-review-profile.txt',
+          ),
+        }
+      : {}
+    await run(
+      [command, 'review', '--allow-resolution-network', '--yes'],
+      project,
+      reviewEnvironment,
+      120_000,
+    )
     const result = await run(
       [command, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada')],
       project,

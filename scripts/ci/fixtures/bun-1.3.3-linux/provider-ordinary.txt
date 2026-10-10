@@ -1,0 +1,15 @@
+bun test v1.3.3 (274e01c7)
+
+packages/jig/test/package-provider-host.test.ts:
+(pass) installed software factory delivers complete blocked and checked dashboard views [79163.41ms]
+(pass) installed CLI reviews and runs a workspace dependency (application: member) [36335.19ms]
+(pass) installed CLI reviews and runs a workspace dependency (application: root) [36200.18ms]
+(pass) installed CLI reviews and runs a workspace dependency (application: nested) [37226.19ms]
+(pass) packed read attachments preserve empty roots and maximum relative paths [6592.03ms]
+(pass) packed project entrypoint uses fresh reviewed data and immutable execution [22578.12ms]
+
+ 6 pass
+ 1 filtered out
+ 0 fail
+ 159 expect() calls
+Ran 6 tests across 1 file. [218.15s]

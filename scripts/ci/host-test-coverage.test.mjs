@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
 import {
   commandsForShard,
   discoverHostTests,
+  HOST_TEST_DIRECTORIES,
+  isHostTestFile,
   MAC_HOST_SHARDS,
   macHostShardCount,
   NAMED_TEST_GROUPS,
@@ -15,6 +17,35 @@ import {
   planMacHostTests,
   ROOT_TEST,
 } from './macos-host-test-shards.mjs'
+
+test('filesystem discovery and Git inventory classification agree for nested display tests and inert nonowners', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'jig-host-discovery-'))
+  try {
+    const expected = []
+    for (const [index, directory] of HOST_TEST_DIRECTORIES.entries()) {
+      await mkdir(resolve(root, directory), { recursive: true })
+      const file = `${directory}/nested/future${['.test.ts', '_test.ts', '.spec.mjs', '_spec.tsx'][index]}`
+      await mkdir(resolve(root, directory, 'nested'))
+      await writeFile(resolve(root, file), 'test("future coverage",()=>{})')
+      expected.push(file)
+      for (const ignored of [
+        `${directory}/.private/hidden.test.ts`,
+        `${directory}/node_modules/dependency.test.ts`,
+        `${directory}/package-smoke.ts`,
+      ]) {
+        await mkdir(resolve(root, ignored, '..'), { recursive: true })
+        await writeFile(resolve(root, ignored), 'inert fixture')
+        assert.equal(isHostTestFile(ignored), false)
+      }
+      await symlink(resolve(root, file), resolve(root, directory, 'linked.test.ts'))
+    }
+    assert.deepEqual(await discoverHostTests(root), expected.sort())
+    assert.ok(expected.every(isHostTestFile))
+    assert.equal(isHostTestFile('packages/display-web/test-neighbor/foreign.test.ts'), false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test('every current Jig and display file and named partition enters Mac qualification exactly once', async () => {
   const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))

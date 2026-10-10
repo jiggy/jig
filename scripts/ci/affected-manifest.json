@@ -1,0 +1,711 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "component-selection-1",
+  "audits": { "sampleDivisor": 5 },
+  "description": "Only public site assets and isolated Python implementation/tests may omit unrelated PR jobs. Every other change selects complete fresh work.",
+  "pythonPackages": ["packages/jiggy-flow", "packages/jiggy-user-updates"],
+  "externalTestRoots": [".agents/skills/"],
+  "sourceTestRoots": [
+    "packages/flow-sdk/",
+    "packages/agent-method/",
+    "packages/agent-acp/",
+    "packages/flow-authoring/",
+    "packages/user-updates/",
+    "packages/display-model/",
+    "packages/display-web/",
+    "packages/display-tui/",
+    "packages/jig/",
+    "packages/jiggy-flow/",
+    "packages/jiggy-user-updates/",
+    "conformance/run-0/",
+    "examples/tested-patch/",
+    "examples/software-factory/",
+    "examples/request-triage/",
+    "examples/support-case/",
+    "examples/contact-import/",
+    "examples/incident-brief/"
+  ],
+  "publicSiteRoots": ["site/flow/public/", "site/jig/public/", "site/theme/"],
+  "publicSiteExtensions": [
+    ".css",
+    ".scss",
+    ".sass",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".txt",
+    ".html",
+    ".vue"
+  ],
+  "declaredEdges": [
+    ["packages/jiggy-user-updates", "packages/jiggy-flow"],
+    ["conformance/run-0", "packages/jiggy-flow"],
+    ["conformance/run-0", "packages/flow-sdk"],
+    ["packages/jig", "docs/jig/spec"],
+    ["packages/jig", "packages/user-updates"],
+    [
+      "packages/user-updates",
+      "packages/jiggy-user-updates/src/jiggy/user_updates/user-updates.json"
+    ],
+    ["conformance/run-0", "docs/flow/guide"],
+    ["conformance/run-0", "docs/flow/spec"],
+    ["sites", "docs/flow"],
+    ["sites", "docs/jig"]
+  ],
+  "targets": [
+    {
+      "id": "quick-checks",
+      "scope": "ci",
+      "kind": "tooling",
+      "profiles": ["ubuntu-24.04/node-24/bun-1.3.3"],
+      "inventoryRoots": ["scripts/"],
+      "inventoryExclude": ["scripts/test_pypi_release.py"],
+      "entrypoints": ["justfile"],
+      "mandatory": true
+    },
+    {
+      "id": "sites",
+      "scope": "ci",
+      "kind": "site-build",
+      "profiles": ["flow", "jig"],
+      "inventoryRoots": [],
+      "entrypoints": ["scripts/build-site.sh", "site/justfile"]
+    },
+    {
+      "id": "source-tests",
+      "scope": "ci",
+      "kind": "source-and-consumer",
+      "profiles": ["ubuntu-24.04/bun-1.3.3/node-24/python-3.13"],
+      "inventoryRoots": ["packages/", "conformance/", "examples/"],
+      "inventoryInclude": ["scripts/test_pypi_release.py"],
+      "entrypoints": ["scripts/test-release.sh"],
+      "skipPolicy": "source-platform-opt-in"
+    },
+    {
+      "id": "python-build",
+      "scope": "ci",
+      "kind": "candidate-build",
+      "profiles": ["jiggy-flow", "jiggy-user-updates"],
+      "inventoryRoots": ["packages/jiggy-flow/", "packages/jiggy-user-updates/"],
+      "entrypoints": ["scripts/build-python-sdk.py"]
+    },
+    {
+      "id": "python-installed",
+      "scope": "ci",
+      "kind": "installed-consumer",
+      "profiles": [
+        "ubuntu-24.04/python-3.11",
+        "ubuntu-24.04/python-3.12",
+        "ubuntu-24.04/python-3.13",
+        "ubuntu-24.04/python-3.14",
+        "macos-14/python-3.14",
+        "windows-2022/python-3.13"
+      ],
+      "inventoryRoots": ["packages/jiggy-flow/", "packages/jiggy-user-updates/"],
+      "entrypoints": [
+        "packages/jiggy-flow/tests/package_smoke.py",
+        "packages/jiggy-user-updates/tests/package_smoke.py"
+      ]
+    },
+    {
+      "id": "npm-candidate",
+      "scope": "ci",
+      "kind": "candidate-and-consumer",
+      "profiles": ["flow", "agent", "acp", "jig"],
+      "inventoryRoots": [
+        "packages/flow-sdk/",
+        "packages/agent-method/",
+        "packages/agent-acp/",
+        "packages/user-updates/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/",
+        "packages/jig/"
+      ],
+      "entrypoints": ["scripts/ci/build-candidates.mjs", "scripts/ci/qualify-candidate.mjs"]
+    },
+    {
+      "id": "linux",
+      "scope": "linux",
+      "kind": "native-and-installed",
+      "inventoryPolicy": "linux-host",
+      "profiles": ["ubuntu-24.04/x64/bun-1.3.3/rootless"],
+      "inventoryRoots": [
+        "packages/jig/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/"
+      ],
+      "entrypoints": [
+        "scripts/ci/provision-github-rootless-host.sh",
+        "scripts/test-operational-baseline.ts",
+        "scripts/test-installed-hostile-baseline.ts"
+      ],
+      "skipPolicy": "host-partitions-and-platform"
+    },
+    {
+      "id": "macos-x64",
+      "scope": "macos",
+      "kind": "native-and-installed",
+      "profiles": ["macos-24G830/x64/bun-1.4.2"],
+      "inventoryRoots": [
+        "packages/jig/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/"
+      ],
+      "entrypoints": [
+        "scripts/ci/qualify-macos-host.sh",
+        "scripts/test-operational-baseline.ts",
+        "scripts/test-installed-hostile-baseline.ts"
+      ],
+      "skipPolicy": "host-partitions-and-platform"
+    },
+    {
+      "id": "macos-arm64",
+      "scope": "macos",
+      "kind": "native-and-installed",
+      "profiles": ["macos-24G830/arm64/bun-1.4.2"],
+      "inventoryRoots": [
+        "packages/jig/",
+        "packages/display-model/",
+        "packages/display-web/",
+        "packages/display-tui/"
+      ],
+      "entrypoints": [
+        "scripts/ci/qualify-macos-host.sh",
+        "scripts/test-operational-baseline.ts",
+        "scripts/test-installed-hostile-baseline.ts"
+      ],
+      "skipPolicy": "host-partitions-and-platform"
+    }
+  ],
+  "expectedSkips": {
+    "schemaVersion": 1,
+    "description": "Reviewed conditional skips only. Exact unchanged Git blobs bind names to source; updating a conditional test requires explicit inventory review. No prerequisite or installed-startup skips.",
+    "rules": [
+      {
+        "file": "packages/jig/test/macos-agent-runtime.test.ts",
+        "blob": "d7dcf0e010bdc41ecb123df9ebcec02a4752054c",
+        "sourcePatterns": ["^qualified Mac native runtime closure "],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-backend-state.test.ts",
+        "blob": "670f3c40fabb89767e4d05b73aa7766839e451bf",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-captured-bytes.test.ts",
+        "blob": "3000011751b3034e450763231816b455f0b3a5eb",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-codex-preferences.test.ts",
+        "blob": "89f683cb15d45f34ca0ec53760c23ead71bcd1ec",
+        "sourcePatterns": [
+          "^Codex policy is identity-bearing, fresh on revalidation and absent from other providers$"
+        ],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-descriptor-files.test.ts",
+        "blob": "33795a5f817647c5c819d6e07268b5ecadd7cf10",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-descriptor-handoff.test.ts",
+        "blob": "f4de6faa67aefeb8147f940732fc7f5a8f4be917",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-execution.test.ts",
+        "blob": "946e2ec6ec03ee934c41edfba52f06f48bfd984b",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-guardian-input.test.ts",
+        "blob": "66db1153799ea536bea5306d13055c097b5872ae",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-guardian-storage.test.ts",
+        "blob": "7411820c45263cdcfdc0dfc4bea36ab791150d1f",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-guardian.test.ts",
+        "blob": "b09dbd8a769c5019d67e9037a14e6bec0987392a",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-native-backend.test.ts",
+        "blob": "12a7989502656df3e61bcaf310619d4e918ac7af",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-owner-lock.test.ts",
+        "blob": "d5271ddaae9f61e0e5e79b70cb995945eccfe7e7",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-preferences-boundary.test.ts",
+        "blob": "ac324701818ed3ac92a52cf4c9fa1865e56d6cd2",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-preferences-observer.test.ts",
+        "blob": "4ceb49defa3f15b18b161daa220b5dffa9ce81b9",
+        "sourcePatterns": [
+          "^actual preference observer refuses caller sandboxes and synthetic managed policy, and expires after parent loss$"
+        ],
+        "macosPatterns": [
+          "^actual preference observer refuses caller sandboxes and synthetic managed policy, and expires after parent loss$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-preparation.test.ts",
+        "blob": "a1aba75144c3e8bd0f54c811d1f3cab52eefb85d",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-process-controls.test.ts",
+        "blob": "90286caa5a8093016fee3df315ad2492797adf72",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/macos-volume.test.ts",
+        "blob": "4a011623d429e8476f1184e74b65fd61499dd87b",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/bun-native-preparation.test.ts",
+        "blob": "98d75c9bb628f9a5a64aaa8d0729faf119eab4b7",
+        "caseMultiplicities": [
+          {
+            "classname": "private contained Bun dependency preparation",
+            "name": "recovers preparation after coordinator loss (resolve=%s)",
+            "line": "336",
+            "maxOccurrences": 2,
+            "targets": ["source-tests", "macos-x64", "macos-arm64"]
+          }
+        ],
+        "sourcePatterns": ["^private contained Bun dependency preparation "],
+        "macosPatterns": [
+          "^private contained Bun dependency preparation recovers preparation after coordinator loss \\(resolve=(?:false|true)\\)$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/root-agent-run-lifecycle.test.ts",
+        "blob": "b9ff0cf4201fd65000094b55ef10ce3196159308",
+        "sourcePatterns": [
+          "^(?:contained repair file application |private contained Agent Run lifecycle )"
+        ],
+        "macosPatterns": [
+          "^private contained Agent Run lifecycle (?:executes the ordinary ACP Agent with native (?:Codex|Claude Code|Pi) through ACP with |interrupts an immediate follow-up through installed Jig and published conversation packages with a Responses-compatible endpoint$)"
+        ],
+        "linuxPatterns": [
+          "^private contained Agent Run lifecycle (?:executes the ordinary ACP Agent with native (?:Codex|Claude Code|Pi) through ACP with |interrupts an immediate follow-up through installed Jig and published conversation packages with a Responses-compatible endpoint$)"
+        ]
+      },
+      {
+        "file": "packages/jig/test/private-foreground.test.ts",
+        "blob": "af42c12210ce96ae36c571ddc86a17dc4efa775c",
+        "sourcePatterns": ["^private rootless project session "],
+        "macosPatterns": [
+          "^private rootless project session reviewed Binding resources run unchanged methods with immutable bytes, honest failure and cancellation$",
+          "^private rootless project session installed dataset conversation preserves named meaning, correlated results, and cancellation$",
+          "^private rootless project session installed broadcast isolates a slow monitor while its worker and root recorder complete$",
+          "^private rootless project session installed sibling channels preserve exact admission, leaf results, and independent cleanup$",
+          "^private rootless project session installed direct channels stream, recover optional observation, and clean root cancellation$",
+          "^private rootless project session a rebuilt Jig requires review before any Flow starts and explains the environment-only change$",
+          "^private rootless project session strict refuses and cleans up an execution environment changed at sealing before admitting the Flow$",
+          "^private rootless project session cached refuses and cleans up an execution environment changed at sealing before admitting the Flow$",
+          "^private rootless project session keeps unavailable native clients out of resource-free review and Run$",
+          "^private rootless project session preserves one bounded malformed-source diagnostic through a real session$",
+          "^private rootless project session executes exact child slots inside the parent deadline and leaves no child owner$",
+          "^private rootless project session executes one packed ordinary HTTP Agent choice and exact child without retaining its key$",
+          "^private rootless project session reviews, admits, executes, replays, cancels, and recovers one exact Bun Flow$"
+        ],
+        "linuxPatterns": [
+          "^private rootless project session executes one packed ordinary HTTP Agent choice and exact child without retaining its key$"
+        ]
+      },
+      {
+        "file": "packages/jig/test/linux-rootless-run.test.ts",
+        "blob": "7116d1585d0c9ab45d0331ed2ddfb40af80af0a0",
+        "sourcePatterns": ["^private rootless Linux (?:Run|hostile envelope) "],
+        "macosPatterns": ["^private rootless Linux (?:Run|hostile envelope) "],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/linux-rootless-delegation-hostile.test.ts",
+        "blob": "5c835f9bc70e7780616ff8c1ee9196e87c993de3",
+        "sourcePatterns": ["^.+$"],
+        "macosPatterns": ["^.+$"],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/native-agent-startup.test.ts",
+        "blob": "db83a4cb660b3012d2bf5b82d12af3365685d643",
+        "sourcePatterns": [
+          "^(?:codex: native ACP startup or explicit unsupported Mac refusal without network|(?:claude|pi): native ACP startup without network)$"
+        ],
+        "macosPatterns": [
+          "^(?:codex: native ACP startup or explicit unsupported Mac refusal without network|(?:claude|pi): native ACP startup without network)$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/native-session-restoration.test.ts",
+        "blob": "205184646ef07af84ac26959dde92df312a3d573",
+        "sourcePatterns": [
+          "^restores a clean native conversation in a fresh installed Run, consumes the reference once$"
+        ],
+        "macosPatterns": [
+          "^restores a clean native conversation in a fresh installed Run, consumes the reference once$"
+        ],
+        "linuxPatterns": [
+          "^restores a clean native conversation in a fresh installed Run, consumes the reference once$"
+        ]
+      },
+      {
+        "file": "packages/jig/test/package-provider-host.test.ts",
+        "blob": "f257065085232e6d9bef00b7b4e39d644afdcb27",
+        "sourcePatterns": [
+          "^installed software factory delivers complete blocked and checked dashboard views$",
+          "^installed typed views preserve clean and lost automatic and explicit observation$",
+          "^installed CLI reviews and runs a workspace dependency \\(application: (?:member|root|nested)\\)$",
+          "^packed read attachments preserve empty roots and maximum relative paths$",
+          "^packed project (?:entrypoint|dependencies) uses fresh reviewed data and immutable execution$"
+        ],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/markdown-worker.test.ts",
+        "blob": "4126b1ff3b5c6512d66cfeb94a63be836ddc938f",
+        "sourcePatterns": ["^fresh installed Markdown admission on the provisioned proof host "],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/http-request-lifecycle.test.ts",
+        "blob": "82c24182aa0ae18ae9274fbf97f493a08112d333",
+        "sourcePatterns": ["^delegated HTTP through contained root and child Runs "],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/finite-acp-lifecycle.test.ts",
+        "blob": "e4c68bb74ac7f86d09e408062cbfc120687a259c",
+        "sourcePatterns": ["^ordinary packed ACP Agent with a finite resource "],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/project-author-evaluator.test.ts",
+        "blob": "72a44def4601a66e2530a48ba6773d7b9a00f151",
+        "caseMultiplicities": [
+          {
+            "classname": "finite isolated author declaration batches",
+            "name": "blocking guest execution is fenced at the entry deadline (batch: %s)",
+            "line": "97",
+            "maxOccurrences": 2,
+            "targets": ["source-tests"]
+          }
+        ],
+        "sourcePatterns": ["^finite isolated author declaration batches "],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/project-command-lifecycle.test.ts",
+        "blob": "20e67e9899a329e9a86f818264cb8f9b907e8d09",
+        "sourcePatterns": ["^contained Project Command effect "],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/run-checkpoint-lifecycle.test.ts",
+        "blob": "af506461075ba56ee41a67b1968660f96e30b018",
+        "sourcePatterns": ["^root retained progress "],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/file-delivery.test.ts",
+        "blob": "ec7937c80152ef151087a707cfb621e289f5c012",
+        "sourcePatterns": [
+          "^(?:native inspection retains immutable preview within the unchanged command lifetime|settled native inspection cannot waive the original command expiry|native command authenticates its parent and transfers renamed input roots and immutable final output)$"
+        ],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/file-input.test.ts",
+        "blob": "706f7dc3c2af8f8697e181fa913a001989abd945",
+        "sourcePatterns": ["^Mac capture refuses case variants of private Jig state$"],
+        "macosPatterns": [
+          "^(?:duplicates sealed inputs above every child stdio destination without changing bytes|unsupported filesystems have a closed actionable cause|file capture uses NixOS glibc when the FHS loader is a shim)$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/package-materialization.test.ts",
+        "blob": "28923dd28a5d1e88dfe00b9988148b865fcf9698",
+        "sourcePatterns": [
+          "^private workspace layout materialization (?:recovers the Darwin chmod-before-rename disposal window without readmitting mutable bytes|refuses changed bytes after interruption before the Darwin disposal rename)$"
+        ],
+        "macosPatterns": [],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/package-capture.test.ts",
+        "blob": "09e4781b6946faad5b5eaf40a21a051a6b8fa959",
+        "sourcePatterns": [],
+        "macosPatterns": [
+          "^Native Package/0 directory capture (?:rejects case-fold collisions on a case-sensitive source filesystem|rejects a non-UTF-8 directory entry without decoded replacement)$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/codex-agent-provider.test.ts",
+        "blob": "638a695a0c1557d8f3b2b814ea8f57f810e07f95",
+        "sourcePatterns": [],
+        "macosPatterns": [
+          "^private native Codex Agent provider (?:an unsupported wrapper retains its actionable stage without exposing wrapper contents|uses operator Bubblewrap without a bundled directory and rejects later replacement|retains the wrapped executable and libraries, selecting the wrapper helper before operator PATH|opens a PATH-selected client and retains its identity across PATH changes|a PATH-selected installation with missing support does not fall back|(?:path|bundled) helper inspection failure retains the sandbox cause|selects the Codex subscription by default and an explicit Responses API|resolves a Codex link and preserves its bundled helper despite outer overrides|supports the bundled resource beside a standalone Codex executable|rejects a (?:missing|symlink|directory|non-executable) bundled helper without using the outer Bubblewrap override|does not fall back when the preferred bundled resource is malformed)$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/codex-installation.test.ts",
+        "blob": "b9b2659d149add0300764955be8a04e1d7f7b120",
+        "sourcePatterns": [],
+        "macosPatterns": [
+          "^static Codex npm installation selection provider pins native bytes without the dispatcher, npm launcher, metadata or Node$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/native-agent-provider-runtime.test.ts",
+        "blob": "c986331872b6f37c5910c50704374d92b1f64da6",
+        "sourcePatterns": [],
+        "macosPatterns": [
+          "^(?:codex|claude|pi) reviewed native installation retains and revalidates a declarative native wrapper target$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/project-flow-source.test.ts",
+        "blob": "dbc9ddbb505615c47a0730c34335b23b90db5c32",
+        "sourcePatterns": [],
+        "macosPatterns": [
+          "^private project Flow source capture rejects discovered case-fold collisions on a case-sensitive filesystem$"
+        ],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/native-agent-runtime.test.ts",
+        "blob": "1b093c19366eadbad027b25178452060a5d5d298",
+        "sourcePatterns": [],
+        "macosPatterns": ["^Linux native Agent runtime metadata "],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/linux-cgroup-owner-state.test.ts",
+        "blob": "911f239c67c2c122561e3aba1ca5e7e73c81a1b5",
+        "sourcePatterns": [],
+        "macosPatterns": ["^private Linux (?:resolver projection|durable owner allocation) "],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/linux-rootless-reboot.test.ts",
+        "blob": "082d47ddbc06513b6665daf9a4d97f284aa796a8",
+        "sourcePatterns": [],
+        "macosPatterns": ["^private rootless Linux reboot recovery "],
+        "linuxPatterns": []
+      },
+      {
+        "file": "packages/jig/test/linux-rootless-supervisor.test.ts",
+        "blob": "38568e9223ffb303aa292821b598473618d12e1e",
+        "sourcePatterns": [],
+        "macosPatterns": ["^private rootless Linux supervisor admission boundary "],
+        "linuxPatterns": []
+      }
+    ]
+  },
+  "macosExecutedCaseMultiplicities": [
+    {
+      "file": "packages/jig/test/user-updates.test.ts",
+      "blob": "c59608d2e6f122aa37cd84e15828f95a8337dfda",
+      "cases": [
+        {
+          "classname": "",
+          "name": "queued activity clear/reuse keeps only current appearances and sibling state (animated=%s)",
+          "line": "238",
+          "occurrences": 2
+        },
+        {
+          "classname": "",
+          "name": "two cleared jobs retain phase history and show blocking notices without anonymous endings (animated=%s)",
+          "line": "277",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/bun-native-preparation-policy.test.ts",
+      "blob": "62644560d9cc10ec9b735ed32b3bfc57a9a96eaf",
+      "cases": [
+        {
+          "classname": "private Bun preparation policy",
+          "name": "binds native lock version %s without admitting other source kinds",
+          "line": "35",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/bun-native-preparation-budget.test.ts",
+      "blob": "975b2a116b4ef13750dfb42aa1c913aee1f91e91",
+      "cases": [
+        {
+          "classname": "private aggregate Bun preparation budget",
+          "name": "rejects invalid metadata size without consuming budget: %s",
+          "line": "77",
+          "occurrences": 5
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/linux-rootless-supervisor.test.ts",
+      "blob": "38568e9223ffb303aa292821b598473618d12e1e",
+      "cases": [
+        {
+          "classname": "private owned core-dump observation",
+          "name": "refuses malformed or oversized kernel observations",
+          "line": "92",
+          "occurrences": 3
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/dependency-flows.test.ts",
+      "blob": "84ef84c53b514a772b77e733e3788fd9e4251fa4",
+      "cases": [
+        {
+          "classname": "",
+          "name": "workspace dependency supplies immutable Flow bytes (root application: %s)",
+          "line": "115",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/macos-agent-runtime.test.ts",
+      "blob": "d7dcf0e010bdc41ecb123df9ebcec02a4752054c",
+      "cases": [
+        {
+          "classname": "bounded static Mach-O metadata",
+          "name": "reads universal metadata (wide=%s little=%s)",
+          "line": "51",
+          "occurrences": 4
+        },
+        {
+          "classname": "bounded static Mach-O metadata",
+          "name": "accepts baseline LIB64 metadata (universal=%s)",
+          "line": "77",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/cli.test.ts",
+      "blob": "85d879a9ed01f0bd7bc807020e509cd4a6eac5c3",
+      "cases": [
+        {
+          "classname": "finite Jig project commands",
+          "name": "resolution permission is separate from execution approval (yes=%s)",
+          "line": "1260",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "rejects vague, duplicate or misplaced contract generation: \"review\"",
+          "line": "1388",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "attributed live diagnostics are retained without human replay (human: %s)",
+          "line": "1611",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "a rejected live record closes work and reports cleanup failure: %s",
+          "line": "1686",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "interruption without a terminal preserves cleanup uncertainty (human: %s)",
+          "line": "2142",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/project-author-evaluator.test.ts",
+      "blob": "72a44def4601a66e2530a48ba6773d7b9a00f151",
+      "cases": [
+        {
+          "classname": "finite isolated author declaration batches",
+          "name": "blocking guest execution is fenced at the entry deadline (batch: %s)",
+          "line": "97",
+          "occurrences": 2
+        }
+      ]
+    }
+  ]
+}

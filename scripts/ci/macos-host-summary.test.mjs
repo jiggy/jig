@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
+import { digest, PACKAGE_LAYOUT, writeCandidateReceipt } from './candidate-provenance.mjs'
 import { MAC_HOST_SHARDS, NATIVE_PREREQUISITE_TESTS } from './macos-host-test-shards.mjs'
 
 const revision = '1'.repeat(40)
@@ -128,25 +129,129 @@ test('unavailable or malformed job timing does not grant or remove qualification
   })
 })
 
+test('standalone display reports count actual cases without skip credit and cannot be replaced by Jig reports', async () => {
+  await fixture('arm64', async (f) => {
+    const displayFiles = [
+      'packages/display-model/test/model.test.ts',
+      'packages/display-web/test/client.test.ts',
+      'packages/display-tui/test/native.test.ts',
+    ]
+    const plan = f.plans[0]
+    for (const file of displayFiles) plan.groups.push({ file, pattern: null })
+    await writeFile(resolve(f.directories[0], 'test-plan.json'), JSON.stringify(plan))
+    for (const [index, file] of displayFiles.entries())
+      await writeFile(
+        resolve(f.directories[0], `shard-0-group-${index + 1}.xml`),
+        junit(testcase(file, 'independent renderer case')),
+      )
+    const observed = await f.summarize()
+    assert.equal(observed.status, 0, observed.stderr)
+    assert.equal(observed.report.executed, f.count + NATIVE_PREREQUISITE_TESTS.length + 4)
+    assert.equal(observed.report.skipped_reports, f.count)
+    for (const [index, file] of displayFiles.entries()) {
+      const path = resolve(f.directories[0], `shard-0-group-${index + 1}.xml`)
+      await writeFile(path, junit(testcase('packages/jig/test/proof-0.test.ts', 'foreign proof')))
+      assert.equal((await f.summarize()).status, 1)
+      await rm(path)
+      assert.equal((await f.summarize()).status, 1)
+      await writeFile(path, junit(testcase(file, 'independent renderer case')))
+    }
+  })
+})
+
 test('the actual workflow summary step consumes exact shard evidence and refuses an incomplete run', async () => {
   await fixture('arm64', async (f) => {
-    const workflow = await readFile(
-      resolve(repository, '.github/workflows/macos-hosted-candidates.yml'),
-      'utf8',
+    const parsed = spawnSync(
+      'bun',
+      [
+        '-e',
+        'const workflow=Bun.YAML.parse(await Bun.file(process.argv[1]).text()); console.log(JSON.stringify(workflow.jobs["qualified-architecture"].steps.find(step=>step.name==="Require complete exact-revision proof and summarize coverage").run));',
+        resolve(repository, '.github/workflows/macos-hosted-candidates.yml'),
+      ],
+      { encoding: 'utf8' },
     )
-    const script = workflow
-      .split('name: Require complete exact-revision proof and summarize coverage')[1]
-      .split('run: |\n')[1]
-      .split('\n      - name:')[0]
-      .replace(/^          /gm, '')
-    const evidence = resolve(f.root, 'macos-evidence')
-    await mkdir(evidence)
+    assert.equal(parsed.status, 0, parsed.stderr)
+    const script = JSON.parse(parsed.stdout)
+    const canonical = resolve(f.root, 'macos-host-artifacts')
+    await mkdir(canonical)
+    for (const [kind, name] of Object.entries(PACKAGE_LAYOUT)) {
+      const contents = resolve(f.root, 'contents', kind)
+      await mkdir(resolve(contents, 'package'), { recursive: true })
+      await mkdir(resolve(canonical, kind))
+      await writeFile(
+        resolve(contents, 'package/package.json'),
+        JSON.stringify({ name, version: '0.1.0-alpha.1' }),
+      )
+      const archive = resolve(canonical, kind, `${kind}.tgz`)
+      const packed = spawnSync('tar', ['-czf', archive, '-C', contents, 'package'], {
+        encoding: 'utf8',
+        env: { ...process.env, LC_ALL: 'C' },
+      })
+      assert.equal(packed.status, 0, packed.stderr)
+      const inventory = spawnSync('tar', ['-tzf', archive], {
+        encoding: 'utf8',
+        env: { ...process.env, LC_ALL: 'C' },
+      })
+      assert.equal(inventory.status, 0, inventory.stderr)
+      await writeFile(`${archive}.sha256`, `${digest(await readFile(archive))}  ${kind}.tgz\n`)
+      await writeFile(
+        `${archive}.files`,
+        `${inventory.stdout.trimEnd().split('\n').sort().join('\n')}\n`,
+      )
+    }
+    await mkdir(resolve(canonical, 'resolution'))
+    await writeFile(resolve(canonical, 'resolution/bun.lock'), 'fixture resolution')
+    const candidate = await writeCandidateReceipt({
+      root: canonical,
+      sourceRevision: revision,
+      producer: {
+        repository: 'local/local',
+        workflowPath: '.github/workflows/ci.yml',
+        runId: 41,
+        runAttempt: 1,
+        event: 'push',
+        headSha: revision,
+        headBranch: 'main',
+        headRepository: 'local/local',
+      },
+      buildProfile: {
+        version: '1.3.3',
+        revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+        platform: 'linux',
+        architecture: 'x64',
+        nodeVersion: process.versions.node,
+        npmVersion: '11.6.2',
+        justVersion: 'just 1.43.1',
+      },
+      resolutionFiles: ['resolution/bun.lock'],
+    })
+    await writeFile(
+      resolve(canonical, 'ARTIFACT.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        repository: 'local/local',
+        runId: 41,
+        runAttempt: 1,
+        sourceRevision: revision,
+        receiptSha256: candidate.receiptSha256,
+        artifactId: 73,
+        artifactDigest: `sha256:${'2'.repeat(64)}`,
+      }),
+    )
     for (const directory of f.directories)
-      await cp(directory, resolve(evidence, directory.split('/').at(-1)), { recursive: true })
+      for (const filename of ['CANDIDATE.json', 'ARTIFACT.json'])
+        await cp(resolve(canonical, filename), resolve(directory, filename))
+    const evidence = resolve(f.root, 'macos-evidence')
     await cp(f.jobsPath, resolve(f.root, 'mac-job-timings.json'))
     const markdown = resolve(f.root, 'step-summary.md')
-    const run = () =>
-      spawnSync('/bin/sh', ['-c', script], {
+    const run = async () => {
+      await rm(evidence, { recursive: true, force: true })
+      await mkdir(evidence)
+      for (const directory of f.directories)
+        await cp(directory, resolve(evidence, `${directory.split('/').at(-1)}-r42-a2`), {
+          recursive: true,
+        })
+      return spawnSync('/bin/sh', ['-c', script], {
         cwd: repository,
         encoding: 'utf8',
         env: {
@@ -155,17 +260,25 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
           EXPECTED_ARCH: f.architecture,
           EXPECTED_SHA: revision,
           SHARD_COUNT: String(f.count),
+          GITHUB_RUN_ID: '42',
+          GITHUB_RUN_ATTEMPT: '2',
           GITHUB_STEP_SUMMARY: markdown,
         },
       })
-    const successful = run()
+    }
+    const successful = await run()
     assert.equal(successful.status, 0, successful.stderr)
     assert.match(await readFile(markdown, 'utf8'), /Qualification: \*\*passed\*\*/)
     const jsonPath = resolve(f.root, 'mac-summary.json')
     assert.equal(JSON.parse(await readFile(jsonPath, 'utf8')).qualified, true)
-    await rm(resolve(evidence, `macos-prerequisites-arm64-1-${revision}`, 'shard-1.complete'))
-    assert.equal(run().status, 1)
+    await rm(resolve(f.directories.at(-1), 'shard-1.complete'))
+    assert.equal((await run()).status, 1)
     assert.equal(JSON.parse(await readFile(jsonPath, 'utf8')).qualified, false)
+    await writeFile(resolve(f.directories.at(-1), 'shard-1.complete'), `${revision} arm64 1\n`)
+    await writeFile(resolve(f.directories[0], 'CANDIDATE.json'), 'another candidate')
+    const wrongCandidate = await run()
+    assert.equal(wrongCandidate.status, 1)
+    assert.match(wrongCandidate.stderr, /different canonical candidate/)
   })
 })
 

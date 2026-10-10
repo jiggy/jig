@@ -526,8 +526,24 @@ buffer release and output failure independently of recorded execution status.
   imports, relayed worker progress, both blocked job causes and checkpoint
   delivery without native clients or model calls. A second reviewed peer returns
   deterministic repairs through the public structured Agent result. Verify final
-  Jobs, Checks and Patches snapshots, independent acceptance, exact delivered patch
-  references, and complete ended summaries in automatic plain display.
+  Jobs, Checks and Patches snapshots whenever explicit reception ends cleanly;
+  loss retains only its observed prefix, with exact contiguous NDJSON and an
+  exact failed/LAGGED ending. Both explicit runs independently verify their own
+  result packets, complete job and acceptance evidence, and exact delivered
+  file inventories, sizes and hashes. The heavy automatic plain run likewise
+  verifies its own packet, both accepted repairs and all nine delivered files.
+  Clean automatic display requires all three final summaries; LAGGED freezes
+  only the known views actually accepted, with its exact incomplete explanation.
+  Other failures and fabricated clean endings refuse qualification.
+  A separate small cold installed consumer requires complete clean reception
+  through both automatic display and explicit NDJSON, and declares producer loss
+  alongside successful work and verified delivery. Deterministic application tests
+  independently require the real factory publisher's completed Jobs, Checks and
+  Patches offers. Portable channel tests exercise actual receiver overflow,
+  producer loss and retained-model settlement through the shared display
+  settlement entrypoint without disabling independent
+  application-channel delivery. Optional reception never guarantees clean closure
+  for every heavy Run or changes its work outcome.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
@@ -537,6 +553,12 @@ buffer release and output failure independently of recorded execution status.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
+  Mac's fresh initialized greeting retains its cold registry preparation and
+  scratch/child execution checks. When `JIG_MACOS_TEST_TIMINGS_DIRECTORY` is
+  configured, only its first review writes the existing bounded private phase
+  trace to `installed-greeting-review-profile.txt` for hosted artifact retention.
+  The trace contains fixed phase names and timings, never registry text,
+  credentials or source; assertions and preparation/command limits stay unchanged.
   Its trusted npm installation accepts `JIG_NPM` and uses the selected absolute
   `JIG_AUTHORING_NODE_PATH` directory for npm's interpreter when the host PATH
   excludes runner tool-cache binaries. This does not change Run authority.

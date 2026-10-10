@@ -1,10 +1,12 @@
 import { constants, Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { type UserUpdate, validateUserUpdate } from '@jigging/user-updates'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
 import { settleTestCommand } from './fixtures/bounded-command.js'
 
@@ -49,6 +51,559 @@ for await (const line of lines) {
 }
 `
 
+const lostObservation =
+  "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)"
+const factorySummaries = {
+  Jobs: [
+    '2 requested repairs; 0 finished, 0 checked patches. Inspect a repair for its goal and scope; follow Activity for current work.',
+    '2 independently checked patches ready for review. Original sources are unchanged.',
+  ],
+  Checks: [
+    'Repository tests and independent CLI cases check each proposed patch. Worker reports remain provisional until independently verified.',
+    'Finished checks: verified results are shown separately from provisional worker reports. Each patch is checked separately.',
+  ],
+  Patches: [
+    '0 independently checked candidates for human review. Changes have not been applied. Preview requires verified packet delivery.',
+    '2 independently checked candidates for human review. Changes have not been applied. Preview requires verified packet delivery.',
+  ],
+} as const
+
+function assertTypedObservation(
+  transcript: string,
+  summaries: Readonly<Record<string, readonly [string, string]>> = factorySummaries,
+): 'ended' | 'lagged' {
+  if (
+    transcript.includes('\u001b') ||
+    /Updates unavailable|Updates incomplete|presentation limit|DISCONNECTED|OWNER_CLOSED|INVALID_INPUT|INVALID_RESULT|RESOURCE_EXHAUSTED|PROTOCOL_ERROR|CHANNEL_LOST/.test(
+      transcript,
+    )
+  )
+    throw new Error('Factory observation contains an unexpected failure or terminal control')
+  const lost = transcript.includes(lostObservation)
+  const frozen = [...transcript.matchAll(/^ {2}Flow \/ ([^\n]+?) \((.+)\):\n {4}([^\n]+)$/gm)]
+  if (
+    (lost ? frozen.length > 3 : frozen.length !== 3) ||
+    new Set(frozen.map((row) => row[1])).size !== frozen.length ||
+    frozen.some((row) => !Object.hasOwn(summaries, row[1]))
+  )
+    throw new Error('Factory observation must freeze only distinct known views')
+  if (lost) {
+    if (
+      transcript.includes('Observation ended') ||
+      transcript.match(/^ {2}Jig — observation incomplete:$/gm)?.length !== 1 ||
+      transcript.split('\n').filter((line) => line === `      Flow: ${lostObservation}`).length !==
+        1
+    )
+      throw new Error('Factory observation loss must retain its exact incomplete explanation')
+  } else if (
+    /observation incomplete|LAGGED/.test(
+      transcript.replace(
+        /^ {2}Flow: (?:HTTP log report|Timesheet totals): Live repair updates stopped \(LAGGED\)\. The repair result will still be checked\.$/gm,
+        '',
+      ),
+    )
+  )
+    throw new Error('Factory observation reports unrecognized loss')
+  for (const [, title, reason, summary] of frozen) {
+    const known = summaries[title]!
+    if (reason !== (lost ? lostObservation : 'Observation ended'))
+      throw new Error('Factory observation has inconsistent frozen context')
+    if (!(lost ? known.some((value) => value === summary) : summary === known[1]))
+      throw new Error('Factory observation has an unknown or incomplete clean final summary')
+  }
+  let unexplained = transcript.replace(
+    /^ {2}Flow: (?:HTTP log report|Timesheet totals): Live repair updates stopped \(LAGGED\)\. The repair result will still be checked\.$/gm,
+    '',
+  )
+  if (lost) {
+    unexplained = unexplained.replace(
+      `  Jig — observation incomplete:\n      Flow: ${lostObservation}\n`,
+      '',
+    )
+    for (const [, title] of frozen)
+      unexplained = unexplained.replace(`  Flow / ${title} (${lostObservation}):\n`, '')
+  }
+  if (/LAGGED|observation incomplete/i.test(unexplained))
+    throw new Error('Factory observation contains unexplained loss outside its exact context')
+  return lost ? 'lagged' : 'ended'
+}
+
+function assertExplicitObservation(stdout: string): {
+  status: 'closed' | 'lagged'
+  updates: UserUpdate[]
+  terminal: ReturnType<typeof JSON.parse>
+} {
+  if (!stdout.endsWith('\n')) throw new Error('Explicit observation has an incomplete final line')
+  const records = stdout
+    .slice(0, -1)
+    .split('\n')
+    .map((line) => JSON.parse(line))
+  const fields = (record: Record<string, unknown>, keys: string[]) => {
+    if (
+      record === null ||
+      typeof record !== 'object' ||
+      Array.isArray(record) ||
+      JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(keys.sort())
+    )
+      throw new Error('Explicit observation has unexpected record fields')
+  }
+  if (records.length < 3) throw new Error('Explicit observation is missing its channel lifecycle')
+  const begin = records[0]
+  fields(begin, ['type', 'channel', 'startSequence'])
+  if (begin.type !== 'begin' || begin.channel !== 'progress' || begin.startSequence !== 1)
+    throw new Error('Explicit observation has an unexpected channel beginning')
+  const terminal = records.at(-1)
+  fields(terminal, ['type', 'result'])
+  if (
+    terminal.type !== 'terminal' ||
+    terminal.result === null ||
+    typeof terminal.result !== 'object' ||
+    Array.isArray(terminal.result)
+  )
+    throw new Error('Explicit observation is missing its authoritative terminal')
+  const updates = records.slice(1, -2).map((record, index) => {
+    fields(record, ['type', 'channel', 'sequence', 'value'])
+    if (record.type !== 'data' || record.channel !== 'progress' || record.sequence !== index + 1)
+      throw new Error('Explicit observation data is not a contiguous selected-channel prefix')
+    return validateUserUpdate(record.value)
+  })
+  const end = records.at(-2)
+  if (end.status === 'closed') {
+    fields(end, ['type', 'channel', 'status', 'lastSequence'])
+    if (end.lastSequence !== updates.length)
+      throw new Error('Explicit observation has an inconsistent clean sequence ending')
+  } else {
+    fields(end, ['type', 'channel', 'status', 'code'])
+    if (end.status !== 'failed' || end.code !== 'LAGGED')
+      throw new Error('Explicit observation has an unsupported failed ending')
+  }
+  if (end.type !== 'end' || end.channel !== 'progress')
+    throw new Error('Explicit observation is missing its selected-channel ending')
+  return {
+    status: end.status === 'closed' ? 'closed' : 'lagged',
+    updates,
+    terminal: terminal.result,
+  }
+}
+
+function assertFactoryPrefix(
+  updates: UserUpdate[],
+  phase: 'blocked' | 'checked',
+  jobs: ReturnType<typeof JSON.parse>,
+) {
+  const summaries: Readonly<Record<string, readonly string[]>> = {
+    ...factorySummaries,
+    Jobs: [
+      factorySummaries.Jobs[0],
+      phase === 'blocked'
+        ? 'No checked patches. Inspect each repair for its cause; original sources are unchanged.'
+        : factorySummaries.Jobs[1],
+    ],
+    Patches: [
+      factorySummaries.Patches[0],
+      phase === 'blocked' ? factorySummaries.Patches[0] : factorySummaries.Patches[1],
+    ],
+  }
+  const paths = new Set([
+    'summary.txt',
+    ...['logs', 'timesheet'].flatMap((id) =>
+      (phase === 'blocked'
+        ? ['goal.txt', 'summary.txt']
+        : ['goal.txt', 'summary.txt', 'proposal-1.patch', 'review.patch']
+      ).map((file) => `${id}/${file}`),
+    ),
+  ])
+  const references = (value: unknown): void => {
+    if (value === null || typeof value !== 'object') return
+    const object = value as Record<string, unknown>
+    if (
+      object.kind === 'artifact' &&
+      (object.attachment !== 'deliverables' || !paths.has(object.path as string))
+    )
+      throw new Error('Factory view references an unexpected delivered artifact')
+    if (
+      object.kind === 'call' &&
+      !['repair:logs', 'repair:timesheet'].includes(object.operationId as string)
+    )
+      throw new Error('Factory view references an unexpected repair call')
+    for (const child of Object.values(object)) references(child)
+  }
+  for (const update of updates) {
+    if (update.kind === 'notice') {
+      if (
+        update.text !==
+          'Software factory: 2 requested repairs. No checked patches yet. Jobs contains goals and scope; Checks contains evidence; Patches contains candidates for human review. Changes are not applied.' &&
+        !['HTTP log report: ', 'Timesheet totals: '].some((label) => update.text.startsWith(label))
+      )
+        throw new Error('Factory notice has an unexpected reporting identity')
+      continue
+    }
+    if (update.kind === 'activity' || update.kind === 'clear') {
+      if (!['factory:logs', 'factory:timesheet'].includes(update.id))
+        throw new Error('Factory activity has an unexpected repair identity')
+      if (
+        update.kind === 'activity' &&
+        (!update.label.startsWith(
+          update.id === 'factory:logs' ? 'HTTP log report: ' : 'Timesheet totals: ',
+        ) ||
+          update.operationId !== undefined ||
+          update.progress !== undefined)
+      )
+        throw new Error('Factory activity has an unexpected reporting identity or control')
+      continue
+    }
+    if (update.kind === 'retire-view') throw new Error('Factory view retired unexpectedly')
+    if (update.kind !== 'view') continue
+    const title = (
+      { jobs: 'Jobs', checks: 'Checks', patches: 'Patches' } as Record<string, string>
+    )[update.id]
+    if (
+      title === undefined ||
+      title !== update.title ||
+      !summaries[title]!.includes(update.summary)
+    )
+      throw new Error('Factory observation contains an unknown view prefix')
+    expect(update.sections).toHaveLength(1)
+    const blocks = update.sections[0]!.blocks
+    expect(blocks).toHaveLength(update.id === 'checks' ? 1 : 2)
+    const final = update.summary === summaries[title]![1]
+    if (update.id === 'jobs')
+      expect(blocks[0]).toMatchObject({
+        kind: 'progress',
+        completed: final ? 2 : 0,
+        total: 2,
+        unit: 'jobs',
+      })
+    const table = blocks[update.id === 'jobs' ? 1 : 0]
+    if (table?.kind !== 'collection')
+      throw new Error('Factory view is missing its declared collection')
+    const ids =
+      update.id === 'patches' && (phase === 'blocked' || !final) ? [] : ['logs', 'timesheet']
+    expect(table.id).toBe(update.id)
+    expect(table.total).toBe(ids.length)
+    expect(table.rows.map((row) => row.id)).toEqual(ids)
+    let settledRows = 0
+    for (const row of table.rows) {
+      const requested = jobs.find((job) => job.id === row.id)
+      expect(requested).toBeDefined()
+      const label = row.id === 'logs' ? 'HTTP log report' : 'Timesheet totals'
+      expect(row.cells.job).toBe(label)
+      if (update.id !== 'checks')
+        expect(row.details?.[0]).toMatchObject({
+          kind: 'report',
+          text: `Requested goal: ${requested.issue}`,
+          references: [
+            { kind: 'artifact', attachment: 'deliverables', path: `${row.id}/goal.txt` },
+          ],
+        })
+      if (update.id === 'jobs')
+        expect(row.cells).toEqual({
+          job: label,
+          action: final
+            ? phase === 'blocked'
+              ? 'No checked patch'
+              : 'Ready for review'
+            : 'In progress',
+          checks: final
+            ? phase === 'blocked'
+              ? 'No accepted patch'
+              : 'Tests + 4/4 cases passed'
+            : 'Verification pending',
+          patch:
+            final && phase === 'checked'
+              ? { kind: 'artifact', attachment: 'deliverables', path: `${row.id}/review.patch` }
+              : null,
+        })
+      if (update.id === 'checks') {
+        const settled = row.cells.repository !== 'Verification pending'
+        if (settled) settledRows++
+        expect(row.cells).toEqual({
+          job: label,
+          repository: settled
+            ? phase === 'blocked'
+              ? 'No checked patch'
+              : 'Verified pass'
+            : 'Verification pending',
+          cases: settled
+            ? phase === 'blocked'
+              ? 'No accepted patch'
+              : '4/4 verified'
+            : '4 supplied cases',
+        })
+      }
+      if (update.id === 'patches')
+        expect(row.cells).toEqual({
+          job: label,
+          files: requested.editPaths.join(', '),
+          patch: { kind: 'artifact', attachment: 'deliverables', path: `${row.id}/review.patch` },
+        })
+    }
+    if (update.id === 'checks') expect(settledRows === 2).toBe(final)
+    references(update)
+  }
+}
+
+async function assertDeliveredPacket(
+  terminal: ReturnType<typeof JSON.parse>,
+  project: string,
+  destination: string,
+  files: string[],
+) {
+  expect(JSON.parse(await readFile(join(project, destination, 'result.json'), 'utf8'))).toEqual(
+    terminal,
+  )
+  expect(terminal.delivery.files.map((file) => file.path).sort()).toEqual([...files].sort())
+  const physical: string[] = []
+  const walk = async (relative = '') => {
+    for (const entry of await readdir(join(project, destination, 'files', relative), {
+      withFileTypes: true,
+    })) {
+      const path = relative ? `${relative}/${entry.name}` : entry.name
+      if (entry.isDirectory()) await walk(path)
+      else {
+        expect(entry.isFile()).toBe(true)
+        physical.push(path)
+      }
+    }
+  }
+  await walk()
+  expect(physical.sort()).toEqual([...files].sort())
+  for (const file of terminal.delivery.files) {
+    const bytes = await readFile(join(project, destination, 'files', file.path))
+    expect(bytes.byteLength).toBe(file.bytes)
+    expect(`sha256:${createHash('sha256').update(bytes).digest('hex')}`).toBe(file.digest)
+  }
+}
+
+function assertRequestedJob(
+  job: ReturnType<typeof JSON.parse>,
+  requested: ReturnType<typeof JSON.parse>,
+) {
+  expect(requested).toBeDefined()
+  const { id, label, directory, issue, editPaths, method } = requested
+  expect(job).toMatchObject({ id, label, directory, issue, editPaths })
+  expect(job.baseDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
+  expect(job.acceptanceDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
+  expect(job.routing).toEqual({
+    mode: 'explicit',
+    candidateId: method,
+    slot: method === 'p1' ? 'single-pass' : 'checked-correction',
+  })
+}
+
+function assertEvaluation(
+  evaluation: ReturnType<typeof JSON.parse>,
+  cases: ReturnType<typeof JSON.parse>,
+  accepted: boolean,
+) {
+  expect(cases).toHaveLength(4)
+  expect(evaluation).toMatchObject({ accepted, repositoryTestsPassed: accepted })
+  expect(evaluation.acceptance.map((item) => item.id)).toEqual(cases.map((item) => item.id))
+  expect(evaluation.commands).toHaveLength(5)
+  expect(evaluation.candidateDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
+  for (const [index, command] of evaluation.commands.entries()) {
+    const input = index === 0 ? '' : cases[index - 1].stdin
+    expect(command).toMatchObject({
+      candidateDigest: evaluation.candidateDigest,
+      cleanup: 'complete',
+      stopReason: 'exited',
+      signal: null,
+      stdinDigest: `sha256:${createHash('sha256').update(input).digest('hex')}`,
+    })
+    expect(command.invocation).toEqual(
+      index === 0
+        ? ['bun', 'test', 'test/project.test.ts']
+        : ['bun', 'src/cli.ts', ...cases[index - 1].args],
+    )
+    expect(command.stdout.truncated).toBe(false)
+    expect(command.stderr.truncated).toBe(false)
+    expect(typeof command.stdout.text).toBe('string')
+    expect(typeof command.stderr.text).toBe('string')
+    if (index === 0) expect(command.exitCode).toBe(accepted ? 0 : 1)
+    else {
+      expect(Number.isInteger(command.exitCode) && command.exitCode >= 0).toBe(true)
+      const expected = cases[index - 1]
+      const passed =
+        command.exitCode === expected.exitCode &&
+        command.stdout.text === expected.stdout &&
+        command.stderr.text === expected.stderr
+      expect(evaluation.acceptance[index - 1].passed).toBe(passed)
+      if (accepted) expect(passed).toBe(true)
+    }
+  }
+}
+
+test('factory automatic observation accepts complete views or exact truthful loss and rejects malformed evidence', () => {
+  const clean = Object.entries(factorySummaries)
+    .map(
+      ([title, summaries]) =>
+        `  Flow: ${title}\n    ${summaries[1]}\n  Flow / ${title} (Observation ended):\n    ${summaries[1]}\n`,
+    )
+    .join('')
+  const loss =
+    `  Jig — observation incomplete:\n      Flow: ${lostObservation}\n` +
+    Object.entries(factorySummaries)
+      .map(
+        ([title, summaries]) =>
+          `  Flow: ${title}\n    ${summaries[0]}\n  Flow / ${title} (${lostObservation}):\n    ${summaries[0]}\n`,
+      )
+      .join('')
+  expect(assertTypedObservation(clean)).toBe('ended')
+  expect(assertTypedObservation(loss)).toBe('lagged')
+  const guidance = `  Jig — observation incomplete:\n      Flow: ${lostObservation}\n`
+  for (const count of [0, 1, 2])
+    expect(
+      assertTypedObservation(
+        guidance +
+          Object.entries(factorySummaries)
+            .slice(0, count)
+            .map(
+              ([title, summaries]) =>
+                `  Flow / ${title} (${lostObservation}):\n    ${summaries[0]}\n`,
+            )
+            .join(''),
+      ),
+    ).toBe('lagged')
+  expect(
+    assertTypedObservation(
+      loss.replace(
+        `  Flow / Jobs (${lostObservation}):\n    ${factorySummaries.Jobs[0]}`,
+        `  Flow / Jobs (${lostObservation}):\n    ${factorySummaries.Jobs[1]}`,
+      ),
+    ),
+  ).toBe('lagged')
+  for (const title of ['HTTP log report', 'Timesheet totals'])
+    for (const [transcript, reason] of [
+      [clean, 'ended'],
+      [loss, 'lagged'],
+    ] as const)
+      expect(
+        assertTypedObservation(
+          `${transcript}  Flow: ${title}: Live repair updates stopped (LAGGED). The repair result will still be checked.\n`,
+        ),
+      ).toBe(reason)
+  for (const altered of [
+    '',
+    '  Flow: Jobs\n    Something happened\n',
+    loss.replaceAll('LAGGED', 'DISCONNECTED'),
+    loss.replaceAll('LAGGED', 'INVALID_INPUT'),
+    loss.replaceAll(lostObservation, 'Updates unavailable: contract violation.'),
+    loss.replace('  Jig — observation incomplete:\n', ''),
+    loss.replace(`      Flow: ${lostObservation}\n`, ''),
+    loss.replace(`  Flow / Jobs (${lostObservation})`, '  Flow / Jobs (Observation ended)'),
+    loss.replace('  Flow / Jobs', '  Flow / Unknown'),
+    loss.replace('  Flow / Checks', '  Flow / Jobs'),
+    loss.replace(
+      `  Flow / Jobs (${lostObservation}):\n    ${factorySummaries.Jobs[0]}`,
+      `  Flow / Jobs (${lostObservation}):\n    Unknown frozen summary`,
+    ),
+    clean.replaceAll(factorySummaries.Jobs[1], factorySummaries.Jobs[0]),
+    clean.replaceAll('Observation ended', 'No end evidence'),
+    `${clean}  Jig — observation incomplete:\n`,
+    `${clean}  Flow: Unknown observation LAGGED\n`,
+    `${loss}  Flow: Unknown observation LAGGED\n`,
+    `${loss}  Flow: unknown observation incomplete\n`,
+    `${loss}  Jig — observation incomplete:\n`,
+    `${loss}      Flow: ${lostObservation}\n`,
+    loss.replace(
+      '  Jig — observation incomplete:\n',
+      '  Jig — observation incomplete:\n    Unknown context\n',
+    ),
+    `${clean}  Flow / Unknown (Observation ended):\n    Invented summary\n`,
+    `${loss}Updates incomplete: unexpected failure\n`,
+    `${loss}\u001b[31m`,
+  ])
+    expect(() => assertTypedObservation(altered)).toThrow()
+})
+
+test('factory explicit observation preserves exact channel ordering and rejects malformed evidence', () => {
+  const begin = { type: 'begin', channel: 'progress', startSequence: 1 }
+  const data = {
+    type: 'data',
+    channel: 'progress',
+    sequence: 1,
+    value: {
+      kind: 'notice',
+      text: 'Software factory: 2 requested repairs. No checked patches yet. Jobs contains goals and scope; Checks contains evidence; Patches contains candidates for human review. Changes are not applied.',
+    },
+  }
+  const end = { type: 'end', channel: 'progress', status: 'closed', lastSequence: 1 }
+  const lost = { type: 'end', channel: 'progress', status: 'failed', code: 'LAGGED' }
+  const terminal = {
+    type: 'terminal',
+    result: { status: 'succeeded', outcome: 'done', delivery: { status: 'written' } },
+  }
+  const encode = (records: unknown[]) =>
+    records.map((record) => JSON.stringify(record)).join('\n') + '\n'
+  const clean = assertExplicitObservation(encode([begin, data, end, terminal]))
+  expect(clean.status).toBe('closed')
+  expect(clean.terminal).toEqual(terminal.result)
+  expect(clean.updates).toEqual([data.value])
+  assertFactoryPrefix(clean.updates, 'checked', [])
+  for (const prefix of [[], [data]]) {
+    const loss = assertExplicitObservation(encode([begin, ...prefix, lost, terminal]))
+    expect(loss.status).toBe('lagged')
+    assertFactoryPrefix(loss.updates, 'checked', [])
+  }
+  for (const altered of [
+    [],
+    [begin, terminal],
+    [data, begin, end, terminal],
+    [begin, end, data, terminal],
+    [begin, data, terminal, end],
+    [begin, begin, data, end, terminal],
+    [begin, data, end, end, terminal],
+    [begin, data, end, terminal, terminal],
+    [{ ...begin, startSequence: 2 }, data, end, terminal],
+    [{ ...begin, channel: 'other' }, data, end, terminal],
+    [begin, { ...data, sequence: 2 }, end, terminal],
+    [begin, data, data, end, terminal],
+    [begin, { ...data, channel: 'other' }, end, terminal],
+    [begin, { ...data, value: { kind: 'notice', text: '' } }, end, terminal],
+    [begin, { ...data, value: { kind: 'notice', text: 'valid', authority: true } }, end, terminal],
+    [begin, data, { ...end, lastSequence: 2 }, terminal],
+    [begin, data, { ...end, code: 'LAGGED' }, terminal],
+    [begin, data, { ...lost, lastSequence: 1 }, terminal],
+    [begin, data, { ...lost, code: 'DISCONNECTED' }, terminal],
+    [begin, data, { ...lost, code: 'INVALID_INPUT' }, terminal],
+    [begin, data, { ...lost, channel: 'other' }, terminal],
+    [begin, data, { ...lost, status: 'closed' }, terminal],
+    [begin, data, end, { ...terminal, result: null }],
+  ])
+    expect(() => assertExplicitObservation(encode(altered))).toThrow()
+  expect(() => assertExplicitObservation(encode([begin, data, end, terminal]).trimEnd())).toThrow()
+  for (const value of [
+    { kind: 'notice', text: 'Unknown application' },
+    { kind: 'activity', id: 'unknown', label: 'Invented repair' },
+    { kind: 'activity', id: 'factory:logs', label: 'Invented repair' },
+    {
+      kind: 'activity',
+      id: 'factory:logs',
+      label: 'HTTP log report: invoking',
+      operationId: 'unknown',
+    },
+    {
+      kind: 'activity',
+      id: 'factory:logs',
+      label: 'HTTP log report: invoking',
+      progress: { completed: 1, total: 2 },
+    },
+    { kind: 'clear', id: 'unknown' },
+    { kind: 'retire-view', id: 'jobs' },
+    { kind: 'view', id: 'unknown', title: 'Jobs', summary: factorySummaries.Jobs[0], sections: [] },
+    { kind: 'view', id: 'jobs', title: 'Unknown', summary: factorySummaries.Jobs[0], sections: [] },
+    { kind: 'view', id: 'jobs', title: 'Jobs', summary: 'Invented summary', sections: [] },
+    { kind: 'view', id: 'jobs', title: 'Jobs', summary: factorySummaries.Jobs[0], sections: [] },
+  ])
+    expect(() =>
+      assertFactoryPrefix(
+        assertExplicitObservation(encode([begin, { ...data, value }, lost, terminal])).updates,
+        'blocked',
+        [],
+      ),
+    ).toThrow()
+})
+
 hostTest(
   'installed software factory delivers complete blocked and checked dashboard views',
   async () => {
@@ -59,6 +614,7 @@ hostTest(
     const evidence = join(directory, 'commands')
     const packageRoot = join(import.meta.dir, '..')
     const example = join(packageRoot, '../../examples/software-factory')
+    const requestedJobs = JSON.parse(await readFile(join(example, 'batch.json'), 'utf8')).jobs
     let passed = false
     let sequence = 0
     await mkdir(evidence)
@@ -177,71 +733,90 @@ hostTest(
         ],
         project,
       )
-      const records = stdout
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line))
-      const terminal = records.filter((record) => record.type === 'terminal')
-      expect(terminal).toHaveLength(1)
-      expect(terminal[0].result).toMatchObject({
+      const blocked = assertExplicitObservation(stdout)
+      const terminal = blocked.terminal
+      expect(terminal).toMatchObject({
         status: 'succeeded',
         outcome: 'blocked',
         delivery: { status: 'written' },
       })
-      expect(terminal[0].result.output.jobs).toHaveLength(2)
-      for (const job of terminal[0].result.output.jobs) {
+      expect(terminal.output.jobs.map((job) => job.id)).toEqual(['logs', 'timesheet'])
+      expect(terminal.output.overlaps).toEqual([])
+      const blockedFiles = [
+        'summary.txt',
+        ...['logs', 'timesheet'].flatMap((id) =>
+          ['goal.txt', 'summary.txt'].map((file) => `${id}/${file}`),
+        ),
+      ]
+      await assertDeliveredPacket(terminal, project, 'factory-result', blockedFiles)
+      for (const job of terminal.output.jobs) {
+        assertRequestedJob(
+          job,
+          requestedJobs.find((requested) => requested.id === job.id),
+        )
         expect(job).toMatchObject({
           status: 'settled',
           ready: false,
-          result: { outcome: 'blocked', output: { reason: cause } },
+          result: { outcome: 'blocked', output: { reason: cause, attempts: [] } },
         })
-        expect(job.result.output.baseline.acceptance).not.toHaveLength(0)
+        const cases = JSON.parse(
+          await readFile(join(example, 'flows/factory', `${job.id}-cases.json`), 'utf8'),
+        )
+        assertEvaluation(job.result.output.baseline, cases, false)
+        expect(job.result.output.baseline.acceptance.filter((item) => item.passed)).toHaveLength(
+          job.id === 'logs' ? 1 : 2,
+        )
+        expect(
+          await readFile(join(project, 'factory-result/files', job.id, 'goal.txt'), 'utf8'),
+        ).toBe(job.issue)
+        const summary = await readFile(
+          join(project, 'factory-result/files', job.id, 'summary.txt'),
+          'utf8',
+        )
+        expect(summary).toContain(cause)
+        expect(summary).toContain('0 validated proposal(s)')
+        expect(summary).not.toContain('Review files/')
       }
-      const updates = records
-        .filter((record) => record.type === 'data')
-        .map((record) => record.value)
-      for (const id of ['jobs', 'checks', 'patches'])
-        expect(updates.some((update) => update.kind === 'view' && update.id === id)).toBe(true)
-      const finalJobs = updates
-        .filter((update) => update.kind === 'view' && update.id === 'jobs')
-        .at(-1)
-      expect(finalJobs.sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
-      const finalChecks = updates
-        .filter((update) => update.kind === 'view' && update.id === 'checks')
-        .at(-1)
-      expect(JSON.stringify(finalChecks)).not.toContain('Pending independent verification')
-      expect(JSON.stringify(finalChecks)).toContain('No checked patch')
-      const finalPatches = updates
-        .filter((update) => update.kind === 'view' && update.id === 'patches')
-        .at(-1)
-      expect(finalPatches.summary).toContain('0 independently checked candidates')
-      expect(
-        updates.some(
-          (update) =>
-            update.kind === 'view' &&
-            update.id === 'jobs' &&
-            JSON.stringify(update).includes('Requested goal:'),
-        ),
-      ).toBe(true)
-      const retainedChecks = JSON.stringify(finalChecks.sections)
-      expect(retainedChecks).toContain('Repository test command failed.')
-      expect(retainedChecks).toContain('Independent acceptance cases: 1/4 passed.')
-      expect(retainedChecks).toContain('Independent acceptance cases: 2/4 passed.')
-      expect(retainedChecks).toContain('Observed commands:')
-      expect(
-        updates.some(
-          (update) => update.kind === 'notice' && update.text.includes('Baseline check report:'),
-        ),
-      ).toBe(true)
-      const packet = JSON.parse(await readFile(join(project, 'factory-result/result.json'), 'utf8'))
-      expect(packet).toMatchObject({ status: 'succeeded', outcome: 'blocked' })
       expect(await readFile(join(project, 'factory-result/files/summary.txt'), 'utf8')).toContain(
         cause,
       )
-      for (const job of terminal[0].result.output.jobs)
+      const updates = blocked.updates
+      assertFactoryPrefix(updates, 'blocked', requestedJobs)
+      if (blocked.status === 'closed') {
+        for (const id of ['jobs', 'checks', 'patches'])
+          expect(updates.some((update) => update.kind === 'view' && update.id === id)).toBe(true)
+        const finalJobs = updates
+          .filter((update) => update.kind === 'view' && update.id === 'jobs')
+          .at(-1)
+        expect(finalJobs.sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
+        const finalChecks = updates
+          .filter((update) => update.kind === 'view' && update.id === 'checks')
+          .at(-1)
+        expect(JSON.stringify(finalChecks)).not.toContain('Pending independent verification')
+        expect(JSON.stringify(finalChecks)).toContain('No checked patch')
+        const finalPatches = updates
+          .filter((update) => update.kind === 'view' && update.id === 'patches')
+          .at(-1)
+        expect(finalPatches.summary).toContain('0 independently checked candidates')
         expect(
-          await readFile(join(project, `factory-result/files/${job.id}/goal.txt`), 'utf8'),
-        ).toBe(job.issue)
+          updates.some(
+            (update) =>
+              update.kind === 'view' &&
+              update.id === 'jobs' &&
+              JSON.stringify(update).includes('Requested goal:'),
+          ),
+        ).toBe(true)
+        const retainedChecks = JSON.stringify(finalChecks.sections)
+        expect(retainedChecks).toContain('Repository test command failed.')
+        expect(retainedChecks).toContain('Independent acceptance cases: 1/4 passed.')
+        expect(retainedChecks).toContain('Independent acceptance cases: 2/4 passed.')
+        expect(retainedChecks).toContain('Observed commands:')
+        expect(
+          updates.some(
+            (update) => update.kind === 'notice' && update.text.includes('Baseline check report:'),
+          ),
+        ).toBe(true)
+      }
       // A second reviewed ordinary peer returns deterministic fixture repairs.
       // The factory source, test commands and independent assertions stay unchanged.
       await cp(join(example, 'flows/repair'), join(project, 'flows/repair'), {
@@ -269,7 +844,7 @@ await handle(async run => {
         [installed, 'review', '--yes', '--allow-resolution-network', '--allow-authority-changes'],
         project,
       )
-      const checked = (
+      const checked = assertExplicitObservation(
         await command(
           [
             installed,
@@ -283,43 +858,86 @@ await handle(async run => {
             `${MACOS_FIXTURE_RUN_MS}ms`,
           ],
           project,
-        )
+        ),
       )
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line))
-      const checkedTerminal = checked.find((record) => record.type === 'terminal').result
+      const checkedTerminal = checked.terminal
       expect(checkedTerminal).toMatchObject({
         status: 'succeeded',
         outcome: 'done',
         delivery: { status: 'written' },
       })
-      expect(checkedTerminal.output.jobs.every((job) => job.ready === true)).toBe(true)
-      const checkedUpdates = checked
-        .filter((record) => record.type === 'data')
-        .map((record) => record.value)
-      expect(
-        checkedUpdates.filter((update) => update.kind === 'view' && update.id === 'jobs').at(-1)
-          .summary,
-      ).toContain('2 independently checked patches')
-      expect(
-        JSON.stringify(
-          checkedUpdates
-            .filter((update) => update.kind === 'view' && update.id === 'checks')
-            .at(-1),
+      expect(checkedTerminal.output.jobs.map((job) => job.id)).toEqual(['logs', 'timesheet'])
+      expect(checkedTerminal.output.overlaps).toEqual([])
+      const checkedFiles = [
+        'summary.txt',
+        ...['logs', 'timesheet'].flatMap((id) =>
+          ['goal.txt', 'summary.txt', 'proposal-1.patch', 'review.patch'].map(
+            (file) => `${id}/${file}`,
+          ),
         ),
-      ).toContain('Passed; independently verified')
-      const patches = checkedUpdates
-        .filter((update) => update.kind === 'view' && update.id === 'patches')
-        .at(-1)
-      expect(patches.summary).toContain('2 independently checked candidates')
-      expect(patches.sections[0].blocks[0].rows.map((row) => row.cells.patch)).toEqual([
-        { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
-        { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
-      ])
-      expect(checked.some((record) => record.type === 'end' && record.error !== undefined)).toBe(
-        false,
+      ]
+      await assertDeliveredPacket(checkedTerminal, project, 'factory-checked', checkedFiles)
+      for (const job of checkedTerminal.output.jobs) {
+        assertRequestedJob(
+          job,
+          requestedJobs.find((requested) => requested.id === job.id),
+        )
+        expect(job).toMatchObject({
+          status: 'settled',
+          ready: true,
+          verification: { proposal: 1, changedPaths: job.editPaths },
+        })
+        const cases = JSON.parse(
+          await readFile(join(example, 'flows/factory', `${job.id}-cases.json`), 'utf8'),
+        )
+        expect(job.verification.acceptanceCases).toEqual(cases.map((item) => item.id))
+        assertEvaluation(job.result.output.baseline, cases, false)
+        expect(job.result.output.attempts).toHaveLength(1)
+        assertEvaluation(job.result.output.attempts[0].evaluation, cases, true)
+        expect(
+          await readFile(join(project, 'factory-checked/files', job.id, 'goal.txt'), 'utf8'),
+        ).toBe(job.issue)
+        const patch = await readFile(
+          join(project, 'factory-checked/files', job.id, 'review.patch'),
+          'utf8',
+        )
+        for (const path of job.editPaths) expect(patch).toContain(`--- a/${path}`)
+        expect(patch).toBe(
+          await readFile(
+            join(project, 'factory-checked/files', job.id, 'proposal-1.patch'),
+            'utf8',
+          ),
+        )
+        expect(
+          await readFile(join(project, 'factory-checked/files', job.id, 'summary.txt'), 'utf8'),
+        ).toContain('1 validated proposal(s)')
+      }
+      expect(await readFile(join(project, 'factory-checked/files/summary.txt'), 'utf8')).toContain(
+        'Patches were checked separately, not as a combined change. Review before applying.',
       )
+      const checkedUpdates = checked.updates
+      assertFactoryPrefix(checkedUpdates, 'checked', requestedJobs)
+      if (checked.status === 'closed') {
+        expect(
+          checkedUpdates.filter((update) => update.kind === 'view' && update.id === 'jobs').at(-1)
+            .summary,
+        ).toContain('2 independently checked patches')
+        expect(
+          JSON.stringify(
+            checkedUpdates
+              .filter((update) => update.kind === 'view' && update.id === 'checks')
+              .at(-1),
+          ),
+        ).toContain('Passed; independently verified')
+        const patches = checkedUpdates
+          .filter((update) => update.kind === 'view' && update.id === 'patches')
+          .at(-1)
+        expect(patches.summary).toContain('2 independently checked candidates')
+        expect(patches.sections[0].blocks[0].rows.map((row) => row.cells.patch)).toEqual([
+          { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
+          { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
+        ])
+      }
       const plain = JSON.parse(
         await command(
           [
@@ -340,14 +958,333 @@ await handle(async run => {
         outcome: 'done',
         delivery: { status: 'written' },
       })
+      expect(plain.output.jobs).toHaveLength(2)
+      expect(plain.output.jobs.map((job) => job.id)).toEqual(['logs', 'timesheet'])
+      expect(plain.output.jobs.map(({ result: _result, ...evidence }) => evidence)).toEqual(
+        checkedTerminal.output.jobs.map(({ result: _result, ...evidence }) => evidence),
+      )
+      expect(plain.output.overlaps).toEqual([])
+      const automaticSummary = await readFile(
+        join(project, 'factory-auto/files/summary.txt'),
+        'utf8',
+      )
+      expect(automaticSummary).toBe(
+        await readFile(join(project, 'factory-checked/files/summary.txt'), 'utf8'),
+      )
+      expect(automaticSummary).toContain(
+        'Patches were checked separately, not as a combined change. Review before applying.',
+      )
+      const expectedFiles = [
+        'summary.txt',
+        ...['logs', 'timesheet'].flatMap((id) =>
+          ['goal.txt', 'proposal-1.patch', 'review.patch', 'summary.txt'].map(
+            (file) => `${id}/${file}`,
+          ),
+        ),
+      ].sort()
+      await assertDeliveredPacket(plain, project, 'factory-auto', expectedFiles)
+      for (const file of plain.delivery.files) {
+        const delivered = await readFile(join(project, 'factory-auto/files', file.path))
+        expect(delivered.byteLength).toBe(file.bytes)
+        expect(`sha256:${createHash('sha256').update(delivered).digest('hex')}`).toBe(file.digest)
+        expect(delivered).toEqual(await readFile(join(project, 'factory-checked/files', file.path)))
+      }
+      for (const job of plain.output.jobs) {
+        expect(job).toMatchObject({
+          status: 'settled',
+          ready: true,
+          verification: {
+            proposal: 1,
+            changedPaths: job.editPaths,
+            acceptanceCases: JSON.parse(
+              await readFile(join(example, 'flows/factory', `${job.id}-cases.json`), 'utf8'),
+            ).map((item) => item.id),
+          },
+        })
+        expect(job.result.output.attempts[0].evaluation.repositoryTestsPassed).toBe(true)
+        expect(job.result.output.attempts[0].evaluation.acceptance).toHaveLength(4)
+        expect(
+          job.result.output.attempts[0].evaluation.acceptance.every((item) => item.passed === true),
+        ).toBe(true)
+        const reviewPatch = await readFile(
+          join(project, 'factory-auto/files', job.id, 'review.patch'),
+          'utf8',
+        )
+        for (const path of job.editPaths) expect(reviewPatch).toContain(`--- a/${path}`)
+        expect(
+          await readFile(join(project, 'factory-auto/files', job.id, 'goal.txt'), 'utf8'),
+        ).toBe(job.issue)
+      }
       const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
-      for (const title of ['Jobs', 'Checks', 'Patches']) expect(transcript).toContain(title)
-      expect(transcript).toContain('Observation ended')
-      expect(transcript).not.toContain('\u001b')
+      assertTypedObservation(transcript)
       passed = true
     } finally {
       if (passed) await rm(directory, { recursive: true, force: true })
       else console.error(`Software factory consumer evidence retained at ${directory}`)
+    }
+  },
+  600_000,
+)
+
+hostTest(
+  'installed typed views preserve clean and lost automatic and explicit observation',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jig-observation-consumer-'))
+    const project = join(directory, 'project')
+    const tooling = join(directory, 'tooling')
+    const artifacts = join(directory, 'artifacts')
+    const evidence = join(directory, 'commands')
+    const packageRoot = join(import.meta.dir, '..')
+    let passed = false
+    let sequence = 0
+    await mkdir(evidence)
+    const command = async (args: string[], cwd: string) => {
+      const child = Bun.spawn(args, {
+        cwd,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const result = await settleTestCommand(child, {
+        evidence: join(evidence, String(++sequence)),
+        timeoutMs: MACOS_FIXTURE_SETTLEMENT_MS,
+      })
+      expect(result.code, result.stdout + result.stderr).toBe(0)
+      return result.stdout
+    }
+    const archive = async (name: string, variable: string) => {
+      const supplied = process.env[variable]
+      if (supplied) return supplied
+      const destination = join(artifacts, name)
+      await mkdir(destination, { recursive: true })
+      await command(
+        name === 'jig'
+          ? [process.execPath, 'scripts/pack.ts', '--destination', destination]
+          : [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', destination],
+        join(packageRoot, '..', name),
+      )
+      const manifest = JSON.parse(
+        await readFile(join(packageRoot, '..', name, 'package.json'), 'utf8'),
+      )
+      return join(
+        destination,
+        `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`,
+      )
+    }
+    try {
+      await mkdir(tooling)
+      await writeFile(
+        join(tooling, 'package.json'),
+        JSON.stringify({
+          private: true,
+          dependencies: { '@jigging/jig': `file:${await archive('jig', 'JIG_PACKAGE_ARCHIVE')}` },
+        }),
+      )
+      await command(
+        [process.execPath, 'install', '--ignore-scripts', '--backend', 'copyfile'],
+        tooling,
+      )
+      const installed = join(tooling, 'node_modules/.bin/jig')
+      const flow = join(project, 'flows/witness')
+      await mkdir(flow, { recursive: true })
+      await writeFile(
+        join(project, 'package.json'),
+        JSON.stringify({
+          private: true,
+          type: 'module',
+          workspaces: ['flows/*', 'libs/*'],
+        }),
+      )
+      for (const [name, variable] of [
+        ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
+        ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
+      ] as const) {
+        const library = join(project, 'libs', name)
+        await mkdir(library, { recursive: true })
+        await command(
+          ['tar', '-xzf', await archive(name, variable), '--strip-components=1', '-C', library],
+          project,
+        )
+      }
+      await cp(
+        join(project, 'libs/user-updates/dist/user-updates.json'),
+        join(flow, 'user-updates.json'),
+      )
+      await writeFile(
+        join(flow, 'package.json'),
+        JSON.stringify({
+          name: 'ordinary-observation-witness',
+          private: true,
+          type: 'module',
+          dependencies: { '@jigging/flow': 'workspace:*', '@jigging/user-updates': 'workspace:*' },
+        }),
+      )
+      await writeFile(
+        join(flow, 'FLOW.contract.json'),
+        JSON.stringify({
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+          id: 'https://example.org/contracts/observation-witness',
+          version: '1.0.0',
+          input: {
+            type: 'object',
+            properties: { mode: { enum: ['clean', 'lagged'] } },
+            required: ['mode'],
+            additionalProperties: false,
+          },
+          channels: {
+            progress: {
+              direction: 'send',
+              required: false,
+              delivery: 'broadcast',
+              contract: './user-updates.json',
+            },
+          },
+          attachments: { deliverables: 'read-write' },
+        }),
+      )
+      await writeFile(
+        join(flow, 'FLOW.ts'),
+        `import {writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {handle} from '@jigging/flow';
+import {withUserUpdates} from '@jigging/user-updates';
+await handle(async run => {
+ const evidence='Ordinary result and delivered evidence remain independent of optional observation.\\n';
+ await writeFile(join(run.attachments.deliverables.path,'evidence.txt'),evidence,{flag:'wx'});
+ const views=[['jobs','Jobs'],['checks','Checks'],['patches','Patches']].map(([id,title])=>({kind:'view',id,title,summary:'Witness '+title+': evidence written',sections:[{blocks:[{kind:'facts',items:[{label:'Evidence',value:{kind:'artifact',attachment:'deliverables',path:'evidence.txt'}}]}]}]}));
+ if(run.input.mode==='clean') await withUserUpdates(run,'progress',async updates=>{
+  for(const view of views) updates.view(view.id,{title:view.title}).update({summary:view.summary,sections:view.sections});
+ });
+ else {
+  const sender=run.channels.progress;
+  if(!sender||sender.direction!=='send')throw new Error('The witness requires its selected observer');
+  for(const view of views) await sender.send(view);
+  await sender.close({error:'LAGGED'});
+ }
+ return {outcome:'done',output:{mode:run.input.mode,evidence:'evidence.txt'}};
+});`,
+      )
+      await writeFile(
+        join(project, 'jig.ts'),
+        "import {defineJig,discover} from '@jigging/jig';export default defineJig({flows:discover('flows')});",
+      )
+      await command(
+        [process.execPath, 'install', '--ignore-scripts', '--backend', 'copyfile'],
+        project,
+      )
+      await command(
+        [installed, 'review', '--yes', '--allow-resolution-network', '--allow-authority-changes'],
+        project,
+      )
+      for (const reception of ['automatic', 'explicit'] as const) {
+        for (const mode of ['clean', 'lagged'] as const) {
+          const destination = `witness-${reception}-${mode}`
+          const stdout = await command(
+            [
+              installed,
+              'run',
+              'flow:flows/witness',
+              '--input',
+              JSON.stringify({ mode }),
+              '--out',
+              destination,
+              ...(reception === 'explicit'
+                ? ['--receive', 'progress', '--json']
+                : ['--display', 'plain']),
+              '--timeout',
+              `${MACOS_FIXTURE_RUN_MS}ms`,
+            ],
+            project,
+          )
+          const explicit = reception === 'explicit' ? assertExplicitObservation(stdout) : undefined
+          const terminal = explicit?.terminal ?? JSON.parse(stdout)
+          expect(terminal).toMatchObject({
+            status: 'succeeded',
+            outcome: 'done',
+            output: { mode, evidence: 'evidence.txt' },
+            delivery: { status: 'written' },
+          })
+          await assertDeliveredPacket(terminal, project, destination, ['evidence.txt'])
+          const delivered = await readFile(join(project, destination, 'files/evidence.txt'))
+          expect(delivered.toString()).toBe(
+            'Ordinary result and delivered evidence remain independent of optional observation.\n',
+          )
+          if (explicit) {
+            expect(explicit.status).toBe(mode === 'clean' ? 'closed' : 'lagged')
+            const expectedViews = ['jobs', 'checks', 'patches'].map((id) => {
+              const title = id[0].toUpperCase() + id.slice(1)
+              return {
+                kind: 'view',
+                id,
+                title,
+                summary: `Witness ${title}: evidence written`,
+                sections: [
+                  {
+                    blocks: [
+                      {
+                        kind: 'facts',
+                        items: [
+                          {
+                            label: 'Evidence',
+                            value: {
+                              kind: 'artifact',
+                              attachment: 'deliverables',
+                              path: 'evidence.txt',
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              }
+            })
+            if (mode === 'clean') expect(explicit.updates).toEqual(expectedViews)
+            else {
+              expect(explicit.updates.length).toBeLessThanOrEqual(expectedViews.length)
+              expect(explicit.updates).toEqual(expectedViews.slice(0, explicit.updates.length))
+            }
+          } else {
+            const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
+            expect(transcript).not.toContain('\u001b')
+            expect(transcript).not.toContain('Updates unavailable')
+            expect(transcript).not.toContain('DISCONNECTED')
+            expect(
+              assertTypedObservation(
+                transcript,
+                Object.fromEntries(
+                  ['Jobs', 'Checks', 'Patches'].map((title) => [
+                    title,
+                    [
+                      `Witness ${title}: evidence written`,
+                      `Witness ${title}: evidence written`,
+                    ] as const,
+                  ]),
+                ),
+              ),
+            ).toBe(mode === 'clean' ? 'ended' : 'lagged')
+            const reason = mode === 'clean' ? 'Observation ended' : lostObservation
+            if (mode === 'clean') {
+              for (const title of ['Jobs', 'Checks', 'Patches'])
+                expect(transcript).toContain(
+                  `  Flow / ${title} (${reason}):\n    Witness ${title}: evidence written\n`,
+                )
+              expect(transcript).not.toContain('observation incomplete')
+              expect(transcript).not.toContain('LAGGED')
+            } else {
+              expect(transcript).toContain(
+                `  Jig — observation incomplete:\n      Flow: ${lostObservation}\n`,
+              )
+              expect(transcript).not.toContain('Observation ended')
+            }
+          }
+        }
+      }
+      passed = true
+    } finally {
+      if (passed) await rm(directory, { recursive: true, force: true })
+      else console.error(`Ordinary observation evidence retained at ${directory}`)
     }
   },
   600_000,

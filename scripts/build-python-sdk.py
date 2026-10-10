@@ -25,6 +25,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--candidate", action="store_true")
+    parser.add_argument("--build-only", action="store_true",
+                        help="Freeze distributions for fresh downstream installed qualification")
     args = parser.parse_args()
     output = args.output.resolve()
     if output.exists():
@@ -70,9 +72,10 @@ def main() -> None:
         if len(files) != 2 or not any(p.suffix == ".whl" for p in files) or not any(p.name.endswith(".tar.gz") for p in files):
             raise RuntimeError("expected exactly one wheel and one sdist")
         subprocess.run([sys.executable, "-m", "twine", "check", "--strict", *map(str, files)], check=True)
-        subprocess.run([sys.executable, str(source / "tests/package_smoke.py"), *map(str, files)], check=True)
+        if not args.build_only:
+            subprocess.run([sys.executable, str(source / "tests/package_smoke.py"), *map(str, files)], check=True)
         receipt = {"package": "jiggy-flow", "version": version, "commit": revision,
-                   "candidate": args.candidate,
+                   "candidate": args.candidate, "qualification": "pending" if args.build_only else "installed",
                    "files": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
         (dist / "SUCCESS.json").write_text(json.dumps(receipt, indent=2) + "\n")
         output.parent.mkdir(parents=True, exist_ok=True)

@@ -562,3 +562,187 @@ test('reported errors retain attribution and ordering through blocked output and
     presenter.close()
   }
 })
+
+test('automatic channel observer freezes accepted views after declared loss and receiver overflow', async () => {
+  for (const mode of ['producer', 'receiver'] as const) {
+    let transcript = ''
+    const presenter = new PrivateCliProgress(
+      true,
+      (chunk) => {
+        transcript += chunk
+      },
+      undefined,
+      false,
+    )
+    const records: JsonValue[] = []
+    const prefixAccepted = deferred()
+    let acceptedViews = 0
+    const captured = { digest: 'captured', read: async () => bytes } as unknown as CapturedPackage
+    const inspected = {
+      invocation: {
+        channels: {
+          updates: {
+            direction: 'send',
+            required: false,
+            delivery: 'broadcast',
+            contract: './user-updates.json',
+          },
+        },
+      },
+    } as unknown as InspectedPackage
+    const context = await PrivateRunChannels.open(captured, inspected, {
+      receive: [],
+      record: async (value) => {
+        records.push(value)
+      },
+      diagnostic() {},
+      updates: {
+        open: (port) => {
+          const source = presenter.observe(port, true)
+          return {
+            accept(value, publisher) {
+              const accepted = source.accept(value, publisher)
+              if (
+                accepted &&
+                (value as Record<string, JsonValue>).kind === 'view' &&
+                ++acceptedViews === 3
+              )
+                prefixAccepted.resolve()
+              return accepted
+            },
+            retire(reason) {
+              source.retire(reason)
+            },
+          }
+        },
+        ambiguous() {
+          throw new Error('one exact source is not ambiguous')
+        },
+      },
+    })
+    try {
+      const writer = context.grants.updates!.endpoint
+      for (const id of ['jobs', 'checks', 'patches']) {
+        await context.root.send(writer, {
+          kind: 'view',
+          id,
+          title: id,
+          summary: `Last accepted ${id}`,
+          sections: [],
+        })
+      }
+      await prefixAccepted.promise
+      expect(presenter.model.views.size).toBe(3)
+      if (mode === 'producer') context.root.close(writer, 'LAGGED')
+      else {
+        // Dispatch one bounded burst without giving the receiver a drain turn.
+        // The writer remains healthy when this broadcast receiver loses capacity.
+        const burst = Array.from({ length: 17 }, (_, index) =>
+          context.root.send(writer, { kind: 'notice', text: `Burst ${index}` }),
+        )
+        await Promise.all(burst)
+        context.root.close(writer)
+      }
+      const application = await context.root.create()
+      await context.root.send(application.send.endpoint, 'Independent work result')
+      context.root.close(application.send.endpoint)
+      expect((await context.root.next(application.receive.endpoint)) as JsonValue).toMatchObject({
+        item: { value: 'Independent work result' },
+      })
+      expect((await context.root.next(application.receive.endpoint)) as JsonValue).toMatchObject({
+        end: { lastSequence: 1 },
+      })
+      context.root.release(application.receive.endpoint)
+      context.root.finalize(true)
+      await context.settle()
+      expect(records).toEqual([])
+      expect(presenter.model.views.size).toBe(3)
+      for (const view of presenter.model.views.values()) {
+        expect(view.publisher).toBe(context.root.id)
+        expect(view.value.summary).toBe(`Last accepted ${view.value.id}`)
+        expect(view.ended).toBe(
+          "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)",
+        )
+      }
+      await presenter.settleDisplay({
+        status: 'succeeded',
+        outcome: 'done',
+        delivery: { status: 'written' },
+      })
+      expect(transcript).toContain('Jig — observation incomplete:')
+      expect(transcript).toContain("Check the final result for the work's outcome. (LAGGED)")
+      expect(transcript).not.toContain('Observation ended')
+      expect(presenter.model.workspace.facts?.execution).toBe('succeeded')
+      expect(presenter.model.workspace.facts?.application).toBe('"done"')
+      for (const id of ['jobs', 'checks', 'patches'])
+        expect(transcript).toContain(`Last accepted ${id}`)
+    } finally {
+      context.broker.abort()
+      presenter.close()
+    }
+  }
+})
+
+test('frozen views retain the newest accepted snapshot while warning delivery suppresses live printing', async () => {
+  const warningWriting = deferred()
+  const releaseWarning = deferred()
+  let transcript = ''
+  const presenter = new PrivateCliProgress(
+    true,
+    (text) => {
+      transcript += text
+      if (text.includes('A warning is being written')) {
+        warningWriting.resolve()
+        return releaseWarning.promise
+      }
+    },
+    undefined,
+    false,
+  )
+  const source = presenter.observe('progress', true)
+  const loss =
+    "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)"
+  try {
+    expect(
+      source.accept({
+        kind: 'view',
+        id: 'jobs',
+        title: 'Jobs',
+        summary: 'Initial accepted snapshot',
+        sections: [],
+      }),
+    ).toBe(true)
+    await presenter.flush()
+    expect(transcript).toContain('  Flow: Jobs\n    Initial accepted snapshot\n')
+    expect(
+      source.accept({ kind: 'notice', severity: 'warning', text: 'A warning is being written' }),
+    ).toBe(true)
+    await warningWriting.promise
+    expect(
+      source.accept({
+        kind: 'view',
+        id: 'jobs',
+        title: 'Jobs',
+        summary: 'Newest accepted snapshot',
+        sections: [],
+      }),
+    ).toBe(true)
+    expect(transcript).not.toContain('Newest accepted snapshot')
+    expect([...presenter.model.views.values()].map((view) => view.value.summary)).toEqual([
+      'Newest accepted snapshot',
+    ])
+    source.retire(loss)
+    expect([...presenter.model.views.values()].map((view) => view.ended)).toEqual([loss])
+    releaseWarning.resolve()
+    await presenter.settleDisplay({ status: 'succeeded', outcome: 'done' })
+    expect(transcript).not.toContain('  Flow: Jobs\n    Newest accepted snapshot\n')
+    expect(transcript).toContain(`  Flow / Jobs (${loss}):\n    Newest accepted snapshot\n`)
+    expect(transcript).not.toContain(`  Flow / Jobs (${loss}):\n    Initial accepted snapshot\n`)
+    expect(presenter.model.workspace.facts?.execution).toBe('succeeded')
+    expect(presenter.model.workspace.facts?.application).toBe('"done"')
+  } finally {
+    releaseWarning.resolve()
+    await presenter.flush()
+    presenter.close()
+  }
+}, 5_000)

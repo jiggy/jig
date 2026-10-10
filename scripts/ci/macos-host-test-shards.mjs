@@ -95,14 +95,25 @@ const WEIGHTS = new Map([
 // ARM's existing hint balances its faster source and installed work already.
 const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 500, arm64: 384 })
 const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
+export const HOST_TEST_DIRECTORIES = Object.freeze([
+  'packages/jig/test',
+  'packages/display-model/test',
+  'packages/display-web/test',
+  'packages/display-tui/test',
+])
+
+// Match the filesystem walk when reconstructing the inventory from Git. Hidden
+// directories and dependency copies cannot become an additional owning command.
+export function isHostTestFile(file) {
+  return (
+    HOST_TEST_DIRECTORIES.some((directory) => file.startsWith(`${directory}/`)) &&
+    file.split('/').every((part) => !part.startsWith('.') && part !== 'node_modules') &&
+    TEST_FILE.test(file)
+  )
+}
 
 export async function discoverHostTests(root) {
-  return discoverTests(root, [
-    'packages/jig/test',
-    'packages/display-model/test',
-    'packages/display-web/test',
-    'packages/display-tui/test',
-  ])
+  return discoverTests(root, HOST_TEST_DIRECTORIES)
 }
 
 async function discoverTests(root, directories) {

@@ -607,6 +607,15 @@ test('maximum requested goals survive exact file, checkpoint and result retentio
         const finished = views.filter((value) => value.id === 'jobs').at(-1)
         expect(finished.summary).toContain('No checked patches')
         expect(finished.sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
+        const checks = views.filter((value) => value.id === 'checks').at(-1)
+        expect(checks.summary).toContain('Finished checks:')
+        expect(checks.sections[0].blocks[0].rows.map((row: any) => row.cells)).toEqual([
+          { job: 'first', repository: 'Unavailable', cases: 'No accepted patch' },
+          { job: 'second', repository: 'Unavailable', cases: 'No accepted patch' },
+        ])
+        const patches = views.filter((value) => value.id === 'patches').at(-1)
+        expect(patches.summary).toContain('0 independently checked candidates')
+        expect(patches.sections[0].blocks[0]).toMatchObject({ rows: [], total: 0 })
         expect(JSON.stringify(views.find((value) => value.id === 'jobs'))).toContain(
           '[excerpt; complete goal',
         )
@@ -694,6 +703,53 @@ test('optional profile retains checkpoint ordering and settles after reader loss
           new Set(['Jobs', 'Checks', 'Patches']),
         )
         expect(views.every((value) => value.landing === undefined)).toBe(true)
+        const finished = views.filter((value) => value.id === 'jobs').at(-1)
+        expect(finished.summary).toContain('1 independently checked patch ready for review')
+        expect(finished.sections[0].blocks[0]).toMatchObject({ completed: 1, total: 1 })
+        expect(finished.sections[0].blocks[1].rows).toEqual([
+          expect.objectContaining({
+            id: job.id,
+            cells: {
+              job: job.id,
+              action: 'Ready for review',
+              checks: `Tests + ${repairInput.cases.length}/${repairInput.cases.length} cases passed`,
+              patch: {
+                kind: 'artifact',
+                attachment: 'deliverables',
+                path: `${job.id}/review.patch`,
+              },
+            },
+          }),
+        ])
+        const checks = views.filter((value) => value.id === 'checks').at(-1)
+        expect(checks.summary).toContain('Finished checks:')
+        expect(checks.sections[0].blocks[0].rows).toEqual([
+          expect.objectContaining({
+            id: job.id,
+            cells: {
+              job: job.id,
+              repository: 'Verified pass',
+              cases: `${repairInput.cases.length}/${repairInput.cases.length} verified`,
+            },
+          }),
+        ])
+        const patches = views.filter((value) => value.id === 'patches').at(-1)
+        expect(patches.summary).toContain('1 independently checked candidate for human review')
+        expect(patches.sections[0].blocks[0]).toMatchObject({
+          total: 1,
+          rows: [
+            expect.objectContaining({
+              id: job.id,
+              cells: expect.objectContaining({
+                patch: {
+                  kind: 'artifact',
+                  attachment: 'deliverables',
+                  path: `${job.id}/review.patch`,
+                },
+              }),
+            }),
+          ],
+        })
         expect(
           messages.some(
             (value) =>

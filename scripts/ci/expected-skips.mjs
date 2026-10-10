@@ -1,0 +1,501 @@
+import { execFileSync, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
+import {
+  isHostTestFile,
+  macHostShardCount,
+  NAMED_TEST_GROUPS,
+  NATIVE_PREREQUISITE_TESTS,
+  planMacHostTests,
+} from './macos-host-test-shards.mjs'
+
+const manifest = JSON.parse(
+  readFileSync(new URL('./affected-manifest.json', import.meta.url), 'utf8'),
+)
+export const expectedSkipInventory = manifest.expectedSkips
+const rules = new Map(expectedSkipInventory.rules.map((rule) => [rule.file, rule]))
+const macExecutedMultiplicities = new Map(
+  manifest.macosExecutedCaseMultiplicities.map((rule) => [rule.file, rule]),
+)
+const linuxFilters = new Map([
+  [
+    'packages/jig/test/package-provider-host.test.ts',
+    ['^packed project dependencies ', '^(?!packed project dependencies )'],
+  ],
+])
+const policyProfiles = new Map(
+  manifest.targets.filter((target) => target.skipPolicy).map((target) => [target.id, target]),
+)
+const installedScripts = new Set([
+  'packages/jig/test/package-smoke.ts',
+  'packages/display-model/test/package-smoke.ts',
+  'packages/display-web/test/package-smoke.ts',
+  'packages/display-tui/test/package-smoke.ts',
+  'scripts/test-operational-baseline.ts',
+  'scripts/test-installed-hostile-baseline.ts',
+])
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object')
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(',')}}`
+  return JSON.stringify(value)
+}
+export function skippedCaseDigest(cases) {
+  return createHash('sha256').update(stableJson(cases)).digest('hex')
+}
+function git(repository, args) {
+  const result = spawnSync('git', ['-C', repository, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  if (result.error || result.status !== 0)
+    throw new Error('Expected-skip source information is unavailable')
+  return result.stdout
+}
+function repositoryPath(file) {
+  if (
+    typeof file !== 'string' ||
+    !file ||
+    file.includes('\0') ||
+    file.includes('\\') ||
+    isAbsolute(file)
+  )
+    throw new Error('Skipped case requires a repository-relative file identity')
+  const result = file.replace(/^\.\//, '')
+  if (normalize(result) !== result || result.startsWith('../'))
+    throw new Error('Skipped case file identity escapes the repository')
+  return result
+}
+// Bun JUnit classnames list nested suites from inner to outer. Its transcript
+// lists them from outer to inner; normalize both to Bun's name-filter spelling.
+export function bunCaseFullName({ classname = '', name }) {
+  if (typeof classname !== 'string' || typeof name !== 'string' || !name.trim())
+    throw new Error('Skipped case is missing its name identity')
+  return [...classname.split(' > ').filter(Boolean).reverse(), name].join(' ')
+}
+function approvedFilter(targetId, file, pattern) {
+  const allowed =
+    targetId === 'linux'
+      ? linuxFilters.get(file)
+      : targetId.startsWith('macos-')
+        ? NAMED_TEST_GROUPS.get(file)?.map((group) => group.pattern)
+        : []
+  return typeof pattern === 'string' && allowed?.includes(pattern)
+}
+
+// The payload remains in evidence so the independent gate repeats this check.
+// A policy label alone never authorizes a skipped test. Frozen blobs prevent a
+// new/modified skip condition from inheriting an earlier file's permission.
+export function authorizeExpectedSkips({
+  repository = process.cwd(),
+  source,
+  targetId,
+  profile,
+  skipPolicy,
+  skippedCases,
+}) {
+  if (!Array.isArray(skippedCases)) throw new Error('Missing skipped case identities')
+  const target = policyProfiles.get(targetId)
+  if (!target || skipPolicy !== target.skipPolicy || !target.profiles.includes(profile))
+    throw new Error('Unknown expected-skip policy or runtime profile')
+  if (!/^[0-9a-f]{40,64}$/.test(source ?? ''))
+    throw new Error('Expected-skip proof requires an exact source revision')
+  git(repository, ['rev-parse', '--verify', '--end-of-options', `${source}^{commit}`])
+  const blobs = new Map()
+  const occurrences = new Map()
+  const normalizedCases = skippedCases.map((item) => {
+    const file = repositoryPath(item?.file)
+    const classname = item.classname ?? ''
+    const name = item.name
+    const line = item.line
+    if (line !== undefined && (typeof line !== 'string' || !/^[1-9]\d*$/.test(line)))
+      throw new Error('Skipped case has an invalid source line')
+    const fullName = bunCaseFullName({ classname, name })
+    const commandKind = item.commandKind ?? 'ordinary'
+    if (commandKind !== 'ordinary')
+      throw new Error('Native prerequisite and installed-startup proof must execute without skips')
+    const rule = rules.get(file)
+    if (!rule) throw new Error(`Unreviewed skipped case file: ${file}`)
+    if (!blobs.has(file)) {
+      const entry = git(repository, ['ls-tree', source, '--', file]).trim()
+      const match = /^100(?:644|755) blob ([0-9a-f]{40,64})\t/.exec(entry)
+      if (!match || match[1] !== rule.blob)
+        throw new Error(`Changed or unavailable expected-skip source: ${file}`)
+      blobs.set(file, match[1])
+    }
+    let filter
+    let filteredOut = false
+    if (item.filter !== undefined) {
+      if (
+        !item.filter ||
+        repositoryPath(item.filter.file) !== file ||
+        !approvedFilter(targetId, file, item.filter.pattern)
+      )
+        throw new Error('Skipped case filter does not match its owning command')
+      filter = { file, pattern: item.filter.pattern }
+      filteredOut = !new RegExp(filter.pattern).test(fullName)
+    }
+    const patterns =
+      targetId === 'source-tests'
+        ? rule.sourcePatterns
+        : targetId === 'linux'
+          ? rule.linuxPatterns
+          : rule.macosPatterns
+    // Bun leaves skipped test.each placeholders unexpanded, so two frozen
+    // registrations can have identical reporter identities. Only a reviewed
+    // exact case may raise the cap; reporter ordinals or lines never do so.
+    const multiplicity = rule.caseMultiplicities?.find(
+      (entry) =>
+        entry.classname === classname && entry.name === name && entry.targets.includes(targetId),
+    )
+    if (multiplicity && (filter || line !== multiplicity.line))
+      throw new Error('Parameterized skipped case differs from its reviewed owning identity')
+    if (
+      !filteredOut &&
+      !multiplicity &&
+      !patterns.some((pattern) => new RegExp(pattern).test(fullName))
+    )
+      throw new Error(`Unexpected skipped case: ${file}: ${fullName}`)
+    const result = {
+      file,
+      classname,
+      name,
+      profile,
+      commandKind,
+      ...(line === undefined ? {} : { line }),
+      ...(filter ? { filter } : {}),
+    }
+    if (item.profile !== undefined && item.profile !== profile)
+      throw new Error('Skipped case has a different runtime profile')
+    const identity = stableJson({
+      file,
+      classname,
+      name,
+      profile,
+      commandKind,
+      ...(filter ? { filter } : {}),
+    })
+    const count = (occurrences.get(identity) ?? 0) + 1
+    if (count > (multiplicity?.maxOccurrences ?? 1))
+      throw new Error('Repeated skipped case exceeds its reviewed owning-command multiplicity')
+    occurrences.set(identity, count)
+    return result
+  })
+  return {
+    observedSkipped: normalizedCases.length,
+    unexpectedSkips: 0,
+    skippedCaseDigest: skippedCaseDigest(normalizedCases),
+    skippedCases: normalizedCases,
+  }
+}
+
+export function parseBunTranscript(text, { files, filter, commandKind = 'ordinary' } = {}) {
+  if (typeof text !== 'string' || !Array.isArray(files))
+    throw new Error('Bun transcript requires its owning command files')
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Bun reporters emit ANSI color escapes.
+  const output = text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replaceAll('\r\n', '\n')
+  if (commandKind === 'installed-script') {
+    const markers = [...output.matchAll(/^CI installed script complete: (.+)$/gm)]
+    if (
+      files.length !== 1 ||
+      !installedScripts.has(repositoryPath(files[0])) ||
+      filter ||
+      markers.length !== 1 ||
+      markers[0][1] !== files[0] ||
+      /(?:^|\n)\s*(?:\d+ (?:pass|skip|fail)\b|\(skip\)|\(fail\)|# (?:fail|cancelled|skipped) [1-9]\d*\b|FAILED\b)/m.test(
+        output,
+      )
+    )
+      throw new Error('Installed script cannot substitute for a test-framework command')
+    return { count: 0, skipped: 0, skippedCases: [], basis: 'test-cases' }
+  }
+  if (!files.length) throw new Error('Bun transcript requires its owning command files')
+  const expectedFiles = new Set(files.map(repositoryPath))
+  if (expectedFiles.size !== files.length) throw new Error('Bun command repeats an owning file')
+  let owningFilter
+  if (filter !== undefined) {
+    const filterFile = repositoryPath(filter?.file)
+    if (
+      expectedFiles.size !== 1 ||
+      !expectedFiles.has(filterFile) ||
+      !(
+        approvedFilter('linux', filterFile, filter.pattern) ||
+        approvedFilter('macos-x64', filterFile, filter.pattern)
+      )
+    )
+      throw new Error('Bun command requires its exact reviewed owning filter')
+    owningFilter = new RegExp(filter.pattern)
+  }
+  const summaries = [
+    ...output.matchAll(
+      /^\s*(\d+) pass\s*\n(?:\s*(\d+) skip\s*\n)?(?:\s*(\d+) filtered out\s*\n)?\s*0 fail\s*\n(?:\s*\d+ expect\(\) calls\s*\n)?Ran (\d+) tests? across (\d+) files?\./gm,
+    ),
+  ]
+  if (summaries.length !== 1)
+    throw new Error('Bun command requires one completed successful report')
+  const summary = summaries[0]
+  const count = Number(summary[1])
+  const skipped = Number(summary[2] ?? 0)
+  const filtered = Number(summary[3] ?? 0)
+  if (!Number.isSafeInteger(filtered)) throw new Error('Invalid Bun filtered-out case count')
+  if (summary[3] !== undefined && !owningFilter)
+    throw new Error('Bun filtered-out cases require their reviewed owning filter')
+  if (
+    !/^\s*(?:\[\d+(?:\.\d+)?(?:ms|s)\])?\s*$/u.test(
+      output.slice(summary.index + summary[0].length),
+    ) ||
+    /^(?:\(fail\)|\s*[1-9]\d* fail\b|error:|# (?:fail|cancelled) [1-9]\d*\b|FAILED\b)/m.test(output)
+  )
+    throw new Error('Failed, incomplete or repeated Bun execution report')
+  const skippedCases = []
+  const primarySkipNames = []
+  const observedFiles = new Set()
+  let executed = 0
+  let recap
+  let file
+  let grouped
+  let groupOpen = false
+  // Bun 1.3.3 can repeat its primary skipped records in a terminal recap.
+  // Verify that exact multiset without granting a second execution identity.
+  for (const line of output.slice(0, summary.index).split('\n')) {
+    if (line === '::endgroup::') {
+      if (!groupOpen) throw new Error('Bun report closes an unopened file group')
+      groupOpen = false
+      file = undefined
+      continue
+    }
+    const recapHeader = /^(\d+) tests? skipped:$/u.exec(line)
+    if (recapHeader) {
+      if (groupOpen) throw new Error('Bun skipped-case recap starts inside an owning file group')
+      if (recap || Number(recapHeader[1]) <= 0)
+        throw new Error('Bun skipped-case recap is empty or repeated')
+      recap = { count: Number(recapHeader[1]), names: [] }
+      continue
+    }
+    const header = /^(?:(::group::))?(.+\.(?:[cm]?[jt]sx?)):$/u.exec(line)
+    if (header) {
+      if (recap) throw new Error('Bun execution continues after its skipped-case recap')
+      const wrapped = header[1] !== undefined
+      if (groupOpen) throw new Error('Bun report nests owning file groups')
+      if (grouped !== undefined && grouped !== wrapped)
+        throw new Error('Bun report mixes grouped and plain file headers')
+      grouped = wrapped
+      groupOpen = wrapped
+      file = repositoryPath(header[2])
+      if (!expectedFiles.has(file))
+        throw new Error('Bun report file does not match its owning command')
+      observedFiles.add(file)
+    } else if (line.startsWith('::group::') || line.startsWith('::endgroup'))
+      throw new Error('Bun report has an invalid file group marker')
+    const skip = /^\(skip\) (.+)$/u.exec(line)
+    if (skip) {
+      if (recap) {
+        recap.names.push(skip[1])
+        continue
+      }
+      if (!file) throw new Error('Bun skipped case is missing its file header')
+      primarySkipNames.push(skip[1])
+      const parts = skip[1].split(' > ')
+      const name = parts.pop()
+      skippedCases.push({
+        file,
+        classname: parts.reverse().join(' > '),
+        name,
+        commandKind,
+        ...(filter ? { filter } : {}),
+      })
+      continue
+    }
+    const pass = /^\(pass\) (.+)$/u.exec(line)
+    if (pass) {
+      if (recap) throw new Error('Bun execution continues after its skipped-case recap')
+      if (!file) throw new Error('Bun passed case is missing its file header')
+      const name = pass[1].replace(/ \[\d+(?:\.\d+)?(?:ms|s)\]$/u, '')
+      if (owningFilter && !owningFilter.test(name.split(' > ').join(' ')))
+        throw new Error('Bun executed case lies outside its reviewed owning filter')
+      executed++
+    } else if (recap && line.trim())
+      throw new Error('Bun skipped-case recap contains an unexpected record')
+  }
+  if (groupOpen) throw new Error('Bun report leaves an owning file group open')
+  if (observedFiles.size !== expectedFiles.size)
+    throw new Error('Bun owning command omits a declared test file')
+  if (
+    // Filtered-out registrations did not execute and are excluded from Ran.
+    count + skipped !== Number(summary[4]) ||
+    Number(summary[5]) !== expectedFiles.size ||
+    count !== executed ||
+    skipped !== skippedCases.length
+  )
+    throw new Error('Bun skipped case identities do not reconcile with its report')
+  if (
+    recap &&
+    (recap.count !== skipped ||
+      recap.names.length !== skipped ||
+      stableJson([...recap.names].sort()) !== stableJson([...primarySkipNames].sort()))
+  )
+    throw new Error('Bun skipped-case recap differs from its owning execution identities')
+  return { count, skipped, filtered, skippedCases, basis: 'test-cases' }
+}
+
+function parseJUnit(path) {
+  const program =
+    'import sys,json,xml.etree.ElementTree as E\nr=E.parse(sys.argv[1]).getroot()\nif r.tag not in ("testsuite","testsuites"): raise ValueError("invalid JUnit root")\nc=list(r.iter("testcase"))\nif any(x.find("failure") is not None or x.find("error") is not None for x in c): raise ValueError("failed host proof")\nprint(json.dumps([dict(x.attrib, skipped=x.find("skipped") is not None) for x in c]))'
+  return JSON.parse(
+    execFileSync('python3', ['-c', program, path], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  )
+}
+function inertPath(directory, path) {
+  const resolved = resolve(directory, path)
+  if (relative(resolve(directory), resolved).startsWith('../'))
+    throw new Error('Host report escapes its evidence directory')
+  return resolved
+}
+
+// Reconstruct the actual source inventory and every owning Mac command rather
+// than trusting supplied plans or a successful aggregate job's case totals.
+export function readMacSkippedCases({
+  repository = process.cwd(),
+  source,
+  targetId,
+  evidenceDirectory,
+}) {
+  if (!/^macos-(?:x64|arm64)$/.test(targetId ?? '') || !/^[0-9a-f]{40,64}$/.test(source ?? ''))
+    throw new Error('Invalid Mac skipped-case evidence identity')
+  const architecture = targetId.slice(6)
+  const entries = git(repository, ['ls-tree', '-rz', '--full-tree', source])
+    .split('\0')
+    .filter(Boolean)
+  const files = entries
+    .filter((entry) => /^100(?:644|755) blob /.test(entry))
+    .map((entry) => entry.slice(entry.indexOf('\t') + 1))
+    .filter(isHostTestFile)
+    .sort()
+  const shards = planMacHostTests(files, architecture)
+  const skippedCases = []
+  const executedOwners = new Map()
+  const verifiedMultiplicityFiles = new Set()
+  let count = 0
+  for (const shard of shards) {
+    const directory = inertPath(
+      evidenceDirectory,
+      `macos-prerequisites-${architecture}-${shard.index}-${source}`,
+    )
+    if (
+      readFileSync(join(directory, `shard-${shard.index}.complete`), 'utf8').trim() !==
+      `${source} ${architecture} ${shard.index}`
+    )
+      throw new Error('Stale Mac execution marker')
+    const actual = JSON.parse(readFileSync(join(directory, 'test-plan.json'), 'utf8'))
+    if (
+      actual.architecture !== architecture ||
+      actual.shard !== shard.index ||
+      actual.shardCount !== macHostShardCount(architecture) ||
+      actual.installed !== (shard.index === shards.length - 1) ||
+      stableJson(actual.groups) !== stableJson(shard.groups) ||
+      stableJson(actual.nativeFiles) !==
+        stableJson(shard.index === 0 ? NATIVE_PREREQUISITE_TESTS : [])
+    )
+      throw new Error('Mac execution plan differs from its exact source inventory')
+    const reports = shard.groups.map((group, i) => ({
+      path: `shard-${shard.index}-group-${i}.xml`,
+      files: [group.file],
+      filter: group.pattern ? { file: group.file, pattern: group.pattern } : undefined,
+      commandKind: 'ordinary',
+    }))
+    if (shard.index === 0)
+      reports.push({
+        path: 'native-tests.xml',
+        files: NATIVE_PREREQUISITE_TESTS,
+        commandKind: 'native-prerequisites',
+      })
+    if (actual.installed)
+      reports.push({
+        path: 'installed-startup.xml',
+        files: ['packages/jig/test/native-agent-startup.test.ts'],
+        commandKind: 'installed-startup',
+      })
+    for (const report of reports) {
+      const cases = parseJUnit(inertPath(directory, report.path))
+      if (!cases.length) throw new Error('Mac owning command has no reported cases')
+      const observedFiles = new Set()
+      const owningCommand = `${shard.index}/${report.path}`
+      const executedOccurrences = new Map()
+      const obligations = new Map()
+      if (report.commandKind === 'ordinary') {
+        for (const file of report.files) {
+          const rule = macExecutedMultiplicities.get(file)
+          if (!rule) continue
+          if (report.filter)
+            throw new Error('Mac execution multiplicity has no reviewed name partition')
+          if (!verifiedMultiplicityFiles.has(file)) {
+            const entry = git(repository, ['ls-tree', source, '--', file]).trim()
+            const match = /^100(?:644|755) blob ([0-9a-f]{40,64})\t/.exec(entry)
+            if (!match || match[1] !== rule.blob)
+              throw new Error(`Changed or unavailable Mac execution multiplicity source: ${file}`)
+            verifiedMultiplicityFiles.add(file)
+          }
+          for (const expected of rule.cases)
+            obligations.set(
+              stableJson({ file, classname: expected.classname, name: expected.name }),
+              expected,
+            )
+        }
+      }
+      for (const item of cases) {
+        const file = repositoryPath(item.file)
+        if (!report.files.includes(file))
+          throw new Error('Mac JUnit file differs from its owning command')
+        observedFiles.add(file)
+        const fullName = bunCaseFullName(item)
+        if (item.skipped)
+          skippedCases.push({
+            file,
+            classname: item.classname ?? '',
+            name: item.name,
+            ...(item.line === undefined ? {} : { line: item.line }),
+            commandKind: report.commandKind,
+            ...(report.filter ? { filter: report.filter } : {}),
+          })
+        else {
+          if (report.filter && !new RegExp(report.filter.pattern).test(fullName))
+            throw new Error('Mac executed case lies outside its owning name partition')
+          const identity = stableJson({
+            file,
+            classname: item.classname ?? '',
+            name: item.name,
+          })
+          const previousOwner = executedOwners.get(identity)
+          if (previousOwner !== undefined && previousOwner !== owningCommand)
+            throw new Error('Mac case executed more than once across owning commands')
+          const expected = obligations.get(identity)
+          if (expected && item.line !== expected.line)
+            throw new Error('Mac parameterized execution differs from its reviewed source line')
+          const occurrences = (executedOccurrences.get(identity) ?? 0) + 1
+          if (occurrences > (expected?.occurrences ?? 1))
+            throw new Error('Mac execution exceeds its reviewed owning-command multiplicity')
+          executedOccurrences.set(identity, occurrences)
+          executedOwners.set(identity, owningCommand)
+          count++
+        }
+      }
+      if (stableJson([...observedFiles].sort()) !== stableJson([...report.files].sort()))
+        throw new Error('Mac owning command omits a planned file')
+      if (report.commandKind !== 'ordinary' && cases.some((item) => item.skipped))
+        throw new Error('Native prerequisite and installed-startup reports may not skip cases')
+      for (const [identity, expected] of obligations)
+        if (executedOccurrences.get(identity) !== expected.occurrences)
+          throw new Error('Mac owning command omits reviewed parameterized executions')
+    }
+  }
+  return { count, skipped: skippedCases.length, skippedCases, basis: 'test-cases' }
+}
