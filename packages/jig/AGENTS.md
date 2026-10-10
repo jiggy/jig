@@ -553,6 +553,12 @@ buffer release and output failure independently of recorded execution status.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
+  Mac's fresh initialized greeting retains its cold registry preparation and
+  scratch/child execution checks. When `JIG_MACOS_TEST_TIMINGS_DIRECTORY` is
+  configured, only its first review writes the existing bounded private phase
+  trace to `installed-greeting-review-profile.txt` for hosted artifact retention.
+  The trace contains fixed phase names and timings, never registry text,
+  credentials or source; assertions and preparation/command limits stay unchanged.
   Its trusted npm installation accepts `JIG_NPM` and uses the selected absolute
   `JIG_AUTHORING_NODE_PATH` directory for npm's interpreter when the host PATH
   excludes runner tool-cache binaries. This does not change Run authority.

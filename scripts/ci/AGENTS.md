@@ -46,6 +46,9 @@ Host preparation never becomes a consumer requirement.
   footer requires the exact reviewed owning filter; every primary pass must match
   that filter. Reconcile primary pass/skip records, owning files and the completed
   report. Retain filtered counts separately without giving them execution credit.
+  Bun's GitHub file-group wrappers retain exact repository file identities;
+  reject foreign files, nested, unclosed or orphan groups, mixed header formats
+  and cases outside their owning group before reconciling the report.
   Mixed portable/host test files require explicit platform-skipped case names;
   their frozen source blob alone cannot authorize skipping an unconditional case.
   Mac permits only the thirteen frozen Linux foreground session case names,

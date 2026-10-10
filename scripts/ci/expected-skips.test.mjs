@@ -503,6 +503,73 @@ test('Bun reporter preserves Windows CRLF and ANSI identities without accepting 
 // attempt 1. These are reports, not substitutes for fresh test execution.
 const linuxTranscript = (name) =>
   readFileSync(new URL(`./fixtures/bun-1.3.3-linux/${name}.txt`, import.meta.url), 'utf8')
+// Retained from installed-evidence command 15, Linux run 38035011670, attempt 1.
+// Replay proves reporter grammar only; it never grants fresh host execution.
+test('retained Bun GitHub file groups preserve exact display ownership and case counts', () => {
+  const files = [
+    'packages/display-model/test/model.test.ts',
+    'packages/display-web/test/client.test.ts',
+    'packages/display-web/test/assets.test.ts',
+    'packages/display-web/test/navigation.test.ts',
+    'packages/display-web/test/public.test.ts',
+    'packages/display-web/test/observations.test.ts',
+    'packages/display-tui/test/presentation.test.ts',
+    'packages/display-tui/test/workbench.test.ts',
+    'packages/display-tui/test/portability.test.ts',
+    'packages/display-tui/test/native.test.ts',
+    'packages/display-tui/test/api.test.ts',
+  ]
+  const text = linuxTranscript('display-source-github-groups')
+  assert.deepEqual(parseBunTranscript(text, { files }), {
+    count: 122,
+    skipped: 0,
+    filtered: 0,
+    skippedCases: [],
+    basis: 'test-cases',
+  })
+  for (const changed of [
+    text.replace(files[0], inputFile),
+    text.replace('::group::', '::group::extra::group::'),
+    text.replace('::group::', '::group::\n::group::'),
+    text.replace('::group::', '::groups::'),
+    text.replace('::endgroup::', ''),
+    text.replace('::endgroup::', '::endgroup::\n::endgroup::'),
+    text.replace('::endgroup::', '::endgroup::\n(pass) outside owner'),
+    text.replace(`::group::${files[1]}`, files[1]),
+    text.replace('0 fail', '1 fail'),
+    text.replace('Ran 122 tests', 'Ran 123 tests'),
+    text.replace(' 122 pass', ' 123 pass'),
+    text.replace('::endgroup::', '::endgroup::unexpected'),
+    text + 'incomplete continuation\n',
+  ])
+    assert.throws(() => parseBunTranscript(changed, { files }))
+  assert.throws(() => parseBunTranscript(text, { files: [...files, inputFile] }))
+})
+
+test('GitHub grouped skipped records preserve owning identities and reject skips after closure', () => {
+  const plain = `${inputFile}:\n(skip) first > selected\n(pass) portable [1ms]\n\n1 pass\n1 skip\n0 fail\nRan 2 tests across 1 file. [10ms]\n`
+  const grouped = plain
+    .replace(`${inputFile}:`, `::group::${inputFile}:`)
+    .replace('\n\n1 pass', '\n::endgroup::\n\n1 pass')
+  const options = { files: [inputFile] }
+  assert.deepEqual(parseBunTranscript(grouped, options), parseBunTranscript(plain, options))
+  const recap = '\n1 test skipped:\n(skip) first > selected\n'
+  assert.deepEqual(
+    parseBunTranscript(grouped.replace('\n\n1 pass', `${recap}\n1 pass`), options),
+    parseBunTranscript(plain, options),
+  )
+  assert.throws(() =>
+    parseBunTranscript(grouped.replace('::endgroup::', `${recap}::endgroup::`), options),
+  )
+  assert.throws(() =>
+    parseBunTranscript(
+      grouped
+        .replace('(skip) first > selected\n', '')
+        .replace('::endgroup::', '::endgroup::\n(skip) first > selected'),
+      options,
+    ),
+  )
+})
 const providerFilter = (pattern) => ({
   files: [providerFile],
   filter: { file: providerFile, pattern },

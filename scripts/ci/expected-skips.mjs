@@ -259,24 +259,40 @@ export function parseBunTranscript(text, { files, filter, commandKind = 'ordinar
   let executed = 0
   let recap
   let file
+  let grouped
+  let groupOpen = false
   // Bun 1.3.3 can repeat its primary skipped records in a terminal recap.
   // Verify that exact multiset without granting a second execution identity.
   for (const line of output.slice(0, summary.index).split('\n')) {
+    if (line === '::endgroup::') {
+      if (!groupOpen) throw new Error('Bun report closes an unopened file group')
+      groupOpen = false
+      file = undefined
+      continue
+    }
     const recapHeader = /^(\d+) tests? skipped:$/u.exec(line)
     if (recapHeader) {
+      if (groupOpen) throw new Error('Bun skipped-case recap starts inside an owning file group')
       if (recap || Number(recapHeader[1]) <= 0)
         throw new Error('Bun skipped-case recap is empty or repeated')
       recap = { count: Number(recapHeader[1]), names: [] }
       continue
     }
-    const header = /^(.+\.(?:[cm]?[jt]sx?)):$/u.exec(line)
+    const header = /^(?:(::group::))?(.+\.(?:[cm]?[jt]sx?)):$/u.exec(line)
     if (header) {
       if (recap) throw new Error('Bun execution continues after its skipped-case recap')
-      file = repositoryPath(header[1])
+      const wrapped = header[1] !== undefined
+      if (groupOpen) throw new Error('Bun report nests owning file groups')
+      if (grouped !== undefined && grouped !== wrapped)
+        throw new Error('Bun report mixes grouped and plain file headers')
+      grouped = wrapped
+      groupOpen = wrapped
+      file = repositoryPath(header[2])
       if (!expectedFiles.has(file))
         throw new Error('Bun report file does not match its owning command')
       observedFiles.add(file)
-    }
+    } else if (line.startsWith('::group::') || line.startsWith('::endgroup'))
+      throw new Error('Bun report has an invalid file group marker')
     const skip = /^\(skip\) (.+)$/u.exec(line)
     if (skip) {
       if (recap) {
@@ -307,6 +323,7 @@ export function parseBunTranscript(text, { files, filter, commandKind = 'ordinar
     } else if (recap && line.trim())
       throw new Error('Bun skipped-case recap contains an unexpected record')
   }
+  if (groupOpen) throw new Error('Bun report leaves an owning file group open')
   if (observedFiles.size !== expectedFiles.size)
     throw new Error('Bun owning command omits a declared test file')
   if (
