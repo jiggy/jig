@@ -169,6 +169,8 @@ hostTest(
         [
           installed,
           'run',
+          '--out',
+          'factory-result',
           '--receive',
           'progress',
           '--json',
@@ -341,7 +343,8 @@ await handle(async run => {
         delivery: { status: 'written' },
       })
       const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
-      for (const title of ['Jobs', 'Checks', 'Patches']) expect(transcript).toContain(title)
+      expect(transcript).toContain('Flow: Jobs')
+      expect(transcript).toContain('2 independently checked patches')
       expect(transcript).toContain('Observation ended')
       expect(transcript).not.toContain('\u001b')
       passed = true

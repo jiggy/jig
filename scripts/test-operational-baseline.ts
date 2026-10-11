@@ -140,7 +140,7 @@ try {
     assert.match(unchanged.stdout, /^Project ready\n/)
     assert.match(unchanged.stdout, /The exact reviewed revision is approved/)
     assert.match(unchanged.stdout, /No Flow was started/)
-    assert.match(unchanged.stdout, /Next, choose or run an approved target:/)
+    assert.match(unchanged.stdout, /Start the application or choose a ready target:/)
     assert.match(unchanged.stdout, /^  \$ jig run$/m)
     assert.match(unchanged.stdout, /^  \$ jig run --help$/m)
     assert.doesNotMatch(

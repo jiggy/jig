@@ -136,7 +136,9 @@ proofDescribe('private rootless project session', () => {
         'decoder=tools/first',
       ])
       expect(override.code).not.toBe(0)
-      expect(override.stderr).toContain('cannot be overridden')
+      expect(override.stderr).toContain('JIG_RUN_FILES_INVALID')
+      expect(override.stderr).toContain('No Flow was started')
+      expect(override.stderr).toContain('Remove overrides of review-pinned attachments: "decoder".')
       const failed = await invokeChannelCli(root, ['run', 'binding:first', '--input', '"bad"'])
       expect(JSON.parse(failed.stdout)).toMatchObject({
         status: 'succeeded',

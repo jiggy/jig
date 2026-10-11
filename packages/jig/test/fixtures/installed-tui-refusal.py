@@ -27,8 +27,12 @@ assert termios.tcgetattr(0) == before
 os.write(2, b'\\nREFUSAL_OWNER_INPUT_RESTORED\\n')
 sys.exit(code if code >= 0 else 128-code)
 '''
+    # An explicit destination avoids the default-output approval lookup. This
+    # fixture tests missing renderer support before host acquisition/dispatch;
+    # it deliberately has no reviewed project and never publishes the packet.
     child = subprocess.Popen(
-        [sys.executable, '-c', owner, sys.argv[1], 'run', 'flow:flows/unused', '--display', 'tui'],
+        [sys.executable, '-c', owner, sys.argv[1], 'run', 'flow:flows/unused',
+         '--out', os.path.join(os.getcwd(), 'unused-result'), '--display', 'tui'],
         stdin=slave, stderr=slave, stdout=subprocess.DEVNULL,
         env=dict(os.environ, TERM='xterm-256color', NO_COLOR='1'),
         start_new_session=True,
@@ -64,7 +68,7 @@ sys.exit(code if code >= 0 else 128-code)
                     raise AssertionError('TUI refusal exceeded diagnostic bound')
             break
     assert child.wait(timeout=1) != 0
-    assert b'JIG_TUI_UNAVAILABLE' in data
+    assert b'JIG_TUI_UNAVAILABLE' in data, data.decode(errors='replace')
     assert b'No Flow was started' in data
     assert b'\x1b[?1049h' not in data
     assert b'REFUSAL_OWNER_INPUT_RESTORED' in data
