@@ -913,7 +913,7 @@ export class ViewerModel {
         this.#peekSignature = ''
         return
       }
-      void this.#loadPreview(record.file.path, record.file.path, true, record.file.id)
+      void this.#loadPreview(record.file.path, record.file.path, record.file.id)
       return
     }
     if (!ref) return
@@ -927,7 +927,7 @@ export class ViewerModel {
       this.#peekSignature = ''
       return
     }
-    void this.#loadPreview(resolved.target!, ref.path, true)
+    void this.#loadPreview(resolved.target!, ref.path)
   }
   async activateFile(identity: string): Promise<void> {
     const file = this.#capture.files.find((file) => file.id === identity)
@@ -939,9 +939,9 @@ export class ViewerModel {
     if (this.record?.file?.id === file.id && this.previewTitle === file.path && this.previewState)
       return
     this.#invalidate()
-    await this.#loadPreview(file.path, file.path, false, file.id)
+    await this.#loadPreview(file.path, file.path, file.id)
   }
-  async #loadPreview(path: string, title: string, auto: boolean, identity?: string): Promise<void> {
+  async #loadPreview(path: string, title: string, identity?: string): Promise<void> {
     if (this.#closed || !this.#complete || !this.#previewEnabled) return
     const file = this.#capture.files.find((file) =>
       identity === undefined ? file.path === path : file.id === identity,
@@ -998,7 +998,7 @@ export class ViewerModel {
       }
     } finally {
       this.#previewBusy = false
-      if (auto && !this.#closed && this.#previewEnabled && generation !== this.#generation)
+      if (!this.#closed && this.#previewEnabled && generation !== this.#generation)
         this.peekSelectedArtifact()
       if (!this.#closed) this.onChange()
     }
@@ -1036,7 +1036,7 @@ export class ViewerModel {
         ancestor = this.calls.get(ancestor)?.parent
       }
       this.feedback = resolved.label
-    } else await this.#loadPreview(resolved.target!, `${ref.attachment}:${ref.path}`, false)
+    } else await this.#loadPreview(resolved.target!, `${ref.attachment}:${ref.path}`)
     if (!this.#closed) this.onChange()
   }
   close(): void {

@@ -1,11 +1,71 @@
 import { expect, test } from 'bun:test'
-import { type DisplaySnapshotEnvelope, displayViewKey } from '@jigging/display-model'
+import {
+  type DisplayPreviewReply,
+  type DisplaySnapshotEnvelope,
+  displayViewKey,
+} from '@jigging/display-model'
 import { createTui, prepareTui } from '../src/index.js'
 import { createInlineDisplay } from '../src/inline.js'
 import { viewerDetailParts } from '../src/projection.js'
 import { terminalWidth } from '../src/text.js'
 import { ViewerModel } from '../src/viewer-model.js'
-import { snapshot } from './fixtures.js'
+import { snapshot, waitFor } from './fixtures.js'
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Plain frames must reject all terminal control bytes.
+const terminalControls = /[\u0000-\u001f\u007f-\u009f]/
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Native output must not contain bells or uncontrolled physical newlines.
+const uncontrolledNewlinesOrBells = /[\u0007\r\n]/
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Inspect renderer-owned cursor escapes to enforce physical row limits.
+const cursorPositions = /\u001b\[(\d+);1H/g
+
+for (const selections of [['b'], ['b', 'c']])
+  test(`explicit file previews retain the latest selection (${selections.join(' → ')}) while busy`, async () => {
+    const value = snapshot()
+    value.artifacts.files = ['a', 'b', 'c'].map((id) => ({
+      id,
+      path: `${id}.txt`,
+      bytes: 1,
+      state: 'text',
+      clipped: false,
+    }))
+    const pending: { id: string; resolve: (reply: DisplayPreviewReply) => void }[] = []
+    const model = new ViewerModel(value, {
+      preview: ({ artifactId }) =>
+        new Promise((resolve) => pending.push({ id: artifactId, resolve })),
+    })
+    const reply = (index: number, text: string): void => {
+      const request = pending[index]
+      if (!request) throw new Error('Expected a pending preview')
+      request.resolve({
+        artifactId: request.id,
+        captureGeneration: value.artifacts.generation,
+        provenance: value.artifacts.provenance,
+        state: 'text',
+        text,
+        bytes: 1,
+        clipped: false,
+      })
+    }
+    try {
+      model.select('files')
+      const first = model.activateFile('a')
+      for (const id of selections) await model.activateFile(id)
+      expect(pending.map((request) => request.id)).toEqual(['a'])
+      reply(0, 'A')
+      await first
+      const latest = selections.at(-1)
+      if (!latest) throw new Error('Expected a selected file')
+      expect(pending.map((request) => request.id)).toEqual(['a', latest])
+      expect(model.previewTitle).toBe(`${latest}.txt`)
+      expect(model.preview).toBeUndefined()
+      reply(1, latest.toUpperCase())
+      await waitFor(() => model.previewState !== 'loading')
+      expect(model.preview?.text).toBe(latest.toUpperCase())
+      expect(model.previewTitle).toBe(`${latest}.txt`)
+    } finally {
+      model.close()
+    }
+  })
 
 function reports() {
   const value = snapshot()
@@ -545,8 +605,7 @@ test('public warnings and multiline titles remain inert physical lines in native
           expect(frame.lines.length).toBeLessThanOrEqual(viewport.rows)
           expect(Buffer.byteLength(frame.lines.join('\n'))).toBeLessThanOrEqual(32768)
           for (const line of frame.lines) {
-            // biome-ignore lint/suspicious/noControlCharactersInRegex: Plain frames must reject all terminal control bytes.
-            expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+            expect(line).not.toMatch(terminalControls)
             expect(terminalWidth(line)).toBeLessThan(viewport.columns)
           }
           expect(frame.lines.join('\n')).toContain(
@@ -559,11 +618,9 @@ test('public warnings and multiline titles remain inert physical lines in native
           const native = (await display.frame(viewport)).text
           expect(native).not.toContain('\u001b[777A')
           expect(native).not.toContain('\u001b]0;forged-title')
-          // biome-ignore lint/suspicious/noControlCharactersInRegex: Native output must not contain bells or uncontrolled physical newlines.
-          expect(native).not.toMatch(/[\u0007\r\n]/)
+          expect(native).not.toMatch(uncontrolledNewlinesOrBells)
           expect(Buffer.byteLength(native)).toBeLessThanOrEqual(32768)
-          // biome-ignore lint/suspicious/noControlCharactersInRegex: Inspect renderer-owned cursor escapes to enforce physical row limits.
-          for (const position of native.matchAll(/\u001b\[(\d+);1H/g))
+          for (const position of native.matchAll(cursorPositions))
             expect(Number(position[1])).toBeLessThanOrEqual(viewport.rows)
           expect(native).toContain(replacement === 'complete' ? 'Incomplete' : 'Stale')
           expect(native).toMatch(/q leave/)
@@ -571,8 +628,7 @@ test('public warnings and multiline titles remain inert physical lines in native
         const transferred = display.handoffInline()!
         const lines = transferred.frame({ columns: 160, rows: 20, color: false }).lines
         expect(lines.join('\n')).toContain('Useful diagnosis')
-        // biome-ignore lint/suspicious/noControlCharactersInRegex: Transferred plain frames must contain no terminal control bytes.
-        for (const line of lines) expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+        for (const line of lines) expect(line).not.toMatch(terminalControls)
         transferred.dispose()
       } finally {
         display.dispose()

@@ -99,12 +99,8 @@ function redraw(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
   if (client?.body && client.body.revision !== lastBodyRevision) {
     const snapshot = client.body
-    const eligible = new Set([
-      'activity',
-      'overview',
-      'files',
-      ...snapshot.views.map((item) => displayViewKey(item.id)),
-    ])
+    const tabs = privateBrowserTabs(snapshot)
+    const eligible = new Set(tabs.map((tab) => tab.id))
     for (const key of local.keys())
       if (!eligible.has(key)) {
         local.delete(key)
@@ -114,11 +110,13 @@ function redraw(): void {
     for (const key of treeChoices.keys())
       if (!snapshot.calls.some((call) => call.id === key)) treeChoices.delete(key)
     if (!eligible.has(destinationKey)) {
-      destinationKey = 'overview'
-      feedback = 'The selected view retired; showing Overview.'
+      destinationKey = tabs[0]!.id
+      feedback = `The selected view is unavailable; showing ${tabs[0]!.title}.`
     }
     if (!humanNavigation) {
-      const rootViews = snapshot.views.filter((item) => item.sourceId === snapshot.rootSourceId)
+      const rootViews = snapshot.views.filter(
+        (item) => item.sourceId === snapshot.rootSourceId && eligible.has(displayViewKey(item.id)),
+      )
       const landing = !landed && rootViews.find((item) => item.value.landing)
       if (landing) {
         destinationKey = displayViewKey(landing.id)

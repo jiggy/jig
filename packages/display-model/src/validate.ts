@@ -159,7 +159,9 @@ function journal(value: unknown, diagnostic = false): void {
   count(data.sequence)
   choice(data.importance, ['info', 'warning', 'error', 'unknown'])
   text(data.text, 524288)
-  optional(data.operationsPath, (value) => list(value, 32).forEach((part) => text(part, 128)))
+  optional(data.operationsPath, (value) => {
+    for (const part of list(value, 32)) text(part, 128)
+  })
   optional(data.pathClipped, flag)
   optional(data.clipped, flag)
 }

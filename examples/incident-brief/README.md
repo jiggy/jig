@@ -52,10 +52,11 @@ Jig never overwrites a packet. Open `result.json` there for full branch answers
 and conversation evidence; concise answer excerpts are shown when a packet was written.
 Override an argument when needed, for example `jig run --input @my-incident.json`.
 Successful output contains a proposed brief, independent questions, actual
-conversation settlement and, when replaced, the exact handoff snapshot. Dashboard
-activity identifies each worker's requested turn, received answer, handoff
-preparation and actual predecessor settlement. A requested turn is not evidence
-of remote dispatch or completion; a deadline can still prevent the final packet.
+conversation settlement and, when replaced, the exact handoff snapshot. When a
+worker is invoked independently, its dashboard activity identifies its requested
+turn, received answer, handoff preparation and actual predecessor settlement. A
+requested turn is not evidence of remote dispatch or completion; a deadline can
+still prevent the final packet.
 Inspect each branch's `outcome`: `blocked` retains available unsuccessful work
 and the other worker's result. Model text is not independently verified evidence
 or permission to publish.
@@ -69,9 +70,10 @@ settlement, and a deadline can prevent the packet from arriving at all.
 
 **Work** shows the requested incident task and both independent branches. **Brief** and
 **Review questions** contain the returned suggestions, turn counts and retained failure
-explanations. Each worker offers its own Draft or Review questions view and current
-activity. Activity reports requested turns and observed answers without echoing source
-context or private prompts. A branch failure is reported immediately while its healthy
+explanations. When invoked independently, each worker offers its own Draft or
+Review questions view and current activity. Activity reports requested turns and
+observed answers without echoing source context or private prompts. A branch
+failure is reported immediately while its healthy
 sibling continues. These suggestions still require human review; a completed call does
 not verify incident facts.
 
