@@ -111,7 +111,7 @@ test('narrow view keeps the active tab reachable; detail, diagnostics and full c
     expect(frame.text).toContain('Severity was not supplied')
     expect(frame.text).toContain('verify')
     frame = await dashboard.frame(50, 14, { panels: [] }, 0, false)
-    expect(frame.text).toContain('q inline')
+    expect(frame.text).toContain('q leave')
     expect(frame.text).toContain('Ctrl-C stop')
     expect(frame.text).toContain('! cause')
     frame = await dashboard.frame(
@@ -123,9 +123,9 @@ test('narrow view keeps the active tab reachable; detail, diagnostics and full c
     )
     expect(frame.text).toContain('Enter apply')
     expect(frame.text).toContain('Ctrl-D leave')
-    expect(frame.text).not.toContain('q inline')
+    expect(frame.text).not.toContain('q leave')
     frame = await dashboard.frame(18, 4, { panels: [] }, 0, false)
-    expect(frame.text).toContain('q inline')
+    expect(frame.text).toContain('q leave')
     expect(Buffer.byteLength(frame.text)).toBeLessThanOrEqual(32768)
   } finally {
     dashboard.close()
@@ -259,7 +259,7 @@ test('large native panes keep color roles and exit controls without spending the
         const frame = await dashboard.frame(240, 80, { panels: [] }, 0, color)
         expect(frame.text).not.toContain('Frame clipped')
         expect(Buffer.byteLength(frame.text)).toBeLessThan(24_000)
-        expect(frame.text).toContain('q inline')
+        expect(frame.text).toContain('q leave')
         expect(frame.text).toContain('Ctrl-C stop')
         const spans = dashboard.renderer.currentRenderBuffer.getSpanLines().flatMap((l) => l.spans)
         const title = spans.find((s) => s.text.includes('MAT-043') && Boolean(s.attributes & 1))!
@@ -716,7 +716,7 @@ test('local action feedback stays visible without context and alongside a sticky
       expect(frame.text).toContain('Action · No additional detail was supplied')
       expect(frame.text).toContain('A known blocking cause')
       expect(frame.text).not.toContain('╭─ Context')
-      expect(frame.text).toContain('q inline')
+      expect(frame.text).toContain('q leave')
       expect(frame.text).not.toMatch(sgr)
     }
   } finally {

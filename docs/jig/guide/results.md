@@ -74,7 +74,7 @@ in `result.json` when delivery succeeds.
 Diagnostics already printed live are counted in the final summary rather than
 printed again. A null checkpoint means no progress was retained and is omitted
 from the terminal view; the machine record keeps that exact value.
-In an explicit TUI, diagnostic text retained in a collapsed Activity entry
+In a TUI, diagnostic text retained in a collapsed Activity entry
 may not have been read. Its complete bounded final evidence remains visible.
 The [workspace controls](channels.md#observe-the-work) explain expandable reports,
 attributed causes and read-only result inspection. Closing that
@@ -123,7 +123,8 @@ File previews use immutable captured bytes checked against the saved manifest;
 matching digests establish consistency with that manifest. Missing or mismatched
 files are reported, while already verified previews remain available. Live Flow
 tabs and call history are not retained in current packets and are not reconstructed.
-The inspector stays open until `q`, Escape or keyboard Ctrl-C, subject to any
+The TUI inspector asks before leaving with `q` or keyboard Ctrl-C, with **Stay**
+selected. Escape returns within the TUI. Inspection remains subject to any
 explicit enclosing command limit. Input/output failure or external interruption
 also closes it and releases its retained evidence.
 For web, open the private link printed on terminal stderr and choose **Close

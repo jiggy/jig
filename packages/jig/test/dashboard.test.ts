@@ -250,7 +250,7 @@ test('root critical handoff drains optional reports before settled inspection', 
       delivery: { status: 'unknown' },
     })
     await progress.flush()
-    input.emit('data', Buffer.from('q'))
+    input.emit('data', Buffer.from('q\u001b[C\r'))
     await settled
     expect(failure).toBe(false)
     expect(progress.model.context).toContain('execution: failed')

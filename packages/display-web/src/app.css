@@ -107,6 +107,27 @@ small,
   unicode-bidi: isolate;
   overflow-wrap: anywhere;
 }
+.appearance {
+  display: flex;
+  gap: 2px;
+}
+.appearance-option {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 36px;
+  padding: 5px;
+  color: var(--secondary);
+}
+.appearance-option svg {
+  width: 20px;
+  height: 20px;
+}
+.appearance-option[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: currentColor;
+  background: var(--selected);
+}
 .shell {
   display: flex;
   justify-content: space-between;
@@ -318,16 +339,6 @@ nav [aria-selected="true"] {
 .sidebar-tools > button[aria-pressed="true"] {
   background: var(--selected);
   color: var(--accent);
-}
-.sidebar-tools label {
-  padding: 8px;
-  font-size: 11px;
-  color: var(--secondary);
-}
-.sidebar-tools select {
-  width: 100%;
-  display: block;
-  margin-top: 4px;
 }
 main {
   min-height: 0;
@@ -1071,15 +1082,6 @@ footer {
   .sidebar-tools > button {
     white-space: nowrap;
     font-size: 11px;
-  }
-  .sidebar-tools label {
-    font-size: 0;
-    padding: 0;
-  }
-  .sidebar-tools select {
-    font-size: 11px;
-    width: 88px;
-    margin: 0;
   }
   .connection-note,
   .feedback {

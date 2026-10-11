@@ -38,6 +38,8 @@ browser inspector. Producers own evidence and authority; viewers own navigation.
 
 ## Work Guidance
 
+- Appearance uses fixed accessible icon buttons with names, tooltips, focus and
+  pressed state. Default System follows browser preference; choices are viewer-local.
 - Preserve list/context/expanded-evidence hierarchy, keyboard focus, compact
   navigation, diagnostic uncertainty and captured-file findings.
 - Routine replacement belongs in quiet synchronization; actual loss remains

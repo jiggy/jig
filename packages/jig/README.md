@@ -54,8 +54,8 @@ jig import-contract --list
 jig completion <bash|zsh|fish>
 ```
 
-Runs show an inline invocation tree and optional application views on terminal
-stderr. `jig run --display tui` opens a terminal workspace with Activity,
+Runs open TUI in suitable interactive terminals, with ordinary output otherwise.
+`jig run --display tui` explicitly opens a terminal workspace with Activity,
 Execution, application views, compact record tables and expandable evidence once
 root execution begins. Initial review, input, file and runtime refusals stay in
 ordinary output.
@@ -63,10 +63,11 @@ Large layouts group views in a navigation rail; `v` opens all views at any size.
 Context appears beside the list when it adds information. Enter opens full
 details; `!` opens retained causes, `d` opens attributed diagnostics, and `?`
 explains the current keys.
-q leaves while work continues inline; Escape first dismisses a local panel, then
-returns from a record/call reference jump.
+q asks before leaving, with Stay selected; live work continues inline after
+confirmation. Escape dismisses a panel or returns from a reference jump, and
+stays in the TUI at the top level.
 Ctrl-C during work cancels and waits for cleanup. After work and delivery settle,
-Ctrl-C simply closes read-only result inspection. Inspection stays open until you
+keyboard Ctrl-C asks before closing read-only result inspection. Inspection stays open until you
 leave, subject to any explicit enclosing command limit.
 File previews use
 verified immutable delivery. Use `--display plain`
@@ -85,9 +86,9 @@ effective `--receive` take precedence; redirected Run stdout remains exact JSON.
 See [live progress and views](https://jig.md/guide/channels).
 
 The TUI uses pinned OpenTUI Core, installed with Jig and loaded only for
-an eligible explicit TUI. Missing native display support refuses before
-execution with `JIG_TUI_UNAVAILABLE`; restore the complete installation or
-select `--display plain`. Flows and the user-updates SDK do not depend on OpenTUI.
+an eligible TUI. Automatic selection falls back to ordinary output when native
+support is unavailable; explicit TUI refuses before execution with
+`JIG_TUI_UNAVAILABLE`. Restore the complete installation or select `--display plain`. Flows and the user-updates SDK do not depend on OpenTUI.
 
 `review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.

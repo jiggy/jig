@@ -140,6 +140,9 @@ test('owned keyboard bytes handle batched cancel, arrows and split UTF-8', async
   settled.start()
   settled.markSettled()
   input.emit('data', Buffer.from('\u0003'))
+  expect(settled.active).toBeTrue()
+  input.emit('data', Buffer.from('\u001b[C\r'))
+  expect(settled.active).toBeFalse()
   expect(cancelled).toBe(1)
 })
 test('late or rejected previews cannot outlive presentation ownership', async () => {
@@ -521,7 +524,7 @@ test('Activity opens first, fixed shell retains task, configured limit and full-
   expect(frame.lines[1]).toContain('elapsed 30s · execution limit 300s')
   expect(frame.lines[2]).toContain('[Activity]')
   expect(frame.lines[3]).toContain('! full cause')
-  expect(frame.lines.at(-1)).toContain('q continues inline')
+  expect(frame.lines.at(-1)).toContain('q leave')
   expect(frame.lines.join('\n')).toContain('Current work')
   expect(frame.lines.join('\n')).toContain('Recent activity')
   expect(frame.lines.join('\n')).not.toContain('Full report in transcript')
@@ -753,7 +756,7 @@ test('filter draft preserves applied rows and treats all printable shortcuts lit
   await new Promise((resolve) => setTimeout(resolve, 45))
   expect(model.filter).toBe('')
   expect(keys.active).toBe(true)
-  input.emit('data', Buffer.from('q'))
+  input.emit('data', Buffer.from('q\u001b[C\r'))
   expect(keys.active).toBe(false)
 })
 
@@ -954,12 +957,11 @@ test('zero physical dimensions draw nothing and settled facts/footer remain phas
     expect(text).toContain('Reported application (literal outcome): "blocked"')
     expect(text).toContain('Cleanup confirmed')
     expect(text).toContain('Delivery written')
-    expect(text).toContain('q closes inspection')
-    expect(text).not.toContain('q continues inline')
+    expect(text).toContain('q leave')
   }
   const compact = viewerFrame(model, 18, 4, false, true).lines.join('\n')
-  expect(compact).toContain('q close')
-  expect(compact).toContain('^C close')
+  expect(compact).toContain('q leave')
+  expect(compact).toContain('^C leave')
   expect(model.hostFactsText).toContain('Reported application (literal outcome): "blocked"')
 })
 

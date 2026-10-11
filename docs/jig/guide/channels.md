@@ -140,10 +140,11 @@ When the selected entry has one distinct artifact reference, its available
 content is previewed directly. Multiple references still require a choice.
 **Delivered files** lists captured evidence independently of application views;
 select a file to read its text or patch. Size and capture limits stay secondary.
-Brackets/Page keys scroll details. Escape returns from a local panel, then a
-record/call reference jump, before leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
+Brackets/Page keys scroll details. Escape returns from a local panel or
+record/call reference jump, and stays at the top level. q asks before leaving,
+with Stay selected; confirmed live exit continues work inline. Ctrl-C requests cancellation
 and waits for cleanup. After execution, cleanup and delivery settle, result
-inspection is read-only and stays open until q, Escape or keyboard Ctrl-C, subject
+inspection is read-only and stays open until you confirm leaving with q or keyboard Ctrl-C, subject
 to any explicit enclosing command limit. Initial input, review, file and runtime
 refusals stay in ordinary output; the workspace opens only once root execution
 begins. Leaving restores your terminal and prints
@@ -152,7 +153,8 @@ retained essential causes before the final result.
 `--receive` keeps exact existing output and takes precedence over the dashboard.
 The workspace needs terminal input/stderr and at least 18 columns/4 rows;
 smaller terminals release to plain output. Normal panes need 50 columns/14 rows.
-Explicit TUI with NO_COLOR uses screen controls without color. Activity is
+Ordinary `jig run` selects TUI when input and both output streams are suitable
+terminals; otherwise it uses ordinary output. NO_COLOR keeps TUI controls without color. Activity is
 bounded session history; omission is disclosed, and result evidence remains separate.
 Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
 after the dashboard closes, without starting another Run.

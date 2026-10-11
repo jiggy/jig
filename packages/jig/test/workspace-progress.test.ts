@@ -1,10 +1,12 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RootAdministrationError } from '../src/administration/root.js'
 import { main, privateCliCommandLifetimeMs } from '../src/cli.js'
+import { privateRunDisplay } from '../src/run-arguments.js'
+import { CliDiagnostic } from '../src/cli-usage.js'
 import { PrivateCliProgress, type PrivateProgressLifetime } from '../src/cli-progress.js'
 import { privateAttentionReceipt } from '../src/cli-run-model.js'
 import {
@@ -81,6 +83,100 @@ test('only effective interactive dashboard selection omits the default command e
       privateCliCommandLifetimeMs(['run', 'flow:flows/work', '--display', display], true),
     ).toBe(330_000)
   expect(privateCliCommandLifetimeMs(['review'], true)).toBe(300_000)
+  expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work'], true, true, true)).toBeNull()
+  expect(privateCliCommandLifetimeMs(['run', 'flow:flows/work', '--json'], true, true, true)).toBe(
+    330_000,
+  )
+  expect(
+    privateCliCommandLifetimeMs(
+      ['run', 'flow:flows/work', '--receive', 'events'],
+      true,
+      true,
+      true,
+    ),
+  ).toBe(330_000)
+  for (const input of [false, true])
+    for (const output of [false, true]) {
+      expect(privateRunDisplay('auto', input, output)).toBe(input && output ? 'tui' : 'auto')
+      expect(privateRunDisplay('tui', input, output)).toBe('tui')
+      expect(privateRunDisplay('plain', input, output)).toBe('plain')
+      expect(privateRunDisplay('web', input, output)).toBe('web')
+    }
+})
+
+test('missing native support falls back for auto but refuses explicit TUI before dispatch', async () => {
+  const prepare = spyOn(PrivateCliProgress.prototype, 'prepareTuiDisplay').mockRejectedValue(
+    new CliDiagnostic('JIG_TUI_UNAVAILABLE', 'Native support unavailable. No Flow was started.', 1),
+  )
+  try {
+    for (const display of ['auto', 'tui']) {
+      const input = new Input()
+      let started = 0,
+        closed = 0,
+        stderr = '',
+        stdout = ''
+      const code = await main(['run', 'flow:flows/work', '--display', display], {
+        interactive: true,
+        terminalError: true,
+        terminalOutput: true,
+        runArgumentsPrepared: true,
+        dashboardInputStream: input as any,
+        host: {
+          async acquire(_project: string, options: any) {
+            return {
+              rootAdministration: {
+                async startRun() {
+                  started++
+                  options.channelOutput.dispatched()
+                  return { runId: 'sha256:' + 'a'.repeat(64) }
+                },
+                async runStatus() {
+                  return {
+                    runId: 'sha256:' + 'a'.repeat(64),
+                    submissionId: 'private',
+                    target: { kind: 'flow', path: 'flows/work' },
+                    state: 'terminal',
+                    terminal: {
+                      status: 'succeeded',
+                      outcome: 'done',
+                      output: 'Ordinary result',
+                      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+                    },
+                  }
+                },
+              },
+              async close() {
+                closed++
+              },
+            }
+          },
+        } as any,
+        writeStderr: async (text) => {
+          stderr += text
+        },
+        writeError: (text) => {
+          stderr += text
+        },
+        writeOutput: (text) => {
+          stdout += text
+        },
+        writeRecord: async (text) => {
+          stdout += text
+        },
+      })
+      expect(code, stderr + stdout).toBe(display === 'auto' ? 0 : 1)
+      expect(started).toBe(display === 'auto' ? 1 : 0)
+      expect(closed).toBe(started)
+      expect(input.rawChanges).toEqual([])
+      expect(stderr).not.toContain(entered)
+      if (display === 'auto') {
+        expect(stderr).toContain('TUI support unavailable; using ordinary display.')
+        expect(stdout).toContain('Ordinary result')
+      } else expect(stderr).toContain('JIG_TUI_UNAVAILABLE')
+    }
+  } finally {
+    prepare.mockRestore()
+  }
 })
 
 test('plain purpose accepted during a delayed cause drain prints once after the complete cause', async () => {
@@ -157,66 +253,67 @@ test('initial refusal never borrows stdin or writes alternate-screen controls', 
       { name: 'invalid selected files', args: ['--attach', 'source=missing'] },
       { name: 'occupied output destination', args: ['--out', 'occupied'] },
     ]
-    for (const scenario of cases) {
-      const input = new Input()
-      let stderr = '',
-        closed = 0
-      const code = await main(
-        ['run', 'flow:flows/work', '--display', 'tui', ...(scenario.args ?? [])],
-        {
-          currentDirectory: root,
-          interactive: true,
-          terminalError: true,
-          terminalOutput: false,
-          dashboardInputStream: input as any,
-          host: {
-            async acquire() {
-              if (scenario.failure === 'acquire') throw new Error(scenario.name)
-              return {
-                rootAdministration: {
-                  async startRun() {
-                    if (scenario.failure === 'start')
-                      throw new RootAdministrationError('UNAVAILABLE', 'Review is required', {
-                        code: 'ADMISSION_MISSING',
-                      })
-                    return { runId: 'sha256:' + 'a'.repeat(64) }
+    for (const display of ['auto', 'tui'])
+      for (const scenario of cases) {
+        const input = new Input()
+        let stderr = '',
+          closed = 0
+        const code = await main(
+          ['run', 'flow:flows/work', '--display', display, ...(scenario.args ?? [])],
+          {
+            currentDirectory: root,
+            interactive: true,
+            terminalError: true,
+            terminalOutput: true,
+            dashboardInputStream: input as any,
+            host: {
+              async acquire() {
+                if (scenario.failure === 'acquire') throw new Error(scenario.name)
+                return {
+                  rootAdministration: {
+                    async startRun() {
+                      if (scenario.failure === 'start')
+                        throw new RootAdministrationError('UNAVAILABLE', 'Review is required', {
+                          code: 'ADMISSION_MISSING',
+                        })
+                      return { runId: 'sha256:' + 'a'.repeat(64) }
+                    },
+                    async runStatus() {
+                      return {
+                        runId: 'sha256:' + 'a'.repeat(64),
+                        state: 'terminal',
+                        terminal: {
+                          status: 'failed',
+                          code: 'INVALID_INPUT',
+                          message: 'Input was refused before execution',
+                          diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+                        },
+                      }
+                    },
                   },
-                  async runStatus() {
-                    return {
-                      runId: 'sha256:' + 'a'.repeat(64),
-                      state: 'terminal',
-                      terminal: {
-                        status: 'failed',
-                        code: 'INVALID_INPUT',
-                        message: 'Input was refused before execution',
-                        diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
-                      },
-                    }
+                  async close() {
+                    closed++
                   },
-                },
-                async close() {
-                  closed++
-                },
-              }
+                }
+              },
+            } as any,
+            writeStderr: async (text) => {
+              stderr += text
             },
-          } as any,
-          writeStderr: async (text) => {
-            stderr += text
+            writeError: (text) => {
+              stderr += text
+            },
+            writeRecord: async () => {},
+            writeOutput: () => {},
           },
-          writeError: (text) => {
-            stderr += text
-          },
-          writeRecord: async () => {},
-          writeOutput: () => {},
-        },
-      )
-      expect(code).not.toBe(0)
-      expect(stderr).not.toContain(entered)
-      expect(stderr).not.toContain(restored)
-      expect(input.rawChanges).toEqual([])
-      expect(input.listenerCount('data')).toBe(0)
-      expect(closed).toBe(scenario.failure === 'start' || scenario.failure === 'terminal' ? 1 : 0)
-    }
+        )
+        expect(code).not.toBe(0)
+        expect(stderr).not.toContain(entered)
+        expect(stderr).not.toContain(restored)
+        expect(input.rawChanges).toEqual([])
+        expect(input.listenerCount('data')).toBe(0)
+        expect(closed).toBe(scenario.failure === 'start' || scenario.failure === 'terminal' ? 1 : 0)
+      }
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -277,7 +374,7 @@ test('trusted root dispatch opens short no-view Runs and updates-off; machine mo
           settled = true
           expect(closed).toBe(1)
           expect(stdout).toBe('')
-          queueMicrotask(() => input.emit('data', Buffer.from('q')))
+          queueMicrotask(() => input.emit('data', Buffer.from('q\u001b[C\r')))
         }
       },
       writeRecord: async (text) => {
@@ -358,7 +455,7 @@ test('post-dispatch observation failure keeps inspection only after confirmed pr
           expect(text).toContain('execution: unknown')
           expect(text).toContain('cleanup: complete')
           expect(stdout).toBe('')
-          queueMicrotask(() => input.emit('data', Buffer.from('q')))
+          queueMicrotask(() => input.emit('data', Buffer.from('q\u001b[C\r')))
         }
       },
       writeError: (text) => {
@@ -448,7 +545,7 @@ test('immutable inspection is enabled before delivery preparation and delayed sc
         if (!settled && text.includes('Settled')) {
           settled = true
           expect(text).toContain('Delivery written')
-          queueMicrotask(() => input.emit('data', Buffer.from('q')))
+          queueMicrotask(() => input.emit('data', Buffer.from('q\u001b[C\r')))
         }
       },
       writeError: (text) => {
@@ -515,7 +612,7 @@ test('an expanded-report failure keeps its known terminal open until the operato
         expect(closed).toBe(1)
         expect(text).toContain('Execution succeeded')
         expect(stdout).toBe('')
-        queueMicrotask(() => input.emit('data', Buffer.from('q')))
+        queueMicrotask(() => input.emit('data', Buffer.from('q\u001b[C\r')))
       }
     },
     writeError: (text) => {
@@ -711,7 +808,7 @@ describe('one command-owned workspace', () => {
       await progress.flush()
       expect(text).toContain('Waiting')
       expect(text).not.toContain('malformed')
-      input.emit('data', Buffer.from('q'))
+      input.emit('data', Buffer.from('q\u001b[C\r'))
       await progress.closeWorkspace()
     } finally {
       progress.close()
@@ -737,7 +834,7 @@ describe('one command-owned workspace', () => {
         await pause(40)
         expect(input.isRaw).toBeTrue()
         expect(progress.model.workspace.phase).toBe('settled')
-        if (inherited === undefined) input.emit('data', Buffer.from('q'))
+        if (inherited === undefined) input.emit('data', Buffer.from('q\u001b[C\r'))
         else {
           now = inherited
           input.emit('data', Buffer.from('\t'))
@@ -796,6 +893,8 @@ describe('one command-owned workspace', () => {
       expect(progress.model.workspace.recorded).toBeTrue()
       expect(progress.model.calls.size).toBe(0)
       input.emit('data', Buffer.from([3]))
+      expect(input.isRaw).toBeTrue()
+      input.emit('data', Buffer.from('\u001b[C\r'))
       await inspecting
       expect(signals).toBe(0)
       expect(input.isRaw).toBeFalse()
@@ -948,7 +1047,7 @@ describe('one command-owned workspace', () => {
     expect(
       progress.model.journal.some((entry) => entry.operationsPath?.[0] === 'real-operation'),
     ).toBeTrue()
-    input.emit('data', Buffer.from('q'))
+    input.emit('data', Buffer.from('q\u001b[C\r'))
     expect(input.isRaw).toBeFalse()
     expect(input.isPaused()).toBeTrue()
     expect(input.listenerCount('data')).toBe(0)
@@ -1041,7 +1140,7 @@ describe('one command-owned workspace', () => {
     })
     await pause()
     expect(input.isRaw).toBeTrue()
-    input.emit('data', Buffer.from('q'))
+    input.emit('data', Buffer.from('q\u001b[C\r'))
     await settling
     expect(input.isRaw).toBeFalse()
     expect(stop.signal.aborted).toBeFalse()
@@ -1096,7 +1195,7 @@ describe('one command-owned workspace', () => {
     await progress.configureDisplay('tui', true, input as any)
     progress.model.addAttention('Jig', 'required failure cause', 4, false)
     fail = true
-    input.emit('data', Buffer.from('q'))
+    input.emit('data', Buffer.from('q\u001b[C\r'))
     await expect(progress.flush()).rejects.toBe(cause)
     expect(input.isRaw).toBeFalse()
     expect(input.listenerCount('data')).toBe(0)
@@ -1139,7 +1238,7 @@ describe('one command-owned workspace', () => {
       .join('')
     expect(Buffer.byteLength(receipts)).toBe(524_288)
     now = deadline - 1
-    input.emit('data', Buffer.from('q'))
+    input.emit('data', Buffer.from('q\u001b[C\r'))
     await progress.flush()
     expect(chunks.join('')).toContain(receipts)
     expect(progress.model.attention.every((cause) => cause.committed)).toBeTrue()
@@ -1239,35 +1338,41 @@ test('fullscreen final reporting preserves full bounded diagnostics and frozen s
           }
         },
       }
-      const code = await main(['run', 'flow:flows/work', '--display', 'tui', '--timeout', '123s'], {
-        host: host as any,
-        currentDirectory: '/project',
-        runArgumentsPrepared: true,
-        interactive: true,
-        terminalError: true,
-        terminalOutput: human,
-        dashboardInputStream: input as any,
-        signal: stop.signal,
-        writeStderr: async (text) => {
-          stderr += text
-          timeline.push(text)
-          if (!sent && text.includes('Settled')) {
-            sent = true
-            queueMicrotask(() => {
-              if (external) stop.abort()
-              else input.emit('data', Buffer.from([3]))
-            })
-          }
+      const code = await main(
+        ['run', 'flow:flows/work', '--display', human ? 'auto' : 'tui', '--timeout', '123s'],
+        {
+          host: host as any,
+          currentDirectory: '/project',
+          runArgumentsPrepared: true,
+          interactive: true,
+          terminalError: true,
+          terminalOutput: human,
+          dashboardInputStream: input as any,
+          signal: stop.signal,
+          writeStderr: async (text) => {
+            stderr += text
+            timeline.push(text)
+            if (!sent && text.includes('Settled')) {
+              sent = true
+              queueMicrotask(() => {
+                if (external) stop.abort()
+                else {
+                  input.emit('data', Buffer.from([3]))
+                  input.emit('data', Buffer.from('\u001b[C\r'))
+                }
+              })
+            }
+          },
+          writeRecord: async (text) => {
+            stdout += text
+            timeline.push('STDOUT')
+          },
+          writeOutput: (text) => {
+            stdout += text
+            timeline.push('STDOUT')
+          },
         },
-        writeRecord: async (text) => {
-          stdout += text
-          timeline.push('STDOUT')
-        },
-        writeOutput: (text) => {
-          stdout += text
-          timeline.push('STDOUT')
-        },
-      })
+      )
       expect(sent).toBeTrue()
       expect(code).toBe(external ? 2 : 0)
       expect(input.isRaw).toBeFalse()

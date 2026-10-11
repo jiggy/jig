@@ -35,6 +35,11 @@ inspection activates after decoding and completed bounded capture; a valid
 report with partially unavailable files may open with explicit findings. Invalid
 reports do not open a dashboard. Browser opening is the operator's choice.
 
+Appearance is viewer-local. Icon buttons select System (monitor), Light (sun),
+Dark (moon), or Monochrome. System is initially selected and follows the browser's
+color preference. Each button has an accessible name, tooltip, visible focus and
+pressed state; selection requires no Flow declarations, storage or new endpoint.
+
 ## Local access boundary
 
 Bind explicitly to numeric IPv4 loopback on an ephemeral port. No LAN interface,

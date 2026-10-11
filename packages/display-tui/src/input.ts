@@ -16,6 +16,7 @@ export class ViewerInput {
   #pending = ''
   #escapeTimer: ReturnType<typeof setTimeout> | undefined
   #panels: ViewerPanel[] = []
+  #exit: Extract<ViewerPanel, { kind: 'exit' }> | undefined
   #references: readonly Reference[] = []
   #surface = ''
   #returns: {
@@ -52,10 +53,11 @@ export class ViewerInput {
   }
   get state(): ViewerState {
     this.#reconcile()
-    return { panels: this.#panels }
+    return { panels: this.#exit ? [this.#exit] : this.#panels }
   }
   get scroll(): number {
     this.#reconcile()
+    if (this.#exit) return 0
     const panel = this.#panels.at(-1)
     return panel && 'scroll' in panel ? panel.scroll : this.model.local.scroll
   }
@@ -65,6 +67,7 @@ export class ViewerInput {
   }
   frame(references: readonly Reference[], scroll?: number, anchor?: ScrollAnchor): void {
     this.#reconcile()
+    if (this.#exit) return
     this.#references = references
     const panel = this.#panels.at(-1)
     if (panel && 'scroll' in panel) {
@@ -122,6 +125,7 @@ export class ViewerInput {
     this.#pending = ''
     this.model.dismissPreview()
     this.#panels = []
+    this.#exit = undefined
     this.#returns = []
     this.#references = []
     this.change = () => {}
@@ -131,6 +135,15 @@ export class ViewerInput {
   #push(panel: ViewerPanel): void {
     if (this.#panels.length >= 3) this.#panels.pop()
     this.#panels.push(panel)
+  }
+  #requestExit(): void {
+    if (!this.onInteraction()) {
+      this.leave()
+      return
+    }
+    this.model.markNavigation()
+    this.#exit ??= { kind: 'exit', leave: false }
+    this.change()
   }
   #drainKeys(): void {
     clearTimeout(this.#escapeTimer)
@@ -167,11 +180,42 @@ export class ViewerInput {
   #read(text: string): void {
     this.#reconcile()
     if (text === '\u0003') {
-      this.leave(this.model.workspace.phase === 'settled' ? 'close' : 'interrupt')
+      if (this.model.workspace.phase === 'settled') this.#requestExit()
+      else this.leave('interrupt')
       return
     }
     if (text === '\u0004') {
-      this.leave()
+      this.#requestExit()
+      return
+    }
+    if (this.#exit) {
+      if (
+        ![
+          '\r',
+          '\n',
+          '\u001b',
+          '\t',
+          '\u001b[Z',
+          '\u001b[C',
+          '\u001b[D',
+          '\u001b[A',
+          '\u001b[B',
+        ].includes(text)
+      )
+        return
+      if (!this.onInteraction()) {
+        this.leave()
+        return
+      }
+      if (text === '\u001b' || ((text === '\r' || text === '\n') && !this.#exit.leave))
+        this.#exit = undefined
+      else if (text === '\r' || text === '\n') {
+        this.leave()
+        return
+      } else if (text === '\u001b[C') this.#exit.leave = true
+      else if (text === '\u001b[D') this.#exit.leave = false
+      else this.#exit.leave = !this.#exit.leave
+      this.change()
       return
     }
     const panel = this.#panels.at(-1)
@@ -214,7 +258,7 @@ export class ViewerInput {
       return
     }
     if (text === 'q') {
-      this.leave()
+      this.#requestExit()
       return
     }
     if (text === '\u001b') {
@@ -252,7 +296,7 @@ export class ViewerInput {
           this.model.feedback =
             'The return views were retired. Choose another view with v, or q to leave.'
         this.change()
-      } else this.leave()
+      }
       return
     }
     if (

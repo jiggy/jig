@@ -280,11 +280,13 @@ Overflow preserves represented nodes, saturated omission counts and explicit
 incompleteness. Root result, cleanup and delivery are independent host facts.
 
 Operator-only `--display auto|plain|tui|web` selects presentation; defaults
-never come from a project entrypoint. Auto uses bounded noninteractive inline
-output on suitable terminal stderr, without raw input or alternate screen.
-Plain, redirected stderr, NO_COLOR and TERM=dumb use nonanimated automatic output.
-Explicit TUI requires terminal stdin/stderr and a suitable TERM; otherwise
-it explains a plain fallback once. NO_COLOR permits explicit screen control but
+never come from a project entrypoint. Auto selects TUI with terminal stdin/stdout/stderr,
+raw input and a suitable TERM; unavailable native support falls back once to ordinary
+output. Otherwise it uses bounded noninteractive inline output on suitable stderr,
+without raw input or alternate screen. Plain, redirected stderr, NO_COLOR and
+TERM=dumb use nonanimated ordinary output. Explicit TUI requires terminal
+stdin/stderr and a suitable TERM; otherwise it explains a plain fallback once.
+Unavailable native support refuses explicit TUI before execution. NO_COLOR permits screen control but
 disables SGR styling. `--json` and effective `--receive` retain their exact existing
 stdout semantics and disable automatic observation/dashboard; dashboard cannot override.
 Explicit web uses terminal stderr without requiring terminal stdin, owns a local
@@ -293,7 +295,7 @@ Its separate access, bounds and lifetime are in [web display](web-display.md).
 
 ### Workspace and navigation
 
-After effective arguments and target selection, explicit TUI waits for
+After effective arguments and target selection, effective TUI waits for
 trusted root execution admission before owning one alternate screen on stderr.
 Initial review, input, files, output and runtime prerequisite failures remain
 ordinary diagnostics. Entry is independent of application views or update ports;
@@ -409,8 +411,11 @@ Inherited presentation constraints use an epoch reference with monotonic elapsed
 time within each process. Host-clock changes between coordinator startups can
 shift that reference; independent execution and command timers remain authoritative.
 
-Live q/standalone Escape/input EOF restores input/screen and continues inline once
-without cancelling or re-entering later. Do not replay routine history. Ctrl-C and
+q and keyboard Ctrl-D ask before leaving, with Stay selected. Arrows or Tab choose,
+Enter confirms and Escape stays; repeated q cannot confirm. The prompt survives
+observation changes. Escape otherwise returns from panels/reference jumps and
+stays at the top level. Confirmed live exit or actual input EOF restores input/screen
+and continues inline once without cancelling or re-entering later. Do not replay routine history. Ctrl-C and
 live shutdown use existing cancellation and join cleanup. After all execution,
 channels, attempted cleanup and delivery settle, an open workspace becomes read-only
 with separate literal execution/application/cleanup/delivery facts. It owns no live
@@ -422,11 +427,11 @@ the default enclosing presentation lifetime; setup, Run execution, cancellation
 and cleanup retain their bounds. An expiring explicit presentation constraint
 continues live execution through its ordinary owner; no presentation path extends
 or clears execution enforcement timers.
-q/Escape/keyboard Ctrl-C then closes without changing admitted outcome. External
+q or keyboard Ctrl-C then asks before closing without changing admitted outcome. External
 settled shutdown preserves frozen facts and the existing interrupted process status,
 without claiming execution cancellation. Every exit releases input/preview/screen.
 
-Auto/plain exit promptly. Select the current root landing view, otherwise its
+Ordinary auto/plain output exits promptly. Select the current root landing view, otherwise its
 first retained view in accepted order. Print its initial summary once and its
 latest summary at settlement only when changed, retaining ended/incomplete context.
 Never resurrect retired views. Other complete views remain available to explicit

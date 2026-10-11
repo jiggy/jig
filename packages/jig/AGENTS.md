@@ -300,7 +300,7 @@ admitted FLOW packages.
   output, then check cancellation. The question and answer share one line without
   intervening stages or notices.
   Readiness status words carry green/amber emphasis without claiming execution.
-  Auto inline uses a compact root-summary/actual-branches/current-activity
+  Noninteractive auto inline uses a compact root-summary/actual-branches/current-activity
   projection with attention first and visible overflow. Plain selects root landing
   or first retained root summary once and prints a changed summary at settlement,
   preserving ended/incomplete context rather than replaying every view.
@@ -309,7 +309,7 @@ admitted FLOW packages.
   printed phases remain history, and application notices own job outcomes.
   Complete notices have one Flow-attributed first line and indented continuation
   lines; escape every payload line without recognizing it as host prose.
-  Explicit TUI instead owns one alternate screen after trusted root execution
+  Effective TUI owns one alternate screen after trusted root execution
   admission, keeping initial input/review/runtime refusals in ordinary output,
   retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
   responsive meaningful context, dense aligned collection rows, expanded evidence,
@@ -439,14 +439,17 @@ panes, inline rendering and bounded terminal frames. Jig imports its public
 signals, screen restoration, the single output writer, command constraints and
 phase-aware interruption decisions in `src/cli-tui-input.ts` and
 `src/cli-progress.ts`. Core and Tree-sitter remain required exact external
-runtime dependencies. Only eligible explicit `tui` preparation loads native
-support before execution; Jig maps unavailable support to `JIG_TUI_UNAVAILABLE`.
+runtime dependencies. Only eligible TUI preparation loads native support before execution. Automatic
+selection falls back on unavailable support; explicit TUI maps it to
+`JIG_TUI_UNAVAILABLE`.
 Frames and escaped attention representations remain charged to existing byte
 ceilings. Package DTOs never carry the admitted host model or execution powers.
 
-`--display` is operator-only. Auto borrows no input; explicit inspection owns and
+`--display` is operator-only. Auto selects TUI only with suitable terminal input,
+stdout and stderr; ordinary fallback borrows no input. Effective TUI owns and
 restores raw/flowing stdin. Inspection has no local idle or absolute expiry.
-q, contextual Escape and settled keyboard Ctrl-C close it; input/output loss and
+q, keyboard Ctrl-D and settled keyboard Ctrl-C request exit confirmation with
+Stay selected; contextual Escape returns within the TUI and stays at the top level. Input/output loss and
 external interruption still close and restore it. Explicit inherited presentation
 constraints remain a minimum across enclosing owners, with a 45-second closing
 reserve for finite command timers. Only eligible effective `tui` or `web` omits

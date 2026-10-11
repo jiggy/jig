@@ -10,6 +10,15 @@ import { npmPackageName } from './project/package-selector.js'
 
 const textEncoder = new TextEncoder()
 
+/** Automatic screen ownership requires terminal input, stdout and stderr. */
+export function privateRunDisplay(
+  display: 'auto' | 'plain' | 'tui' | 'web',
+  interactiveTui: boolean,
+  terminalStdout: boolean,
+): 'auto' | 'plain' | 'tui' | 'web' {
+  return display === 'auto' && interactiveTui && terminalStdout ? 'tui' : display
+}
+
 export function parseRun(
   arguments_: readonly string[],
   allowUnboundSelect = false,

@@ -184,7 +184,7 @@ try {
     display.input(new TextEncoder().encode(String.fromCharCode(9)));
     assert((await display.frame(viewport)).text.includes('Reserved literal '+index));
   }
-  display.input(new TextEncoder().encode('q'));assert.deepEqual(actions,['close']);
+  display.input(new TextEncoder().encode('q\\u001b[C\\r'));assert.deepEqual(actions,['close']);
   const transferred=display.handoffInline();assert(transferred);display.dispose();
   assert(transferred.frame({columns:100,rows:16,color:false}).lines.join(String.fromCharCode(10)).includes('Reserved literal 3'));
   transferred.dispose();assert.equal(display.handoffInline(),undefined);

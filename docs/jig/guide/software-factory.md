@@ -73,9 +73,10 @@ identify excerpts. Complete requests also remain in the supplied input and
 The completed inspector selects Jobs unless you already chose a view. It stays
 read-only until you leave, subject to any explicit enclosing command deadline.
 Execution, cleanup and delivery have already settled.
-Press `q` to close it; during work, `q` continues in the ordinary transcript.
-Escape closes the current panel before leaving the dashboard. Ordinary `jig run`
-shows an inline projection and exits with the final report; `--display plain`
+Press `q` to ask before leaving the TUI, with Stay selected; during work,
+confirmed exit continues in the ordinary transcript. Escape returns within the
+TUI. Ordinary `jig run` selects TUI in suitable interactive terminals; otherwise
+it shows ordinary output and exits with the final report. `--display plain`
 emits a simple transcript.
 The final application output gives a brief report of each job and public failure
 causes, while full evidence remains in `result.json`.

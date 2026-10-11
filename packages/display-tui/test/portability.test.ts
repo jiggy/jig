@@ -67,15 +67,15 @@ test('public stale disclosure survives sticky attention, compact layouts and ful
       expect(frame).toContain('Retained evidence')
       expect(frame).toContain('Stale observations')
       expect(frame).toContain('Blocking cause')
-      expect(frame).toContain('q inline')
+      expect(frame).toContain('q leave')
       const tiny = (await display.frame({ columns: 18, rows: 4, color: false })).text
       expect(tiny).toContain('Stale')
-      expect(tiny).toContain('q inline')
+      expect(tiny).toContain('q leave')
       display.input(Buffer.from('!'))
       const cause = (await display.frame({ columns: 40, rows: 8, color: false })).text
       expect(cause).toContain('Stale observations')
       expect(cause).toContain('Blocking cause')
-      expect(cause).toContain('q inline')
+      expect(cause).toContain('q leave')
     } finally {
       display.dispose()
     }
@@ -472,7 +472,7 @@ test('public native, compact and inline facts retain provenance and clipping wit
       }
       for (const text of expected) expect(compact).toContain(text)
       expect(compact).toContain('Recorded observation [clipped]')
-      expect(compact).toContain('q close')
+      expect(compact).toContain('q leave')
       display.input(Buffer.from('\u001b'))
       display.update({
         ...value,
@@ -566,7 +566,7 @@ test('public warnings and multiline titles remain inert physical lines in native
           for (const position of native.matchAll(/\u001b\[(\d+);1H/g))
             expect(Number(position[1])).toBeLessThanOrEqual(viewport.rows)
           expect(native).toContain(replacement === 'complete' ? 'Incomplete' : 'Stale')
-          expect(native).toMatch(/q (?:continues )?inline/)
+          expect(native).toMatch(/q leave/)
         }
         const transferred = display.handoffInline()!
         const lines = transferred.frame({ columns: 160, rows: 20, color: false }).lines

@@ -46,6 +46,9 @@ and portable user-updates data without a Jig host or execution owner.
 - Preview requests use opaque inventory and capture-generation identities.
   Retain one active excerpt of at most 64 KiB, fence selection/capture/disposal,
   and reuse retained content for expansion and literal search.
+- Exit confirmation is viewer-local, defaults to Stay and survives observation
+  replacement. q requests it; Escape dismisses panels/returns without closing
+  at the top level. Live interrupt and caller-driven disposal stay immediate.
 - Serialize native frames and fence output/callbacks after disposal. Close and
   interrupt are intents; the caller owns execution and authoritative phase checks.
 - `handoffInline` ends native/input/preview/callback effects once and transfers

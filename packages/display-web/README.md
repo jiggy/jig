@@ -75,3 +75,7 @@ Packed qualification consumes frozen archives supplied through
 for the required second runtime check. `just test-package` does not rebuild or repack those
 candidates; `just build` and `just pack` explicitly build declared workspace
 prerequisites through their owning recipes.
+
+Appearance uses monitor, sun, moon and monochrome icon buttons, with accessible
+names and tooltips. System follows the browser preference by default; selection
+is local to the current viewer and does not change supplied observations.

@@ -631,7 +631,7 @@ export class NativeRenderer {
     this.#detail.visible = Boolean(panel || wide)
     this.#detail.width = panel ? available : detailWidth
     this.#list.title = ` ${one(destination?.title ?? 'Activity')} `
-    this.#detail.title = ` ${panel ? (panel.kind === 'preview' ? 'Captured evidence' : panel.kind) : 'Context'} `
+    this.#detail.title = ` ${panel ? (panel.kind === 'preview' ? 'Captured evidence' : panel.kind === 'exit' ? 'Leave the TUI?' : panel.kind) : 'Context'} `
     const records = model.records()
     const detail = model.record ? viewerDetailParts(model, model.record, true, false) : []
     const spans = callObservationSpans(
@@ -643,6 +643,7 @@ export class NativeRenderer {
     )
     const signature = JSON.stringify([
       model.surface,
+      model.workspace.phase,
       records,
       destinations,
       detail,
@@ -873,15 +874,17 @@ export class NativeRenderer {
         } else this.#parts(this.#detail, detail, model.record?.publisher ?? model.rootSourceId)
       }
     }
-    const exit = `q ${settled ? 'close' : 'inline'} · Ctrl-C ${settled ? 'close' : 'stop'}`
+    const exit = `q leave · Ctrl-C ${settled ? 'leave' : 'stop'}`
     this.#footer.content =
-      panel?.kind === 'filter' || panel?.kind === 'preview-search'
-        ? `Enter apply · Esc cancel · Ctrl-D leave · Ctrl-C ${settled ? 'close' : 'stop'}`
-        : panel
-          ? `${exit} · Esc back · ${panel.kind === 'views' || panel.kind === 'references' ? '↑↓ choose · Enter open' : panel.kind === 'preview' ? '/ excerpt search · ↑↓ scroll' : '↑↓ scroll'}`
-          : width < 90
-            ? `${exit} · ! cause · v views · ↑↓ · Enter · ? help`
-            : `${exit} · ! cause · Tab next · v views · ↑↓ select · Enter expand · r refs · ? help`
+      panel?.kind === 'exit'
+        ? '←/→ or Tab choose · Enter confirm · Esc stay'
+        : panel?.kind === 'filter' || panel?.kind === 'preview-search'
+          ? `Enter apply · Esc cancel · Ctrl-D leave · Ctrl-C ${settled ? 'leave' : 'stop'}`
+          : panel
+            ? `${exit} · Esc back · ${panel.kind === 'views' || panel.kind === 'references' ? '↑↓ choose · Enter open' : panel.kind === 'preview' ? '/ excerpt search · ↑↓ scroll' : '↑↓ scroll'}`
+            : width < 90
+              ? `${exit} · ! cause · v views · ↑↓ · Enter · ? help`
+              : `${exit} · ! cause · Tab next · v views · ↑↓ select · Enter expand · r refs · ? help`
     // Overlay scrolling remains in the bounded input owner; list scrolling uses
     // native layout, with selected records revealed only after actual layout.
     if (!panel && this.#list.visible) this.#list.scrollTop = scroll

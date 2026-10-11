@@ -48,16 +48,20 @@ Flow updates. Exact bounds, separate allocation policy and output failure remain
 governed by that profile and [channels](channels.md).
 
 Operator-only `--display auto|plain|tui|web` controls Run presentation. Auto
-uses a bounded noninteractive inline region on suitable stderr; it borrows no
-input and preserves scrollback. Plain, NO_COLOR, TERM=dumb and redirected stderr
-use nonanimated summaries. Explicit TUI requires terminal stdin and stderr,
-independently of stdout; otherwise explain the plain fallback once. It owns one
-alternate screen only after trusted root execution admission crosses the dispatch
-boundary. Initial review, input, file, output and runtime prerequisite failures
-remain ordinary diagnostics. Entry does not depend on application views or updates. Explicit TUI
-with NO_COLOR keeps screen controls without color. JSON and
-effective reception retain their exact output and disable automatic Flow observation.
-No project entrypoint can choose display mode.
+selects TUI when stdin, stdout and stderr are terminals, raw input is available,
+and TERM is not dumb. Missing native support falls back once to ordinary output;
+explicit TUI instead refuses unavailable native support before execution.
+Otherwise auto uses a bounded noninteractive inline region on suitable stderr;
+it borrows no input and preserves scrollback. Ordinary output uses nonanimated
+summaries with plain, NO_COLOR, TERM=dumb or redirected stderr. TUI requires terminal stdin
+and stderr, independently of stdout when explicitly selected; otherwise explain
+the plain fallback once. It owns one alternate screen only after trusted root
+execution admission crosses the dispatch boundary. Initial review, input, file,
+output and runtime prerequisite failures remain ordinary diagnostics. Entry does
+not depend on application views or updates. NO_COLOR keeps TUI controls without
+color. JSON and effective reception retain their exact output and disable
+automatic Flow observation and TUI selection. No project entrypoint can choose
+display mode.
 
 Jig adapts accepted observations to readonly semantic snapshots from
 `@jigging/display-model`. The independent `@jigging/display-tui` and
@@ -154,15 +158,20 @@ record/call jumps retain at most 16 return origins with surface, stable record a
 scroll identity. Escape then returns through that history, skipping retired
 intermediate destinations in one action and repairing removed rows to a preceding
 survivor. If all origins retired, it remains in the current valid view with action
-feedback; a subsequent Escape performs normal exit. Return navigation checks any
+feedback. Return navigation checks any
 explicit enclosing lifetime before mutation. Tab and chooser destination selection
-clear return history. Live q, standalone Escape without a panel/history, or input EOF
-restores input and continues inline, without re-entering later. Live Ctrl-C uses
+clear return history. Escape at the top level stays in the TUI. q or keyboard
+Ctrl-D asks “Leave the TUI?” with Stay selected; arrows or Tab choose and Enter
+confirms, while Escape stays. Repeated q never confirms. Live confirmation explains
+that work continues in the terminal; settled confirmation closes read-only
+inspection. Cancellation stays available while the prompt is open, and changes
+to observed content cannot dismiss or approve it. Confirmed live exit or actual
+input EOF restores input and continues inline, without re-entering later. Live Ctrl-C uses
 existing cancellation and cleanup. After all execution, cleanup and delivery
 settle, an inspector still open shows literal settled facts and read-only results;
 if the operator has not navigated, it selects the root publisher's landing view
 or first retained root view and its first row when present.
-q/Escape/Ctrl-C then closes presentation without changing admitted outcome.
+q or keyboard Ctrl-C then asks before closing presentation, without changing the admitted outcome.
 No Flow or channel remains alive for inspection. Inspection has no built-in idle
 or absolute expiry; it remains open until the operator leaves, input/output fails
 or an external interruption closes it. Explicit inherited enclosing command

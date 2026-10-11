@@ -1575,20 +1575,47 @@ function Tabs(): ComponentChildren {
           }),
       button('Help & shortcuts', () => openPanel('help'), { 'aria-pressed': panel === 'help' }),
       h(
-        'label',
-        {},
-        'Appearance',
-        h(
-          'select',
+        'div',
+        { class: 'appearance', role: 'group', 'aria-label': 'Appearance' },
+        [
+          { theme: 'system', label: 'System', path: 'M3 4h18v12H3z M8 21h8 M12 16v5' },
           {
-            value: document.documentElement.dataset.theme ?? 'system',
-            onChange: (event: Event) => {
-              document.documentElement.dataset.theme = (event.target as HTMLSelectElement).value
+            theme: 'light',
+            label: 'Light',
+            path: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8 M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l1.5 1.5 M17.5 17.5L19 19 M5 19l1.5-1.5 M17.5 6.5L19 5',
+          },
+          { theme: 'dark', label: 'Dark', path: 'M20 15.5A9 9 0 0 1 8.5 4a9 9 0 1 0 11.5 11.5Z' },
+          {
+            theme: 'color-free',
+            label: 'Monochrome',
+            path: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18 M12 3v18 M12 7h7 M12 11h9 M12 15h8 M12 19h5',
+          },
+        ].map(({ theme, label, path }) =>
+          button(
+            h(
+              'svg',
+              {
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                stroke: 'currentColor',
+                'stroke-width': 1.6,
+                'stroke-linecap': 'round',
+                'stroke-linejoin': 'round',
+                'aria-hidden': true,
+              },
+              h('path', { d: path }),
+            ),
+            () => {
+              document.documentElement.dataset.theme = theme
               redraw()
             },
-          },
-          ['system', 'light', 'dark', 'color-free'].map((theme) =>
-            h('option', { key: theme, value: theme }, theme),
+            {
+              key: theme,
+              class: 'appearance-option',
+              title: label,
+              'aria-label': `${label} appearance`,
+              'aria-pressed': (document.documentElement.dataset.theme ?? 'system') === theme,
+            },
           ),
         ),
       ),

@@ -75,7 +75,7 @@ import {
   type ProjectInitAgent,
   ProjectInitError,
 } from './project-init.js'
-import { parseRun, parseTarget, parseVerification } from './run-arguments.js'
+import { parseRun, parseTarget, parseVerification, privateRunDisplay } from './run-arguments.js'
 import { SCHEMA_1_URI, schemaTypeMismatchText } from './schema/types.js'
 
 const VERIFICATION_HELP = `Startup verification:
@@ -261,6 +261,8 @@ Examples:
   jig run --display web
 
 Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work.
+Auto opens TUI in suitable interactive terminals; otherwise it uses ordinary output.
+q asks before leaving TUI; Escape returns within it. Use --display plain for logs.
 Terminal stdout shows readable results and live channel text. Redirect stdout or
 use --json for JSON (NDJSON with --receive). Diagnostics and status use stderr.
 Scripts should check the result and exit status.
@@ -1111,11 +1113,26 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     startedAt: privatePresentationNow(),
   })
   const automaticPresentation = !parsed.json && parsed.receive.length === 0
-  const dashboardRequested = automaticPresentation && parsed.display === 'tui'
+  let display = privateRunDisplay(
+    parsed.display,
+    runtime.dashboardInput &&
+      runtime.terminalError &&
+      typeof runtime.dashboardInputStream.setRawMode === 'function' &&
+      process.env.TERM !== 'dumb',
+    runtime.humanOutput,
+  )
+  if (automaticPresentation && display === 'tui') {
+    try {
+      await runtime.progress.prepareTuiDisplay(runtime.dashboardInput, runtime.dashboardInputStream)
+    } catch (error) {
+      if (parsed.display !== 'auto') throw error
+      display = 'auto'
+      runtime.progress.notice('TUI support unavailable; using ordinary display.\n')
+    }
+  }
+  const dashboardRequested = automaticPresentation && display === 'tui'
   const webRequested = automaticPresentation && parsed.display === 'web' && runtime.terminalError
   const workspaceRequested = dashboardRequested || webRequested
-  if (dashboardRequested)
-    await runtime.progress.prepareTuiDisplay(runtime.dashboardInput, runtime.dashboardInputStream)
   if (webRequested) {
     try {
       runtime.progress.prepareWeb()
@@ -1129,7 +1146,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   if (automaticPresentation && !workspaceRequested)
     await runtime.progress.configureDisplay(
-      parsed.display === 'web' ? 'plain' : parsed.display,
+      display === 'web' ? 'plain' : display,
       runtime.dashboardInput,
       runtime.dashboardInputStream,
     )
@@ -1779,12 +1796,14 @@ export function privateCliCommandLifetimeMs(
   arguments_: readonly string[],
   interactiveDashboard = false,
   terminalStderr = false,
+  terminalStdout = false,
 ): number | null {
   if (arguments_[0] !== 'run') return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   try {
     const parsed = parseRun(arguments_)
     if (
-      ((interactiveDashboard && parsed.display === 'tui') ||
+      ((interactiveDashboard &&
+        privateRunDisplay(parsed.display, interactiveDashboard, terminalStdout) === 'tui') ||
         (terminalStderr && parsed.display === 'web')) &&
       !parsed.json &&
       parsed.receive.length === 0

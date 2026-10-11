@@ -75,10 +75,13 @@ Supply input bytes through `display.input`; the package never reads stdin:
 | Enter, Escape | Expand evidence, or return from the current disclosure |
 | `/`, `s`, `r` | Filter rows, choose sorting, or inspect typed references |
 | `!`, `?` | Full causes/facts, or contextual keyboard help |
-| `q`, Ctrl-C | Close intent, or interrupt intent for the caller to interpret |
+| `q`, Ctrl-D | Confirm a close intent; Stay is selected initially |
+| Ctrl-C | Interrupt live work; confirm a close intent after settlement |
 
 Keys are contextual: printable characters edit an active filter/search draft.
-The caller owns every resulting effect and may transfer a live close into inline
+In exit confirmation, arrows or Tab choose, Enter confirms, and Escape stays.
+Top-level Escape never emits a close intent. Input disposal and caller-driven
+shutdown remain immediate. The caller owns every resulting effect and may transfer a live close into inline
 presentation rather than canceling work.
 
 For inline output, native support is unnecessary. Inline frames and the text

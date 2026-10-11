@@ -380,6 +380,7 @@ function privateTruncateStyled(text: string, width: number): string {
 }
 
 export type ViewerPanel =
+  | { kind: 'exit'; leave: boolean }
   | { kind: 'views'; selected: string }
   | { kind: 'detail'; key: string; signature: string; scroll: number }
   | { kind: 'preview'; scroll: number; query?: string; matchOffset?: number }
@@ -805,6 +806,14 @@ export function viewerFrame(
     )
     return commit(paint(plain, tone, secondaryPrefix))
   }
+  if (compact && panel?.kind === 'exit') {
+    add('Leave the TUI?', 'heading')
+    if (height >= 4)
+      add(model.workspace.phase === 'settled' ? 'Close inspection' : 'Run continues', 'secondary')
+    add(panel.leave ? ' Stay  [Leave]' : '[Stay]  Leave')
+    add('←/→ Enter Esc stay', 'secondary')
+    return { lines, references: [], scroll: 0 }
+  }
   const target = `Jig · ${escapeTerminalText(model.workspace.target)}`
   const phase =
     model.workspace.phase === 'settled'
@@ -894,39 +903,36 @@ export function viewerFrame(
   }
   if (!compact && lines.length < height - 2) add('─'.repeat(Math.min(width, 4096)), 'secondary')
   const footer = (
-    panel?.kind === 'filter' || panel?.kind === 'preview-search'
-      ? compact
-        ? 'Enter set Esc undo'
-        : 'Filter draft: Enter apply · Esc discard · Ctrl-C stop'
-      : compact
-        ? 'q inline ^C stop !'
-        : panel?.kind === 'views'
-          ? 'q continues inline · ↑↓ choose · Enter open · Esc back'
-          : panel?.kind === 'references'
-            ? 'q continues inline · j/k choose · Enter activate · Esc back'
-            : panel?.kind === 'attention'
-              ? 'q continues inline · ←/→ causes · ↑/↓ scroll · Esc back'
-              : panel?.kind === 'diagnostics'
-                ? 'q continues inline · ←/→ reports · ↑/↓ scroll · Esc back'
-                : panel?.kind === 'help'
-                  ? 'Esc back · q continues inline · Ctrl-C stop (live)'
-                  : panel?.kind === 'detail' || panel?.kind === 'preview'
-                    ? 'q continues inline · ↑/↓ scroll · / excerpt search · r references · Esc back'
-                    : compact
-                      ? '! full cause · q continues inline · Ctrl-C stop'
-                      : 'q continues inline · Tab · ↑↓ · Enter detail · r refs · ! cause · ? help'
+    panel?.kind === 'exit'
+      ? '←/→ choose · Enter confirm · Esc stay'
+      : panel?.kind === 'filter' || panel?.kind === 'preview-search'
+        ? compact
+          ? 'Enter set Esc undo'
+          : 'Filter draft: Enter apply · Esc discard · Ctrl-C stop'
+        : compact
+          ? 'q leave ^C stop !'
+          : panel?.kind === 'views'
+            ? 'q leave · ↑↓ choose · Enter open · Esc back'
+            : panel?.kind === 'references'
+              ? 'q leave · j/k choose · Enter activate · Esc back'
+              : panel?.kind === 'attention'
+                ? 'q leave · ←/→ causes · ↑/↓ scroll · Esc back'
+                : panel?.kind === 'diagnostics'
+                  ? 'q leave · ←/→ reports · ↑/↓ scroll · Esc back'
+                  : panel?.kind === 'help'
+                    ? 'Esc back · q leave · Ctrl-C stop (live)'
+                    : panel?.kind === 'detail' || panel?.kind === 'preview'
+                      ? 'q leave · ↑/↓ scroll · / excerpt search · r references · Esc back'
+                      : compact
+                        ? '! full cause · q leave · Ctrl-C stop'
+                        : 'q leave · Tab · ↑↓ · Enter detail · r refs · ! cause · ? help'
   )
-    .replaceAll(
-      'q continues inline',
-      model.workspace.phase === 'settled' ? 'q closes inspection' : 'q continues inline',
-    )
-    .replaceAll('q inline', model.workspace.phase === 'settled' ? 'q close' : 'q inline')
-    .replaceAll('^C stop', model.workspace.phase === 'settled' ? '^C close' : '^C stop')
+    .replaceAll('^C stop', model.workspace.phase === 'settled' ? '^C leave' : '^C stop')
     .replaceAll(
       'Ctrl-C stop (live)',
-      model.workspace.phase === 'settled' ? 'Ctrl-C closes' : 'Ctrl-C stops',
+      model.workspace.phase === 'settled' ? 'Ctrl-C leave' : 'Ctrl-C stops',
     )
-    .replaceAll('Ctrl-C stop', model.workspace.phase === 'settled' ? 'Ctrl-C close' : 'Ctrl-C stop')
+    .replaceAll('Ctrl-C stop', model.workspace.phase === 'settled' ? 'Ctrl-C leave' : 'Ctrl-C stop')
   const bodyRoom = Math.max(0, height - lines.length - 1)
   let offset = 0,
     anchor: ScrollAnchor | undefined
@@ -943,7 +949,12 @@ export function viewerFrame(
           panel.kind === 'references'
             ? references.findIndex((ref) => referenceKey(ref) === panel.selected)
             : -1
-      if (panel.kind === 'views')
+      if (panel.kind === 'exit')
+        content = wrapTerminalText(
+          `Leave the TUI?\n${model.workspace.phase === 'settled' ? 'Close this read-only inspection.' : 'Work will continue in the terminal. This does not cancel the run.'}\n\n${panel.leave ? '  Stay    [Leave]' : '[Stay]    Leave'}`,
+          width,
+        )
+      else if (panel.kind === 'views')
         content = (function* () {
           yield 'Views · choose a destination'
           let group = ''
@@ -972,8 +983,8 @@ export function viewerFrame(
       else if (panel.kind === 'help')
         content = wrapTerminalText(
           panels.at(-2)?.kind === 'filter'
-            ? 'Filter editing\nPrintable text is literal, including q j k s r ! ?.\nEnter applies; Escape discards; Backspace/Delete removes the last scalar.\nTab and arrow controls do nothing. Ctrl-C stops live work; Ctrl-D leaves.'
-            : 'Workspace help\nv: all grouped views. Tab / Shift-Tab: Execution, Activity, Delivered files and application views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: expand full detail or retained file content; Escape returns from an overlay, then a reference jump, then exits. Wide screens show useful selected context.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a typed reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause and workspace facts; d: attributed diagnostic reports; ?: this help.\nq: live continues inline; settled closes inspection. Ctrl-C: stop live work, close settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
+            ? 'Filter editing\nPrintable text is literal, including q j k s r ! ?.\nEnter applies; Escape discards; Backspace/Delete removes the last scalar.\nTab and arrow controls do nothing. Ctrl-C stops live work; Ctrl-D asks before leaving.'
+            : 'Workspace help\nv: all grouped views. Tab / Shift-Tab: Execution, Activity, Delivered files and application views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: expand full detail or retained file content; Escape returns from an overlay or reference jump, and stays at the top level. Wide screens show useful selected context.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a typed reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause and workspace facts; d: attributed diagnostic reports; ?: this help.\nq: confirm leaving; live work continues inline, settled inspection closes. Stay is selected first; arrows or Tab choose, Enter confirms, Escape stays. Ctrl-C: stop live work, confirm closing settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
           width,
         )
       else if (panel.kind === 'attention') {
@@ -1268,8 +1279,8 @@ export function viewerFrame(
   add(
     compact && clipped
       ? model.workspace.phase === 'settled'
-        ? 'q close ^C close ↓'
-        : 'q inline ^C stop ↓'
+        ? 'q leave ^C leave ↓'
+        : 'q leave ^C stop ↓'
       : clipped
         ? `↓ more · ${footer}`
         : hasNewActivity

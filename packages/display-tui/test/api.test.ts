@@ -161,6 +161,10 @@ test('phase-aware interrupt remains an intent; interaction lifetime prevents nav
       onAction: (action) => actions.push(action),
     })
     display.input(Buffer.from('\u0003q'))
+    if (phase === 'settled') {
+      expect(actions).toEqual([])
+      display.input(Buffer.from('\u001b[C\r'))
+    }
     expect(actions).toEqual([phase === 'live' ? 'interrupt' : 'close'])
     expect(value.workspace.phase).toBe(phase)
     display.dispose()

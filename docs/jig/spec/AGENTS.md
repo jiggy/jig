@@ -21,7 +21,9 @@ descriptors.
   unfinished final files; cleanup uncertainty and forced termination stay explicit.
   Saved-result inspection owns recorded-claim attribution, confined immutable
   file capture, exact JSON and independent read status. Workspace entry follows trusted root execution admission; initial refusals stay
-  plain. Inspection is operator-controlled, subject to explicit inherited command
+  plain. Auto selects TUI only in suitable interactive terminals and falls back
+  on unavailable native support. TUI exit asks with Stay selected; Escape stays
+  at the top level. Inspection is operator-controlled, subject to explicit inherited command
   constraints, and retains no execution or channel owner.
   Terminal panes consume semantic view data without exporting renderer types;
   required display support is checked before execution. Native cell rendering
@@ -44,7 +46,8 @@ descriptors.
   adds no Flow author API or HTTP/execution SPI. Independently packaged browser
   and terminal renderers consume bounded semantic snapshots; Jig owns transport,
   authenticated evidence access and execution authority. CLI grammar and hierarchy
-  remain in `cli-experience.md`.
+  remain in `cli-experience.md`. Appearance is viewer-local, with accessible
+  System/Light/Dark/Monochrome icon controls and no Flow API.
 - `user-updates.md` owns Jig's exact optional-port selection, separate CLI pool,
   bounded shared stderr presentation and qualification policy. The portable
   descriptor and scoped libraries belong to `packages/user-updates/` and
