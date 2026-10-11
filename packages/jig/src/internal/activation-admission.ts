@@ -207,7 +207,7 @@ export function createPrivateActivationCandidateV5(
     throw new TypeError('activation candidate contains a recipe for an unplanned target')
   }
 
-  const lock = createPrivateProjectLocalLock(retained.linked)
+  const lock = createPrivateProjectLocalLock(retained.linked, retained.agentOverride)
   const observedSemanticDigest = resolution.semanticDigest
   const activationMeaningDigest = computeActivationMeaningDigest(observedSemanticDigest, targets)
   const candidate = normalizeCandidateV5(

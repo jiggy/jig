@@ -73,7 +73,11 @@ it does not require the caller to manage an Agent conversation.
 ## Run all three
 
 Follow [installation and supported-host setup](./index.md), then run from a copy
-of the example directory. The default code classifier needs no Agent:
+of the example directory. Configure the selected client in `bindings/model.ts`
+through [Choose an Agent](./agents.md). Claude Code is an editable example choice.
+The default code classifier calls no Agent, but review checks this project's
+selected Agent and mixed alternatives too; their ACP prerequisites must be ready
+before this complete project can be approved:
 
 ```sh
 jig review --allow-resolution-network
@@ -87,11 +91,12 @@ Add `--json` for the complete machine record, or use `jig run --out ./triage-res
 to save `result.json` in a retained location. The directory must not already
 exist; Jig never overwrites an earlier result.
 
-For the Agent and mixed classifiers, configure a supported [Agent](./agents.md)
-and the included `grants/agent.json`, which shows Claude Code as an example choice.
-Interactive review can offer a separately confirmed correction when its executable
-is missing; manual JSON edits require renewed review. Missing Agent support leaves
-the code target usable, while both intelligent routes need a fresh ready review.
+The Agent and mixed classifiers use the inline policy in `bindings/model.ts`.
+Edit it for a lasting client choice, or explicitly propose one client for every
+selected ACP policy with `jig review --agent codex`. Review shows the effective
+choice before approval and leaves source unchanged. Repeat the argument on later
+reviews or edit source to persist it. Missing selected ACP prerequisites stop
+review, even when the default code target needs no Agent call.
 
 ```sh
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m

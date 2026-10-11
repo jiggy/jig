@@ -12,11 +12,10 @@ or both, then using ordinary code to produce a contact preview.
 - `flows/convert` owns mapping validity and row acceptance rules.
 - `bindings` selects methods; `fixtures` and `test` own synthetic demonstrations.
 
-- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
-  may offer a separately confirmed named-grant correction; manual JSON editing
-  remains available. Every source correction requires fresh review and approval.
-  Keep client choices explicit; no installed-client fallback.
+- `bindings/model.ts` owns the inline ACP client/model/turn/session policy.
+  `jig.ts` supplies that Agent to both intelligent mappers through their contract.
+  Each mapper keeps its small private response schema beside the Agent call;
+  conversion retains the independent index and row checks.
 
 ## Local Contracts
 
@@ -32,7 +31,11 @@ or both, then using ordinary code to produce a contact preview.
 - The Agent receives headings only. Rows remain with code; headings may themselves
   contain sensitive data. Provider selection belongs to the operator.
 - Mapping uses three distinct existing column indices. Null means clarification
-  is needed. Structural validity never proves semantic correspondence.
+  is needed. Both intelligent mappers require exactly the three own field keys and
+  every proposed value to be null or a safe integer before collapsing an abstention
+  to a null mapping. The converter independently checks distinct indices and actual
+  column bounds. Structural
+  validity never proves semantic correspondence.
 - Input is `source/contacts.csv`: UTF-8, 64 KiB, 1–100 data records, 1–16 columns.
 - `preview.json` is a proposal for review, not an import receipt. `ready` describes
   a completed preview, even when some or all rows are rejected.

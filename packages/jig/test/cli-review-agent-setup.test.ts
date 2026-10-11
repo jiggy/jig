@@ -1,217 +1,279 @@
 import { describe, expect, test } from 'bun:test'
-import { guidedReviewAgentSetup } from '../src/cli-review-agent-setup.js'
-import type { PrivateAgentReadinessReport } from '../src/internal/review-agent-setup.js'
-import type { AcpGrant } from '../src/project/grants.js'
+import { privateCliHumanText } from '../src/cli-presentation.js'
+import {
+  renderReviewAgentSelections,
+  renderReviewAgentSetup,
+} from '../src/cli-review-agent-setup.js'
+import type {
+  PrivateAgentReadinessIssue,
+  PrivateAgentReadinessReport,
+} from '../src/internal/review-agent-setup.js'
 
-function report(policy: AcpGrant = { kind: 'acp', client: 'pi' }): PrivateAgentReadinessReport {
+function issue(overrides: Partial<PrivateAgentReadinessIssue> = {}): PrivateAgentReadinessIssue {
   return {
-    projectIdentity: { device: '1', inode: '2' },
-    readyTargets: 1,
-    unavailableTargets: 2,
+    source: 'inline',
+    location: { path: 'bindings/model.ts', line: 5, column: 33, kind: 'client-literal' },
+    declaration: 'bindings/model.ts',
+    slot: 'native',
+    client: 'pi',
+    sourceClient: 'pi',
+    policy: { kind: 'acp', client: 'pi' },
+    code: 'PROJECT_ACP_PI_EXECUTABLE',
+    recipients: [{ binding: 'model', declaration: 'bindings/model.ts', slot: 'native' }],
+    omittedRecipients: 0,
+    observedRefusals: 1,
+    alternatives: ['codex', 'claude', 'codex'],
+    ...overrides,
+  }
+}
+function report(issues = [issue()]): PrivateAgentReadinessReport {
+  return {
+    selectedAcpUnavailable: true,
+    ...(issues[0] === undefined ? {} : { primaryIssue: issues[0] }),
+    observedIssues: issues.length,
+    observedPolicyGroups: issues.length,
+    uncheckedResources: 0,
     complete: true,
-    issues: [
-      {
-        target: { kind: 'binding', id: 'model' },
+    omittedPolicyGroups: 0,
+    issues,
+    selections: [],
+    omittedSelections: 0,
+  }
+}
+const options = {
+  details: false,
+  retryCommand: "jig review './project' --allow-resolution-network --verification strict",
+}
+
+describe('read-only review Agent setup diagnostics', () => {
+  test('shows known cause, captured literal, passive alternatives, selected-client repair and one safe retry', () => {
+    const text = renderReviewAgentSetup(report(), options)
+    expect(text).toContain('Review could not finish')
+    expect(text).toContain('Pi is selected, but no usable executable')
+    expect(text).toContain('"bindings/model.ts":5:33; slot "native"')
+    expect(text).toContain('captured source client literal')
+    expect(text).toContain('binding:model')
+    expect(text).toContain('authentication and readiness not checked')
+    expect(text).toContain('To keep Pi:')
+    expect(text).toContain('PI_PATH')
+    expect(text).toContain('from "pi" to "codex"')
+    expect(text).toContain('from "pi" to "claude"')
+    expect(text.match(/\$ jig review/g)).toHaveLength(1)
+    expect(text).toContain(options.retryCommand)
+    expect(text).not.toContain('--yes')
+    expect(text).not.toContain('--allow-authority-changes')
+    expect(text).toContain('including code-only entrypoints')
+    expect(text).toContain('add --agent claude or --agent codex on the retry below')
+    expect(text).toContain('every selected ACP policy')
+    expect(text).toContain('Repeat the option on later reviews')
+    expect(text).not.toContain('All observed source policy facts')
+    expect(text).toContain('No new approval was recorded. Any existing approval remains unchanged.')
+    expect(text).toContain('No Flow or model call started.')
+  })
+
+  test('computed and missing coordinates give honest inspection guidance', () => {
+    for (const kind of ['selection-context', 'unlocated'] as const) {
+      const value = issue({ location: { path: 'bindings/model.ts', kind } })
+      const text = renderReviewAgentSetup(report([value]), options)
+      expect(text).not.toContain('change the source client value')
+      expect(text).toContain('inspect the selected Binding slot expression')
+      expect(text).toContain(
+        kind === 'unlocated'
+          ? 'No exact client line was located'
+          : 'not a verified editable client literal',
+      )
+    }
+  })
+
+  test('named source policy lists recipients once and preserves conditional model and retention guidance', () => {
+    const value = issue({
+      source: 'named',
+      location: { path: 'custom-policy/agent.json', line: 4, kind: 'client-literal' },
+      client: 'codex',
+      sourceClient: 'codex',
+      code: 'PROJECT_ACP_CODEX_EXECUTABLE',
+      policy: {
+        kind: 'acp',
+        client: 'codex',
+        model: 'chosen-model',
+        maxTurns: 4,
+        retainSessions: true,
+      },
+      recipients: [
+        { binding: 'model', declaration: 'bindings/model.ts', slot: 'native' },
+        { binding: 'assistant', declaration: 'bindings/assistant.ts', slot: 'agent' },
+      ],
+      alternatives: ['claude', 'pi'],
+      observedRefusals: 2,
+    })
+    const text = renderReviewAgentSetup({ ...report([value]), observedIssues: 2 }, options)
+    expect(text).toContain('Named policy: "custom-policy/agent.json":4')
+    expect(text.match(/Codex is selected/g)).toHaveLength(1)
+    expect(text).toContain('binding:assistant')
+    expect(text).toContain('This policy pins a model')
+    expect(text).toContain('no model compatibility is inferred')
+    expect(text).toContain('Keep Codex to retain it')
+    expect(text).toContain('Preserve maxTurns: 4')
+    expect(
+      renderReviewAgentSetup(
+        { ...report([value]), observedIssues: 2 },
+        { ...options, details: true },
+      ),
+    ).toContain('2 selected ACP refusals across 1 source policy')
+    expect(text).not.toContain('on the retry below')
+    expect(renderReviewAgentSetup(report(), options)).not.toContain('model compatibility')
+    expect(renderReviewAgentSetup(report(), options)).not.toContain(
+      'This policy requests Codex session retention',
+    )
+  })
+
+  test('non-executable causes never display alternative installations', () => {
+    const text = renderReviewAgentSetup(report([issue({ code: 'PROJECT_ACP_PI_MODEL' })]), options)
+    expect(text).toContain('model configuration is missing or invalid')
+    expect(text).toContain('To keep Pi:')
+    expect(text).not.toContain('Detected alternatives')
+    expect(text).not.toContain('To use Codex')
+  })
+
+  test('zero alternatives retains repair and manual selection guidance without claiming no installation', () => {
+    const text = renderReviewAgentSetup(report([issue({ alternatives: [] })]), options)
+    expect(text).toContain('To keep Pi:')
+    expect(text).toContain('no alternative executable was detected')
+    expect(text).not.toContain('uninstalled')
+    expect(text).not.toContain('Detected alternatives')
+  })
+
+  test('source literal is never attributed to the effective override client', () => {
+    const value = issue({
+      client: 'codex',
+      sourceClient: 'pi',
+      override: 'codex',
+      policy: { kind: 'acp', client: 'codex' },
+      code: 'PROJECT_ACP_CODEX_EXECUTABLE',
+      alternatives: ['claude'],
+    })
+    const text = renderReviewAgentSetup(report([value]), options)
+    expect(text).toContain('Source client: "pi"; effective client: "codex" from --agent codex')
+    expect(text).toContain('from "pi" to "claude"; replace or omit the current --agent option too')
+    expect(text).not.toContain('from "codex" to "claude"')
+    expect(text).toContain('replace the current option with --agent claude on the retry below')
+  })
+
+  test('bounded rows cannot erase the primary blocker or uncompleted checks', () => {
+    const primaryIssue = issue()
+    const value = {
+      ...report(),
+      primaryIssue,
+      issues: [],
+      complete: false,
+      observedPolicyGroups: 4,
+      observedIssues: 5,
+      omittedPolicyGroups: 4,
+      uncheckedResources: 3,
+    }
+    const text = renderReviewAgentSetup(value, { ...options, details: true })
+    expect(text).toContain('Pi is selected')
+    expect(text).toContain('PROJECT_ACP_PI_EXECUTABLE')
+    expect(text).toContain('4 observed source policy groups are omitted')
+    expect(text).toContain('3 remaining selected ACP checks were not completed')
+    expect(text).toContain('omitted facts cannot be recovered by --details')
+    expect(text).toContain('no additional checks were performed')
+    const later = issue({
+      declaration: 'bindings/later.ts',
+      location: { path: 'bindings/later.ts', kind: 'unlocated' },
+    })
+    expect(renderReviewAgentSetup({ ...value, issues: [later] }, options)).toContain(
+      '"bindings/model.ts":5:33',
+    )
+    expect(renderReviewAgentSetup(undefined, options)).toBe('')
+    expect(renderReviewAgentSetup({ ...report(), selectedAcpUnavailable: false }, options)).toBe('')
+  })
+
+  test('compact and details disclose known omissions and fit the terminal writer budget', () => {
+    const value = issue({
+      recipients: Array.from({ length: 4096 }, (_, i) => ({
+        binding: `peer-${i}`,
+        declaration: `bindings/${'long'.repeat(128)}.ts`,
+        slot: 'native',
+      })),
+    })
+    const compact = renderReviewAgentSetup(report([value]), options)
+    expect(compact).toContain('4093 known direct recipients are omitted')
+    const detailed = renderReviewAgentSetup(report([value]), { ...options, details: true })
+    expect(detailed).toContain('known direct recipients are omitted')
+    expect(Buffer.byteLength(detailed)).toBeLessThan(131_072)
+    expect(detailed).toContain('No new approval')
+    expect(detailed).toContain(options.retryCommand)
+  })
+
+  test('literal source and recipient values stay escaped in plain, narrow and redirected presentation', () => {
+    const value = issue({
+      location: { path: 'bindings/emoji-😀\n\u001b[31m.ts', kind: 'unlocated' },
+      recipients: [
+        { binding: 'fake\nProject ready', declaration: 'fake\u001b[0m.ts', slot: 'native' },
+      ],
+    })
+    const text = renderReviewAgentSetup(report([value]), options)
+    expect(text).not.toContain('\u001b')
+    expect(text).not.toContain('😀')
+    expect(text).toContain('\\ud83d\\ude00')
+    expect(text).toContain('\\u000aProject ready')
+    const plain = privateCliHumanText(text, false, 32)
+    expect(plain).not.toContain('\u001b')
+    expect(plain).toContain('PROJECT_ACP_PI_EXECUTABLE')
+    expect(plain).toContain(`$ ${options.retryCommand}`)
+  })
+})
+
+describe('review-only client selection disclosure', () => {
+  function selected(count = 1): PrivateAgentReadinessReport {
+    return {
+      ...report([]),
+      selectedAcpUnavailable: false,
+      selections: Array.from({ length: count }, (_, i) => ({
+        binding: `model-${i}`,
         declaration: 'bindings/model.ts',
         slot: 'native',
-        client: policy.client,
-        code: `PROJECT_ACP_${policy.client.toUpperCase()}_EXECUTABLE`,
-        alternatives: ['codex', 'claude', 'codex'],
-        grant: {
-          path: 'custom-resources/interpreter.json',
-          policy,
-          bytes: Buffer.from(JSON.stringify(policy)),
-          recipients: [
-            { binding: 'model', declaration: 'bindings/model.ts', slot: 'native' },
-            { binding: 'assistant', declaration: 'bindings/assistant.ts', slot: 'agent' },
-          ],
-        },
-      },
-    ],
+        sourceClient: 'pi',
+        effectiveClient: 'codex',
+        source: { path: 'bindings/model.ts', line: 5, kind: 'client-literal' },
+      })),
+    }
   }
-}
-
-function interaction(answers: string[] = [], confirmations: boolean[] = []) {
-  const writes: string[] = [],
-    prompts: string[] = []
-  return {
-    writes,
-    prompts,
-    interactive: true,
-    yes: false,
-    write(text: string) {
-      writes.push(text)
-    },
-    async answer(prompt: string) {
-      prompts.push(prompt)
-      return answers.shift() ?? ''
-    },
-    async confirm(prompt: string) {
-      prompts.push(prompt)
-      return confirmations.shift() ?? false
-    },
-  }
-}
-
-describe('guided review Agent setup', () => {
-  test('uses exact captured custom path and confirms all recipients and policy before proposing a write', async () => {
-    const value = report({ kind: 'acp', client: 'pi', maxTurns: 3 })
-    const io = interaction(['2'], [true])
-    const result = await guidedReviewAgentSetup(value, io)
-    expect(result.kind).toBe('edit')
-    if (result.kind !== 'edit') throw new Error('missing proposal')
-    expect(result.proposal).toMatchObject({
-      path: 'custom-resources/interpreter.json',
-      projectIdentity: { device: '1', inode: '2' },
-      previous: value.issues[0]!.grant!.policy,
-      proposed: { kind: 'acp', client: 'codex', maxTurns: 3 },
-    })
-    expect(Buffer.from(result.proposal.expectedBytes)).toEqual(
-      Buffer.from(value.issues[0]!.grant!.bytes),
-    )
-    expect(result.proposal.expectedBytes).not.toBe(value.issues[0]!.grant!.bytes)
-    const printed = io.writes.join('')
-    expect(printed).toContain('binding:model')
-    expect(printed).toContain('binding:assistant')
-    expect(printed).toContain('maxTurns: 3')
-    expect(printed).toContain('retainSessions: (absent) -> (absent)')
-    expect(printed).toContain('Model pin: (none) -> (none; operator configuration/default)')
-    expect(io.prompts.at(-1)).toContain('Update "custom-resources/interpreter.json"')
-    expect(printed).toContain('1. Use claude')
-    expect(printed).toContain('2. Use codex')
+  test('explains global scope, source/effective clients, repeat review and persistent source preference', () => {
+    const text = renderReviewAgentSelections(selected(), { agent: 'codex', details: false })
+    expect(text).toContain('every selected ACP policy')
+    expect(text).toContain('source "pi" -> effective "codex"')
+    expect(text).toContain('"bindings/model.ts":5 (captured client literal)')
+    expect(text).toContain('leaves source files unchanged')
+    expect(text).toContain('HTTP-backed Agents and Flow routes are unaffected')
+    expect(text).toContain('Repeat --agent codex')
+    expect(text).toContain('edit the Binding or named ACP policy, then review without --agent')
+    expect(text).toContain('normal exact approval still applies')
   })
-
-  test('keeping, invalid choices, declined source consent and cancel never return edits', async () => {
-    for (const answer of ['', '3', '0', '5', 'anything']) {
-      const io = interaction([answer], [true])
-      expect(await guidedReviewAgentSetup(report(), io)).toEqual({ kind: 'keep' })
-    }
-    expect(await guidedReviewAgentSetup(report(), interaction(['2'], [false]))).toEqual({
-      kind: 'keep',
-    })
-    expect(await guidedReviewAgentSetup(report(), interaction(['4']))).toEqual({ kind: 'cancel' })
+  test('a known previous flag is explained on bare review without inventing current-source provenance', () => {
+    const text = renderReviewAgentSelections(selected(), { previousAgent: 'codex', details: false })
+    expect(text).toContain('previous approval used --agent codex')
+    expect(text).toContain('earlier flag is not reused')
+    expect(text).toContain('complete captured code and source-derived client policy together')
+    expect(text).toContain('failed or declined review retains the earlier approved code and client')
+    expect(renderReviewAgentSelections(selected(), { details: false })).toBe('')
   })
-
-  test('noninteractive, --yes, inline, non-executable setup and incomplete report do not offer editing', async () => {
-    for (const kind of ['noninteractive', 'yes', 'inline', 'model', 'incomplete']) {
-      const value = report()
-      const io = interaction(['2'], [true])
-      const next =
-        kind === 'inline' || kind === 'model'
-          ? {
-              ...value,
-              issues: [
-                {
-                  ...value.issues[0]!,
-                  ...(kind === 'inline' ? { grant: undefined } : { code: 'PROJECT_ACP_PI_MODEL' }),
-                },
-              ],
-            }
-          : kind === 'incomplete'
-            ? { ...value, complete: false, issues: [] }
-            : value
-      if (kind === 'noninteractive') io.interactive = false
-      if (kind === 'yes') io.yes = true
-      expect(await guidedReviewAgentSetup(next, io)).toEqual({ kind: 'keep' })
-      expect(io.prompts).toEqual([])
-      if (kind === 'incomplete')
-        expect(io.writes.join('')).toContain('edit their ACP grants directly')
-    }
-    expect(await guidedReviewAgentSetup(undefined, interaction())).toEqual({ kind: 'keep' })
+  test('both views retain exact known omission counts and a safe output bound', () => {
+    const value = { ...selected(4096), omittedSelections: 9 }
+    const text = renderReviewAgentSelections(value, { agent: 'codex', details: false })
+    expect(text).toContain('4097 known selected ACP recipients are omitted')
+    expect(text).toContain('report-limit omissions cannot be recovered by --details')
+    const details = renderReviewAgentSelections(value, { agent: 'codex', details: true })
+    expect(Buffer.byteLength(details)).toBeLessThan(131_072)
+    expect(details).toContain('known selected ACP recipients are omitted')
+    expect(details).toContain('Repeat --agent codex')
   })
+})
 
-  test('pinned models need an explicit default choice or replacement', async () => {
-    const value = report({ kind: 'acp', client: 'pi', model: 'prior-model', maxTurns: 2 })
-    const reset = await guidedReviewAgentSetup(value, interaction(['2', '1'], [true]))
-    expect(reset.kind).toBe('edit')
-    if (reset.kind === 'edit')
-      expect(reset.proposal.proposed).toEqual({ kind: 'acp', client: 'codex', maxTurns: 2 })
-    const replace = await guidedReviewAgentSetup(
-      value,
-      interaction(['2', '2', 'codex-model'], [true]),
-    )
-    expect(replace.kind).toBe('edit')
-    if (replace.kind === 'edit') expect(replace.proposal.proposed.model).toBe('codex-model')
-    for (const answers of [
-      ['2', ''],
-      ['2', '3'],
-      ['2', '2', ''],
-      ['2', '2', 'bad model'],
-    ])
-      expect(await guidedReviewAgentSetup(value, interaction(answers, [true]))).toEqual({
-        kind: 'keep',
-      })
-  })
-
-  test('Codex session retention requires explicit removal before the final source confirmation', async () => {
-    const value = report({ kind: 'acp', client: 'codex', maxTurns: 4, retainSessions: true })
-    expect(await guidedReviewAgentSetup(value, interaction(['1'], [false, true]))).toEqual({
-      kind: 'keep',
-    })
-    const io = interaction(['1'], [true, true])
-    const result = await guidedReviewAgentSetup(value, io)
-    expect(result.kind).toBe('edit')
-    if (result.kind === 'edit')
-      expect(result.proposal.proposed).toEqual({ kind: 'acp', client: 'claude', maxTurns: 4 })
-    expect(io.prompts[1]).toContain('Remove retainSessions')
-    expect(io.prompts[2]).toContain('Update')
-    expect(io.writes.join('')).toContain('retainSessions: true -> (absent)')
-  })
-
-  test('shared identical setup issues prompt once; different captured bytes earn a fresh interaction', async () => {
-    const value = report()
-    const issue = value.issues[0]!
-    const shared = {
-      ...value,
-      issues: [issue, { ...issue, target: { kind: 'binding' as const, id: 'other' } }],
-    }
-    const seen = new Set<string>()
-    const io = interaction(['3'])
-    expect(await guidedReviewAgentSetup(shared, io, seen)).toEqual({ kind: 'keep' })
-    expect(io.prompts).toHaveLength(1)
-    await guidedReviewAgentSetup(shared, io, seen)
-    expect(io.prompts).toHaveLength(1)
-    await guidedReviewAgentSetup(
-      {
-        ...value,
-        issues: [
-          {
-            ...issue,
-            grant: {
-              ...issue.grant!,
-              bytes: Buffer.from(' ' + JSON.stringify(issue.grant!.policy)),
-            },
-          },
-        ],
-      },
-      io,
-      seen,
-    )
-    expect(io.prompts).toHaveLength(2)
-  })
-
-  test('literal identities are escaped and cancellation after a prompt cannot produce a write', async () => {
-    const value = report()
-    const controller = new AbortController()
-    const io = interaction(['2'], [true])
-    const unsafe = {
-      ...value,
-      issues: [{ ...value.issues[0]!, declaration: 'fake\n\u001b[31mhost success' }],
-    }
-    await guidedReviewAgentSetup(unsafe, {
-      ...io,
-      signal: controller.signal,
-      async answer() {
-        controller.abort()
-        return '2'
-      },
-    }).then(
-      () => {
-        throw new Error('expected cancellation')
-      },
-      () => undefined,
-    )
-    expect(io.writes.join('')).not.toContain('\u001b')
-    expect(io.writes.join('')).toContain('fake\\n\\u001b[31mhost success')
-  })
+test('known rejected override identifies the operator field without its private value', () => {
+  const text = renderReviewAgentSetup(report([issue({ rejectedOverride: 'PI_PATH' })]), options)
+  expect(text).toContain('PI_PATH was rejected')
+  expect(text).toContain('Operator PATH was not used')
+  expect(text).toContain('To keep Pi:')
 })

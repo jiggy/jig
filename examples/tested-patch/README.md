@@ -12,9 +12,8 @@ Install Jig on a [supported host](https://jig.md/guide/).
 The application declares pinned ordinary FLOW and ACP Agent packages; review
 prepares their execution dependencies. Download this directory and follow
 [Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
-`grants/agent.json` shows Pi as an example. Interactive review can offer a separately
-confirmed client correction when that executable is missing; manual JSON edits
-also require fresh review. Then inspect `issue.json`,
+The inline native policy in `bindings/agent.ts` selects Pi as an example.
+Edit that Binding and review again for a lasting client preference. Inspect `issue.json`,
 `bindings/specialist.ts`, and `flows/project/logs-cases.json`.
 From this directory:
 
@@ -22,6 +21,14 @@ From this directory:
 jig review --allow-resolution-network
 jig run
 ```
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
 
 The reviewed entrypoint supplies the issue, read-only fixture and five-minute deadline.
 Jig chooses a fresh packet directory in operating-system temporary storage for

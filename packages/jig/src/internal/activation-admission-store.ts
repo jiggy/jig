@@ -3568,10 +3568,15 @@ export async function inspectPrivateApprovedProject(
     )
     const entrypoint =
       candidate.lock.entrypoint === undefined ? {} : { entrypoint: candidate.lock.entrypoint }
+    const agentOrigin =
+      candidate.lock.agentOverride === undefined
+        ? {}
+        : { agentOverride: candidate.lock.agentOverride }
     let result: JsonValue = {
       state,
       revision: candidate.candidate.lockDigest,
       ...entrypoint,
+      ...agentOrigin,
       targets: listed,
     }
     if (selector !== undefined) {
@@ -3592,6 +3597,7 @@ export async function inspectPrivateApprovedProject(
           state,
           revision: candidate.candidate.lockDigest,
           ...entrypoint,
+          ...agentOrigin,
           target: selector,
           availability: targets[index]!.availability as unknown as JsonValue,
           package: request.packagePath,

@@ -1,78 +1,84 @@
 import { describe, expect, test } from 'bun:test'
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ProjectPlanResult, ProjectSession } from '../src/administration/project.js'
 import { main, type PrivateCliCommandHost, type PrivateCliOptions } from '../src/cli.js'
-import type { PrivateAgentReadinessReport } from '../src/internal/review-agent-setup.js'
-import type { AcpGrant } from '../src/project/grants.js'
+import type {
+  PrivateAgentReadinessIssue,
+  PrivateAgentReadinessReport,
+} from '../src/internal/review-agent-setup.js'
 
-const grantPath = 'configuration/interpreter.json'
-const original = '{"kind":"acp","client":"pi"}\n'
-
-async function fixture(run: (root: string) => Promise<void>): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-cli-review-setup-'))
-  try {
-    await mkdir(join(root, 'configuration'))
-    await writeFile(join(root, grantPath), original)
-    await writeFile(join(root, 'jig.lock'), 'previous exact approval')
-    await run(root)
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+const issue: PrivateAgentReadinessIssue = {
+  source: 'inline',
+  location: { path: 'bindings/model.ts', line: 5, column: 33, kind: 'client-literal' },
+  declaration: 'bindings/model.ts',
+  slot: 'native',
+  client: 'pi',
+  sourceClient: 'pi',
+  policy: { kind: 'acp', client: 'pi' },
+  code: 'PROJECT_ACP_PI_EXECUTABLE',
+  recipients: [{ binding: 'model', declaration: 'bindings/model.ts', slot: 'native' }],
+  omittedRecipients: 0,
+  observedRefusals: 1,
+  alternatives: ['codex'],
 }
-
-async function readiness(
-  root: string,
-  allUnavailable = false,
-): Promise<PrivateAgentReadinessReport> {
-  const information = await lstat(root, { bigint: true })
-  const bytes = await readFile(join(root, grantPath))
-  const policy = JSON.parse(bytes.toString()) as AcpGrant
-  const unavailable = policy.client === 'pi'
-  return {
-    projectIdentity: { device: String(information.dev), inode: String(information.ino) },
-    complete: true,
-    readyTargets: allUnavailable ? 0 : unavailable ? 1 : 2,
-    unavailableTargets: allUnavailable ? 2 : unavailable ? 1 : 0,
-    issues: unavailable
-      ? [
-          {
-            target: { kind: 'binding', id: 'model' },
-            declaration: 'bindings/model.ts',
-            slot: 'native',
-            client: policy.client,
-            code: 'PROJECT_ACP_PI_EXECUTABLE',
-            alternatives: ['codex'],
-            grant: {
-              path: grantPath,
-              bytes,
-              policy,
-              recipients: [{ binding: 'model', declaration: 'bindings/model.ts', slot: 'native' }],
-            },
-          },
-        ]
-      : [],
-  }
+const blocked: PrivateAgentReadinessReport = {
+  selectedAcpUnavailable: true,
+  primaryIssue: issue,
+  observedIssues: 1,
+  observedPolicyGroups: 1,
+  uncheckedResources: 0,
+  complete: true,
+  omittedPolicyGroups: 0,
+  issues: [issue],
+  selections: [],
+  omittedSelections: 0,
 }
-
-function plan(round: number, unchanged = false): ProjectPlanResult {
+const ready: PrivateAgentReadinessReport = {
+  ...blocked,
+  selectedAcpUnavailable: false,
+  primaryIssue: undefined,
+  observedIssues: 0,
+  observedPolicyGroups: 0,
+  issues: [],
+  selections: [
+    {
+      ...issue.recipients[0]!,
+      sourceClient: 'pi',
+      effectiveClient: 'codex',
+      source: issue.location,
+    },
+  ],
+}
+function plan(unchanged = false): ProjectPlanResult {
   return unchanged
     ? { state: 'unchanged' }
     : {
         state: 'applicable',
         operation: 'admission',
-        planDigest: `sha256:${String(round).repeat(64)}`,
+        planDigest: `sha256:${'1'.repeat(64)}`,
         review: {
           mediaType: 'text/plain; charset=utf-8',
-          text: `Exact candidate ${round}\n`,
-          details: `Complete candidate ${round}\n`,
+          text: 'Exact candidate\n',
+          details: 'Full candidate\n',
           authorityChanges: true,
         },
       }
 }
-
-function outputOptions(
+async function fixture(run: (root: string) => Promise<void>) {
+  const root = await mkdtemp(join(tmpdir(), 'jig-cli-review-setup-'))
+  try {
+    await writeFile(join(root, 'jig.ts'), 'captured authored source')
+    await writeFile(join(root, 'jig.lock'), 'previous exact approval')
+    await run(root)
+    expect(await readFile(join(root, 'jig.ts'), 'utf8')).toBe('captured authored source')
+    expect(await readFile(join(root, 'jig.lock'), 'utf8')).toBe('previous exact approval')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+function invocation(
   root: string,
   host: PrivateCliCommandHost,
   extra: Partial<PrivateCliOptions> = {},
@@ -97,386 +103,196 @@ function outputOptions(
     } satisfies PrivateCliOptions,
   }
 }
+function hostWith(
+  report: PrivateAgentReadinessReport | undefined,
+  events: string[],
+  unchanged = false,
+  closeFails = false,
+): PrivateCliCommandHost {
+  return {
+    async acquire(_project, options) {
+      events.push(`acquire:${options?.agentOverride ?? 'source'}`)
+      return {
+        rootAdministration: {} as ProjectSession['rootAdministration'],
+        async plan() {
+          events.push('qualification')
+          if (report) options?.onAgentReadiness?.(report)
+          events.push('preparation')
+          return plan(unchanged)
+        },
+        async apply() {
+          events.push('apply')
+          return { operation: 'admission', planDigest: `sha256:${'1'.repeat(64)}` }
+        },
+        async close() {
+          events.push('close')
+          if (closeFails) throw new Error('private close fault')
+        },
+      }
+    },
+  }
+}
+describe('review prerequisite refusal and explicit client selection', () => {
+  test('observed refusal stops preparation and approval for interactive, automated, details and unchanged review', async () => {
+    for (const args of [
+      ['review'],
+      ['review', '--details'],
+      ['review', '--yes', '--allow-authority-changes'],
+    ]) {
+      for (const unchanged of [false, true])
+        await fixture(async (root) => {
+          const events: string[] = []
+          const run = invocation(root, hostWith(blocked, events, unchanged), {
+            interactive: true,
+            answer: async () => {
+              throw new Error('no client chooser')
+            },
+            confirm: async () => {
+              throw new Error('no approval prompt')
+            },
+          })
+          expect(await main(args, run.options)).toBe(2)
+          expect(events).toEqual(['acquire:source', 'qualification', 'close'])
+          expect(run.errors.join('')).toContain('Review could not finish')
+          expect(run.errors.join('')).toContain('bindings/model.ts')
+          expect(run.errors.join('')).toContain('Any existing approval remains unchanged')
+          expect(run.output.join('')).not.toContain('Project ready')
+          expect(run.output.join('')).not.toContain('Exact candidate')
+        })
+    }
+  })
+  test('omitted policy rows do not erase a primary refusal', async () =>
+    fixture(async (root) => {
+      const events: string[] = []
+      const run = invocation(
+        root,
+        hostWith({ ...blocked, issues: [], omittedPolicyGroups: 1, complete: false }, events),
+      )
+      expect(await main(['review', '--yes'], run.options)).toBe(2)
+      expect(events).not.toContain('apply')
+      expect(run.errors.join('')).toContain('Pi is selected')
+    }))
+  test('other feature unavailability is not an ACP refusal; unchanged review succeeds', async () =>
+    fixture(async (root) => {
+      const events: string[] = []
+      const run = invocation(
+        root,
+        hostWith(
+          { ...ready, selections: [], complete: false, uncheckedResources: 1 },
+          events,
+          true,
+        ),
+      )
+      expect(await main(['review'], run.options)).toBe(0)
+      expect(events).toEqual(['acquire:source', 'qualification', 'preparation', 'close'])
+      expect(run.errors.join('')).not.toContain('Review could not finish')
+    }))
+  test('cleanup failure still prevents success and hides private cause', async () =>
+    fixture(async (root) => {
+      const events: string[] = []
+      const run = invocation(root, hostWith(blocked, events, false, true))
+      expect(await main(['review'], run.options)).toBe(2)
+      expect(events).not.toContain('apply')
+      expect(run.errors.join('')).toContain('JIG_CLEANUP_FAILED')
+      expect(run.errors.join('')).not.toContain('private close fault')
+    }))
+  test('review-only required enum rejects missing, repeated and unsupported operands before acquisition', async () =>
+    fixture(async (root) => {
+      for (const args of [
+        ['review', '--agent'],
+        ['review', '--agent', 'unknown'],
+        ['review', '--agent', 'pi', '--agent', 'codex'],
+        ['run', '--agent', 'codex'],
+      ]) {
+        const events: string[] = []
+        const run = invocation(root, hostWith(ready, events), {
+          interactive: true,
+          answer: async () => {
+            throw new Error('no chooser')
+          },
+        })
+        expect(await main(args, run.options)).toBe(2)
+        expect(events).toEqual([])
+      }
+    }))
+  test('explicit selection reaches ordinary approval and is absent from the next bare review', async () =>
+    fixture(async (root) => {
+      const events: string[] = []
+      const run = invocation(root, hostWith(ready, events), {
+        interactive: true,
+        confirm: async () => {
+          events.push('confirm')
+          return true
+        },
+      })
+      expect(await main(['review', '--agent', 'codex'], run.options)).toBe(0)
+      expect(events).toEqual([
+        'acquire:codex',
+        'qualification',
+        'preparation',
+        'confirm',
+        'apply',
+        'close',
+      ])
+      expect(run.errors.join('')).toContain('source "pi" -> effective "codex"')
+      expect(run.errors.join('')).toContain('every selected ACP')
+      events.length = 0
+      const next = invocation(root, hostWith(blocked, events))
+      expect(await main(['review'], next.options)).toBe(2)
+      expect(events[0]).toBe('acquire:source')
+    }))
+  test('the client flag does not bypass authority approval; refusal retry preserves only explicit options', async () =>
+    fixture(async (root) => {
+      const events: string[] = []
+      const run = invocation(root, hostWith(ready, events))
+      expect(await main(['review', '--agent', 'codex', '--yes'], run.options)).toBe(2)
+      expect(events).not.toContain('apply')
+      expect(run.errors.join('')).toContain('JIG_AUTHORITY_APPROVAL_REQUIRED')
+      const refusal = invocation(root, hostWith(blocked, []))
+      expect(
+        await main(
+          [
+            'review',
+            '--agent',
+            'pi',
+            '--allow-resolution-network',
+            '--generate-contracts',
+            '--verification',
+            'strict',
+            '--yes',
+          ],
+          refusal.options,
+        ),
+      ).toBe(2)
+      expect(refusal.errors.join('')).toContain(
+        '$ jig review --agent pi --allow-resolution-network --generate-contracts --verification strict',
+      )
+      expect(refusal.errors.join('')).not.toContain('--yes')
+    }))
+})
 
-describe('review guided source correction lifecycle', () => {
-  test('closes the captured session before publishing, captures the new client, and asks separately for approval', async () => {
+test('successful feature-only unavailable reviews give an honest final next step', async () => {
+  for (const count of [0, 1])
     await fixture(async (root) => {
       const events: string[] = []
-      let round = 0
-      const host: PrivateCliCommandHost = {
-        async acquire(_project, options) {
-          const current = ++round
-          const value = await readiness(root)
-          events.push(
-            `acquire:${current}:${JSON.parse((await readFile(join(root, grantPath))).toString()).client}`,
-          )
-          return {
-            rootAdministration: {} as ProjectSession['rootAdministration'],
-            async plan() {
-              events.push(`plan:${current}`)
-              options?.onAgentReadiness?.(value)
-              return plan(current)
-            },
-            async apply() {
-              events.push(`apply:${current}`)
-              expect(current).toBe(2)
-              expect(JSON.parse((await readFile(join(root, grantPath))).toString()).client).toBe(
-                'codex',
-              )
-              return { operation: 'admission', planDigest: `sha256:${String(current).repeat(64)}` }
-            },
-            async close() {
-              const client = JSON.parse((await readFile(join(root, grantPath))).toString()).client
-              events.push(`close:${current}:${client}`)
-              if (current === 1) expect(client).toBe('pi')
-            },
-          }
+      const report = {
+        ...ready,
+        readyTargets: count,
+        unavailableTargets: 1,
+        entrypoint: {
+          target: { kind: 'binding' as const, id: 'work' },
+          state: 'unavailable' as const,
         },
       }
-      const invocation = outputOptions(root, host, {
+      const run = invocation(root, hostWith(report, events), {
         interactive: true,
-        async answer() {
-          events.push('choice')
-          return '1'
-        },
-        async confirm(prompt) {
-          events.push(prompt.startsWith('Update ') ? 'source-consent' : 'execution-approval')
-          if (prompt.startsWith('Update ')) expect(round).toBe(1)
-          else expect(round).toBe(2)
-          return true
-        },
-      })
-      expect(await main(['review'], invocation.options)).toBe(0)
-      expect(events).toEqual([
-        'acquire:1:pi',
-        'plan:1',
-        'choice',
-        'source-consent',
-        'close:1:pi',
-        'acquire:2:codex',
-        'plan:2',
-        'execution-approval',
-        'apply:2',
-        'close:2:codex',
-      ])
-      expect(invocation.errors.join('')).toContain('Capturing the project again')
-      expect(invocation.output.join('')).not.toContain('Exact candidate 1')
-      expect(invocation.output.join('')).toContain('Exact candidate 2')
-      expect(await readFile(join(root, 'jig.lock'), 'utf8')).toBe('previous exact approval')
-    })
-  })
-
-  test('declined source consent keeps the source and only approves its original exact configuration', async () => {
-    await fixture(async (root) => {
-      let acquisitions = 0,
-        sourceConsents = 0,
-        executionConsents = 0,
-        applied = 0
-      const host: PrivateCliCommandHost = {
-        async acquire(_project, options) {
-          acquisitions++
-          const value = await readiness(root)
-          return {
-            rootAdministration: {} as ProjectSession['rootAdministration'],
-            async plan() {
-              options?.onAgentReadiness?.(value)
-              return plan(1)
-            },
-            async apply() {
-              applied++
-              expect(await readFile(join(root, grantPath), 'utf8')).toBe(original)
-              return { operation: 'admission', planDigest: `sha256:${'1'.repeat(64)}` }
-            },
-            async close() {},
-          }
-        },
-      }
-      const invocation = outputOptions(root, host, {
-        interactive: true,
-        answer: async () => '1',
-        confirm: async (prompt) => {
-          if (prompt.startsWith('Update ')) {
-            sourceConsents++
-            return false
-          }
-          executionConsents++
-          return true
-        },
-      })
-      expect(await main(['review'], invocation.options)).toBe(0)
-      expect([acquisitions, sourceConsents, executionConsents, applied]).toEqual([1, 1, 1, 1])
-      expect(await readFile(join(root, grantPath), 'utf8')).toBe(original)
-      expect(invocation.output.join('')).toContain('1 targets ready; 1 unavailable')
-    })
-  })
-
-  test('noninteractive and --yes never mutate source or choose an alternative', async () => {
-    for (const args of [['review'], ['review', '--yes', '--allow-authority-changes']]) {
-      await fixture(async (root) => {
-        let applied = 0,
-          acquired = 0
-        const host: PrivateCliCommandHost = {
-          async acquire(_project, options) {
-            acquired++
-            const value = await readiness(root)
-            return {
-              rootAdministration: {} as ProjectSession['rootAdministration'],
-              async plan() {
-                options?.onAgentReadiness?.(value)
-                return plan(1)
-              },
-              async apply() {
-                applied++
-                return { operation: 'admission', planDigest: `sha256:${'1'.repeat(64)}` }
-              },
-              async close() {},
-            }
-          },
-        }
-        const invocation = outputOptions(root, host, {
-          interactive: args.length > 1,
-          answer: async () => {
-            throw new Error('must not select a client')
-          },
-          confirm: async () => {
-            throw new Error('must not prompt')
-          },
-        })
-        expect(await main(args, invocation.options)).toBe(args.length > 1 ? 0 : 2)
-        expect(acquired).toBe(1)
-        expect(applied).toBe(args.length > 1 ? 1 : 0)
-        expect(await readFile(join(root, grantPath), 'utf8')).toBe(original)
-      })
-    }
-  })
-
-  test('zero-ready and unchanged reviews disclose retained unavailability without saying Project ready', async () => {
-    for (const unchanged of [false, true]) {
-      await fixture(async (root) => {
-        let applies = 0
-        const host: PrivateCliCommandHost = {
-          async acquire(_project, options) {
-            const value = await readiness(root, true)
-            return {
-              rootAdministration: {} as ProjectSession['rootAdministration'],
-              async plan() {
-                options?.onAgentReadiness?.(value)
-                return plan(1, unchanged)
-              },
-              async apply() {
-                applies++
-                return { operation: 'admission', planDigest: `sha256:${'1'.repeat(64)}` }
-              },
-              async close() {},
-            }
-          },
-        }
-        const invocation = outputOptions(root, host, { interactive: false })
-        expect(
-          await main(['review', '--yes', '--allow-authority-changes'], invocation.options),
-        ).toBe(0)
-        expect(applies).toBe(unchanged ? 0 : 1)
-        expect(invocation.output.join('')).toContain('No targets can run')
-        expect(invocation.output.join('')).not.toContain('Project ready')
-        expect(invocation.errors.join('')).toContain('Pi is selected')
-      })
-    }
-  })
-
-  test('an unavailable default does not promise a bare run when alternatives are ready', async () => {
-    await fixture(async (root) => {
-      const invocation = outputOptions(
-        root,
-        {
-          async acquire(_project, options) {
-            const value = await readiness(root)
-            return {
-              rootAdministration: {} as ProjectSession['rootAdministration'],
-              async plan() {
-                options?.onAgentReadiness?.({
-                  ...value,
-                  entrypoint: { target: { kind: 'binding', id: 'model' }, state: 'unavailable' },
-                })
-                return plan(1, true)
-              },
-              async apply() {
-                throw new Error('unchanged review must not apply')
-              },
-              async close() {},
-            }
-          },
-        },
-        { interactive: false },
-      )
-      expect(await main(['review'], invocation.options)).toBe(0)
-      expect(invocation.output.join('')).toContain('default target is unavailable')
-      expect(invocation.output.join('')).toContain('$ jig inspect')
-      expect(invocation.output.join('')).not.toContain('$ jig run\n')
-      expect(invocation.output.join('')).not.toContain('Project ready')
-    })
-  })
-
-  test('an external edit during source consent survives and receives a fresh exact capture', async () => {
-    await fixture(async (root) => {
-      const replacement = ' {"kind":"acp","client":"codex","maxTurns":2}\n'
-      let round = 0,
-        applied = 0
-      const host: PrivateCliCommandHost = {
-        async acquire(_project, options) {
-          const current = ++round
-          const value = await readiness(root)
-          return {
-            rootAdministration: {} as ProjectSession['rootAdministration'],
-            async plan() {
-              options?.onAgentReadiness?.(value)
-              return plan(current)
-            },
-            async apply() {
-              applied++
-              expect(current).toBe(2)
-              return { operation: 'admission', planDigest: `sha256:${String(current).repeat(64)}` }
-            },
-            async close() {},
-          }
-        },
-      }
-      const invocation = outputOptions(root, host, {
-        interactive: true,
-        answer: async () => '1',
-        confirm: async (prompt) => {
-          if (prompt.startsWith('Update ')) await writeFile(join(root, grantPath), replacement)
-          return true
-        },
-      })
-      expect(await main(['review'], invocation.options)).toBe(0)
-      expect([round, applied]).toEqual([2, 1])
-      expect(await readFile(join(root, grantPath), 'utf8')).toBe(replacement)
-      expect(invocation.errors.join('')).toContain('no source was overwritten')
-    })
-  })
-
-  test('a failed first-session close prevents source publication, recapture and approval', async () => {
-    await fixture(async (root) => {
-      let acquisitions = 0,
-        applies = 0
-      const host: PrivateCliCommandHost = {
-        async acquire(_project, options) {
-          acquisitions++
-          const value = await readiness(root)
-          return {
-            rootAdministration: {} as ProjectSession['rootAdministration'],
-            async plan() {
-              options?.onAgentReadiness?.(value)
-              return plan(1)
-            },
-            async apply() {
-              applies++
-              return { operation: 'admission', planDigest: `sha256:${'1'.repeat(64)}` }
-            },
-            async close() {
-              throw new Error('private close fault')
-            },
-          }
-        },
-      }
-      const invocation = outputOptions(root, host, {
-        interactive: true,
-        answer: async () => '1',
         confirm: async () => true,
       })
-      expect(await main(['review'], invocation.options)).toBe(2)
-      expect([acquisitions, applies]).toEqual([1, 0])
-      expect(await readFile(join(root, grantPath), 'utf8')).toBe(original)
-      expect(invocation.errors.join('')).toContain('JIG_CLEANUP_FAILED')
-      expect(invocation.errors.join('')).not.toContain('private close fault')
+      expect(await main(['review'], run.options)).toBe(0)
+      expect(events).toContain('apply')
+      expect(run.output.join('')).toContain('Review recorded')
+      expect(run.output.join('')).toContain('$ jig inspect')
+      expect(run.output.join('')).not.toContain('Project ready')
+      expect(run.output.join('')).not.toContain('$ jig run\n')
     })
-  })
-
-  test('cancel review and interruption during source consent leave previous source and approval untouched', async () => {
-    for (const mode of ['cancel', 'interrupt']) {
-      await fixture(async (root) => {
-        const controller = new AbortController()
-        let acquisitions = 0,
-          applies = 0,
-          closes = 0
-        const host: PrivateCliCommandHost = {
-          async acquire(_project, options) {
-            acquisitions++
-            const value = await readiness(root)
-            return {
-              rootAdministration: {} as ProjectSession['rootAdministration'],
-              async plan() {
-                options?.onAgentReadiness?.(value)
-                return plan(1)
-              },
-              async apply() {
-                applies++
-                return { operation: 'admission', planDigest: `sha256:${'1'.repeat(64)}` }
-              },
-              async close() {
-                closes++
-              },
-            }
-          },
-        }
-        const invocation = outputOptions(root, host, {
-          interactive: true,
-          signal: controller.signal,
-          answer: async () => (mode === 'cancel' ? '3' : '1'),
-          confirm: async () => {
-            controller.abort()
-            return true
-          },
-        })
-        expect(await main(['review'], invocation.options)).toBe(mode === 'cancel' ? 1 : 2)
-        expect([acquisitions, applies, closes]).toEqual([1, 0, 1])
-        expect(await readFile(join(root, grantPath), 'utf8')).toBe(original)
-        expect(await readFile(join(root, 'jig.lock'), 'utf8')).toBe('previous exact approval')
-      })
-    }
-  })
-
-  test('repeated source changes stop at the bounded correction limit without overwriting external edits', async () => {
-    await fixture(async (root) => {
-      let round = 0,
-        applies = 0,
-        changes = 0
-      let latest = original
-      const host: PrivateCliCommandHost = {
-        async acquire(_project, options) {
-          const current = ++round
-          const value = await readiness(root)
-          return {
-            rootAdministration: {} as ProjectSession['rootAdministration'],
-            async plan() {
-              options?.onAgentReadiness?.(value)
-              return plan(current)
-            },
-            async apply() {
-              applies++
-              return { operation: 'admission', planDigest: `sha256:${'1'.repeat(64)}` }
-            },
-            async close() {},
-          }
-        },
-      }
-      const invocation = outputOptions(root, host, {
-        interactive: true,
-        answer: async () => '1',
-        confirm: async (prompt) => {
-          if (!prompt.startsWith('Update '))
-            throw new Error('unstable source must not reach execution approval')
-          latest = ' '.repeat(++changes) + original
-          await writeFile(join(root, grantPath), latest)
-          return true
-        },
-      })
-      expect(await main(['review'], invocation.options)).toBe(2)
-      expect(round).toBeLessThanOrEqual(9)
-      expect(applies).toBe(0)
-      expect(await readFile(join(root, grantPath), 'utf8')).toBe(latest)
-      expect(invocation.errors.join('')).toContain('JIG_REVIEW_SETUP_LIMIT')
-      expect(await readFile(join(root, 'jig.lock'), 'utf8')).toBe('previous exact approval')
-    })
-  })
 })

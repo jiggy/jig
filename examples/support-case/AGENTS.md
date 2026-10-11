@@ -17,11 +17,9 @@ credit eligibility and customer-facing claims.
 - `test/` owns deterministic application checks; the public walkthrough belongs
   in `docs/jig/guide/support-case.md`.
 
-- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
-  may offer a separately confirmed named-grant correction; manual JSON editing
-  remains available. Every source correction requires fresh review and approval.
-  Keep client choices explicit; no installed-client fallback.
+- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
+  The assessor keeps its small private response schema beside its Agent call;
+  complete proposal validation and the resolver's credit policy remain independent.
 
 ## Local Contracts
 

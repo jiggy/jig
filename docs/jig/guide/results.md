@@ -33,6 +33,9 @@ Use `jig inspect` to list targets in the last approved revision. Use
 `jig inspect binding:repair` (or an exact `flow:` target) to read its invocation
 contract, settings schema, configured settings, resolved slots, resource grants,
 and attachments. The contract includes input, outcomes and channels.
+An approved review client selection appears as effective ACP policies and retained
+`agentOverride` origin. It is not inferred from current source and does not become
+a preference for a later review.
 `--json` or redirected stdout returns JSON.
 The terminal view starts with invocation guidance: required input fields,
 placeholder file paths, and channel requirements. Replace the placeholders
@@ -187,30 +190,43 @@ omitted output on a writable target selects a fresh temporary destination.
 
 ### Agent setup failures during review
 
-Review names the selected Agent, explains the known setup failure, and points to
-the Binding declaration and resource slot that selected it. For example, a
-Codex executable error points to the grant selecting `client: 'codex'`.
-Select an installed client through `CODEX_PATH` or operator `PATH`; Codex's
-supported npm and Volta layouts resolve to their native executable without
-running the launcher. Shell aliases and functions are not executables.
-An unsupported wrapper requires selecting the underlying native file.
-An explicit override must be an
-absolute executable file and does not fall back to `PATH`. Change the resource
-grant if you intended to use another client, then review again.
+A selected ACP prerequisite failure stops the entire `jig review` before new
+approval, including an otherwise unchanged review. This applies in terminals,
+scripts and `--yes` use, even when a code target is ready or an input might avoid
+the selected Agent branch. An unselected missing client does not block review.
+Any earlier approved code and client remain unchanged; Run still performs its
+normal admission and environment checks.
 
-Known expected setup refusals leave only dependent targets unavailable. Unrelated
-code targets can still be approved; a mixed route requiring that Agent remains
-unavailable even if one input would avoid it. Review reports ready and unavailable
-counts; a zero-ready review does not claim the project can run. Installing a client
-later needs a new review before its route is executable. An unavailable entrypoint
-never falls back to another target.
+The error identifies the known cause, selected client and affected Binding/slot.
+Its location refers to the captured source: a verified client literal when
+known, selection context for a computed expression, or the Binding file and
+logical slot when no exact client line is known. Named policies point to their
+captured JSON file and identify affected recipients. The next review captures
+your edits afresh.
 
-Interactive review can offer another discovered client when the selected executable
-is missing, followed by a separate confirmation showing the file, all direct
-recipients and complete changed policy. Other setup issues receive repair guidance.
-Manual edits remain available. `--yes` and noninteractive review never write grants.
-After a confirmed source change, fresh capture and ordinary approval follow;
-uncertain publication or cleanup ends correction without approval.
+Repair the selected client's installation or exported path override. A rejected
+`CODEX_PATH`, `CLAUDE_PATH` or `PI_PATH` is an override problem, not proof that the
+client is uninstalled; an explicit override does not fall back to `PATH`.
+Codex's supported npm and Volta layouts resolve to their native executable
+without running the launcher. Shell aliases and functions are not executables.
+An unsupported wrapper needs its underlying native file; helper and other setup
+failures have their own repair guidance.
+
+Executable failures may list passively detected supported alternatives, labelled
+as executable detection only. They do not establish authentication, qualification
+or compatibility. To change clients permanently, edit the named policy or inline
+Binding shown by the diagnostic and review again. You may instead use an explicit
+[`jig review --agent codex`](agents.md#switching) proposal for every selected ACP
+policy. Preserve turn limits and choose model/retention changes deliberately.
+No interactive correction or automatic source write occurs. Retry guidance does
+not add networking or authority approval on your behalf.
+
+Review checks prerequisites without starting a Flow or calling a model. It may
+have prepared dependencies or performed separately requested contract generation
+before failure. No new approval is recorded. `--details` expands the retained
+observed report, discloses its bounds and identifies checks that did not finish;
+it does not run extra checks. `jig review --json` is unsupported. Run and inspection
+keep their existing machine-output options.
 
 `--allow-resolution-network` produces one warning covering dependency preparation
 for the entire review. Per-package progress still identifies which package is

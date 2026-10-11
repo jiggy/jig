@@ -9,8 +9,9 @@ descriptors.
 
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
   It also owns final failure ordering, concise human packet summaries, Agent
-  setup cause/selection locations, guided separately confirmed named ACP grant corrections, compact inline
-  work projection/root-summary deduplication, and one dependency-network notice per review.
+  setup cause/captured selection locations, manual recovery, review-only client
+  selection, all-selected-ACP CLI prerequisite refusal, compact inline work
+  projection/root-summary deduplication, and one dependency-network notice per review.
   Schema authoring recovery identifies the required dialect and supported
   vocabulary without exposing rejected values or private compiler diagnostics.
   Command syntax accents omit Markdown delimiters; prompts wait for queued
@@ -69,8 +70,10 @@ descriptors.
   compiler operation, output ownership and interrupted-publication recovery.
   Identified single-form authoring may emit the descriptor's `features` map;
   support claims and dependency requirements remain package metadata.
-- `grants.md` owns inline/named resource policy, capture and reuse, recipient
-  identity and explicit authority approval through the existing plan.
+- `grants.md` owns inline-by-default/named resource policy, capture and meaningful
+  reuse, recipient identity and explicit authority approval through the existing
+  plan. It defers review client construction to project policy; review does not
+  publish ACP source corrections.
 - `project-sdk.md` and `project-policy.md` own the approved string `entrypoint`,
   shared Run grammar, exact `--out` overrides, automatic temporary packets for
   retained writable targets, stdout-only result targets and stable output/no-output
@@ -78,7 +81,11 @@ descriptors.
   contract-keyed `defaultProviders`,
   sole-match review-time resolution and declared `npm:` package targets.
   Selected feature requirements qualify package support before execution;
-  unavailable dependencies affect their consumers, not unrelated targets.
+  SDK unavailable dependencies affect their consumers, not unrelated targets.
+  CLI review refuses any observed typed selected ACP prerequisite before apply
+  or unchanged success. Explicit `review --agent` construction, effective policy
+  identity and retained origin agree across candidate, qualification, lock,
+  admission and inspection; Run does not override or remember this selection.
   Authoring and lock schemas mirror selected targets and retained effective
   routes, not mutable runtime lookup or new resource authority.
 - `http-request.md` owns exact endpoint policy and requests,

@@ -114,6 +114,7 @@ export interface PrivateProjectSessionHost {
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
   readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
+  readonly agentOverride?: AcpGrant['client']
   readonly detectAgentAlternatives?: (
     selected: readonly AcpGrant['client'][],
   ) => Promise<readonly AcpGrant['client'][]>
@@ -395,6 +396,7 @@ function createSession(
           {
             projectRoot: owner.root,
             storeRoot: packageStoreRoot,
+            ...(host.agentOverride === undefined ? {} : { agentOverride: host.agentOverride }),
             dependencyFlows: (selectors) =>
               captureDependencyFlows({
                 root: owner.root,
@@ -1151,6 +1153,9 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
       'PROJECT_CHECKPOINT_ATTACHMENT',
+      'PROJECT_AGENT_OVERRIDE_MODEL',
+      'PROJECT_AGENT_OVERRIDE_RETENTION',
+      'PROJECT_AGENT_OVERRIDE_UNUSED',
     ].includes(code)
   )
 }

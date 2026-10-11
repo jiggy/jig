@@ -23,10 +23,11 @@ below. Neither establishes general repair reliability or comparative advantage.
 
 In a copy of the example, inspect `batch.json`, the Agent, single-pass and
 checked-correction Bindings, and the two named case files. Configure a supported
-client through [Choose an Agent](./agents.md). The supplied `grants/agent.json`
-selects native Codex through ACP as an example choice. Interactive review can offer
-a separately confirmed correction when its executable is missing; manual JSON edits
-also require renewed review. Review prepares the ordinary declared dependencies. To use an HTTP Agent method instead, follow the package and
+client through [Choose an Agent](./agents.md). The inline policy in
+`bindings/agent.ts` selects native Codex through ACP as an example choice. Edit
+that Binding for a lasting choice, or explicitly propose another client during
+review. A selected ACP prerequisite failure stops review before new approval;
+review never rewrites policy. Review prepares the ordinary declared dependencies. To use an HTTP Agent method instead, follow the package and
 Binding setup in [Reuse the Agent method](agent-method.md#invoke-the-ordinary-flow),
 including its optional [OpenAI-compatible gateway route](agent-method.md#use-an-openai-compatible-gateway).
 Then authenticate the selected Agent:

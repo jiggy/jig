@@ -1,5 +1,9 @@
 import { invalid } from '../diagnostics.js'
 import { decodeJson1 } from '../json.js'
+import {
+  type PrivateAgentSourceLocation,
+  privateAgentGrantSourceLocation,
+} from './agent-source-location.js'
 import type { ProjectSource } from './author.js'
 import { captureDeclarationSource } from './declaration-source.js'
 import { validateGrantPolicy } from './grant-validation.js'
@@ -12,7 +16,7 @@ export async function captureGrantSource(root: PrivateProjectRoot, selection?: P
   if (source.members.length > 256)
     invalid('PROJECT_GRANTS_LIMIT', 'grant catalog exceeds 256 entries', 'jig.ts')
   const grants: Record<string, GrantPolicy> = Object.create(null)
-  const files: Record<string, { path: string; bytes: Uint8Array }> = Object.create(null)
+  const files: Record<string, PrivateAgentSourceLocation> = Object.create(null)
   let bytes = 0
   for (const member of source.members) {
     const content = await source.read(member, 32768)
@@ -22,7 +26,10 @@ export async function captureGrantSource(root: PrivateProjectRoot, selection?: P
       const policy = normalizeGrant(decodeJson1(content))
       validateGrantPolicy(policy)
       grants[grantName(member.id)] = policy
-      files[member.id] = Object.freeze({ path: member.projectPath, bytes: content.slice() })
+      files[member.id] =
+        policy.kind === 'acp'
+          ? privateAgentGrantSourceLocation(member.projectPath, content, policy.client)
+          : Object.freeze({ path: member.projectPath, kind: 'unlocated' })
     } catch (error) {
       invalid(
         'PROJECT_GRANT_INVALID',

@@ -14,16 +14,17 @@ See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-The example declares the ordinary ACP Agent dependency and includes
-`grants/agent.json`. [Choose your client](./agents.md#switching) there; Pi is an example
-choice, not a Jig preference. The `defaultProviders` map selects that Binding
+The example declares the ordinary ACP Agent dependency and keeps its inline
+policy in `bindings/agent.ts`. [Choose your client](./agents.md#switching) there,
+or explicitly propose one for the current review; Pi is an example choice,
+not a Jig preference. The `defaultProviders` map selects that Binding
 for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/project/logs-cases.json`.
 Download the example directory. Review prepares its ordinary declared dependencies;
 the resolution flag permits dependency-selected network requests before approval.
-When the selected client executable is missing, interactive review can offer a
-separately confirmed source correction. Manual grant edits also require renewed
-review. Run from the example directory:
+A selected ACP prerequisite failure stops review before new approval. Repair
+the selected client or make a deliberate selection, then review again. Policy
+source remains editable; review never writes a correction. Run from the example directory:
 
 ```sh
 jig review --allow-resolution-network
@@ -175,10 +176,10 @@ Add this to the repair specialist Binding in `bindings/specialist.ts`:
 settings: { restoreCorrections: true },
 ```
 
-In `grants/agent.json`, explicitly grant native retention:
+In the Agent Binding's `bindings/agent.ts`, explicitly grant native retention:
 
-```json
-{ "kind": "acp", "client": "codex", "retainSessions": true }
+```ts
+slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } },
 ```
 
 Review these changes before running. [Native restoration](conversations.md#restore-after-a-clean-close)

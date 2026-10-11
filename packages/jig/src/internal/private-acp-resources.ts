@@ -44,6 +44,7 @@ export type PrivateAcpClientOpener = (
 export class PrivateAcpResourceUnavailableError extends Error {
   readonly code: string
   readonly expected: boolean
+  readonly overrideRejected: boolean
   constructor(
     readonly slot: string,
     client: AcpGrant['client'],
@@ -65,6 +66,12 @@ export class PrivateAcpResourceUnavailableError extends Error {
                 ? 'installation'
                 : undefined
     this.expected = isExpectedAcpRefusal(error)
+    this.overrideRejected =
+      this.expected &&
+      stage === 'executable' &&
+      (error instanceof PrivateNativeAgentExecutableUnavailableError ||
+        error instanceof PrivateCodexExecutableUnavailableError) &&
+      error.overrideRejected
     this.code = stage === undefined ? 'PROJECT_ACP_UNAVAILABLE' : acpSetupCode(client, stage)
   }
 }

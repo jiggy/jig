@@ -20,6 +20,14 @@ admitted FLOW packages.
   closed descriptor operations on Linux and qualified Darwin. Workspace capture
   preserves declared source/dependency selection and raw-name validation;
   filesystem capture does not independently qualify Bun installation or execution.
+- `src/project/agent-source-location.ts` owns the private captured-source lexical
+  recognizer for ACP diagnostics: at most 1 MiB of TypeScript or 32 KiB of JSON,
+  32,768 tokens and nesting depth 64. Locations use one-based lines and
+  Unicode-scalar columns. Only proven direct ordinary literals receive client
+  locations. Selection context also requires the trusted ordinary import and a
+  complete single-argument default call; unsupported, ambiguous or bounded-out
+  input uses an unlocated file/slot fallback. Never evaluate or reread source, or add an
+  AST, editor or compiler dependency to obtain these facts.
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking, retained-lock decoding and dispatch. Dispatch
   caches longest paths per immutable candidate; repeated routes must not expand
@@ -170,8 +178,9 @@ admitted FLOW packages.
 - Default `init` writes a greeting Flow with a string input and a world fallback; `--bare` writes only the
   skeleton. Neither installs, networks, approves, or executes. Generated
   packages use the same dependency review as consumer-authored packages. The
-  Optional `--agent` selection writes a declared ACP package dependency, visible
-  named JSON grant selected by a Binding and contract-keyed default. It chooses no client implicitly and
+  optional `--agent` selection writes a declared ACP package dependency, an
+  inline native grant in its Binding and a contract-keyed default. It chooses no
+  client implicitly and
   does not inspect installations or authentication. Generated package versions
   are checked against their manifests. The greeting names the exact tested SDK version; its regression checks the SDK
   manifest so a moving npm tag cannot silently select a different wire contract.
@@ -183,9 +192,13 @@ admitted FLOW packages.
   reports Jig runtime verification, operator resource configuration, and
   project-state recovery separately. Capturing configuration does not verify a
   native client; only targets selecting an ACP grant trigger that verification.
-  Expected trusted setup refusals retain unavailable exact targets and their
-  selected dependents; unrelated ready routes remain usable. Error display codes
-  alone cannot classify arbitrary integrity, I/O, cancellation or cleanup faults.
+  SDK expected trusted setup refusals retain unavailable exact targets and their
+  selected dependents; unrelated targets keep their own readiness. CLI review
+  stops any observed typed selected ACP prerequisite before avoidable target
+  execution preparation, unchanged success or apply. Its readiness callback throws one
+  fixed private typed refusal; only that exact marker receives setup rendering.
+  Arbitrary integrity, I/O, cancellation and cleanup faults retain their own
+  failure, never classification from display codes or truncated issue rows.
   Inspection discloses retained availability separately from environment freshness;
   chooser selects ready routes only. Installing a client requires renewed review
   before an unavailable retained route can run.
@@ -202,6 +215,8 @@ admitted FLOW packages.
   acquire execution authority, resolve dependencies, contact providers, recover
   or write state. Credential reads stay private; matching identities do not
   establish source freshness, launch readiness or remote availability.
+  Approved effective ACP policy and optional retained `agentOverride` identify
+  review-argument origin without live-source inference or a later review default.
   Schema type diagnostics retain only closed expected/received JSON types, not
   rejected values. Human Run output leads with host facts before arbitrary results.
 - Manifest-policy diagnostics identify a closed cause and JSON field without
@@ -244,14 +259,24 @@ admitted FLOW packages.
   override them. Keep this root-only profile and its bounds synchronized with
   `docs/jig/spec/project-policy.md`.
 - Binding slots select inline HTTP, command or finite ACP grants, or optional
-  named JSON policies.
-  `src/cli-review-agent-setup.ts` owns guided review interaction; the private
-  `src/internal/review-grant-edit.ts` publishes only a separately consented
-  correction of the captured named JSON policy after session closure. Recapture
-  precedes separate execution approval. Preserve turns, require explicit model
-  and incompatible retention treatment, fence observed source/staging changes,
-  and stop on cleanup/publication uncertainty. Atomic rename is not filesystem
-  compare-and-swap. Manual JSON editing remains the ordinary authoring path.
+  named JSON policies for meaningful reuse or independent management.
+  `src/cli-review-agent-setup.ts` renders bounded read-only captured policy facts:
+  verified client literals, selection context or honest file/slot fallback,
+  known causes, passive executable alternatives and manual recovery. It never
+  writes policy, recaptures after an edit or acquires publication authority.
+  Put repair and one exact retry before detailed accounting. Default output
+  discloses omissions and unchecked resources when present; complete report
+  accounting belongs under `--details`. Executable recovery can suggest adding
+  or replacing `--agent` for a detected client, with global scope and repeated
+  review explained; never promise that other policies or authentication qualify.
+  Explicit `review --agent codex|claude|pi` requires a value and changes only the
+  client of every selected normalized ACP policy before qualification. Retain
+  the operand in capture identity and ordinary lock `agentOverride`; the strict
+  decoder requires nonzero selected ACP policies agreeing with it. Source stays
+  unchanged; Run uses approved meaning and a later bare review uses source again.
+  Cross-client model pins, incompatible retention and no selected ACP policy
+  refuse the whole request; same-client selection still qualifies. Keep other
+  fields, authority opt-ins and previous approved code/client together on failure.
   An ACP grant may pin a recipient-specific model; this changes approval and
   runtime identity without changing operator authentication or client selection.
   `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
@@ -335,7 +360,9 @@ admitted FLOW packages.
   in `--details`. Keep the changed fact, environment uncertainty and approval
   consequence visible in compact reviews. Omit repeated ACP selections only
   after proving unchanged runtime identity under identical recipient routes;
-  unknown comparisons remain visible, and details always show selections.
+  unknown comparisons remain visible, and details always show selections. An
+  explicit review client operand retains its authored/effective selection summary
+  even for same-client or unchanged review.
   Dim executable paths and unchanged context; omit review categories with no
   changes from the ordinary summary. Changed-record labels and their identifiers
   use bold amber: they identify work requiring attention, not secondary metadata.
@@ -381,7 +408,8 @@ admitted FLOW packages.
   network notice once per review before preparation, retaining package progress.
 
 - Agent selection belongs to ordinary dependencies, Bindings and resource grants,
-  never inferred from credentials or a preferred vendor. Selection remains
+  or an explicitly retained review client operand, never inferred from credentials
+  or a preferred vendor. Selection remains
   distinct from authority approval; the optional init picker only authors files.
   Client prerequisite errors explain both repairing the selected installation
   and editing the slot's inline or named ACP grant to use another supported client,
@@ -476,10 +504,13 @@ receipt, transport, lifetime, terminal restoration, JSON and immutable-capture
 proof. Frozen standalone package consumers and frozen
 installed Jig runs are distinct gates; source mocks and design approval qualify
 neither installed behavior nor newcomer usability.
-`test/cli-review-agent-setup.test.ts` and `test/review-grant-edit.test.ts`
-check explicit correction consent, shared recipients, preserved policy, captured
-root/file fences and publication/cleanup uncertainty. CLI integration checks session
-closure before publication, fresh capture and distinct execution approval.
+`test/cli-review-agent-setup.test.ts` and `test/project-resource-qualification.test.ts`
+check bounded read-only setup facts, shared recipients, preserved policy, honest
+captured locations and authoritative refusal despite report omission. CLI checks
+refusal before avoidable target execution preparation, unchanged success and apply,
+with prior approval/source preserved. Linking/capture and lock tests cover the explicit
+review operand, all-selected-ACP rules, exact identity and retained origin;
+ordinary authority, generation and cleanup checks remain independent.
 `inspect --result` bypasses project/environment acquisition and reads only the
 selected descriptor-confined packet. Its fixed views label all evidence recorded,
 never reconstruct live views or authority, and preserve exact decoded JSON.

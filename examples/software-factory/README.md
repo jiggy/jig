@@ -12,11 +12,10 @@ whether to apply, merge, or release any patch.
 
 With Jig installed on a [supported host](https://jig.md/guide/), configure and
 authenticate a native client through [Choose an Agent](https://jig.md/guide/agents).
-Interactive review can offer a separately confirmed client correction in
-`grants/agent.json` when the selected executable is missing; manual JSON editing
-also requires renewed review. Inspect `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
-the two named case files under `flows/factory/`. The supplied Binding uses
-native ACP Codex. For an HTTP Agent route instead, follow the package and
+The inline native policy in `bindings/agent.ts` selects Codex as an example.
+Edit that Binding and review again for a lasting client preference. Inspect
+`batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
+the two named case files under `flows/factory/`. For an HTTP Agent route, follow the package and
 Binding setup in the [Agent method guide](../../docs/jig/guide/agent-method.md).
 From this directory:
 
@@ -24,6 +23,14 @@ From this directory:
 jig review --allow-resolution-network
 jig run
 ```
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
 `fixtures` source tree and an eight-minute deadline. Jig chooses a fresh packet

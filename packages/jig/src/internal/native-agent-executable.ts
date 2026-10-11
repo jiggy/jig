@@ -7,7 +7,10 @@ import { resolvePrivateCodexInstallation } from './codex-installation.js'
 type NativeClient = 'codex' | 'claude' | 'pi' | 'bwrap'
 
 export class PrivateNativeAgentExecutableUnavailableError extends Error {
-  constructor(readonly client: NativeClient) {
+  constructor(
+    readonly client: NativeClient,
+    readonly overrideRejected = false,
+  ) {
     super(`the native ${client} executable is unavailable`)
   }
 }
@@ -26,7 +29,7 @@ export async function resolvePrivateNativeAgentExecutable(
   try {
     if (selected !== undefined) {
       if (!isAbsolute(selected) || selected.includes('\0'))
-        throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client))
+        throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client, true))
       return await selectExecutable(
         client,
         await selectedExecutable(selected, client),
@@ -178,6 +181,6 @@ async function selectedExecutable(path: string, client: NativeClient): Promise<s
     return await executable(path)
   } catch (error) {
     if (!expectedExecutableObservation(error)) throw error
-    throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client))
+    throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client, true))
   }
 }

@@ -8,11 +8,11 @@ An application can ask an Agent to draft an incident brief, supply a correction,
 and obtain a revised answer in the same native conversation. The application
 chooses when to continue; the operator bounds how many turns may run.
 
-Use the ordinary [native Agent package](agents.md#local-clients). In the named
-grant selected by its Binding, allow two turns:
+Use the ordinary [native Agent package](agents.md#local-clients). In its
+Binding, allow two turns with an inline policy:
 
-```json
-{ "kind": "acp", "client": "codex", "maxTurns": 2 }
+```ts
+slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } },
 ```
 
 Choose your installed client and model; this is not a product default. Review
@@ -42,8 +42,8 @@ whose Agent Run contract is selected by `--use`; it grants no additional powers.
 Jig separately prepares reviewed execution dependencies. Choose
 your native client; `codex` here is an example, not a default.
 
-In `grants/agent.json`, set the native grant to
-`{"kind":"acp","client":"codex","maxTurns":2}`. Add `requires` as shown below
+In `bindings/agent.ts`, set the native slot to
+`{ kind: 'acp', client: 'codex', maxTurns: 2 }`. Add `requires` as shown below
 to the generated `agent` slot in `flows/worker/FLOW.meta.json`.
 Replace `flows/worker/FLOW.ts` with the complete caller below. Then run:
 

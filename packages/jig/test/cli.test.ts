@@ -384,15 +384,10 @@ test.each(['codex', 'claude', 'pi'] as const)(
         dependencies: { '@jigging/agent-acp': manifest.version },
       })
       expect(await Bun.file(join(destination, 'bindings/agent.ts')).text()).toContain(
-        'slots: { native: "grant:agent" }',
+        `slots: { native: { kind: "acp", client: ${JSON.stringify(client)} } }`,
       )
-      expect(await Bun.file(join(destination, 'grants/agent.json')).json()).toEqual({
-        kind: 'acp',
-        client,
-      })
-      expect(await Bun.file(join(destination, 'jig.ts')).text()).toContain(
-        'grants: discover("./grants")',
-      )
+      expect(await Bun.file(join(destination, 'grants/agent.json')).exists()).toBeFalse()
+      expect(await Bun.file(join(destination, 'jig.ts')).text()).not.toContain('grants:')
       expect(await Bun.file(join(destination, 'jig.ts')).text()).toContain(
         'defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }',
       )
@@ -434,10 +429,10 @@ test('interactive Agent selection is explicit and cancellation creates nothing',
       if (answer === 'pi') {
         expect(code).toBe(0)
         expect(await readdir(join(root, 'project/flows'))).toEqual([])
-        expect(await Bun.file(join(root, 'project/grants/agent.json')).json()).toEqual({
-          kind: 'acp',
-          client: 'pi',
-        })
+        expect(await Bun.file(join(root, 'project/bindings/agent.ts')).text()).toContain(
+          'client: "pi"',
+        )
+        expect(await Bun.file(join(root, 'project/grants/agent.json')).exists()).toBeFalse()
       } else {
         expect(code).toBe(answer === '' ? 0 : 2)
         expect(await readdir(root)).toEqual([])
@@ -1208,7 +1203,7 @@ describe('finite Jig project commands', () => {
     expect(nonInteractiveEvents).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(nonInteractive.output).toBe('review\n')
     expect(nonInteractive.error).toBe(
-      'Approval required\n\n  Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).\n\n  Diagnostic code: JIG_APPROVAL_REQUIRED\n',
+      'Approval required\n\n  Review the displayed changes. To approve this exact revision without a prompt, rerun with --yes:\n  \n    $ jig review --yes\n\n  Diagnostic code: JIG_APPROVAL_REQUIRED\n',
     )
 
     const declinedEvents: string[] = []
@@ -1227,7 +1222,7 @@ describe('finite Jig project commands', () => {
     expect(prompt).toBe('Approve this exact revision for execution? [y/N] ')
     expect(declinedEvents).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(declined.error).toBe(
-      'Review declined\n\n  The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.\n\n  Diagnostic code: JIG_CHANGES_DECLINED\n',
+      'Review declined\n\n  The proposed changes were not approved. Any existing approval remains unchanged. Dependency requests already made cannot be undone.\n\n  Diagnostic code: JIG_CHANGES_DECLINED\n',
     )
   })
 

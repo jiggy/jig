@@ -230,17 +230,15 @@ test('allowlisted actual selected-executable observations are expected; arbitrar
   ).rejects.toThrow('cancel')
 })
 
-test('private readiness report uses captured custom grant bytes, complete recipient set and independent counts', async () => {
+test('private readiness report uses captured named policy location and groups shared recipients without edit handles', async () => {
   const f = await fixture(),
-    agent = request('agent', native),
+    policy = { kind: 'acp', client: 'pi', maxTurns: 2 } as const,
+    agent = request('agent', { native: { ...native.native!, grant: policy } }),
+    second = request('second', { model: { ...native.native!, grant: policy } }),
     code = request('code'),
-    requests = [agent, code]
+    requests = [agent, second, code]
   const failures = await qualify(requests, f)
-  const bytes = new TextEncoder().encode('{ "kind":"acp", "client":"pi", "maxTurns":2 }\n')
-  const policy = { kind: 'acp', client: 'pi', maxTurns: 2 } as const
   const aggregate = {
-    project: { value: { entrypoint: 'binding:agent' } },
-    root: { device: '1', inode: '2' },
     bindings: [
       {
         id: 'agent',
@@ -254,7 +252,17 @@ test('private readiness report uses captured custom grant bytes, complete recipi
       },
     ],
     grants: { chosen: policy },
-    grantFiles: { chosen: { path: 'policy/chosen.json', bytes } },
+    grantFiles: {
+      chosen: { path: 'policy/chosen.json', line: 3, column: 12, kind: 'client-literal' },
+    },
+    agentSources: {
+      agent: {
+        native: { path: 'policy/chosen.json', line: 3, column: 12, kind: 'client-literal' },
+      },
+      second: {
+        model: { path: 'policy/chosen.json', line: 3, column: 12, kind: 'client-literal' },
+      },
+    },
   } as unknown as PrivateRetainedPackageProject
   const report = await privateAgentReadinessReport({
     aggregate,
@@ -263,19 +271,136 @@ test('private readiness report uses captured custom grant bytes, complete recipi
     featureFailures: new Map(),
     alternatives: ['codex'],
   })
-  expect(report.entrypoint).toEqual({ target: agent.target, state: 'unavailable' })
-  expect(report.projectIdentity).toEqual({ device: '1', inode: '2' })
-  expect(report.readyTargets).toBe(1)
-  expect(report.unavailableTargets).toBe(1)
+  expect(report.selectedAcpUnavailable).toBeTrue()
+  expect(report.observedIssues).toBe(2)
+  expect(report.observedPolicyGroups).toBe(1)
   expect(report.complete).toBeTrue()
-  expect(report.issues[0]?.grant?.path).toBe('policy/chosen.json')
-  expect(report.issues[0]?.grant?.bytes).toEqual(bytes)
-  expect(report.issues[0]?.grant?.recipients).toEqual([
+  expect(report.uncheckedResources).toBe(0)
+  expect(report.primaryIssue?.code).toBe('PROJECT_ACP_PI_EXECUTABLE')
+  expect(report.issues).toHaveLength(1)
+  expect(report.issues[0]?.location).toEqual({
+    path: 'policy/chosen.json',
+    line: 3,
+    column: 12,
+    kind: 'client-literal',
+  })
+  expect(report.issues[0]?.policy).toEqual(policy)
+  expect(report.issues[0]?.recipients).toEqual([
     { binding: 'agent', declaration: 'bindings/custom.ts', slot: 'native' },
     { binding: 'second', declaration: 'bindings/other.ts', slot: 'model' },
   ])
   expect(report.issues[0]?.alternatives).toEqual(['codex'])
-  expect(report.issues[0]?.grant?.bytes).not.toBe(bytes)
+  expect(report.issues[0]?.observedRefusals).toBe(2)
+  expect(report.selections).toHaveLength(2)
+  expect(report.selections[0]).toMatchObject({
+    binding: 'agent',
+    sourceClient: 'pi',
+    effectiveClient: 'pi',
+    source: { path: 'policy/chosen.json', line: 3 },
+  })
+  expect(JSON.stringify(report)).not.toContain('bytes')
+  expect(JSON.stringify(report)).not.toContain('projectIdentity')
+})
+
+test('report keeps same-client inline policies separate and records override source honestly', async () => {
+  const requests = ['one', 'two'].map((id) => request(id, native))
+  const cause = {
+    kind: 'acp',
+    slot: 'native',
+    client: 'pi',
+    diagnostic: 'PROJECT_ACP_PI_MODEL',
+  } as const
+  const failure = {
+    state: 'unavailable',
+    code: 'RUNTIME_UNAVAILABLE',
+    cause,
+    evidenceDigests: [],
+  } as const
+  const aggregate = {
+    bindings: ['one', 'two'].map((id) => ({
+      id,
+      sourcePath: `bindings/${id}.ts`,
+      evaluation: { value: { slots: { native: { kind: 'acp', client: 'codex' } } } },
+    })),
+    grants: {},
+    grantFiles: {},
+    agentOverride: 'pi',
+  } as unknown as PrivateRetainedPackageProject
+  const report = await privateAgentReadinessReport({
+    aggregate,
+    requests,
+    failures: new Map(
+      requests.map((r) => [r.target.kind === 'binding' ? `binding\0${r.target.id}` : '', failure]),
+    ),
+    featureFailures: new Map(),
+    alternatives: ['claude'],
+  })
+  expect(report.observedPolicyGroups).toBe(2)
+  expect(report.issues.map((issue) => issue.declaration)).toEqual([
+    'bindings/one.ts',
+    'bindings/two.ts',
+  ])
+  expect(report.issues[0]).toMatchObject({
+    client: 'pi',
+    sourceClient: 'codex',
+    override: 'pi',
+    alternatives: [],
+  })
+  expect(report.issues[0]?.location.kind).toBe('unlocated')
+  expect(report.selections[1]).toMatchObject({ sourceClient: 'codex', effectiveClient: 'pi' })
+})
+
+test('report discloses first-slot and feature-skipped checks without treating feature refusal as an ACP blocker', async () => {
+  const agent = request('agent', { a: native.native!, b: native.native! })
+  const skipped = request('skipped', native)
+  const cause = {
+    kind: 'acp',
+    slot: 'a',
+    client: 'pi',
+    diagnostic: 'PROJECT_ACP_PI_EXECUTABLE',
+  } as const
+  const aggregate = {
+    bindings: [agent, skipped].map((r) => ({
+      id: r.target.kind === 'binding' ? r.target.id : '',
+      sourcePath: 'bindings/model.ts',
+      evaluation: {
+        value: {
+          slots: {
+            a: { kind: 'acp', client: 'pi' },
+            b: { kind: 'acp', client: 'pi' },
+            native: { kind: 'acp', client: 'pi' },
+          },
+        },
+      },
+    })),
+    grants: {},
+    grantFiles: {},
+  } as unknown as PrivateRetainedPackageProject
+  const featureFailures = new Map([['binding\0skipped', 'unsupported-feature']])
+  const report = await privateAgentReadinessReport({
+    aggregate,
+    requests: [agent, skipped],
+    featureFailures,
+    failures: new Map([
+      [
+        'binding\0agent',
+        { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE', cause, evidenceDigests: [] },
+      ],
+    ]),
+  })
+  expect(report.observedIssues).toBe(1)
+  expect(report.uncheckedResources).toBe(2)
+  expect(report.selections).toHaveLength(3)
+  const noAcpRefusal = await privateAgentReadinessReport({
+    aggregate,
+    requests: [skipped],
+    failures: new Map(),
+    featureFailures,
+  })
+  expect(noAcpRefusal.selectedAcpUnavailable).toBeFalse()
+  expect(noAcpRefusal.primaryIssue).toBeUndefined()
+  expect(noAcpRefusal.observedIssues).toBe(0)
+  expect(noAcpRefusal.uncheckedResources).toBe(1)
 })
 
 test('planning preserves the closed cause while a wrong native client or diagnostic is rejected', () => {
@@ -510,7 +635,7 @@ test('strict retained Candidate and Plan reopen exact refusal causes and reject 
   ).toThrow('only runtime refusal')
 })
 
-test('readiness report overflow disables all editable source handles instead of showing partial recipients', async () => {
+test('report overflow preserves the typed selected ACP blocker, primary cause and truthful omissions', async () => {
   const f = await fixture(),
     agent = request('agent', native),
     failures = await qualify([agent], f)
@@ -520,16 +645,9 @@ test('readiness report overflow disables all editable source handles instead of 
     evaluation: { value: { slots: { native: 'grant:chosen' } } },
   }))
   const aggregate = {
-    project: { value: {} },
-    root: { device: '1', inode: '2' },
     bindings,
     grants: { chosen: { kind: 'acp', client: 'pi' } },
-    grantFiles: {
-      chosen: {
-        path: 'grants/chosen.json',
-        bytes: new TextEncoder().encode('{"kind":"acp","client":"pi"}\n'),
-      },
-    },
+    grantFiles: { chosen: { path: 'grants/chosen.json' } },
   } as unknown as PrivateRetainedPackageProject
   const report = await privateAgentReadinessReport({
     aggregate,
@@ -538,9 +656,13 @@ test('readiness report overflow disables all editable source handles instead of 
     featureFailures: new Map(),
   })
   expect(report.complete).toBeFalse()
-  expect(report.issues).toEqual([])
-  expect(report.readyTargets).toBe(0)
-  expect(report.entrypoint).toBeUndefined()
+  expect(report.selectedAcpUnavailable).toBeTrue()
+  expect(report.primaryIssue).toMatchObject({ code: 'PROJECT_ACP_PI_EXECUTABLE', client: 'pi' })
+  expect(report.observedIssues).toBe(1)
+  expect(report.observedPolicyGroups).toBe(1)
+  expect(report.issues[0]?.omittedRecipients).toBeGreaterThan(0)
+  expect(report.issues[0]!.recipients.length + report.issues[0]!.omittedRecipients).toBe(4096)
+  expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThanOrEqual(1_048_576)
 })
 
 test('shared dependency diamonds stay bounded and choose one deterministic direct witness', async () => {
@@ -569,4 +691,56 @@ test('shared dependency diamonds stay bounded and choose one deterministic direc
       })),
     ),
   ).not.toThrow()
+})
+
+test('actual rejected executable override keeps only its closed name outside retained readiness', async () => {
+  const f = await fixture()
+  for (const client of ['codex', 'claude', 'pi'] as const) {
+    const selected = request('agent', {
+      native: { ...native.native!, grant: { kind: 'acp', client } },
+    })
+    const key = `${client.toUpperCase()}_PATH`
+    const failed = await qualifyPrivateProjectAcpResources({
+      requests: [selected],
+      resources: openPrivateAcpResources(
+        f.support,
+        { PATH: '', [key]: 'private-invalid-override' },
+        f.project,
+      ),
+      installedSupport: f.support,
+      featureFailures: new Map(),
+      signal: new AbortController().signal,
+    })
+    const report = await privateAgentReadinessReport({
+      aggregate: {
+        bindings: [
+          {
+            id: 'agent',
+            sourcePath: 'bindings/agent.ts',
+            evaluation: { value: { slots: { native: { kind: 'acp', client } } } },
+          },
+        ],
+        grants: {},
+        grantFiles: {},
+      } as unknown as PrivateRetainedPackageProject,
+      requests: [selected],
+      failures: failed,
+      featureFailures: new Map(),
+    })
+    expect(report.primaryIssue?.rejectedOverride).toBe(key)
+    expect(JSON.stringify(report)).not.toContain('private-invalid-override')
+    expect(JSON.stringify(failed.get('binding\0agent'))).not.toContain('rejectedOverride')
+    const ordinary = await qualify([selected], f)
+    const generic = await privateAgentReadinessReport({
+      aggregate: {
+        bindings: [],
+        grants: {},
+        grantFiles: {},
+      } as unknown as PrivateRetainedPackageProject,
+      requests: [selected],
+      failures: ordinary,
+      featureFailures: new Map(),
+    })
+    expect(generic.primaryIssue?.rejectedOverride).toBeUndefined()
+  }
 })

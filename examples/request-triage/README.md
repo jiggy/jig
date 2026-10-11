@@ -11,7 +11,11 @@ same intake Flow with different classifiers. The caller always invokes its
 | `mixed` | Recognize prefixes, then ask an Agent when absent | Interpret the message |
 
 With Jig installed on a [supported host](https://jig.md/guide/), run from this
-directory. The default code classifier needs no Agent:
+directory. Configure and authenticate the client selected in `bindings/model.ts`
+through [Choose an Agent](https://jig.md/guide/agents); the included inline policy
+selects Claude Code as an example. The default code classifier calls no Agent,
+but review also checks this project's selected Agent and mixed alternatives.
+An unavailable selected client stops project review before new approval.
 
 ```sh
 jig review --allow-resolution-network
@@ -25,12 +29,14 @@ is created by default. Add `--json` for the complete machine record, or use
 `jig run --out ./triage-result` to save `result.json` in a retained location.
 That directory must not already exist; Jig never overwrites an earlier result.
 
-For the Agent and mixed routes, follow [Choose an Agent](https://jig.md/guide/agents)
-and configure `grants/agent.json`, which selects Claude Code as an example choice.
-Interactive review can offer a separately confirmed client correction when its
-executable is missing; manual edits require renewed review. The shared project
-route supplies that Agent to both intelligent classifiers. Missing Agent support
-leaves the code route usable; the other routes require a fresh ready review.
+The shared project route supplies that Agent to both intelligent classifiers.
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
 
 ```sh
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m

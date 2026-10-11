@@ -411,6 +411,8 @@ selection and submission refuses the invocation with `RUN_APPROVAL_CHANGED`.
 `jig completion targets [prefix]` lookup reads only approved selectors, without
 environment checks, source evaluation, state writes, or provider requests.
 It emits one ready selector per line; unavailable targets yield no suggestions.
+Static completion offers `--agent` values `codex`, `claude` and `pi` for review
+and init; review requires one value, and Run has no client option.
 
 Target inspection includes `boundReadAttachments`, the names of reads already
 captured by that Binding. Invocation templates omit those names and explain
@@ -423,7 +425,9 @@ Human inspection supplies invocation guidance from the retained interface:
 required fields, file placeholders, and channel requirements. Input examples
 are explicitly templates, not invented schema-valid domain data. Required
 incoming channels are identified as needing a Flow caller, not a runnable CLI
-example. Machine inspection includes the optional approved `entrypoint` string.
+example. Machine inspection includes the optional approved `entrypoint` string
+and retained `agentOverride` in both project and target views. Human inspection
+explains that retained review-argument origin; current source never supplies it.
 
 `jig new <name> [--use slot=source]...` creates `flows/<name>` in the current project, never overwriting
 an existing path. It does not evaluate `jig.ts`, install dependencies, modify
@@ -510,58 +514,132 @@ Run deadline; forced termination still leaves unavailable evidence unavailable.
 ### Agent project initialization
 
 `jig init <directory> --agent codex|claude|pi` optionally authors a declared
-Agent dependency, `bindings/agent.ts` selecting `grants/agent.json`, and a contract-keyed
-default in `jig.ts`. Bare `--agent` asks for an explicit choice on a terminal;
-empty input cancels. Noninteractive use requires the client argument. Selection
+Agent dependency, `bindings/agent.ts` with an inline ACP grant, and a
+contract-keyed default in `jig.ts`. Bare `--agent` asks for an explicit choice
+on a terminal; empty input cancels. Noninteractive use requires the client
+argument. Selection
 does not inspect or install a client, copy authentication, resolve dependencies,
 or approve authority. `--bare` omits the greeting, not the explicitly requested
 Agent configuration. Existing destinations are never overwritten.
 
-### Guided Agent setup during review
+### Review client selection
 
-Known expected native-client setup refusals make only their selected target
-routes unavailable; unrelated targets can remain ready. Availability follows
-the actual reviewed graph, including mixed methods which might avoid an Agent
-for a particular input. Installation or credentials never break provider ties.
-Arbitrary failures, cancellation, corrupt support and cleanup uncertainty remain
-fatal. Inspection and unchanged reviews disclose retained availability separately
-from environment freshness. Installing a client does not activate an unavailable
-approval: a fresh exact review is required. An unavailable entrypoint gives its
-retained cause, says no Flow started and directs to `jig review`, without fallback.
-A zero-ready review says no targets can run; a mixed review reports both counts.
+`jig review --agent codex|claude|pi` requires exactly one supported value, even
+on a terminal. It proposes that client for every selected normalized ACP policy
+before qualification. It changes only `client`; declarations and named grants
+remain unchanged. The argument neither creates an Agent nor changes HTTP grants,
+Flow/package routes or ordinary provider selection. Run has no corresponding
+flag and never substitutes a client at execution time.
 
-Interactive review may offer an authoring correction before separate approval.
-Only a known missing executable offers another discovered supported client;
-other setup failures give targeted repair guidance. Discovery executes no
-launcher and does not establish native launch readiness. Named JSON grants
-remain ordinary editable source. Inline grants give their exact location and
-manual-edit guidance. `--yes` and noninteractive review never edit source or
-select a substitute. Keep-selection and cancel preserve the authored choice.
+Before approval, show source and effective clients, the review-argument origin
+and all affected selections within ordinary truthful report bounds. Retain this
+selection summary even when the ordinary policy diff is empty; same-client
+and unchanged review still disclose the explicit operand. Mixed source
+clients use the same global selection. A same-client no-op preserves every field
+and still undergoes qualification. Refuse the complete request when no ACP
+policies are selected, or when an actual cross-client change has a model pin or
+incompatible session retention. Do not clear, translate or infer those fields;
+preserve `maxTurns`. A pin refusal explains this argument's restriction rather
+than asserting model incompatibility or a native setup failure.
 
-Before writing, show the named file, all affected direct Binding/slot recipients,
-proposed client, model pin/default, turn limit and session-retention policy;
-require separate source-write confirmation. A shared grant's complete affected
-set must be accessible before consent. Exceeding the bounded setup report
-disables guided editing and gives manual-edit guidance. Preserve `maxTurns`.
-Cross-client model pins require explicit replacement or explicit client-default
-selection; incompatible Codex retention requires explicit removal or keeping
-Codex. Never infer models or credentials silently.
+Normal exact approval and new/changed resource-authority opt-ins still apply.
+The argument grants neither resolution networking nor execution. A later review
+starts from its newly captured source and explicit arguments: it does not inherit
+this selection from a lock, admission or environment. When bare review proposes
+returning to a source client, explain that change before approval or in the
+refusal. A failed review retains the earlier approved code and client together.
+Inspection identifies the approved effective policy and retained origin without
+inferring a past argument from current source. An originating source Pi literal
+must never be presented as an originating Codex literal.
+[Project policy](project-policy.md#review-client-selection) owns exact candidate
+and lock semantics.
 
-Close the captured review owners before opening the narrow file-publication
-owner. Refuse protected state, unsafe paths, links, multiple links, special
-files and invalid or oversized JSON. Publication preserves permission mode bits,
-but does not copy ownership, ACLs or extended attributes. Recheck captured
-original bytes, held ancestor identity and exclusively staged bytes before
-atomic replacement. Atomic rename is not filesystem compare-and-swap;
-noncooperating final-check/rename and check/unlink races remain. Observed
-prepublication changes refuse overwrite and require fresh capture. A possibly
-published failure reports possibly changed source, never rolls back unfamiliar
-bytes, and ends correction without recapture or approval. Cleanup uncertainty
-also ends correction. After confirmed publication, recapture in the same
-invocation and request normal exact approval. Source consent never approves
-execution; cancellation preserves prior approval and already consented writes.
-Prompt identical issues once unless the captured grant changes. At eight
-correction rounds, stop with manual-edit guidance.
+### Agent setup during review
+
+Any observed typed prerequisite refusal for a selected ACP resource stops CLI
+review after resource qualification and before avoidable target execution
+preparation, apply or an otherwise unchanged success. The same refusal
+applies to interactive, noninteractive, redirected and `--yes` use, even when
+unrelated code targets are ready or an input might avoid a selected Agent branch.
+An unselected missing client does not block review. Installation and credentials
+never break provider ties. SDK per-target readiness and selected-route
+propagation remain intact; the CLI decision does not make unrelated feature
+qualification failures fatal. Arbitrary failures, interruption, integrity faults
+and unconfirmed cleanup retain their existing fatal behavior.
+
+Retain the authoritative typed qualification cause independently of bounded
+presentation. An incomplete, absent or saturated issue report cannot permit
+approval. Do not substitute a generic unavailable-target count for an ACP cause.
+State that an observed selected Agent prerequisite stopped project review, and
+that a ready code entrypoint does not bypass it. Do not claim that skipped or
+remaining checks completed. Prior admission remains unchanged and never bypasses
+current Run admission or environment checks. No Flow or model call starts.
+Review may already have prepared dependencies or written explicitly requested
+`--generate-contracts` outputs; it promises no new approval and no automatic ACP
+policy write, not that no other work occurred.
+
+The ordinary error presents, in order:
+
+1. A concise title and known cause, retaining the existing diagnostic code and
+   unavailable-setup exit 2.
+2. The captured policy location, affected Binding/slot and effective selected
+   client. Inline policies identify the Binding; named policies identify their
+   JSON file and compactly list affected recipients. If a review argument supplied
+   the client, distinguish that origin from the source client.
+3. Passively detected alternatives only for executable-unavailable failures,
+   labelled as executable detection, not authentication, native qualification or
+   universal compatibility. Discovery executes no client and reads no secrets.
+4. Repair for the selected client's installation or rejected path override,
+   alongside conditional manual source changes or explicit review-client selection
+   for detected alternatives. An unusable explicit override is not proof of a
+   missing installation; identify the override name, never its value, when known.
+   Otherwise use honest override-or-PATH wording. Other setup causes receive their
+   own repair, and unknown/internal failures retain uncertainty and safe public
+   diagnostics. Mention model pins or retention only when present, preserve turn
+   limits and never rank clients or imply compatible retention.
+5. One shell-word-formatted retry command for the same project and explicitly
+   requested review options. Never add networking, `--yes` or
+   `--allow-authority-changes` to recovery advice. Commands retain a readable `$`
+   prefix/plain fallback; paths never become shell operators.
+6. No new approval, any existing approval unchanged, and no Flow started.
+
+Place repair and the exact retry before report accounting. Compact output retains
+known omissions and uncompleted checks; complete observed counts and limit
+reassurance belong under `--details`. For a detected executable alternative,
+an unpinned policy without retention may suggest adding or replacing `--agent`
+on the shown retry. Explain its global scope, unchanged source and need to repeat
+it on later reviews. Other policies can refuse the choice; detection never
+promises authentication or readiness.
+
+Locations MUST refer to immutable source captured for this candidate. A direct
+non-overridden declaration or JSON policy may use a syntactically verified client
+literal/property location. Imports, aliases, spreads and computed values use a
+verified supplying expression labelled as selection context, or the captured
+Binding file and logical slot with an explicit statement that no exact client
+line was located. Equal text or evaluated values do not prove provenance. Never
+present a comment/string search match as the originating selection or reopen live
+source for potentially stale coordinates. A snippet contains only the verified
+selection span and allowlisted policy facts, escaped and clipped as literal data.
+Do not expose unrelated policy, raw private errors or credentials. The next review
+captures an edit afresh.
+
+Group observed issues by actual policy/selection, not solely by client. Avoid
+repeating all transitive targets. Qualification may stop at its first failing
+slot per target; identify incomplete checks without a second qualification pass
+solely to exhaust possible failures. Large affected sets use bounded summaries
+with known omitted counts and the existing `--details` route. Details expands
+retained observed facts, performs no new checks and cannot recover discarded
+facts. Both views disclose their bounds; preserve the primary blocker under
+output saturation. Human output remains actionable without color and when
+redirected.
+
+No interactive Keep/Cancel/Update-client chooser, automatic source correction,
+publication owner or recapture/edit loop exists. `--yes` never chooses a fallback
+or writes ACP policy. `jig review --json` remains an unknown option; this contract
+adds no review JSON envelope or public diagnostic DTO. Run and inspection retain
+their existing machine framing and SDK diagnostic contracts. Captured owners,
+locks and qualification resources close normally; diagnostics cannot retain
+authority or conceal cleanup uncertainty.
 
 ### Invocation files and fresh evidence
 

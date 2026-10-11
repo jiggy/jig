@@ -81,7 +81,11 @@ implementation convenience.
 Project authoring values are inert. They describe membership and configuration
 but do not read, install, approve, or execute anything. FLOW metadata remains
 small and portable; host runtimes, commands, credentials, dependency locks,
-and sandbox policy do not belong in portable package metadata.
+and sandbox policy do not belong in portable package metadata. Reviewed meaning
+may include an explicitly supplied, retained review operand as well as captured
+source. Keep its effective policy and origin visible across candidate, lock,
+admission and inspection; later review starts from source and its own arguments.
+Do not turn a review operand into a remembered preference or Run-time overlay.
 
 ### Responsibility boundaries
 
@@ -363,6 +367,14 @@ guidance, and an optional bounded result schema. Native calls cannot select the 
 client, endpoint, model, executable, credential, or network policy. Those are
 trusted host choices. Skills are immutable guidance for one call, not tools,
 filesystem authority, or provider configuration.
+
+Keep simple ACP policy inline in the ordinary Binding; named policies earn a
+separate file through real reuse or an independently managed responsibility.
+Keep a small private Agent reply schema beside its call, and use ordinary
+adjacent descriptive files for substantial or reused shapes. Public FLOW result
+contracts and private reply shapes stay distinct when their constraints differ.
+Optional managed TypeSpec projections retain declaration-owned generation; neither
+placement nor fewer files justify weaker validation or cross-Flow imports.
 
 A direct OpenAI client is configured by the wire API it uses, an explicit base
 URL, credential, and model. Compatible endpoints are endpoint configuration,

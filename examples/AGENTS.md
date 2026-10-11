@@ -54,9 +54,19 @@ authored examples, not independent consumer evidence or promoted Starters.
   noticed while healthy work continues. TUI and web consume the same declarations.
 - Agents, models, credentials, and execution policy remain operator choices.
   Agent-using applications choose an ordinary provider by contract or exact slot;
-  the operator declares its dependency and configures its resource grants. ACP
-  selections live in discovered named JSON grants. Interactive review can offer
-  a separately confirmed correction; source edits never authorize execution.
+  the operator declares its dependency and configures its resource grants. Simple
+  ACP policies live inline in the ordinary Agent Binding's `native` slot. Use a
+  named JSON grant for intentionally shared or independently managed policy;
+  discover grants only when selected policies need them. Review never edits ACP
+  source. `jig review --agent CLIENT` (`codex`, `claude`, or `pi`) proposes one
+  client for every selected ACP policy through normal qualification and approval, preserving turn allowances
+  and refusing cross-client model pins or incompatible retention. Source stays
+  unchanged: repeat the argument on each review or edit the Binding for a lasting
+  choice. A later review without the argument proposes the source clients again;
+  failed review retains the earlier approved client and code. Normal Run uses
+  approved choices. A selected unavailable ACP resource stops project review,
+  including projects with a ready code entrypoint. Source edits never authorize
+  execution.
   Every example supplies a complete reviewed entrypoint without output naming.
   Writable targets receive fresh temporary packets through ordinary host defaults;
   result-only targets return stdout unless the operator chooses `--out`.
@@ -64,6 +74,12 @@ authored examples, not independent consumer evidence or promoted Starters.
   packets and `--out` selects a new retained location without overwriting results.
   `tested-patch` includes its `npm:` ACP dependency and editable Agent Binding.
   Do not add a source wrapper or repository-only route around that package.
+- A small private Agent reply schema belongs beside its call, inline or as a
+  local constant. Substantial or reused schemas may use ordinary descriptive
+  adjacent files; there is no response-file convention. Preserve explicit dialect,
+  the supported response-schema profile, validation and domain checks. Each Flow
+  owns its reply schema without sibling-Flow imports. Managed projections stay
+  owned by their declaration and explicit regeneration.
 - Label synthetic evidence and keep it distinct from claims about real users.
 
 ## Work Guidance

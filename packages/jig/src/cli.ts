@@ -22,7 +22,7 @@ import {
   privateCliDiagnostic as renderDiagnostic,
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
-import { guidedReviewAgentSetup } from './cli-review-agent-setup.js'
+import { renderReviewAgentSelections, renderReviewAgentSetup } from './cli-review-agent-setup.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
@@ -50,10 +50,6 @@ import {
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { privateProfileSpan } from './internal/private-profile.js'
 import type { PrivateAgentReadinessReport } from './internal/review-agent-setup.js'
-import {
-  PrivateReviewGrantEditError,
-  publishReviewGrantEdit,
-} from './internal/review-grant-edit.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
@@ -68,6 +64,7 @@ import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue }
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
+import type { AcpGrant } from './project/grants.js'
 import { flowSelector } from './project/package-selector.js'
 import {
   createFlow,
@@ -205,7 +202,7 @@ Use --agent without a client for an interactive choice. It writes a visible
 dependency, Binding and default selection; client installation and authority
 approval remain separate. Without --agent the greeting needs no Agent.
 The destination must not exist; existing files are never replaced.`,
-  review: `Usage: jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
+  review: `Usage: jig review [project] [--agent codex|claude|pi] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
 
 Capture source, prepare dependencies, show changes, then ask for approval.
 The project defaults to the current directory. This command has side effects:
@@ -214,7 +211,8 @@ it retains private snapshots and, after approval, updates jig.lock.
   --allow-resolution-network  Permit fresh resolution for missing dependency locks
   --yes                      Approve the displayed revision without a prompt
   --allow-authority-changes   Also approve new or changed resource grants
-  --details                  Show complete policy when proposing a change
+  --details                  Show complete policy and retained setup details
+  --agent CLIENT             Propose codex, claude or pi for every selected ACP grant
   --generate-contracts                 Generate contracts with Jig's bundled TypeSpec tool
                              Writes managed companions before Run approval
 
@@ -226,9 +224,12 @@ Examples:
 Resolution can contact dependency-selected public or private-network services
 before graph validation. Requests cannot be undone by declining approval.
 --yes alone does not approve new resource authority or resolution networking.
-Interactive review can offer an explicit edit of a missing client's named grant.
-It recaptures those source changes before asking for separate execution approval.
-Noninteractive review never edits grants or chooses a substitute client.
+Unavailable selected ACP prerequisites stop review before new approval.
+Diagnostics identify the captured source setting and detected executable options.
+--agent CLIENT proposes that client for all selected ACP grants, leaving source
+unchanged. Model pins and incompatible retention can block a cross-client choice.
+Repeat the flag on later reviews; a bare review derives choices from source again.
+Run uses the approved client and code together; review never rewrites grants.
 Supplied locks stay frozen; stale locks must be updated explicitly.
 
 ${VERIFICATION_HELP}`,
@@ -294,6 +295,7 @@ export interface PrivateCliCommandHost {
       readonly onNotice?: (text: string) => void
       readonly onStage?: (stage: string) => void
       readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
+      readonly agentOverride?: AcpGrant['client']
       readonly generateContracts?: boolean
       readonly onGeneration?: (packagePath: string, files: readonly string[]) => void
     },
@@ -925,7 +927,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     await createProject(resolve(runtime.currentDirectory, destination), undefined, bare, agent)
     runtime.writeOutput(
       agent !== undefined
-        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts and grants/agent.json for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
+        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
         : bare
           ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`
           : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
@@ -956,150 +958,172 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
   runtime.progress.note(
     `Reviewing ${asciiJsonString(basename(resolve(runtime.currentDirectory, parsed.project)))}`,
   )
-  const seenIssues = new Set<string>()
-  for (let correction = 0; correction <= 8; correction++) {
-    let readiness: PrivateAgentReadinessReport | undefined
-    const result = await withProjectSession(
-      parsed.project,
-      runtime,
-      async (session) => {
-        const plan = await privateProfileSpan('project-planning', () =>
+  let readiness: PrivateAgentReadinessReport | undefined
+  let previousAgent: AcpGrant['client'] | undefined
+  try {
+    const approved = await inspectPrivateApprovedProject(
+      resolve(runtime.currentDirectory, parsed.project),
+    )
+    if (approved !== null && typeof approved === 'object' && !Array.isArray(approved)) {
+      const origin = (approved as Readonly<Record<string, JsonValue>>).agentOverride
+      if (typeof origin === 'string' && ['codex', 'claude', 'pi'].includes(origin))
+        previousAgent = origin as AcpGrant['client']
+    }
+  } catch {
+    // Ordinary project acquisition reports unsafe/unreadable state. A missing
+    // optional historical explanation must never select an effective client.
+  }
+  const unsafeRetryPath =
+    parsed.project.length > 4096 || /[\p{Cc}\u2028\u2029]/u.test(parsed.project)
+  const retry = [
+    'jig',
+    'review',
+    ...(parsed.project === runtime.currentDirectory
+      ? []
+      : [unsafeRetryPath ? 'PROJECT_DIRECTORY' : shellWord(parsed.project)]),
+    ...(parsed.agent === undefined ? [] : ['--agent', parsed.agent]),
+    ...(parsed.allowResolutionNetwork ? ['--allow-resolution-network'] : []),
+    ...(parsed.generate ? ['--generate-contracts'] : []),
+    ...(parsed.verification === undefined ? [] : ['--verification', parsed.verification]),
+  ].join(' ')
+  const result = await withProjectSession(
+    parsed.project,
+    runtime,
+    async (session) => {
+      let plan: Awaited<ReturnType<ProjectSession['plan']>>
+      try {
+        plan = await privateProfileSpan('project-planning', () =>
           session.plan({ lockMode: 'update' }),
         )
-        runtime.progress.complete(true)
-        const setup = await guidedReviewAgentSetup(
-          readiness,
-          {
-            interactive: runtime.interactive,
-            yes: parsed.yes,
-            ...(runtime.signal === undefined ? {} : { signal: runtime.signal }),
-            write: runtime.writeError,
-            answer: runtime.answer,
-            confirm: runtime.confirm,
-          },
-          seenIssues,
+      } catch (error) {
+        if (
+          !(error instanceof ProjectAdministrationError) ||
+          error.diagnostic?.code !== 'JIG_REVIEW_AGENT_UNAVAILABLE' ||
+          !readiness?.selectedAcpUnavailable
         )
-        if (setup.kind === 'edit') return setup
-        if (setup.kind === 'cancel') {
+          throw error
+        runtime.progress.complete(true)
+        runtime.writeError(
+          renderReviewAgentSetup(readiness, { details: parsed.details, retryCommand: retry }),
+        )
+        return 2
+      }
+      runtime.signal?.throwIfAborted()
+      runtime.progress.complete(true)
+      // A private injected host may return after observation. The CLI still
+      // refuses before both unchanged success and admission.
+      if (readiness?.selectedAcpUnavailable) {
+        runtime.writeError(
+          renderReviewAgentSetup(readiness, { details: parsed.details, retryCommand: retry }),
+        )
+        return 2
+      }
+      if (plan.state === 'unchanged') return 0
+      runtime.writeOutput(
+        `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
+      )
+      if (parsed.yes && plan.review.authorityChanges && !parsed.allowAuthorityChanges)
+        throw new CliDiagnostic(
+          'JIG_AUTHORITY_APPROVAL_REQUIRED',
+          'New or changed resource grants need explicit approval. Review the delegation changes, then use interactive review or add --allow-authority-changes to --yes.',
+          2,
+        )
+      if (!parsed.yes) {
+        if (!runtime.interactive)
+          throw new CliDiagnostic(
+            'JIG_APPROVAL_REQUIRED',
+            `Review the displayed changes. To approve this exact revision without a prompt, rerun with --yes:\n\n  $ ${retry} --yes`,
+            2,
+          )
+        runtime.progress.note('Waiting for your approval. No Flow has been started.')
+        if (
+          !(await runtime.confirm(
+            'Approve this exact revision for execution? [y/N] ',
+            runtime.signal,
+          ))
+        ) {
           runtime.writeError(
-            'Review cancelled. Previous approval is unchanged. No Flow was started.\n',
+            renderDiagnostic(
+              'JIG_CHANGES_DECLINED',
+              'The proposed changes were not approved. Any existing approval remains unchanged. Dependency requests already made cannot be undone.',
+            ),
           )
           return 1
         }
-        if (plan.state === 'unchanged') return 0
-
-        runtime.writeOutput(
-          `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
-        )
-        if (parsed.yes && plan.review.authorityChanges && !parsed.allowAuthorityChanges)
-          throw new CliDiagnostic(
-            'JIG_AUTHORITY_APPROVAL_REQUIRED',
-            'New or changed resource grants need explicit approval. Review the delegation changes, then use interactive review or add --allow-authority-changes to --yes.',
-            2,
-          )
-        if (!parsed.yes) {
-          if (!runtime.interactive) {
-            throw new CliDiagnostic(
-              'JIG_APPROVAL_REQUIRED',
-              'Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).',
-              2,
-            )
-          }
-          runtime.progress.note('Waiting for your approval. No Flow has been started.')
-          const accepted = await runtime.confirm(
-            'Approve this exact revision for execution? [y/N] ',
-            runtime.signal,
-          )
-          if (!accepted) {
-            runtime.writeError(
-              renderDiagnostic(
-                'JIG_CHANGES_DECLINED',
-                'The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.',
-              ),
-            )
-            return 1
-          }
-        }
-
-        runtime.signal?.throwIfAborted()
-        runtime.progress.stage('Recording approval for the reviewed revision')
-        await session.apply({
-          planDigest: plan.planDigest,
-          allowAuthorityChanges: !parsed.yes || parsed.allowAuthorityChanges,
-        })
-        runtime.progress.complete()
-        return 0
-      },
-      {
-        onAgentReadiness: (report) => {
-          readiness = report
-        },
-        ...(parsed.allowResolutionNetwork
-          ? {
-              allowResolutionNetwork: true,
-              onResolution: () => {
-                if (resolutionNoticeShown) return
-                resolutionNoticeShown = true
-                runtime.writeNotice(
-                  'Warning: Dependency network access allowed\n\n  Scope: Dependency preparation across this review; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n',
-                )
-              },
-            }
-          : {}),
-        ...(parsed.generate
-          ? {
-              generateContracts: true,
-              onGeneration: (path: string, files: readonly string[]) =>
-                runtime.writeNotice(
-                  `Generating ${asciiJsonString(path)}: ${files.map(asciiJsonString).join(', ')}. These writes do not approve execution.\n`,
-                ),
-            }
-          : {}),
-      },
-    )
-    runtime.signal?.throwIfAborted()
-    if (typeof result !== 'number') {
-      if (correction === 8)
-        throw new CliDiagnostic(
-          'JIG_REVIEW_SETUP_LIMIT',
-          'Review reached its client-correction limit. Edit the named JSON grant directly and review again. No execution was approved or Flow started.',
-          2,
-        )
-      try {
-        await publishReviewGrantEdit(
-          resolve(runtime.currentDirectory, parsed.project),
-          result.proposal,
-          runtime.signal,
-        )
-        runtime.writeError(
-          'Agent grant updated. Capturing the project again before execution approval. No Flow was started.\n',
-        )
-      } catch (error) {
-        if (!(error instanceof PrivateReviewGrantEditError)) throw error
-        if (error.code === 'REVIEW_GRANT_CHANGED' && !error.published) {
-          runtime.writeError(
-            'The grant changed while you were choosing. Capturing the current source again; no source was overwritten.\n',
-          )
-          continue
-        }
-        throw new CliDiagnostic(error.code, error.message, 2)
       }
-      continue
-    }
-    if (result === 0) {
-      const ready = readiness?.readyTargets
-      const unavailable = readiness?.unavailableTargets ?? 0
+      runtime.signal?.throwIfAborted()
+      runtime.progress.stage('Recording approval for the reviewed revision')
+      await session.apply({
+        planDigest: plan.planDigest,
+        allowAuthorityChanges: !parsed.yes || parsed.allowAuthorityChanges,
+      })
+      runtime.progress.complete()
+      return 0
+    },
+    {
+      ...(parsed.agent === undefined ? {} : { agentOverride: parsed.agent }),
+      onAgentReadiness: (report) => {
+        readiness = report
+        if (unsafeRetryPath && parsed.project !== runtime.currentDirectory)
+          runtime.writeError(
+            'The retry below is a template: replace PROJECT_DIRECTORY with your safely quoted project path.\n\n',
+          )
+        if (parsed.agent !== undefined || previousAgent !== undefined) {
+          runtime.progress.complete(true)
+          runtime.writeError(
+            renderReviewAgentSelections(report, {
+              ...(parsed.agent === undefined ? {} : { agent: parsed.agent }),
+              ...(previousAgent === undefined ? {} : { previousAgent }),
+              details: parsed.details,
+            }),
+          )
+        }
+        if (report.selectedAcpUnavailable)
+          throw new ProjectAdministrationError(
+            'UNAVAILABLE',
+            'Selected ACP prerequisites are unavailable.',
+            { code: 'JIG_REVIEW_AGENT_UNAVAILABLE', path: 'jig.ts' },
+          )
+      },
+      ...(parsed.allowResolutionNetwork
+        ? {
+            allowResolutionNetwork: true,
+            onResolution: () => {
+              if (resolutionNoticeShown) return
+              resolutionNoticeShown = true
+              runtime.writeNotice(
+                'Warning: Dependency network access allowed\n\n  Scope: Dependency preparation across this review; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n',
+              )
+            },
+          }
+        : {}),
+      ...(parsed.generate
+        ? {
+            generateContracts: true,
+            onGeneration: (path: string, files: readonly string[]) =>
+              runtime.writeNotice(
+                `Generating ${asciiJsonString(path)}: ${files.map(asciiJsonString).join(', ')}. These writes do not approve execution.\n`,
+              ),
+          }
+        : {}),
+    },
+  )
+  runtime.signal?.throwIfAborted()
+  if (result === 0) {
+    if (readiness?.readyTargets === 0)
       runtime.writeOutput(
-        ready === 0
-          ? 'Review recorded\n\n  No targets can run with this reviewed configuration. No Flow was started.\n  Repair the reported Agent setup or edit its selected grant, then review again:\n\n  $ jig review\n'
-          : readiness?.entrypoint?.state === 'unavailable'
-            ? `Review recorded\n\n  ${ready} targets ready; ${unavailable} unavailable. No Flow was started.\n  The application's default target is unavailable. Correct its reported setup and review again, or inspect the ready alternatives:\n\n  $ jig inspect\n\n  $ jig review\n`
-            : `Project ready\n\n  The exact reviewed revision is approved. No Flow was started.${unavailable ? `\n  ${ready} targets ready; ${unavailable} unavailable. Unavailable alternatives require a new review after correction.` : ''}\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n`,
+        'Review recorded\n\n  No approved targets are ready. Resolve the retained target requirements and review again.\n  No Flow was started.\n\n  $ jig inspect\n',
       )
-    }
-    return result
+    else if (readiness?.entrypoint?.state === 'unavailable')
+      runtime.writeOutput(
+        'Review recorded\n\n  The approved default target is unavailable. Inspect its retained cause, or choose a ready target explicitly.\n  No Flow was started.\n\n  $ jig inspect\n',
+      )
+    else
+      runtime.writeOutput(
+        'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
+      )
   }
-  throw new Error('review correction loop did not settle')
+  return result
 }
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
@@ -1749,7 +1773,9 @@ function parseReview(
   readonly allowResolutionNetwork: boolean
   readonly verification: string | undefined
   readonly generate: boolean
+  readonly agent: AcpGrant['client'] | undefined
 } {
+  let agent: AcpGrant['client'] | undefined
   let project: string | undefined
   let yes = false
   let allowAuthorityChanges = false
@@ -1759,6 +1785,14 @@ function parseReview(
   let verification: string | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const argument = arguments_[index]!
+    if (argument === '--agent') {
+      if (agent !== undefined) usage('review', '--agent may only be supplied once.')
+      const value = arguments_[++index]
+      if (value === undefined || !['codex', 'claude', 'pi'].includes(value))
+        usage('review', '--agent requires codex, claude or pi.')
+      agent = value as AcpGrant['client']
+      continue
+    }
     if (argument === '--verification') {
       if (verification !== undefined) usage('review', '--verification may only be supplied once.')
       verification = parseVerification('review', arguments_[++index])
@@ -1788,6 +1822,7 @@ function parseReview(
     allowResolutionNetwork,
     generate,
     verification,
+    agent,
   }
 }
 
@@ -2086,6 +2121,12 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
       ...ACP_SETUP_HINTS,
+      PROJECT_AGENT_OVERRIDE_MODEL:
+        'this ACP policy pins a model. Review its model and client together at the indicated Binding slot, following any grant:name selector to its JSON policy; --agent never translates or drops a model pin',
+      PROJECT_AGENT_OVERRIDE_RETENTION:
+        'this ACP policy requires retained Codex sessions. Review the indicated Binding slot, following any grant:name selector to its JSON policy; --agent preserves session requirements',
+      PROJECT_AGENT_OVERRIDE_UNUSED:
+        'this project selects no ACP resources. Omit --agent and review its source normally',
       ...EVALUATOR_HINTS,
       AUTHORING_STALE:
         'run jig review --generate-contracts to refresh the authored contract before review',

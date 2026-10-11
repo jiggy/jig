@@ -8,7 +8,11 @@ The importer calls the same mapping slot in all three configurations.
 ## Try it
 
 With Jig installed on a [supported host](https://jig.md/guide/), run from this
-directory. The default known-format preview uses code and needs no Agent:
+directory. Configure and authenticate the client selected in `bindings/model.ts`
+through [Choose an Agent](https://jig.md/guide/agents); the included inline policy
+selects Codex as an example. The default known-format preview calls no Agent,
+but review also checks this project's selected Agent and mixed alternatives.
+An unavailable selected client stops project review before new approval.
 
 ```sh
 jig review --allow-resolution-network
@@ -29,11 +33,13 @@ records. Grace's invalid email appears in `rejected`, with CSV record number 3.
 `result.json` in that destination contains the execution result. These are synthetic
 contacts, and no database records are created.
 
-To use the Agent or mixed variants, configure a supported native client through
-[Choose an Agent](https://jig.md/guide/agents). Their shared `grants/agent.json`
-is selected by `bindings/model.ts`. Interactive review can offer a confirmed
-client correction when the selected executable is missing; manual grant edits
-also require review. Unavailable Agent routes do not block the code preview.
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
 Mixed still requires its Agent route even when a particular input takes its code branch.
 
 Now use different headings and a different column order:

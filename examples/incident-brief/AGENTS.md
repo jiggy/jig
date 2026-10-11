@@ -27,11 +27,9 @@ or newer instructions. Keep the reviewer advancing independently.
   Unsuccessful packets retain bounded public SDK error messages beside their
   codes, never arbitrary exception text; missing causes remain explicit.
 
-- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
-  may offer a separately confirmed named-grant correction; manual JSON editing
-  remains available. Every source correction requires fresh review and approval.
-  Keep client choices explicit; no installed-client fallback.
+- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy,
+  including its explicit two-turn allowance. `jig.ts` supplies that ordinary
+  Agent through the contract-keyed default.
 
 ## Local Contracts
 

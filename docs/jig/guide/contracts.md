@@ -46,11 +46,21 @@ bounds. The generated JSON still governs actual invocation validation.
 
 ## One model, related outputs
 
-Decorate a closed model with `@agentResponse("./proposal.schema.json")` to
-request a standalone Agent response schema. A shared model edit then updates
-invocation validation, that projection, and implementation types together.
+Small private Agent response schemas usually belong beside their single call;
+substantial or reused schemas may use an ordinary descriptive adjacent file.
+They do not become `FLOW.*` declarations or the Flow's public result envelope.
+See [response schema authoring](agent-method.md#invoke-the-ordinary-flow).
+
+When two interfaces actually share constraints, decorate a closed model with
+`@agentResponse("./proposal.schema.json")` to request a standalone Agent response
+schema. A shared model edit then updates invocation validation, that projection,
+and implementation types together.
 Optional fields and constraints unsupported by the Agent profile cause an
 error identifying the source location; they are never weakened for a provider.
+Keep distinct schemas when the public interface needs constraints absent from
+the Agent profile. Managed projections are edited through their declaration and
+explicit regeneration, under the [generated-file ownership](#generated-file-ownership)
+rules; ordinary projects do not need a compiler for handwritten schemas.
 
 The supported single-file language, complete drafter example and resource bounds
 are documented in the

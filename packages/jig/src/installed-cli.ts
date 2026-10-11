@@ -260,6 +260,9 @@ async function runWithEnvironment(
                 ...(options?.onAgentReadiness === undefined
                   ? {}
                   : { onAgentReadiness: options.onAgentReadiness }),
+                ...(options?.agentOverride === undefined
+                  ? {}
+                  : { agentOverride: options.agentOverride }),
                 ...(options?.generateContracts ? { generateContracts: true } : {}),
                 ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
                 ...(options?.runTimeoutMs === undefined

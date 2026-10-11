@@ -22,8 +22,10 @@ use-case and orchestration hypotheses.
 - `guide/agents.md` owns ordinary Agent Flow selection, explicit operator
   resource configuration, host-specific installation/helper recovery, and
   current adapter limitations. Setup guidance distinguishes review-only
-  prerequisite checks, per-target availability and separately confirmed guided
-  named-grant correction from uncertain native Run failures.
+  prerequisite checks, CLI refusal of any observed selected ACP prerequisite,
+  SDK per-target readiness, manual recovery and explicit review-only client
+  selection from uncertain native Run failures. Simple native policies are
+  inline; named policies earn their separate file through reuse or management.
   Codex installation guidance covers static npm/Volta native selection and
   defers its exact metadata bounds and exclusions to `spec/finite-acp.md`.
   Keep installed-client session qualification limits distinct from successful
@@ -49,7 +51,10 @@ use-case and orchestration hypotheses.
   actionable admitted file mappings, retention and root-only limits.
 - `guide/agent-method.md` explains the reusable method's pure library and
   published ordinary Agent Run artifact, reviewed-source adoption, explicit
-  caller context and independent consumer result validation.
+  caller context, local private response-schema placement and independent
+  consumer result validation. Small one-call schemas stay beside their calls;
+  larger or reused schemas use ordinary descriptive files. Managed TypeSpec
+  projection ownership remains explicit.
 - `guide/contracts.md` teaches optional managed TypeSpec authoring and generated
   file ownership, including named optional feature catalogs;
   `spec/contract-authoring.md` owns its exact host boundaries.

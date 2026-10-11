@@ -4,7 +4,6 @@ export default defineJig({
   entrypoint: 'binding:support --input @fixtures/duplicate.json --timeout 2m',
   flows: discover('flows'),
   bindings: discover('bindings'),
-  grants: discover('grants'),
   defaultProviders: {
     'https://jig.md/contracts/agent-run': 'binding:agent',
   },

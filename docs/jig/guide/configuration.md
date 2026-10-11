@@ -33,7 +33,8 @@ before they appear. Unsupported or unreadable approval produces no suggestions.
 | --- | --- |
 | Startup verification | `--verification` on `run`, `review`, or `inspect`; `JIG_VERIFICATION` for a shell default |
 | Terminal appearance | `JIG_THEME`, `NO_COLOR`, and your terminal environment |
-| Agent client, model, and credentials | An ordinary Agent Binding and operator credentials; see [Agent settings](#agent-settings) |
+| Agent client, model, and credentials | Inline policy in an ordinary Agent Binding and operator credentials; see [Agent settings](#agent-settings) |
+| ACP client for one reviewed proposal | `review --agent codex\|claude\|pi`; source stays unchanged and later reviews start from source again |
 | Flows, Bindings, and application settings | `jig.ts`; see [Project settings](#project-settings) |
 | Application starting point and default Run arguments | `entrypoint` in `jig.ts`; see [Project entrypoint](#project-entrypoint) |
 | Input, deadline, and output for one Run | Command arguments; see [Per-command options](#per-command-options) |
@@ -152,6 +153,15 @@ settings select API/model behavior within the grant's endpoint and body policy.
 Rotating a credential alone does not change admitted meaning. Changes to client,
 endpoint, model policy or installation require review.
 
+Simple ACP policies are inline in their Binding. Use named policies for actual
+reuse or independent management. `jig review --agent codex|claude|pi` explicitly
+proposes one client in every selected ACP policy for that review only. A value
+is required. Review and inspection show the effective approved choice and its
+argument origin; Run uses that approval without a client flag. Repeat the
+argument on a later review, or edit source for a persistent choice. A cross-client
+model pin, incompatible native retention or no selected ACP policies refuses the
+request. All other policy and authority checks still apply.
+
 See [Choose an Agent](./agents.md) for the current supported clients, grant
 examples and credential settings. Jig does not infer a provider from credentials
 or remember an implicit project-wide Agent choice.
@@ -176,7 +186,8 @@ examples, and [execution policy](../spec/project-policy.md) for enforced limits.
 | `--receive CHANNEL` | `run` | Receive a declared output channel; see [live progress](./channels.md) |
 | `--display MODE` | `run` | Select `auto` (TUI in suitable interactive terminals, ordinary output otherwise), `plain`, `tui`, or `web`; operator-only |
 | `--json` | `run` | Emit machine-readable JSON or NDJSON even in a terminal; redirected stdout already uses this format |
-| `--details` | `review` | Include unchanged policy as context in the review diff |
+| `--details` | `review` | Include unchanged policy and retained observed setup facts as context; performs no additional checks |
+| `--agent codex\|claude\|pi` | `review` | Propose only the client field in every selected ACP policy before qualification; source unchanged, no remembered preference |
 | `--yes` | `review` | Approve the displayed revision without an interactive prompt; does not grant resource-authority changes or resolution-network permission |
 | `--allow-authority-changes` | `review` | Explicitly approve changed resource delegation alongside the revision |
 | `--generate-contracts` | `review` | Compile managed TypeSpec contracts before separate execution approval |

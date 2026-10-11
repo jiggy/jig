@@ -436,6 +436,9 @@ describe('private finite project session', () => {
       'CONTRACT_FIELD',
       'CONTRACT_LIMIT',
       'CONTRACT_REFERENCE',
+      'PROJECT_AGENT_OVERRIDE_MODEL',
+      'PROJECT_AGENT_OVERRIDE_RETENTION',
+      'PROJECT_AGENT_OVERRIDE_UNUSED',
     ]) {
       const failure = new CheckError(
         'invalid',
@@ -452,6 +455,12 @@ describe('private finite project session', () => {
     expect(
       projectError(
         new CheckError('invalid', 'CHANNEL_PRIVATE', 'private detail', 'flows/bad/FLOW.md'),
+        'plan',
+      ).code,
+    ).toBe('INTERNAL')
+    expect(
+      projectError(
+        new CheckError('invalid', 'PROJECT_AGENT_OVERRIDE_PRIVATE', 'private detail', 'jig.ts'),
         'plan',
       ).code,
     ).toBe('INTERNAL')

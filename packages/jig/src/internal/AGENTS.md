@@ -516,7 +516,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `private-acp-resources.ts` captures operator configuration before project
   loading and resolves only each target's exact granted clients. Selected
   runtime identities enter the recipe and review; launch revalidates their
-  bytes and authentication. Unavailable clients do not block unrelated targets.
+  bytes and authentication. SDK unavailable clients retain per-target readiness;
+  CLI review's typed selected-ACP refusal stops before avoidable target preparation.
   Reject native destinations under sandbox-reserved paths during selection with
   the closed location diagnostic; share sealing's path predicate. Preflight
   neither mounts files nor replaces launch-time validation.
@@ -531,9 +532,21 @@ child calls, project commands, delegated HTTP, and Agent providers.
   provenance: direct known predicates may mark it, wrappers default to fatal.
   Abort, corruption, arbitrary I/O, owner faults and unconfirmed cleanup cannot
   become per-target availability. The private `review-agent-setup.ts` report
-  carries at most 1 MiB of captured authoring context, including named-grant
-  original bytes and complete direct recipients. Overflow disables editing;
-  public Plans and inspection never carry these private source handles.
+  carries at most 1 MiB of read-only policy, captured location and recipient facts,
+  with omitted counts and a reserved primary blocker. Authoritative typed refusal
+  survives omission of every presentation row. Known rejected executable overrides
+  survive native and Codex error wrapping only as a closed field-name fact; private
+  qualification uses a WeakSet on current failure objects so persisted readiness
+  causes and evidence identities stay unchanged. Honest ready/default-target facts
+  guide successful non-ACP feature-limited review; never use them as the ACP gate.
+  No source-edit bytes, root edit
+  identity, publication owner or correction loop belongs in this report.
+  `project-session-controller.ts` invokes `onAgentReadiness` after selected-resource
+  qualification and before avoidable target execution preparation. The CLI throws
+  its private `ProjectAdministrationError` with fixed
+  `JIG_REVIEW_AGENT_UNAVAILABLE` marker here and catches only that typed marker
+  with observed ACP refusal; SDK plan/apply semantics stay
+  unchanged. Arbitrary failures and cleanup uncertainty keep their own diagnostics.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
   corrective hints. Preserve known failures through planning and CLI rendering;
   raw exceptions, private paths and credentials never become recovery text.
@@ -542,9 +555,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   clients, choose another installation, or change containment authority.
   Codex helper discovery and runtime inspection preserve the sandbox stage,
   distinct from inspection of the selected client's installation.
-  Planning locates the selected client at
-  the captured Binding declaration and resource slot, when known; executable
-  discovery failures do not imply a particular missing path or accept shell aliases.
+  Planning locates a verified client literal in immutable captured Binding or
+  named-policy source; imported/computed selections use verified context or an
+  honest captured file/slot fallback. The bounded lexical recognizer is owned by
+  `src/project/agent-source-location.ts` under the package instructions. Never
+  infer literal provenance from equal evaluated values or text matches.
+  Executable discovery failures do not imply
+  an absent installation: preserve rejected override facts without its value,
+  retain selected-client repair and detect alternatives passively.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
   conversation. `native-agent-turn-policy.ts` owns Jig's default and allowed
   turn range for grant validation, controller dispatch and finite ACP enforcement.
@@ -675,14 +693,24 @@ child calls, project commands, delegated HTTP, and Agent providers.
   recipe and observation digests with an authentic current environment. The shared
   identity calculation returns inert hashes, never an executable recipe; unknown
   or changed environments retain the selection. This display proof changes no
-  approval, persistence or launch revalidation.
+  approval, persistence or launch revalidation. An explicit review client operand
+  always retains authored/effective selection context, even when policy is unchanged.
 - One resolved slot table pins exact Flow targets or qualified native invocations.
   `project-feature-qualification.ts` qualifies the selected graph from captured
   support/requirement metadata, without preparing execution or choosing alternatives.
   Feature-refusal evidence pins the caller and selected provider requests, including
   their retained package bytes; live source edits cannot alter that evidence.
   Admission independently checks each feature-refusal disposition and its evidence;
-  unrelated targets remain usable. Empty recipe sets use inert host support identity.
+  unrelated targets retain their own readiness. Empty recipe sets use inert host
+  support identity. Explicit review `agentOverride` is captured before qualification
+  and changes only `client` in every selected normalized ACP policy. Bind it into
+  capture identity and the ordinary effective lock; strict decoding requires a
+  fixed supported client, nonzero selected ACP policies and agreement of all slots.
+  Cross-client pinned models, incompatible retention and zero selections refuse;
+  preserve these three closed refusal codes through the candidate diagnostic
+  boundary with their project-relative location. Same-client policy still qualifies.
+  Inspection reports retained origin, Run never
+  substitutes it, and later review never inherits it from lock or admission.
   An explicit typed route must match its provider's offered contract; it cannot
   fall back or turn a claimed native descriptor into package-held authority.
   Project defaults resolve ordinary routes before admission, including direct
@@ -846,8 +874,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   neither general nor client-specific temporary files may fall back to host `/tmp`.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
-  provider or worker messages. Missing Agent support affects only targets
-  which require it.
+  provider or worker messages. SDK missing Agent support affects only selected
+  targets and their dependents; CLI review refuses any observed typed selected ACP
+  prerequisite before preparing target execution, unchanged success or admission.
   Missing root writable authority for Run Checkpoint retains
   `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate and directs the
   caller to its invocation attachment declaration; do not hide it as `INTERNAL`.
@@ -1079,7 +1108,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `execution-backend.test.ts` rejects mismatched owner allocations before dispatch.
   Native and installed-consumer qualification still establish actual enforcement.
 - Run the directly corresponding `packages/jig/test/` files, then
-  `bun test packages/jig`.
+  `bun test packages/jig`. Resource qualification and CLI setup/approval tests
+  verify fail-fast typed refusal independent of bounded diagnostics and unchanged
+  SDK target readiness. Project linking/capture and lock tests verify all-selected
+  client construction, preserved source/other policy, capture identity and strict
+  retained `agentOverride` origin.
 - `workspace-progress.test.ts` covers operator-controlled inspection, private
   deadline minima, trusted dispatch versus initial refusal, effective machine
   modes, queued screen entry/restoration, phase-aware interruption, escaped cause batching and full

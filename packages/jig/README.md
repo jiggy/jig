@@ -168,11 +168,14 @@ Native Codex, Claude Code, and Pi clients selected by ACP grants are discovered 
 specific installation. Review shows the resolved executable; project-local
 binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/guide/agents)
 for supported installations and authentication.
-Edit the selected named JSON grant to change its `client`. Interactive review
-can offer to update that file when a required executable is missing and another
-supported client is detected. It shows affected slots and policy before source
-consent, captures the changed project again, and asks separately for execution
-approval. `--yes` and noninteractive review never change client selection.
+Keep a simple ACP policy inline in its Binding. Review reports a missing selected
+client with its captured setting and detected executable alternatives. Edit the
+source for a lasting preference, or use `jig review --agent codex` to propose Codex
+for all selected ACP resources in this approval. The flag leaves source unchanged;
+repeat it on later reviews. Bare review returns to source choices, while Run keeps
+using the exact approved client and code. Model pins or incompatible retention
+can refuse a cross-client override. Unavailable selected ACP prerequisites stop
+CLI review before new approval; no Flow starts.
 
 ## Guides
 

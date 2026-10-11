@@ -265,7 +265,7 @@ export async function createProject(
     }
     created.push({ kind: 'directory', path: target })
 
-    for (const name of ['flows', 'bindings', ...(agent === undefined ? [] : ['grants'])]) {
+    for (const name of ['flows', 'bindings']) {
       const path = join(target, name)
       await fileSystem.mkdir(path)
       created.push({ kind: 'directory', path })
@@ -330,7 +330,6 @@ function renderJigModule(agent?: ProjectInitAgent): string {
     'export default defineJig({',
     '  flows: discover("./flows"),',
     '  bindings: discover("./bindings"),',
-    ...(agent === undefined ? [] : ['  grants: discover("./grants"),']),
     ...(agent === undefined
       ? []
       : ['  defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" },']),
@@ -352,22 +351,22 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
         '',
         'export default defineBinding({',
         '  package: "npm:@jigging/agent-acp",',
-        '  slots: { native: "grant:agent" },',
+        `  slots: { native: { kind: "acp", client: "${client}" } },`,
         '});',
         '',
       ].join('\n'),
     ],
-    ['grants/agent.json', `${JSON.stringify({ kind: 'acp', client }, null, 2)}\n`],
     [
       'README.md',
       [
         '# Your Jig project',
         '',
         `The ordinary Agent Flow uses your selected ${client} client. Its dependency is`,
-        'in `package.json`, its resource grant in `grants/agent.json`, and its project',
+        'in `package.json`, its resource grant in `bindings/agent.ts`, and its project',
         'selection in `jig.ts`. Change these ordinary files to adapt the selection.',
-        'Edit `client` in `grants/agent.json` to select codex, claude or pi.',
-        'Interactive review can help when the selected installation is missing.',
+        'Edit `client` in `bindings/agent.ts` to select codex, claude or pi.',
+        'For this approval only, use `jig review --agent CLIENT` without editing source.',
+        'Repeat that argument on later reviews; a bare review uses source choices again.',
         '',
         'Configure the native installation and operator authentication described in',
         'https://jig.md/guide/agents, then run:',

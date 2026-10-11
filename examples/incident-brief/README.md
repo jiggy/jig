@@ -7,13 +7,23 @@ Commentary refines the draft in its existing conversation. A separately supplied
 replacement of files or instructions triggers one handoff to a fresh conversation.
 
 Download this directory as an ordinary project. With Jig installed, configure
-the included `grants/agent.json` and your native client as described in the
-[conversation guide](https://jig.md/guide/conversations). From this directory:
+the inline native policy in `bindings/agent.ts` and your client as described in
+the [conversation guide](https://jig.md/guide/conversations). The included policy
+selects Codex with a two-turn allowance. From this directory:
 
 ```sh
 jig review --allow-resolution-network
 jig run
 ```
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged and preserves the two-turn allowance.
+Repeat `--agent CLIENT` on later reviews, or edit the Binding for a lasting
+choice. Without the argument, later review proposes the source client again.
+Normal `jig run` uses the approved client and code; failed review keeps the
+previous approval.
 
 Review prepares the declared package dependencies; no repository-private tools
 or separate Flow installations are needed. Resolution can make dependency-selected
@@ -42,9 +52,7 @@ Jig alpha supplies this importer.
 
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
-Interactive review can offer a separately confirmed correction to `grants/agent.json`
-when its selected executable is missing, preserving the two-turn allowance; you
-can also edit the JSON file and review again. The reviewed entrypoint in `jig.ts`
+The reviewed entrypoint in `jig.ts`
 selects the brief, input and three-minute deadline. This result-only example
 returns its report on stdout; it does not create a file packet by default.
 Use `jig run --out ./brief-result` to save the report in a new directory;

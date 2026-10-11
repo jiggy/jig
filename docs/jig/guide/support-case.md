@@ -16,10 +16,10 @@ intelligent method, it can evaluate that method's contribution before proceeding
 ## Run a case
 
 Install Jig on a [supported host](./index.md#supported-host) and configure a
-supported [native client](./agents.md#local-clients). The included
-`grants/agent.json` selects Codex as an editable example choice. Interactive review
-can offer a separately confirmed client correction when that executable is missing;
-manual JSON edits also require review. The included ordinary dependency and
+supported [native client](./agents.md#local-clients). The inline policy in
+`bindings/agent.ts` selects Codex as an editable example choice. Edit that Binding
+for a lasting choice, or use an explicit [review client selection](./agents.md#switching).
+A selected ACP prerequisite failure stops review before approval. The included ordinary dependency and
 `jig.ts` default supply that Agent to the assessor.
 From `examples/support-case`, inspect the two Flows and their policy, then run:
 

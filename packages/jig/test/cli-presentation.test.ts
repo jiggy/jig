@@ -356,38 +356,43 @@ describe('CLI experience contract', () => {
     expect(error).toBe('')
   })
 
-  test('a cancellation arriving with an unchanged plan cannot announce review success', async () => {
-    const stop = new AbortController()
-    let output = '',
-      error = ''
-    const session = {
-      async plan() {
-        stop.abort()
-        return { state: 'unchanged' }
-      },
-      async close() {},
-    } as unknown as ProjectSession
-    expect(
-      await main(['review'], {
-        signal: stop.signal,
-        terminalOutput: false,
-        host: {
-          async acquire() {
-            return session
+  test.each(['planning', 'cleanup'] as const)(
+    'a cancellation during %s cannot announce unchanged review success',
+    async (stage) => {
+      const stop = new AbortController()
+      let output = '',
+        error = ''
+      const session = {
+        async plan() {
+          if (stage === 'planning') stop.abort()
+          return { state: 'unchanged' }
+        },
+        async close() {
+          if (stage === 'cleanup') stop.abort()
+        },
+      } as unknown as ProjectSession
+      expect(
+        await main(['review'], {
+          signal: stop.signal,
+          terminalOutput: false,
+          host: {
+            async acquire() {
+              return session
+            },
           },
-        },
-        writeOutput: (text) => {
-          output += text
-        },
-        writeError: (text) => {
-          error += text
-        },
-      }),
-    ).toBe(2)
-    expect(output).toBe('')
-    expect(error).toContain('Command interrupted')
-    expect(error).toContain('does not undo completed effects')
-  })
+          writeOutput: (text) => {
+            output += text
+          },
+          writeError: (text) => {
+            error += text
+          },
+        }),
+      ).toBe(2)
+      expect(output).toBe('')
+      expect(error).toContain('Command interrupted')
+      expect(error).toContain('does not undo completed effects')
+    },
+  )
 
   test('a failed review and uncertain cleanup preserve both causes without exposing internals', async () => {
     let output = '',

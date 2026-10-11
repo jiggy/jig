@@ -47,11 +47,9 @@ patch authority and every merge decision stays with a person.
   against the user-input validator.
 - `test/` owns deterministic batch, failure-isolation, and recovery checks.
 
-- `grants/agent.json` owns the explicit ACP client/model/turn policy, selected
-  by the ordinary Agent Binding and discovered in `jig.ts`. Interactive review
-  may offer a separately confirmed named-grant correction; manual JSON editing
-  remains available. Every source correction requires fresh review and approval.
-  Keep client choices explicit; no installed-client fallback.
+- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
+  `jig.ts` supplies that ordinary Agent to the router and repair specialist
+  through the contract-keyed default.
 
 ## Local Contracts
 

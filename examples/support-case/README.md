@@ -6,15 +6,22 @@ A persuasive answer cannot raise the credit limit or create a duplicate payment.
 
 With Jig installed on a [supported host](https://jig.md/guide/), configure and
 authenticate a supported client through [Choose an Agent](https://jig.md/guide/agents).
-The included `grants/agent.json` selects Codex as an example choice. Interactive
-review can offer a separately confirmed client correction when the executable
-is missing; you can also edit the JSON file and review again.
+The inline native policy in `bindings/agent.ts` selects Codex as an example
+choice. Edit that Binding and review again for a lasting client preference.
 `jig.ts` routes the assessor's Agent slot to this configured Binding. Run here:
 
 ```sh
 jig review --allow-resolution-network
 jig run
 ```
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
 
 The reviewed entrypoint supplies the duplicate-charge fixture and two-minute deadline.
 This result-only Flow returns its decision on stdout; no packet directory is

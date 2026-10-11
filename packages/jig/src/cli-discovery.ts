@@ -38,6 +38,10 @@ export function approvedTargets(
 /** Guidance is derived from the retained interface, never a fabricated valid input. */
 export function invocationGuide(snapshot: JsonValue): string {
   const item = record(snapshot)
+  const origin =
+    typeof item.agentOverride === 'string'
+      ? `Approved Agent choice: --agent ${JSON.stringify(item.agentOverride)}. Retained effective clients run with this revision. A new bare review uses source choices.\n\n`
+      : ''
   if (typeof item.target !== 'string') {
     const targets = approvedTargets(snapshot)
     const defaultTarget =
@@ -55,7 +59,7 @@ export function invocationGuide(snapshot: JsonValue): string {
     )
     return targets.length === 0
       ? ''
-      : `${typeof item.entrypoint === 'string' ? `Project entrypoint\n\n  ${JSON.stringify(item.entrypoint)}\n\n${defaultUnavailable ? 'The default target is unavailable. Correct its retained cause and review again, or invoke a ready alternative explicitly.' : 'Start this application with jig run. Supplied options override its defaults.'}\n\n` : ''}Approved targets\n\n${targets
+      : `${origin}${typeof item.entrypoint === 'string' ? `Project entrypoint\n\n  ${JSON.stringify(item.entrypoint)}\n\n${defaultUnavailable ? 'The default target is unavailable. Correct its retained cause and review again, or invoke a ready alternative explicitly.' : 'Start this application with jig run. Supplied options override its defaults.'}\n\n` : ''}Approved targets\n\n${targets
           .map(
             ({ target, description, available }) =>
               `  ${JSON.stringify(target)} — ${available ? 'ready' : 'unavailable'}${description ? ` — ${JSON.stringify(description)}` : ''}`,
@@ -68,7 +72,9 @@ export function invocationGuide(snapshot: JsonValue): string {
   const schema = record(input)
   const fields = record(schema.properties)
   const required = Array.isArray(schema.required) ? schema.required : []
-  const lines = [`How to invoke ${JSON.stringify(item.target)}`, '']
+  const lines = [origin.trimEnd(), `How to invoke ${JSON.stringify(item.target)}`, ''].filter(
+    (line, index) => line !== '' || index > 0,
+  )
   if (record(item.availability).state === 'unavailable')
     lines.push(
       '  This target was approved as unavailable. Correct the retained cause below and review again before running:',
@@ -156,6 +162,8 @@ export function completionScript(shell: string): string | undefined {
   local reply
   if (( COMP_CWORD == 1 )); then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
+  elif [[ "$prev" == --agent && ( "$command" == review || "$command" == init ) ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'codex claude pi' -- "$cur")
   elif [[ "$prev" == --verification ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
   elif [[ "$prev" == --updates && "$command" == run ]]; then
@@ -168,7 +176,7 @@ export function completionScript(shell: string): string | undefined {
     local opts='--help'
     case "$command" in
       run) opts='${runOptions}';;
-      review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification';;
+      review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
       inspect) opts='--help --json --verification --result --display';;
       init) opts='--help --bare --agent';;
       import-contract) opts='--help --list';;
@@ -195,6 +203,8 @@ _jig() {
   local -a choices
   if (( CURRENT == 2 )); then
     choices=(${commands} --help --version)
+  elif [[ "$words[CURRENT-1]" == --agent && ( "$words[2]" == review || "$words[2]" == init ) ]]; then
+    choices=(codex claude pi)
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
     choices=(cached strict fast)
   elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
@@ -206,7 +216,7 @@ _jig() {
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
-      review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification);;
+      review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
       inspect) choices=(--help --json --verification --result --display);;
       init) choices=(--help --bare --agent);;
       import-contract) choices=(--help --list);;
@@ -239,6 +249,7 @@ complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
+complete -c jig -n '__fish_seen_subcommand_from review' -l agent -r -a 'codex claude pi'
 ${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'generate-contracts'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from review' -l ${flag}`).join('\n')}
 `
   return undefined
