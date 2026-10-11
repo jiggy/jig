@@ -360,6 +360,57 @@ test('slow presentation retires optional observation once without cancelling wor
   presenter.close()
 })
 
+test.each([false, true])(
+  'plain settlement distinguishes clean observation from lag (lagged=%s)',
+  async (lagged) => {
+    let text = ''
+    const presenter = new PrivateCliProgress(
+      true,
+      (chunk) => {
+        text += chunk
+      },
+      undefined,
+      false,
+    )
+    try {
+      await presenter.configureDisplay('plain', false)
+      const source = presenter.observe('progress', true)
+      const view = {
+        kind: 'view',
+        id: 'work',
+        title: 'Work',
+        summary: 'Evidence pending',
+        landing: true,
+        sections: [],
+      }
+      expect(source.accept(view)).toBe(true)
+      if (!lagged) expect(source.accept({ ...view, summary: 'Evidence checked' })).toBe(true)
+      const reason =
+        "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)"
+      source.retire(lagged ? reason : undefined)
+      await presenter.settleDisplay({ status: 'succeeded', outcome: 'done', output: null })
+      expect(presenter.model.workspace).toMatchObject({
+        phase: 'settled',
+        facts: { execution: 'succeeded', application: '"done"' },
+      })
+      expect(text).toContain('application reports remain provisional')
+      if (lagged) {
+        expect(text).toContain(reason)
+        expect(text).toContain('Live observation is incomplete; inspect the final result')
+        expect(text).not.toContain('Evidence checked')
+        expect(text).not.toContain('Observation ended')
+      } else {
+        expect(text).toContain('Evidence checked')
+        expect(text).toContain('Observation ended')
+        expect(text).not.toContain('Live observation is incomplete')
+      }
+      expect(source.accept({ ...view, summary: 'Late report' })).toBe(false)
+    } finally {
+      presenter.close()
+    }
+  },
+)
+
 test('stderr disconnection requests root cancellation and prevents a successful flush', async () => {
   const root = new AbortController()
   const presenter = new PrivateCliProgress(

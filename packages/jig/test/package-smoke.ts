@@ -256,18 +256,25 @@ console.log(path);
       "import { defineJig } from '@jigging/jig';\nconsole.log(typeof defineJig);\n",
     )
     assert.equal((await run([runtime, authoringCheck], consumer)).stdout, 'function\n')
-    const tuiRefusal = await run(
-      [
-        process.env.PYTHON ?? 'python3',
-        join(import.meta.dir, 'fixtures/installed-tui-refusal.py'),
-        command,
-      ],
-      consumer,
-      {},
-      45_000,
-    )
-    assert.equal(JSON.parse(tuiRefusal.stdout).passed, true)
-    assert.equal(tuiRefusal.stderr, '')
+    // Linux delegation is checked before renderer preparation. Ordinary source
+    // CI has no execution envelope; require this Run proof on the provisioned
+    // host instead of mistaking SANDBOX_UNAVAILABLE for a renderer failure.
+    if (process.platform === 'darwin' || process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+      const tuiRefusal = await run(
+        [
+          process.env.PYTHON ?? 'python3',
+          join(import.meta.dir, 'fixtures/installed-tui-refusal.py'),
+          command,
+        ],
+        consumer,
+        {},
+        45_000,
+      )
+      assert.equal(JSON.parse(tuiRefusal.stdout).passed, true)
+      assert.equal(tuiRefusal.stderr, '')
+    } else {
+      console.log('Skipped installed TUI Run refusal: requires the provisioned Linux host gate.')
+    }
     // Saved inspection needs terminal stdout as well as terminal stderr. The
     // test-only PTY owner keeps the capability in memory and emits sanitized
     // evidence; no project, execution host or native renderer is involved.

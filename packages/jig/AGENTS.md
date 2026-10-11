@@ -520,9 +520,12 @@ buffer release and output failure independently of recorded execution status.
   `test/fixtures/installed-tui-refusal.py` with real terminal stdin/stderr to
   require a nonzero `JIG_TUI_UNAVAILABLE` refusal before dispatch, the no-Flow
   explanation, no alternate-screen entry and unchanged terminal attributes,
-  measured by a retained PTY session owner before that session exits.
-  The same hidden-Core phase checks help, public authoring and embedded browser
-  inspection independently of native support. Positive installed TUI navigation,
+  measured by a retained PTY session owner before that session exits. This Run
+  proof requires Mac or the provisioned `JIG_LINUX_ROOTLESS_HOSTILE=1` host;
+  ordinary Linux source CI reports it skipped because delegation prerequisites
+  precede renderer preparation.
+  The same hidden-Core phase unconditionally checks help, public authoring and
+  embedded browser inspection independently of native support. Positive installed TUI navigation,
   captured previews and restoration require separate frozen-candidate evidence
   on an available qualified native host; refusal alone cannot qualify them.
 - Trust-boundary changes require the provisioned host-conformance workflow.
@@ -565,7 +568,10 @@ buffer release and output failure independently of recorded execution status.
   delivery without native clients or model calls. A second reviewed peer returns
   deterministic repairs through the public structured Agent result. Verify final
   Jobs, Checks and Patches snapshots, independent acceptance, exact delivered patch
-  references, and complete ended summaries in automatic plain display.
+  references, and complete ended summaries in automatic plain display when
+  observation ends cleanly. A best-effort `LAGGED` stream must disclose incomplete
+  observation without a clean ending; the checked terminal result and packet
+  remain required independently of that optional stream.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete

@@ -182,7 +182,9 @@ proofDescribe('private rootless project session', () => {
         '"AP+ACg0B/g=="',
       ])
       expect(refused.code).not.toBe(0)
-      expect(refused.stderr).toContain('unbound read attachments')
+      expect(refused.stderr).toContain('JIG_RUN_FILES_INVALID')
+      expect(refused.stderr).toContain('No Flow was started')
+      expect(refused.stderr).toContain('Missing read attachments: "decoder".')
       await waitForRootlessCgroups(initialRootlessCgroups)
     } finally {
       await rm(root, { recursive: true, force: true })
