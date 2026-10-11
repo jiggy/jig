@@ -11,7 +11,7 @@ import {
   type RunContext,
   type RunResult,
 } from '@jigging/flow'
-import { type UserUpdates, validateUserUpdate } from '@jigging/user-updates'
+import { type Reporter, validateReportingMessage } from '@jigging/reporting'
 import { brief } from '../flows/project/brief.ts'
 import projectContract from '../flows/project/contracts/revisions.json'
 import { context, identity } from '../flows/worker/context.ts'
@@ -136,10 +136,10 @@ test('semantic activity precedes answers without echoing supplied context or cla
     activity: (_id: string, label: string) => messages.push(label),
     view: (id: string, options: { title: string }) => ({
       update: (snapshot: object) =>
-        views.push(validateUserUpdate({ kind: 'view', id, ...options, ...snapshot })),
+        views.push(validateReportingMessage({ kind: 'view', id, ...options, ...snapshot })),
     }),
     notice: () => {},
-  } as unknown as UserUpdates
+  } as unknown as Reporter
   try {
     const execution = work(
       run,
@@ -610,13 +610,13 @@ test('root publishes scoped branch activity and bounded answer excerpts beside e
   const progress = {
     view: (id: string, options: object) => ({
       update: (snapshot: object) =>
-        validateUserUpdate({ kind: 'view', id, ...options, ...snapshot }),
+        validateReportingMessage({ kind: 'view', id, ...options, ...snapshot }),
     }),
     activity: (id: string, _label: string, _progress: unknown, options: { operationId: string }) =>
       activities.push({ id, options }),
     clear: (id: string) => cleared.push(id),
     notice: () => {},
-  } as unknown as UserUpdates
+  } as unknown as Reporter
   const channel = pair()
   const retained = {
     draft: {
@@ -792,12 +792,12 @@ test('a branch failure is reported with its public cause before the healthy sibl
   const progress = {
     view: (id: string, options: object) => ({
       update: (snapshot: object) =>
-        validateUserUpdate({ kind: 'view', id, ...options, ...snapshot }),
+        validateReportingMessage({ kind: 'view', id, ...options, ...snapshot }),
     }),
     activity: () => {},
     clear: () => {},
     notice: (text: string) => notices.push(text),
-  } as unknown as UserUpdates
+  } as unknown as Reporter
   const revisions = pair()
   const run = {
     input,

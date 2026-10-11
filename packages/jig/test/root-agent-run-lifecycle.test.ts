@@ -298,7 +298,7 @@ test('constructs the repair application with unchanged sources and ordinary work
     const lock = await readFile(join(root, 'bun.lock'), 'utf8')
     for (const name of [
       '@jigging/flow',
-      '@jigging/user-updates',
+      '@jigging/reporting',
       '@jigging/agent-method',
       '@jigging/agent-acp',
     ])
@@ -2194,7 +2194,7 @@ async function writeRepairWorkspace(root: string, url: string, batch = false): P
   )
   for (const [name, variable] of [
     ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
-    ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
+    ['reporting', 'REPORTING_PACKAGE_ARCHIVE'],
     ['agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'],
   ] as const) {
     const destination = join(root, 'packages', name)

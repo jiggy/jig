@@ -10,7 +10,7 @@ rows and the proposed mapping. Write its complete `done` output to
 `preview/preview.json`. Preserve `blocked`, `limit`, errors, and cancellation
 without retries. The preview is not a database import or a semantic guarantee.
 
-The optional `progress` channel uses the standard user-updates contract. **Mapping,
+The optional `progress` channel uses the standard reporting contract. **Mapping,
 Contacts and Rejected rows** shows headings, checked column choices and bounded row
 previews. Jig renders these same semantic declarations in terminal and web dashboards.
 Views preserve literal outcomes and explicit excerpts; they do not execute actions or

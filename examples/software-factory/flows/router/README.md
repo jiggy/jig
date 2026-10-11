@@ -89,7 +89,7 @@ This is bounded semantic dispatch, not catalogue discovery, installation, or an
 authority grant. Controlled responses test mechanics; live evaluation measures
 judgment separately. Do not use a router result as a permissions or policy check.
 
-The optional `progress` channel uses the standard user-updates contract. **Selection**
+The optional `progress` channel uses the standard reporting contract. **Selection**
 shows the task, eligible candidate descriptions and returned selection or abstention.
 Jig renders these same semantic declarations in terminal and web dashboards. Views
 preserve literal outcomes and explicit excerpts; they do not execute actions or

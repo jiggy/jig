@@ -35,7 +35,7 @@ chosen retained location. The directory must be new; existing results are never
 overwritten.
 
 Each application publishes optional, display-neutral dashboards through the standard
-[user-updates contract](../docs/jig/contracts/user-updates.md). Add `--display
+[reporting contract](../docs/jig/contracts/reporting.md). Add `--display
 tui` for terminal inspection or `--display web` for a private local browser
 display, using the invocation arguments in its README. The host supplies actual calls
 and blocking causes; application views explain the requested work and its evidence.

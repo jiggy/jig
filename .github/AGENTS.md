@@ -73,10 +73,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   interpreter/OS matrix. Read-only jobs prepare and verify registry bytes; the
   isolated OIDC publisher executes no repository code. Duplicate-upload skipping
   never substitutes for digest verification.
-- CI separately freezes the experimental Python user-updates wheel/sdist and
+- CI separately freezes the experimental Python reporting wheel/sdist and
   checks them against the same SDK wheel on the interpreter/OS matrix. These
   artifacts are qualification inputs, not added publication candidates. Host
-  installed-update checks also receive the frozen user-updates npm archive.
+  installed-update checks also receive the frozen reporting npm archive.
 - After npm or PyPI convergence and source tagging, create missing package-specific
   GitHub prereleases with exact registry version links, install commands, and docs.
   Preserve existing release notes on retries; never present source archives as
@@ -120,7 +120,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
 - Host conformance includes Agent method and contract-authoring source changes.
-  Freeze the built SDK, user-updates, HTTP Agent, ACP Agent, display model/web/TUI
+  Freeze the built SDK, reporting, HTTP Agent, ACP Agent, display model/web/TUI
   and Jig archives once through their owning
   packers. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
   archives to installed Markdown tests across the provisioned host boundary;

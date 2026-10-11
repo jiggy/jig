@@ -38,10 +38,10 @@ operational baselines, and public-site assembly.
   It also checks the shared Agent method and ordinary ACP package.
   Refuse missing Python build/test tools or separately installed Run/0 fixture
   dependencies before builds and long tests, with the existing setup commands.
-  It freezes complete SDK, user-updates, HTTP Agent, ACP Agent, semantic model,
+  It freezes complete SDK, reporting, HTTP Agent, ACP Agent, semantic model,
   web/TUI renderer and Jig archives under a
   canonical temporary root through their package-owned
-  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `USER_UPDATES_PACKAGE_ARCHIVE`,
+  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `REPORTING_PACKAGE_ARCHIVE`,
   `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE`,
   `JIG_PACKAGE_ARCHIVE`, `DISPLAY_MODEL_PACKAGE_ARCHIVE`,
   `DISPLAY_WEB_PACKAGE_ARCHIVE` and `DISPLAY_TUI_PACKAGE_ARCHIVE` to the relevant
@@ -113,7 +113,7 @@ operational baselines, and public-site assembly.
   invocation resolution.
   Agent Run publication includes its complete referenced events, commands and
   replies channel bundle, even when a consumer uses only one-shot calls.
-  User updates publication copies the portable library's exact descriptor and
+  Reporting publication copies the portable library's exact descriptor and
   MPL-2.0 license. The release gate freezes its archive beside the SDK, installs
   both through ordinary dependencies, and qualifies TypeScript/Node and both
   Python distributions separately.

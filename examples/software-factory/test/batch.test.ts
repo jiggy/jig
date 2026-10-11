@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext } from '@jigging/flow'
-import { USER_UPDATES_CONTRACT, validateUserUpdate } from '@jigging/user-updates'
+import { REPORTING_CONTRACT, validateReportingMessage } from '@jigging/reporting'
 import sampleBatch from '../batch.json'
 import { batchJobs, patchConflicts, repairBatch } from '../flows/factory/batch.ts'
 import { digest } from '../flows/repair/policy.ts'
@@ -564,9 +564,9 @@ test('maximum requested goals survive exact file, checkpoint and result retentio
               progress: {
                 direction: 'send',
                 delivery: 'broadcast',
-                contract: USER_UPDATES_CONTRACT,
+                contract: REPORTING_CONTRACT,
                 send: async (value: JsonValue) => {
-                  validateUserUpdate(value)
+                  validateReportingMessage(value)
                   messages.push(value)
                 },
                 close: async () => {},
@@ -649,9 +649,9 @@ test('optional profile retains checkpoint ordering and settles after reader loss
           progress: {
             direction: 'send',
             delivery: 'broadcast',
-            contract: USER_UPDATES_CONTRACT,
+            contract: REPORTING_CONTRACT,
             send: async (value) => {
-              validateUserUpdate(value)
+              validateReportingMessage(value)
               messages.push(value)
               if (
                 (value as any).kind === 'notice' &&
@@ -929,7 +929,7 @@ test('concurrent blocking failures are reported before checkpoint settlement and
           progress: {
             direction: 'send',
             delivery: 'broadcast',
-            contract: USER_UPDATES_CONTRACT,
+            contract: REPORTING_CONTRACT,
             send: async (value) => {
               messages.push(value)
             },
@@ -968,7 +968,7 @@ test('concurrent blocking failures are reported before checkpoint settlement and
         for (const notice of errors) {
           expect(notice.text).toContain(reportedCause)
           expect([...notice.text].length).toBeLessThanOrEqual(4096)
-          expect(() => validateUserUpdate(notice)).not.toThrow()
+          expect(() => validateReportingMessage(notice)).not.toThrow()
         }
         expect(errors.map((value) => value.text).join('\n')).toContain('repair:first')
         expect(errors.map((value) => value.text).join('\n')).toContain('repair:second')
@@ -1034,9 +1034,9 @@ test('checkpoint failure retains healthy and failed jobs without claiming packet
         progress: {
           direction: 'send',
           delivery: 'broadcast',
-          contract: USER_UPDATES_CONTRACT,
+          contract: REPORTING_CONTRACT,
           send: async (value: JsonValue) => {
-            validateUserUpdate(value)
+            validateReportingMessage(value)
             messages.push(value)
           },
           close: async () => {},

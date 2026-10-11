@@ -49,10 +49,10 @@ descriptors.
   authenticated evidence access and execution authority. CLI grammar and hierarchy
   remain in `cli-experience.md`. Appearance is viewer-local, with accessible
   System/Light/Dark/Monochrome icon controls and no Flow API.
-- `user-updates.md` owns Jig's exact optional-port selection, separate CLI pool,
+- `reporting.md` owns Jig's exact optional-port selection, separate CLI pool,
   bounded shared stderr presentation and qualification policy. The portable
-  descriptor and scoped libraries belong to `packages/user-updates/` and
-  `packages/jiggy-user-updates/`, without new FLOW wire operations.
+  descriptor and scoped libraries belong to `packages/reporting/` and
+  `packages/jiggy-reporting/`, without new FLOW wire operations.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
 - `agent-run.md` owns the explicit-context Agent method interface. Ordinary

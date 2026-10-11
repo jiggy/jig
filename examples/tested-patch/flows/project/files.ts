@@ -3,7 +3,7 @@ import { open, opendir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { RunContext, RunResult } from '@jigging/flow'
-import type { UserUpdates } from '@jigging/user-updates'
+import type { Reporter } from '@jigging/reporting'
 import { type AcceptanceCase, loadChecks } from './checks.ts'
 import { checksView, evidenceView, repairView } from './dashboard.ts'
 
@@ -248,7 +248,7 @@ export async function writeRepairDeliverables(path: string, input: Input, result
   for (const [name, text] of Object.entries(repairDeliverables(input, result)))
     await writeFile(join(path, name), text, { flag: 'wx' })
 }
-export async function repairFiles(run: RunContext, updates?: UserUpdates): Promise<RunResult> {
+export async function repairFiles(run: RunContext, updates?: Reporter): Promise<RunResult> {
   const repairReport = updates?.view('repair', { title: 'Repair', landing: true })
   const checks = updates?.view('checks', { title: 'Checks' })
   const evidence = updates?.view('evidence', { title: 'Evidence' })

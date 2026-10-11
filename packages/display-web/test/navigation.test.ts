@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import type { Collection, Reference } from '@jigging/user-updates'
+import type { Collection, Reference } from '@jigging/reporting'
 import { displayViewKey, type DisplaySnapshot } from '@jigging/display-model'
 import {
   PrivateBrowserClock,

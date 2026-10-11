@@ -1,5 +1,5 @@
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
-import type { UserUpdates } from '@jigging/user-updates'
+import type { Reporter } from '@jigging/reporting'
 import { answerView, type Branch, workView } from './dashboard.ts'
 
 /** Short human answers sit beside, never replace, the exact branch evidence. */
@@ -22,7 +22,7 @@ function answerExcerpt(branches: readonly Branch[], role: string, field: string)
 }
 
 /** Two independent branches; no event race chooses a successor or grants power. */
-export async function brief(run: RunContext, updates?: UserUpdates): Promise<RunResult> {
+export async function brief(run: RunContext, updates?: Reporter): Promise<RunResult> {
   const { replacement, ...context } = run.input as Record<string, JsonValue>
   const work = updates?.view('work', { title: 'Work', landing: true })
   const draft = updates?.view('brief', { title: 'Brief' })

@@ -1,14 +1,14 @@
 import { expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
 import { displayViewKey } from '@jigging/display-model'
-import { type Reference, type ViewItem, validateUserUpdate } from '@jigging/user-updates'
+import { type Reference, type ViewItem, validateReportingMessage } from '@jigging/reporting'
 import { viewerDetailParts, viewerFrame } from '../src/projection.js'
 import { escapeTerminalText, terminalWidth, wrapTerminalText } from '../src/text.js'
 import { callRecordKey, rowRecordKey } from '../src/viewer-model.js'
 import { FixtureKeyboard, FixtureModel, waitFor } from './fixtures.js'
 
 const v = (id = 'jobs', rows = ['a', 'b', 'c']): ViewItem =>
-  validateUserUpdate({
+  validateReportingMessage({
     kind: 'view',
     id,
     title: 'Jobs',
@@ -208,7 +208,7 @@ test('explicit reference choice follows identity across inserted and removed row
   const offer = (references: any[]) =>
     model.acceptView(
       'root',
-      validateUserUpdate({
+      validateReportingMessage({
         ...v(),
         sections: [
           {
@@ -332,7 +332,7 @@ function duplicateReferenceWorkspace() {
     ],
   }
   // Keep valid authored property orders for the private projection seam.
-  validateUserUpdate(view)
+  validateReportingMessage(view)
   model.acceptView('root', view)
   const targets = v('targets', ['alpha', 'beta']),
     collection = targets.sections[0]!.blocks[0]!
@@ -463,7 +463,7 @@ test('chooser selection survives reordered reference fields and duplicate interl
       },
     ],
   }
-  validateUserUpdate(updated)
+  validateReportingMessage(updated)
   model.observeCall({ ...event('inserted'), slot: 'inserted-call' })
   model.acceptView('root', updated)
   const changed = paint()
@@ -624,7 +624,7 @@ test('colored byte-heavy attention charges generated SGR within the frame ceilin
 
 test('mixed records include summary, report, facts, progress, rows and empty collections in author order', () => {
   const model = new FixtureModel()
-  const view = validateUserUpdate({
+  const view = validateReportingMessage({
     kind: 'view',
     id: 'mixed',
     title: 'Mixed',
@@ -687,7 +687,7 @@ test('tables align typed columns, show one header, keep literal null and collaps
   })
   model.acceptView(
     'root',
-    validateUserUpdate({
+    validateReportingMessage({
       kind: 'view',
       id: 'table',
       title: 'Table',
@@ -765,7 +765,7 @@ test('Enter opens detail without reference activation, nested Escape returns to 
     input = new Input()
   model.acceptView(
     'root',
-    validateUserUpdate({
+    validateReportingMessage({
       kind: 'view',
       id: 'reports',
       title: 'Reports',
@@ -911,7 +911,7 @@ test('pathological zero-width text keeps frame bytes bounded and remains vertica
   const text = 'a' + '\u0301'.repeat(4000)
   model.acceptView(
     'root',
-    validateUserUpdate({
+    validateReportingMessage({
       kind: 'view',
       id: 'unicode',
       title: 'Unicode',
@@ -1013,7 +1013,7 @@ test('batched record-reference jumps clear originating detail before the first t
     }
     model.acceptView(
       'root',
-      validateUserUpdate({
+      validateReportingMessage({
         kind: 'view',
         id: 'records',
         title: 'Records',
@@ -1031,7 +1031,7 @@ test('batched record-reference jumps clear originating detail before the first t
     if (!sameView)
       model.acceptView(
         'root',
-        validateUserUpdate({
+        validateReportingMessage({
           kind: 'view',
           id: 'evidence',
           title: 'Evidence',
@@ -1184,7 +1184,7 @@ test('wide collections use spare width and peek a sole selected artifact with li
   )
   model.acceptView(
     'root',
-    validateUserUpdate({
+    validateReportingMessage({
       kind: 'view',
       id: 'work',
       title: 'Work',
@@ -1554,7 +1554,7 @@ test('sole distinct artifact peeking includes hidden/detail references and never
   const model = new FixtureModel()
   let requested = 0
   const artifact: Reference = { kind: 'artifact', attachment: 'evidence', path: 'report.txt' }
-  const document = validateUserUpdate({
+  const document = validateReportingMessage({
     kind: 'view',
     id: 'documents',
     title: 'Documents',
@@ -1627,7 +1627,7 @@ test('sole distinct artifact peeking includes hidden/detail references and never
       {
         blocks: [
           {
-            ...(document.sections[0]!.blocks[0] as import('@jigging/user-updates').Collection),
+            ...(document.sections[0]!.blocks[0] as import('@jigging/reporting').Collection),
             rows: [
               document.sections[0]!.blocks[0].kind === 'collection'
                 ? document.sections[0]!.blocks[0].rows[0]!
@@ -1657,7 +1657,7 @@ test('sole distinct artifact peeking includes hidden/detail references and never
 test('auto artifact peeks fence A to B to A and capture replacement without stale labels or bytes', async () => {
   const model = new FixtureModel(),
     pending: ((value: { text: string; bytes: number; clipped: boolean }) => void)[] = []
-  const document = validateUserUpdate({
+  const document = validateReportingMessage({
     kind: 'view',
     id: 'reports',
     title: 'Reports',

@@ -1,5 +1,5 @@
 import type { JsonValue } from '@jigging/flow'
-import type { Collection, DetailBlock, Report, ViewSnapshot } from '@jigging/user-updates'
+import type { Collection, DetailBlock, Report, ViewSnapshot } from '@jigging/reporting'
 import type { RepairInput } from 'factory-repair-flow/policy'
 import { jobLabel } from './presentation.ts'
 

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
+import { REPORTING_CONTRACT } from '@jigging/reporting'
 import { parseChannelContract } from '../src/channel-contract.js'
 import { main, privateCliRequiresHost } from '../src/cli.js'
 import { importContract } from '../src/internal/contract-import.js'
@@ -34,7 +34,7 @@ test('Jig standard import is offline, exact and licensed; collision never replac
   const root = await fixture()
   let output = ''
   expect(
-    await main(['import-contract', 'jig:user-updates', 'updates'], {
+    await main(['import-contract', 'jig:reporting', 'updates'], {
       currentDirectory: root,
       writeOutput(text) {
         output += text
@@ -46,21 +46,21 @@ test('Jig standard import is offline, exact and licensed; collision never replac
       },
     }),
   ).toBe(0)
-  const bytes = await readFile(join(root, 'updates/user-updates.json'))
-  expect(parseChannelContract(bytes).digest).toBe(USER_UPDATES_CONTRACT.digest)
+  const bytes = await readFile(join(root, 'updates/reporting.json'))
+  expect(parseChannelContract(bytes).digest).toBe(REPORTING_CONTRACT.digest)
   expect(
     bytes.equals(
-      await readFile(new URL('../../user-updates/src/user-updates.json', import.meta.url)),
+      await readFile(new URL('../../reporting/src/reporting.json', import.meta.url)),
     ),
   ).toBe(true)
   expect(await readFile(join(root, 'updates/LICENSE'), 'utf8')).toContain(
     'Mozilla Public License Version 2.0',
   )
   expect(output).toContain('optional channel declaration')
-  await expect(importContract('jig:user-updates', join(root, 'updates'))).rejects.toMatchObject({
+  await expect(importContract('jig:reporting', join(root, 'updates'))).rejects.toMatchObject({
     code: 'CONTRACT_IMPORT_EXISTS',
   })
-  expect((await readdir(join(root, 'updates'))).sort()).toEqual(['LICENSE', 'user-updates.json'])
+  expect((await readdir(join(root, 'updates'))).sort()).toEqual(['LICENSE', 'reporting.json'])
   await expect(importContract('jig:unknown', join(root, 'unknown'))).rejects.toMatchObject({
     code: 'CONTRACT_IMPORT_SOURCE',
   })
@@ -90,8 +90,8 @@ test('one offline catalog covers Jig invocation and channel agreements with exac
     expect(imported.kind).toBe(entry.kind)
     expect(await readFile(join(root, entry.name, 'LICENSE'), 'utf8')).not.toBe('')
     const source =
-      entry.name === 'user-updates'
-        ? new URL('../../user-updates/src/user-updates.json', import.meta.url)
+      entry.name === 'reporting'
+        ? new URL('../../reporting/src/reporting.json', import.meta.url)
         : entry.name === 'acp-public-updates'
           ? new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url)
           : new URL(`../../../docs/jig/spec/contracts/${entry.name}/contract.json`, import.meta.url)
@@ -112,15 +112,15 @@ test('one offline catalog covers Jig invocation and channel agreements with exac
 
 test('an altered installed agreement is rejected before writing a destination', async () => {
   const root = await fixture()
-  await mkdir(join(root, 'standard/user-updates'), { recursive: true })
+  await mkdir(join(root, 'standard/reporting'), { recursive: true })
   const profile = JSON.parse(
-    await readFile(new URL('../../user-updates/src/user-updates.json', import.meta.url), 'utf8'),
+    await readFile(new URL('../../reporting/src/reporting.json', import.meta.url), 'utf8'),
   )
   profile.semantics += ' altered'
-  await writeFile(join(root, 'standard/user-updates/user-updates.json'), JSON.stringify(profile))
-  await writeFile(join(root, 'standard/user-updates/LICENSE'), 'retained license')
+  await writeFile(join(root, 'standard/reporting/reporting.json'), JSON.stringify(profile))
+  await writeFile(join(root, 'standard/reporting/LICENSE'), 'retained license')
   await expect(
-    importContract('jig:user-updates', join(root, 'copied'), undefined, join(root, 'standard')),
+    importContract('jig:reporting', join(root, 'copied'), undefined, join(root, 'standard')),
   ).rejects.toMatchObject({ code: 'CONTRACT_IMPORT_SOURCE' })
   expect(await readdir(root)).toEqual(['source', 'standard'])
 })

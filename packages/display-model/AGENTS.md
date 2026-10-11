@@ -39,7 +39,7 @@ with their producer. This package owns readonly display data and pure meaning.
 
 - `just check` builds and runs public model tests for immutable replacement,
   malformed data, identity, omissions and observation intervals.
-- `just test-package` uses supplied exact model/user-updates/FLOW archives in an
+- `just test-package` uses supplied exact model/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or renderer dependency.
 
 ## Child DOX Index

@@ -5,7 +5,7 @@ import {
   withAgentConversation,
 } from '@jigging/agent-method/conversation'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
-import type { UserUpdates } from '@jigging/user-updates'
+import type { Reporter } from '@jigging/reporting'
 import { context, identity } from './context.ts'
 import { workerView } from './dashboard.ts'
 import { revisionFeed } from './revisions.ts'
@@ -26,7 +26,7 @@ function answer(turn: AgentTurn): string {
 export async function work(
   run: RunContext,
   converse = withAgentConversation,
-  progress?: UserUpdates,
+  progress?: Reporter,
 ): Promise<RunResult> {
   const input = run.input as { role: string; context: unknown; replacement?: unknown }
   if (!input || !['draft', 'independent'].includes(input.role))

@@ -3,7 +3,7 @@
 This contract governs `jig run --display web` and
 `jig inspect --result DIRECTORY --display web`. The
 [CLI experience](cli-experience.md) owns command grammar, exact output and
-information hierarchy; [user updates](user-updates.md) owns portable authored
+information hierarchy; [reporting](reporting.md) owns portable authored
 meaning. Browser transport is a private host adapter, not a Flow API.
 
 ## Scope and admission

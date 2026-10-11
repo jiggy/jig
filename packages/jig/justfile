@@ -8,7 +8,7 @@
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun check-native-support clean
     just --justfile ../flow-sdk/justfile build
-    just --justfile ../user-updates/justfile build
+    just --justfile ../reporting/justfile build
     just --justfile ../display-model/justfile build
     just --justfile ../display-web/justfile build
     just --justfile ../display-tui/justfile build
@@ -16,9 +16,9 @@
     just --justfile ../agent-acp/justfile build
     just --justfile ../flow-authoring/justfile build
     mkdir -p bin libexec/agent libexec/evaluator libexec/preparation libexec/authoring
-    mkdir -p libexec/contracts/user-updates libexec/contracts/acp-public-updates
-    cp ../user-updates/src/user-updates.json libexec/contracts/user-updates/user-updates.json
-    cp ../user-updates/LICENSE libexec/contracts/user-updates/LICENSE
+    mkdir -p libexec/contracts/reporting libexec/contracts/acp-public-updates
+    cp ../reporting/src/reporting.json libexec/contracts/reporting/reporting.json
+    cp ../reporting/LICENSE libexec/contracts/reporting/LICENSE
     cp ../../docs/jig/spec/contracts/acp-public-updates.json libexec/contracts/acp-public-updates/acp-public-updates.json
     cp ../../LICENSE.md libexec/contracts/acp-public-updates/LICENSE
     for name in agent-run project-command http-request run-checkpoint finite-acp; do cp -R ../../docs/jig/spec/contracts/$name libexec/contracts/$name; cp ../../LICENSE.md libexec/contracts/$name/LICENSE; done

@@ -52,7 +52,7 @@ jig run --input @another-batch.json
 Existing results are never overwritten. Explicitly naming a target bypasses
 entrypoint defaults; supply that invocation's arguments in full.
 
-The standard [user-updates contract](../contracts/user-updates.md) supplies three
+The standard [reporting contract](../contracts/reporting.md) supplies three
 factory views: **Jobs** shows requested goals, source scope, reviewed approach and
 outcomes; **Checks** shows repository tests and independent acceptance
 cases; **Patches** shows independently checked patch packets and evidence links.

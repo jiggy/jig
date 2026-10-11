@@ -27,13 +27,13 @@ completed publication is not undone. Process loss may leave an unpublished
 `jig import-contract --list` lists the installed standard agreements and their
 purposes without project loading or host acquisition. Exact `jig:` selectors
 cover Agent Run, Project Command, HTTP Request, Run Checkpoint, Finite ACP,
-ACP public updates and user-updates. They copy the bundled canonical descriptor,
+ACP public updates and reporting. They copy the bundled canonical descriptor,
 referenced agreements and license; unsupported names fail without a fallback.
 The installed catalog checks each exact supported digest. A copied standard
 agreement is a project-owned snapshot, never a runtime resolver, implementation
-selection or authority grant. User-updates retains its MPL-2.0 license.
+selection or authority grant. Reporting retains its MPL-2.0 license.
 
-The optional [user-updates profile](user-updates.md) shares stderr presentation
+The optional [reporting profile](reporting.md) shares stderr presentation
 with host progress and diagnostics. Resolve entrypoint/operator arguments first:
 effective `--receive` retains ordinary stdout channel behavior, `--json` disables
 automatic Flow observation, and operator-only `--updates off` disables automatic

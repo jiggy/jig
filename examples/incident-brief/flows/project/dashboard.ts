@@ -1,5 +1,5 @@
 import type { JsonValue } from '@jigging/flow'
-import type { ViewSnapshot } from '@jigging/user-updates'
+import type { ViewSnapshot } from '@jigging/reporting'
 
 export type Branch =
   | {

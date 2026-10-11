@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
-import { type ViewSnapshot, validateUserUpdate } from '@jigging/user-updates'
+import { type ViewSnapshot, validateReportingMessage } from '@jigging/reporting'
 
 function checked(view: ViewSnapshot, id = 'test') {
-  const item = validateUserUpdate({ kind: 'view', id, title: 'Domain view', ...view })
+  const item = validateReportingMessage({ kind: 'view', id, title: 'Domain view', ...view })
   expect(Buffer.byteLength(JSON.stringify(item))).toBeLessThanOrEqual(32768)
   return item as any
 }

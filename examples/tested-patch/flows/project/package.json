@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@jigging/flow": "0.1.0-alpha.13",
-    "@jigging/user-updates": "0.1.0-alpha.1"
+    "@jigging/reporting": "0.1.0-alpha.1"
   }
 }

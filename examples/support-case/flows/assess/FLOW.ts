@@ -1,10 +1,10 @@
 import { handle } from '@jigging/flow'
-import { withUserUpdates } from '@jigging/user-updates'
+import { withReporting } from '@jigging/reporting'
 import { assess } from './assess.ts'
 import { caseView, chargesView } from './dashboard.ts'
 
 await handle((run) =>
-  withUserUpdates(run, 'progress', async (updates) => {
+  withReporting(run, 'progress', async (updates) => {
     const input = run.input as unknown as Parameters<typeof caseView>[0]
     const view = updates.view('case', { title: 'Case', landing: true })
     const charges = updates.view('charges', { title: 'Charges' })

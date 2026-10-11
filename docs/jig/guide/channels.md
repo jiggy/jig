@@ -8,25 +8,25 @@ establishes success.
 
 ## Import one agreement
 
-Declare `@jigging/user-updates` alongside `@jigging/flow` in the Flow package's
+Declare `@jigging/reporting` alongside `@jigging/flow` in the Flow package's
 dependencies. From that package, create a `contracts` directory and import:
 
 ```sh
 mkdir -p contracts
-jig import-contract jig:user-updates contracts/user-updates
+jig import-contract jig:reporting contracts/reporting
 ```
 
 The importer copies exact local descriptor bytes and its license, refuses an
 existing destination, and runs no package code or network request. Other hosts
 can copy the same agreement from the library or its
-[download](https://jig.md/contracts/user-updates.json), with the accompanying
-[MPL-2.0 license](https://jig.md/contracts/user-updates/LICENSE).
+[download](https://jig.md/contracts/reporting.json), with the accompanying
+[MPL-2.0 license](https://jig.md/contracts/reporting/LICENSE).
 
 Add this optional port to `FLOW.contract.json`. If the Flow has no invocation
 descriptor yet, create one with the following contents:
 
 ```json
-{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}
+{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/reporting/reporting.json"}}}
 ```
 
 The name `updates` is local. No named invocation contract for the whole Flow is
@@ -39,13 +39,13 @@ bytes instead of rebuilding a similar model.
 Keep the method's work and checks inside one scope:
 
 ```ts
-import { withUserUpdates } from '@jigging/user-updates'
+import { withReporting } from '@jigging/reporting'
 
-return withUserUpdates(run, 'updates', async updates => {
-  updates.activity('check', 'Checking the proposed result')
+return withReporting(run, 'updates', async reporter => {
+  reporter.activity('check', 'Checking the proposed result')
   const result = await checkProposal()
-  updates.notice('The proposal checks have ended.')
-  updates.clear('check')
+  reporter.notice('The proposal checks have ended.')
+  reporter.clear('check')
   return result
 })
 ```
@@ -57,24 +57,24 @@ not independently send, close, transfer, or wrap it again. Running without an
 observer is allowed.
 Invalid offers still throw when unwired, and offers after scope exit are errors.
 
-Python uses its independently packaged `jiggy-user-updates` helper with the
+Python uses its independently packaged `jiggy-reporting` helper with the
 same descriptor and meanings:
 
 ```python
-from jiggy.user_updates import user_updates
+from jiggy.reporting import reporting
 
-async with user_updates(run, "updates") as updates:
-    updates.activity("check", "Checking the proposed result")
+async with reporting(run, "updates") as reporter:
+    reporter.activity("check", "Checking the proposed result")
     result = await check_proposal()
-    updates.notice("The proposal checks have ended.")
-    updates.clear("check")
+    reporter.notice("The proposal checks have ended.")
+    reporter.clear("check")
     return result
 ```
 
 `notice(text, severity?)` is one complete message; multiline content is allowed.
 Use `info` (default), `warning` or `error` to report importance. For example,
-`updates.notice("Could not start the AI session.", "error")` in TypeScript or
-`updates.notice("Could not start the AI session.", severity="error")` in Python.
+`reporter.notice("Could not start the AI session.", "error")` in TypeScript or
+`reporter.notice("Could not start the AI session.", severity="error")` in Python.
 Jig prominently labels attributed Flow-reported errors. Severity does not change
 ordering, quotas, optional delivery or execution authority. Offer blocking failures
 promptly and retain their reasons in final results independently of observation.
@@ -95,14 +95,14 @@ optional observation;
 original send and close operations still settle, so cleanup can take longer.
 Known observer loss may degrade. Unexpected publisher errors and root cancellation
 remain failures. A body error stays primary with a bounded secondary diagnostic.
-See [exact bounds and lifecycle](../spec/user-updates.md).
+See [exact bounds and lifecycle](../spec/reporting.md).
 
 ## Observe the work
 
 After reviewing the changed source, ordinary `jig run` automatically displays
-exactly one optional canonical output on stderr. Suitable terminals show a bounded
-inline dashboard with the actual invocation tree and application views. Complete
-notices remain in the transcript with Flow attribution. Plain or redirected
+exactly one optional canonical output on stderr. Suitable terminals default to the
+TUI workspace with the actual invocation tree and application views; other terminals
+use plain output. Complete notices retain Flow attribution. Plain or redirected
 stderr shows meaningful label, title and summary changes without repeating counts.
 Stdout remains the ordinary final result. `--updates off` disables automatic
 observation; `--json` also disables it, while host diagnostics remain available.
@@ -180,7 +180,7 @@ See the [local access and lifetime contract](../spec/web-display.md).
 One declaration and one full snapshot are enough:
 
 ```ts
-const matters = updates.view('matters', {title: 'Document review', landing: true})
+const matters = reporter.view('matters', {title: 'Document review', landing: true})
 matters.update({
   summary: 'Review the supplied documents and retain findings for a person to check.',
   sections: [{blocks: [{
@@ -195,7 +195,7 @@ matters.update({
 
 Use `report`, `facts`, explicit count `progress`, and typed `collection` blocks.
 Compose your domain helper from these ordinary records; no terminal code or host
-adapter is needed. Python exposes the same `updates.view(id, options)` handle
+adapter is needed. Python exposes the same `reporter.view(id, options)` handle
 with `update(snapshot)` and `retire()`.
 
 Every update replaces the whole view atomically. Stable collection/row IDs preserve

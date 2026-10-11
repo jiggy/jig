@@ -4,7 +4,7 @@
 
 Make supplied observations understandable while keeping authority with their
 producer. This package renders independently supplied display-model snapshots
-and portable user-updates data without a Jig host or execution owner.
+and portable reporting data without a Jig host or execution owner.
 
 ## Ownership
 
@@ -25,7 +25,7 @@ and portable user-updates data without a Jig host or execution owner.
 
 ## Local Contracts
 
-- Depend only on declared display-model, user-updates and native support exports;
+- Depend only on declared display-model, reporting and native support exports;
   never import Jig, another renderer, sibling source or generated output paths.
 - Hydrate owned validated snapshots atomically. Do not replay host admission,
   infer source ancestry from labels or identify recorded roles by authored names.

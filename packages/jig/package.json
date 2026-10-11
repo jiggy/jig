@@ -94,7 +94,7 @@
     "@jigging/display-model": "0.1.0-alpha.1",
     "@jigging/display-web": "0.1.0-alpha.1",
     "@jigging/display-tui": "0.1.0-alpha.1",
-    "@jigging/user-updates": "workspace:*",
+    "@jigging/reporting": "workspace:*",
     "@jigging/agent-acp": "workspace:*",
     "@jigging/agent-method": "workspace:*",
     "@jigging/flow-authoring": "workspace:*",

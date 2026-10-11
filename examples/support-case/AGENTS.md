@@ -45,7 +45,7 @@ credit eligibility and customer-facing claims.
 - Package-local `dashboard.ts` projections offer Case and Charges through the
   optional canonical `progress` channel. FLOW entrypoints own scoped publishers,
   activity and failure notices; pure methods retain their exact results and policy.
-  The existing user-updates profile serves terminal and web without display code.
+  The existing reporting profile serves terminal and web without display code.
   Tests validate complete escaped items, provisional meanings and evidence links.
 
 ## Work Guidance

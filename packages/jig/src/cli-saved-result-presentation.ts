@@ -1,4 +1,4 @@
-import type { Block, Collection, DetailBlock, ViewItem } from '@jigging/user-updates'
+import type { Block, Collection, DetailBlock, ViewItem } from '@jigging/reporting'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'

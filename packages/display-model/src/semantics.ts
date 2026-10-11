@@ -1,4 +1,4 @@
-import type { Reference } from '@jigging/user-updates'
+import type { Reference } from '@jigging/reporting'
 import type { DisplayReferenceRecord, RecordedViewRole } from './types.js'
 
 export type DisplayDestination = {

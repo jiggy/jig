@@ -16,7 +16,7 @@ patch authority and every merge decision stays with a person.
   failure evidence into ordinary language; optional input labels name jobs for people.
   It names observed work and repeats goals with verified outcomes in the final report.
   `dashboard.ts` composes the portable Jobs, Checks and Patches documents using
-  public user-updates types. Activity is the initial host surface. All three
+  public reporting types. Activity is the initial host surface. All three
   domain views are offered before work and at settlement. Jobs retains goals,
   scope and outcomes, with concise check verdicts and patch references only for
   independently accepted jobs. Its details retain actual-call references,
@@ -107,7 +107,7 @@ patch authority and every merge decision stays with a person.
   expected nonzero rejection exits may pass exact application assertions. Do not
   print raw stdin, command logs or model reasoning. Final acceptance belongs to
   factory evidence validation, never progress or Agent judgment.
-- The optional `progress` broadcast channel uses the exact canonical user-updates
+- The optional `progress` broadcast channel uses the exact canonical reporting
   profile through its scoped publisher. Root job IDs use a distinct namespace;
   deliberate child phase readers settle before root clears. Notices count jobs
   retained by successful checkpoints, never attempts or acceptance. A complete

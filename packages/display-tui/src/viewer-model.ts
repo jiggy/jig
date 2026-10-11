@@ -3,9 +3,9 @@ import type {
   Collection,
   NoticeSeverity,
   Reference,
-  UserUpdate,
+  ReportingMessage,
   ViewItem,
-} from '@jigging/user-updates'
+} from '@jigging/reporting'
 import {
   attentionImportance,
   displayDestinations,
@@ -147,7 +147,7 @@ export type ViewerRecord = {
   block?: Exclude<Block, Collection>
   collection?: Collection
   row?: Collection['rows'][number]
-  activity?: Extract<UserUpdate, { kind: 'activity' }>
+  activity?: Extract<ReportingMessage, { kind: 'activity' }>
   journal?: ViewerJournalEntry
   journalGroup?: readonly ViewerJournalEntry[]
   call?: ViewerCall
@@ -163,7 +163,7 @@ export class ViewerModel {
   readonly views = new Map<string, ViewerView>()
   readonly activities = new Map<
     string,
-    { publisher: string; value: Extract<UserUpdate, { kind: 'activity' }> }
+    { publisher: string; value: Extract<ReportingMessage, { kind: 'activity' }> }
   >()
   readonly attention: ViewerAttention[] = []
   readonly journal: ViewerJournalEntry[] = []
@@ -429,7 +429,7 @@ export class ViewerModel {
       this.#labels.set(activity.sourceId, activity.sourceLabel)
       this.activities.set(activity.id, {
         publisher: activity.sourceId,
-        value: activity.value as Extract<UserUpdate, { kind: 'activity' }>,
+        value: activity.value as Extract<ReportingMessage, { kind: 'activity' }>,
       })
     }
     this.journal.splice(0, this.journal.length, ...this.#journal(snapshot.journal))

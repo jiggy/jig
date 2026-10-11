@@ -1,5 +1,5 @@
 import type { DisplayFact } from '@jigging/display-model'
-import type { Block, DetailBlock, Reference, Value } from '@jigging/user-updates'
+import type { Block, DetailBlock, Reference, Value } from '@jigging/reporting'
 import { heading, secondary, selection } from './style.js'
 import {
   escapeTerminalText,

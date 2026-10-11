@@ -1,9 +1,9 @@
 import { handle } from '@jigging/flow'
-import { withUserUpdates } from '@jigging/user-updates'
+import { withReporting } from '@jigging/reporting'
 import { repair } from './repair.ts'
 
 await handle((run) =>
-  withUserUpdates(run, 'updates', async (updates) => {
+  withReporting(run, 'updates', async (updates) => {
     try {
       return await repair(run, updates)
     } catch (error) {

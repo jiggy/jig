@@ -46,7 +46,7 @@ authored examples, not independent consumer evidence or promoted Starters.
   application archives or per-Flow setup loops. Test unpublished SDK candidates
   separately from claims about registry availability.
 - Every implemented Flow offers optional domain views through the public
-  user-updates package and a complete copied offline descriptor. Keep projections
+  reporting package and a complete copied offline descriptor. Keep projections
   inside the owning package; no sibling Flow or host-private imports. Lists identify
   work, selection adds context, and typed references lead to evidence. Bound complete
   encoded items and disclose excerpts/totals; preserve full results. Reports remain

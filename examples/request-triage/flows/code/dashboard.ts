@@ -1,5 +1,5 @@
 import type { RunResult } from '@jigging/flow'
-import type { ViewSnapshot } from '@jigging/user-updates'
+import type { ViewSnapshot } from '@jigging/reporting'
 
 export function triageView(message: string, approach: string, result?: RunResult): ViewSnapshot {
   const output = result?.output as

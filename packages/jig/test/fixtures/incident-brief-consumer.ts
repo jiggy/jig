@@ -35,7 +35,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
   await mkdir(join(root, 'packages'))
   for (const [name, variable] of [
     ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
-    ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
+    ['reporting', 'REPORTING_PACKAGE_ARCHIVE'],
     ['agent-method', 'AGENT_METHOD_PACKAGE_ARCHIVE'],
     ['agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'],
   ] as const) {

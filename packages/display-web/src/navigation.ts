@@ -1,4 +1,4 @@
-import type { Block, Collection, Reference, Value } from '@jigging/user-updates'
+import type { Block, Collection, Reference, Value } from '@jigging/reporting'
 import { displayDestinations, displayViewKey, recordReferences } from '@jigging/display-model'
 import type { DisplaySnapshot } from '@jigging/display-model'
 

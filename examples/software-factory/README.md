@@ -102,7 +102,7 @@ Long goals may show a marked excerpt. Each job's exact original request is
 saved in `files/<job>/goal.txt`; Jobs offers its reference after verified packet
 delivery. Complete `issue`, editable paths and verified acceptance-case IDs
 also remain in `result.json`. Checkpoints include request files only for settled jobs.
-The standard [user-updates contract](../../docs/jig/contracts/user-updates.md)
+The standard [reporting contract](../../docs/jig/contracts/reporting.md)
 shows current job activity on terminal stderr.
 Use `--receive progress --json` for explicit machine records, or `--updates off`
 to turn automatic observation off. The scoped publisher bounds observation work;

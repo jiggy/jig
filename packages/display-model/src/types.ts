@@ -2,9 +2,9 @@ import type {
   Collection,
   DetailBlock,
   NoticeSeverity,
-  UserUpdate,
+  ReportingMessage,
   ViewItem,
-} from '@jigging/user-updates'
+} from '@jigging/reporting'
 
 type Immutable<T> = T extends readonly (infer Item)[]
   ? readonly Immutable<Item>[]
@@ -102,7 +102,7 @@ export type DisplaySnapshot = Immutable<{
     id: string
     sourceId: string
     sourceLabel: string
-    value: Extract<UserUpdate, { kind: 'activity' }>
+    value: Extract<ReportingMessage, { kind: 'activity' }>
   }[]
   journal: {
     id: string
@@ -160,5 +160,5 @@ export const DISPLAY_INCOMPLETE_LIMIT = 2 * 1024 * 1024
 export type DisplayReferenceRecord = Immutable<{
   block?: DetailBlock | undefined
   row?: Collection['rows'][number] | undefined
-  activity?: Extract<UserUpdate, { kind: 'activity' }> | undefined
+  activity?: Extract<ReportingMessage, { kind: 'activity' }> | undefined
 }>

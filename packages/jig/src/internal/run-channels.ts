@@ -1,4 +1,4 @@
-import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
+import { REPORTING_CONTRACT } from '@jigging/reporting'
 import type { RootRunStatus } from '../administration/root.js'
 import {
   CHANNEL_CONTRACT_BYTES,
@@ -7,7 +7,7 @@ import {
   requireChannelReference,
 } from '../channel-contract.js'
 import type { PrivateCallEvent } from '../cli-run-model.js'
-import type { PrivateUserUpdateSource } from '../cli-user-updates.js'
+import type { PrivateReportingSource } from '../cli-reporting.js'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
@@ -34,7 +34,7 @@ export interface PrivateRunChannelOutput {
   dispatched?(): void
   call?(event: PrivateCallEvent): void
   readonly updates?: {
-    open(port: string): PrivateUserUpdateSource
+    open(port: string): PrivateReportingSource
     ambiguous(ports: readonly string[]): void
   }
   record(value: JsonValue): Promise<void>
@@ -111,7 +111,7 @@ export class PrivateRunChannels {
     )
     const cli = broker.participant('command', { resolveContract })
     const references: Record<string, string> = Object.create(null)
-    const readers: { name: string; endpoint: string; updates?: PrivateUserUpdateSource }[] = []
+    const readers: { name: string; endpoint: string; updates?: PrivateReportingSource }[] = []
     let context: PrivateRunChannels | undefined
     try {
       const selected = output?.receive ?? []
@@ -134,7 +134,7 @@ export class PrivateRunChannels {
         readers.push({ name, endpoint: receiver.endpoint })
       }
       if (selected.length === 0 && output?.updates !== undefined) {
-        const expected = USER_UPDATES_CONTRACT
+        const expected = REPORTING_CONTRACT
         const matches = Object.entries(declarations).filter(
           ([, port]) =>
             port.direction === 'send' &&
@@ -186,7 +186,7 @@ export class PrivateRunChannels {
 
   private async drain(
     cli: ChannelParticipant,
-    reader: { name: string; endpoint: string; updates?: PrivateUserUpdateSource },
+    reader: { name: string; endpoint: string; updates?: PrivateReportingSource },
     output: PrivateRunChannelOutput,
   ): Promise<void> {
     try {

@@ -6,8 +6,8 @@ import type {
   RecordedViewRole,
 } from '@jigging/display-model'
 import { recordReferences } from '@jigging/display-model'
-import type { Reference, ViewItem, UserUpdate, NoticeSeverity } from '@jigging/user-updates'
-import { validateUserUpdate } from '@jigging/user-updates'
+import type { Reference, ViewItem, ReportingMessage, NoticeSeverity } from '@jigging/reporting'
+import { validateReportingMessage } from '@jigging/reporting'
 import { ViewerModel } from '../src/viewer-model.js'
 import { ViewerInput } from '../src/input.js'
 import { NativeRenderer } from '../src/native.js'
@@ -95,7 +95,7 @@ export class FixtureModel extends ViewerModel {
   }
   acceptView(
     sourceId: string,
-    value: ViewItem | Extract<UserUpdate, { kind: 'retire-view' }>,
+    value: ViewItem | Extract<ReportingMessage, { kind: 'retire-view' }>,
   ): void {
     const id = key(sourceId, value.id)
     const old = this.fixture.views.findIndex((view) => view.id === id)
@@ -117,7 +117,7 @@ export class FixtureModel extends ViewerModel {
         sourceId,
         sourceLabel: this.#label(sourceId),
         updatedAt: 100,
-        value: validateUserUpdate(JSON.parse(JSON.stringify(value))) as ViewItem,
+        value: validateReportingMessage(JSON.parse(JSON.stringify(value))) as ViewItem,
         ...(role === undefined ? {} : { hostRole: role }),
       }
       if (old >= 0) this.fixture.views[old] = next
@@ -309,7 +309,7 @@ export class FixtureModel extends ViewerModel {
     this.#commit()
     return true
   }
-  activity(sourceId: string, value: Extract<UserUpdate, { kind: 'activity' | 'clear' }>): void {
+  activity(sourceId: string, value: Extract<ReportingMessage, { kind: 'activity' | 'clear' }>): void {
     this.fixture.activities = this.fixture.activities.filter(
       (activity) => activity.id !== key(sourceId, value.id),
     )

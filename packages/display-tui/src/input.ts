@@ -1,5 +1,5 @@
 import { StringDecoder } from 'node:string_decoder'
-import type { Reference } from '@jigging/user-updates'
+import type { Reference } from '@jigging/reporting'
 import { referenceKey } from '@jigging/display-model'
 import { ViewerModel } from './viewer-model.js'
 import {

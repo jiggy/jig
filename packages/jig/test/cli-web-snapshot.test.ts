@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { type ViewItem, validateUserUpdate } from '@jigging/user-updates'
+import { type ViewItem, validateReportingMessage } from '@jigging/reporting'
 import { PrivateRunModel } from '../src/cli-run-model.js'
 import {
   PRIVATE_WEB_INCOMPLETE_LIMIT,
@@ -8,7 +8,7 @@ import {
 } from '../src/cli-display-projection.js'
 
 const view = (id = 'same', text = 'Literal report'): ViewItem =>
-  validateUserUpdate({
+  validateReportingMessage({
     kind: 'view',
     id,
     title: 'Same label',
@@ -179,7 +179,7 @@ test('full view details and hidden references are retained; host inventory does 
   const model = new PrivateRunModel(),
     projection = new PrivateDisplayProjection(model)
   const ref = { kind: 'artifact' as const, attachment: 'deliverables', path: 'evidence.txt' }
-  const v = validateUserUpdate({
+  const v = validateReportingMessage({
     kind: 'view',
     id: 'evidence',
     title: 'Evidence',

@@ -1,4 +1,4 @@
-import { validateUserUpdate } from '@jigging/user-updates/validation'
+import { validateReportingMessage } from '@jigging/reporting/validation'
 import {
   DISPLAY_INCOMPLETE_LIMIT,
   DISPLAY_SNAPSHOT_LIMIT,
@@ -264,7 +264,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
       optional(view.hostRole, (value) =>
         choice(value, ['recorded-report', 'recorded-files', 'recorded-diagnostics']),
       )
-      const document = validateUserUpdate(view.value)
+      const document = validateReportingMessage(view.value)
       if (document.kind !== 'view') return fail()
       const join = JSON.stringify([view.sourceId, document.id])
       if (viewJoins.has(join)) fail()
@@ -327,7 +327,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
       identity(activity.id)
       identity(activity.sourceId)
       text(activity.sourceLabel, 256)
-      if (validateUserUpdate(activity.value).kind !== 'activity') fail()
+      if (validateReportingMessage(activity.value).kind !== 'activity') fail()
     })
     unique(list(data.journal, 224), (value) => journal(value))
     const artifacts = record(data.artifacts, [

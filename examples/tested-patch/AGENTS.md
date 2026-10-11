@@ -65,7 +65,7 @@ only after executed checks and independent acceptance.
 - Package-local `dashboard.ts` projections offer Repair, Checks and root Evidence through the
   optional canonical `updates` channel. FLOW entrypoints own scoped publishers,
   activity and failure notices; pure methods retain their exact results and policy.
-  The existing user-updates profile serves terminal and web without display code.
+  The existing reporting profile serves terminal and web without display code.
   Tests validate complete escaped items, provisional meanings and evidence links.
 - The root writes complete `goal.txt` only after returned evidence validates.
   Its Checks verdicts are independent; worker Checks remain provisional and may

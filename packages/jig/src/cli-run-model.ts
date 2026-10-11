@@ -2,10 +2,10 @@ import {
   type Collection,
   type NoticeSeverity,
   type Reference,
-  type UserUpdate,
+  type ReportingMessage,
   VIEW_LIMITS,
   type ViewItem,
-} from '@jigging/user-updates'
+} from '@jigging/reporting'
 import { attentionImportance as privateAttentionImportance } from '@jigging/display-model'
 import { privateCliHeading } from './cli-presentation.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
@@ -151,7 +151,7 @@ export class PrivateRunModel {
   readonly views = new Map<string, PrivateView>()
   readonly activities = new Map<
     string,
-    { publisher: string; value: Extract<UserUpdate, { kind: 'activity' }> }
+    { publisher: string; value: Extract<ReportingMessage, { kind: 'activity' }> }
   >()
   readonly attention: PrivateAttention[] = []
   #sources = new Map<string, Source>()
@@ -464,7 +464,7 @@ export class PrivateRunModel {
   }
   acceptView(
     publisher: string,
-    value: Extract<UserUpdate, { kind: 'view' | 'retire-view' }>,
+    value: Extract<ReportingMessage, { kind: 'view' | 'retire-view' }>,
   ): void {
     if (this.#stopped) throw new Error('Observation ended')
     const source = this.#source(publisher)
@@ -552,7 +552,7 @@ export class PrivateRunModel {
     this.#semantic()
     this.onChange()
   }
-  activity(publisher: string, value: Extract<UserUpdate, { kind: 'activity' | 'clear' }>): void {
+  activity(publisher: string, value: Extract<ReportingMessage, { kind: 'activity' | 'clear' }>): void {
     if (this.#stopped) return
     if (value.kind === 'clear') this.activities.delete(key(publisher, value.id))
     else if (this.activities.has(key(publisher, value.id)) || this.activities.size < 16)

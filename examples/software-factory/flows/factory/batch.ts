@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
-import { type UserUpdates, withUserUpdates } from '@jigging/user-updates'
+import { type Reporter, withReporting } from '@jigging/reporting'
 import type { RepairInput } from 'factory-repair-flow/policy'
 import {
   type RepairPhase,
@@ -100,10 +100,10 @@ export function patchConflicts(changes: readonly { job: string; path: string; co
 
 /** Application promises schedule work; Jig's exact slots and root budget bound it. */
 export async function repairBatch(run: RunContext): Promise<RunResult> {
-  return withUserUpdates(run, 'progress', (updates) => repairBatchWithProgress(run, updates))
+  return withReporting(run, 'progress', (updates) => repairBatchWithProgress(run, updates))
 }
 
-async function repairBatchWithProgress(run: RunContext, updates: UserUpdates): Promise<RunResult> {
+async function repairBatchWithProgress(run: RunContext, updates: Reporter): Promise<RunResult> {
   const { source, deliverables } = run.attachments
   if (source?.access !== 'read' || deliverables?.access !== 'read-write')
     throw new TypeError('Supply source and deliverables attachments.')

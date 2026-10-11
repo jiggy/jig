@@ -87,7 +87,7 @@ bun install \
   --filter @jigging/agent-acp \
   --filter @jigging/flow-authoring \
   --filter @jigging/flow \
-  --filter @jigging/user-updates \
+  --filter @jigging/reporting \
   --filter @jigging/display-model \
   --filter @jigging/display-web \
   --filter @jigging/display-tui \

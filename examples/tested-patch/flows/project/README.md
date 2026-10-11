@@ -16,7 +16,7 @@ The named file supplies 1–8 bounded, independently authored acceptance cases.
 Cancellation and execution failures propagate. This example publishes final
 results only; it has no batch mode or checkpoint capability.
 
-The optional `updates` channel uses the standard user-updates contract. **Repair, Checks
+The optional `updates` channel uses the standard reporting contract. **Repair, Checks
 and Evidence** shows the goal, independently validated checks and final deliverable
 references. Jig renders these same semantic declarations in terminal and web dashboards.
 Views preserve literal outcomes and explicit excerpts; they do not execute actions or

@@ -29,7 +29,7 @@
       "direction": "send",
       "delivery": "broadcast",
       "required": false,
-      "contract": "./contracts/user-updates/user-updates.json"
+      "contract": "./contracts/reporting/reporting.json"
     }
   }
 }

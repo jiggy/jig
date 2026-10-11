@@ -2,7 +2,7 @@ import type { DisplaySnapshotEnvelope, WebAssets } from '@jigging/display-model'
 import { createTui, prepareTui, type TuiDisplay, type TuiTheme } from '@jigging/display-tui'
 import { createInlineDisplay, type InlineDisplay } from '@jigging/display-tui/inline'
 import { webAssets } from '@jigging/display-web/assets'
-import type { Reference } from '@jigging/user-updates'
+import type { Reference } from '@jigging/reporting'
 import { PrivateDisplayProjection } from './cli-display-projection.js'
 import {
   privateCliHeading,
@@ -21,12 +21,12 @@ import { privateSavedResultViews } from './cli-saved-result-presentation.js'
 import { PrivateTuiInput } from './cli-tui-input.js'
 import { CliDiagnostic } from './cli-usage.js'
 import {
-  PrivateCliUserUpdates,
-  type PrivateUserUpdateSource,
+  PrivateCliReporting,
+  type PrivateReportingSource,
   privateTerminalWidth,
   privateTruncateUpdate,
   privateUpdateText as privateUpdateTextForProgress,
-} from './cli-user-updates.js'
+} from './cli-reporting.js'
 import { PrivateWebDisplay } from './cli-web.js'
 import { PrivateWebInput } from './cli-web-input.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
@@ -105,7 +105,7 @@ export class PrivateCliProgress {
   #failedOutput: ((error: unknown) => void) | undefined
   #attached = false
   readonly #resize = () => this.#flowChanged()
-  readonly #updates = new PrivateCliUserUpdates(
+  readonly #updates = new PrivateCliReporting(
     (text) => this.#flowNotice(text),
     (plain, current) => this.#flowChanged(plain, current),
     (text) => {
@@ -780,7 +780,7 @@ export class PrivateCliProgress {
     return rows > 1 ? `\r\u001b[${rows - 1}A\u001b[J` : '\r\u001b[2K'
   }
 
-  observe(port: string, compact = false): PrivateUserUpdateSource {
+  observe(port: string, compact = false): PrivateReportingSource {
     return this.#updates.open(port, compact)
   }
   onOutputFailure(handler: (error: unknown) => void): void {

@@ -1,11 +1,11 @@
 import { handle } from '@jigging/flow'
-import { withUserUpdates } from '@jigging/user-updates'
+import { withReporting } from '@jigging/reporting'
 import { selectionView } from './dashboard.ts'
 import { routingInput } from './decision.ts'
 import { route } from './route.ts'
 
 await handle((run) =>
-  withUserUpdates(run, 'progress', async (updates) => {
+  withReporting(run, 'progress', async (updates) => {
     const input = routingInput(run.input)
     const view = updates.view('selection', { title: 'Selection', landing: true })
     view.update(selectionView(input))

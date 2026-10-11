@@ -1,5 +1,5 @@
 import { PassThrough, Writable } from 'node:stream'
-import type { Reference } from '@jigging/user-updates'
+import type { Reference } from '@jigging/reporting'
 import type {
   BoxRenderable,
   CapturedLine,

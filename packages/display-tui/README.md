@@ -1,7 +1,7 @@
 # @jigging/display-tui
 
 Render semantic observations in a terminal or a bounded inline region. The
-package accepts `@jigging/display-model` snapshots and portable user-updates
+package accepts `@jigging/display-model` snapshots and portable reporting
 views; it does not require the Jig host or acquire execution authority.
 
 ```ts
@@ -106,7 +106,7 @@ profile with these absolute paths supplied:
 
 - `DISPLAY_TUI_PACKAGE_ARCHIVE`: the terminal display candidate.
 - `DISPLAY_MODEL_PACKAGE_ARCHIVE`: its semantic model candidate.
-- `USER_UPDATES_PACKAGE_ARCHIVE`: the portable updates candidate.
+- `REPORTING_PACKAGE_ARCHIVE`: the portable updates candidate.
 - `FLOW_SDK_PACKAGE_ARCHIVE`: the public Flow SDK candidate.
 - `FLOW_NODE`: an independent Node executable used to compile the public consumer
   declarations. This does not qualify Node as a native terminal runtime.

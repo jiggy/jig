@@ -16,7 +16,7 @@ The method and its contracts live in this example, so the factory can be copied
 and edited as one project. It depends only on the declared public FLOW and Agent
 packages. The factory's issue and case files remain in `flows/factory/`.
 
-The optional `updates` channel uses the standard user-updates contract. **Repair and
+The optional `updates` channel uses the standard reporting contract. **Repair and
 Checks** shows the goal and provisional baseline/proposal check reports. Jig renders
 these same semantic declarations in terminal and web dashboards. Views preserve literal
 outcomes and explicit excerpts; they do not execute actions or establish host success.

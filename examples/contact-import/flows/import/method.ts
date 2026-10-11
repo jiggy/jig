@@ -2,7 +2,7 @@ import { constants } from 'node:fs'
 import { open, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RunContext, RunResult } from '@jigging/flow'
-import type { UserUpdates } from '@jigging/user-updates'
+import type { Reporter } from '@jigging/reporting'
 import { parse } from 'csv-parse/sync'
 import { contactsView, mappingView } from './dashboard.ts'
 
@@ -35,7 +35,7 @@ export function parseContacts(bytes: Uint8Array): { headers: string[]; rows: str
 
 export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
-  updates?: UserUpdates,
+  updates?: Reporter,
 ): Promise<RunResult> {
   const mappingReport = updates?.view('mapping', { title: 'Mapping', landing: true })
   const acceptedReport = updates?.view('contacts', { title: 'Contacts' })

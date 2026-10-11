@@ -86,7 +86,7 @@ try {
       type: 'module',
       dependencies: {
         '@jigging/display-model': supplied('DISPLAY_MODEL_PACKAGE_ARCHIVE'),
-        '@jigging/user-updates': supplied('USER_UPDATES_PACKAGE_ARCHIVE'),
+        '@jigging/reporting': supplied('REPORTING_PACKAGE_ARCHIVE'),
         '@jigging/flow': supplied('FLOW_SDK_PACKAGE_ARCHIVE'),
       },
     }),

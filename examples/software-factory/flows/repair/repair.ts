@@ -1,6 +1,6 @@
 import { checkAgentResult } from '@jigging/agent-method'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
-import type { UserUpdates } from '@jigging/user-updates'
+import type { Reporter } from '@jigging/reporting'
 import { checksView, repairView } from './dashboard.ts'
 import { type Evaluation, evaluate } from './evidence.ts'
 import { candidate, digest, object, type Proposal, parseInput, parseProposal } from './policy.ts'
@@ -15,7 +15,7 @@ interface Attempt {
 export async function repair(
   run: Pick<RunContext, 'input' | 'signal' | 'call' | 'channels'> &
     Partial<Pick<RunContext, 'settings'>>,
-  updates?: UserUpdates,
+  updates?: Reporter,
 ): Promise<RunResult> {
   const progress = run.channels.progress
   if (progress && progress.direction !== 'send')
@@ -57,7 +57,7 @@ export async function repair(
 async function repairWithProgress(
   run: Pick<RunContext, 'input' | 'signal' | 'call'> & Partial<Pick<RunContext, 'settings'>>,
   publish: (phase: RepairPhase, attempt: number, detail?: string) => Promise<void>,
-  updates?: UserUpdates,
+  updates?: Reporter,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
   const repairReport = updates?.view('repair', { title: 'Repair', landing: true })

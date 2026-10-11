@@ -4,15 +4,15 @@ import {
   type Block,
   type Reference,
   type ViewItem,
-  validateUserUpdate,
-} from '@jigging/user-updates'
+  validateReportingMessage,
+} from '@jigging/reporting'
 import { viewerDetailParts, viewerFrame, viewerHasContext } from '../src/projection.js'
 import { displayDestinations, displayViewKey } from '@jigging/display-model'
 import { FixtureModel, FixtureKeyboard } from './fixtures.js'
 import { rowRecordKey } from '../src/viewer-model.js'
 
 const view = (blocks: Block[], id = 'work', landing = true): ViewItem =>
-  validateUserUpdate({
+  validateReportingMessage({
     kind: 'view',
     id,
     title: 'Documents',

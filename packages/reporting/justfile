@@ -1,0 +1,18 @@
+@default:
+    just --list
+
+@build:
+    rm -rf dist
+    bun node_modules/typescript/bin/tsc -p tsconfig.json
+    cp src/reporting.json dist/reporting.json
+    cp LICENSE dist/LICENSE
+
+[positional-arguments]
+@test *args:
+    bun test "$@"
+
+check: build test
+
+[positional-arguments]
+@pack *args: build
+    bun pm pack --ignore-scripts "$@"

@@ -73,7 +73,7 @@ File previews use
 verified immutable delivery. Use `--display plain`
 for nonanimated summaries. `--json` and effective `--receive` preserve exact
 machine/channel output. Flow authors compose views through the portable
-[user-updates agreement](https://jig.md/guide/channels), without terminal code or
+[reporting agreement](https://jig.md/guide/channels), without terminal code or
 host-specific domain adapters.
 
 `jig run --display web` publishes a private loopback browser link on terminal
@@ -88,7 +88,7 @@ See [live progress and views](https://jig.md/guide/channels).
 The TUI uses pinned OpenTUI Core, installed with Jig and loaded only for
 an eligible TUI. Automatic selection falls back to ordinary output when native
 support is unavailable; explicit TUI refuses before execution with
-`JIG_TUI_UNAVAILABLE`. Restore the complete installation or select `--display plain`. Flows and the user-updates SDK do not depend on OpenTUI.
+`JIG_TUI_UNAVAILABLE`. Restore the complete installation or select `--display plain`. Flows and the reporting SDK do not depend on OpenTUI.
 
 `review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.

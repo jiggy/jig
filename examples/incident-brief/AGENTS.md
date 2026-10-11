@@ -22,7 +22,7 @@ or newer instructions. Keep the reviewer advancing independently.
   The README teaches ordinary project execution and reusing its complete Agent
   boundary through offline package-selected import, without installer paths.
 - `jig.ts` owns the reviewed default brief invocation with its input and deadline.
-  Worker user-updates activities expose static application phases, not model text or native
+  Worker reporting activities expose static application phases, not model text or native
   dispatch claims; they remain distinct from the final settlement packet.
   Unsuccessful packets retain bounded public SDK error messages beside their
   codes, never arbitrary exception text; missing causes remain explicit.
@@ -73,7 +73,7 @@ or newer instructions. Keep the reviewer advancing independently.
 - Package-local `dashboard.ts` projections offer Work, Brief, Review questions and standalone worker views through the
   optional canonical `progress` channel. FLOW entrypoints own scoped publishers,
   activity and failure notices; pure methods retain their exact results and policy.
-  The existing user-updates profile serves terminal and web without display code.
+  The existing reporting profile serves terminal and web without display code.
   Tests validate complete escaped items, provisional meanings and evidence links.
 - The root reports a branch failure before awaiting its healthy sibling.
   Views expose requested tasks and returned suggestions, not context file text,

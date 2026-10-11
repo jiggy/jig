@@ -11,7 +11,7 @@ Return accepted contacts and rejected record numbers, counting the header as 1.
 Expose the mapping for review: valid structure cannot establish correct meaning.
 No database records are written.
 
-The optional `progress` channel uses the standard user-updates contract. **Mapping,
+The optional `progress` channel uses the standard reporting contract. **Mapping,
 Contacts and Rejected rows** shows supplied columns and bounded row acceptance results.
 Jig renders these same semantic declarations in terminal and web dashboards. Views
 preserve literal outcomes and explicit excerpts; they do not execute actions or

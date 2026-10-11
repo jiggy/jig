@@ -1,5 +1,5 @@
 import type { RunResult } from '@jigging/flow'
-import type { ViewSnapshot } from '@jigging/user-updates'
+import type { ViewSnapshot } from '@jigging/reporting'
 import type { RoutingInput } from './decision.ts'
 
 function excerpt(text: string, limit: number): string {

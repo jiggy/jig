@@ -1,9 +1,9 @@
 THIRD-PARTY MATERIAL USED BY DISPLAY-WEB
 ======================================
 
-The main library declares @jigging/display-model and @jigging/user-updates as
+The main library declares @jigging/display-model and @jigging/reporting as
 exact external dependencies. The fixed browser bundle includes pure display
-model helpers (Bread) and user-updates validation (MPL-2.0). Their matching
+model helpers (Bread) and reporting validation (MPL-2.0). Their matching
 source is available at https://github.com/jiggy/jig, and the retained root
 terms and MPL-2.0 text accompany this package.
 

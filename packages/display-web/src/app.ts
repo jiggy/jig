@@ -1,4 +1,4 @@
-import type { DetailBlock, Reference, Value } from '@jigging/user-updates'
+import type { DetailBlock, Reference, Value } from '@jigging/reporting'
 import { attentionImportance, displayViewKey } from '@jigging/display-model'
 import { type ComponentChildren, h, render } from 'preact'
 import type {

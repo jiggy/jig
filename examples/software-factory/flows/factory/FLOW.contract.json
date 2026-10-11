@@ -72,7 +72,7 @@
       "direction": "send",
       "required": false,
       "delivery": "broadcast",
-      "contract": "./contracts/user-updates/user-updates.json"
+      "contract": "./contracts/reporting/reporting.json"
     }
   },
   "attachments": {

@@ -1,10 +1,10 @@
 import { handle } from '@jigging/flow'
-import { withUserUpdates } from '@jigging/user-updates'
+import { withReporting } from '@jigging/reporting'
 import { triageView } from './dashboard.ts'
 import { triage } from './triage.ts'
 
 await handle((run) =>
-  withUserUpdates(run, 'progress', async (updates) => {
+  withReporting(run, 'progress', async (updates) => {
     const { message } = run.input as { message: string }
     const approach =
       'Code recognizes a complete [billing] or [technical] prefix first. Otherwise one operator-selected Agent supplies a checked suggestion.'

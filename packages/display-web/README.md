@@ -70,7 +70,7 @@ runtime activation. See `LICENSES.md` and `THIRD_PARTY_NOTICES` for separately
 licensed material. Build, check and pack explicitly with the package justfile.
 
 Packed qualification consumes frozen archives supplied through
-`DISPLAY_MODEL_PACKAGE_ARCHIVE`, `USER_UPDATES_PACKAGE_ARCHIVE` and
+`DISPLAY_MODEL_PACKAGE_ARCHIVE`, `REPORTING_PACKAGE_ARCHIVE` and
 `FLOW_SDK_PACKAGE_ARCHIVE` plus `DISPLAY_WEB_PACKAGE_ARCHIVE`. Set `FLOW_NODE` to an independent Node executable
 for the required second runtime check. `just test-package` does not rebuild or repack those
 candidates; `just build` and `just pack` explicitly build declared workspace

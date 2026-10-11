@@ -53,10 +53,10 @@ semantic display model and renderers, and optional contract authoring toolchain.
 
 ## Child DOX Index
 
-- [user-updates/AGENTS.md](user-updates/AGENTS.md) — Portable user-updates
+- [reporting/AGENTS.md](reporting/AGENTS.md) — Portable reporting
   agreement, semantic validation and scoped TypeScript publishing.
-- [jiggy-user-updates/AGENTS.md](jiggy-user-updates/AGENTS.md) — Independently
-  packaged Python user-updates publisher using the same canonical agreement.
+- [jiggy-reporting/AGENTS.md](jiggy-reporting/AGENTS.md) — Independently
+  packaged Python reporting publisher using the same canonical agreement.
 
 - [agent-method/AGENTS.md](agent-method/AGENTS.md) — Shared Agent procedure,
   bounded Skill reader, and complete ordinary Flow artifact.

@@ -6,7 +6,7 @@ import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { WebAssets } from '@jigging/display-model'
-import type { Reference } from '@jigging/user-updates'
+import type { Reference } from '@jigging/reporting'
 import manifest from '../package.json' with { type: 'json' }
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
 import {

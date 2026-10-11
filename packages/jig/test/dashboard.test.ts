@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
-import { type ViewItem, validateUserUpdate } from '@jigging/user-updates'
+import { type ViewItem, validateReportingMessage } from '@jigging/reporting'
 import { PrivateCliProgress } from '../src/cli-progress.js'
 import { PrivateRunModel, privateAttentionReceipt } from '../src/cli-run-model.js'
 import { parseProjectEntrypoint, resolveProjectEntrypoint } from '../src/project/entrypoint.js'
@@ -8,7 +8,7 @@ import { ChannelBroker } from '../src/run/channels.js'
 import { parseRun } from '../src/run-arguments.js'
 
 const v = (id = 'jobs', rows = ['a', 'b', 'c']): ViewItem =>
-  validateUserUpdate({
+  validateReportingMessage({
     kind: 'view',
     id,
     title: 'Jobs',

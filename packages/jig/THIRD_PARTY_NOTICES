@@ -15,13 +15,13 @@ The authoring compiler runs separately from Flow execution; consumers of
 generated native JSON do not need it. Node is an operator-supplied runtime,
 not bundled in the archive.
 
-BUNDLED USER UPDATES PROFILE
----------------------------
+BUNDLED REPORTING PROFILE
+------------------------
 
-Jig includes @jigging/user-updates (MPL-2.0) validation code and the exact
-portable descriptor in libexec/contracts/user-updates/user-updates.json. The complete license
-is retained as libexec/contracts/user-updates/LICENSE and accompanies offline imported copies.
-Source is available in packages/user-updates at https://github.com/jiggy/jig.
+Jig includes @jigging/reporting (MPL-2.0) validation code and the exact
+portable descriptor in libexec/contracts/reporting/reporting.json. The complete license
+is retained as libexec/contracts/reporting/LICENSE and accompanies offline imported copies.
+Source is available in packages/reporting at https://github.com/jiggy/jig.
 
 BUNDLED BROWSER RENDERER
 -----------------------
@@ -62,7 +62,7 @@ web-tree-sitter 0.25.10 (MIT). Package managers install their complete runtime
 closures, including OpenTUI's matching optional native platform package. These
 packages and their licenses are distributed separately from the Jig archive.
 OpenTUI is loaded only for explicit terminal TUI presentation; no Flow or
-user-updates library adopts its types or widgets.
+reporting library adopts its types or widgets.
 
 https://github.com/anomalyco/opentui
 https://github.com/tree-sitter/tree-sitter

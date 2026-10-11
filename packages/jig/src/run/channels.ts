@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
+import { REPORTING_CONTRACT } from '@jigging/reporting'
 
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { compileEmbeddedSchema } from '../schema/index.js'
@@ -250,12 +250,12 @@ export class ChannelBroker {
         port.direction === 'send' &&
         !port.required &&
         port.contract !== undefined &&
-        sameIdentity(port.contract.identity, USER_UPDATES_CONTRACT),
+        sameIdentity(port.contract.identity, REPORTING_CONTRACT),
     )
     if (matches.length !== 1)
       throw new ChannelOperationError(
         'INVALID_INPUT',
-        'presentation requires one exact optional user-updates port',
+        'presentation requires one exact optional reporting port',
       )
     const [name, port] = matches[0]!
     const allocation = this.allocate(

@@ -307,7 +307,7 @@ admitted FLOW packages.
 - Before any public CLI output change, read and apply
   [the CLI experience contract](../../docs/jig/spec/cli-experience.md).
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
-  presentation; `src/cli-user-updates.ts` owns scoped Flow activity state and
+  presentation; `src/cli-reporting.ts` owns scoped Flow activity state and
   untrusted attributed notices within that presenter. Stopping and terminal host
   states fence repaint callbacks; accepted complete notices retain order. The
   automatic profile uses one separate command-only broker allocation, preserving
@@ -629,7 +629,7 @@ buffer release and output failure independently of recorded execution status.
   The credential-free command environment retains `XDG_RUNTIME_DIR` and
   `DBUS_SESSION_BUS_ADDRESS` for the existing Linux user-service host.
 - Agent lifecycle suites accept `FLOW_SDK_PACKAGE_ARCHIVE`,
-  `USER_UPDATES_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
+  `REPORTING_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
   `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
   rebuilding during execution. The native Codex immediate-interruption

@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test'
-import { validateUserUpdate } from '@jigging/user-updates'
+import { validateReportingMessage } from '@jigging/reporting'
 import { checksView, jobsView, type PreparedJob, patchesView } from '../flows/factory/dashboard.ts'
 import { input } from './fixture.ts'
 
 test('Jobs retains a short complete goal and explicitly references the original request file', () => {
   const prepared = [{ job: { id: 'logs', directory: 'log-report', method: 'p1' }, input }]
-  const view = validateUserUpdate({
+  const view = validateReportingMessage({
     kind: 'view',
     id: 'jobs',
     title: 'Jobs',
@@ -74,7 +74,7 @@ test('maximum legal goals, scope and escaped reports stay inside every complete 
       patchesView(prepared, accepted),
     ]
     for (const [index, view] of views.entries()) {
-      const item = validateUserUpdate({
+      const item = validateReportingMessage({
         kind: 'view',
         id: String(index),
         title: 'Maximum input',
@@ -96,7 +96,7 @@ test('maximum legal goals, scope and escaped reports stay inside every complete 
 
 test('initial patch view explicitly reports no checked candidates without claiming delivered files', () => {
   const view = patchesView([{ job: { id: 'logs', directory: 'log-report' }, input }], {})
-  validateUserUpdate({ kind: 'view', id: 'patches', title: 'Patches', ...view })
+  validateReportingMessage({ kind: 'view', id: 'patches', title: 'Patches', ...view })
   expect(view.summary).toContain('0 independently checked candidates')
   expect(view.summary).toContain('requires verified packet delivery')
   expect((view.sections[0]!.blocks[0] as any).rows).toEqual([])
@@ -126,7 +126,7 @@ test('settled views expose verified work and review actions only for the accepte
         'Could not start the selected AI session. Inspect the selected client configuration.',
     },
   }
-  const jobs = validateUserUpdate({
+  const jobs = validateReportingMessage({
     kind: 'view',
     id: 'jobs',
     title: 'Jobs',
@@ -147,7 +147,7 @@ test('settled views expose verified work and review actions only for the accepte
   expect(rows[1].cells.checks).toBe('No accepted patch')
   expect(JSON.stringify(rows[1].details)).toContain(outcomes.failed.message)
   expect(JSON.stringify(rows[1].details)).not.toContain('review.patch')
-  const patches = validateUserUpdate({
+  const patches = validateReportingMessage({
     kind: 'view',
     id: 'patches',
     title: 'Patches',
@@ -170,7 +170,7 @@ test('long captured safe path lists disclose excerpts without violating a fact o
     { job: { id: 'logs', directory: 'log-report' }, input: { ...input, editPaths } },
   ]
   const view = jobsView(prepared, new Map(), {}, new Set())
-  const item = validateUserUpdate({ kind: 'view', id: 'jobs', title: 'Jobs', ...view }) as any
+  const item = validateReportingMessage({ kind: 'view', id: 'jobs', title: 'Jobs', ...view }) as any
   const facts = item.sections[0].blocks[1].rows[0].details[1].items
   expect(facts.find((v: any) => v.label === 'Editable files').value).toContain(
     '[excerpt; complete paths in supplied job input and retained job evidence]',
@@ -185,7 +185,7 @@ test('long captured safe path lists disclose excerpts without violating a fact o
 test('a passing worker report stays provisional after independent evidence validation fails', () => {
   const prepared = [{ job: { id: 'logs', directory: 'log-report' }, input }]
   const report = 'Repository test command passed. Independent acceptance cases: 4/4 passed.'
-  const view = validateUserUpdate({
+  const view = validateReportingMessage({
     kind: 'view',
     id: 'checks',
     title: 'Checks',
@@ -212,7 +212,7 @@ test('standalone repair and generic router publish ordinary bounded views withou
   const { selectionView } = await import('../flows/router/dashboard.ts')
   const { routingInput } = await import('../flows/router/decision.ts')
   for (const view of [repairView(input), repairChecks()])
-    validateUserUpdate({ kind: 'view', id: 'standalone', title: 'Standalone', ...view })
+    validateReportingMessage({ kind: 'view', id: 'standalone', title: 'Standalone', ...view })
   const request = routingInput({
     task: 'Choose a suitable prose method. ' + '\u0001'.repeat(1024),
     candidates: Array.from({ length: 16 }, (_, index) => ({
@@ -220,7 +220,7 @@ test('standalone repair and generic router publish ordinary bounded views withou
       description: '\u0001'.repeat(192),
     })),
   })
-  const item = validateUserUpdate({
+  const item = validateReportingMessage({
     kind: 'view',
     id: 'selection',
     title: 'Selection',
