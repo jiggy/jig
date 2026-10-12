@@ -37,6 +37,10 @@ Host preparation never becomes a consumer requirement.
   extra records, altered identities and repetition across owning commands.
   Native prerequisite and installed-startup reports retain strict single-instance
   identity rules. Reporter-supplied lines or ordinals cannot create new identities.
+  Freeze parameterized declaration lines from the qualified Bun JUnit attributes,
+  including multiline registrations whose reported line differs from the call's
+  opening line. The retained Mac CLI report fixes these five exact bindings;
+  neighboring lines still fail and source hashes and multiplicities stay exact.
   Bun's optional skipped-test recap must reproduce the primary skipped-name
   multiset exactly and supplies no additional execution records. A filtered-out
   footer requires the exact reviewed owning filter; every primary pass must match

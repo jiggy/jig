@@ -541,6 +541,10 @@ buffer release and output failure independently of recorded execution status.
   native cases; `jig::check` adds the native regression pass. Run existing
   consumers alongside new injected cases; verify
   typed preparation causes together with fenced completion and cleanup.
+  Guardian storage modes register distinct sequential tests with fresh compiled
+  fixtures, owners, tokens and mounts. Each mode retains its own 150-second test
+  timer and unchanged compilation, operation and recovery limits; do not combine
+  independent modes under a shared timer or reuse successful execution evidence.
   Resource-accounting changes also require `macos-execution.test.ts` and
   `macos-process-controls.test.ts` to preserve native enforcement and ownership.
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.

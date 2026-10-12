@@ -728,7 +728,7 @@ const xmlAttribute = (value) =>
   value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')
 const xml = (file, name, child = '', classname = '', line = '1') =>
   `<testsuites><testsuite><testcase file="${file}" classname="${xmlAttribute(classname)}" name="${xmlAttribute(name)}" line="${line}">${child}</testcase></testsuite></testsuites>`
-function hostFixture(f, additionalFiles = []) {
+function hostFixture(f, additionalFiles = [], architecture = 'arm64') {
   const files = [
     ...NATIVE_PREREQUISITE_TESTS,
     rootFile,
@@ -736,7 +736,6 @@ function hostFixture(f, additionalFiles = []) {
     inputFile,
     ...additionalFiles,
   ].sort()
-  const architecture = 'arm64'
   const shards = planMacHostTests(files, architecture)
   const evidenceDirectory = join(f.root, 'evidence')
   for (const shard of shards) {
@@ -793,7 +792,7 @@ function hostFixture(f, additionalFiles = []) {
   return {
     repository: f.root,
     source: f.source,
-    targetId: 'macos-arm64',
+    targetId: `macos-${architecture}`,
     evidenceDirectory,
     shards,
   }
@@ -803,7 +802,7 @@ function groupReportPath(options, source, file) {
   const group = shard.groups.findIndex((entry) => entry.file === file)
   return join(
     options.evidenceDirectory,
-    `macos-prerequisites-arm64-${shard.index}-${source}`,
+    `macos-prerequisites-${options.targetId.slice(6)}-${shard.index}-${source}`,
     `shard-${shard.index}-group-${group}.xml`,
   )
 }
@@ -952,6 +951,42 @@ test('Mac parameterized reports reject extra, missing, relined or invented execu
     writeFileSync(groupReportPath(changed, f.source, metadataFile), valid)
     assert.throws(() => readMacSkippedCases(changed), /Changed or unavailable.*multiplicity source/)
   }))
+
+test('retained Mac CLI JUnit binds multiline registrations to their reported declaration lines', () => {
+  const file = 'packages/jig/test/cli.test.ts'
+  return fixture([...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile, file], (f) => {
+    for (const architecture of ['arm64', 'x64']) {
+      const actual = readFileSync(
+        new URL(`./fixtures/bun-1.4.2-macos/cli-junit-${architecture}.xml`, import.meta.url),
+        'utf8',
+      )
+      const options = hostFixture(f, [file], architecture)
+      const path = groupReportPath(options, f.source, file)
+      writeFileSync(path, actual)
+      const observed = readMacSkippedCases(options)
+      assert.equal(observed.skipped, 0)
+      assert.equal(
+        observed.count,
+        options.shards.reduce((sum, shard) => sum + shard.groups.length, 0) +
+          NATIVE_PREREQUISITE_TESTS.length +
+          1 +
+          139,
+      )
+      for (const line of ['1261', '1389', '1612', '1687', '2143']) {
+        for (const altered of [Number(line) - 1, Number(line) + 1]) {
+          writeFileSync(path, actual.replaceAll(`line="${line}"`, `line="${altered}"`))
+          assert.throws(() => readMacSkippedCases(options), /reviewed source line/)
+        }
+      }
+      const registration = actual.match(/^ +<testcase .* line="1261" .*\/>$/m)?.[0]
+      assert.ok(registration)
+      writeFileSync(path, actual.replace(registration, ''))
+      assert.throws(() => readMacSkippedCases(options), /omits reviewed parameterized/)
+      writeFileSync(path, actual.replace(registration, `${registration}\n${registration}`))
+      assert.throws(() => readMacSkippedCases(options), /exceeds.*multiplicity/)
+    }
+  })
+})
 
 test('ordinary duplicate pass names do not gain identity from supplied lines', () =>
   fixture([...NATIVE_PREREQUISITE_TESTS, rootFile, providerFile, inputFile], (f) => {
