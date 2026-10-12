@@ -8,7 +8,12 @@ shared reading experience.
 ## Ownership
 
 - `index.tsx` extends the default layout with homepage composition, document
-  context, and a direct Markdown resource link beside Rspress's copy action.
+  context, an accessible brand title, and a direct Markdown resource link
+  beside Rspress's copy action.
+- `brand-title.tsx` composes the theme-selected decorative emblem with the live
+  product name, which provides the navigation link's accessible name.
+- `hero-video.tsx` renders a shared, accessible product video player with sound
+  controls and reduced-motion awareness from homepage frontmatter.
 - `package-showcase.tsx` renders the FLOW package explorer from frontmatter,
   preserving every stage, language, and optional layer in generated Markdown.
   Show only one selected entrypoint; implementation alternatives replace rather
@@ -35,8 +40,11 @@ shared reading experience.
 - `llms.ts` orders generated page links using the same sidebar as human readers;
   unlisted public pages remain discoverable rather than silently disappearing.
 - `fonts/` owns self-hosted Latin variable Manrope and JetBrains Mono fonts,
-  taken unchanged from Fontsource packages 5.3.0. Their individual OFL notices
-  are copied to each site's `/font-licenses/` directory during assembly.
+  taken unchanged from Fontsource packages 5.3.0, plus Quicksand SemiBold and
+  Bold for the Jig and FLOW wordmarks. Their individual OFL notices are copied
+  to each site's `/font-licenses/` directory during assembly.
+- `landing.css` composes each site's emblem with its live product wordmark in
+  the balanced monochrome lockup.
 - `accessible-markdown.ts` gives generated heading links accessible names and
   makes tables keyboard-focusable for horizontal scrolling.
 - `diagram-images.ts` and `diagram-theme-loader.cjs` generate fixed light/dark
@@ -48,6 +56,10 @@ shared reading experience.
 ## Local Contracts
 
 - Preserve default documentation navigation, search, and accessibility.
+- Keep the shared nav lockup monochrome and balanced: the Jig striped mark with
+  Quicksand SemiBold `jig`, and the FLOW unstriped mark with Quicksand Bold
+  `FLOW`. Keep the accessible product names as live text; do not duplicate them
+  inside the image assets.
 - Keep both sites independent; shared components contain no product prose.
 
 ## Work Guidance

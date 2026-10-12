@@ -3,6 +3,8 @@ import { Content, useFrontmatter, usePage, useSite } from '@rspress/core/runtime
 import { Arrow } from './icons'
 import { Showcase, type ShowcaseData } from './showcase'
 import { PackageShowcase, type PackageShowcaseData } from './package-showcase'
+import { BrandTitle } from './brand-title'
+import { HeroVideo, type HeroVideoData } from './hero-video'
 import '../landing.css'
 
 export * from '@rspress/core/theme-original'
@@ -14,6 +16,7 @@ export { NavHamburger } from './navigation'
 
 interface HomeData {
   hero: { name: string; text: string; tagline: string; eyebrow: string; status: string; statusLink: string; actions: { text: string; link: string; theme: string }[] }
+  heroVideo?: HeroVideoData
   showcase: ShowcaseData | PackageShowcaseData
 }
 
@@ -36,8 +39,13 @@ export function HomeLayout() {
         <nav className="hero-actions" aria-label="Get started">{data.hero.actions.map(action => <Link key={action.link} href={action.link} className={`action action--${action.theme}`}>{action.text}<Arrow /></Link>)}</nav>
         <Link className="hero-status" href={data.hero.statusLink}><span aria-hidden="true" />{data.hero.status}</Link>
       </header>
-      <HomeShowcase data={data.showcase} />
+      {data.heroVideo ? <HeroVideo video={data.heroVideo} /> : <HomeShowcase data={data.showcase} />}
       </div>
+      {data.heroVideo && (
+        <section className="landing-showcase-section">
+          <HomeShowcase data={data.showcase} />
+        </section>
+      )}
       <div className="landing-content"><div className="product-story rp-doc"><DocContent isOverviewPage /></div></div>
     </main>
     <HomeFooter />
@@ -60,6 +68,7 @@ export function Layout() {
   return <div className="experience" data-product={site.title.toLowerCase()}>
     {!import.meta.env.SSG_MD && (home || isCustom) && <a className="skip-link" href="#main-content">Skip to content</a>}
     <DefaultLayout
+      navTitle={<BrandTitle />}
       beforeDocContent={<DocContext />}
       bottom={isCustom ? <HomeFooter /> : undefined}
     />

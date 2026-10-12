@@ -11,6 +11,22 @@ Jig public sites.
 - `flow/` and `jig/` own their site-specific navigation, styles, and public-root
   files. Each site's `diagrams.css` fits guide SVGs to the reading column;
   source diagrams remain with their owning guide under `docs/`.
+- Each site's `public/mark.svg` is its selected monochrome emblem. Keep its
+  path geometry identical in `mark-light.svg` and `favicon.svg`; those files
+  provide the light-on-dark and browser-icon treatments. Jig uses the striped
+  switch mark; FLOW uses its unstriped counterpart.
+- Each site's `public/logo.svg` and `logo-light.svg` are transparent standalone
+  lockups pairing that site's emblem with its Quicksand wordmark. Their PNG
+  counterparts are transparent 4× raster exports of the SVGs. These are
+  downloadable brand assets, not replacements for the accessible live-text
+  wordmarks in the site navigation.
+- Each site's `public/` directory also serves static hero overview assets
+  (`flow-intro.mp4`, `flow-intro-poster.jpg`, `jig-intro.mp4`, `jig-intro-poster.jpg`)
+  copied into dist outputs for the landing page hero video players.
+- Site headers compose those marks with the live product wordmarks in the shared
+  theme. Keep the two sites' mark assets separate; their visual distinction is
+  intentional, while wordmark typography and balanced lockup proportions are
+  owned by `theme/`.
 - FLOW publishes SDK guides at `/guide/python` and `/guide/typescript`, Markdown
   authoring at `/guide/markdown`, Skill compatibility at `/guide/skills`,
   language and runtime matrix at `/guide/runtimes`, and host/platform integration

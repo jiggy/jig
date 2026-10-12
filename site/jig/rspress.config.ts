@@ -107,9 +107,21 @@ export default defineConfig({
   title: 'Jig',
   description: 'Reusable methods. Your Agents. Power under control.',
   icon: new URL('./public/favicon.svg', import.meta.url).href,
-  logoText: 'Jig',
+  logo: {
+    light: '/mark.svg',
+    dark: '/mark-light.svg',
+  },
+  logoText: 'jig',
   builderConfig: {
-    output: { cleanDistPath: false },
+    server: {
+      publicDir: {
+        name: resolve(siteDirectory, 'public'),
+      },
+    },
+    output: {
+      cleanDistPath: false,
+      copy: [{ from: resolve(siteDirectory, 'public'), to: '.' }],
+    },
     tools: {
       rspack: {
         module: {

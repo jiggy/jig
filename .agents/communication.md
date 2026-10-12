@@ -175,6 +175,13 @@ are factual claims and need their own evidence. Avoid “the only solution,”
 “agents cannot run in production,” and “eliminates prompt injection.” Those
 claims are unnecessary to explain why this architecture deserves to exist.
 
+## Keep the shared visual identity coherent
+
+Follow the selected names and visual system in the
+[brand guide](brand.md). Public copy should use **Jig** for the host and
+**FLOW** for the independent sibling standard; publisher and registry names do
+not become product brands.
+
 ## Make examples earn the promise
 
 Use an ordinary public example and trace its input, method, checks, and result.
