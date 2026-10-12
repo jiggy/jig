@@ -1,66 +1,74 @@
 name: Publish npm prereleases
 
-run-name: Publish pending npm prereleases from ${{ github.event.workflow_run.head_sha }}
+run-name: Reconcile qualified npm prereleases
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [CI, Linux host conformance, macOS hosted candidates, Native Agent API qualification]
     types: [completed]
-
-env:
-  SOURCE_REVISION: ${{ github.event.workflow_run.head_sha }}
-
-concurrency:
-  group: npm-prerelease-publish
-  cancel-in-progress: false
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact main-push source revision to reconcile
+        required: true
+        type: string
 
 jobs:
   authorize:
     name: Require same-revision release qualification
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+    if: github.event_name == 'workflow_run' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 5
     permissions:
       actions: read
       contents: read
+    outputs:
+      source_revision: ${{ steps.ready.outputs.source_revision }}
+      producer_run_id: ${{ steps.ready.outputs.producer_run_id }}
+      producer_run_attempt: ${{ steps.ready.outputs.producer_run_attempt }}
+      ready_flow: ${{ steps.ready.outputs.ready_flow }}
+      ready_host: ${{ steps.ready.outputs.ready_host }}
+      candidate_artifact_id: ${{ steps.ready.outputs.candidate_artifact_id }}
+      candidate_artifact_digest: ${{ steps.ready.outputs.candidate_artifact_digest }}
+      candidate_receipt_sha256: ${{ steps.ready.outputs.candidate_receipt_sha256 }}
+      flow_snapshot: ${{ steps.ready.outputs.flow_snapshot }}
+      host_snapshot: ${{ steps.ready.outputs.host_snapshot }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ env.SOURCE_REVISION }}
+          ref: ${{ github.event.repository.default_branch }}
 
-      - name: Require successful Linux Host Conformance
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Verify current-attempt source and candidate readiness
+        id: ready
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          scripts/require-linux-host-conformance.sh
-          "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
-
-      - name: Require successful Intel and Apple Silicon Mac host conformance
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          scripts/require-macos-host-conformance.sh
-          "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
-
-      - name: Require exact-revision native Agent API qualification
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          scripts/require-native-agent-api-qualification.sh
-          "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
+          REQUESTED_SOURCE: ${{ inputs.source_revision }}
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            node scripts/ci/release-readiness.mjs --source "$REQUESTED_SOURCE" --github-output "$GITHUB_OUTPUT"
+          else
+            node scripts/ci/release-readiness.mjs --github-output "$GITHUB_OUTPUT"
+          fi
 
   publish:
     name: Publish independent FLOW SDK candidate
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+    needs: authorize
+    if: needs.authorize.outputs.ready_flow == 'true'
+    concurrency:
+      group: npm-prerelease-flow
+      cancel-in-progress: false
+      queue: max
     env:
       RELEASE_GROUP: flow
+      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
+      EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
+      QUALIFICATION_SNAPSHOT: ${{ needs.authorize.outputs.flow_snapshot }}
     environment: npm
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -103,15 +111,107 @@ jobs:
       - name: Download exact persisted candidates
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: npm-candidate-*-${{ env.SOURCE_REVISION }}
+          artifact-ids: ${{ needs.authorize.outputs.candidate_artifact_id }}
+          merge-multiple: true
           path: ${{ runner.temp }}/candidates
           github-token: ${{ github.token }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ needs.authorize.outputs.producer_run_id }}
 
       - name: Publish or converge qualified package group
         id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+
+          # The protected workflow owns this verifier. Queued jobs cannot rely
+          # on a readiness snapshot taken before approval or the mutation lock.
+          revalidate_qualification() {
+            node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          const snapshot = JSON.parse(process.env.QUALIFICATION_SNAPSHOT ?? 'null');
+          const repository = process.env.GITHUB_REPOSITORY;
+          if (snapshot?.schemaVersion !== 1 || snapshot.repository !== repository ||
+              snapshot.group !== process.env.RELEASE_GROUP || snapshot.sourceRevision !== process.env.SOURCE_REVISION ||
+              snapshot.candidate?.receiptSha256 !== process.env.EXPECTED_RECEIPT_SHA256 ||
+              !Array.isArray(snapshot.runs) || snapshot.runs.length !== (snapshot.group === 'flow' ? 1 : 4) ||
+              !Array.isArray(snapshot.artifacts) || snapshot.artifacts.length !== (snapshot.group === 'flow' ? 1 : 7))
+            throw new Error('Invalid authorized qualification snapshot');
+          const api = (path) => JSON.parse(execFileSync('gh', ['api', path], {
+            encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024,
+          }));
+          const list = (path, key) => {
+            const values = [];
+            for (let page = 1; page <= 10; page++) {
+              const result = api(`${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
+              if (!Array.isArray(result[key])) throw new Error('Malformed GitHub evidence response');
+              values.push(...result[key]);
+              if (result[key].length < 100) return values;
+            }
+            throw new Error('GitHub evidence pagination exceeded its bound');
+          };
+          for (const expected of snapshot.runs) {
+            const current = api(`repos/${repository}/actions/runs/${expected.runId}`);
+            if (current.id !== expected.runId || current.run_attempt !== expected.runAttempt ||
+                current.status !== 'completed' || current.conclusion !== 'success' ||
+                current.repository?.full_name !== repository || current.path !== expected.workflowPath ||
+                current.event !== expected.event || current.head_sha !== expected.headSha ||
+                current.head_branch !== expected.headBranch || current.head_repository?.full_name !== expected.headRepository)
+              throw new Error('Qualification run changed after authorization');
+            const jobs = list(`repos/${repository}/actions/runs/${expected.runId}/attempts/${expected.runAttempt}/jobs`, 'jobs');
+            if (!Array.isArray(expected.jobs) || expected.jobs.length === 0) throw new Error('Missing qualification job obligations');
+            for (const proof of expected.jobs) {
+              const matching = jobs.filter((job) => job.name === proof.name);
+              if (proof.runId !== expected.runId || proof.runAttempt !== expected.runAttempt || matching.length !== 1 ||
+                  matching[0].id !== proof.jobId || matching[0].status !== 'completed' || matching[0].conclusion !== 'success' ||
+                  (matching[0].run_attempt !== undefined && matching[0].run_attempt !== expected.runAttempt))
+                throw new Error('Qualification job changed after authorization');
+            }
+            if (expected.event === 'push') {
+              const query = new URLSearchParams({ branch: 'main', event: 'push', head_sha: snapshot.sourceRevision });
+              const runs = list(`repos/${repository}/actions/workflows/${expected.workflowPath.split('/').at(-1)}/runs?${query}`, 'workflow_runs');
+              const latest = runs.filter((run) => run.path === expected.workflowPath && run.event === 'push' &&
+                run.head_sha === snapshot.sourceRevision && run.head_branch === 'main' &&
+                run.repository?.full_name === repository && run.head_repository?.full_name === repository)
+                .sort((a, b) => b.id - a.id)[0];
+              if (latest?.id !== expected.runId || latest.run_attempt !== expected.runAttempt)
+                throw new Error('A newer source qualification superseded authorization');
+            } else {
+              const runs = list(`repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs`, 'workflow_runs');
+              for (const run of runs) {
+                if (run.id <= expected.runId || run.path !== expected.workflowPath || run.head_branch !== 'main' ||
+                    run.repository?.full_name !== repository || run.head_repository?.full_name !== repository ||
+                    !['workflow_run', 'workflow_dispatch'].includes(run.event)) continue;
+                if (run.event === 'workflow_dispatch' && run.head_sha === snapshot.sourceRevision)
+                  throw new Error('A newer manual native qualification superseded authorization');
+                const artifacts = list(`repos/${repository}/actions/runs/${run.id}/artifacts`, 'artifacts');
+                const name = new RegExp(`^native-(inputs|qualification)-(codex|claude|pi)-${snapshot.sourceRevision}-r${run.id}-a[1-9][0-9]*$`);
+                if (artifacts.some((artifact) => name.test(artifact.name ?? '')))
+                  throw new Error('A newer native qualification superseded authorization');
+              }
+            }
+          }
+          for (const expected of snapshot.artifacts) {
+            const current = api(`repos/${repository}/actions/artifacts/${expected.artifactId}`);
+            if (current.id !== expected.artifactId || current.name !== expected.name || current.digest !== expected.digest ||
+                current.expired !== false || !Number.isFinite(Date.parse(current.expires_at)) || Date.parse(current.expires_at) <= Date.now() ||
+                current.workflow_run?.id !== expected.runId || current.workflow_run?.head_sha !== expected.headSha)
+              throw new Error('Qualification artifact changed or expired after authorization');
+          }
+          NODE
+          }
+
+          # Inspect data only; this protected job never checks out or runs source.
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFile } from 'node:fs/promises';
+          const bytes = await readFile(`${process.env.RUNNER_TEMP}/candidates/CANDIDATE.json`);
+          if (createHash('sha256').update(bytes).digest('hex') !== process.env.EXPECTED_RECEIPT_SHA256)
+            throw new Error('candidate receipt differs from authorized artifact');
+          const receipt = JSON.parse(bytes);
+          if (receipt.schemaVersion !== 1 || receipt.sourceRevision !== process.env.SOURCE_REVISION)
+            throw new Error('candidate receipt source mismatch');
+          NODE
 
           archive_digest() {
             node --input-type=module -e '
@@ -159,7 +259,14 @@ jobs:
             package_name=$2
             visibility_attempts=100
             visibility_delay_seconds=10
-            set -- "$RUNNER_TEMP"/candidates/npm-candidate-"$package_kind"-*-$SOURCE_REVISION/*.tgz
+            case "$package_kind" in
+              flow) archive_kind=flow-sdk ;;
+              agent) archive_kind=agent-method ;;
+              acp) archive_kind=agent-acp ;;
+              jig) archive_kind=jig ;;
+              *) echo 'unknown package kind' >&2; exit 1 ;;
+            esac
+            set -- "$RUNNER_TEMP"/candidates/"$archive_kind"/*.tgz
             if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
               echo "$package_name did not persist exactly one candidate archive" >&2
               exit 1
@@ -173,15 +280,21 @@ jobs:
               CANDIDATE_ARCHIVE=$archive \
               CANDIDATE_MANIFEST=$manifest \
               CANDIDATE_SUCCESS="$candidate_directory/SUCCESS.json" \
+              CANDIDATE_KIND=$archive_kind \
               EXPECTED_NAME=$package_name \
               node --input-type=module -e '
                 import { createHash } from "node:crypto";
                 import { readFile } from "node:fs/promises";
-                import { basename } from "node:path";
+                import { basename, relative } from "node:path";
                 const archive = process.env.CANDIDATE_ARCHIVE;
                 const manifest = JSON.parse(await readFile(process.env.CANDIDATE_MANIFEST, "utf8"));
                 const success = JSON.parse(await readFile(process.env.CANDIDATE_SUCCESS, "utf8"));
                 const digest = createHash("sha256").update(await readFile(archive)).digest("hex");
+                const receipt = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/candidates/CANDIDATE.json`, "utf8"));
+                const entries = receipt.packages.filter((item) => item.kind === process.env.CANDIDATE_KIND);
+                if (entries.length !== 1 || entries[0].name !== manifest.name || entries[0].version !== manifest.version ||
+                    entries[0].archive !== relative(`${process.env.RUNNER_TEMP}/candidates`, archive) || entries[0].sha256 !== digest)
+                  throw new Error("candidate archive differs from authorized receipt");
                 const sidecar = await readFile(`${archive}.sha256`, "utf8");
                 if (sidecar !== `${digest}  ${basename(archive)}\n`) throw new Error("candidate digest sidecar does not match its archive");
                 const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|next)(?:\.[0-9A-Za-z-]+)*$/.exec(manifest.version);
@@ -241,6 +354,7 @@ jobs:
             elif [ "$state" = verified ] || [ "${PREFLIGHT:-false}" = false ]; then
               if [ "$state" = published ]; then
                 new_release=true
+                revalidate_qualification
                 set +e
                 npm publish "$archive" --access public --tag "$release_tag" --provenance --ignore-scripts
                 publish_status=$?
@@ -322,6 +436,7 @@ jobs:
             host) package_kinds="agent acp jig" ;;
             *) echo "unknown release group" >&2; exit 1 ;;
           esac
+          revalidate_qualification
           for PREFLIGHT in true false; do
             for kind in $package_kinds; do
               case "$kind" in
@@ -336,6 +451,11 @@ jobs:
   publish_host:
     name: Publish host-qualified Agent and Jig candidates
     needs: [authorize, publish]
+    if: needs.authorize.outputs.ready_host == 'true'
+    concurrency:
+      group: npm-prerelease-host
+      cancel-in-progress: false
+      queue: max
     environment: npm
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -344,17 +464,21 @@ jobs:
       id-token: write
     env:
       RELEASE_GROUP: host
+      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
+      EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
+      QUALIFICATION_SNAPSHOT: ${{ needs.authorize.outputs.host_snapshot }}
     outputs: *release_outputs
     steps: *publish_steps
 
   tag:
     name: Tag published source and create package releases
-    needs: publish
+    needs: [authorize, publish]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
       RELEASE_GROUP: flow
+      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
       FLOW_NEW: ${{ needs.publish.outputs.flow_new }}
       FLOW_STATE: ${{ needs.publish.outputs.flow_state }}
       FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
@@ -383,7 +507,10 @@ jobs:
               published|verified) ;;
               *) echo "missing or invalid qualified package state" >&2; exit 1 ;;
             esac
-            if ref_type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.type 2> /dev/null); then
+            verify_tag() {
+              if ! ref_type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.type 2> /dev/null); then
+                return 1
+              fi
               ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)
               if [ "$ref_type" = tag ]; then
                 target=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq .object.sha)
@@ -394,13 +521,17 @@ jobs:
                 echo "$tag already names a different source revision" >&2
                 exit 1
               fi
-              return
-            fi
+              return 0
+            }
+            if verify_tag; then return; fi
             tag_object=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
               -f tag="$tag" -f message="$message" -f object="$SOURCE_REVISION" \
               -f type=commit --jq .sha)
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f ref="refs/tags/$tag" -f sha="$tag_object" > /dev/null
+            if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$tag" -f sha="$tag_object" > /dev/null; then
+              # Another completion event may have converged the same tag.
+              verify_tag || return 1
+            fi
           }
 
           case "$RELEASE_GROUP" in
@@ -450,9 +581,18 @@ jobs:
                 printf '[Build instructions](https://github.com/%s/blob/%s/RELEASING.md#build-a-source-release).\n' "$GITHUB_REPOSITORY" "$tag"
               fi
             } > "$notes"
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+            if ! gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --prerelease --latest=false \
-              --title "@jigging/$kind $version" --notes-file "$notes"
+              --title "@jigging/$kind $version" --notes-file "$notes"; then
+              gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+                --json tagName,isPrerelease > "$RUNNER_TEMP/existing-release.json"
+              EXPECTED_TAG=$tag node --input-type=module -e '
+                import { readFileSync } from "node:fs";
+                const release = JSON.parse(readFileSync(process.argv[1], "utf8"));
+                if (release.tagName !== process.env.EXPECTED_TAG || release.isPrerelease !== true)
+                  throw new Error("concurrent release has unexpected identity");
+              ' "$RUNNER_TEMP/existing-release.json"
+            fi
           }
 
           case "$RELEASE_GROUP" in
@@ -473,12 +613,13 @@ jobs:
 
   tag_host:
     name: Tag host-qualified packages and create releases
-    needs: publish_host
+    needs: [authorize, publish_host]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
       RELEASE_GROUP: host
+      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
       FLOW_NEW: ${{ needs.publish_host.outputs.flow_new }}
       FLOW_STATE: ${{ needs.publish_host.outputs.flow_state }}
       FLOW_VERSION: ${{ needs.publish_host.outputs.flow_version }}
