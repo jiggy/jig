@@ -111,6 +111,56 @@ test('unchanged mixed platform file cannot authorize its portable or Linux-only 
       assert.throws(() => authorize(f, [{ ...macInputCase, name }]), /Unexpected skipped case/)
   }))
 
+const sourceProviderHostCases = [
+  'installed software factory delivers complete blocked and checked dashboard views',
+  'installed automatic plain typed views end cleanly and report declared observation loss',
+  'installed CLI reviews and runs a workspace dependency (application: member)',
+  'installed CLI reviews and runs a workspace dependency (application: root)',
+  'installed CLI reviews and runs a workspace dependency (application: nested)',
+  'packed read attachments preserve empty roots and maximum relative paths',
+  'packed project entrypoint uses fresh reviewed data and immutable execution',
+  'packed project dependencies uses fresh reviewed data and immutable execution',
+]
+
+test('source Linux authorizes only the eight reviewed provider host cases at frozen source', () =>
+  fixture([providerFile], (f) => {
+    const cases = sourceProviderHostCases.map((name) => ({ file: providerFile, name }))
+    const proof = authorize(f, cases)
+    assert.equal(proof.observedSkipped, 8)
+    assert.equal(proof.unexpectedSkips, 0)
+    assert.deepEqual(
+      proof.skippedCases.map((item) => item.name),
+      sourceProviderHostCases,
+    )
+    assert.equal(proof.skippedCaseDigest, skippedCaseDigest(proof.skippedCases))
+  }))
+
+test('the required portable provider observation grammar case cannot inherit host skip permission', () =>
+  fixture([providerFile], (f) => {
+    assert.throws(
+      () =>
+        authorize(f, [
+          {
+            file: providerFile,
+            name: 'factory automatic observation accepts complete views or exact truthful loss and rejects malformed evidence',
+          },
+        ]),
+      /Unexpected skipped case/,
+    )
+  }))
+
+test('reviewed provider host skips do not authorize future cases, neighboring names or invented placeholders', () =>
+  fixture([providerFile], (f) => {
+    for (const name of [
+      'installed new provider regression',
+      `${sourceProviderHostCases[0]} without observing updates`,
+      'installed CLI reviews and runs a workspace dependency (application: future)',
+      'installed CLI reviews and runs a workspace dependency (application: %s)',
+      'packed project %s uses fresh reviewed data and immutable execution',
+    ])
+      assert.throws(() => authorize(f, [{ file: providerFile, name }]), /Unexpected skipped case/)
+  }))
+
 test('new file, unresolved revision, missing name, traversal and repeat identities fail closed', () =>
   fixture([inputFile], (f) => {
     const badCases = [
