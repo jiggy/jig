@@ -118,6 +118,54 @@ child calls, project commands, delegated HTTP, and Agent providers.
   before/after publication and interrupted-batch recovery without rewriting them.
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
+- `flow-file-context.ts` retains immediate-caller immutable read views and
+  binds only authentic admitted native import targets. Contexts own neither
+  captured bytes nor native storage; closing an ancestor revokes descendants.
+  `child-file-import.ts` retains caller-lifetime busy/consumed/unavailable folder
+  state independently of child-row and visible-directory deletion. Existing
+  RunHost operation identity owns duplicates; recovery fences the caller and
+  never resumes its program, so no durable destination history is added.
+  Child controllers admit the complete result and fence descendants before
+  copying. Source readers and existing child package/native/row cleanup settle
+  before native no-replace commit; remaining importer closes precede a normal
+  reply. Unknown setup, commit or close ends the caller without rollback/replay.
+- `execution-file-import.ts` joins native stage preparation, one bounded copy
+  and retirement without owning dispatch or durable Run state. Native issuers
+  own source/destination authority and cancellation-versus-rename arbitration.
+  Target closure preserves unknown setup cleanup, aborts/joins copies before
+  raw stage closure, and still attempts native target cleanup after failures.
+  Keep copied-file and directory FileHandles strongly retained until each
+  actual close fulfills; unknown closes never become a successful retirement.
+  Retain the original target and its active leases strongly until complete
+  target retirement is confirmed; a fatal caller does not release unknown
+  native handles to garbage collection.
+- `read-input-projection.ts` derives only whole-view aliases with identical paths
+  and original captured-input capabilities. Keep at most eight logical roots,
+  64 canonical files and 8 MiB of unique projected bytes; equal hashes never
+  authenticate aliases. Native owners create immutable local aliases before
+  payload execution and retain the exact closed recipe at seal/admission.
+  Each Linux launch reopens its held sealed memfd read-only, rechecks backing
+  identity and seals, and hands off an independent file position above stdio
+  destination slots. Parent and sibling copies never seek the original reader.
+- Writable child maps opt into the existing per-invocation output owner. Linux
+  captures original backing/public descriptors before projecting the public
+  subtree; trusted setup uses fixed environment, drops all capabilities and
+  reexecs before final continuation and package execution. Mac's existing
+  guardian keeps denied import/public siblings on its ordinary volume, loans
+  original roots through authenticated transfer, and handles bounded tagged
+  begin/commit/cancel/end messages on its existing control. At most two stages
+  belong to one caller. Native membership, original deadlines and accepted
+  cancellation arbitrate commit; a coordinator check is not the commit owner.
+  Payload fencing joins outer copy leases and original root loans before Mac
+  snapshot/storage retirement. Retain real FileHandles on uncertain close,
+  never retry an ambiguous close or reconstruct authority from path metadata.
+- Attachment coexistence derives from the existing root reservation: at most
+  six Flow envelopes and five child stages, no new pool or independent volume.
+  Linux stages share each 16 MiB output tmpfs; trusted import writes may charge
+  coordinator memory. Mac stages share each existing 512 MiB Flow image.
+  Collection retains <=16 MiB snapshots per Flow and streams <=64 KiB chunks;
+  final publication and accepted checkpoint bytes keep their separate limits.
+  Keep the full derived accounting in SECURITY.md synchronized with host policy.
 - `file-input.ts` owns common bounded selection, raw-name validation and regular
   reads; `file-input-policy.ts` owns limits and closed diagnostics. Linux uses
   openat2 and sealed memfds; qualified Darwin walks held descriptors without
@@ -158,6 +206,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Content-profile rejection remains a delivery or optional-history
   outcome; unexpected I/O and cleanup failure retain their separate consequences.
   Closing an unavailable snapshot cannot manufacture a storage-cleanup failure.
+  Memoize each original directory or snapshot loan's actual close and retain
+  it strongly until that close is confirmed. Typed close uncertainty blocks
+  child commit and never permits another close attempt.
+- `project-plan-review.ts` renders retained public policy and affected targets.
+  Keep exact child attachment port/folder maps visible, and mark mapped parents
+  affected when their selected child revision or availability changes.
 - `file-delivery.ts` accepts local held input roots and bounded output snapshots
   or Linux anonymous directory descriptors. Remote descriptor acquisition belongs
   to the authenticated command transport, never a decoded pathname in publication.
@@ -947,7 +1001,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   hashes alone never grant file access. Per-run captured bytes are not retained
   artifacts. Before package code starts, the trusted inner launcher rechecks
   every projected file's byte count and digest against the admitted identity.
-  Child and Agent contexts receive no attachment or destination authority.
+  Child contexts receive only complete reviewed maps from their immediate
+  caller; native Agent contexts receive no attachment or destination authority.
   The admitted-interface mapping check precedes root allocation. Its closed
   failure projects only bounded declared/supplied names for missing reads,
   invalid mappings, bound overrides and missing writable destinations; combined
@@ -957,7 +1012,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   retained artifact store. Bind source, manifest and tree identity to the exact
   configuration; revalidate at admission and project retained bytes at execution,
   never live sources. Runtime mappings cannot override them. Combined retained
-  and per-run input stays within the root file budget; no child inheritance,
+  and per-run input stays within the root file budget; no implicit inheritance,
   executable discovery, library resolver, network or credential authority.
 - Keep execution settlement separate from delivery. Retain bounded output after
   writer fencing; publish once without replacement through the independent
@@ -1208,7 +1263,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   authentication, endpoint release, parent recovery fencing or installed browser
   composition; those remain platform/installed qualification gates.
   `execution-output.test.ts` verifies fencing/release/cleanup order, capture
-  refusal, missing collectors and cleanup failure. Native guardian input evidence
+  refusal, missing collectors and cleanup failure. Directory and snapshot loan
+  cases require one actual close, sticky typed uncertainty and retained original
+  handles after caller references leave. Native guardian input evidence
   and terminal cleanup recovery cover retained bytes after storage removal;
   the latter injects transient and persistent job-retirement refusal with actual
   bounded output collection, preserving refusal until removal is confirmed.

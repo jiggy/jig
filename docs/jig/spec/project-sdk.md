@@ -283,8 +283,28 @@ for bounds, retained storage and tool-bundle limitations.
 
 Other read attachments remain per-invocation `--attach` inputs; a Run cannot
 override a Binding's captured selection. Root Flows and Bindings use the same
-[root file profile](project-policy.md#root-file-runs). Binding child slots
-cannot select attachment-bearing packages or inherit parent file authority.
+[root file profile](project-policy.md#root-file-runs). A Binding can explicitly map a child slot to the caller's declared attachments:
+
+```ts
+slots: {
+  copy: {
+    target: "flow:flows/copy",
+    attachments: {
+      source: { from: "source" },
+      deliverables: { into: "deliverables", directory: "copies" },
+    },
+  },
+}
+```
+
+Each child attachment must be mapped exactly once. `from` selects a complete
+immutable read view from the immediate caller; `into` selects its writable
+attachment and one new LocalName folder. Directions must match. A mapped
+Binding child cannot also select its own retained attachment resources.
+Writable sibling folders must differ. Read aliases share the original capture
+without widening the 64-file/8-MiB physical input budget. The mapping is part
+of review and admission; ordinary `run.call()` still supplies only JSON input.
+See [child files](project-policy.md#child-file-runs) for completion and failure semantics.
 
 Binding identity is the declaration filename's LocalName basename. For
 example, `bindings/review.ts` has ID `review`. There is no duplicate `id`

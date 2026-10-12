@@ -52,6 +52,10 @@ import {
 } from './execution-backend.js'
 import { PRIVATE_OUTPUT_BYTES } from './execution-intent.js'
 import { privateFlowExecutionIntent } from './flow-execution-intent.js'
+import {
+  bindPrivateFlowFileImportTarget,
+  type PrivateFlowFileContext,
+} from './flow-file-context.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import { captureStoredPackage } from './package-artifact-store.js'
@@ -216,6 +220,7 @@ async function startOrResumeCurrentExecution(
   let stopChannels: (() => void) | undefined
   let channelDeadline: ReturnType<typeof setTimeout> | undefined
   let boundFiles: Awaited<ReturnType<typeof openBoundAttachments>> | undefined
+  let fileContext: PrivateFlowFileContext | undefined
   let failurePhase: PrivateRootExecutionFailurePhase = 'planning'
   let reportedError: unknown
   let hasReportedError = false
@@ -320,6 +325,7 @@ async function startOrResumeCurrentExecution(
       work.run.files,
       boundFiles.attachments,
     )
+    fileContext = fileProjection.context
     if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
       throw new Error('root attachment authority is unavailable')
     const launch = privateFlowExecutionIntent(
@@ -329,7 +335,7 @@ async function startOrResumeCurrentExecution(
       plan.effectiveDeadlineUnixMs,
       plan.cancellationGraceMs,
       PRIVATE_OUTPUT_BYTES,
-      fileProjection?.plan,
+      fileProjection.plan,
     )
     failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(input.backend, launch, plan.ownerAllocation)
@@ -390,6 +396,8 @@ async function startOrResumeCurrentExecution(
       } catch {
         // Optional command presentation cannot alter admitted execution.
       }
+      if (component.outputImport !== undefined)
+        bindPrivateFlowFileImportTarget(fileContext, component.outputImport)
       input.files?.retainOutput(component.output)
       const parent = work
       const dispatcher = operationDispatcher(
@@ -399,6 +407,7 @@ async function startOrResumeCurrentExecution(
         openedChannels,
         channelInspected,
         recipe,
+        fileContext,
       )
       failurePhase = 'protocol'
       provisional = await privateProfileSpan('flow-execution', () =>
@@ -434,6 +443,7 @@ async function startOrResumeCurrentExecution(
         await privateProfileSpan('operation-owner-settlement', () =>
           recoverPrivateRootOperationOwners(input, parent),
         )
+        await component.outputImport?.close()
       } catch (error) {
         if (!isPrivateExecutionFenceUnconfirmed(error)) throw error
         // The root result is known, but it cannot become terminal while a
@@ -570,6 +580,7 @@ async function startOrResumeCurrentExecution(
         await channelPackage?.dispose()
       } finally {
         try {
+          fileContext?.close()
           boundFiles?.close()
         } finally {
           if (channelDeadline !== undefined) clearTimeout(channelDeadline)
@@ -1186,6 +1197,7 @@ function operationDispatcher(
   channels: PrivateRunChannels,
   inspected: InspectedPackage,
   recipe: PrivateDirectRunRecipe,
+  files: PrivateFlowFileContext,
 ): RunHostOperationDispatcher | undefined {
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (target === undefined) return undefined
@@ -1253,6 +1265,7 @@ function operationDispatcher(
           () =>
             executePrivateRootFlowCall({
               ...operationInput(input, parent),
+              files,
               onFailure: (phase, error) => input.onFailure?.(`child-flow-${phase}`, error),
               onEffectFailure: (phase, error) =>
                 input.onFailure?.(`child-contained-effect-${phase}`, error),

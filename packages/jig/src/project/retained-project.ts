@@ -228,6 +228,7 @@ export async function retainOpenedPackageProject(
       select(binding.evaluation.value.package)
       for (const value of Object.values(binding.evaluation.value.slots))
         if (typeof value === 'string') select(value)
+        else if ('attachments' in value) select(value.target)
     }
     const configured = project.value.flows
     if (configured?.kind === 'members') for (const path of configured.paths) select(path)
@@ -282,7 +283,8 @@ export async function retainOpenedPackageProject(
           typeof selection === 'string'
             ? grantSource.grants[selection.startsWith('grant:') ? selection.slice(6) : selection]
             : selection
-        if (policy?.kind === 'acp') clients[slot] = policy.client
+        if (policy !== undefined && 'kind' in policy && policy.kind === 'acp')
+          clients[slot] = policy.client
       }
       agentSources[binding.id] = privateAgentSourceLocations(
         binding.sourcePath,

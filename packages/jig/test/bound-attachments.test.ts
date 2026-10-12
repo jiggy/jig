@@ -117,7 +117,7 @@ test('review refuses source links, protected trees and aggregate excess before g
     }
   }))
 
-test('linked review, lock, request and projection pin the same read-only selection with no override or child inheritance', async () =>
+test('linked review, lock, request and projection pin the same read-only selection with no override or implicit child inheritance', async () =>
   fixture(async (directory, store) => {
     const path = join(directory, 'flows/read')
     await mkdir(path, { recursive: true })
@@ -233,7 +233,7 @@ test('linked review, lock, request and projection pin the same read-only selecti
             },
           ],
         }),
-      ).toThrow('root-only')
+      ).toThrow('complete reviewed static attachment map')
       const modified = structuredClone(request)
       ;(modified.boundAttachments!.tool as { source: string }).source = 'different'
       expect(() => restorePrivateActivationRequest(modified)).toThrow('digest')

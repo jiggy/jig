@@ -281,6 +281,108 @@ describe('private package-project linker', () => {
     })
   })
 
+  test('mapped child interfaces retain the exact reviewed map and refuse incompatible authority', async () => {
+    await withFlows(
+      {
+        'flows/parent': {
+          ...run('parent'),
+          'FLOW.meta.json': metadata({ name: 'parent', uses: { copy: {} } }),
+          'FLOW.contract.json': invocation({
+            attachments: { originals: 'read', photos: 'read-write' },
+          }),
+        },
+        'flows/child': {
+          ...run('child'),
+          'FLOW.contract.json': invocation({
+            attachments: { source: 'read', files: 'read-write' },
+          }),
+        },
+      },
+      (flows) => {
+        const validMap = {
+          source: { from: 'originals' },
+          files: { into: 'photos', directory: 'copies' },
+        }
+        const project = (attachments: unknown, target = 'flow:flows/child', bound = false) =>
+          linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/child.ts', {
+                package: 'flows/child',
+                ...(bound ? { attachments: { source: 'fixtures' } } : {}),
+              }),
+              binding('bindings/parent.ts', {
+                package: 'flows/parent',
+                slots: { copy: { target, attachments } },
+              }),
+            ].map((value) =>
+              value.sourcePath.endsWith('child.ts') && bound
+                ? {
+                    ...value,
+                    capturedAttachments: {
+                      source: { source: 'fixtures', digest: `sha256:${'a'.repeat(64)}`, files: [] },
+                    },
+                  }
+                : value,
+            ),
+          })
+        for (const target of ['flow:flows/child', 'binding:child']) {
+          const linked = project(validMap, target)
+          const selected = target.startsWith('flow:')
+            ? { kind: 'flow', path: 'flows/child' }
+            : { kind: 'binding', id: 'child' }
+          const route = { kind: 'route', target: selected, attachments: validMap }
+          expect(linked.bindings.find((value) => value.id === 'parent')!.slots.copy).toEqual(route)
+          const lock = createPrivateProjectLocalLock(linked)
+          expect(lock.bindings.parent!.slots.copy).toEqual(route)
+          expect(decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))).toEqual(lock)
+          const request = buildPrivateActivationRequests(linked).find(
+            (value) => value.target.kind === 'binding' && value.target.id === 'parent',
+          )!
+          expect(request.slots.copy).toEqual({
+            kind: 'flow',
+            target: selected,
+            attachments: validMap,
+          })
+          const changed = buildPrivateActivationRequests(
+            project({ ...validMap, files: { into: 'photos', directory: 'other-copies' } }, target),
+          ).find((value) => value.target.kind === 'binding' && value.target.id === 'parent')!
+          expect(changed.digest).not.toBe(request.digest)
+        }
+        for (const attachments of [
+          { source: validMap.source },
+          { ...validMap, source: { from: 'photos' } },
+          { ...validMap, files: { into: 'originals', directory: 'copies' } },
+          { ...validMap, extra: { from: 'originals' } },
+        ])
+          expectCode(
+            () => project(attachments),
+            'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID',
+            '/slots/copy/attachments',
+          )
+        expectCode(
+          () => project(validMap, 'binding:child', true),
+          'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
+          '/slots/copy',
+        )
+        expectCode(
+          () =>
+            linkPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/parent.ts', {
+                  package: 'flows/parent',
+                  slots: { copy: 'flow:flows/child' },
+                }),
+              ],
+            }),
+          'PROJECT_BINDING_SLOT_ATTACHMENTS_UNSUPPORTED',
+          '/slots/copy',
+        )
+      },
+    )
+  })
+
   test('links and retains the project entrypoint; rejects missing targets and incompatible defaults', async () => {
     await withFlows(
       {
@@ -1191,7 +1293,7 @@ describe('private package-project linker', () => {
     })
   })
 
-  test('supports attachment-bearing roots but rejects them as Flow or Binding children', async () => {
+  test('supports attachment-bearing roots and requires reviewed maps for child access', async () => {
     await withFlows(
       {
         'flows/plain': run('plain'),

@@ -1,14 +1,13 @@
 import { invalid } from '../diagnostics.js'
 import { PRIVATE_MAX_CHILD_FLOW_LEVELS } from '../internal/root-operation-limits.js'
-import type { GrantedSlot } from './grants.js'
-import type { RunTargetIdentity } from './package-project.js'
+import type { ProjectSlotTarget } from './attachment-routes.js'
 
 export const MAX_CHILD_FLOW_LEVELS = PRIVATE_MAX_CHILD_FLOW_LEVELS
 
 interface Node {
   readonly packagePath: string
   readonly declarationPath?: string
-  readonly slots: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>
+  readonly slots: Readonly<Record<string, ProjectSlotTarget>>
 }
 
 /** Validate once per target and return longest descendant paths (edge counts). */
@@ -48,8 +47,9 @@ export function validateChildGraph(
       return known
     }
     let depth = 0
-    for (const target of Object.values(binding.slots)) {
-      if (target.kind === 'grant') continue
+    for (const selected of Object.values(binding.slots)) {
+      if (selected.kind === 'grant') continue
+      const target = selected.kind === 'route' ? selected.target : selected
       if (path.length >= MAX_CHILD_FLOW_LEVELS)
         invalid(
           'PROJECT_BINDING_SLOT_DEPTH',

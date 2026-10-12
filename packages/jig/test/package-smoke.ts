@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
 import { checkInstalledConversation } from './installed-conversation-adoption.js'
+import { checkInstalledMappedFiles } from './installed-mapped-files.js'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
@@ -821,7 +822,7 @@ const project = defineJig(input);
 const bindingInput: PackageBindingInput = {
   package: "./flows/router",
   settings: { profile: "fast" },
-  slots: { worker: "flow:./flows/worker", tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
+  slots: { worker: "flow:./flows/worker", files: { target: "flow:./flows/files", attachments: { source: { from: "source" }, output: { into: "output", directory: "copies" } } }, tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
 };
 const binding = defineBinding(bindingInput);
 void project;
@@ -862,6 +863,11 @@ void binding;
     const sdkArtifacts = join(temporary, 'sdk-artifacts')
     await mkdir(sdkArtifacts)
     const sdkArchive = await selectArchive(sdkArtifacts, 'flow-sdk')
+    await checkInstalledMappedFiles({
+      directory: join(consumer, 'mapped-files'),
+      cli: command,
+      sdkArchive,
+    })
     await run(
       ['tar', '-xzf', sdkArchive, '--strip-components=1', '-C', join(project, 'libs/flow')],
       consumer,

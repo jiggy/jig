@@ -38,6 +38,12 @@ import {
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
+import {
+  type PrivateChildFileDestination,
+  PrivateChildFileDestinationError,
+  reservePrivateChildFileDestination,
+  settlePrivateChildFileDestination,
+} from './child-file-import.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
@@ -54,6 +60,7 @@ import {
   normalizePrivateExecutionSealedOwnerIdentity,
   observePrivateExecutionBackendMechanism,
   type PrivateExecutionBackend,
+  type PrivateExecutionComponentProcess,
   type PrivateExecutionConfirmedEnforcementReceipt,
   type PrivateExecutionOwnerStateAllocationIdentity,
   type PrivateExecutionOwnerStateReleaseReceipt,
@@ -64,7 +71,22 @@ import {
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
+import {
+  copyPrivateFileImportOutput,
+  type PrivateFileImportStage,
+  PrivateFileImportUnconfirmedError,
+} from './execution-file-import.js'
+import { closePrivateExecutionOutput } from './execution-output.js'
 import { privateFlowExecutionIntent } from './flow-execution-intent.js'
+import {
+  bindPrivateFlowFileImportTarget,
+  createPrivateChildFlowFileContext,
+  type PrivateChildFlowFilePlan,
+  type PrivateFlowFileContext,
+  planPrivateChildFlowFiles,
+  privateFlowFileExecutionProjection,
+  privateFlowFileImportTarget,
+} from './flow-file-context.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -141,6 +163,7 @@ interface ChildInput {
   readonly packageStoreRoot: PrivateFileLocation
   readonly parent: PrivateReacquiredRootExecutionWork
   readonly parentFlow?: PrivateParentFlow | undefined
+  readonly files?: PrivateFlowFileContext
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateExecutionBackend
@@ -320,6 +343,27 @@ async function executePreparedChild(
   if (input.parentFlow !== undefined)
     await requireParentFlowOwner(input, input.parentFlow, effectiveDeadlineUnixMs)
 
+  const route = requireParentTarget(input).request.slots[input.call.slot]
+  if (route?.kind !== 'flow')
+    return failed('UNAVAILABLE', 'the requested slot has no admitted child Flow')
+  let filePlan: PrivateChildFlowFilePlan | undefined
+  try {
+    if (input.files !== undefined) {
+      filePlan = planPrivateChildFlowFiles({
+        caller: input.files,
+        declarations: selected.request.attachments,
+        mapping: route.attachments ?? null,
+      })
+    } else if (
+      route.attachments !== undefined ||
+      Object.keys(selected.request.attachments).length !== 0
+    ) {
+      return failed('UNAVAILABLE', 'the caller file owner is unavailable')
+    }
+  } catch {
+    return failed('UNAVAILABLE', 'the reviewed child attachment map cannot be supplied')
+  }
+
   const existing = (
     await listPrivateRootChildOwners({
       coordinator: input.coordinator,
@@ -385,7 +429,29 @@ async function executePreparedChild(
 
   let attemptedDispatch = false
   let failurePhase: ChildFailurePhase = 'preparation'
+  let destination: PrivateChildFileDestination | undefined
+  let stage: PrivateFileImportStage | undefined
+  let childContext: PrivateFlowFileContext | undefined
+  let component: PrivateExecutionComponentProcess | undefined
+  let commitAttempted = false
+  let committed = false
+  let childCleanupConfirmed = false
+  let knownResult = false
   try {
+    if (filePlan !== undefined) {
+      destination = reservePrivateChildFileDestination(input.files!, filePlan)
+      if (destination !== undefined) {
+        stage = await privateFlowFileImportTarget(input.files!).stage({
+          directory: destination.directory,
+          operationId: input.call.operationId,
+          deadlineUnixMs: effectiveDeadlineUnixMs,
+          signal: input.signal,
+        })
+      }
+      childContext = createPrivateChildFlowFileContext(filePlan)
+    }
+    const fileProjection =
+      childContext === undefined ? undefined : privateFlowFileExecutionProjection(childContext)
     const lease = await materializeChild(input.packageStoreRoot, recipe, packageAllocation)
     await revalidateRecipe(recipe)
     failurePhase = 'sealing'
@@ -398,6 +464,7 @@ async function executePreparedChild(
         effectiveDeadlineUnixMs,
         CANCELLATION_GRACE_MS,
         64 * 1024 * 1024,
+        fileProjection?.plan,
       ),
       ownerAllocation,
     )
@@ -426,7 +493,6 @@ async function executePreparedChild(
         ? undefined
         : input.channels!.caller.transfer(participant, input.call.channels ?? {}, declarations)
     const startup = startupSignal(input.signal)
-    let component: Awaited<ReturnType<typeof sealed.admit>>
     try {
       attemptedDispatch = true
       failurePhase = 'admission'
@@ -434,13 +500,28 @@ async function executePreparedChild(
     } finally {
       startup.dispose()
     }
+    if (component.outputImport !== undefined && childContext !== undefined)
+      bindPrivateFlowFileImportTarget(childContext, component.outputImport)
     failurePhase = 'protocol'
     const provisional = await new RunHostSession(
       component,
       {
         input: input.call.input,
         settings: selected.request.settings,
-        attachments: Object.freeze({}),
+        attachments: Object.freeze(
+          Object.fromEntries(
+            Object.entries(fileProjection?.attachments ?? {}).map(([name, attachment]) => [
+              name,
+              {
+                access: attachment.access,
+                path: privateExecutionLocations(ownerAllocation).attachment(
+                  name,
+                  attachment.access,
+                ),
+              },
+            ]),
+          ),
+        ),
         ...(grants === undefined ? {} : { channels: grants }),
         scratch: privateExecutionLocations(ownerAllocation).scratch,
         deadlineUnixMs: effectiveDeadlineUnixMs,
@@ -455,12 +536,51 @@ async function executePreparedChild(
         participant,
         recipe,
         onDiagnostic,
+        childContext,
       ),
     ).run()
     failurePhase = 'settlement'
+    // Its nested imports have joined with RunHost. Release caller loans before native capture/cleanup.
+    await component.outputImport?.close()
     const fence = await component.enforcement
+    await recoverDescendants(input, lifecycle, selected)
+    const admitted = await admitOperationResult(
+      input.packageStoreRoot,
+      selected.request.package,
+      provisional,
+    )
+    knownResult = true
+    if (stage !== undefined && admitted.status === 'succeeded') {
+      if (component.output === undefined) throw new Error('child output source is unavailable')
+      await copyPrivateFileImportOutput({
+        stage,
+        output: component.output,
+        signal: input.signal,
+        prefix: destination!.prefix,
+      })
+    }
+    await closePrivateExecutionOutput(component.output)
     await releaseKnownChild(input, lifecycle, lease, fence)
-    return await admitOperationResult(input.packageStoreRoot, selected.request.package, provisional)
+    childCleanupConfirmed = true
+    if (stage !== undefined) {
+      if (admitted.status === 'succeeded') {
+        commitAttempted = true
+        const state = await stage.commit()
+        committed = state === 'committed'
+      }
+      await stage.close()
+      settlePrivateChildFileDestination(destination!, committed ? 'committed' : 'absent')
+      if (admitted.status === 'succeeded' && !committed)
+        return failed(
+          input.signal.aborted
+            ? 'CANCELLED'
+            : Date.now() >= effectiveDeadlineUnixMs
+              ? 'DEADLINE_EXCEEDED'
+              : 'EXECUTION_FAILED',
+          'child files were not committed to the caller output folder',
+        )
+    }
+    return admitted
   } catch (error) {
     try {
       input.onFailure?.(failurePhase, error)
@@ -468,18 +588,44 @@ async function executePreparedChild(
       // Test-only observation cannot change child operation settlement.
     }
     try {
+      if (component !== undefined && !childCleanupConfirmed) {
+        await component.terminate()
+        await component.outputImport?.close()
+        await component.enforcement
+        await closePrivateExecutionOutput(component.output)
+      }
       const active = await findLifecycle(input, input.call.operationId)
       if (active !== undefined) await recoverOne(input, active)
+      await stage?.close()
+      if (destination !== undefined)
+        settlePrivateChildFileDestination(
+          destination,
+          commitAttempted || error instanceof PrivateFileImportUnconfirmedError
+            ? 'unavailable'
+            : 'absent',
+        )
+      if (commitAttempted || error instanceof PrivateFileImportUnconfirmedError)
+        throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
     } catch (cleanupError) {
+      if (destination !== undefined) settlePrivateChildFileDestination(destination, 'unavailable')
+      if (cleanupError instanceof RunHostFatalOperationError) throw cleanupError
       try {
         input.onFailure?.('cleanup', cleanupError)
       } catch {
         // Test-only observation cannot change child operation settlement.
       }
       throw new RunHostFatalOperationError(
-        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ||
+          cleanupError instanceof PrivateFileImportUnconfirmedError
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
+    }
+    if (error instanceof PrivateChildFileDestinationError) {
+      if (error.state === 'unavailable')
+        throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
+      return failed(error.state === 'busy' ? 'RESOURCE_EXHAUSTED' : 'UNAVAILABLE', error.message)
     }
     if (input.signal.aborted) return failed('CANCELLED', 'the child Flow call was cancelled')
     if (Date.now() >= effectiveDeadlineUnixMs) {
@@ -487,9 +633,12 @@ async function executePreparedChild(
     }
     if (!attemptedDispatch && error instanceof ChannelOperationError)
       return failed(error.code, error.message, error.details)
+    if (knownResult) return failed('EXECUTION_FAILED', 'child files could not be imported')
     return attemptedDispatch
       ? failed('UNCERTAIN', 'child dispatch may have occurred but no result was proved')
       : failed('EXECUTION_FAILED', 'child Flow execution failed before dispatch')
+  } finally {
+    childContext?.close()
   }
 }
 
@@ -539,6 +688,7 @@ function specialistDispatcher(
   participant: ChannelParticipant | undefined,
   recipe: PrivateDirectRunRecipe,
   onDiagnostic: ((bytes: Uint8Array) => void) | undefined,
+  files: PrivateFlowFileContext | undefined,
 ): RunHostOperationDispatcher {
   let active = false
   return {
@@ -574,6 +724,7 @@ function specialistDispatcher(
         if (route.kind === 'flow') {
           return await executePrivateRootFlowCall({
             ...input,
+            ...(files === undefined ? {} : { files }),
             diagnosticPath: [...(input.diagnosticPath ?? []), call.operationId],
             parentFlow: {
               operationId: input.call.operationId,

@@ -479,7 +479,7 @@ function projectCandidate(
       ? {}
       : {
           filePolicy:
-            'Root-only captured input; one initially empty bounded output; no live host writes.',
+            'Captured input is read-only. Child file access requires reviewed attachment maps; writable maps import complete folders into the caller output. Each writable Flow starts with one empty bounded output; no live host writes.',
         }),
     availability:
       disposition.state === 'ready'
@@ -593,6 +593,7 @@ function changedBindingSlotDependencies(
     if (prior === undefined) continue
     const keys = new Set(
       [...Object.values(prior.slots), ...Object.values(binding.slots)]
+        .map((slot) => ('target' in slot ? slot.target : slot))
         .filter((slot): slot is RunTargetIdentity => slot.kind !== 'grant')
         .map(targetKey),
     )

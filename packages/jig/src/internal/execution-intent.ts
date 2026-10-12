@@ -33,6 +33,8 @@ export interface PrivateExecutionIntent {
   }[]
   readonly inputDirectories?: readonly string[]
   readonly output?: boolean
+  /** Private same-filesystem stages for reviewed writable child routes. */
+  readonly outputImports?: true
   readonly storageBytes: number
   /** Aggregate live stdout/stderr forwarding, separate from delivered file bytes. */
   readonly maxOutputBytes: number

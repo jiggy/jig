@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { closeSync, readFileSync, writeSync } from 'node:fs'
+import { closeSync, fstatSync, readFileSync, readSync, writeSync } from 'node:fs'
 import { link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -51,6 +51,54 @@ test('captures selected binary and empty files into sealed anonymous input', asy
     }
   }))
 
+test.skipIf(process.platform !== 'linux')(
+  'reuses one sealed capture with independent sequential and sibling read positions',
+  () => {
+    const bytes = Buffer.from([0, 255, 128, 2, 45, 99, 10])
+    const capture = capturePrivateInput(bytes)
+    const readers: number[] = []
+    try {
+      const input = requirePrivateCapturedInput(capture)
+      const identity = fstatSync(input.fd, { bigint: true })
+      const position = () =>
+        /^pos:\s+(\d+)$/m.exec(readFileSync(`/proc/self/fdinfo/${input.fd}`, 'utf8'))?.[1]
+      const originalPosition = position()
+      expect(originalPosition).toBe('0')
+      const handoff = () => {
+        const fd = privateDuplicateInputForStdio(input.fd, 64)
+        readers.push(fd)
+        const actual = fstatSync(fd, { bigint: true })
+        expect({ device: actual.dev, inode: actual.ino }).toEqual({
+          device: identity.dev,
+          inode: identity.ino,
+        })
+        expect(fd).toBeGreaterThanOrEqual(64)
+        privateVerifyLinuxSealedFile(fd, input.bytes, input.digest)
+        return fd
+      }
+      const read = (fd: number, length: number) => {
+        const buffer = Buffer.alloc(length)
+        return buffer.subarray(0, readSync(fd, buffer, 0, length, null))
+      }
+      const first = handoff()
+      expect(read(first, bytes.length)).toEqual(bytes)
+      expect(read(first, 1)).toEqual(Buffer.alloc(0))
+      expect(position()).toBe(originalPosition)
+      const left = handoff()
+      const right = handoff()
+      expect(read(left, 2)).toEqual(bytes.subarray(0, 2))
+      expect(read(right, bytes.length)).toEqual(bytes)
+      expect(read(left, bytes.length)).toEqual(bytes.subarray(2))
+      expect(read(left, 1)).toEqual(Buffer.alloc(0))
+      expect(read(right, 1)).toEqual(Buffer.alloc(0))
+      expect(position()).toBe(originalPosition)
+      privateVerifyLinuxSealedFile(input.fd, input.bytes, input.digest)
+    } finally {
+      for (const fd of readers) closeSync(fd)
+      capture.close()
+    }
+  },
+)
 test.skipIf(process.platform !== 'linux')(
   'duplicates sealed inputs above every child stdio destination without changing bytes',
   async () =>

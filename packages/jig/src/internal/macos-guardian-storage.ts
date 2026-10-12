@@ -14,6 +14,7 @@ export interface PrivateMacosGuardianStorage {
   readonly mountPath: string
   readonly bytes: number
   readonly collect: 'output' | 'work' | null
+  readonly imports?: true
 }
 const DIRECTORY = constants.O_RDONLY | constants.O_DIRECTORY | 0x20000000 | 0x01000000
 const controlPath = (owner: string) => join(owner, 'storage')
@@ -26,7 +27,10 @@ export function requirePrivateMacosGuardianStorage(
   if (
     storage === null ||
     typeof storage !== 'object' ||
-    Object.keys(storage).sort().join() !== 'bytes,collect,mountPath' ||
+    Object.keys(storage).sort().join() !==
+      (storage.imports === undefined
+        ? 'bytes,collect,mountPath'
+        : 'bytes,collect,imports,mountPath') ||
     typeof storage.mountPath !== 'string' ||
     !storage.mountPath.startsWith('/') ||
     storage.mountPath === '/' ||
@@ -35,7 +39,11 @@ export function requirePrivateMacosGuardianStorage(
     storage.bytes < 16 * 1024 * 1024 ||
     storage.bytes > 512 * 1024 * 1024 ||
     storage.bytes % (1024 * 1024) !== 0 ||
-    ![null, 'output', 'work'].includes(storage.collect)
+    ![null, 'output', 'work'].includes(storage.collect) ||
+    (storage.imports !== undefined &&
+      (storage.imports !== true ||
+        storage.collect !== 'output' ||
+        !files.writableTrees.includes(join(storage.mountPath, 'output'))))
   )
     throw new TypeError('invalid macOS guardian storage')
   const roots = ['work', 'tmp', 'output'].map((name) => join(storage.mountPath, name))

@@ -21,3 +21,21 @@ test('child allocation diagnostics preserve the original failure and capacity re
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('file children settle sources and ownership before commit and preserve uncertainty', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-child-import-lifecycle-'))
+  try {
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'fixtures/child-file-import-lifecycle.ts'), root],
+      { stdout: 'pipe', stderr: 'pipe' },
+    )
+    const result = await settleTestCommand(child, {
+      evidence: join(root, 'lifecycle'),
+      timeoutMs: 15_000,
+    })
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stdout).toContain('child file import lifecycle ordering passed')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

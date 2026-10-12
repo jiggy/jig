@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import type { JsonValue } from '../json.js'
+import type { PrivateFileImportTarget } from './execution-file-import.js'
 import type { PrivateExecutionIntent } from './execution-intent.js'
 import { privateLinuxExecutionPlan, privateMacosExecutionPlan } from './execution-plan.js'
 import { privateDomainDigest } from './identity.js'
@@ -81,9 +82,10 @@ export type PrivateExecutionConfirmedEnforcementReceipt =
   | PrivateLinuxConfirmedEnforcementReceipt
   | PrivateMacosConfirmedEnforcementReceipt
 export type PrivateExecutionSealedOwner = PrivateLinuxSealedOwner | PrivateMacosSealedOwner
-export type PrivateExecutionComponentProcess =
+export type PrivateExecutionComponentProcess = (
   | PrivateLinuxComponentProcess
   | PrivateMacosComponentProcess
+) & { readonly outputImport?: PrivateFileImportTarget }
 export class PrivateExecutionFenceUnconfirmedError extends Error {
   override readonly cause: unknown
   constructor(cause: unknown) {

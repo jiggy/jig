@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
 import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
+import { PrivateFileImportUnconfirmedError } from '../src/internal/execution-file-import.js'
 import { privateCaptureAttachments } from '../src/internal/file-input.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
@@ -85,6 +86,26 @@ test('constructs the unavailable-descriptor-restriction fixture from current tru
     expect(source).toContain('if (-1 !== 0)')
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('constructs bounded private output diagnostic and fault fixtures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-rootless-diagnostic-'))
+  try {
+    for (const fault of ['projection', 'commit-ack', 'end-ack', 'custody'] as const) {
+      const fixture = await outputDiagnosticSupervisor(join(root, fault), fault)
+      try {
+        const source = await readFile(fixture.path, 'utf8')
+        expect(source).toContain('diagnosticBytes')
+        expect(new Bun.Transpiler({ loader: 'ts' }).transformSync(source)).toContain(
+          'diagnosticBytes',
+        )
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })
 
@@ -661,6 +682,61 @@ delegatedDescribe('private rootless Linux Run', () => {
     }
   })
 
+  test('projects two whole immutable aliases without duplicating the 64-file budget', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { readFileSync, statSync, writeFileSync } from 'node:fs';
+      const pairs = Array.from({length:64}, (_, index) => {
+        const name = 'file-' + index + '.txt';
+        const left = '/jig-input/left/' + name, right = '/jig-input/right/' + name;
+        return {left:readFileSync(left,'utf8'), right:readFileSync(right,'utf8'),
+          same:statSync(left).ino === statSync(right).ino};
+      });
+      let writeDenied = false;
+      try { writeFileSync('/jig-input/right/file-0.txt', 'changed'); } catch { writeDenied = true; }
+      console.log(JSON.stringify({pairs,writeDenied}));
+    `)
+    for (let index = 0; index < 64; index++)
+      await writeFile(join(fixture, `file-${index}.txt`), `value-${index}`)
+    const capture = privateCaptureAttachments([
+      {
+        name: 'source',
+        directory: fixture,
+        select: Array.from({ length: 64 }, (_, index) => `file-${index}.txt`),
+      },
+    ])
+    try {
+      const component = await host.backend.launch({
+        ...plan(host, fixture, 'immutable-aliases'),
+        inputDirectories: ['/jig-input/left', '/jig-input/right'],
+        capturedInputs: ['left', 'right'].flatMap((name) =>
+          capture.attachments[0]!.files.map((file) => ({
+            ...file,
+            destination: `/jig-input/${name}/${file.path}`,
+          })),
+        ),
+      })
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect(stderr).toBe('')
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true })
+      expect(JSON.parse(stdout)).toEqual({
+        pairs: Array.from({ length: 64 }, (_, index) => ({
+          left: `value-${index}`,
+          right: `value-${index}`,
+          same: true,
+        })),
+        writeDenied: true,
+      })
+    } finally {
+      capture.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+
   test('retains bounded binary output after the complete payload tree is fenced', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture(`
@@ -690,6 +766,331 @@ delegatedDescribe('private rootless Linux Run', () => {
       await rm(fixture, { recursive: true, force: true })
     }
   })
+
+  test('imports complete output through hidden original caller staging', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, writeFileSync } from 'node:fs';
+      import { createInterface } from 'node:readline';
+      const status = readFileSync('/proc/self/status', 'utf8');
+      console.log(JSON.stringify({status, fds: readdirSync('/proc/self/fd').flatMap(fd => {
+        try { return [readlinkSync('/proc/self/fd/' + fd)]; } catch { return []; }
+      })}));
+      for await (const line of createInterface({input: process.stdin})) {
+        const request = JSON.parse(line);
+        if (request.quit) break;
+        if (request.collision) {
+          mkdirSync('/jig-output/' + request.collision);
+          writeFileSync('/jig-output/' + request.collision + '/caller.txt', 'caller');
+        }
+        console.log(JSON.stringify({
+          entries: readdirSync('/jig-output'),
+          private: request.privateName ? [
+            '/jig-output/' + request.privateName,
+            '/jig-output/../' + request.privateName,
+            '/proc/self/root/jig-output/' + request.privateName,
+            '/proc/1/root/jig-output/' + request.privateName,
+          ].map(path => existsSync(path)) : [],
+          bytes: existsSync('/jig-output/first/result.bin') ?
+            [...readFileSync('/jig-output/first/result.bin')] : null,
+        }));
+      }
+    `)
+    const diagnostic = await outputDiagnosticSupervisor(join(fixture, 'supervisor-diagnostic.txt'))
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: diagnostic.path,
+    })
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    const stages: import('../src/internal/execution-file-import.js').PrivateFileImportStage[] = []
+    let clean = false
+    try {
+      component = await backend.launch({
+        ...plan(host, fixture, 'private-import', { deadlineMs: 30_000 }),
+        output: true,
+        outputImports: true,
+      })
+      const reader = component.stdout[Symbol.asyncIterator]()
+      let pending = ''
+      const next = async (): Promise<any> => {
+        for (;;) {
+          const end = pending.indexOf('\n')
+          if (end >= 0) {
+            const line = pending.slice(0, end)
+            pending = pending.slice(end + 1)
+            return JSON.parse(line)
+          }
+          const chunk = await reader.next()
+          if (chunk.done) throw new Error('caller ended before the native import observation')
+          pending += Buffer.from(chunk.value).toString()
+          if (pending.length > 16_384)
+            throw new Error('native import observation exceeds its bound')
+        }
+      }
+      const posture = await next()
+      for (const name of ['CapEff', 'CapPrm', 'CapInh', 'CapAmb', 'CapBnd'])
+        expect(posture.status).toMatch(new RegExp(`^${name}:\\s+0+$`, 'm'))
+      expect(posture.status).toMatch(/^NoNewPrivs:\s+1$/m)
+      expect(
+        posture.fds.some(
+          (path: string) => path.includes('import-') || path.includes('/jig-output/public'),
+        ),
+      ).toBe(false)
+      const observe = async (request: unknown) => {
+        await component!.write(Buffer.from(`${JSON.stringify(request)}\n`))
+        return await next()
+      }
+      const rootMount = /^mnt_id:\s+(\d+)$/m.exec(
+        await readFile(`/proc/self/fdinfo/${component.output!.directory.fd}`, 'utf8'),
+      )?.[1]
+      const deadlineUnixMs = Date.now() + 15_000
+      const abort = new AbortController()
+      const [first, second] = await Promise.all(
+        ['first', 'second'].map((directory) =>
+          component!.outputImport!.stage({
+            directory,
+            operationId: directory,
+            deadlineUnixMs,
+            signal: abort.signal,
+          }),
+        ),
+      )
+      stages.push(first, second)
+      for (const stage of stages)
+        expect(
+          /^mnt_id:\s+(\d+)$/m.exec(
+            await readFile(`/proc/self/fdinfo/${stage.directory.fd}`, 'utf8'),
+          )?.[1],
+        ).toBe(rootMount)
+      await writeFile(
+        `/proc/self/fd/${first.directory.fd}/result.bin`,
+        new Uint8Array([0, 255, 128, 10]),
+      )
+      const privateName = (await realpath(`/proc/self/fd/${first.directory.fd}`)).split('/').at(-1)
+      expect(await observe({ privateName })).toEqual({
+        entries: [],
+        private: [false, false, false, false],
+        bytes: null,
+      })
+      expect(await first.commit()).toBe('committed')
+      await first.close()
+      expect(await observe({ privateName })).toEqual({
+        entries: ['first'],
+        private: [false, false, false, false],
+        bytes: [0, 255, 128, 10],
+      })
+      abort.abort()
+      expect(await second.commit()).toBe('absent')
+      await second.close()
+      const expired = await component.outputImport!.stage({
+        directory: 'expired',
+        operationId: 'expired',
+        deadlineUnixMs: Date.now() + 100,
+        signal: new AbortController().signal,
+      })
+      stages.push(expired)
+      await Bun.sleep(150)
+      const originalNow = Date.now
+      try {
+        Date.now = () => 0 // The independent native owner owns the retained deadline.
+        expect(await expired.commit()).toBe('absent')
+      } finally {
+        Date.now = originalNow
+      }
+      await expired.close()
+      expect(await missing(`/proc/self/fd/${component.output!.directory.fd}/expired`)).toBe(true)
+      const collision = await component.outputImport!.stage({
+        directory: 'occupied',
+        operationId: 'collision',
+        deadlineUnixMs,
+        signal: new AbortController().signal,
+      })
+      stages.push(collision)
+      await observe({ collision: 'occupied' })
+      expect(await collision.commit()).toBe('absent')
+      await collision.close()
+      expect(
+        await readFile(
+          `/proc/self/fd/${component.output!.directory.fd}/occupied/caller.txt`,
+          'utf8',
+        ),
+      ).toBe('caller')
+      await component.outputImport!.close()
+      await component.write(Buffer.from('{"quit":true}\n'))
+      await component.closeInput()
+      const stderr = collect(component.stderr)
+      while (!(await reader.next()).done) {}
+      expect(await stderr).toBe('')
+      expect(await component.enforcement).toMatchObject({ exitCode: 0, fenced: true })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+      await component.output!.directory.close()
+      clean = true
+    } catch (error) {
+      console.error(
+        'trusted native setup diagnostic:',
+        await readFile(join(fixture, 'supervisor-diagnostic.txt'), 'utf8').catch(
+          () => '<unavailable>',
+        ),
+      )
+      throw error
+    } finally {
+      if (!clean) {
+        console.error(`native import evidence retained at ${fixture}`)
+        await component?.terminate().catch(() => undefined)
+      }
+      for (const stage of stages) await stage.close().catch(() => undefined)
+      await component?.outputImport?.close().catch(() => undefined)
+      await component?.output?.directory.close().catch(() => undefined)
+      if (clean) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(diagnostic.root, { recursive: true, force: true })
+      }
+    }
+  }, 60_000)
+
+  test('fences unavailable private output projection before candidate execution', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("console.error('fixture: package must not execute');")
+    const diagnostic = await outputDiagnosticSupervisor(
+      join(fixture, 'supervisor-diagnostic.txt'),
+      'projection',
+    )
+    const ownerParent = await mkdtemp(join(tmpdir(), 'jig-rootless-import-owner-'))
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: diagnostic.path,
+    })
+    const launch = {
+      ...plan(host, fixture, 'import-projection-failure', { deadlineMs: 30_000 }),
+      output: true,
+      outputImports: true,
+    }
+    const owner = await backend.seal(launch, { parent: ownerParent, name: 'projection-failure' })
+    let clean = false
+    try {
+      await expect(owner.admit()).rejects.toThrow()
+      const receipt = await backend.recoverFence(owner.identity)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'setup_failed' })
+      expect(await missing(owner.identity.runCgroup)).toBe(true)
+      const trace = await readFile(join(fixture, 'supervisor-diagnostic.txt'), 'utf8')
+      expect(trace).toContain('fixture: projection unavailable')
+      expect(trace).not.toContain('package must not execute')
+      await releasePrivateLinuxOwnerState(owner.identity, receipt)
+      clean = true
+    } finally {
+      if (clean) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(diagnostic.root, { recursive: true, force: true })
+        await rm(ownerParent, { recursive: true, force: true })
+      } else console.error(`native projection failure evidence retained at ${fixture}`)
+    }
+  })
+
+  test('accepted caller stop prevents private stage publication', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture('console.log("live"); await new Promise(() => {});')
+    const stop = new AbortController()
+    const component = await host.backend.launch(
+      {
+        ...plan(host, fixture, 'import-caller-stop', { deadlineMs: 30_000 }),
+        output: true,
+        outputImports: true,
+      },
+      stop.signal,
+    )
+    const stage = await component.outputImport!.stage({
+      directory: 'stopped',
+      operationId: 'stopped',
+      deadlineUnixMs: Date.now() + 15_000,
+      signal: new AbortController().signal,
+    })
+    try {
+      await writeFile(`/proc/self/fd/${stage.directory.fd}/complete.bin`, new Uint8Array([0, 255]))
+      stop.abort()
+      expect(await stage.commit()).toBe('absent')
+      await stage.close()
+      await component.outputImport!.close()
+      expect(await component.enforcement).toMatchObject({ fenced: true, stopReason: 'cancelled' })
+      expect(await missing(`/proc/self/fd/${component.output!.directory.fd}/stopped`)).toBe(true)
+    } finally {
+      await component.terminate().catch(() => undefined)
+      await stage.close().catch(() => undefined)
+      await component.outputImport!.close().catch(() => undefined)
+      await component.output!.directory.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+
+  for (const fault of ['commit-ack', 'end-ack'] as const) {
+    test(`retains original import storage when ${fault} is lost`, async () => {
+      const host = await hostConfiguration()
+      const fixture = await createFixture('console.log("live"); await new Promise(() => {});')
+      const diagnostic = await outputDiagnosticSupervisor(
+        join(fixture, 'supervisor-diagnostic.txt'),
+        fault,
+      )
+      const backend = new PrivateLinuxCgroupBackend({
+        bunPath: host.bun,
+        bunHostLibraryPath: host.bunHostLibraryPath,
+        supervisorPath: diagnostic.path,
+      })
+      const ordinary = plan(host, fixture, `import-${fault}`, { deadlineMs: 30_000 })
+      const component = await backend.launch({
+        ...ordinary,
+        limits: { ...ordinary.limits, cleanupTimeoutMs: 2_000 },
+        output: true,
+        outputImports: true,
+      })
+      const stage = await component.outputImport!.stage({
+        directory: 'complete',
+        operationId: 'complete',
+        deadlineUnixMs: Date.now() + 15_000,
+        signal: new AbortController().signal,
+      })
+      const originalFd = stage.directory.fd
+      let clean = false
+      try {
+        await writeFile(`/proc/self/fd/${originalFd}/binary.bin`, new Uint8Array([0, 255, 128, 10]))
+        if (fault === 'commit-ack')
+          await expect(stage.commit()).rejects.toBeInstanceOf(PrivateFileImportUnconfirmedError)
+        await expect(stage.close()).rejects.toBeInstanceOf(PrivateFileImportUnconfirmedError)
+        if (fault === 'commit-ack') {
+          // The whole visible tree survives unknown acknowledgement; it is never pruned.
+          expect([
+            ...(await readFile(
+              `/proc/self/fd/${component.output!.directory.fd}/complete/binary.bin`,
+            )),
+          ]).toEqual([0, 255, 128, 10])
+        } else {
+          // End is unconfirmed: neither the private tree nor the genuine FD may be dropped.
+          expect((await stat(`/proc/self/fd/${originalFd}`)).isDirectory()).toBe(true)
+          expect([...(await readFile(`/proc/self/fd/${originalFd}/binary.bin`))]).toEqual([
+            0, 255, 128, 10,
+          ])
+          expect(await missing(`/proc/self/fd/${component.output!.directory.fd}/complete`)).toBe(
+            true,
+          )
+        }
+        await expect(component.outputImport!.close()).rejects.toBeInstanceOf(
+          PrivateFileImportUnconfirmedError,
+        )
+        await component.terminate()
+        expect(await component.enforcement).toMatchObject({ fenced: true })
+        clean = true
+      } finally {
+        await component.terminate().catch(() => undefined)
+        await component.output!.directory.close()
+        if (clean) {
+          await rm(fixture, { recursive: true, force: true })
+          await rm(diagnostic.root, { recursive: true, force: true })
+        } else console.error(`native ${fault} evidence retained at ${fixture}`)
+      }
+      // The isolated native proof process owns the retained uncertain FD budget
+      // until process exit; no success/folder credit is manufactured from paths.
+    }, 60_000)
+  }
 
   test('preflights and executes one isolated payload', async () => {
     const host = await hostConfiguration()
@@ -1246,6 +1647,82 @@ hostileDescribe('private rootless Linux hostile envelope', () => {
     }
   })
 
+  test('fences coordinator death while original private output custody is held', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("console.error('fixture: package must not execute');")
+    const tracePath = join(fixture, 'supervisor-diagnostic.txt')
+    const diagnostic = await outputDiagnosticSupervisor(tracePath, 'custody')
+    const configurationDirectory = await mkdtemp(join(tmpdir(), 'jig-rootless-coordinator-'))
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-coordinator-owner-'))
+    const configuration = join(configurationDirectory, 'configuration.json')
+    await writeFile(
+      configuration,
+      JSON.stringify({
+        delegatedCgroup,
+        bunPath: host.bun,
+        bunHostLibraryPath: host.bunHostLibraryPath,
+        bubblewrapPath: await realpath('/usr/bin/bwrap'),
+        mounts: host.mounts,
+        fixture,
+        ownerStateParent,
+        outputImports: true,
+        supervisorPath: diagnostic.path,
+        reportSealed: true,
+        uid: process.getuid?.() ?? 1000,
+        gid: process.getgid?.() ?? 100,
+      }),
+    )
+    const coordinator = spawn(
+      host.bun,
+      [
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        fileURLToPath(new URL('./fixtures/linux-rootless-coordinator.ts', import.meta.url)),
+        configuration,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    let clean = false
+    try {
+      const started = JSON.parse(await readLine(coordinator.stdout!)) as {
+        cgroup: string
+        owner: unknown
+      }
+      const until = Date.now() + 5000
+      let trace = ''
+      while (Date.now() <= until && !trace.includes('"custody":true')) {
+        trace = await readFile(tracePath, 'utf8')
+        if (!trace.includes('"custody":true')) await Bun.sleep(10)
+      }
+      const pinned = JSON.parse(trace.split('\n')[0]!) as {
+        custody: boolean
+        cgroup: string
+        entryPid: number
+      }
+      expect(pinned).toMatchObject({ custody: true, cgroup: started.cgroup })
+      expect(await missing(`/proc/${pinned.entryPid}`)).toBe(false)
+      coordinator.kill('SIGKILL')
+      await childExit(coordinator)
+      await waitForMissing(started.cgroup, 5000)
+      const receipt = await waitForFence(host.backend, started.owner, 5000)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'coordinator_lost' })
+      expect(await missing(`/proc/${pinned.entryPid}`)).toBe(true)
+      expect(await readFile(tracePath, 'utf8')).not.toContain('package must not execute')
+      await releasePrivateLinuxOwnerState(started.owner, receipt)
+      clean = true
+    } finally {
+      coordinator.kill('SIGKILL')
+      await childExit(coordinator)
+      if (clean) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(diagnostic.root, { recursive: true, force: true })
+        await rm(configurationDirectory, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+      } else console.error(`native private custody loss evidence retained at ${fixture}`)
+    }
+  }, 60_000)
+
   test('survives coordinator death and fences its Run', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture('await new Promise(() => {});')
@@ -1411,6 +1888,61 @@ async function unavailableDescriptorRestrictionSupervisor(): Promise<{
   }
 }
 
+/** Collect the existing entry stderr at a bounded, fixture-owned host path. */
+async function outputDiagnosticSupervisor(
+  tracePath: string,
+  fault?: 'projection' | 'commit-ack' | 'end-ack' | 'custody',
+): Promise<{ path: string; root: string }> {
+  let source = await readFile(
+    new URL('../src/internal/linux-rootless-supervisor.ts', import.meta.url),
+    'utf8',
+  )
+  source = replaceOnce(
+    source,
+    "  writeSync,\n} from 'node:fs'",
+    "  appendFileSync,\n  writeSync,\n} from 'node:fs'",
+  )
+  source = replaceOnce(
+    source,
+    "        stdio: [\n          'inherit',\n          'inherit',\n          'inherit',",
+    "        stdio: [\n          'inherit',\n          'inherit',\n          'pipe',",
+  )
+  source = replaceOnce(
+    source,
+    '    childExit = childClose(launched)\n',
+    `    let diagnosticBytes = 0\n    launched.stderr?.on('data', (bytes: Buffer) => {\n      const chunk = bytes.subarray(0, Math.max(0, 8192 - diagnosticBytes))\n      diagnosticBytes += chunk.length\n      if (chunk.length > 0) appendFileSync(${JSON.stringify(tracePath)}, chunk)\n    })\n    childExit = childClose(launched)\n`,
+  )
+  if (fault === 'projection')
+    source = replaceOnce(
+      source,
+      "  const publicDirectory = openSync('/jig-output/public', 0x10000 | 0x20000)\n",
+      "  throw new Error('fixture: projection unavailable')\n  const publicDirectory = openSync('/jig-output/public', 0x10000 | 0x20000)\n",
+    )
+  if (fault === 'commit-ack')
+    source = replaceOnce(
+      source,
+      "        reply(stage.committed ? 'committed' : 'absent')\n",
+      "        if (!stage.committed) reply('absent')\n",
+    )
+  if (fault === 'end-ack')
+    source = replaceOnce(
+      source,
+      "        reply('closed')\n",
+      '        // fixture: withhold retirement acknowledgement\n',
+    )
+  if (fault === 'custody')
+    source = replaceOnce(
+      source,
+      '        const projectedReady = outputReady(launched)\n',
+      `        appendFileSync(${JSON.stringify(tracePath)}, JSON.stringify({ custody: true, cgroup: runCgroup, entryPid: launched.pid }) + String.fromCharCode(10))\n        await childExit\n        throw new Error('fixture: original custody interrupted')\n        const projectedReady = outputReady(launched)\n`,
+    )
+  const root = await mkdtemp(join(tmpdir(), 'jig-rootless-delayed-supervisor-'))
+  const path = join(root, 'linux-rootless-supervisor.ts')
+  await writeFile(tracePath, '')
+  await writeFile(path, source, { mode: 0o600 })
+  return { root, path: await realpath(path) }
+}
+
 /** Crash only after the real inner descriptor restriction, before package code. */
 async function deliberatelySignalledInnerSupervisor(): Promise<{ path: string; root: string }> {
   const source = replaceOnce(
@@ -1445,8 +1977,8 @@ async function delayedReadinessSupervisor(
   let source = await readFile(sourcePath, 'utf8')
   source = replaceOnce(
     source,
-    "import { closeSync, readFileSync, readSync, statSync, writeSync } from 'node:fs'",
-    "import { closeSync, readFileSync, readSync, statSync, writeFileSync, writeSync } from 'node:fs'",
+    "  writeSync,\n} from 'node:fs'",
+    "  writeFileSync,\n  writeSync,\n} from 'node:fs'",
   )
   source = replaceOnce(
     source,
@@ -1523,8 +2055,8 @@ async function heldContinuationSupervisor(
   )
   let source = replaceOnce(
     await readFile(sourcePath, 'utf8'),
-    "import { closeSync, readFileSync, readSync, statSync, writeSync } from 'node:fs'",
-    "import { closeSync, readFileSync, readSync, statSync, writeFileSync, writeSync } from 'node:fs'",
+    "  writeSync,\n} from 'node:fs'",
+    "  writeFileSync,\n  writeSync,\n} from 'node:fs'",
   )
   source = replaceOnce(
     source,

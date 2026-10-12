@@ -6,6 +6,12 @@ import type { JsonObject, JsonValue } from '../json.js'
 import { type InspectedPackage, requireSupportedPackageProfile } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
+  type ProjectSlotTarget,
+  validateBindingAttachmentMapForInterfaces,
+  validateDistinctBindingAttachmentDirectories,
+} from './attachment-routes.js'
+import type { BindingAttachmentMap } from './author.js'
+import {
   type BindingDefinition,
   defineBinding,
   normalizePackageBindingDefinition,
@@ -19,13 +25,7 @@ import {
   validateEntrypointInterface,
 } from './entrypoint.js'
 import { isDirectRunEligible } from './flow-source.js'
-import {
-  type AcpGrant,
-  type GrantedSlot,
-  type GrantPolicy,
-  grantName,
-  normalizeGrant,
-} from './grants.js'
+import { type AcpGrant, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
 import {
   type InvocationIdentity,
   type InvocationRequirement,
@@ -87,7 +87,7 @@ export interface LinkedPackageBinding {
   readonly declarationPath: string
   readonly packagePath: string
   readonly settings: JsonObject
-  readonly slots: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>
+  readonly slots: Readonly<Record<string, ProjectSlotTarget>>
   readonly boundAttachments?: BoundAttachments
 }
 
@@ -225,7 +225,7 @@ export function linkPackageProject(
     )
       invalid(
         'PROJECT_DEFAULT_UNAVAILABLE',
-        'default must select an invokable Flow without root-only attachments',
+        'default must select an invokable Flow without attachments',
         'jig.ts',
         '/defaultProviders',
       )
@@ -269,6 +269,7 @@ export function linkPackageProject(
         path: flow.value.provenance.projectPath,
         packagePath: flow.value.provenance.projectPath,
         uses: flow.value.uses,
+        attachments: flow.inspected.invocation?.attachments ?? {},
         selectors: Object.fromEntries(
           Object.entries(flow.value.slots ?? {}).map(([slot, target]) => [
             slot,
@@ -728,6 +729,7 @@ function linkBinding(
       path: declarationPath,
       packagePath: definition.package,
       uses: prepared.flow.value.uses,
+      attachments: prepared.flow.inspected.invocation?.attachments ?? {},
       selectors: {
         ...Object.fromEntries(
           Object.entries(selectedDefaults).map(([slot, target]) => [slot, targetSelector(target)]),
@@ -763,17 +765,19 @@ function linkFlowSlots(
     path: string
     packagePath: string
     uses: LinkedFlow['uses']
+    attachments: NonNullable<InspectedPackage['invocation']>['attachments']
     selectors: PackageBindingInput['slots']
   },
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   grants: Readonly<Record<string, GrantPolicy>>,
-): Readonly<Record<string, RunTargetIdentity | GrantedSlot>> {
+): Readonly<Record<string, ProjectSlotTarget>> {
   const { label, path: declarationPath, packagePath } = owner
-  const slots: Record<string, RunTargetIdentity | GrantedSlot> = Object.create(null)
+  const slots: Record<string, ProjectSlotTarget> = Object.create(null)
   for (const [name, selector] of Object.entries(owner.selectors ?? {})) {
     const pointer = `/slots/${pointerToken(name)}`
-    if (typeof selector !== 'string' || selector.startsWith('grant:')) {
+    const mapped = typeof selector === 'object' && 'attachments' in selector ? selector : undefined
+    if (mapped === undefined && (typeof selector !== 'string' || selector.startsWith('grant:'))) {
       const resourceName = typeof selector === 'string' ? grantName(selector.slice(6)) : undefined
       const policy = resourceName === undefined ? selector : grants[resourceName]
       if (policy === undefined)
@@ -790,7 +794,7 @@ function linkFlowSlots(
       })
       continue
     }
-    const identity = parseRunTargetSelector(selector, `slot ${name}`)
+    const identity = parseRunTargetSelector(mapped?.target ?? selector, `slot ${name}`)
     const childBinding = identity.kind === 'binding' ? bindingById.get(identity.id) : undefined
     const target = identity.kind === 'flow' ? flowByPath.get(identity.path) : childBinding?.flow
     if (target === undefined) {
@@ -809,13 +813,40 @@ function linkFlowSlots(
         pointer,
       )
     }
-    if (Object.keys(target.inspected.invocation?.attachments ?? {}).length !== 0) {
+    if (
+      mapped === undefined &&
+      Object.keys(target.inspected.invocation?.attachments ?? {}).length !== 0
+    ) {
       invalid(
         'PROJECT_BINDING_SLOT_ATTACHMENTS_UNSUPPORTED',
-        `${label} slot ${name} requires root-only file attachments`,
+        `${label} slot ${name} declares file attachments and needs a complete reviewed static attachment map in its caller Binding`,
         declarationPath,
         pointer,
       )
+    }
+    let attachments: BindingAttachmentMap | undefined
+    if (mapped !== undefined) {
+      if (Object.keys(childBinding?.boundAttachments ?? {}).length !== 0)
+        invalid(
+          'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
+          'mapped child Bindings cannot own independently retained attachments',
+          declarationPath,
+          pointer,
+        )
+      try {
+        attachments = validateBindingAttachmentMapForInterfaces({
+          attachments: mapped.attachments,
+          caller: owner.attachments ?? {},
+          child: target.inspected.invocation?.attachments ?? {},
+        })
+      } catch (error) {
+        invalid(
+          'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID',
+          errorText(error),
+          declarationPath,
+          `${pointer}/attachments`,
+        )
+      }
     }
     if (identity.kind === 'flow' && !target.value.directRun) {
       invalid(
@@ -838,7 +869,21 @@ function linkFlowSlots(
         declarationPath,
         pointer,
       )
-    slots[name] = identity
+    slots[name] =
+      attachments === undefined
+        ? identity
+        : Object.freeze({ kind: 'route', target: identity, attachments })
+  }
+  try {
+    validateDistinctBindingAttachmentDirectories(
+      Object.fromEntries(
+        Object.entries(slots).flatMap(([name, slot]) =>
+          slot.kind === 'route' ? [[name, slot.attachments]] : [],
+        ),
+      ),
+    )
+  } catch (error) {
+    invalid('PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID', errorText(error), declarationPath, '/slots')
   }
   return Object.freeze(slots)
 }

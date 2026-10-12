@@ -17,7 +17,7 @@ const digest = `sha256:${'1'.repeat(64)}`
 const target = { kind: 'flow', id: 'child' }
 const executionBytes = { package: { digest }, layout: { aliases: [] } }
 const selected = {
-  request: { digest, target, package: { digest } },
+  request: { digest, target, package: { digest }, attachments: {}, slots: {} },
   disposition: {
     state: 'ready',
     recipeDigest: digest,

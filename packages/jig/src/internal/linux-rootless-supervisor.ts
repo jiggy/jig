@@ -1,6 +1,16 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { closeSync, readFileSync, readSync, statSync, writeSync } from 'node:fs'
+import {
+  closeSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  writeSync,
+} from 'node:fs'
 import {
   type FileHandle,
   link,
@@ -61,6 +71,7 @@ interface Configuration {
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
   readonly output: boolean
+  readonly outputImports: boolean
   readonly capturedInputs: readonly {
     readonly fd: number
     readonly destination: string
@@ -68,6 +79,7 @@ interface Configuration {
     readonly digest: string
   }[]
   readonly inputDirectories: readonly string[]
+  readonly inputAliases: readonly { readonly name: string; readonly target: string }[]
   readonly bunPath: string
   readonly bunHostLibraryPath: string
   readonly bubblewrapPath: string
@@ -102,6 +114,7 @@ interface ReadyMessage {
   readonly payloadPid: number
   readonly supervisorPid: number
   readonly outputFd?: number
+  readonly outputBackingFd?: number
 }
 
 interface TerminalMessage {
@@ -147,6 +160,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   if (first.done) return
   const configuration = requireStart(first.value)
   const { limits, runCgroup } = configuration
+  const importRootEnd = performance.now() + Math.max(0, limits.deadlineUnixMs - Date.now())
   const claim = await claimActive(configuration)
   if (claim === 'cancelled') return
 
@@ -158,6 +172,174 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   let continued = false
   let readyToContinue = false
   let outputDirectory: FileHandle | undefined
+  let outputBacking: FileHandle | undefined
+  const importStages = new Map<
+    string,
+    {
+      readonly fd: number
+      readonly directory: string
+      readonly monotonicEnd: number
+      readonly device: bigint
+      readonly inode: bigint
+      cancelled: boolean
+      attempted: boolean
+      committed: boolean
+    }
+  >()
+  const importControl = (value: unknown): void => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      throw new Error('invalid import control')
+    const request = value as Record<string, unknown>
+    const { type, id, name } = request
+    if (
+      typeof name !== 'string' ||
+      !/^import-[0-9a-f]{24}$/.test(name) ||
+      (type !== 'import-cancel' && (typeof id !== 'string' || !/^[0-9a-f]{24}$/.test(id)))
+    )
+      throw new Error('invalid import control identity')
+    const reply = (outcome: string, error?: unknown) =>
+      safeSend(control, {
+        type: 'import-reply',
+        id,
+        outcome,
+        ...(error === undefined ? {} : { error: errorText(error) }),
+      })
+    if (type === 'import-cancel') {
+      const stage = importStages.get(name)
+      if (stage !== undefined) stage.cancelled = true
+      return
+    }
+    try {
+      if (type === 'import-begin') {
+        if (
+          !configuration.outputImports ||
+          !continued ||
+          outputBacking === undefined ||
+          outputDirectory === undefined ||
+          stopReason !== undefined ||
+          performance.now() >= importRootEnd
+        ) {
+          reply('absent')
+          return
+        }
+        if (importStages.size >= 2 || importStages.has(name))
+          throw new Error('native import capacity is occupied')
+        if (
+          typeof request.directory !== 'string' ||
+          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(request.directory) ||
+          request.directory.length > 64 ||
+          typeof request.operationId !== 'string' ||
+          request.operationId.length === 0 ||
+          request.operationId.length > 256 ||
+          !Number.isSafeInteger(request.deadlineUnixMs) ||
+          (request.deadlineUnixMs as number) < 0 ||
+          typeof request.device !== 'string' ||
+          !/^[0-9]+$/.test(request.device) ||
+          typeof request.inode !== 'string' ||
+          !/^[0-9]+$/.test(request.inode)
+        )
+          throw new Error('invalid native import recipe')
+        if (Date.now() >= (request.deadlineUnixMs as number)) {
+          reply('absent')
+          return
+        }
+        try {
+          lstatSync(`/proc/self/fd/${outputDirectory.fd}/${request.directory}`)
+          reply('absent')
+          return
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+        const fd = openSync(`/proc/self/fd/${outputBacking.fd}/${name}`, 0x10000 | 0x20000)
+        let retained = false
+        try {
+          const identity = fstatSync(fd, { bigint: true })
+          const mount = (descriptor: number) =>
+            /^mnt_id:\s+(\d+)$/m.exec(readFileSync(`/proc/self/fdinfo/${descriptor}`, 'utf8'))?.[1]
+          const originalMount = mount(outputBacking.fd)
+          if (
+            !identity.isDirectory() ||
+            identity.dev !== BigInt(request.device) ||
+            identity.ino !== BigInt(request.inode) ||
+            originalMount === undefined ||
+            mount(fd) !== originalMount ||
+            mount(outputDirectory.fd) !== originalMount
+          )
+            throw new Error('native import stage does not match its original backing')
+          importStages.set(name, {
+            fd,
+            directory: request.directory,
+            monotonicEnd: Math.min(
+              importRootEnd,
+              performance.now() + Math.max(0, (request.deadlineUnixMs as number) - Date.now()),
+            ),
+            device: identity.dev,
+            inode: identity.ino,
+            cancelled: false,
+            attempted: false,
+            committed: false,
+          })
+          retained = true
+          reply('staged')
+        } finally {
+          if (!retained) closeSync(fd)
+        }
+      } else if (type === 'import-commit') {
+        const stage = importStages.get(name)
+        if (stage === undefined && stopReason !== undefined) {
+          reply('absent')
+          return
+        }
+        if (stage === undefined || stage.attempted)
+          throw new Error('native import stage is unavailable')
+        stage.attempted = true
+        // The independent Run owner accepts stop and commit in this one loop.
+        // Original deadlines are checked here, before the synchronous syscall;
+        // cancellation grace never extends publication authority.
+        if (
+          stage.cancelled ||
+          stopReason !== undefined ||
+          !continued ||
+          performance.now() >= stage.monotonicEnd ||
+          child?.exitCode !== null ||
+          child?.signalCode !== null ||
+          !/^populated 1$/m.test(readFileSync(`${runCgroup}/cgroup.events`, 'utf8'))
+        ) {
+          reply('absent')
+          return
+        }
+        if (outputBacking === undefined || outputDirectory === undefined)
+          throw new Error('native original output directories are unavailable')
+        const identity = fstatSync(stage.fd, { bigint: true })
+        const named = lstatSync(`/proc/self/fd/${outputBacking.fd}/${name}`, { bigint: true })
+        if (
+          identity.dev !== stage.device ||
+          identity.ino !== stage.inode ||
+          named.dev !== stage.device ||
+          named.ino !== stage.inode ||
+          !named.isDirectory()
+        )
+          throw new Error('native import stage identity changed')
+        stage.committed = publishImportDirectory(
+          configuration.bunHostLibraryPath,
+          outputBacking.fd,
+          name,
+          outputDirectory.fd,
+          stage.directory,
+        )
+        reply(stage.committed ? 'committed' : 'absent')
+      } else if (type === 'import-end') {
+        const stage = importStages.get(name)
+        if (stage !== undefined) {
+          closeSync(stage.fd)
+          importStages.delete(name)
+        }
+        reply('closed')
+      } else throw new Error('unknown native import control')
+    } catch (error) {
+      reply('error', error)
+    }
+  }
   let resolveAdmission!: () => void
   let rejectAdmission!: (error: Error) => void
   const admission = new Promise<void>((resolve, reject) => {
@@ -193,6 +375,8 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
         const gate = child?.stdio[4] as Writable | undefined
         if (gate === undefined) return stop('setup_failed')
         gate.end(Buffer.from([1]))
+      } else if (type?.startsWith('import-')) {
+        importControl(next.value)
       } else if (type === 'cancel') {
         stop('cancelled')
       } else {
@@ -290,7 +474,19 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       await outputReady(launched)
       // The trusted inner launcher blocks before package code can run.
       // This FD pins the mount, not a replaceable payload pathname.
-      outputDirectory = await open(`/proc/${sandboxPid}/root/jig-output`, 0x10000)
+      if (configuration.outputImports) {
+        outputBacking = await open(`/proc/${sandboxPid}/root/jig-output`, 0x10000)
+        outputDirectory = await open(`/proc/self/fd/${outputBacking.fd}/public`, 0x10000)
+        const projectedReady = outputReady(launched)
+        ;(launched.stdio[4] as Writable).write(Buffer.from([2]))
+        await projectedReady
+        const projected = await stat(`/proc/${sandboxPid}/root/jig-output`, { bigint: true })
+        const original = await outputDirectory.stat({ bigint: true })
+        if (projected.dev !== original.dev || projected.ino !== original.ino)
+          throw new Error('output public projection differs from the original directory')
+      } else {
+        outputDirectory = await open(`/proc/${sandboxPid}/root/jig-output`, 0x10000)
+      }
     }
     readyToContinue = true
     safeSend(control, {
@@ -299,6 +495,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       payloadPid: ready,
       supervisorPid: process.pid,
       ...(outputDirectory === undefined ? {} : { outputFd: outputDirectory.fd }),
+      ...(outputBacking === undefined ? {} : { outputBackingFd: outputBacking.fd }),
     } satisfies ReadyMessage)
     const exit = await childExit
     exitCode = exit.code
@@ -311,7 +508,22 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     monitoringClosed = true
     clearInterval(coreDumpTimer)
     clearTimeout(deadline)
-    await outputDirectory?.close()
+    const closeErrors: unknown[] = []
+    for (const stage of importStages.values()) {
+      try {
+        closeSync(stage.fd)
+      } catch (error) {
+        closeErrors.push(error)
+      }
+    }
+    importStages.clear()
+    for (const directory of [outputDirectory, outputBacking]) {
+      try {
+        await directory?.close()
+      } catch (error) {
+        closeErrors.push(error)
+      }
+    }
     let cleanupError: string | undefined
     try {
       child?.kill('SIGKILL')
@@ -339,6 +551,13 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     } catch (error) {
       cleanupError = errorText(error)
     }
+    if (closeErrors.length !== 0)
+      cleanupError = errorText(
+        new AggregateError(
+          [...closeErrors, ...(cleanupError === undefined ? [] : [cleanupError])],
+          'native output descriptors did not close',
+        ),
+      )
     terminal = Object.freeze({
       type: 'terminal' as const,
       ownerDigest: configuration.ownerDigest,
@@ -355,6 +574,58 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     safeSend(control, terminal)
     control.end()
   }
+}
+
+let importNative:
+  | {
+      readonly ptr: (bytes: Uint8Array) => number
+      readonly errno: () => number
+      readonly rename: (
+        source: number,
+        name: number,
+        destination: number,
+        directory: number,
+        flags: number,
+      ) => number
+    }
+  | undefined
+function publishImportDirectory(
+  library: string,
+  source: number,
+  name: string,
+  destination: number,
+  directory: string,
+): boolean {
+  if (importNative === undefined) {
+    const ffi = createRequire(import.meta.url)('bun:ffi') as {
+      ptr(bytes: Uint8Array): number
+      read: { i32(pointer: number): number }
+      dlopen(
+        path: string,
+        symbols: Record<string, { args: string[]; returns: string }>,
+      ): {
+        symbols: Record<string, (...args: number[]) => number>
+      }
+    }
+    const { symbols } = ffi.dlopen(posix.join(library, 'libc.so.6'), {
+      renameat2: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
+      __errno_location: { args: [], returns: 'ptr' },
+    })
+    importNative = {
+      ptr: ffi.ptr,
+      errno: () => ffi.read.i32(symbols.__errno_location!()),
+      rename: symbols.renameat2!,
+    }
+  }
+  const from = Buffer.from(`${name}\0`),
+    to = Buffer.from(`${directory}\0`)
+  if (
+    importNative.rename(source, importNative.ptr(from), destination, importNative.ptr(to), 1) === 0
+  )
+    return true
+  const errno = importNative.errno()
+  if (errno === 17) return false // RENAME_NOREPLACE collision is a proved noncommit.
+  throw new Error(`native import rename failed (${errno})`)
 }
 
 /** Package-private kernel observation seam; never reads candidate-authored files. */
@@ -471,6 +742,9 @@ async function innerMain(
     readonly bytes: number
     readonly digest: string
   }[],
+  projectOutput = false,
+  projectedOutput = false,
+  payloadEnvironment?: Readonly<Record<string, string>>,
 ): Promise<void> {
   if (command.length === 0 || !absolute(command[0]!))
     throw new Error('invalid rootless inner command')
@@ -492,6 +766,22 @@ async function innerMain(
     )
       throw new Error('captured input projection does not match its admitted identity')
   }
+  if (projectOutput) {
+    mkdirSync('/jig-output/public', { mode: 0o700 })
+    writeSync(4, Buffer.from([1]))
+    const custody = Buffer.alloc(1)
+    if (readSync(4, custody, 0, 1, null) !== 1 || custody[0] !== 2)
+      throw new Error('original output custody was not acquired')
+    projectPrivateOutputAndExec(command, capturedInputs, payloadEnvironment ?? {})
+  }
+  if (projectedOutput) {
+    const posture = readFileSync('/proc/self/status', 'utf8')
+    for (const name of ['CapEff', 'CapPrm', 'CapInh', 'CapAmb', 'CapBnd'])
+      if (!new RegExp(`^${name}:\\s+0+$`, 'm').test(posture))
+        throw new Error('private output launcher retained native capabilities')
+    if (!/^NoNewPrivs:\s+1$/m.test(posture))
+      throw new Error('private output launcher lacks no-new-privileges posture')
+  }
   if (output) {
     writeSync(4, Buffer.from([1]))
     const gate = Buffer.alloc(1)
@@ -503,12 +793,101 @@ async function innerMain(
   restrictInheritedDescriptors(SANDBOX_LIBRARY_PATH, [])
   const child = spawn(command[0]!, command.slice(1), {
     cwd: '/work',
-    env: process.env,
+    env:
+      payloadEnvironment === undefined
+        ? process.env
+        : { ...payloadEnvironment, LD_LIBRARY_PATH: SANDBOX_LIBRARY_PATH },
     stdio: 'inherit',
   })
   const exit = await childClose(child)
   if (exit.signal !== null) process.kill(process.pid, exit.signal as NodeJS.Signals)
   process.exitCode = exit.code ?? 1
+}
+
+/** All namespace privilege ends at exec, including privilege on Bun worker threads. */
+function projectPrivateOutputAndExec(
+  command: readonly string[],
+  capturedInputs: readonly {
+    readonly path: string
+    readonly bytes: number
+    readonly digest: string
+  }[],
+  payloadEnvironment: Readonly<Record<string, string>>,
+): never {
+  const ffi = createRequire(import.meta.url)('bun:ffi') as {
+    ptr(bytes: Uint8Array): number
+    read: { i32(pointer: number): number }
+    dlopen(
+      path: string,
+      symbols: Record<string, { args: string[]; returns: string }>,
+    ): {
+      symbols: Record<string, (...args: (number | bigint | null)[]) => number>
+    }
+  }
+  const native = ffi.dlopen(posix.join(SANDBOX_LIBRARY_PATH, 'libc.so.6'), {
+    unshare: { args: ['i32'], returns: 'i32' },
+    mount: { args: ['ptr', 'ptr', 'ptr', 'u64', 'ptr'], returns: 'i32' },
+    __errno_location: { args: [], returns: 'ptr' },
+    capset: { args: ['ptr', 'ptr'], returns: 'i32' },
+    prctl: { args: ['i32', 'u64', 'u64', 'u64', 'u64'], returns: 'i32' },
+    execve: { args: ['ptr', 'ptr', 'ptr'], returns: 'i32' },
+  })
+  // bwrap disables further user namespaces by entering a child user namespace
+  // after its mounts are created. The fixed setup thread needs a mount namespace
+  // owned by that current user namespace; original supervisor FDs remain on the
+  // earlier mount. Exec below ends all other Bun threads and all setup privilege.
+  if (native.symbols.unshare!(0x20000) !== 0)
+    throw new Error(
+      `private output mount namespace is unavailable (${ffi.read.i32(native.symbols.__errno_location!())})`,
+    )
+  const publicDirectory = openSync('/jig-output/public', 0x10000 | 0x20000)
+  try {
+    const source = Buffer.from(`/proc/self/fd/${publicDirectory}\0`)
+    const destination = Buffer.from('/jig-output\0')
+    if (native.symbols.mount!(ffi.ptr(source), ffi.ptr(destination), null, 4096n, null) !== 0)
+      throw new Error(
+        `private output subtree projection is unavailable (${ffi.read.i32(native.symbols.__errno_location!())})`,
+      )
+  } finally {
+    closeSync(publicDirectory)
+  }
+  const args = [
+    SANDBOX_BUN,
+    ...POLICY,
+    MODULE_DESTINATION,
+    '--inner-output-projected',
+    JSON.stringify(capturedInputs),
+    JSON.stringify(payloadEnvironment),
+    '--',
+    ...command,
+  ]
+  const env = [`LD_LIBRARY_PATH=${SANDBOX_LIBRARY_PATH}`]
+  const strings = [...args, ...env].map((value) => {
+    if (value.includes('\0')) throw new Error('private output exec contains NUL')
+    return Buffer.from(`${value}\0`)
+  })
+  const pointers = (from: number, length: number) => {
+    const result = Buffer.alloc((length + 1) * 8)
+    for (let index = 0; index < length; index++)
+      result.writeBigUInt64LE(BigInt(ffi.ptr(strings[from + index]!)), index * 8)
+    return result
+  }
+  const argv = pointers(0, args.length),
+    environment = pointers(args.length, env.length)
+  // Dropping a bounding bit keeps this setup thread's effective SETPCAP until capset.
+  for (let capability = 0; capability <= 40; capability++)
+    if (native.symbols.prctl!(24, capability, 0, 0, 0) !== 0)
+      throw new Error('private output capability bounding reset is unavailable')
+  if (native.symbols.prctl!(47, 4, 0, 0, 0) !== 0 || native.symbols.prctl!(38, 1, 0, 0, 0) !== 0)
+    throw new Error('private output no-new-privileges reset is unavailable')
+  const header = Buffer.alloc(8),
+    capabilities = Buffer.alloc(24)
+  header.writeUInt32LE(0x20080522)
+  if (native.symbols.capset!(ffi.ptr(header), ffi.ptr(capabilities)) !== 0)
+    throw new Error('private output capability reset is unavailable')
+  restrictInheritedDescriptors(SANDBOX_LIBRARY_PATH, [4])
+  native.symbols.execve!(ffi.ptr(strings[0]!), ffi.ptr(argv), ffi.ptr(environment))
+  throw new Error('private output unprivileged launcher exec failed')
 }
 
 /** Restrict the next exec without closing this trusted Bun process's live descriptors. */
@@ -591,27 +970,24 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     result.push('--ro-bind', mount.source, mount.destination)
   if (configuration.inputDirectories.length > 0)
     result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-input')
-  for (const path of configuration.inputDirectories) result.push('--dir', path)
+  const aliasNames = new Set(configuration.inputAliases.map((alias) => `/jig-input/${alias.name}`))
+  for (const path of configuration.inputDirectories)
+    if (!aliasNames.has(path)) result.push('--dir', path)
   // Copy sealed bytes into named inodes, then freeze the whole private tree.
   // Unlinked bind-data inodes break Bun's module realpath resolution.
   for (const file of configuration.capturedInputs)
     result.push('--perms', '0444', '--file', String(file.fd), file.destination)
+  for (const alias of configuration.inputAliases)
+    result.push('--symlink', alias.target, `/jig-input/${alias.name}`)
   if (configuration.inputDirectories.length > 0) result.push('--remount-ro', '/jig-input')
-  if (configuration.output)
-    result.push(
-      '--size',
-      String(16 * 1024 * 1024),
-      '--tmpfs',
-      '/jig-output',
-      '--sync-fd',
-      '4',
-      '--json-status-fd',
-      '5',
-    )
+  if (configuration.output) {
+    result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-output')
+    result.push('--sync-fd', '4', '--json-status-fd', '5')
+  }
   result.push('--ro-bind', configuration.supervisorPath, MODULE_DESTINATION)
-  for (const [name, value] of Object.entries(configuration.environment).sort(([a], [b]) =>
-    a.localeCompare(b),
-  )) {
+  for (const [name, value] of Object.entries(
+    configuration.outputImports ? {} : configuration.environment,
+  ).sort(([a], [b]) => a.localeCompare(b))) {
     result.push('--setenv', name, value)
   }
   result.push(
@@ -624,11 +1000,18 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     String(configuration.payloadGid),
     '--cap-drop',
     'ALL',
+    ...(configuration.outputImports
+      ? ['--cap-add', 'CAP_SYS_ADMIN', '--cap-add', 'CAP_SETPCAP']
+      : []),
     '--',
     SANDBOX_BUN,
     ...POLICY,
     MODULE_DESTINATION,
-    configuration.output ? '--inner-output' : '--inner',
+    configuration.outputImports
+      ? '--inner-output-project'
+      : configuration.output
+        ? '--inner-output'
+        : '--inner',
     JSON.stringify(
       configuration.capturedInputs.map(({ destination, bytes, digest }) => ({
         path: destination,
@@ -636,6 +1019,7 @@ function bubblewrapArguments(configuration: Configuration): string[] {
         digest,
       })),
     ),
+    ...(configuration.outputImports ? [JSON.stringify(configuration.environment)] : []),
     '--',
     ...configuration.command,
   )
@@ -764,10 +1148,12 @@ function requireStart(value: unknown): Configuration {
     'environment',
     'limits',
     'inputDirectories',
+    'inputAliases',
     'mechanismDigest',
     'nestedUserNamespaces',
     'network',
     'output',
+    'outputImports',
     'ownerDigest',
     'ownerStateAllocationDigest',
     'ownerStateDirectory',
@@ -809,9 +1195,14 @@ function requireStart(value: unknown): Configuration {
     (configuration.network !== 'isolated' && configuration.network !== 'inherited') ||
     typeof configuration.nestedUserNamespaces !== 'boolean' ||
     typeof configuration.output !== 'boolean' ||
+    typeof configuration.outputImports !== 'boolean' ||
+    (configuration.outputImports &&
+      (!configuration.output || configuration.nestedUserNamespaces)) ||
     !Array.isArray(configuration.capturedInputs) ||
     configuration.capturedInputs.length > 64 ||
     !Array.isArray(configuration.inputDirectories) ||
+    !Array.isArray(configuration.inputAliases) ||
+    configuration.inputAliases.length > 7 ||
     configuration.inputDirectories.length > 8 ||
     configuration.inputDirectories.some(
       (path) =>
@@ -842,6 +1233,36 @@ function requireStart(value: unknown): Configuration {
     configuration.command.some((part) => typeof part !== 'string' || part.includes('\0'))
   ) {
     throw new Error('invalid rootless supervisor configuration')
+  }
+  {
+    const aliases = configuration.inputAliases
+    const names = new Set(aliases.map((alias) => alias?.name))
+    const localName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+    if (
+      names.size !== aliases.length ||
+      aliases.some(
+        (alias) =>
+          alias === null ||
+          typeof alias !== 'object' ||
+          Object.keys(alias).sort().join() !== 'name,target' ||
+          typeof alias.name !== 'string' ||
+          typeof alias.target !== 'string' ||
+          alias.name.length > 64 ||
+          alias.target.length > 64 ||
+          !localName.test(alias.name) ||
+          !localName.test(alias.target) ||
+          names.has(alias.target) ||
+          !configuration.inputDirectories.includes(`/jig-input/${alias.name}`) ||
+          !configuration.inputDirectories.includes(`/jig-input/${alias.target}`) ||
+          configuration.capturedInputs.some((file) =>
+            file.destination.startsWith(`/jig-input/${alias.name}/`),
+          ) ||
+          !configuration.capturedInputs.some((file) =>
+            file.destination.startsWith(`/jig-input/${alias.target}/`),
+          ),
+      )
+    )
+      throw new Error('invalid rootless immutable input aliases')
   }
   return configuration
 }
@@ -1169,8 +1590,30 @@ async function main(): Promise<void> {
     return await supervisorMain(arguments_[0]!, arguments_[1]!)
   }
   if (mode === '--enter') return await enterMain(arguments_)
-  if (mode === '--inner' || mode === '--inner-output') {
-    if (arguments_[1] !== '--') throw new Error('invalid rootless inner separator')
+  if (
+    ['--inner', '--inner-output', '--inner-output-project', '--inner-output-projected'].includes(
+      mode ?? '',
+    )
+  ) {
+    const privateProjection =
+      mode === '--inner-output-project' || mode === '--inner-output-projected'
+    const separator = privateProjection ? 2 : 1
+    if (arguments_[separator] !== '--') throw new Error('invalid rootless inner separator')
+    let payloadEnvironment: Readonly<Record<string, string>> | undefined
+    if (privateProjection) {
+      const decoded: unknown = JSON.parse(arguments_[1]!)
+      if (!validEnvironment(decoded)) throw new Error('invalid inert payload environment')
+      payloadEnvironment = decoded
+      if (
+        Object.keys(process.env).sort().join('\0') !==
+          (mode === '--inner-output-project' ? 'LD_LIBRARY_PATH\0PWD' : 'LD_LIBRARY_PATH') ||
+        (mode === '--inner-output-project' && process.env.PWD !== '/work') ||
+        process.env.LD_LIBRARY_PATH !== SANDBOX_LIBRARY_PATH ||
+        process.execArgv.length !== POLICY.length ||
+        process.execArgv.some((value, index) => value !== POLICY[index])
+      )
+        throw new Error('private output launcher has an invalid startup posture')
+    }
     let capturedInputs: { path: string; bytes: number; digest: string }[]
     try {
       capturedInputs = JSON.parse(arguments_[0]!)
@@ -1194,7 +1637,14 @@ async function main(): Promise<void> {
       )
     )
       throw new Error('invalid rootless captured input identity')
-    return await innerMain(arguments_.slice(2), mode === '--inner-output', capturedInputs)
+    return await innerMain(
+      arguments_.slice(separator + 1),
+      mode !== '--inner',
+      capturedInputs,
+      mode === '--inner-output-project',
+      mode === '--inner-output-projected',
+      payloadEnvironment,
+    )
   }
   throw new Error('invalid rootless supervisor mode')
 }

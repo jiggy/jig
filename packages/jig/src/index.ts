@@ -1,4 +1,7 @@
 export {
+  type BindingAttachmentMap,
+  type BindingAttachmentMapping,
+  type BindingAttachmentRoute,
   defineBinding,
   defineJig,
   discover,

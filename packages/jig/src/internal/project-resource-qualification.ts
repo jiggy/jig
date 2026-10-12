@@ -159,7 +159,10 @@ export async function privateAgentReadinessReport(input: {
         : undefined
     const authored = name === undefined ? selection : aggregate.grants[name]
     const sourceClient =
-      authored !== null && typeof authored === 'object' && authored.kind === 'acp'
+      authored !== null &&
+      typeof authored === 'object' &&
+      'kind' in authored &&
+      authored.kind === 'acp'
         ? authored.client
         : client
     const path =

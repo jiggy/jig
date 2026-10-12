@@ -5,13 +5,17 @@ import {
   fstatSync,
   lstatSync,
   openSync,
-  readSync,
   realpathSync,
   unlinkSync,
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { PRIVATE_CAPTURE_LIMITS, type PrivateCapturePurpose } from './file-input-policy.js'
+import { privateDescriptorByteDigest } from './descriptor-byte-stream.js'
+import {
+  PRIVATE_CAPTURE_CHUNK_BYTES,
+  PRIVATE_CAPTURE_LIMITS,
+  type PrivateCapturePurpose,
+} from './file-input-policy.js'
 
 const O_CLOEXEC = 0x01000000
 const authentic = new WeakMap<object, Capture>()
@@ -47,14 +51,34 @@ export function capturePrivateMacosBytes(
   input: Uint8Array,
   purpose: PrivateCapturePurpose,
 ): PrivateMacosCapturedBytes {
+  if (
+    !(input instanceof Uint8Array) ||
+    !Object.hasOwn(PRIVATE_CAPTURE_LIMITS, purpose) ||
+    input.byteLength > PRIVATE_CAPTURE_LIMITS[purpose]
+  )
+    throw new TypeError('captured bytes exceed their byte limit')
+  const bytes = Buffer.from(input)
+  function* chunks() {
+    for (let offset = 0; offset < bytes.length; offset += PRIVATE_CAPTURE_CHUNK_BYTES)
+      yield bytes.subarray(offset, offset + PRIVATE_CAPTURE_CHUNK_BYTES)
+  }
+  try {
+    return capturePrivateMacosByteStream(ownerDirectory, chunks(), purpose)
+  } finally {
+    bytes.fill(0)
+  }
+}
+
+/** The host borrows each small chunk synchronously; no full-tree copy is retained. */
+export function capturePrivateMacosByteStream(
+  ownerDirectory: string,
+  chunks: Iterable<Uint8Array>,
+  purpose: PrivateCapturePurpose,
+): PrivateMacosCapturedBytes {
   const uid = process.getuid?.()
   if (process.platform !== 'darwin' || uid === undefined)
     throw new Error('macOS byte capture is unavailable')
-  if (
-    !Object.hasOwn(PRIVATE_CAPTURE_LIMITS, purpose) ||
-    !(input instanceof Uint8Array) ||
-    input.byteLength > PRIVATE_CAPTURE_LIMITS[purpose]
-  )
+  if (!Object.hasOwn(PRIVATE_CAPTURE_LIMITS, purpose))
     throw new TypeError('captured bytes exceed their byte limit')
   const owner = lstatSync(ownerDirectory, { bigint: true })
   if (
@@ -65,7 +89,6 @@ export function capturePrivateMacosBytes(
   )
     throw new Error('byte capture requires a canonical private owner directory')
 
-  const bytes = Buffer.from(input)
   const path = join(ownerDirectory, `bytes-${randomBytes(16).toString('hex')}`)
   let writer: number | undefined
   let reader: number | undefined
@@ -77,10 +100,23 @@ export function capturePrivateMacosBytes(
       0o600,
     )
     named = true
-    for (let offset = 0; offset < bytes.length; ) {
-      const count = writeSync(writer, bytes, offset, bytes.length - offset, offset)
-      if (count <= 0) throw new Error('captured input write made no progress')
-      offset += count
+    let bytes = 0
+    const hash = createHash('sha256')
+    for (const chunk of chunks) {
+      if (
+        !(chunk instanceof Uint8Array) ||
+        chunk.byteLength > PRIVATE_CAPTURE_CHUNK_BYTES ||
+        bytes + chunk.byteLength > PRIVATE_CAPTURE_LIMITS[purpose]
+      )
+        throw new TypeError('captured stream exceeds its byte limit')
+      let written = 0
+      while (written < chunk.byteLength) {
+        const count = writeSync(writer, chunk, written, chunk.byteLength - written, bytes + written)
+        if (count <= 0) throw new Error('captured input write made no progress')
+        written += count
+      }
+      hash.update(chunk)
+      bytes += chunk.byteLength
     }
     reader = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | O_CLOEXEC)
     const written = fstatSync(writer, { bigint: true })
@@ -90,7 +126,7 @@ export function capturePrivateMacosBytes(
       read.dev !== written.dev ||
       read.ino !== written.ino ||
       read.nlink !== 1n ||
-      read.size !== BigInt(bytes.length)
+      read.size !== BigInt(bytes)
     )
       throw new Error('captured input identity changed')
     unlinkSync(path)
@@ -103,8 +139,8 @@ export function capturePrivateMacosBytes(
     const record: Capture = {
       purpose,
       fd: reader,
-      bytes: bytes.length,
-      digest: digest(bytes),
+      bytes,
+      digest: `sha256:${hash.digest('hex')}`,
       device: read.dev,
       inode: read.ino,
       closed: false,
@@ -124,7 +160,6 @@ export function capturePrivateMacosBytes(
     reader = undefined
     return capability
   } finally {
-    bytes.fill(0)
     try {
       if (writer !== undefined) closeSync(writer)
     } finally {
@@ -158,20 +193,7 @@ export function requirePrivateMacosCapturedBytes(
     info.size !== BigInt(record.bytes)
   )
     throw new Error('captured input identity changed')
-  const bytes = Buffer.alloc(record.bytes)
-  try {
-    for (let offset = 0; offset < bytes.length; ) {
-      const count = readSync(record.fd, bytes, offset, bytes.length - offset, offset)
-      if (count === 0) throw new Error('captured input ended early')
-      offset += count
-    }
-    if (digest(bytes) !== record.digest) throw new Error('captured input bytes changed')
-    return Object.freeze({ fd: record.fd, bytes: record.bytes, digest: record.digest })
-  } finally {
-    bytes.fill(0)
-  }
-}
-
-function digest(bytes: Uint8Array): string {
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+  if (privateDescriptorByteDigest(record.fd, record.bytes) !== record.digest)
+    throw new Error('captured input bytes changed')
+  return Object.freeze({ fd: record.fd, bytes: record.bytes, digest: record.digest })
 }

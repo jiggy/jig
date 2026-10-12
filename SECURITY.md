@@ -212,14 +212,16 @@ finish afterward. The memory, PID, and CPU ceilings in the table are fixed.
 
 A Binding child Flow or effect runs in a separate scope while its parent
 remains live. The root permits two sibling Flows or one exclusive effect;
-each child permits one Flow or effect, within two child Flow levels. Before
+each child permits one Flow or effect. The longest admitted branch is at most
+five child Flow levels, reduced when another branch reserves capacity. Before
 dispatch, durable root ownership reserves the longest admitted Flow path in
 each branch, including its largest possible effect. Two simultaneous two-level
 branches fit, each with its own effect. Reservations last
 through confirmed fencing and cleanup, even after execution fails.
 
 At most seven payload/provider envelopes fit the fixed root aggregate ceiling:
-the root, four child Flows, and two effects. The budget is 1,792 MiB memory,
+for example, the root, four child Flows and two effects, or the root, five
+child Flows and one effect. The budget is 1,792 MiB memory,
 576 tasks, and 3.5 CPU cores (100 ms quota period). The table's
 individual Linux kernel ceilings stay unchanged and their reserved sum cannot exceed
 that budget. On Mac, the same reservations bound admission but actual use can
@@ -260,17 +262,34 @@ review. Their bytes and manifests are retained under the existing Package/0
 store cap, including after declined review. They are not secret storage or live
 host mounts. Each Run revalidates and projects only its selected Binding's
 retained bytes, combined with per-run input under the same 64-file/8-MiB limit.
-Neither children nor native provider scopes inherit them. Tool code receives no
+Children borrow complete immutable read views only through reviewed maps from
+their immediate caller. Native provider scopes receive no attachment authority. Tool code receives no
 additional execution privilege: all of its behavior is available within the
 existing sandbox, without subcommand restrictions, network or credentials.
 
-The sole writable attachment uses a 16 MiB anonymous tmpfs under the Run's
-256 MiB aggregate memory ceiling, including filesystem metadata. A trusted
-descriptor retains that bounded mount after all payload writers are fenced.
-Removal of the cgroup does not free these retained pages: they stay charged
-in the memory hierarchy until the last holder releases them. Final-tree
-validation accepts at most 16 MiB of logical bytes and 64 files, rejecting
-oversized sparse files, links, special files and excess metadata before copying.
+Each Flow has its own initially empty writable output. Linux uses a 16 MiB
+anonymous tmpfs; original held descriptors retain it beyond writer fencing.
+With writable child maps, the trusted launcher projects only its public subtree
+and closes privileged/control references before package execution. Hidden
+import stages share that original bounded tmpfs, outside the payload view.
+Payload writes are charged to its 256 MiB cgroup ceiling. Trusted import writes
+can be charged to the coordinator instead; the per-volume 16 MiB ceiling still
+applies. Removing a cgroup does not release retained pages before the last holder
+closes them. Mac uses the existing bounded 512 MiB per-Flow filesystem image,
+with output and denied import siblings on the original volume, under its
+supervised process limits. This is a finite storage allocation, not a Linux
+memory-accounting claim.
+
+Final validation accepts at most 16 MiB of logical bytes, 64 singly linked
+regular files and 256 entries, including imported files and folder prefixes.
+It rejects oversized sparse files, links, special files and excess metadata.
+After accepted child results and writer fencing, bounded streaming copies go
+into inaccessible caller stages. Child/source/native/package ownership settles
+before the existing native caller owner arbitrates original deadlines,
+accepted cancellation and one no-replace rename. At most two stages belong to
+one caller; existing branch reservations still apply. Unconfirmed copy,
+commit or descriptor cleanup ends the caller and never releases its destination
+for retry. Recovery fences the caller without resuming its program.
 
 Finite caps bound hostile allocation and trusted capture/export work. The
 8 MiB input and 16 MiB output values are conservative host policy for small
@@ -278,14 +297,31 @@ file jobs, not portable FLOW limits or benchmark-derived optimums. Changing
 them requires reviewing the complete retained-storage budget and runtime
 policy together; removing them is not a usability fallback.
 
-Temporary content may coexist: 8 MiB of sealed input and a bounded capture
-buffer; the read-only named input tree in a 16 MiB private tmpfs; the retained
-output mount and up to 16 MiB of copied file buffers;
-and up to 16 MiB of destination file staging plus a bounded JSON/0 host record.
-The Run memory ceiling includes runtime and tmpfs metadata, not all trusted
-coordinator or delivery-process memory. No per-invocation source tree is added
-to the retained Package/0 store. Only bounded request and terminal evidence
-survives command cleanup; the requested final packet is intentionally retained.
+At most six Flow envelopes coexist under the unchanged root reservation: one
+root and five children, with one effect allowance. A two-branch shape reserves
+an effect per branch and therefore admits fewer Flows. Whole immutable read
+aliases share the root's original <=64 captures/8 MiB; equal content alone does
+not authenticate a shared view. Each Flow materializes at most 8 MiB of unique
+read bytes (Linux input tmpfs ceiling 16 MiB). Linux's six output backings sum
+to at most 96 MiB, including private stages. Mac's six 512 MiB images sum to at
+most 3 GiB allocated storage, including scratch, input, public output and stages.
+There can be at most five live child import stages, since each owns one child
+edge; they do not allocate another volume or independent output allowance.
+
+Existing Mac output collection may retain one <=16 MiB anonymous snapshot per
+Flow while its source volume retires, conservatively <=96 MiB across six
+Flows. Streaming capture and import borrow <=64 KiB per active stream rather
+than retaining whole-tree buffers. A root final packet may add <=16 MiB of
+file staging; accepted and replacing checkpoint aggregates can overlap, each with <=1 MiB
+of files and <=2 MiB canonical JSON under the existing checkpoint policy.
+The original <=8 MiB input captures, bounded capture buffers, protocol records,
+checkpoint JSON and existing command/provider evidence have their separate
+caps. These trusted coordinator/collector allocations are outside payload
+cgroups; the root payload ceiling is not combined host utilization accounting.
+No per-invocation source tree enters the retained Package/0 store. Only bounded
+request and terminal evidence survives command cleanup; the requested final
+packet is intentionally retained. An accepted root terminal, checkpoint or
+already published packet does not depend on a new child storage journal.
 
 A project command accepts at most 256 KiB of text across 64 files, 16 KiB of
 stdin, and 32 arguments. Its collector retains the first 64 KiB of each pipe

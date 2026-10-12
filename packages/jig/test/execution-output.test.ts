@@ -1,12 +1,14 @@
 import { expect, test } from 'bun:test'
-import { closeSync, rmSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { closeSync, openSync, rmSync } from 'node:fs'
+import { mkdir, mkdtemp, open, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  type PrivateCapturedOutput,
   PrivateOutputProfileError,
   readPrivateCapturedOutput,
 } from '../src/internal/captured-output.js'
+import { PrivateFileImportUnconfirmedError } from '../src/internal/execution-file-import.js'
 import { closePrivateExecutionOutput } from '../src/internal/execution-output.js'
 import { privateOpenFileRoot } from '../src/internal/file-input.js'
 import type {
@@ -47,6 +49,83 @@ function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
+
+test('directory source close is single-use, typed on uncertainty and retained until confirmed', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-output-loan-'))
+  async function retire(uncertain: boolean) {
+    const directory = await open(root)
+    const originalClose = directory.close.bind(directory)
+    const failure = new Error('directory close acknowledgement unknown')
+    let closes = 0
+    directory.close = async () => {
+      closes++
+      await originalClose()
+      if (uncertain) throw failure
+    }
+    const output = { kind: 'linux-directory' as const, directory }
+    const first = closePrivateExecutionOutput(output)
+    const second = closePrivateExecutionOutput({ ...output })
+    expect(second).toBe(first)
+    if (uncertain) {
+      const cause = await first.catch((error) => error)
+      expect(cause).toBeInstanceOf(PrivateFileImportUnconfirmedError)
+      expect(cause.cause).toBe(failure)
+      expect(await second.catch((error) => error)).toBe(cause)
+      expect(await closePrivateExecutionOutput(output).catch((error) => error)).toBe(cause)
+    } else {
+      await first
+      await closePrivateExecutionOutput(output)
+    }
+    expect(closes).toBe(1)
+    return new WeakRef(directory)
+  }
+  try {
+    const clean = await retire(false)
+    const unknown = await retire(true)
+    await Bun.sleep(0)
+    Bun.gc(true)
+    expect(clean.deref()).toBeUndefined()
+    expect(unknown.deref()).toBeDefined()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('snapshot source close preserves its original uncertainty without retry or lost capability', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-output-capture-loan-'))
+  async function retire() {
+    const fd = openSync(root, 'r')
+    const failure = new Error('snapshot close acknowledgement unknown')
+    let closes = 0
+    // The native-output test double owns a genuine borrowed source descriptor.
+    const capture: PrivateCapturedOutput = Object.freeze({
+      files: [],
+      directories: [],
+      bytes: 0,
+      digest: `sha256:${'0'.repeat(64)}`,
+      close() {
+        closes++
+        closeSync(fd)
+        throw failure
+      },
+    })
+    const output = { kind: 'snapshot' as const, ready: Promise.resolve(capture) }
+    const cause = await closePrivateExecutionOutput(output).catch((error) => error)
+    expect(cause).toBeInstanceOf(PrivateFileImportUnconfirmedError)
+    expect(cause.cause).toBe(failure)
+    expect(await closePrivateExecutionOutput({ ...output }).catch((error) => error)).toBe(cause)
+    expect(closes).toBe(1)
+    return new WeakRef(capture)
+  }
+  try {
+    const unknown = await retire()
+    await Bun.sleep(0)
+    Bun.gc(true)
+    expect(unknown.deref()).toBeDefined()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test('native output becomes readable only after fencing, collection release and storage cleanup', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-output-order-')))

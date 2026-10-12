@@ -128,6 +128,9 @@
               },
               {
                 "$ref": "#/$defs/grantPolicy"
+              },
+              {
+                "$ref": "#/$defs/mappedAttachmentRoute"
               }
             ]
           },
@@ -262,6 +265,61 @@
           "additionalProperties": false
         }
       ]
+    },
+    "attachmentMapping": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": ["from"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "into": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "directory": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": ["into", "directory"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "attachmentMap": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 8,
+      "additionalProperties": {
+        "$ref": "#/$defs/attachmentMapping"
+      }
+    },
+    "mappedAttachmentRoute": {
+      "type": "object",
+      "description": "Closed static review data for an explicit Binding route. Child attachment execution is refused until the private native and lifecycle qualification gate opens. Jig additionally validates LocalNames, ordinary target grammar, complete port interfaces and distinct destination folders.",
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/defaultSelector"
+        },
+        "attachments": {
+          "$ref": "#/$defs/attachmentMap"
+        }
+      },
+      "required": ["target", "attachments"],
+      "additionalProperties": false
     }
   }
 }

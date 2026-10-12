@@ -77,8 +77,8 @@ Binding can select a different resource for the same unchanged Flow.
 
 A bound name cannot be overridden with `--attach`. Other read attachments still
 need per-run mappings. Combined inputs share the same 64-file/8-MiB limit.
-Only the selected root Binding receives its resources; direct `flow:` calls and
-children do not inherit them.
+Only the selected root Binding receives its resources automatically. Direct
+`flow:` calls do not borrow them; a child needs an explicit reviewed mapping.
 
 Select small, intentional directories. Their complete regular-file trees are
 captured, without links or implicit exclusions, and retained in protected
@@ -90,6 +90,40 @@ not discover or copy a native installation's libraries, preserve executable
 permissions, or grant paths embedded in a binary. Direct access also cannot
 restrict a tool to particular arguments. See the
 [exact resource boundary](../spec/project-policy.md#reviewed-binding-attachments).
+
+## Compose file work
+
+Keep file-processing Flows independently runnable. In a caller Binding, map
+only the attachments each child needs:
+
+```ts
+slots: {
+  copy: {
+    target: 'flow:flows/copy',
+    attachments: {
+      source: { from: 'source' },
+      deliverables: { into: 'deliverables', directory: 'copies' },
+    },
+  },
+},
+```
+
+The caller and child declare `source: "read"` and `deliverables: "read-write"`.
+The child receives the caller's immutable `source` view and an empty output.
+Call it with ordinary
+`await run.call({ operationId: 'copy-1', slot: 'copy', input })`. After successful child
+completion and cleanup, its complete output appears in the caller's
+`deliverables/copies` folder. The caller can read and combine those files before
+finishing its own output. Every child attachment needs a mapping; paths and
+settings cannot be chosen through the call input.
+
+Sibling children may run concurrently with different destination folders.
+The total final caller output must still fit its file and byte limits.
+An existing folder is never overwritten. A committed folder cannot be reused
+by a later child call, even if the caller deletes it. Failed or cancelled work
+publishes no partial folder; cancellation racing a completed commit may leave
+the complete folder with a cancelled or uncertain call response. Jig does not
+retry such work automatically.
 
 ## Receive one packet
 
@@ -190,8 +224,8 @@ Your method reads `run.attachments.source.path` and writes under
 paths. See the [tested-patch application](./tested-patch.md) for a complete
 method with its own text validation and evidence checks.
 
-This Jig profile currently supports attachments only on root invocations,
-including configured Bindings. Child slots cannot select attachment-bearing
-packages or inherit their parent's files. These host limits do not change
-FLOW's portable attachment contract. Exact limits and lifecycle guarantees
-are in the [project policy](../spec/project-policy.md#root-file-runs).
+Root invocations, including configured Bindings, accept files from the operator.
+Child slots can use files through the complete static mappings shown above.
+Each child has separate outputs; the host imports accepted files into the
+declared parent folder before the call returns. Exact limits and lifecycle
+guarantees are in the [project policy](../spec/project-policy.md#child-file-runs).

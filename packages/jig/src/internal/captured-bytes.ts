@@ -1,7 +1,12 @@
 import { closeSync, mkdtempSync, readSync, rmdirSync } from 'node:fs'
 import { PRIVATE_CAPTURE_LIMITS, type PrivateCapturePurpose, sha256 } from './file-input-policy.js'
-import { privateLinuxSealedBytes, privateVerifyLinuxSealedFile } from './linux-file-input.js'
 import {
+  privateLinuxSealedByteStream,
+  privateLinuxSealedBytes,
+  privateVerifyLinuxSealedFile,
+} from './linux-file-input.js'
+import {
+  capturePrivateMacosByteStream,
   capturePrivateMacosBytes,
   type PrivateMacosCapturedBytes,
   requirePrivateMacosCapturedBytes,
@@ -68,6 +73,42 @@ export function capturePrivateBytes<P extends PrivateCapturePurpose>(
       bytes.fill(0)
     }
   }
+  return mint(record, purpose)
+}
+
+/** Output collectors supply bounded chunks from fenced, descriptor-held trees. */
+export function capturePrivateOutputByteStream(
+  chunks: Iterable<Uint8Array>,
+): PrivateCapturedBytes<'output'> {
+  let record: Capture
+  if (process.platform === 'darwin') {
+    const directory = mkdtempSync('/private/tmp/jig-bytes-')
+    let mac: PrivateMacosCapturedBytes | undefined
+    try {
+      mac = capturePrivateMacosByteStream(directory, chunks, 'output')
+      const identity = requirePrivateMacosCapturedBytes(mac, 'output')
+      rmdirSync(directory)
+      record = { ...identity, mac, purpose: 'output', closed: false }
+    } catch (error) {
+      mac?.close()
+      try {
+        rmdirSync(directory)
+      } catch {
+        /* Retain a failed nonempty allocation. */
+      }
+      throw error
+    }
+  } else {
+    const identity = privateLinuxSealedByteStream(chunks, PRIVATE_CAPTURE_LIMITS.output)
+    record = { ...identity, purpose: 'output', closed: false }
+  }
+  return mint(record, 'output')
+}
+
+function mint<P extends PrivateCapturePurpose>(
+  record: Capture,
+  purpose: P,
+): PrivateCapturedBytes<P> {
   const capability: PrivateCapturedBytes<P> = Object.freeze({
     purpose,
     bytes: record.bytes,

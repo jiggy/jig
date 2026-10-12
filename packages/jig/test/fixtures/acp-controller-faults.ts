@@ -9,6 +9,7 @@ import { PrivateOutputProfileError } from '../../src/internal/captured-output.js
 import * as history from '../../src/internal/codex-session-state.js'
 import * as direct from '../../src/internal/direct-run.js'
 import * as execution from '../../src/internal/execution-backend.js'
+import { PrivateFileImportUnconfirmedError } from '../../src/internal/execution-file-import.js'
 import { privateSnapshotExecutionOutput } from '../../src/internal/execution-output.js'
 import { PrivateFiniteAcpPolicyError } from '../../src/internal/finite-acp-policy.js'
 import * as resource from '../../src/internal/finite-acp-resource.js'
@@ -19,6 +20,7 @@ import {
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
 } from '../../src/internal/private-finite-acp-contract.js'
+import { RunHostFatalOperationError } from '../../src/run/session.js'
 
 const digest = (n: number) => `sha256:${n.toString(16).repeat(64)}`
 const reference = '013579ab-cdef-4567-89ab-0123456789ab'
@@ -27,6 +29,7 @@ const state = {
   rolloutPath: `sessions/2026/09/17/rollout-2026-09-17T00-00-00-${reference}.jsonl`,
   bytes: new Uint8Array([1]),
 }
+const descriptorFailure = new Error('descriptor failed')
 const contract = {
   id: FINITE_ACP_CONTRACT_ID,
   version: FINITE_ACP_CONTRACT_VERSION,
@@ -91,7 +94,7 @@ const backend = {
             directory: {
               async close() {
                 step('descriptor-close')
-                if (mode === 'descriptor') throw new Error('descriptor failed')
+                if (mode === 'descriptor') throw descriptorFailure
               },
             },
           },
@@ -460,7 +463,11 @@ for (const failure of [
   assert.ok(error || result?.status === 'failed', failure)
   if (failure === 'descriptor') {
     assert.deepEqual(failures, ['cleanup'])
-    assert.equal(error.cause.message, 'descriptor failed')
+    assert.ok(error instanceof RunHostFatalOperationError)
+    assert.equal(error.code, 'UNCERTAIN')
+    assert.ok(error.cause instanceof PrivateFileImportUnconfirmedError)
+    assert.equal(error.cause.cause, descriptorFailure)
+    assert.equal(events.filter((event) => event === 'descriptor-close').length, 1)
   }
   if (failure === 'storage') {
     assert.deepEqual(failures, ['settlement'])

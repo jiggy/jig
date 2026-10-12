@@ -51,6 +51,10 @@ import {
   type PrivateMacosStopReason,
   requirePrivateMacosScopeLimits,
 } from './macos-scope-execution.js'
+import {
+  type PrivateReadInputAlias,
+  planPrivateReadInputProjection,
+} from './read-input-projection.js'
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -110,6 +114,7 @@ interface SealedPlan extends Omit<PrivateMacosLaunchPlan, 'capturedInputs' | 'en
   readonly environment: Readonly<Record<string, string>>
   readonly capturedInputs: readonly SealedInput[]
   readonly inputDirectories: readonly string[]
+  readonly inputAliases: readonly PrivateReadInputAlias[]
   readonly immutablePaths: readonly SealedImmutablePath[]
 }
 export interface PrivateMacosSealedOwnerIdentity {
@@ -156,6 +161,7 @@ export interface PrivateMacosSealedOwner {
   ): Promise<PrivateMacosComponentProcess>
 }
 export type PrivateMacosComponentProcess = PrivateExecutionProcess & {
+  readonly outputImport?: import('./execution-file-import.js').PrivateFileImportTarget
   readonly output?: ReturnType<typeof retainPrivateMacosGuardianOutput>['output']
   readonly owner: PrivateMacosPreparedOwnerIdentity
   readonly process: Readonly<{ pid: number; version: number }>
@@ -222,9 +228,16 @@ export class PrivateMacosBackend {
   ): Promise<PrivateMacosSealedOwner> {
     requirePrivateMacosBackend(this)
     const allocation = normalizePrivateMacosOwnerStateAllocationIdentity(ownerState)
+    const retainedPlan: PrivateMacosLaunchPlan = Object.freeze({
+      ...plan,
+      capturedInputs: Object.freeze(
+        (plan.capturedInputs ?? []).map(({ path, input }) => Object.freeze({ path, input })),
+      ),
+      inputDirectories: Object.freeze([...(plan.inputDirectories ?? [])]),
+    })
     const [mechanism, sealedPlan] = await Promise.all([
       this.observeMechanism(),
-      sealPlan(plan, allocation),
+      sealPlan(retainedPlan, allocation),
     ])
     const sealedPlanDigest = privateDomainDigest('JIG-Macos-Sealed-Plan/1', {
       mechanismDigest: mechanism.support.digest,
@@ -264,7 +277,7 @@ export class PrivateMacosBackend {
         beforeAdmission?: (prepared: PrivateMacosPreparedOwnerIdentity) => Promise<void>,
       ) => {
         take()
-        return this.#launch(plan, sealed, signal, beforeAdmission)
+        return this.#launch(retainedPlan, sealed, signal, beforeAdmission)
       },
     })
     this.#pending.set(identity.digest, { take })
@@ -272,7 +285,7 @@ export class PrivateMacosBackend {
       sealed,
       Object.freeze({
         backend: this,
-        sourcePlan: plan,
+        sourcePlan: retainedPlan,
         sealedPlan,
         mechanism,
         identity,
@@ -464,6 +477,7 @@ export class PrivateMacosBackend {
       let terminationRequested = false
       componentReturned = true
       return Object.freeze({
+        ...(guardian.outputImport === undefined ? {} : { outputImport: guardian.outputImport }),
         ...(retained === undefined ? {} : { output: retained.output }),
         owner: data.prepared,
         process: processIdentity,
@@ -751,12 +765,17 @@ async function sealPlan(
     throw new TypeError('native macOS writable paths require bounded storage')
   if (storage !== undefined) requirePrivateMacosGuardianStorage(storage, files, value.cwd)
   const inputDirectories = normalizePrivateMacosInputDirectories(value.inputDirectories ?? [])
+  const projection = planPrivateReadInputProjection({
+    files: value.capturedInputs ?? [],
+    directories: inputDirectories,
+  })
   const captures = normalizePrivateMacosInputs(
-    (value.capturedInputs ?? []).map(({ path, input }) => {
+    projection.files.map(({ path, input }) => {
       const captured = requirePrivateCapturedInput(input)
       return Object.freeze({ path, bytes: captured.bytes, digest: captured.digest })
     }),
     inputDirectories,
+    projection.aliases,
   )
   const projectedInputs =
     storage === undefined ? undefined : posix.join(storage.mountPath, 'inputs')
@@ -795,6 +814,7 @@ async function sealPlan(
     ...(storage === undefined ? {} : { storage }),
     capturedInputs: Object.freeze(captures),
     inputDirectories,
+    inputAliases: projection.aliases,
     immutablePaths: Object.freeze(immutablePaths),
   })
   await revalidatePlan(sealed)
@@ -839,6 +859,7 @@ function guardianConfiguration(
       : {
           inputs: data.sealedPlan.capturedInputs,
           inputDirectories: data.sealedPlan.inputDirectories,
+          inputAliases: data.sealedPlan.inputAliases,
         }),
   })
 }
@@ -847,9 +868,10 @@ function guardianInputs(
   plan: PrivateMacosLaunchPlan,
 ): readonly PrivateMacosGuardianCapturedInput[] {
   return Object.freeze(
-    (plan.capturedInputs ?? []).map((file) =>
-      Object.freeze({ path: file.path, input: file.input }),
-    ),
+    planPrivateReadInputProjection({
+      files: plan.capturedInputs ?? [],
+      directories: plan.inputDirectories ?? [],
+    }).files.map((file) => Object.freeze({ path: file.path, input: file.input })),
   )
 }
 
