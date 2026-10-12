@@ -394,7 +394,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   without payload write grants; workers using only retained projections need
   no volume. The stdin-only HTTP worker uses exact runtime/worker files and literal
   root cwd without readonly or writable trees, captured inputs or a volume. Scope
-  preparation permits that fixed cwd only when both tree grant lists are empty;
+  sealing permits that fixed cwd only without storage or tree grants, and scope
+  preparation requires both tree grant lists to be empty;
   other cwd choices retain their exact directory-projection check.
   Backend sealing still validates identities, live capabilities and enforcement.
   `flow-execution-intent.ts` translates Jig recipes for both root and child
