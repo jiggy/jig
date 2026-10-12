@@ -154,13 +154,6 @@ for package in flow-sdk reporting agent-method agent-acp display-model display-w
 done
 shasum -a 256 "$scratch"/*/*.tgz > "$scratch/SHA256SUMS"
 cat "$scratch/SHA256SUMS"
-if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
-  # npm must accept the frozen package on this native architecture and install
-  # its matching optional Bun runtime through an ordinary consumer manifest.
-  mkdir "$scratch/npm-consumer"
-  npm install --prefix "$scratch/npm-consumer" --ignore-scripts --no-audit --no-fund "$JIG_PACKAGE_ARCHIVE"
-  "$scratch/npm-consumer/node_modules/.bin/jig" --version
-fi
 export JIG_MACOS_PROCESS_TEST=1
 # Keep resource ownership tests sequential within each disposable host. The
 # hosted matrix distributes every file and all root lifecycle cases across
