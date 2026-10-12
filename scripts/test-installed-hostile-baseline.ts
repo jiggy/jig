@@ -615,6 +615,7 @@ async function readInstalledRunEvidence(
         .query(`SELECT
       r.run_id, r.origin_digest, r.origin_bytes, r.admission_digest,
       r.candidate_revision, r.coordinator_epoch, r.request_bytes,
+      a.admission_bytes, c.candidate_digest, c.candidate_bytes,
       s.intent_digest, s.intent_bytes,
       l.allocation_digest, l.allocation_bytes,
       l.plan_digest, l.plan_bytes, l.backing_digest, l.backing_bytes,
@@ -623,6 +624,8 @@ async function readInstalledRunEvidence(
       l.release_digest, l.release_bytes, l.admitted_digest, l.admitted_bytes,
       t.terminal_digest, t.terminal_bytes
       FROM root_runs r
+      LEFT JOIN admissions a ON a.admission_digest = r.admission_digest
+      LEFT JOIN candidates c ON c.revision = r.candidate_revision
       LEFT JOIN root_spawn_intents s ON s.run_id = r.run_id
       LEFT JOIN root_execution_lifecycles l ON l.run_id = r.run_id
       LEFT JOIN root_terminals t ON t.run_id = r.run_id

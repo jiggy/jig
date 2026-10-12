@@ -1,37 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { block, createMarkdownFixtures, done, packageRoot } from '../markdown-worker.fixture.js'
+import { block, createMarkdownFixtures, done } from '../markdown-worker.fixture.js'
 
 const markdownFixtures = createMarkdownFixtures()
-const {
-  command,
-  exchange,
-  fixture,
-  prepareCandidateSdkWorkspace,
-  selectArchive,
-  writeTypeScriptEcho,
-} = markdownFixtures
+const { command, prepareCandidateSdkWorkspace, selectArchive, writeTypeScriptEcho } =
+  markdownFixtures
 
 beforeAll(async () => {
   markdownFixtures.temporary = await mkdtemp(join(tmpdir(), 'jig-markdown-worker-test-'))
-  const libexec = join(markdownFixtures.temporary, 'libexec')
-  await mkdir(libexec)
-  markdownFixtures.worker = join(libexec, 'markdown-runtime.js')
-  if (process.platform === 'darwin')
-    await copyFile(
-      join(packageRoot, 'support/macos-descriptor-bridge.dylib'),
-      join(libexec, 'macos-descriptor-bridge.dylib'),
-    )
-  const build = await Bun.build({
-    entrypoints: [join(packageRoot, 'src/internal/markdown-runtime-worker.ts')],
-    target: 'bun',
-    format: 'esm',
-    outdir: libexec,
-    naming: 'markdown-runtime.js',
-  })
-  expect(build.success).toBe(true)
 })
 afterAll(async () => {
   if (markdownFixtures.temporary === undefined) return
