@@ -20,22 +20,34 @@ jobs:
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 5
     permissions:
       actions: read
       contents: read
+    outputs:
+      candidate_artifact_id: ${{ steps.ready.outputs.candidate_artifact_id }}
+      candidate_artifact_digest: ${{ steps.ready.outputs.candidate_artifact_digest }}
+      candidate_receipt_sha256: ${{ steps.ready.outputs.candidate_receipt_sha256 }}
+      python_snapshot: ${{ steps.ready.outputs.python_snapshot }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ env.SOURCE_REVISION }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
-      - name: Confirm exact-revision Python candidate was produced by CI
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Confirm current-attempt Python candidate qualification
+        id: ready
         env:
           GH_TOKEN: ${{ github.token }}
+          PRODUCER_RUN_ID: ${{ github.event.workflow_run.id }}
+          PRODUCER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -eu
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
-            --jq '.artifacts[] | select(.name == "python-candidate-${{ env.SOURCE_REVISION }}") | .name' | grep -q .
+          node scripts/ci/python-readiness.mjs --source "$SOURCE_REVISION" \
+            --producer-run "$PRODUCER_RUN_ID" --producer-attempt "$PRODUCER_RUN_ATTEMPT" \
+            --github-output "$GITHUB_OUTPUT"
 
   prepare:
     needs: authorize
@@ -48,6 +60,7 @@ jobs:
       pending: ${{ steps.registry.outputs.pending }}
       version: ${{ steps.registry.outputs.version }}
       new_version: ${{ steps.registry.outputs.new_version }}
+      pending_artifact_id: ${{ steps.pending.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -55,25 +68,38 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: python-candidate-${{ env.SOURCE_REVISION }}
+          artifact-ids: ${{ needs.authorize.outputs.candidate_artifact_id }}
+          merge-multiple: true
           path: ${{ runner.temp }}/candidate
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
+      - name: Check original Python build receipt
+        env:
+          EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          receipt = Path(os.environ['RUNNER_TEMP']) / 'candidate' / 'SUCCESS.json'
+          if receipt.is_symlink() or hashlib.sha256(receipt.read_bytes()).hexdigest() != os.environ['EXPECTED_RECEIPT_SHA256']:
+              raise ValueError('Python candidate receipt changed after authorization')
+          PY
       - id: registry
         run: >-
           python3 scripts/pypi-release.py prepare "$RUNNER_TEMP/candidate"
           "$SOURCE_REVISION" --output "$RUNNER_TEMP/pending"
           --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        id: pending
         if: steps.registry.outputs.pending == 'true'
         with:
-          name: python-pending-${{ env.SOURCE_REVISION }}
+          name: python-pending-${{ env.SOURCE_REVISION }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/pending
           retention-days: 7
           if-no-files-found: error
 
   publish:
-    needs: prepare
+    needs: [authorize, prepare]
     if: needs.prepare.outputs.pending == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -84,8 +110,92 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: python-pending-${{ env.SOURCE_REVISION }}
+          artifact-ids: ${{ needs.prepare.outputs.pending_artifact_id }}
+          merge-multiple: true
           path: dist
+      - name: Verify current Python qualification and pending archive identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_SNAPSHOT: ${{ needs.authorize.outputs.python_snapshot }}
+          EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+          import { join } from 'node:path';
+          const snapshot = JSON.parse(process.env.QUALIFICATION_SNAPSHOT ?? 'null');
+          const repository = process.env.GITHUB_REPOSITORY;
+          const requiredJobs = ['Build Python SDK artifacts', 'Source and package tests', 'test',
+            'Python 3.11 on ubuntu-24.04', 'Python 3.12 on ubuntu-24.04', 'Python 3.13 on ubuntu-24.04',
+            'Python 3.14 on ubuntu-24.04', 'Python 3.14 on macos-14', 'Python 3.13 on windows-2022'];
+          if (snapshot?.schemaVersion !== 1 || snapshot.group !== 'python' || snapshot.repository !== repository ||
+              snapshot.sourceRevision !== process.env.SOURCE_REVISION || !/^[0-9a-f]{40}$/.test(snapshot.sourceRevision ?? '') ||
+              snapshot.receiptSha256 !== process.env.EXPECTED_RECEIPT_SHA256 || !/^[0-9a-f]{64}$/.test(snapshot.receiptSha256 ?? '') ||
+              !Number.isSafeInteger(snapshot.run?.runId) || snapshot.run.runId <= 0 ||
+              !Number.isSafeInteger(snapshot.run.runAttempt) || snapshot.run.runAttempt <= 0 ||
+              snapshot.run.workflowPath !== '.github/workflows/ci.yml' || snapshot.run.event !== 'push' ||
+              snapshot.run.headBranch !== 'main' || snapshot.run.headRepository !== repository ||
+              snapshot.run.headSha !== snapshot.sourceRevision || !Array.isArray(snapshot.run.jobs) ||
+              JSON.stringify(snapshot.run.jobs.map((job) => job.name).sort()) !== JSON.stringify(requiredJobs.sort()))
+            throw new Error('Invalid authorized Python qualification snapshot');
+          const api = (path) => JSON.parse(execFileSync('gh', ['api', path], {
+            encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024,
+          }));
+          const list = (path, key) => {
+            const values = [];
+            for (let page = 1; page <= 10; page++) {
+              const result = api(`${path}?per_page=100&page=${page}`);
+              if (!Array.isArray(result[key])) throw new Error('Malformed GitHub Python evidence response');
+              values.push(...result[key]);
+              if (result[key].length < 100) return values;
+            }
+            throw new Error('GitHub Python evidence pagination exceeded its bound');
+          };
+          const checkRun = () => {
+            const current = api(`repos/${repository}/actions/runs/${snapshot.run.runId}`);
+            if (current.id !== snapshot.run.runId || current.run_attempt !== snapshot.run.runAttempt ||
+                current.status !== 'completed' || current.conclusion !== 'success' || current.repository?.full_name !== repository ||
+                current.path !== snapshot.run.workflowPath || current.event !== 'push' || current.head_branch !== 'main' ||
+                current.head_sha !== snapshot.sourceRevision || current.head_repository?.full_name !== repository)
+              throw new Error('Python qualification changed after authorization');
+          };
+          checkRun();
+          const jobs = list(`repos/${repository}/actions/runs/${snapshot.run.runId}/attempts/${snapshot.run.runAttempt}/jobs`, 'jobs');
+          for (const proof of snapshot.run.jobs) {
+            const matching = jobs.filter((job) => job.name === proof.name);
+            if (proof.runId !== snapshot.run.runId || proof.runAttempt !== snapshot.run.runAttempt ||
+                !Number.isSafeInteger(proof.jobId) || proof.jobId <= 0 || matching.length !== 1 || matching[0].id !== proof.jobId ||
+                matching[0].status !== 'completed' || matching[0].conclusion !== 'success' ||
+                (matching[0].run_attempt !== undefined && matching[0].run_attempt !== snapshot.run.runAttempt))
+              throw new Error('Python qualification job changed after authorization');
+          }
+          const expected = snapshot.artifact;
+          if (!Number.isSafeInteger(expected?.artifactId) || expected.artifactId <= 0 ||
+              expected.name !== `python-candidate-${snapshot.sourceRevision}-r${snapshot.run.runId}-a${snapshot.run.runAttempt}` ||
+              !/^sha256:[0-9a-f]{64}$/.test(expected.digest ?? '') || expected.runId !== snapshot.run.runId || expected.headSha !== snapshot.sourceRevision)
+            throw new Error('Invalid Python candidate artifact snapshot');
+          const artifact = api(`repos/${repository}/actions/artifacts/${expected.artifactId}`);
+          if (artifact.id !== expected.artifactId || artifact.name !== expected.name || artifact.digest !== expected.digest ||
+              artifact.expired !== false || !Number.isFinite(Date.parse(artifact.expires_at)) || Date.parse(artifact.expires_at) <= Date.now() ||
+              artifact.workflow_run?.id !== snapshot.run.runId || artifact.workflow_run?.head_sha !== snapshot.sourceRevision)
+            throw new Error('Python candidate artifact changed or expired after authorization');
+          const names = Object.keys(snapshot.files ?? {});
+          const wheel = names.find((name) => /^jiggy_flow-(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:a|b|rc)(?:0|[1-9][0-9]*)-py3-none-any\.whl$/.test(name));
+          if (names.length !== 2 || !wheel || !names.includes(wheel.replace('-py3-none-any.whl', '.tar.gz')) ||
+              names.some((name) => !/^[0-9a-f]{64}$/.test(snapshot.files[name] ?? '')))
+            throw new Error('Invalid authorized Python distribution identities');
+          if (!lstatSync('dist').isDirectory()) throw new Error('Pending Python distributions are not a directory');
+          const pending = readdirSync('dist');
+          if (pending.length < 1 || pending.length > 2) throw new Error('Missing or unexpected pending Python distributions');
+          for (const name of pending) {
+            const path = join('dist', name);
+            if (!names.includes(name) || !lstatSync(path).isFile() ||
+                createHash('sha256').update(readFileSync(path)).digest('hex') !== snapshot.files[name])
+              throw new Error('Pending Python bytes differ from the qualified candidate');
+          }
+          checkRun();
+          NODE
       - name: Publish retained distributions with PyPI trusted publishing
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
         with:
@@ -94,7 +204,7 @@ jobs:
           skip-existing: true
 
   verify:
-    needs: [prepare, publish]
+    needs: [authorize, prepare, publish]
     if: >-
       always() && needs.prepare.result == 'success' &&
       (needs.publish.result == 'success' || needs.publish.result == 'skipped')
@@ -110,10 +220,22 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: python-candidate-${{ env.SOURCE_REVISION }}
+          artifact-ids: ${{ needs.authorize.outputs.candidate_artifact_id }}
+          merge-multiple: true
           path: ${{ runner.temp }}/candidate
           github-token: ${{ github.token }}
           run-id: ${{ github.event.workflow_run.id }}
+      - name: Check original Python build receipt
+        env:
+          EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          receipt = Path(os.environ['RUNNER_TEMP']) / 'candidate' / 'SUCCESS.json'
+          if receipt.is_symlink() or hashlib.sha256(receipt.read_bytes()).hexdigest() != os.environ['EXPECTED_RECEIPT_SHA256']:
+              raise ValueError('Python candidate receipt changed after authorization')
+          PY
       - run: python3 scripts/pypi-release.py verify "$RUNNER_TEMP/candidate" "$SOURCE_REVISION"
 
   release:
