@@ -275,6 +275,7 @@ test('native backend seals, admits, retains output, persists fencing and release
     const unusedData = join(unused.directory, 'data')
     const unusedPlan: PrivateMacosLaunchPlan = {
       ...plan,
+      limits: { ...plan.limits, deadlineUnixMs: Date.now() + 30_000 },
       runId: 'unused',
       cwd: join(unusedData, 'work'),
       command: [
@@ -334,6 +335,7 @@ test('native backend seals, admits, retains output, persists fencing and release
       const identityPath = join(root, `identity-${index}.json`)
       const lostPlan: PrivateMacosLaunchPlan = {
         ...plan,
+        limits: { ...plan.limits, deadlineUnixMs: Date.now() + 30_000 },
         runId: name,
         cwd: join(lostData, 'work'),
         command: [
