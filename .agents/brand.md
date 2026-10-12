@@ -7,7 +7,9 @@ availability or legal clearance.
 ## Product names
 
 - **Jig** is the host and command-line product. Write the product name `Jig`
-  and the installed command `jig`.
+  in prose, and the installed command `jig` in commands.
+- The wordmark is always lowercase `jig`, including in the site navigation and
+  standalone logo lockup.
 - **FLOW** is the independent, sibling standard. Write the standard `FLOW` and
   its package entrypoint `FLOW.md`; do not present it as a Jig feature.
 - The ecosystem's primary home is `https://jig.md`.
@@ -31,15 +33,15 @@ dark surfaces. Do not add a separate accent color to either emblem.
 Use live text beside the emblem so the product name remains selectable,
 accessible, and responsive:
 
-- `Jig`: Quicksand SemiBold (600), with visible letter height about 78% of the
+- `jig`: Quicksand SemiBold (600), with visible letter height about 78% of the
   emblem height and an emblem-to-word gap about 17% of the emblem height.
 - `FLOW`: Quicksand Bold (700), with visible letter height about 67% of the
   emblem height and a gap about 22% of the emblem height.
 
 These are the selected balanced proportions, measured in the studies at a
-108-unit visible emblem height: Jig 84 units high with an 18-unit gap; FLOW 72
-units high with a 24-unit gap. Preserve the difference between title-case Jig
-and uppercase FLOW rather than forcing identical wordmark sizes.
+108-unit visible emblem height: `jig` 84 units high with an 18-unit gap; FLOW
+72 units high with a 24-unit gap. Preserve lowercase `jig` and uppercase FLOW,
+with their different wordmark sizes.
 
 Do not bake the wordmark into the emblem SVG. Pair the correct emblem with the
 live product name and retain the same monochrome treatment in light and dark
