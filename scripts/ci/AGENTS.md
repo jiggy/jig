@@ -22,13 +22,22 @@ Host preparation never becomes a consumer requirement.
   and native/loading/input changes remain full. Presentation changes still build
   and qualify bundled Jig and run fresh Linux, Intel and Apple Silicon installed
   witnesses. A compact witness never creates a full host qualification receipt.
+  Mixed Python and presentation selection also requires FLOW's installed profile,
+  so a canonical bundle cannot cause protocol smoke proof to disappear.
   Full host collection owns that same observation file and does not run a redundant
   compact target. Shadow remains the default until same-revision audits support
   each omission class. Domain-separated SHA-256 bucket zero modulo five selects
   active PR heads for full audits; seed only from the exact verified proposal.
 - Source execution keeps one `source-tests` workflow job and workspace, with
   distinct `source-portable`, `source-protocol`, `source-applications` and
-  `source-python` evidence. Source-only Python stages do not build Jig. Actual
+  `source-python` evidence. Linux CI opts into two fixed lanes only after shared
+  builds: portable runs beside sequential protocol, applications and Python.
+  `source-lanes.mjs` owns bounded cancellation and descendant settlement; the
+  source shell retains its temporary workspace if settlement is unconfirmed.
+  Local execution remains serial. Canonical installed smoke checks belong to
+  required candidate profiles, including Jig's three standalone display gates;
+  local source execution retains those consumers. Source-only Python stages do
+  not build Jig. Actual
   Node authoring events retain file identities through `source-node-reporter.mjs`;
   Python executes every selected file, including nested additions, and emits exact
   completed-file markers only after successful zero-skip groups. Disposable
@@ -54,9 +63,11 @@ Host preparation never becomes a consumer requirement.
   FLOW/Agent/standalone-display/Jig installed obligations, without rebuilding
   release archives. Display packages qualify through Jig's gate; the four
   protected publication selectors remain FLOW, HTTP Agent, ACP Agent and Jig.
-  FLOW, HTTP Agent and ACP qualifications do not build Jig. Jig's CI receipt lists
+  Installed qualifications build no source packages; they consume frozen package
+  exports with tracked test helpers and installed tooling. Jig's CI receipt lists
   only its six actual gates: three standalone display consumers, ordinary Jig
-  package smoke and local/global npm help. Operational and hostile baseline
+  package smoke and local/global npm help. CI keeps native Run flags clear and
+  provisions no containment host. Operational and hostile baseline
   scripts belong exclusively to the complete exact-current-candidate Linux
   qualification; host publication still requires that full Linux receipt.
 - `candidate-provenance.mjs` validates exact source, producer, build profile,

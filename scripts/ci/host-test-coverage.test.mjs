@@ -28,6 +28,13 @@ test('current full Mac role assignment owns every selected file once without nam
   for (const packageName of ['display-model', 'display-web', 'display-tui'])
     assert.ok(files.some((file) => file.startsWith(`packages/${packageName}/test/`)))
   assert.ok(files.includes(INSTALLED_STARTUP_TEST))
+  for (const file of [
+    'root-agent-repair.test.ts',
+    'root-agent-repair-unsuccessful.test.ts',
+    'installed-software-factory.test.ts',
+    'installed-software-factory-blocked.test.ts',
+  ])
+    assert.ok(files.includes(`packages/jig/test/host/${file}`), file)
   assert.ok(files.some((file) => file.includes('/portable/')))
   assert.ok(
     !files.some(
@@ -92,34 +99,44 @@ test('future whole-file suites inherit explicit roles while hidden, dependency a
   }
 })
 
-test('whole-file scheduling remains deterministic and spreads independently observed expensive work', async () => {
+test('whole-file scheduling spreads observed work and conservative split projections deterministically', async () => {
   const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
   const measured = new Map([
-    ['root-agent-composition.test.ts', 153],
-    ['root-agent-http-composition.test.ts', 188],
-    ['root-agent-repair.test.ts', 243],
-    ['root-agent-repair-batch.test.ts', 199],
-    ['root-agent-fences-run.test.ts', 103],
-    ['root-agent-fences-acp.test.ts', 102],
-    ['root-agent-fences-specialist.test.ts', 153],
-    ['installed-software-factory.test.ts', 253],
-    ['package-provider-observation.test.ts', 29],
-    ['installed-workspace-provider.test.ts', 170],
-    ['installed-package-provider.test.ts', 115],
-    ['installed-attachments.test.ts', 15],
-    ['run-checkpoint-lifecycle.test.ts', 203],
-    ['project-command-lifecycle.test.ts', 141],
-    ['http-request-lifecycle.test.ts', 201],
-    ['bun-native-preparation.test.ts', 118],
-    ['finite-acp-lifecycle.test.ts', 172],
-    ['project-author-evaluator.test.ts', 91],
+    ['packages/display-tui/test/native.test.ts', 15],
+    ['packages/display-tui/test/portability.test.ts', 14],
+    ['packages/jig/test/host/bun-native-preparation.test.ts', 137],
+    ['packages/jig/test/host/finite-acp-lifecycle.test.ts', 200],
+    ['packages/jig/test/host/http-request-lifecycle.test.ts', 197],
+    ['packages/jig/test/host/installed-attachments.test.ts', 15],
+    ['packages/jig/test/host/installed-package-provider.test.ts', 142],
+    ['packages/jig/test/host/installed-software-factory-blocked.test.ts', 86],
+    ['packages/jig/test/host/installed-software-factory.test.ts', 213],
+    ['packages/jig/test/host/installed-workspace-provider.test.ts', 211],
+    ['packages/jig/test/host/markdown-worker.test.ts', 25],
+    ['packages/jig/test/host/package-provider-observation.test.ts', 35],
+    ['packages/jig/test/host/project-author-evaluator.test.ts', 78],
+    ['packages/jig/test/host/project-command-lifecycle.test.ts', 125],
+    ['packages/jig/test/host/root-agent-composition.test.ts', 152],
+    ['packages/jig/test/host/root-agent-fences-acp.test.ts', 120],
+    ['packages/jig/test/host/root-agent-fences-run.test.ts', 116],
+    ['packages/jig/test/host/root-agent-fences-specialist.test.ts', 270],
+    ['packages/jig/test/host/root-agent-http-composition.test.ts', 190],
+    ['packages/jig/test/host/root-agent-repair-batch.test.ts', 194],
+    ['packages/jig/test/host/root-agent-repair-unsuccessful.test.ts', 108],
+    ['packages/jig/test/host/root-agent-repair.test.ts', 96],
+    ['packages/jig/test/host/run-checkpoint-lifecycle.test.ts', 221],
+    ['packages/jig/test/macos/macos-guardian-storage.test.ts', 56],
+    ['packages/jig/test/portable/activation-admission-store.test.ts', 51],
+    ['packages/jig/test/portable/contract-generation.test.ts', 19],
+    ['packages/jig/test/portable/project-evaluator-child.test.ts', 11],
+    ['packages/jig/test/portable/workspace-progress.test.ts', 10],
   ])
   const shards = planMacHostTests(files, 'x64')
   assert.deepEqual(planMacHostTests([...files].reverse(), 'x64'), shards)
   for (const shard of shards) {
     const seconds = shard.groups.reduce(
-      (sum, { file }) => sum + (measured.get(file.split('/').at(-1)) ?? 0),
-      shard.index === 0 ? 50 : shard.index === shards.length - 1 ? 464 : 0,
+      (sum, { file }) => sum + (measured.get(file) ?? 0),
+      shard.index === 0 ? 59 : shard.index === shards.length - 1 ? 450 : 0,
     )
     assert.ok(seconds <= 1250, `shard ${shard.index} concentrates ${seconds}s of observed work`)
   }

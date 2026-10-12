@@ -56,10 +56,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   the Agent/Jig group additionally requires same-revision host and native gates.
   Both groups use the isolated trusted publisher in `npm-publish.yml`. First
   publication requires each package's npm setup.
-  Installed FLOW/Agent/ACP qualification installs its required tooling without
-  building Jig. Only Jig's candidate builds its source-test workspace. Its CI
+  Installed qualification installs its required tooling without rebuilding
+  source packages; generated implementation comes from the frozen archives. Jig's CI
   receipt records standalone display and packed CLI smokes plus ordinary local
-  and global npm checks; operational and hostile baselines execute once in
+  and global npm checks, without provisioning a containment host. Actual native
+  Runs, operational and hostile baselines execute once in
   Linux's installed-evidence shard and remain required for host publication.
 - Before any npm mutation, inspect every archive, exact registry version and
   channel tag in the selected release group. Existing versions require byte identity even if a
@@ -78,8 +79,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   model/web changes and reviewed pure test-only inputs to
   select the portable source gate and compact real installed witnesses on Linux,
   Intel Mac and Apple Silicon Mac. Python-only changes select protocol and Python
-  source stages; public site assets select their site. Four source targets share
-  one workspace/job. Unknown, shared, authority, runtime, TUI native/input, build,
+  source stages; mixed Python and presentation changes require both FLOW and Jig
+  installed candidate profiles. Public site assets select their site. Four source
+  targets share one workspace/job. Linux source CI uses two fixed lanes after
+  shared builds: portable beside sequential protocol, applications and Python.
+  Both lanes must settle before workspace cleanup and archive revalidation;
+  local execution remains serial. Source CI delegates installed Jig/display/FLOW
+  smoke checks to the required candidate profiles using the same frozen bundle.
+  Unknown, shared, authority, runtime, TUI native/input, build,
   harness, contract, license and pricing changes select full work.
   `JIG_CI_FORCE_FULL=true` overrides exclusions.
   Active PR selection deterministically samples about 20% of PR head revisions

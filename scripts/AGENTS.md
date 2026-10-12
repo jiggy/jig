@@ -37,7 +37,13 @@ operational baselines, and public-site assembly.
 - `test-release.sh` accepts explicit portable, protocol, applications and Python
   stages in one built workspace. Omitted stages perform no setup or execution;
   selected reports bind the complete whole-file suite inventory. Its default
-  runs all stages. It includes the authored examples' deterministic application
+  runs all stages serially. Only Linux GitHub Actions may opt into
+  `JIG_CI_SOURCE_PARALLEL=1`: after shared builds and archive freezing, portable
+  checks run beside the sequential protocol, applications and Python lane.
+  Authoring builds finish before either lane starts. The fixed lane owner joins
+  both process groups on failure or cancellation; cleanup requires confirmed
+  settlement. Single selected lanes still execute serially. It includes the
+  authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
   It also checks the shared Agent method and ordinary ACP package.
   Refuse missing Python build/test tools or separately installed Run/0 fixture
@@ -51,7 +57,10 @@ operational baselines, and public-site assembly.
   `AGENT_ACP_PACKAGE_ARCHIVE`, `JIG_PACKAGE_ARCHIVE`,
   `DISPLAY_MODEL_PACKAGE_ARCHIVE`, `DISPLAY_WEB_PACKAGE_ARCHIVE` and
   `DISPLAY_TUI_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes
-  afterward. Standalone display consumers install ordinary package closures
+  afterward. With the canonical CI bundle, installed Jig, display and FLOW smoke
+  checks belong to their required candidate profiles; source tests still execute
+  their complete selected inventories. Local runs retain all selected consumer
+  checks. Standalone display consumers install ordinary package closures
   without Jig; installed Jig composition remains a separate gate. Model and
   browser consumers require the independently verified absolute `FLOW_NODE`
   executable for their Node checks, as well as Bun. Renderer packages are
