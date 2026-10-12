@@ -94,6 +94,21 @@ function fixture() {
 function plan(f, options = {}) {
   return createAffectedPlan({ cwd: f.root, base: f.base, head: 'HEAD', mode: 'active', ...options })
 }
+function assertFullExecution(p) {
+  assert.deepEqual(p.decisions, {
+    quick: true,
+    sites: true,
+    source: true,
+    python: true,
+    candidates: true,
+    npmPackages: ['flow', 'agent', 'acp', 'jig'],
+    linux: true,
+    macos: true,
+    witnesses: false,
+    sourceTargets: ['source-portable', 'source-protocol', 'source-applications', 'source-python'],
+  })
+  assert.ok(p.targets.every((target) => target.selected === (target.kind !== 'installed-witness')))
+}
 function guidanceFixture(omit = [], extraFiles = {}) {
   const f = fixture()
   for (const path of GUIDANCE_FILES.filter((path) => !omit.includes(path)))
@@ -132,22 +147,23 @@ function evidenceFor(p, scope = 'ci') {
   }
 }
 
-test('only the six audited guidance modifications may select tooling alone', () => {
+test('only the six audited guidance modifications may propose tooling alone', () => {
   assert.deepEqual(affectedManifest.guidanceFiles, GUIDANCE_FILES)
   for (const path of GUIDANCE_FILES) {
     const f = guidanceFixture()
     write(f.root, path, `Updated instructions for ${path}.\n`)
     commit(f.root)
     const p = plan(f)
+    assertFullExecution(p)
     assert.equal(p.policy.classification, 'guidance', path)
     assert.deepEqual(p.policy.fallbackReasons, [])
     assert.deepEqual(
-      p.targets.filter((target) => target.selected).map((target) => target.id),
+      p.targets.filter((target) => target.proposedSelected).map((target) => target.id),
       ['quick-checks'],
     )
-    assert.deepEqual(p.decisions.sourceTargets, [])
-    assert.deepEqual(p.decisions.npmPackages, [])
-    assert.equal(p.decisions.candidates, false)
+    assert.deepEqual(p.proposedDecisions.sourceTargets, [])
+    assert.deepEqual(p.proposedDecisions.npmPackages, [])
+    assert.equal(p.proposedDecisions.candidates, false)
     assert.equal(
       reconcileAffectedEvidence(p, evidenceFor(p, 'all'), { cwd: f.root, scope: 'all' }).qualified,
       true,
@@ -185,9 +201,10 @@ test('guidance retains the independent route of every mixed executable input', (
     write(f.root, 'scripts/ci/AGENTS.md', 'Updated CI instructions.\n')
     commit(f.root)
     const p = plan(f)
+    assertFullExecution(p)
     assert.equal(p.policy.classification, classification)
-    assert.deepEqual(p.decisions.sourceTargets, sourceTargets)
-    assert.deepEqual(p.decisions.npmPackages, npmPackages)
+    assert.deepEqual(p.proposedDecisions.sourceTargets, sourceTargets)
+    assert.deepEqual(p.proposedDecisions.npmPackages, npmPackages)
     assert.ok(
       p.changes
         .find((change) => change.path === 'scripts/ci/AGENTS.md')
@@ -323,8 +340,13 @@ test('guidance receipts require fresh tooling and explicit policy omissions', ()
       e.results.find((result) => result.id === 'quick-checks').executedCount = 0
     },
     (e) => {
-      e.results.find((result) => result.id === 'source-portable').omissionReason =
-        'invented permission'
+      Object.assign(
+        e.results.find((result) => result.id === 'source-portable'),
+        {
+          status: 'skipped',
+          omissionReason: 'invented permission',
+        },
+      )
     },
   ]
   for (const mutate of mutations) {
@@ -340,12 +362,12 @@ test('guidance receipts require fresh tooling and explicit policy omissions', ()
   const forged = plan(f)
   assert.equal(forged.policy.classification, 'full')
   forged.policy = p.policy
-  forged.decisions = p.decisions
+  forged.decisions = p.proposedDecisions
   forged.proposedDecisions = p.proposedDecisions
   for (const target of forged.targets) {
     const old = p.targets.find((item) => item.id === target.id)
-    for (const key of ['selected', 'proposedSelected', 'omissionReason', 'reasons'])
-      target[key] = old[key]
+    for (const key of ['proposedSelected', 'omissionReason', 'reasons']) target[key] = old[key]
+    target.selected = old.proposedSelected
   }
   const { planDigest: oldDigest, ...body } = forged
   forged.planDigest = digest(body)
@@ -409,19 +431,20 @@ test('a sampled active PR runs every owning scope while retaining the narrow com
   assert.match(githubOutputs(p), /audit_selected=true\n/)
 })
 
-test('an unsampled active PR retains proven narrow selection without disabling the sampler', () => {
+test('an unsampled ungraduated active PR executes full without disabling the sampler', () => {
   const f = fixture()
   write(f.root, 'site/jig/public/logo.svg', '<svg>unsampled change</svg>')
   const prHead = commit(f.root)
   const p = plan(f)
+  assertFullExecution(p)
   assert.equal(p.audit.selected, false)
   assert.equal(p.audit.eligible, true)
   assert.equal(p.audit.seed, prHead)
   assert.notEqual(p.audit.bucket, 0)
   assert.equal(p.audit.sampleDivisor, 5)
-  assert.deepEqual(p.decisions, p.proposedDecisions)
-  assert.equal(p.decisions.linux, false)
-  assert.equal(p.decisions.macos, false)
+  assert.notDeepEqual(p.decisions, p.proposedDecisions)
+  assert.equal(p.proposedDecisions.linux, false)
+  assert.equal(p.proposedDecisions.macos, false)
 })
 
 test('PR audits use the unchanged verified proposal across different tested merges and base advances', () => {
@@ -589,17 +612,18 @@ test('missing or unreviewed audit configuration and unresolved PR seeds select f
   )
 })
 
-test('active site additions, deletions and same-boundary renames omit unrelated jobs', () => {
+test('site additions, deletions and same-boundary renames retain advisory omissions', () => {
   const f = fixture()
   renameSync(join(f.root, 'site/jig/public/logo.svg'), join(f.root, 'site/jig/public/mark.svg'))
   write(f.root, 'site/jig/public/new.css', 'a {}')
   rmSync(join(f.root, 'site/theme/style.css'))
   commit(f.root)
   const p = plan(f)
+  assertFullExecution(p)
   assert.equal(p.policy.classification, 'public-site')
-  assert.equal(p.decisions.sites, true)
-  assert.equal(p.decisions.quick, true)
-  assert.equal(p.decisions.source, false)
+  assert.equal(p.proposedDecisions.sites, true)
+  assert.equal(p.proposedDecisions.quick, true)
+  assert.equal(p.proposedDecisions.source, false)
   assert.ok(
     p.changes.some(
       (change) =>
@@ -616,12 +640,13 @@ test('isolated Python source and added/deleted tests retain complete source and 
   rmSync(join(f.root, 'packages/jiggy-flow/tests/test_runtime.py'))
   commit(f.root)
   const p = plan(f)
+  assertFullExecution(p)
   assert.equal(p.policy.classification, 'python')
-  assert.equal(p.decisions.source, true)
-  assert.equal(p.decisions.python, true)
-  assert.equal(p.decisions.sites, false)
-  assert.equal(p.decisions.linux, false)
-  assert.equal(p.decisions.candidates, false)
+  assert.equal(p.proposedDecisions.source, true)
+  assert.equal(p.proposedDecisions.python, true)
+  assert.equal(p.proposedDecisions.sites, false)
+  assert.equal(p.proposedDecisions.linux, false)
+  assert.equal(p.proposedDecisions.candidates, false)
   assert.ok(p.inventory.added.includes('packages/jiggy-flow/tests/test_new.py'))
   assert.ok(p.inventory.removed.includes('packages/jiggy-flow/tests/test_runtime.py'))
   assert.ok(p.graph.affectedOwners.includes('conformance/run-0'))
@@ -646,9 +671,10 @@ test('Reporting Python changes bind current source owners and both distribution 
   write(f.root, 'packages/jiggy-reporting/src/jiggy/reporting/view.py', 'VIEW = 2\n')
   commit(f.root)
   const p = plan({ ...f, base })
+  assertFullExecution(p)
   assert.equal(p.policy.classification, 'python')
-  assert.deepEqual(p.decisions.sourceTargets, ['source-protocol', 'source-python'])
-  assert.equal(p.decisions.candidates, false)
+  assert.deepEqual(p.proposedDecisions.sourceTargets, ['source-protocol', 'source-python'])
+  assert.equal(p.proposedDecisions.candidates, false)
   assert.ok(
     p.targets.find((target) => target.id === 'source-protocol').testInventory.includes(javascript),
   )
@@ -680,22 +706,23 @@ test('Reporting Python changes bind current source owners and both distribution 
   assert.equal(shared.decisions.macos, true)
 })
 
-test('pure test-only changes execute the owning portable source stage without host qualification', () => {
+test('pure test-only changes propose the owning portable source stage while executing full', () => {
   const f = fixture()
   write(f.root, 'packages/jig/test/portable/slot-graph.test.ts', 'test("old pure graph",()=>{})')
   const base = commit(f.root)
   write(f.root, 'packages/jig/test/portable/slot-graph.test.ts', 'test("new pure graph",()=>{})')
   commit(f.root)
   const p = plan({ ...f, base })
+  assertFullExecution(p)
   assert.equal(p.policy.classification, 'portable-tests')
-  assert.deepEqual(p.decisions.sourceTargets, ['source-portable'])
-  assert.equal(p.decisions.candidates, false)
-  assert.equal(p.decisions.linux, false)
-  assert.equal(p.decisions.macos, false)
-  assert.equal(p.decisions.witnesses, false)
+  assert.deepEqual(p.proposedDecisions.sourceTargets, ['source-portable'])
+  assert.equal(p.proposedDecisions.candidates, false)
+  assert.equal(p.proposedDecisions.linux, false)
+  assert.equal(p.proposedDecisions.macos, false)
+  assert.equal(p.proposedDecisions.witnesses, false)
 })
 
-test('model/web presentation changes qualify bundled Jig with all three compact installed witnesses', () => {
+test('model/web presentation changes propose bundled Jig and three compact witnesses while executing full', () => {
   const f = fixture()
   for (const name of ['display-model', 'display-web', 'display-tui'])
     write(
@@ -727,13 +754,15 @@ test('model/web presentation changes qualify bundled Jig with all three compact 
   write(f.root, 'packages/display-model/src/view.ts', 'export const view=2')
   commit(f.root)
   const p = plan({ ...f, base })
+  assertFullExecution(p)
   assert.equal(p.policy.classification, 'presentation')
-  assert.deepEqual(p.decisions.sourceTargets, ['source-portable'])
-  assert.deepEqual(p.decisions.npmPackages, ['jig'])
-  assert.equal(p.decisions.witnesses, true)
+  assert.deepEqual(p.proposedDecisions.sourceTargets, ['source-portable'])
+  assert.deepEqual(p.proposedDecisions.npmPackages, ['jig'])
+  assert.equal(p.proposedDecisions.witnesses, true)
   for (const id of ['linux-witness', 'macos-x64-witness', 'macos-arm64-witness']) {
     const target = p.targets.find((item) => item.id === id)
-    assert.equal(target.selected, true)
+    assert.equal(target.proposedSelected, true)
+    assert.equal(target.selected, false)
     assert.deepEqual(target.testInventory, [
       'packages/jig/test/host/package-provider-observation.test.ts',
     ])
@@ -746,7 +775,7 @@ test('model/web presentation changes qualify bundled Jig with all three compact 
       true,
     )
   const changed = evidenceFor(p, 'macos')
-  changed.results.find((item) => item.id === 'macos-x64-witness').residueVerified = false
+  changed.results.find((item) => item.id === 'macos-x64').residueVerified = false
   assert.equal(
     reconcileAffectedEvidence(p, changed, { cwd: f.root, scope: 'macos' }).qualified,
     false,
@@ -766,27 +795,34 @@ test('mixed Python and presentation changes require FLOW qualification for deleg
   commit(f.root)
 
   const p = plan({ ...f, base })
+  assertFullExecution(p)
   assert.equal(p.policy.classification, 'presentation-and-python')
   assert.deepEqual(p.policy.fallbackReasons, [])
-  assert.deepEqual(p.decisions.sourceTargets, [
+  assert.deepEqual(p.proposedDecisions.sourceTargets, [
     'source-portable',
     'source-protocol',
     'source-python',
   ])
   assert.equal(p.targets.find((target) => target.id === 'source-protocol').selected, true)
-  assert.equal(p.decisions.candidates, true)
-  assert.deepEqual(p.decisions.npmPackages, ['flow', 'jig'])
+  assert.equal(p.proposedDecisions.candidates, true)
+  assert.deepEqual(p.proposedDecisions.npmPackages, ['flow', 'jig'])
   assert.deepEqual(p.targets.find((target) => target.id === 'npm-candidate').runtimeProfiles, [
     'flow',
+    'agent',
+    'acp',
     'jig',
   ])
   assert.deepEqual(JSON.parse(/^npm_matrix=(.+)$/m.exec(githubOutputs(p))[1]), {
-    include: [{ package: 'flow' }, { package: 'jig' }],
+    include: ['flow', 'agent', 'acp', 'jig'].map((packageName) => ({ package: packageName })),
   })
   assert.equal(reconcileAffectedEvidence(p, evidenceFor(p), { cwd: f.root }).qualified, true)
 
   const missingFlow = structuredClone(evidenceFor(p))
-  missingFlow.results.find((result) => result.id === 'npm-candidate').profiles = ['jig']
+  missingFlow.results.find((result) => result.id === 'npm-candidate').profiles = [
+    'agent',
+    'acp',
+    'jig',
+  ]
   const report = reconcileAffectedEvidence(p, missingFlow, { cwd: f.root })
   assert.equal(report.qualified, false)
   assert.ok(report.errors.includes('Incomplete or unexpected runtime/host matrix: npm-candidate'))
@@ -851,11 +887,12 @@ test('independent site and Python changes compose without dropping either obliga
   write(f.root, 'packages/jiggy-flow/src/jiggy/flow/runtime.py', 'RUNTIME = 2\n')
   commit(f.root)
   const p = plan(f)
+  assertFullExecution(p)
   assert.equal(p.policy.classification, 'public-site-and-python')
-  assert.equal(p.decisions.sites, true)
-  assert.equal(p.decisions.source, true)
-  assert.equal(p.decisions.python, true)
-  assert.equal(p.decisions.linux, false)
+  assert.equal(p.proposedDecisions.sites, true)
+  assert.equal(p.proposedDecisions.source, true)
+  assert.equal(p.proposedDecisions.python, true)
+  assert.equal(p.proposedDecisions.linux, false)
 })
 
 test('standalone installed smoke entrypoints enter the source and host inventories', () => {
@@ -1187,7 +1224,13 @@ test('omission requires a policy-derived reason and cannot conceal selected skip
   commit(f.root)
   const p = plan(f)
   const evidence = evidenceFor(p)
-  evidence.results.find((result) => result.id === 'source-portable').omissionReason = 'trust me'
+  Object.assign(
+    evidence.results.find((result) => result.id === 'source-portable'),
+    {
+      status: 'skipped',
+      omissionReason: 'trust me',
+    },
+  )
   assert.equal(reconcileAffectedEvidence(p, evidence, { cwd: f.root }).qualified, false)
 })
 
@@ -1289,10 +1332,15 @@ function tuiPresentationFixture() {
   write(
     f.root,
     'packages/jig/package.json',
-    JSON.stringify({
-      name: '@jigging/jig',
-      dependencies: { '@jigging/display-tui': 'workspace:*' },
-    }),
+    `${JSON.stringify(
+      {
+        name: '@jigging/jig',
+        version: '0.1.0-alpha.35',
+        dependencies: { '@jigging/display-tui': 'workspace:*' },
+      },
+      null,
+      2,
+    )}\n`,
   )
   for (const name of ['projection', 'viewer-model', 'text', 'style'])
     write(f.root, `packages/display-tui/src/presentation/${name}.ts`, 'export const value = 1\n')
@@ -1430,4 +1478,412 @@ test('self-consistent forged TUI source omissions cannot replace reconstructed e
   delete p.planDigest
   p.planDigest = digest(p)
   assert.equal(reconcileAffectedEvidence(p, evidenceFor(p), { cwd: f.root }).qualified, false)
+})
+
+const TUI_LEAVES = ['projection', 'viewer-model', 'text', 'style']
+const TUI_COMPANIONS = ['presentation', 'workbench', 'inline']
+const JIG_MANIFEST = 'packages/jig/package.json'
+const canonicalManifest = (value) => `${JSON.stringify(value, null, 2)}\n`
+function jigManifest(f) {
+  return JSON.parse(readFileSync(join(f.root, JIG_MANIFEST), 'utf8'))
+}
+function changeTuiSource(f) {
+  write(f.root, 'packages/display-tui/src/presentation/projection.ts', 'export const value = 2\n')
+}
+function assertCompactTui(p) {
+  assert.deepEqual(p.decisions, p.proposedDecisions)
+  assert.deepEqual(p.decisions.sourceTargets, ['source-portable'])
+  assert.deepEqual(p.decisions.npmPackages, ['jig'])
+  assert.equal(p.decisions.witnesses, true)
+  assert.equal(p.decisions.linux, false)
+  assert.equal(p.decisions.macos, false)
+  assert.deepEqual(
+    p.targets.filter((target) => target.selected).map((target) => target.id),
+    [
+      'quick-checks',
+      'source-portable',
+      'npm-candidate',
+      'linux-witness',
+      'macos-x64-witness',
+      'macos-arm64-witness',
+    ],
+  )
+}
+
+test('each graduated TUI source leaf selects the same whole route with any reviewed companions', () => {
+  for (const name of TUI_LEAVES) {
+    const f = tuiPresentationFixture()
+    write(f.root, `packages/display-tui/src/presentation/${name}.ts`, 'export const value = 2\n')
+    commit(f.root)
+    const sourceOnly = plan(f)
+    assertCompactTui(sourceOnly)
+    for (const companion of TUI_COMPANIONS) {
+      write(
+        f.root,
+        `packages/display-tui/test/presentation/${companion}.test.ts`,
+        `test("changed ${companion}",()=>{})\n`,
+      )
+      commit(f.root)
+      const combined = plan(f)
+      assertCompactTui(combined)
+      assert.deepEqual(
+        combined.targets.map((target) => target.testInventory),
+        sourceOnly.targets.map((target) => target.testInventory),
+      )
+    }
+  }
+})
+
+test('a sole canonical Jig version increment accompanies source and every existing whole companion', () => {
+  const f = tuiPresentationFixture()
+  changeTuiSource(f)
+  for (const name of TUI_COMPANIONS)
+    write(
+      f.root,
+      `packages/display-tui/test/presentation/${name}.test.ts`,
+      'test("changed",()=>{})\n',
+    )
+  const manifest = jigManifest(f)
+  write(f.root, JIG_MANIFEST, canonicalManifest({ ...manifest, version: '0.1.0-alpha.36' }))
+  commit(f.root)
+  const p = plan(f)
+  assert.equal(p.policyVersion, 'whole-suite-selection-3')
+  assert.equal(p.policy.classification, 'portable-tests-and-presentation')
+  assert.deepEqual(p.policy.fallbackReasons, [])
+  assertCompactTui(p)
+  assert.deepEqual(p.changes.find((change) => change.path === JIG_MANIFEST).reasons, [
+    `presentation ownership: ${JIG_MANIFEST}`,
+  ])
+  for (const scope of ['ci', 'linux', 'macos'])
+    assert.equal(
+      reconcileAffectedEvidence(p, evidenceFor(p, scope), { cwd: f.root, scope }).qualified,
+      true,
+    )
+})
+
+test('standalone Jig identifiers and companion-only changes cannot graduate', () => {
+  for (const path of [
+    JIG_MANIFEST,
+    ...TUI_COMPANIONS.map((name) => `packages/display-tui/test/presentation/${name}.test.ts`),
+  ]) {
+    const f = tuiPresentationFixture()
+    write(
+      f.root,
+      path,
+      path === JIG_MANIFEST
+        ? canonicalManifest({ ...jigManifest(f), version: '0.1.0-alpha.36' })
+        : 'test("changed companion only",()=>{})\n',
+    )
+    commit(f.root)
+    assertFullExecution(plan(f))
+  }
+})
+
+test('Jig identifier companions reject changed fields, noncanonical bytes and invalid advances', () => {
+  const cases = [
+    ...[
+      '0.1.0-alpha.34',
+      '0.1.0-alpha.37',
+      '0.1.0-alpha.036',
+      '0.2.0-alpha.36',
+      '0.1.0-next.36',
+      '0.1.0-alpha.36.1',
+      '0.1.0-alpha.36+build',
+      '0.1.0',
+      36,
+      null,
+    ].map((version) => [String(version), (old) => canonicalManifest({ ...old, version })]),
+    ...Object.entries({
+      name: '@jigging/other',
+      dependencies: {},
+      scripts: { build: 'changed' },
+      exports: { '.': './other.js' },
+      optionalDependencies: { '@oven/bun-linux-x64-baseline': 'other' },
+      license: 'changed',
+      files: ['other.js'],
+      os: ['other'],
+      cpu: ['other'],
+    }).map(([key, value]) => [
+      key,
+      (old) => canonicalManifest({ ...old, version: '0.1.0-alpha.36', [key]: value }),
+    ]),
+    [
+      'duplicate root version',
+      (old) =>
+        canonicalManifest({ ...old, version: '0.1.0-alpha.36' }).replace(
+          '  "version":',
+          '  "version": "0.1.0-alpha.35",\n  "version":',
+        ),
+    ],
+    [
+      'escaped root key',
+      (old) =>
+        canonicalManifest({ ...old, version: '0.1.0-alpha.36' }).replace(
+          '"version"',
+          '"vers\\u0069on"',
+        ),
+    ],
+    [
+      'nested version',
+      (old) => canonicalManifest({ ...old, metadata: { version: '0.1.0-alpha.36' } }),
+    ],
+    [
+      'reordered keys',
+      (old) => {
+        const { version, ...other } = old
+        return canonicalManifest({ ...other, version: '0.1.0-alpha.36' })
+      },
+    ],
+    [
+      'different indentation',
+      (old) => `${JSON.stringify({ ...old, version: '0.1.0-alpha.36' }, null, 4)}\n`,
+    ],
+    ['missing LF', (old) => canonicalManifest({ ...old, version: '0.1.0-alpha.36' }).trimEnd()],
+    [
+      'CRLF',
+      (old) => canonicalManifest({ ...old, version: '0.1.0-alpha.36' }).replaceAll('\n', '\r\n'),
+    ],
+    [
+      'BOM',
+      (old) =>
+        Buffer.concat([
+          Buffer.from([0xef, 0xbb, 0xbf]),
+          Buffer.from(canonicalManifest({ ...old, version: '0.1.0-alpha.36' })),
+        ]),
+    ],
+    ['malformed', () => '{'],
+  ]
+  for (const [name, change] of cases) {
+    const f = tuiPresentationFixture()
+    const old = jigManifest(f)
+    changeTuiSource(f)
+    write(f.root, JIG_MANIFEST, change(old))
+    commit(f.root)
+    const p = plan(f)
+    assert.equal(p.policy.classification, 'full', name)
+    assertFullExecution(p)
+  }
+})
+
+test('Jig raw-byte checks reject replacement-decoded UTF8 and bound each old/new blob at 64 KiB', () => {
+  for (const side of ['old', 'new']) {
+    const f = tuiPresentationFixture()
+    const old = { ...jigManifest(f), description: 'sentinel' }
+    const invalid = (value, byte) => {
+      const [before, after] = canonicalManifest(value).split('sentinel')
+      return Buffer.concat([Buffer.from(before), Buffer.from([byte]), Buffer.from(after)])
+    }
+    write(f.root, JIG_MANIFEST, side === 'old' ? invalid(old, 0xff) : canonicalManifest(old))
+    f.base = commit(f.root)
+    changeTuiSource(f)
+    const next = { ...old, version: '0.1.0-alpha.36' }
+    write(f.root, JIG_MANIFEST, invalid(next, side === 'old' ? 0xfe : 0xff))
+    commit(f.root)
+    const p = plan(f)
+    assert.ok(!p.policy.fallbackReasons.some((reason) => reason.includes('Cannot infer')), side)
+    assertFullExecution(p)
+  }
+  for (const size of [64 * 1024, 64 * 1024 + 1]) {
+    const f = tuiPresentationFixture()
+    const old = { ...jigManifest(f), description: '' }
+    old.description = 'x'.repeat(size - Buffer.byteLength(canonicalManifest(old)))
+    assert.equal(Buffer.byteLength(canonicalManifest(old)), size)
+    write(f.root, JIG_MANIFEST, canonicalManifest(old))
+    f.base = commit(f.root)
+    changeTuiSource(f)
+    write(f.root, JIG_MANIFEST, canonicalManifest({ ...old, version: '0.1.0-alpha.36' }))
+    commit(f.root)
+    if (size === 64 * 1024) assertCompactTui(plan(f))
+    else assertFullExecution(plan(f))
+  }
+  const f = tuiPresentationFixture()
+  write(
+    f.root,
+    JIG_MANIFEST,
+    canonicalManifest({ ...jigManifest(f), version: '0.1.0-alpha.9007199254740992' }),
+  )
+  f.base = commit(f.root)
+  changeTuiSource(f)
+  write(
+    f.root,
+    JIG_MANIFEST,
+    canonicalManifest({ ...jigManifest(f), version: '0.1.0-alpha.9007199254740994' }),
+  )
+  commit(f.root)
+  assertFullExecution(plan(f))
+})
+
+test('graduated path names cannot authorize added, removed, renamed, linked or executable inputs', () => {
+  const text = 'packages/display-tui/src/presentation/text.ts'
+  const companion = 'packages/display-tui/test/presentation/inline.test.ts'
+  const cases = [
+    [
+      'source addition',
+      (f) => rmSync(join(f.root, text)),
+      (f) => write(f.root, text, 'export const value = 2\n'),
+    ],
+    ['source deletion', null, (f) => rmSync(join(f.root, text))],
+    [
+      'rename between approved leaves',
+      (f) => rmSync(join(f.root, text)),
+      (f) =>
+        renameSync(
+          join(f.root, 'packages/display-tui/src/presentation/style.ts'),
+          join(f.root, text),
+        ),
+    ],
+    ['new source executable', null, (f) => chmodSync(join(f.root, text), 0o755)],
+    [
+      'old source executable',
+      (f) => chmodSync(join(f.root, text), 0o755),
+      (f) => {
+        chmodSync(join(f.root, text), 0o644)
+        write(f.root, text, 'export const value = 2\n')
+      },
+    ],
+    [
+      'source symlink',
+      null,
+      (f) => {
+        rmSync(join(f.root, text))
+        symlinkSync('./style.ts', join(f.root, text))
+      },
+    ],
+    [
+      'companion addition',
+      (f) => rmSync(join(f.root, companion)),
+      (f) => write(f.root, companion, 'test("new companion",()=>{})\n'),
+    ],
+    ['companion executable', null, (f) => chmodSync(join(f.root, companion), 0o755)],
+    [
+      'manifest executable',
+      null,
+      (f) => {
+        write(
+          f.root,
+          JIG_MANIFEST,
+          canonicalManifest({ ...jigManifest(f), version: '0.1.0-alpha.36' }),
+        )
+        chmodSync(join(f.root, JIG_MANIFEST), 0o755)
+      },
+    ],
+  ]
+  for (const [name, before, after] of cases) {
+    const f = tuiPresentationFixture()
+    if (before) {
+      before(f)
+      f.base = commit(f.root)
+    }
+    changeTuiSource(f)
+    after(f)
+    commit(f.root)
+    assertFullExecution(plan(f))
+  }
+})
+
+test('TUI mixtures with guidance, another pilot, locks or an unreviewed semantic sibling stay full', () => {
+  for (const [path, before, after] of [
+    ['scripts/ci/AGENTS.md', 'old instructions\n', 'new instructions\n'],
+    ['site/theme/style.css', 'a{}', 'b{}'],
+    ['packages/jiggy-flow/src/jiggy/flow/runtime.py', 'RUNTIME=1', 'RUNTIME=2'],
+    ['packages/display-model/src/view.ts', 'export const view=1', 'export const view=2'],
+    ['packages/jig/test/portable/slot-graph.test.ts', 'test("old",()=>{})', 'test("new",()=>{})'],
+    ['bun.lock', 'old lock\n', 'new lock\n'],
+    [
+      'packages/display-tui/src/presentation/neighbor.ts',
+      'export const value=1',
+      'export const value=2',
+    ],
+  ]) {
+    const f = tuiPresentationFixture()
+    write(f.root, path, before)
+    f.base = commit(f.root)
+    changeTuiSource(f)
+    write(f.root, path, after)
+    commit(f.root)
+    assertFullExecution(plan(f))
+  }
+})
+
+test('graduation preserves shadow, main, manual, force and deterministic sampled-full precedence', () => {
+  const f = tuiPresentationFixture()
+  changeTuiSource(f)
+  commit(f.root, { sampled: true })
+  const sampled = plan(f)
+  assert.equal(sampled.audit.selected, true)
+  assert.equal(sampled.proposedDecisions.witnesses, true)
+  assertFullExecution(sampled)
+  for (const options of [
+    { mode: 'shadow' },
+    { event: 'push' },
+    { event: 'schedule' },
+    { event: 'workflow_dispatch' },
+    { event: 'merge_group' },
+    { forceFull: true },
+  ])
+    assertFullExecution(plan(f, options))
+})
+
+test('independent gates refuse fully rehashed compact receipts for denied advisory and identifier inputs', () => {
+  const approved = tuiPresentationFixture()
+  changeTuiSource(approved)
+  commit(approved.root)
+  const compact = plan(approved)
+  assertCompactTui(compact)
+  for (const change of [
+    (f) =>
+      write(
+        f.root,
+        'packages/display-tui/test/presentation/presentation.test.ts',
+        'test("test only",()=>{})\n',
+      ),
+    (f) =>
+      write(
+        f.root,
+        JIG_MANIFEST,
+        canonicalManifest({ ...jigManifest(f), version: '0.1.0-alpha.36' }),
+      ),
+    (f) => {
+      changeTuiSource(f)
+      write(
+        f.root,
+        JIG_MANIFEST,
+        canonicalManifest({
+          ...jigManifest(f),
+          version: '0.1.0-alpha.36',
+          scripts: { build: 'unproved' },
+        }),
+      )
+    },
+    (f) => {
+      changeTuiSource(f)
+      write(f.root, 'scripts/ci/AGENTS.md', 'unmeasured mixture\n')
+    },
+    (f) => {
+      changeTuiSource(f)
+      write(f.root, 'packages/display-tui/src/presentation/added.ts', 'export const added = 1\n')
+    },
+  ]) {
+    const f = tuiPresentationFixture()
+    change(f)
+    commit(f.root)
+    const forged = plan(f)
+    assertFullExecution(forged)
+    forged.decisions = structuredClone(compact.decisions)
+    for (const target of forged.targets) {
+      const original = compact.targets.find((item) => item.id === target.id)
+      for (const key of ['selected', 'runtimeProfiles', 'omissionReason', 'reasons'])
+        target[key] = structuredClone(original[key])
+    }
+    delete forged.planDigest
+    forged.planDigest = digest(forged)
+    for (const scope of ['ci', 'linux', 'macos']) {
+      const report = reconcileAffectedEvidence(forged, evidenceFor(forged, scope), {
+        cwd: f.root,
+        scope,
+      })
+      assert.equal(report.qualified, false)
+      assert.ok(report.errors.some((error) => error.includes('independently reconstructed')))
+    }
+  }
 })
