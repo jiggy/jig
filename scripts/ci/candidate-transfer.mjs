@@ -131,6 +131,40 @@ export async function acquisitionExpectation(sourceRevision, env = process.env) 
   }
 }
 
+async function quickChecksReady(client, expected, run) {
+  const jobs = await paginated(
+    client,
+    `repos/${expected.repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
+    'jobs',
+  )
+  const matching = jobs.filter((job) => job.name === 'Quick development checks')
+  if (matching.length > 1) throw new Error('Ambiguous current-attempt Quick development checks')
+  if (!matching.length) {
+    if (run.status === 'completed')
+      throw new Error('Completed CI producer has no current-attempt Quick development checks')
+    return false
+  }
+  const job = matching[0]
+  if (
+    !Number.isSafeInteger(job.id) ||
+    job.id <= 0 ||
+    job.run_id !== run.id ||
+    job.run_attempt !== run.run_attempt ||
+    job.head_sha !== run.head_sha
+  )
+    throw new Error('Quick development checks producer identity mismatch')
+  if (job.status === 'completed') {
+    if (job.conclusion !== 'success')
+      throw new Error('Current-attempt Quick development checks did not succeed')
+    return true
+  }
+  if (!['queued', 'in_progress'].includes(job.status) || job.conclusion !== null)
+    throw new Error('Invalid pending Quick development checks status')
+  if (run.status === 'completed')
+    throw new Error('Completed CI producer has unfinished Quick development checks')
+  return false
+}
+
 export async function acquireCandidate({
   destination,
   sourceRevision,
@@ -138,13 +172,16 @@ export async function acquireCandidate({
   expected,
   client,
   timeoutSeconds = 90,
+  afterQuick = false,
   now = () => Date.now(),
   sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   extract,
 }) {
   requireRevision(sourceRevision)
-  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > 300)
-    throw new Error('Candidate acquisition timeout must be 0–300 seconds')
+  if (typeof afterQuick !== 'boolean') throw new Error('afterQuick must be boolean')
+  const maximumTimeout = afterQuick ? 600 : 300
+  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > maximumTimeout)
+    throw new Error(`Candidate acquisition timeout must be 0–${maximumTimeout} seconds`)
   if (producerRunId !== undefined && (!Number.isSafeInteger(producerRunId) || producerRunId <= 0))
     throw new Error('Invalid producer run ID')
   const deadline = now() + timeoutSeconds * 1000
@@ -184,6 +221,7 @@ export async function acquireCandidate({
     }
     for (const run of runs) {
       validateWorkflowRun(run, expected)
+      if (afterQuick && !(await quickChecksReady(client, expected, run))) continue
       const name = `candidates-${sourceRevision}-r${run.id}-a${run.run_attempt}`
       const artifacts = await paginated(
         client,
@@ -354,8 +392,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       !options.source
     )
       throw new Error(
-        'Use acquire OUTPUT --source SHA [--producer-run ID] or acquire-linux OUTPUT --source SHA --qualification-output DIR [--linux-run ID]',
+        'Use acquire OUTPUT --source SHA [--producer-run ID] [--after-quick true|false] [--timeout-seconds N] or acquire-linux OUTPUT --source SHA --qualification-output DIR [--linux-run ID]',
       )
+    if (options['after-quick'] !== undefined && !['true', 'false'].includes(options['after-quick']))
+      throw new Error('--after-quick must be true or false')
+    const afterQuick = options['after-quick'] === 'true'
+    if (positional[0] === 'acquire-linux' && afterQuick)
+      throw new Error('--after-quick applies only to canonical candidate acquisition')
     const expected = await acquisitionExpectation(options.source)
     const client = githubClient(expected.repository)
     let envelope
@@ -379,6 +422,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         expected,
         client,
         timeoutSeconds: Number(options['timeout-seconds'] ?? 90),
+        afterQuick,
       })
     if (options['github-output'])
       await appendFile(

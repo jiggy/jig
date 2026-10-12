@@ -79,7 +79,7 @@ jobs:
     needs: "plan"
     if: "${{ needs.plan.outputs.macos == 'true' || needs.plan.outputs.witnesses == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: "read"
       actions: "read"
@@ -96,7 +96,12 @@ jobs:
         name: "Acquire the exact canonical CI candidates"
         env:
           GH_TOKEN: "${{ github.token }}"
-        run: "node scripts/ci/candidate-transfer.mjs acquire \"$RUNNER_TEMP/macos-host-artifacts\" --source \"$GITHUB_SHA\" --timeout-seconds 300"
+          AFTER_QUICK: "${{ needs.plan.outputs.macos == 'true' }}"
+        run: |
+          set -eu
+          set -- --timeout-seconds 300
+          if [ "$AFTER_QUICK" = true ]; then set -- --after-quick true --timeout-seconds 600; fi
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" "$@"
       -
         name: "Retain exact macos host artifacts"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
@@ -199,7 +204,7 @@ jobs:
         run: |
           set -o pipefail
           snapshot() {
-            { launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'; mount | awk '/jig-/ {print "mount " $0}'; } | LC_ALL=C sort
+            { launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'; mount | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'; } | LC_ALL=C sort
           }
           snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
           status=0
