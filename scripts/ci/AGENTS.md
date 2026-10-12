@@ -56,6 +56,10 @@ host qualification. Host preparation never becomes a consumer requirement.
 - `install-macos-test-clients.ts` extracts digest-pinned native Codex, Claude
   and Pi archives into a fresh runner-owned directory for offline startup
   qualification. It neither executes clients nor provisions consumer machines.
+  Acquisition allows three attempts with a two-minute deadline per request/body
+  and one-/two-second backoff. HTTP status and attempt diagnostics go to stderr;
+  stdout contains only environment assignments. Digest mismatch fails immediately
+  before extraction; retries never substitute a version, mirror or client.
 
 ## Local Contracts
 
@@ -99,6 +103,9 @@ host qualification. Host preparation never becomes a consumer requirement.
   candidate evidence without credentials or registry mutations.
 - `node --test scripts/ci/promote-directory.test.mjs` verifies exact directory
   promotion and preservation of existing or racing outputs on Linux and Mac.
+- `node --test scripts/ci/install-macos-test-clients.test.mjs` exercises bounded
+  acquisition through Bun against a local server, including HTTP/network/body
+  failures, exhaustion, both digest formats and changed-byte refusal.
 
 ## Child DOX Index
 
