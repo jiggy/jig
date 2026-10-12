@@ -199,6 +199,7 @@ jobs:
         run: "bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/flow-authoring --filter @jigging/agent-acp --filter @jigging/flow --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui"
       -
         name: "Build source-test workspace packages"
+        if: "matrix.suite != 'installed-evidence'"
         run: "just --justfile packages/jig/justfile build"
       -
         name: "Download the frozen archives"

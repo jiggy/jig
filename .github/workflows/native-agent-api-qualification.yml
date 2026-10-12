@@ -108,7 +108,7 @@ jobs:
             readlink -f "${archives[0]}"
           }
           {
-            printf 'USER_UPDATES_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/user-updates")"
+            printf 'REPORTING_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/reporting")"
             printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
             printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
             printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
@@ -278,7 +278,7 @@ jobs:
             "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
             "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
             "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
-            "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" \
+            "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" \
             "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" \
             "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
             "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" \

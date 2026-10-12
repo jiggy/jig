@@ -9,6 +9,7 @@ import { privateDomainDigest } from '../src/internal/identity.js'
 import * as capture from '../src/internal/input-capture.js'
 import * as installed from '../src/internal/installed-bun-support.js'
 import * as context from '../src/internal/invocation-context.js'
+import { privateProfileActivate, privateProfileFinish } from '../src/internal/private-profile.js'
 import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_CONTRACT_ID,
@@ -22,9 +23,14 @@ const operationId = 'same-operation'
 const events: string[] = []
 let row: any
 let failAfterPhysicalRelease = false
+let failAllocation = false
+let failCollection = false
 let dispatch = false
 let stopReason = 'setup_failed'
 const step = (name: string) => events.push(name)
+const allocationFailure = new Error('private allocation diagnostic canary')
+const collectionFailure = new Error('private collection diagnostic canary')
+privateProfileActivate()
 const backend = {
   recoverFence: async () => {
     step('recover-fence')
@@ -91,6 +97,7 @@ mock.module('../src/internal/activation-admission-store.js', () => ({
   },
   allocatePrivateRootChildOwner: async (input: any) => {
     step('allocate-owner')
+    if (failAllocation) throw allocationFailure
     if (dispatch) {
       row = {
         parentRunId: runId,
@@ -136,7 +143,12 @@ mock.module('../src/internal/execution-backend.js', () => ({
     },
   }),
   admitPrivateExecutionOwner: async () => ({
-    stdout: Readable.from([Buffer.from('untrusted success')]),
+    stdout: Readable.from(
+      (async function* () {
+        yield Buffer.from('untrusted success')
+        if (failCollection) throw collectionFailure
+      })(),
+    ),
     stderr: Readable.from([]),
     completion: Promise.resolve({ signal: null }),
     evidence: Promise.resolve({}),
@@ -148,6 +160,9 @@ mock.module('../src/internal/execution-backend.js', () => ({
       signal: null,
     }),
     closeInput: async () => {},
+    terminate: async () => {
+      step('terminate-worker')
+    },
   }),
   recoverPrivateExecutionFence: async () => backend.recoverFence(),
   privateExecutionOwnerAllocationDigest: (value: any) =>
@@ -392,4 +407,52 @@ for (const reason of ['setup_failed', 'accounting_failed', 'recovered', 'memory_
   assert.ok(events.includes('close-input'))
 }
 
+const currentDeadlineUnixMs = Date.now() + 30_000
+const currentInput = {
+  ...input,
+  parent: {
+    ...input.parent,
+    intent: { ...input.parent.intent, deadlineUnixMs: currentDeadlineUnixMs },
+  },
+  parentDeadlineUnixMs: currentDeadlineUnixMs,
+}
+stopReason = 'payload_exit'
+events.length = 0
+const completed = await executePrivateContainedEffect(currentInput as any)
+assert.equal(completed.status, 'succeeded')
+assert.equal((completed as any).result.outcome, 'done')
+assert.equal((completed as any).result.output.exitCode, 17)
+assert.equal((completed as any).result.output.stdout.text, 'untrusted success')
+assert.equal((completed as any).result.output.cleanup, 'complete')
+assert.equal(row, undefined)
+assert.ok(events.indexOf('close-owner') < events.indexOf('close-input'))
+
+// Allocation refusal still releases only its unused reservation and preserves
+// the original exception; profiling never promotes it to an operation result.
+events.length = 0
+failAllocation = true
+await assert.rejects(
+  executePrivateContainedEffect(currentInput as any),
+  (error) => error === allocationFailure,
+)
+failAllocation = false
+assert.equal(row, undefined)
+assert.ok(events.includes('cancel-unused-owner'))
+assert.ok(events.includes('release-owner-state'))
+assert.ok(!events.includes('close-owner'))
+
+// A pipe failure joins termination and releases the fresh owner before closing
+// captured input, while keeping the existing uncertain operation outcome.
+events.length = 0
+failCollection = true
+const collection = await executePrivateContainedEffect(currentInput as any)
+failCollection = false
+assert.equal(collection.status, 'failed')
+assert.equal((collection as any).code, 'UNCERTAIN')
+assert.equal(row, undefined)
+assert.ok(events.indexOf('terminate-worker') >= 0)
+assert.ok(events.indexOf('terminate-worker') < events.indexOf('release-owner-state'))
+assert.ok(events.indexOf('close-owner') < events.indexOf('close-input'))
+
+privateProfileFinish()
 process.stdout.write('contained effect deadline/prior-owner ordering checks passed\n')

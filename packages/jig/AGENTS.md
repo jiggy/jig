@@ -104,6 +104,9 @@ admitted FLOW packages.
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
   `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated.
+  Jig builds web and TUI through their owning recipes; each builds the model,
+  which builds FLOW and Reporting. Do not repeat those prerequisite requests
+  directly in Jig. Standalone package recipes keep their complete dependencies.
 - `support/macos-exec.c` and the private Mac capture/process controls supply
   the qualified native host boundaries; their ownership and qualification
   procedure live in `src/internal/AGENTS.md`. Installed Mac consumers require

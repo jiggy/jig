@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
+import { settleTestCommand } from './fixtures/bounded-command.js'
 import {
   checkInstalledDisplay,
   expectedInstalledFiles,
@@ -24,6 +25,7 @@ import { checkInstalledConversation } from './installed-conversation-adoption.js
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
 let completed = false
+let commandNumber = 0
 
 try {
   const artifacts = join(temporary, 'artifacts')
@@ -1242,14 +1244,14 @@ async function run(
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const timeout = setTimeout(() => child.kill(), timeoutMs)
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]).finally(() => clearTimeout(timeout))
-  if (exitCode !== 0) {
-    throw new Error(`${command.join(' ')} failed (${exitCode})\n${stdout}${stderr}`)
+  const result = await settleTestCommand(child, {
+    evidence: join(temporary, `command-${commandNumber++}`),
+    timeoutMs,
+  })
+  if (result.code !== 0) {
+    throw new Error(
+      `${command.join(' ')} failed (${result.code})\n${result.stdout}${result.stderr}`,
+    )
   }
-  return { stdout, stderr }
+  return result
 }

@@ -24,6 +24,13 @@ Host preparation never becomes a consumer requirement.
   witnesses. A compact witness never creates a full host qualification receipt.
   Mixed Python and presentation selection also requires FLOW's installed profile,
   so a canonical bundle cannot cause protocol smoke proof to disappear.
+  `guidanceFiles` names six instruction-only inputs excluded from packed products
+  and executable fixtures. Only existing modifications with no rename endpoint
+  and Git mode `100644` in both snapshots may select mandatory tooling alone.
+  Other input classes keep their obligations; additions, deletions, renames,
+  executable modes and links remain full. A new build, pack or test reader must
+  remove its guidance input from this set in the same change. Shadow, main,
+  forced execution and sampled full audits retain complete work.
   Full host collection owns that same observation file and does not run a redundant
   compact target. Shadow remains the default until same-revision audits support
   each omission class. Domain-separated SHA-256 bucket zero modulo five selects
@@ -59,6 +66,10 @@ Host preparation never becomes a consumer requirement.
   resolution and package-owned packing. Preserve generated resolution, actual
   tool identities, inventories and hashes. Build-only receipts carry pending
   qualification; expensive consumer tests run after artifact retention.
+  Reporting (`@jigging/reporting`) is an exact canonical qualification input,
+  alongside the three display packages, rather than another protected publication
+  selector. Its Python package is `jiggy-reporting`; source ownership, distribution
+  profiles and descriptor inputs use these same component identities.
   `qualify-candidate.mjs` verifies the immutable bundle before and after fresh
   FLOW/Agent/standalone-display/Jig installed obligations, without rebuilding
   release archives. Display packages qualify through Jig's gate; the four

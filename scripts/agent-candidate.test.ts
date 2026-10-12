@@ -513,7 +513,7 @@ test('Linux full and compact routes preserve distinct qualification obligations'
   const archiveVariables = [
     'JIG_PACKAGE_ARCHIVE',
     'FLOW_SDK_PACKAGE_ARCHIVE',
-    'USER_UPDATES_PACKAGE_ARCHIVE',
+    'REPORTING_PACKAGE_ARCHIVE',
     'AGENT_METHOD_PACKAGE_ARCHIVE',
     'AGENT_ACP_PACKAGE_ARCHIVE',
     'DISPLAY_MODEL_PACKAGE_ARCHIVE',
@@ -977,7 +977,7 @@ test('Mac qualification copies the supplied candidate bytes and refuses archive 
       import { join } from 'node:path'
       if (process.argv[2] === 'count') console.log(3)
       else if (process.argv[2] === 'run') {
-        const inputs = Object.entries({ 'flow-sdk':'FLOW_SDK_PACKAGE_ARCHIVE', 'user-updates':'USER_UPDATES_PACKAGE_ARCHIVE', 'agent-method':'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp':'AGENT_ACP_PACKAGE_ARCHIVE', 'display-model':'DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-web':'DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-tui':'DISPLAY_TUI_PACKAGE_ARCHIVE', jig:'JIG_PACKAGE_ARCHIVE' })
+        const inputs = Object.entries({ 'flow-sdk':'FLOW_SDK_PACKAGE_ARCHIVE', 'reporting':'REPORTING_PACKAGE_ARCHIVE', 'agent-method':'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp':'AGENT_ACP_PACKAGE_ARCHIVE', 'display-model':'DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-web':'DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-tui':'DISPLAY_TUI_PACKAGE_ARCHIVE', jig:'JIG_PACKAGE_ARCHIVE' })
         for (const [kind, variable] of inputs) {
           const copied = process.env[variable]
           if (!copied || copied.startsWith(process.env.JIG_CI_CANDIDATE_DIRECTORY)) throw Error('consumer must receive an isolated frozen copy')

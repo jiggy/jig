@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -17,6 +18,14 @@ import { reconcileAffectedEvidence } from './affected-gate.mjs'
 import { affectedManifest, createAffectedPlan, digest, githubOutputs } from './affected-plan.mjs'
 
 const roots = []
+const GUIDANCE_FILES = [
+  '.github/AGENTS.md',
+  'scripts/AGENTS.md',
+  'scripts/ci/AGENTS.md',
+  'packages/jig/AGENTS.md',
+  'packages/jig/src/internal/AGENTS.md',
+  'packages/jig/test/AGENTS.md',
+]
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
@@ -65,10 +74,10 @@ function fixture() {
     'packages/jiggy-flow/pyproject.toml': '[project]\nname = "jiggy-flow"\ndependencies = []\n',
     'packages/jiggy-flow/src/jiggy/flow/runtime.py': 'RUNTIME = 1\n',
     'packages/jiggy-flow/tests/test_runtime.py': 'def test_runtime(): pass\n',
-    'packages/jiggy-user-updates/pyproject.toml':
-      '[project]\nname = "jiggy-user-updates"\ndependencies = ["jiggy-flow==1.0"]\n',
-    'packages/jiggy-user-updates/src/jiggy/user_updates/publisher.py': 'PUBLISHER = 1\n',
-    'packages/jiggy-user-updates/src/jiggy/user_updates/user-updates.json': '{}',
+    'packages/jiggy-reporting/pyproject.toml':
+      '[project]\nname = "jiggy-reporting"\ndependencies = ["jiggy-flow==1.0"]\n',
+    'packages/jiggy-reporting/src/jiggy/reporting/view.py': 'VIEW = 1\n',
+    'packages/jiggy-reporting/src/jiggy/reporting/reporting.json': '{}',
     'conformance/run-0/python-peer/test_wire.py': 'def test_wire(): pass\n',
     'scripts/ci/tooling.test.mjs': 'test("tooling", () => {})',
     '.github/workflows/linux-host-conformance.yml':
@@ -84,6 +93,13 @@ function fixture() {
 }
 function plan(f, options = {}) {
   return createAffectedPlan({ cwd: f.root, base: f.base, head: 'HEAD', mode: 'active', ...options })
+}
+function guidanceFixture(omit = [], extraFiles = {}) {
+  const f = fixture()
+  for (const path of GUIDANCE_FILES.filter((path) => !omit.includes(path)))
+    write(f.root, path, `Reviewed instructions for ${path}.\n`)
+  for (const [path, body] of Object.entries(extraFiles)) write(f.root, path, body)
+  return { ...f, base: commit(f.root) }
 }
 function evidenceFor(p, scope = 'ci') {
   return {
@@ -115,6 +131,228 @@ function evidenceFor(p, scope = 'ci') {
       ),
   }
 }
+
+test('only the six audited guidance modifications may select tooling alone', () => {
+  assert.deepEqual(affectedManifest.guidanceFiles, GUIDANCE_FILES)
+  for (const path of GUIDANCE_FILES) {
+    const f = guidanceFixture()
+    write(f.root, path, `Updated instructions for ${path}.\n`)
+    commit(f.root)
+    const p = plan(f)
+    assert.equal(p.policy.classification, 'guidance', path)
+    assert.deepEqual(p.policy.fallbackReasons, [])
+    assert.deepEqual(
+      p.targets.filter((target) => target.selected).map((target) => target.id),
+      ['quick-checks'],
+    )
+    assert.deepEqual(p.decisions.sourceTargets, [])
+    assert.deepEqual(p.decisions.npmPackages, [])
+    assert.equal(p.decisions.candidates, false)
+    assert.equal(
+      reconcileAffectedEvidence(p, evidenceFor(p, 'all'), { cwd: f.root, scope: 'all' }).qualified,
+      true,
+    )
+  }
+})
+
+test('guidance retains the independent route of every mixed executable input', () => {
+  for (const [path, before, after, classification, sourceTargets, npmPackages] of [
+    ['site/jig/public/logo.svg', '<svg>old</svg>', '<svg>new</svg>', 'public-site', [], []],
+    [
+      'packages/jiggy-flow/src/jiggy/flow/runtime.py',
+      'RUNTIME=1',
+      'RUNTIME=2',
+      'python',
+      ['source-protocol', 'source-python'],
+      [],
+    ],
+    [
+      'packages/display-model/src/view.ts',
+      'export const view=1',
+      'export const view=2',
+      'presentation',
+      ['source-portable'],
+      ['jig'],
+    ],
+  ]) {
+    const f = guidanceFixture([], {
+      [path]: before,
+      ...(classification === 'presentation'
+        ? { 'packages/display-model/package.json': '{"name":"@jigging/display-model"}' }
+        : {}),
+    })
+    write(f.root, path, after)
+    write(f.root, 'scripts/ci/AGENTS.md', 'Updated CI instructions.\n')
+    commit(f.root)
+    const p = plan(f)
+    assert.equal(p.policy.classification, classification)
+    assert.deepEqual(p.decisions.sourceTargets, sourceTargets)
+    assert.deepEqual(p.decisions.npmPackages, npmPackages)
+    assert.ok(
+      p.changes
+        .find((change) => change.path === 'scripts/ci/AGENTS.md')
+        .reasons.some((reason) => reason.startsWith('guidance ownership:')),
+    )
+  }
+})
+
+test('guidance additions, deletions, renames, links and either executable mode remain full', () => {
+  const cases = [
+    {
+      name: 'addition',
+      omit: ['.github/AGENTS.md'],
+      change: (f) => write(f.root, '.github/AGENTS.md', 'New instructions.\n'),
+    },
+    {
+      name: 'deletion',
+      change: (f) => rmSync(join(f.root, 'scripts/AGENTS.md')),
+    },
+    {
+      name: 'rename between approved paths',
+      omit: ['.github/AGENTS.md'],
+      change: (f) =>
+        renameSync(join(f.root, 'scripts/ci/AGENTS.md'), join(f.root, '.github/AGENTS.md')),
+    },
+    {
+      name: 'new executable mode',
+      change: (f) => chmodSync(join(f.root, 'packages/jig/AGENTS.md'), 0o755),
+    },
+    {
+      name: 'old executable mode',
+      prepare: (f) => chmodSync(join(f.root, 'packages/jig/src/internal/AGENTS.md'), 0o755),
+      change: (f) => {
+        chmodSync(join(f.root, 'packages/jig/src/internal/AGENTS.md'), 0o644)
+        write(f.root, 'packages/jig/src/internal/AGENTS.md', 'Changed regular instructions.\n')
+      },
+    },
+    {
+      name: 'both executable modes',
+      prepare: (f) => chmodSync(join(f.root, 'packages/jig/test/AGENTS.md'), 0o755),
+      change: (f) =>
+        write(f.root, 'packages/jig/test/AGENTS.md', 'Changed executable instructions.\n'),
+    },
+    {
+      name: 'symbolic link',
+      change: (f) => {
+        rmSync(join(f.root, 'scripts/AGENTS.md'))
+        symlinkSync('ci/AGENTS.md', join(f.root, 'scripts/AGENTS.md'))
+      },
+    },
+  ]
+  for (const { name, omit, prepare, change } of cases) {
+    const f = guidanceFixture(omit)
+    if (prepare) {
+      prepare(f)
+      f.base = commit(f.root)
+    }
+    change(f)
+    commit(f.root)
+    const p = plan(f)
+    assert.equal(p.policy.classification, 'full', name)
+    assert.equal(p.decisions.linux, true)
+    assert.equal(p.decisions.macos, true)
+    assert.deepEqual(p.decisions.npmPackages, ['flow', 'agent', 'acp', 'jig'])
+    assert.ok(
+      p.changes.every((input) =>
+        input.reasons.every((reason) => !reason.startsWith('guidance ownership:')),
+      ),
+      name,
+    )
+  }
+})
+
+test('packed, copied and unreviewed AGENTS documents cannot inherit guidance omissions', () => {
+  for (const path of [
+    'packages/agent-method/AGENTS.md',
+    'packages/agent-acp/AGENTS.md',
+    'examples/software-factory/AGENTS.md',
+    '.agents/AGENTS.md',
+    'packages/jig/test/fixtures/AGENTS.md',
+  ]) {
+    const f = fixture()
+    write(f.root, path, 'Existing external instructions.\n')
+    const base = commit(f.root)
+    write(f.root, path, 'Changed external instructions.\n')
+    commit(f.root)
+    assert.equal(plan({ ...f, base }).policy.classification, 'full', path)
+  }
+})
+
+test('guidance never overrides shadow, main, manual, forced or sampled full execution', () => {
+  const f = guidanceFixture()
+  write(f.root, 'scripts/ci/AGENTS.md', 'Changed instructions.\n')
+  commit(f.root)
+  for (const options of [
+    { mode: 'shadow' },
+    { event: 'push' },
+    { event: 'workflow_dispatch' },
+    { event: 'schedule' },
+    { forceFull: true },
+  ]) {
+    const p = plan(f, options)
+    assert.equal(p.decisions.linux, true)
+    assert.equal(p.decisions.macos, true)
+    assert.deepEqual(p.decisions.npmPackages, ['flow', 'agent', 'acp', 'jig'])
+  }
+  write(f.root, 'scripts/ci/AGENTS.md', 'Sampled instruction revision.\n')
+  commit(f.root, { sampled: true })
+  const sampled = plan(f)
+  assert.equal(sampled.policy.classification, 'guidance')
+  assert.equal(sampled.proposedDecisions.candidates, false)
+  assert.equal(sampled.audit.selected, true)
+  assert.equal(sampled.decisions.linux, true)
+  assert.equal(sampled.decisions.macos, true)
+})
+
+test('guidance receipts require fresh tooling and explicit policy omissions', () => {
+  const f = guidanceFixture()
+  write(f.root, '.github/AGENTS.md', 'Changed automation guidance.\n')
+  commit(f.root)
+  const p = plan(f)
+  const mutations = [
+    (e) => {
+      e.source = f.base
+    },
+    (e) => {
+      e.planDigest = 'stale-policy'
+    },
+    (e) => {
+      e.results = e.results.filter((result) => result.id !== 'quick-checks')
+    },
+    (e) => {
+      e.results.find((result) => result.id === 'quick-checks').executedCount = 0
+    },
+    (e) => {
+      e.results.find((result) => result.id === 'source-portable').omissionReason =
+        'invented permission'
+    },
+  ]
+  for (const mutate of mutations) {
+    const e = evidenceFor(p)
+    mutate(e)
+    assert.equal(reconcileAffectedEvidence(p, e, { cwd: f.root }).qualified, false)
+  }
+
+  // The new checkout genuinely changes shared code. A fully rehashed guidance
+  // plan and its matching receipt still cannot authorize those omissions.
+  write(f.root, 'packages/jig/src/core.ts', 'export const lifecycle = false')
+  commit(f.root)
+  const forged = plan(f)
+  assert.equal(forged.policy.classification, 'full')
+  forged.policy = p.policy
+  forged.decisions = p.decisions
+  forged.proposedDecisions = p.proposedDecisions
+  for (const target of forged.targets) {
+    const old = p.targets.find((item) => item.id === target.id)
+    for (const key of ['selected', 'proposedSelected', 'omissionReason', 'reasons'])
+      target[key] = old[key]
+  }
+  const { planDigest: oldDigest, ...body } = forged
+  forged.planDigest = digest(body)
+  const report = reconcileAffectedEvidence(forged, evidenceFor(forged), { cwd: f.root })
+  assert.equal(report.qualified, false)
+  assert.ok(report.errors.some((error) => error.includes('independently reconstructed')))
+})
 
 test('default shadow retains every obligation while reporting bounded site-only omissions', () => {
   const f = fixture()
@@ -387,7 +625,7 @@ test('isolated Python source and added/deleted tests retain complete source and 
   assert.ok(p.inventory.added.includes('packages/jiggy-flow/tests/test_new.py'))
   assert.ok(p.inventory.removed.includes('packages/jiggy-flow/tests/test_runtime.py'))
   assert.ok(p.graph.affectedOwners.includes('conformance/run-0'))
-  assert.ok(p.graph.affectedOwners.includes('packages/jiggy-user-updates'))
+  assert.ok(p.graph.affectedOwners.includes('packages/jiggy-reporting'))
   const source = p.targets.find((target) => target.id === 'source-python')
   assert.ok(source.inventory.includes('packages/jiggy-flow/tests/test_new.py'))
   assert.ok(!source.inventory.includes('packages/jiggy-flow/tests/test_runtime.py'))
@@ -395,6 +633,51 @@ test('isolated Python source and added/deleted tests retain complete source and 
     p.targets.find((target) => target.id === 'python-installed').runtimeProfiles.length,
     6,
   )
+})
+
+test('Reporting Python changes bind current source owners and both distribution profiles', () => {
+  const f = fixture()
+  const javascript = 'packages/reporting/test/wire.test.ts'
+  const python = 'packages/jiggy-reporting/tests/test_wire.py'
+  write(f.root, 'packages/reporting/package.json', '{"name":"@jigging/reporting"}')
+  write(f.root, javascript, 'test("reporting wire",()=>{})')
+  write(f.root, python, 'def test_wire(): pass\n')
+  const base = commit(f.root)
+  write(f.root, 'packages/jiggy-reporting/src/jiggy/reporting/view.py', 'VIEW = 2\n')
+  commit(f.root)
+  const p = plan({ ...f, base })
+  assert.equal(p.policy.classification, 'python')
+  assert.deepEqual(p.decisions.sourceTargets, ['source-protocol', 'source-python'])
+  assert.equal(p.decisions.candidates, false)
+  assert.ok(
+    p.targets.find((target) => target.id === 'source-protocol').testInventory.includes(javascript),
+  )
+  assert.ok(
+    p.targets.find((target) => target.id === 'source-python').testInventory.includes(python),
+  )
+  assert.deepEqual(p.targets.find((target) => target.id === 'python-build').runtimeProfiles, [
+    'jiggy-flow',
+    'jiggy-reporting',
+  ])
+  const e = evidenceFor(p)
+  assert.equal(reconcileAffectedEvidence(p, e, { cwd: f.root }).qualified, true)
+  e.results.find((result) => result.id === 'python-build').profiles = ['jiggy-flow']
+  const refused = reconcileAffectedEvidence(p, e, { cwd: f.root })
+  assert.equal(refused.qualified, false)
+  assert.ok(refused.errors.some((error) => error.endsWith('matrix: python-build')))
+
+  const descriptor = 'packages/jiggy-reporting/src/jiggy/reporting/reporting.json'
+  write(f.root, descriptor, '{"descriptor":2}')
+  commit(f.root)
+  const shared = plan({ ...f, base })
+  assert.equal(shared.policy.classification, 'full')
+  assert.ok(
+    shared.graph.current.edges.some(
+      (edge) => edge.consumer === 'packages/reporting' && edge.dependency === descriptor,
+    ),
+  )
+  assert.equal(shared.decisions.linux, true)
+  assert.equal(shared.decisions.macos, true)
 })
 
 test('pure test-only changes execute the owning portable source stage without host qualification', () => {

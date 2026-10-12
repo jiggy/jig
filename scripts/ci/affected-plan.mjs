@@ -386,7 +386,13 @@ export function createAffectedPlan({
     const paths = [...new Set([change.path, change.oldPath].filter(Boolean))]
     const owners = [...new Set(paths.flatMap(ownersForPath))].sort()
     const reasons = paths.map((path) => {
-      const classification = classifyPath(path, manifest)
+      const guidance =
+        manifest.guidanceFiles?.includes(path) &&
+        change.status === 'M' &&
+        change.oldPath === null &&
+        oldModes.get(path) === '100644' &&
+        newModes.get(path) === '100644'
+      const classification = guidance ? 'guidance' : classifyPath(path, manifest)
       classes.add(classification)
       if (ownersForPath(path).length === 0) fallbackReasons.push(`Unknown changed input: ${path}`)
       if (oldModes.get(path) === '120000' || newModes.get(path) === '120000')
@@ -395,6 +401,8 @@ export function createAffectedPlan({
     })
     return { ...change, owners, reasons }
   })
+  // Reviewed guidance cannot expand or reduce another input's execution obligations.
+  if (classes.size > 1) classes.delete('guidance')
   if (classes.has('full'))
     fallbackReasons.push('Shared, host, build, harness, runtime or unproven input changed')
   const affectedOwners = closure(

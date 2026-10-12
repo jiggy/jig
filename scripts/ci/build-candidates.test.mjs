@@ -132,7 +132,7 @@ test('build-only producer freezes one workspace build, eight archives and actual
       receipt.packages.map(({ kind }) => kind),
       [
         'flow-sdk',
-        'user-updates',
+        'reporting',
         'agent-method',
         'agent-acp',
         'display-model',

@@ -257,16 +257,23 @@ function releaseFixture(
     testOwner,
     `import{runSourceLanes}from ${JSON.stringify(new URL('./source-lanes.mjs', import.meta.url).href)};try{process.exitCode=(await runSourceLanes({directory:process.argv[3],platform:'linux'})).exitCode}catch(error){console.error(error.message);process.exitCode=1}`,
   )
-  executable(join(bin, 'just'), '#!/bin/sh\nprintf "build:%s\\n" "$1" >> "$FIXTURE_EVENTS"\n')
+  // The real owning recipe is verified in scripts/justfile.test.ts; this
+  // controlled executable models its completed authoring prerequisite only.
+  executable(
+    join(bin, 'just'),
+    '#!/bin/sh\nprintf "build:%s\\n" "$1" >> "$FIXTURE_EVENTS"\ncase "$1" in jig::build|authoring::build) printf "authoring-ready:%s\\n" "$1" >> "$FIXTURE_EVENTS" ;; esac\n',
+  )
   executable(join(bin, 'uname'), '#!/bin/sh\nprintf "Linux\\n"\n')
   executable(join(bin, 'git'), '#!/bin/sh\nprintf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n"\n')
   const python = executable(
     join(bin, 'python'),
     '#!/bin/sh\nif [ "$1" = scripts/ci/merge-source-junit.py ]; then printf "<testsuites/>\\n" > "$2"; fi\nexit 0\n',
   )
+  // A POSIX sh wrapper may discard Bash's exported-function environment keys.
+  // Keep the fixture's route to real Node equivalent to the qualified executable.
   const node = executable(
     join(bin, 'qualified-node'),
-    `#!/bin/sh
+    `#!/bin/bash
 case "$1" in
   scripts/ci/candidate-provenance.mjs) printf 'canonical-verified\\n' >> "$FIXTURE_EVENTS"; exit 0 ;;
   --input-type=module) case "$3" in *createHash*) printf 'archive-hash\\n' >> "$FIXTURE_EVENTS" ;; esac ;;
@@ -289,7 +296,7 @@ const event=s=>fs.appendFileSync(process.env.FIXTURE_EVENTS,s+'\\n');
 if(a[0]==='pm'||a.includes('--destination')) { const d=a[a.indexOf('--destination')+1];fs.mkdirSync(d,{recursive:true});fs.writeFileSync(path.join(d,'fixture.tgz'),'frozen fixture');event('pack');process.exit(0) }
 if(a[0]==='test') {
  const lane=a.includes('./fixtures/source-portable.test.ts')?'portable':'other';
- if(!fs.readFileSync(process.env.FIXTURE_EVENTS,'utf8').includes('build:authoring::build'))process.exit(93);
+ if(!/^authoring-ready:(jig|authoring)::build$/m.test(fs.readFileSync(process.env.FIXTURE_EVENTS,'utf8')))process.exit(93);
  if(process.env.FIXTURE_MODE==='cancel')process.on('SIGTERM',()=>{});
  fs.writeFileSync(path.join(root,lane+'.started'),String(process.pid));event(lane+'-start');
  (async()=>{
@@ -354,7 +361,7 @@ if(a[0]==='test') {
   return f
 }
 
-test('the actual source script prebuilds once, runs both lanes, and preserves local consumer checks', {
+test('the source script uses the completed Jig build for both lanes and preserves local consumer checks', {
   timeout: 15000,
 }, async (t) => {
   const f = releaseFixture(t, { parallel: '1' })
@@ -362,9 +369,13 @@ test('the actual source script prebuilds once, runs both lanes, and preserves lo
   const result = await running.done
   assert.equal(result.code, 0, result.output)
   const events = readFileSync(f.events, 'utf8').trim().split('\n')
-  assert.equal(events.filter((event) => event === 'build:authoring::build').length, 1)
+  assert.deepEqual(
+    events.filter((event) => event.startsWith('build:')),
+    ['build:jig::build'],
+  )
+  assert.equal(events.filter((event) => event === 'authoring-ready:jig::build').length, 1)
   for (const lane of ['portable', 'other'])
-    assert.ok(events.indexOf('build:authoring::build') < events.indexOf(`${lane}-start`))
+    assert.ok(events.indexOf('authoring-ready:jig::build') < events.indexOf(`${lane}-start`))
   for (const file of ['source-portable.xml', 'source-protocol.xml', 'source-authoring.xml'])
     assert.ok(existsSync(join(f.reports, file)))
   for (const packageName of ['jig', 'display-model', 'display-web', 'display-tui'])
@@ -379,7 +390,7 @@ test('canonical CI consumers belong to the installed candidate gate while source
   const bundle = join(f.root, 'canonical')
   for (const name of [
     'flow-sdk',
-    'user-updates',
+    'reporting',
     'agent-method',
     'agent-acp',
     'display-model',
@@ -421,9 +432,28 @@ test('standalone explicit sh remains serial and single selected stages never cre
     const result = await f.start(options.parallel === '0' ? '/bin/sh' : '/bin/bash').done
     assert.equal(result.code, 0, result.output)
     const events = readFileSync(f.events, 'utf8').trim().split('\n')
-    if (options.parallel === '0')
+    if (options.parallel === '0') {
       assert.ok(events.indexOf('portable-done') < events.indexOf('other-start'))
-    else assert.ok(!events.includes('portable-start'))
+      assert.deepEqual(
+        events.filter((event) => event.startsWith('build:')),
+        ['build:jig::build'],
+      )
+      assert.ok(events.indexOf('authoring-ready:jig::build') < events.indexOf('portable-start'))
+    } else {
+      assert.ok(!events.includes('portable-start'))
+      assert.deepEqual(
+        events.filter((event) => event.startsWith('build:')),
+        [
+          'build:flow::build',
+          'build:reporting::build',
+          'build:agent::build',
+          'build:acp::build',
+          'build:authoring::build',
+        ],
+      )
+      assert.equal(events.filter((event) => event === 'authoring-ready:authoring::build').length, 1)
+      assert.ok(events.indexOf('authoring-ready:authoring::build') < events.indexOf('other-start'))
+    }
     assert.deepEqual(readdirSync(f.temp), [])
   }
 })

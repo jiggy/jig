@@ -1,11 +1,6 @@
 import { expect, test } from 'bun:test'
-<<<<<<<< HEAD:packages/jig/test/cli-reporting.test.ts
-import { PrivateRunModel, privateAttentionReceipt } from '../src/cli-run-model.js'
-import { PrivateCliReporting } from '../src/cli-reporting.js'
-========
-import { PrivateRunModel, privateAttentionReceipt } from '../../src/cli-run-model.js'
 import { PrivateCliReporting } from '../../src/cli-reporting.js'
->>>>>>>> 3f8bb197 (perf(ci): select whole suites and reduce repeated qualification):packages/jig/test/portable/cli-reporting.test.ts
+import { PrivateRunModel, privateAttentionReceipt } from '../../src/cli-run-model.js'
 
 function observer() {
   const model = new PrivateRunModel(),

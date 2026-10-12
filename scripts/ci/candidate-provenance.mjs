@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 export const PACKAGE_LAYOUT = Object.freeze({
   'flow-sdk': '@jigging/flow',
-  'user-updates': '@jigging/user-updates',
+  reporting: '@jigging/reporting',
   'agent-method': '@jigging/agent-method',
   'agent-acp': '@jigging/agent-acp',
   'display-model': '@jigging/display-model',

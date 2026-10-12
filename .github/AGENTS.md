@@ -40,9 +40,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   the 30-minute profile command budget to finish before mandatory cleanup.
 - CI freezes one canonical eight-package npm bundle and checked Python
   distributions before installed qualification. Source, Linux, hosted Mac and
-  native Agent consumers use the same npm bytes while rebuilding their platform's
-  source workspace separately. Protected publishers download the exact original
-  CI artifact by immutable artifact ID; they never rebuild a release.
+  native Agent consumers use the same npm bytes. Jobs executing source tests
+  build their platform's source workspace separately. Protected publishers
+  download the exact original CI artifact by immutable artifact ID; they never
+  rebuild a release.
 - CI reports quick development/release checks and site builds independently
   of the longer source suite. Candidate jobs retain their archives, then check
   exact public registry bytes read-only so a reused version fails before merge.
@@ -161,9 +162,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   in an ordinary temporary consumer with published conversation dependencies.
   Pass `JIG_PACKAGE_ARCHIVE` through delegation; qualifying an older registry CLI
   would prevent source fixes from satisfying the prepublication gate.
-- Each host shard builds the linked workspace packages used by source tests;
-  generated `dist` output is runner-local and is not created by a filtered
-  dependency install. Frozen archives remain the inputs to installed gates.
+- Linux's three source shards and Mac source-test shards build the linked
+  workspace packages used by their source tests. Generated `dist` output is
+  runner-local and is not created by a filtered dependency install. Linux's
+  installed-evidence shard retains tooling and
+  filtered dependencies but builds no source packages: all six installed
+  obligations consume the frozen archives. Host provision, archive rechecks,
+  residue assertions and complete evidence remain mandatory. Frozen archives
+  remain the inputs to installed gates.
 - Failed operational-baseline command transcripts are retained for seven days.
   Upload only the explicit transcript files, not consumer trees, admission
   databases, credentials, or retained native state.

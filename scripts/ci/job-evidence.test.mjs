@@ -75,7 +75,7 @@ test('Python source proof binds all selected files exactly once and all four pos
   const f = await fixture(t)
   const files = [
     'packages/jiggy-flow/tests/test_one.py',
-    'packages/jiggy-user-updates/tests/test_two.py',
+    'packages/jiggy-reporting/tests/test_two.py',
     'packages/jiggy-flow/tests/test_three.py',
   ]
   const t1 = { ...target('source-python', [sourceProfile]), testInventory: files }
@@ -331,16 +331,16 @@ test('site proof requires nonempty HTML from each explicitly claimed site', asyn
 test('Python build proof requires exactly one nonempty wheel and sdist per claimed package', async (t) => {
   const f = await fixture(t)
   const archives = join(f.root, 'archives')
-  const profiles = ['jiggy-flow', 'jiggy-user-updates']
+  const profiles = ['jiggy-flow', 'jiggy-reporting']
   await f.put('archives/jiggy_flow-1.0.whl', 'wheel')
   await f.put('archives/jiggy_flow-1.0.tar.gz', 'sdist')
   await assert.rejects(() => observedCount({ archives, profiles }))
-  await f.put('archives/jiggy_user_updates-1.0.whl', 'wheel')
-  await f.put('archives/jiggy_user_updates-1.0.tar.gz', 'sdist')
+  await f.put('archives/jiggy_reporting-1.0.whl', 'wheel')
+  await f.put('archives/jiggy_reporting-1.0.tar.gz', 'sdist')
   assert.equal((await observedCount({ archives, profiles })).count, 4)
-  await f.put('archives/jiggy_user_updates-1.0.whl', '')
+  await f.put('archives/jiggy_reporting-1.0.whl', '')
   await assert.rejects(() => observedCount({ archives, profiles }), /Empty/)
-  await f.put('archives/jiggy_user_updates-1.0.whl', 'wheel')
+  await f.put('archives/jiggy_reporting-1.0.whl', 'wheel')
   await f.put('archives/jiggy_flow-2.0.whl', 'extra')
   await assert.rejects(() => observedCount({ archives, profiles }), /wheel\/sdist pair/)
 })

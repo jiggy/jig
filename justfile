@@ -7,7 +7,7 @@ mod agent "packages/agent-method/justfile"
 mod acp "packages/agent-acp/justfile"
 mod authoring "packages/flow-authoring/justfile"
 mod python "packages/jiggy-flow/justfile"
-mod updates "packages/reporting/justfile"
+mod reporting "packages/reporting/justfile"
 mod python_reporting "packages/jiggy-reporting/justfile"
 mod display_model "packages/display-model/justfile"
 mod display_web "packages/display-web/justfile"
@@ -24,7 +24,7 @@ mod site "site/justfile"
     just --list --list-submodules
 
 # Build the TypeScript packages
-build: flow::build jig::build authoring::build
+build: jig::build
 
 # Format only the requested paths, or the repository when omitted
 [positional-arguments]

@@ -18,7 +18,7 @@ const temporary = await mkdtemp(join(tmpdir(), 'jig-installed-display-'))
 const candidates = new Map<string, string>()
 const names = {
   FLOW_SDK_PACKAGE_ARCHIVE: '@jigging/flow',
-  USER_UPDATES_PACKAGE_ARCHIVE: '@jigging/user-updates',
+  REPORTING_PACKAGE_ARCHIVE: '@jigging/reporting',
   AGENT_METHOD_PACKAGE_ARCHIVE: '@jigging/agent-method',
   AGENT_ACP_PACKAGE_ARCHIVE: '@jigging/agent-acp',
   DISPLAY_MODEL_PACKAGE_ARCHIVE: '@jigging/display-model',

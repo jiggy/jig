@@ -53,10 +53,10 @@ function fixture() {
     'packages/jiggy-flow/pyproject.toml': '[project]\nname = "jiggy-flow"\ndependencies = []\n',
     'packages/jiggy-flow/src/jiggy/flow/runtime.py': 'RUNTIME = 1\n',
     'packages/jiggy-flow/tests/test_runtime.py': 'def test_runtime(): pass\n',
-    'packages/jiggy-user-updates/pyproject.toml':
-      '[project]\nname = "jiggy-user-updates"\ndependencies = ["jiggy-flow==1.0"]\n',
-    'packages/jiggy-user-updates/src/jiggy/user_updates/publisher.py': 'PUBLISHER = 1\n',
-    'packages/jiggy-user-updates/src/jiggy/user_updates/user-updates.json': '{}',
+    'packages/jiggy-reporting/pyproject.toml':
+      '[project]\nname = "jiggy-reporting"\ndependencies = ["jiggy-flow==1.0"]\n',
+    'packages/jiggy-reporting/src/jiggy/reporting/view.py': 'VIEW = 1\n',
+    'packages/jiggy-reporting/src/jiggy/reporting/reporting.json': '{}',
     'conformance/run-0/python-peer/test_wire.py': 'def test_wire(): pass\n',
     'scripts/ci/tooling.test.mjs': 'test("tooling", () => {})',
     '.github/workflows/linux-host-conformance.yml':

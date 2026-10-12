@@ -101,7 +101,7 @@ test('installed typed views preserve clean and lost automatic and explicit obser
     )
     for (const [name, variable] of [
       ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
-      ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
+      ['reporting', 'REPORTING_PACKAGE_ARCHIVE'],
     ] as const) {
       const library = join(project, 'libs', name)
       await mkdir(library, { recursive: true })
@@ -111,17 +111,14 @@ test('installed typed views preserve clean and lost automatic and explicit obser
         'archive-extract',
       )
     }
-    await cp(
-      join(project, 'libs/user-updates/dist/user-updates.json'),
-      join(flow, 'user-updates.json'),
-    )
+    await cp(join(project, 'libs/reporting/dist/reporting.json'), join(flow, 'reporting.json'))
     await writeFile(
       join(flow, 'package.json'),
       JSON.stringify({
         name: 'ordinary-observation-witness',
         private: true,
         type: 'module',
-        dependencies: { '@jigging/flow': 'workspace:*', '@jigging/user-updates': 'workspace:*' },
+        dependencies: { '@jigging/flow': 'workspace:*', '@jigging/reporting': 'workspace:*' },
       }),
     )
     await writeFile(
@@ -141,7 +138,7 @@ test('installed typed views preserve clean and lost automatic and explicit obser
             direction: 'send',
             required: false,
             delivery: 'broadcast',
-            contract: './user-updates.json',
+            contract: './reporting.json',
           },
         },
         attachments: { deliverables: 'read-write' },
@@ -152,7 +149,7 @@ test('installed typed views preserve clean and lost automatic and explicit obser
       `import {writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {handle} from '@jigging/flow';
-import {withUserUpdates} from '@jigging/user-updates';
+import {withReporting} from '@jigging/reporting';
 await handle(async run => {
  const evidence='Ordinary result and delivered evidence remain independent of optional observation.\\n';
  await writeFile(join(run.attachments.deliverables.path,'evidence.txt'),evidence,{flag:'wx'});
@@ -163,7 +160,7 @@ await handle(async run => {
   await new Promise(()=>{});
  }
  const views=[['jobs','Jobs'],['checks','Checks'],['patches','Patches']].map(([id,title])=>({kind:'view',id,title,summary:'Witness '+title+': evidence written',sections:[{blocks:[{kind:'facts',items:[{label:'Evidence',value:{kind:'artifact',attachment:'deliverables',path:'evidence.txt'}}]}]}]}));
- if(run.input.mode==='clean') await withUserUpdates(run,'progress',async updates=>{
+ if(run.input.mode==='clean') await withReporting(run,'progress',async updates=>{
   for(const view of views) updates.view(view.id,{title:view.title}).update({summary:view.summary,sections:view.sections});
  });
  else {

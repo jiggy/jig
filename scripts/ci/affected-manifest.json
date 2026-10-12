@@ -5,20 +5,28 @@
     "sampleDivisor": 5
   },
   "description": "Whole-file suite ownership and bounded PR pilots; shared, authority, runtime, build, harness and unknown inputs execute complete fresh qualification.",
-  "pythonPackages": ["packages/jiggy-flow", "packages/jiggy-user-updates"],
+  "guidanceFiles": [
+    ".github/AGENTS.md",
+    "scripts/AGENTS.md",
+    "scripts/ci/AGENTS.md",
+    "packages/jig/AGENTS.md",
+    "packages/jig/src/internal/AGENTS.md",
+    "packages/jig/test/AGENTS.md"
+  ],
+  "pythonPackages": ["packages/jiggy-flow", "packages/jiggy-reporting"],
   "externalTestRoots": [".agents/skills/"],
   "sourceTestRoots": [
     "packages/flow-sdk/",
     "packages/agent-method/",
     "packages/agent-acp/",
     "packages/flow-authoring/",
-    "packages/user-updates/",
+    "packages/reporting/",
     "packages/display-model/",
     "packages/display-web/",
     "packages/display-tui/",
     "packages/jig/",
     "packages/jiggy-flow/",
-    "packages/jiggy-user-updates/",
+    "packages/jiggy-reporting/",
     "conformance/run-0/",
     "examples/tested-patch/",
     "examples/software-factory/",
@@ -47,15 +55,12 @@
     ".vue"
   ],
   "declaredEdges": [
-    ["packages/jiggy-user-updates", "packages/jiggy-flow"],
+    ["packages/jiggy-reporting", "packages/jiggy-flow"],
     ["conformance/run-0", "packages/jiggy-flow"],
     ["conformance/run-0", "packages/flow-sdk"],
     ["packages/jig", "docs/jig/spec"],
-    ["packages/jig", "packages/user-updates"],
-    [
-      "packages/user-updates",
-      "packages/jiggy-user-updates/src/jiggy/user_updates/user-updates.json"
-    ],
+    ["packages/jig", "packages/reporting"],
+    ["packages/reporting", "packages/jiggy-reporting/src/jiggy/reporting/reporting.json"],
     ["conformance/run-0", "docs/flow/guide"],
     ["conformance/run-0", "docs/flow/spec"],
     ["sites", "docs/flow"],
@@ -107,7 +112,7 @@
     },
     {
       "id": "source-protocol",
-      "suiteIds": ["flow", "agent", "acp", "updates", "authoring", "conformance"],
+      "suiteIds": ["flow", "agent", "acp", "reporting", "authoring", "conformance"],
       "selection": "source",
       "scope": "ci",
       "kind": "source-and-consumer",
@@ -118,7 +123,7 @@
         "packages/flow-authoring/justfile",
         "scripts/ci/source-node-reporter.mjs",
         "packages/flow-sdk/test/package-smoke.ts",
-        "packages/user-updates/test/package-smoke.ts"
+        "packages/reporting/test/package-smoke.ts"
       ]
     },
     {
@@ -133,7 +138,7 @@
     },
     {
       "id": "source-python",
-      "suiteIds": ["python-sdk", "python-updates", "python-peer", "python-release"],
+      "suiteIds": ["python-sdk", "python-reporting", "python-peer", "python-release"],
       "selection": "source",
       "scope": "ci",
       "kind": "source-and-consumer",
@@ -145,7 +150,7 @@
       "id": "python-build",
       "scope": "ci",
       "kind": "candidate-build",
-      "profiles": ["jiggy-flow", "jiggy-user-updates"],
+      "profiles": ["jiggy-flow", "jiggy-reporting"],
       "entrypoints": ["scripts/build-python-sdk.py"],
       "suiteIds": [],
       "selection": "python"
@@ -164,7 +169,7 @@
       ],
       "entrypoints": [
         "packages/jiggy-flow/tests/package_smoke.py",
-        "packages/jiggy-user-updates/tests/package_smoke.py"
+        "packages/jiggy-reporting/tests/package_smoke.py"
       ],
       "suiteIds": [],
       "selection": "python"
@@ -373,8 +378,8 @@
       "profiles": ["portable", "portable-linux"]
     },
     {
-      "id": "updates",
-      "roots": ["packages/user-updates/"],
+      "id": "reporting",
+      "roots": ["packages/reporting/"],
       "profiles": ["portable", "portable-linux"]
     },
     {
@@ -406,8 +411,8 @@
       "profiles": ["portable", "portable-linux"]
     },
     {
-      "id": "python-updates",
-      "roots": ["packages/jiggy-user-updates/"],
+      "id": "python-reporting",
+      "roots": ["packages/jiggy-reporting/"],
       "profiles": ["portable", "portable-linux"]
     },
     {

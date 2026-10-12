@@ -37,6 +37,12 @@ type TracePhase =
   | 'finite-acp-exchange'
   | 'finite-acp-release'
   | 'finite-acp-recovery'
+  | 'contained-effect-planning'
+  | 'contained-effect-allocation'
+  | 'contained-effect-sealing'
+  | 'contained-effect-launch'
+  | 'contained-effect-collection'
+  | 'contained-effect-settlement'
   | 'operation-owner-settlement'
   | 'root-fence'
   | 'root-settlement'
@@ -82,6 +88,12 @@ const tracePhases = new Set<TracePhase>([
   'finite-acp-exchange',
   'finite-acp-release',
   'finite-acp-recovery',
+  'contained-effect-planning',
+  'contained-effect-allocation',
+  'contained-effect-sealing',
+  'contained-effect-launch',
+  'contained-effect-collection',
+  'contained-effect-settlement',
   'operation-owner-settlement',
   'root-fence',
   'root-settlement',

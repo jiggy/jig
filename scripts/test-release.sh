@@ -90,7 +90,7 @@ if has_stage source-portable; then
   archive_packages="flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig"
 elif has_stage source-protocol || has_stage source-applications; then
   just flow::build
-  just updates::build
+  just reporting::build
   just agent::build
   just acp::build
   archive_packages="flow-sdk reporting agent-method agent-acp"
@@ -126,7 +126,7 @@ done
 set --
 for package in $archive_packages; do for archive in "$release_tmp/artifacts/$package/"*.tgz; do set -- "$@" "$archive"; done; done
 archive_digests "$@" > "$release_tmp/archive-digests"
-if has_stage source-protocol; then just authoring::build; fi
+if has_stage source-protocol && ! has_stage source-portable; then just authoring::build; fi
 
 run_bun_stage() {
   stage_id=$1
